@@ -1,6 +1,11 @@
 // OogleMate Data Types - Matching Google Sheets Schema
 
-export interface AuctionOpportunity {
+// Base types for internal tracking
+interface SheetRowMeta {
+  _rowIndex?: number;
+}
+
+export interface AuctionOpportunity extends SheetRowMeta {
   lot_id: string;
   auction_house: string;
   listing_url: string;
@@ -31,7 +36,7 @@ export interface AuctionOpportunity {
   previous_reserve?: number;
 }
 
-export interface SaleFingerprint {
+export interface SaleFingerprint extends SheetRowMeta {
   fingerprint_id: string;
   dealer_name: string;
   dealer_whatsapp: string;
@@ -50,14 +55,14 @@ export interface SaleFingerprint {
   is_active: 'Y' | 'N';
 }
 
-export interface Dealer {
+export interface Dealer extends SheetRowMeta {
   dealer_name: string;
   whatsapp: string;
   role: 'admin' | 'dealer';
   enabled: 'Y' | 'N';
 }
 
-export interface AlertLog {
+export interface AlertLog extends SheetRowMeta {
   alert_id: string;
   sent_at: string;
   recipient_whatsapp: string;

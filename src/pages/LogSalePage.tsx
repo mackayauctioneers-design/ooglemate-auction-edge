@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { dataService, mockDealers } from '@/services/mockData';
+import { dataService } from '@/services/dataService';
 import { Dealer } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { FileText, Save, Calendar, Car } from 'lucide-react';

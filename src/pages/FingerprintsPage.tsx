@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { dataService } from '@/services/mockData';
+import { dataService } from '@/services/dataService';
 import { SaleFingerprint, formatNumber } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
