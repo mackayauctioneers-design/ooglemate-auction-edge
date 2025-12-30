@@ -179,7 +179,7 @@ serve(async (req) => {
 
   try {
     const serviceAccountKey = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY');
-    const spreadsheetId = Deno.env.get('GOOGLE_SPREADSHEET_ID');
+    let spreadsheetId = Deno.env.get('GOOGLE_SPREADSHEET_ID');
 
     if (!serviceAccountKey || !spreadsheetId) {
       console.error('Missing environment variables');
@@ -189,14 +189,20 @@ serve(async (req) => {
       );
     }
 
+    // Extract spreadsheet ID from URL if full URL was provided
+    // Handles: https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit...
+    const urlMatch = spreadsheetId.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (urlMatch) {
+      spreadsheetId = urlMatch[1];
+      console.log('Extracted spreadsheet ID from URL:', spreadsheetId);
+    } else {
+      console.log('Using spreadsheet ID as-is:', spreadsheetId);
+    }
+
     console.log('Raw key length:', serviceAccountKey.length);
-    console.log('Key starts with:', serviceAccountKey.substring(0, 50));
     
     const serviceAccount: ServiceAccountKey = JSON.parse(serviceAccountKey);
     console.log('Client email:', serviceAccount.client_email);
-    console.log('Private key starts with:', serviceAccount.private_key.substring(0, 50));
-    console.log('Private key contains literal backslash-n:', serviceAccount.private_key.includes('\\n'));
-    console.log('Private key contains actual newline:', serviceAccount.private_key.includes('\n'));
     
     const accessToken = await getAccessToken(serviceAccount);
     
