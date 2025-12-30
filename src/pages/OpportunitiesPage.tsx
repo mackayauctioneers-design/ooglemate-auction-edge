@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { OpportunityTable } from '@/components/opportunities/OpportunityTable';
 import { OpportunityFiltersPanel } from '@/components/opportunities/OpportunityFilters';
 import { AuctionOpportunity, OpportunityFilters, SaleFingerprint } from '@/types';
-import { dataService } from '@/services/mockData';
+import { dataService } from '@/services/dataService';
 import { useAuth } from '@/contexts/AuthContext';
 import { Car, TrendingUp, AlertTriangle } from 'lucide-react';
 
@@ -12,7 +12,7 @@ export default function OpportunitiesPage() {
   const [opportunities, setOpportunities] = useState<AuctionOpportunity[]>([]);
   const [filteredOpportunities, setFilteredOpportunities] = useState<AuctionOpportunity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [filterOptions, setFilterOptions] = useState({ auction_houses: [] as string[], locations: [] as string[] });
+  const [filterOptions, setFilterOptions] = useState({ auction_houses: [] as string[], locations: [] as string[], makes: [] as string[] });
   const [dealerFingerprints, setDealerFingerprints] = useState<SaleFingerprint[]>([]);
   
   const [filters, setFilters] = useState<OpportunityFilters>({
