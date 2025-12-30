@@ -13,6 +13,10 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -57,6 +61,16 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        // Custom action colors
+        "action-buy": "hsl(var(--action-buy))",
+        "action-buy-foreground": "hsl(var(--action-buy-foreground))",
+        "action-watch": "hsl(var(--action-watch))",
+        "action-watch-foreground": "hsl(var(--action-watch-foreground))",
+        // Status colors
+        "status-passed": "hsl(var(--status-passed))",
+        "status-sold": "hsl(var(--status-sold))",
+        "status-listed": "hsl(var(--status-listed))",
+        "status-withdrawn": "hsl(var(--status-withdrawn))",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -65,25 +79,26 @@ export default {
       },
       keyframes: {
         "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+        "shimmer": {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
         },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "shimmer": "shimmer 2s linear infinite",
+      },
+      boxShadow: {
+        glow: "0 0 30px hsl(var(--primary) / 0.15)",
+        card: "0 4px 20px hsl(0 0% 0% / 0.4)",
       },
     },
   },
