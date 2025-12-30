@@ -30,6 +30,8 @@ async function createJWT(serviceAccount: ServiceAccountKey): Promise<string> {
   const pemHeader = '-----BEGIN PRIVATE KEY-----';
   const pemFooter = '-----END PRIVATE KEY-----';
   let pemContents = serviceAccount.private_key;
+  // Handle escaped newlines from environment variable storage
+  pemContents = pemContents.replace(/\\n/g, '\n');
   pemContents = pemContents.replace(pemHeader, '').replace(pemFooter, '').replace(/\n/g, '');
   const binaryKey = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
 
