@@ -10,6 +10,11 @@ interface ServiceAccountKey {
   private_key: string;
 }
 
+// Base64 URL encoding helper
+function base64UrlEncode(str: string): string {
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
 // Generate JWT for Google API authentication
 async function createJWT(serviceAccount: ServiceAccountKey): Promise<string> {
   const header = { alg: 'RS256', typ: 'JWT' };
@@ -22,9 +27,9 @@ async function createJWT(serviceAccount: ServiceAccountKey): Promise<string> {
     exp: now + 3600,
   };
 
-  const base64Header = btoa(JSON.stringify(header));
-  const base64Payload = btoa(JSON.stringify(payload));
-  const signatureInput = `${base64Header}.${base64Payload}`;
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signatureInput = `${encodedHeader}.${encodedPayload}`;
 
   // Import private key for signing
   const pemHeader = '-----BEGIN PRIVATE KEY-----';
@@ -32,7 +37,8 @@ async function createJWT(serviceAccount: ServiceAccountKey): Promise<string> {
   let pemContents = serviceAccount.private_key;
   // Handle escaped newlines from environment variable storage
   pemContents = pemContents.replace(/\\n/g, '\n');
-  pemContents = pemContents.replace(pemHeader, '').replace(pemFooter, '').replace(/\n/g, '');
+  pemContents = pemContents.replace(pemHeader, '').replace(pemFooter, '').replace(/\s/g, '');
+  
   const binaryKey = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
 
   const key = await crypto.subtle.importKey(
@@ -49,12 +55,9 @@ async function createJWT(serviceAccount: ServiceAccountKey): Promise<string> {
     new TextEncoder().encode(signatureInput)
   );
 
-  const base64Signature = btoa(String.fromCharCode(...new Uint8Array(signature)));
-  const urlSafeSignature = base64Signature.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  const urlSafeHeader = base64Header.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  const urlSafePayload = base64Payload.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  const encodedSignature = base64UrlEncode(String.fromCharCode(...new Uint8Array(signature)));
 
-  return `${urlSafeHeader}.${urlSafePayload}.${urlSafeSignature}`;
+  return `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
 }
 
 // Get access token from Google
@@ -186,7 +189,15 @@ serve(async (req) => {
       );
     }
 
+    console.log('Raw key length:', serviceAccountKey.length);
+    console.log('Key starts with:', serviceAccountKey.substring(0, 50));
+    
     const serviceAccount: ServiceAccountKey = JSON.parse(serviceAccountKey);
+    console.log('Client email:', serviceAccount.client_email);
+    console.log('Private key starts with:', serviceAccount.private_key.substring(0, 50));
+    console.log('Private key contains literal backslash-n:', serviceAccount.private_key.includes('\\n'));
+    console.log('Private key contains actual newline:', serviceAccount.private_key.includes('\n'));
+    
     const accessToken = await getAccessToken(serviceAccount);
     
     const { action, sheet, data, rowIndex } = await req.json();
