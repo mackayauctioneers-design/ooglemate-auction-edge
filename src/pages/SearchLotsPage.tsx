@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { format, parseISO, addDays, isAfter, isBefore, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { Search, Plus, Upload, Loader2, ExternalLink } from 'lucide-react';
+import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import { AuctionLot, formatCurrency, formatNumber } from '@/types';
 import { LotDetailDrawer } from '@/components/lots/LotDetailDrawer';
 import { LotEditor } from '@/components/lots/LotEditor';
 import { LotCsvImport } from '@/components/lots/LotCsvImport';
+import { LifecycleTest } from '@/components/lots/LifecycleTest';
 
 const AEST_TIMEZONE = 'Australia/Sydney';
 
@@ -47,6 +48,7 @@ export default function SearchLotsPage() {
   const [editingLot, setEditingLot] = useState<AuctionLot | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [showLifecycleTest, setShowLifecycleTest] = useState(false);
 
   const { data: lots = [], isLoading } = useQuery({
     queryKey: ['auctionLots', isAdmin],
@@ -146,6 +148,15 @@ export default function SearchLotsPage() {
           </div>
           {isAdmin && (
             <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowLifecycleTest(true)} 
+                className="gap-2"
+                title="Run Lifecycle Test"
+              >
+                <FlaskConical className="h-4 w-4" />
+                <span className="hidden sm:inline">Run Lifecycle Test</span>
+              </Button>
               <Button variant="outline" onClick={() => setIsImporting(true)} className="gap-2">
                 <Upload className="h-4 w-4" />
                 <span className="hidden sm:inline">Import</span>
@@ -387,6 +398,13 @@ export default function SearchLotsPage() {
             onImported={handleDataChanged}
           />
         )}
+
+        {/* Lifecycle Test (Admin Only) */}
+        <LifecycleTest
+          open={showLifecycleTest}
+          onOpenChange={setShowLifecycleTest}
+          onComplete={handleDataChanged}
+        />
       </div>
     </AppLayout>
   );
