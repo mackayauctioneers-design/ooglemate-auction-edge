@@ -3,7 +3,7 @@
 
 import { googleSheetsService } from './googleSheetsService';
 import { dataService as mockDataService } from './mockData';
-import { AuctionOpportunity, SaleFingerprint, Dealer, AlertLog } from '@/types';
+import { AuctionOpportunity, SaleFingerprint, Dealer, AlertLog, AuctionEvent } from '@/types';
 
 // Toggle this to switch between mock data and Google Sheets
 const USE_GOOGLE_SHEETS = true;
@@ -63,5 +63,33 @@ export const dataService = {
       return googleSheetsService.getFilterOptions();
     }
     return mockDataService.getFilterOptions();
+  },
+
+  getAuctionEvents: async (): Promise<AuctionEvent[]> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getAuctionEvents();
+    }
+    return [];
+  },
+
+  addAuctionEvent: async (event: Omit<AuctionEvent, 'event_id'>): Promise<AuctionEvent> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.addAuctionEvent(event);
+    }
+    throw new Error('Mock data does not support adding events');
+  },
+
+  updateAuctionEvent: async (event: AuctionEvent): Promise<void> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.updateAuctionEvent(event);
+    }
+    throw new Error('Mock data does not support updating events');
+  },
+
+  getEventFilterOptions: async (): Promise<{ auction_houses: string[]; locations: string[] }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getEventFilterOptions();
+    }
+    return { auction_houses: [], locations: [] };
   },
 };

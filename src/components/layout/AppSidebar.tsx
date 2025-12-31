@@ -8,7 +8,8 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  HelpCircle
+  HelpCircle,
+  Calendar
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +18,7 @@ import { useState } from 'react';
 
 const navItems = [
   { path: '/', label: "Today's Opportunities", icon: BarChart3 },
+  { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
   { path: '/log-sale', label: 'Log Sale', icon: FileText },
   { path: '/fingerprints', label: 'Sale Fingerprints', icon: Car, adminOnly: true },
   { path: '/alerts', label: 'Alert Log', icon: Bell, adminOnly: true },

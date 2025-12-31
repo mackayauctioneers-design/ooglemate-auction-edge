@@ -4,6 +4,7 @@ import {
   SaleFingerprint, 
   Dealer, 
   AlertLog,
+  AuctionEvent,
   calculateConfidenceScore,
   determineAction
 } from '@/types';
@@ -13,6 +14,7 @@ const SHEETS = {
   FINGERPRINTS: 'Sale_Fingerprints',
   DEALERS: 'Dealers',
   ALERTS: 'Alert_Log',
+  EVENTS: 'Auction_Events',
 };
 
 // Helper to call the edge function
@@ -121,6 +123,19 @@ function parseAlert(row: any): AlertLog {
     action_change: row.action_change || '',
     message_text: row.message_text || '',
     status: row.status || 'queued',
+    _rowIndex: row._rowIndex,
+  };
+}
+
+function parseAuctionEvent(row: any): AuctionEvent {
+  return {
+    event_id: row.event_id || '',
+    event_title: row.event_title || '',
+    auction_house: row.auction_house || '',
+    location: row.location || '',
+    start_datetime: row.start_datetime || '',
+    event_url: row.event_url || '',
+    active: row.active || 'N',
     _rowIndex: row._rowIndex,
   };
 }
@@ -244,5 +259,40 @@ export const googleSheetsService = {
     
     await callSheetsApi('append', SHEETS.ALERTS, newAlert);
     return newAlert;
+  },
+
+  // Get auction events
+  getAuctionEvents: async (): Promise<AuctionEvent[]> => {
+    const response = await callSheetsApi('read', SHEETS.EVENTS);
+    return response.data.map(parseAuctionEvent);
+  },
+
+  // Add a new auction event
+  addAuctionEvent: async (event: Omit<AuctionEvent, 'event_id'>): Promise<AuctionEvent> => {
+    const newEvent: AuctionEvent = {
+      ...event,
+      event_id: `EVT-${Date.now()}`,
+    };
+    
+    await callSheetsApi('append', SHEETS.EVENTS, newEvent);
+    return newEvent;
+  },
+
+  // Update an auction event
+  updateAuctionEvent: async (event: AuctionEvent): Promise<void> => {
+    if (event._rowIndex !== undefined) {
+      await callSheetsApi('update', SHEETS.EVENTS, event, event._rowIndex);
+    }
+  },
+
+  // Get filter options for events
+  getEventFilterOptions: async (): Promise<{ auction_houses: string[]; locations: string[] }> => {
+    const response = await callSheetsApi('read', SHEETS.EVENTS);
+    const events = response.data.map(parseAuctionEvent);
+    
+    return {
+      auction_houses: [...new Set(events.map((e: AuctionEvent) => e.auction_house))].filter(Boolean) as string[],
+      locations: [...new Set(events.map((e: AuctionEvent) => e.location))].filter(Boolean) as string[],
+    };
   },
 };

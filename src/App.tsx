@@ -9,6 +9,7 @@ import LogSalePage from "./pages/LogSalePage";
 import FingerprintsPage from "./pages/FingerprintsPage";
 import AlertsPage from "./pages/AlertsPage";
 import HelpPage from "./pages/HelpPage";
+import UpcomingAuctionsPage from "./pages/UpcomingAuctionsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<OpportunitiesPage />} />
+            <Route path="/upcoming-auctions" element={<UpcomingAuctionsPage />} />
             <Route path="/log-sale" element={<LogSalePage />} />
             <Route path="/fingerprints" element={<FingerprintsPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
