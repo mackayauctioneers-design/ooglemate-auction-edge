@@ -18,7 +18,10 @@ const CSV_HEADERS = [
   'make', 'model', 'variant_raw', 'variant_normalised', 'year', 'km', 'fuel', 'drivetrain',
   'transmission', 'reserve', 'highest_bid', 'status', 'pass_count', 'description_score',
   'estimated_get_out', 'estimated_margin', 'confidence_score', 'action', 'visible_to_dealers', 
-  'updated_at', 'last_status', 'last_seen_at', 'relist_group_id'
+  'updated_at', 'last_status', 'last_seen_at', 'relist_group_id',
+  // Multi-source fields
+  'source_type', 'source_name', 'listing_id', 'listing_key', 'price_current', 'price_prev',
+  'price_drop_count', 'relist_count', 'first_seen_at'
 ];
 
 function parseCSV(csvText: string): Partial<AuctionLot>[] {
@@ -39,17 +42,23 @@ function parseCSV(csvText: string): Partial<AuctionLot>[] {
       const normalizedHeader = header.replace(/\s+/g, '_');
       
       // Type conversions
-      if (['year', 'km', 'pass_count', 'description_score', 'confidence_score'].includes(normalizedHeader)) {
+      if (['year', 'km', 'pass_count', 'description_score', 'confidence_score', 'price_drop_count', 'relist_count'].includes(normalizedHeader)) {
         lot[normalizedHeader] = parseInt(value) || 0;
-      } else if (['reserve', 'highest_bid', 'estimated_get_out', 'estimated_margin'].includes(normalizedHeader)) {
+      } else if (['reserve', 'highest_bid', 'estimated_get_out', 'estimated_margin', 'price_current', 'price_prev'].includes(normalizedHeader)) {
         lot[normalizedHeader] = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
       } else {
         lot[normalizedHeader] = value;
       }
     });
 
-    // Only include if lot_id is present
-    if (lot.lot_id) {
+    // For auctions: require lot_id, for non-auctions: require listing_url or listing_id
+    const sourceType = lot.source_type || 'auction';
+    if (sourceType === 'auction' && lot.lot_id) {
+      lots.push(lot as Partial<AuctionLot>);
+    } else if (sourceType !== 'auction' && (lot.listing_url || lot.listing_id)) {
+      lots.push(lot as Partial<AuctionLot>);
+    } else if (lot.lot_id) {
+      // Default: if lot_id exists, treat as auction
       lots.push(lot as Partial<AuctionLot>);
     }
   }

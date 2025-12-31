@@ -104,9 +104,12 @@ export interface AuctionEvent extends SheetRowMeta {
   active: 'Y' | 'N';
 }
 
+// Source types for multi-source listings
+export type SourceType = 'auction' | 'classified' | 'retail' | 'dealer';
+
 export interface AuctionLot extends SheetRowMeta {
   lot_id: string;
-  lot_key: string; // Computed: auction_house + ":" + lot_id
+  lot_key: string; // Computed: auction_house + ":" + lot_id (for auctions)
   event_id: string;
   auction_house: string;
   location: string;
@@ -132,12 +135,22 @@ export interface AuctionLot extends SheetRowMeta {
   action: 'Watch' | 'Buy';
   visible_to_dealers: 'Y' | 'N';
   updated_at: string;
-  // New lifecycle fields
+  // Lifecycle fields
   last_status: string;
   last_seen_at: string;
   relist_group_id: string;
   // For reserve softening detection
   previous_reserve?: number;
+  // Multi-source support fields
+  source_type: SourceType;
+  source_name: string;
+  listing_id: string;
+  listing_key: string; // Computed unique key for all sources
+  price_current: number;
+  price_prev: number;
+  price_drop_count: number;
+  relist_count: number;
+  first_seen_at: string;
 }
 
 // Calculate lot confidence score
@@ -155,27 +168,44 @@ export function determineLotAction(confidenceScore: number): 'Buy' | 'Watch' {
   return confidenceScore >= 3 ? 'Buy' : 'Watch';
 }
 
-// Get lot flag reasons
+// Get lot flag reasons - extended for retail signals
 export type LotFlagReason = 
   | 'PASSED IN x3+'
   | 'PASSED IN x2'
   | 'UNDER-SPECIFIED'
   | 'RESERVE SOFTENING'
-  | 'MARGIN OK';
+  | 'MARGIN OK'
+  | 'PRICE DROPPING'
+  | 'FATIGUE LISTING'
+  | 'RELISTED';
 
 export function getLotFlagReasons(lot: AuctionLot): LotFlagReason[] {
   const reasons: LotFlagReason[] = [];
   
-  if (lot.pass_count >= 3) reasons.push('PASSED IN x3+');
-  else if (lot.pass_count === 2) reasons.push('PASSED IN x2');
-  
-  if (lot.description_score <= 1) reasons.push('UNDER-SPECIFIED');
-  
-  if (lot.previous_reserve && lot.reserve < lot.previous_reserve) {
-    const dropPercent = ((lot.previous_reserve - lot.reserve) / lot.previous_reserve) * 100;
-    if (dropPercent >= 5) reasons.push('RESERVE SOFTENING');
+  // Auction signals
+  if (lot.source_type === 'auction' || !lot.source_type) {
+    if (lot.pass_count >= 3) reasons.push('PASSED IN x3+');
+    else if (lot.pass_count === 2) reasons.push('PASSED IN x2');
+    
+    if (lot.previous_reserve && lot.reserve < lot.previous_reserve) {
+      const dropPercent = ((lot.previous_reserve - lot.reserve) / lot.previous_reserve) * 100;
+      if (dropPercent >= 5) reasons.push('RESERVE SOFTENING');
+    }
   }
   
+  // Retail/classified signals
+  if (lot.price_drop_count >= 1) reasons.push('PRICE DROPPING');
+  if (lot.relist_count >= 1) reasons.push('RELISTED');
+  
+  // Days listed fatigue (calculate from first_seen_at)
+  if (lot.first_seen_at) {
+    const firstSeen = new Date(lot.first_seen_at);
+    const now = new Date();
+    const daysListed = Math.floor((now.getTime() - firstSeen.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysListed >= 14) reasons.push('FATIGUE LISTING');
+  }
+  
+  if (lot.description_score <= 1) reasons.push('UNDER-SPECIFIED');
   if (lot.estimated_margin >= 1000) reasons.push('MARGIN OK');
   
   return reasons;

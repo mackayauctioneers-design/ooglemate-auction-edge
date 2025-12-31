@@ -112,11 +112,17 @@ export const dataService = {
     return [];
   },
 
-  getLotFilterOptions: async (): Promise<{ auction_houses: string[]; locations: string[]; makes: string[] }> => {
+  getLotFilterOptions: async (): Promise<{ 
+    auction_houses: string[]; 
+    locations: string[]; 
+    makes: string[];
+    source_types: string[];
+    source_names: string[];
+  }> => {
     if (USE_GOOGLE_SHEETS) {
       return googleSheetsService.getLotFilterOptions();
     }
-    return { auction_houses: [], locations: [], makes: [] };
+    return { auction_houses: [], locations: [], makes: [], source_types: [], source_names: [] };
   },
 
   addLot: async (lot: Omit<AuctionLot, 'lot_id' | 'updated_at' | 'confidence_score' | 'action'>): Promise<AuctionLot> => {
