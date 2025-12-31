@@ -268,8 +268,12 @@ export default function LogSalePage() {
                         className="bg-input"
                       />
                       <datalist id="model-list">
-                        {/* Get unique models from recent sales for suggestions */}
-                        {[...new Set(recentSales.map(s => s.model).filter(Boolean))].map(model => (
+                        {/* Get unique models from recent sales, properly capitalized */}
+                        {[...new Set(recentSales
+                          .map(s => s.model?.trim())
+                          .filter(Boolean)
+                          .map(m => m!.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' '))
+                        )].map(model => (
                           <option key={model} value={model} />
                         ))}
                       </datalist>
