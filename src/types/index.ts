@@ -151,6 +151,10 @@ export interface AuctionLot extends SheetRowMeta {
   price_drop_count: number;
   relist_count: number;
   first_seen_at: string;
+  // Manual override fields
+  manual_confidence_score?: number;
+  manual_action?: 'Watch' | 'Buy';
+  override_enabled: 'Y' | 'N';
 }
 
 // Calculate lot confidence score
@@ -177,10 +181,14 @@ export type LotFlagReason =
   | 'MARGIN OK'
   | 'PRICE DROPPING'
   | 'FATIGUE LISTING'
-  | 'RELISTED';
+  | 'RELISTED'
+  | 'OVERRIDDEN';
 
 export function getLotFlagReasons(lot: AuctionLot): LotFlagReason[] {
   const reasons: LotFlagReason[] = [];
+  
+  // Override indicator
+  if (lot.override_enabled === 'Y') reasons.push('OVERRIDDEN');
   
   // Auction signals
   if (lot.source_type === 'auction' || !lot.source_type) {

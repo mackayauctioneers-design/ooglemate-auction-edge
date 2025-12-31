@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { X, ExternalLink, Pencil, Link2 } from 'lucide-react';
+import { X, ExternalLink, Pencil, Link2, Shield } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AuctionLot, formatCurrency, formatNumber, getLotFlagReasons, LotFlagReason } from '@/types';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AuctionLot, formatCurrency, formatNumber, getLotFlagReasons, LotFlagReason, calculateLotConfidenceScore, determineLotAction } from '@/types';
 import { dataService } from '@/services/dataService';
 import { toast } from '@/hooks/use-toast';
 
@@ -31,12 +33,23 @@ const flagColors: Record<LotFlagReason, string> = {
   'PRICE DROPPING': 'bg-blue-600',
   'FATIGUE LISTING': 'bg-rose-600',
   'RELISTED': 'bg-cyan-600',
+  'OVERRIDDEN': 'bg-indigo-600',
 };
 
 export function LotDetailDrawer({ lot, isAdmin, onClose, onEdit, onUpdated }: LotDetailDrawerProps) {
   const flagReasons = getLotFlagReasons(lot);
   const [relistGroupId, setRelistGroupId] = useState(lot.relist_group_id || '');
   const [isSavingRelist, setIsSavingRelist] = useState(false);
+  
+  // Override state
+  const [overrideEnabled, setOverrideEnabled] = useState(lot.override_enabled === 'Y');
+  const [manualConfidence, setManualConfidence] = useState<string>(lot.manual_confidence_score?.toString() || '');
+  const [manualAction, setManualAction] = useState<'Watch' | 'Buy' | ''>(lot.manual_action || '');
+  const [isSavingOverride, setIsSavingOverride] = useState(false);
+  
+  // Calculate auto values for display
+  const autoConfidence = calculateLotConfidenceScore(lot);
+  const autoAction = determineLotAction(autoConfidence);
 
   const formatDate = (datetime: string) => {
     if (!datetime) return '-';
@@ -77,6 +90,44 @@ export function LotDetailDrawer({ lot, isAdmin, onClose, onEdit, onUpdated }: Lo
       });
     } finally {
       setIsSavingRelist(false);
+    }
+  };
+
+  const handleSaveOverride = async () => {
+    setIsSavingOverride(true);
+    try {
+      const updatedLot: AuctionLot = {
+        ...lot,
+        override_enabled: overrideEnabled ? 'Y' : 'N',
+        manual_confidence_score: manualConfidence ? parseInt(manualConfidence) : undefined,
+        manual_action: manualAction || undefined,
+      };
+      
+      // If override is enabled, apply manual values to the main fields
+      if (overrideEnabled) {
+        if (manualConfidence) {
+          updatedLot.confidence_score = parseInt(manualConfidence);
+        }
+        if (manualAction) {
+          updatedLot.action = manualAction;
+        }
+      } else {
+        // Reset to auto-calculated values
+        updatedLot.confidence_score = autoConfidence;
+        updatedLot.action = autoAction;
+      }
+      
+      await dataService.updateLot(updatedLot);
+      toast({ title: 'Override settings saved' });
+      onUpdated?.();
+    } catch (error) {
+      toast({ 
+        title: 'Error saving override', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    } finally {
+      setIsSavingOverride(false);
     }
   };
 
@@ -185,6 +236,75 @@ export function LotDetailDrawer({ lot, isAdmin, onClose, onEdit, onUpdated }: Lo
               <p className="text-xs text-muted-foreground">
                 Use this to link multiple lot_ids that represent the same physical vehicle across re-listings.
               </p>
+            </div>
+          )}
+
+          {/* Admin Override Section */}
+          {isAdmin && (
+            <div className="space-y-3 bg-indigo-950/30 border border-indigo-800/50 p-4 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-indigo-400" />
+                <h3 className="text-sm font-semibold text-foreground">Manual Override</h3>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <Label htmlFor="override-toggle" className="text-sm">Enable Override</Label>
+                <Switch
+                  id="override-toggle"
+                  checked={overrideEnabled}
+                  onCheckedChange={setOverrideEnabled}
+                />
+              </div>
+              
+              {overrideEnabled && (
+                <div className="space-y-3 pt-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      Manual Confidence Score (0-10)
+                    </Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={10}
+                      value={manualConfidence}
+                      onChange={(e) => setManualConfidence(e.target.value)}
+                      placeholder={`Auto: ${autoConfidence}`}
+                      className="text-sm"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      Manual Action
+                    </Label>
+                    <Select
+                      value={manualAction}
+                      onValueChange={(v) => setManualAction(v as 'Watch' | 'Buy')}
+                    >
+                      <SelectTrigger className="text-sm">
+                        <SelectValue placeholder={`Auto: ${autoAction}`} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Watch">Watch</SelectItem>
+                        <SelectItem value="Buy">Buy</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <p className="text-xs text-muted-foreground">
+                    Auto-calculated: Confidence {autoConfidence}, Action {autoAction}
+                  </p>
+                </div>
+              )}
+              
+              <Button
+                size="sm"
+                onClick={handleSaveOverride}
+                disabled={isSavingOverride}
+                className="w-full"
+              >
+                Save Override
+              </Button>
             </div>
           )}
 

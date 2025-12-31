@@ -147,9 +147,6 @@ function parseAuctionEvent(row: any): AuctionEvent {
 }
 
 function parseAuctionLot(row: any): AuctionLot {
-  const sheetAction = row.action?.toString().trim();
-  const hasValidSheetAction = sheetAction === 'Buy' || sheetAction === 'Watch';
-  
   // Compute lot_key from auction_house and lot_id
   const auctionHouse = row.auction_house || '';
   const lotId = row.lot_id || '';
@@ -166,7 +163,6 @@ function parseAuctionLot(row: any): AuctionLot {
     if (listingId) {
       listingKey = `${sourceName}:${listingId}`;
     } else if (row.listing_url) {
-      // Simple hash for URL
       listingKey = `${sourceName}:${simpleHash(row.listing_url)}`;
     }
   }
@@ -175,6 +171,11 @@ function parseAuctionLot(row: any): AuctionLot {
   const reserve = parseFloat(row.reserve) || 0;
   const highestBid = parseFloat(row.highest_bid) || 0;
   const priceCurrent = parseFloat(row.price_current) || (sourceType === 'auction' ? (reserve || highestBid) : 0);
+  
+  // Parse override fields
+  const overrideEnabled = row.override_enabled === 'Y' ? 'Y' : 'N';
+  const manualConfidenceScore = row.manual_confidence_score ? parseInt(row.manual_confidence_score) : undefined;
+  const manualAction = (row.manual_action === 'Buy' || row.manual_action === 'Watch') ? row.manual_action : undefined;
   
   const lot: AuctionLot = {
     lot_id: lotId,
@@ -217,19 +218,33 @@ function parseAuctionLot(row: any): AuctionLot {
     price_drop_count: parseInt(row.price_drop_count) || 0,
     relist_count: parseInt(row.relist_count) || 0,
     first_seen_at: row.first_seen_at || '',
+    // Override fields
+    override_enabled: overrideEnabled,
+    manual_confidence_score: manualConfidenceScore,
+    manual_action: manualAction,
     _rowIndex: row._rowIndex,
   };
 
-  // Calculate confidence score if blank
-  const sheetConfidence = parseInt(row.confidence_score);
-  if (!isNaN(sheetConfidence) && sheetConfidence > 0) {
-    lot.confidence_score = sheetConfidence;
+  // Calculate confidence score - use override if enabled, else auto-calculate
+  if (overrideEnabled === 'Y' && manualConfidenceScore !== undefined) {
+    lot.confidence_score = manualConfidenceScore;
   } else {
-    lot.confidence_score = calculateLotConfidenceScore(lot);
+    const sheetConfidence = parseInt(row.confidence_score);
+    if (!isNaN(sheetConfidence) && sheetConfidence > 0) {
+      lot.confidence_score = sheetConfidence;
+    } else {
+      lot.confidence_score = calculateLotConfidenceScore(lot);
+    }
   }
   
-  // Use sheet action if valid, otherwise calculate
-  lot.action = hasValidSheetAction ? sheetAction : determineLotAction(lot.confidence_score);
+  // Determine action - use override if enabled, else auto-calculate
+  if (overrideEnabled === 'Y' && manualAction) {
+    lot.action = manualAction;
+  } else {
+    const sheetAction = row.action?.toString().trim();
+    const hasValidSheetAction = sheetAction === 'Buy' || sheetAction === 'Watch';
+    lot.action = hasValidSheetAction ? sheetAction : determineLotAction(lot.confidence_score);
+  }
 
   return lot;
 }
@@ -277,7 +292,9 @@ const LOT_HEADERS = [
   'updated_at', 'last_status', 'last_seen_at', 'relist_group_id',
   // Multi-source fields
   'source_type', 'source_name', 'listing_id', 'listing_key', 'price_current', 'price_prev',
-  'price_drop_count', 'relist_count', 'first_seen_at'
+  'price_drop_count', 'relist_count', 'first_seen_at',
+  // Override fields
+  'manual_confidence_score', 'manual_action', 'override_enabled'
 ];
 
 const SALES_LOG_HEADERS = [
@@ -730,6 +747,8 @@ export const googleSheetsService = {
           price_drop_count: 0,
           relist_count: 0,
           first_seen_at: nowISO,
+          // Override fields (defaults)
+          override_enabled: 'N',
         };
         
         // Calculate confidence
