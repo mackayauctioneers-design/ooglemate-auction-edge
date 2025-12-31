@@ -31,6 +31,7 @@ export default function LogSalePage() {
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [recentSales, setRecentSales] = useState<SaleLog[]>([]);
   const [loadingSales, setLoadingSales] = useState(true);
+  const [salesDealerFilter, setSalesDealerFilter] = useState<string>('all');
   
   const [formData, setFormData] = useState({
     dealer_name: '',
@@ -438,18 +439,35 @@ export default function LogSalePage() {
           {/* Recent Sales */}
           <Card className="bg-card border-border">
             <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Clock className="h-5 w-5 text-primary" />
-                Recent Sales
-              </CardTitle>
-              <CardDescription>
-                Last 50 logged sales
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-primary" />
+                    Recent Sales
+                  </CardTitle>
+                  <CardDescription>
+                    Last 50 logged sales
+                  </CardDescription>
+                </div>
+                <Select value={salesDealerFilter} onValueChange={setSalesDealerFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Filter by dealer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Dealers</SelectItem>
+                    {dealers.map(dealer => (
+                      <SelectItem key={dealer.dealer_name} value={dealer.dealer_name}>
+                        {dealer.dealer_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
               {loadingSales ? (
                 <p className="text-sm text-muted-foreground">Loading...</p>
-              ) : recentSales.length === 0 ? (
+              ) : recentSales.filter(s => salesDealerFilter === 'all' || s.dealer_name === salesDealerFilter).length === 0 ? (
                 <p className="text-sm text-muted-foreground">No sales logged yet.</p>
               ) : (
                 <ScrollArea className="h-[500px]">
@@ -462,7 +480,9 @@ export default function LogSalePage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {recentSales.map((sale) => (
+                      {recentSales
+                        .filter(sale => salesDealerFilter === 'all' || sale.dealer_name === salesDealerFilter)
+                        .map((sale) => (
                         <TableRow key={sale.sale_id}>
                           <TableCell className="font-mono text-sm">
                             {sale.deposit_date}
