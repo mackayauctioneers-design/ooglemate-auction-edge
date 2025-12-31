@@ -191,12 +191,15 @@ serve(async (req) => {
 
     // Extract spreadsheet ID from URL if full URL was provided
     // Handles: https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit...
+    // Also handles if user pasted ID with trailing path like: ID/edit?gid=0
     const urlMatch = spreadsheetId.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     if (urlMatch) {
       spreadsheetId = urlMatch[1];
       console.log('Extracted spreadsheet ID from URL:', spreadsheetId);
     } else {
-      console.log('Using spreadsheet ID as-is:', spreadsheetId);
+      // Clean up any trailing path segments (e.g., /edit?gid=0)
+      spreadsheetId = spreadsheetId.split('/')[0].split('?')[0];
+      console.log('Using cleaned spreadsheet ID:', spreadsheetId);
     }
 
     console.log('Raw key length:', serviceAccountKey.length);
