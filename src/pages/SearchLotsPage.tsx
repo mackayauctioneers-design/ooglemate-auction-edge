@@ -43,6 +43,9 @@ export default function SearchLotsPage() {
   const [passCountFilter, setPassCountFilter] = useState('all');
   const [actionFilter, setActionFilter] = useState('all');
   const [marginMin, setMarginMin] = useState('1000');
+  // Multi-source filters
+  const [sourceTypeFilter, setSourceTypeFilter] = useState('all');
+  const [sourceNameFilter, setSourceNameFilter] = useState('all');
 
   const [selectedLot, setSelectedLot] = useState<AuctionLot | null>(null);
   const [editingLot, setEditingLot] = useState<AuctionLot | null>(null);
@@ -73,10 +76,13 @@ export default function SearchLotsPage() {
         // Margin filter (default 1000)
         if (lot.estimated_margin < minMargin) return false;
 
-        // Search query
+        // Search query - include source fields
         if (searchQuery) {
           const q = searchQuery.toLowerCase();
-          const searchFields = [lot.make, lot.model, lot.variant_raw, lot.variant_normalised].join(' ').toLowerCase();
+          const searchFields = [
+            lot.make, lot.model, lot.variant_raw, lot.variant_normalised,
+            lot.source_type, lot.source_name
+          ].join(' ').toLowerCase();
           if (!searchFields.includes(q)) return false;
         }
 
@@ -101,8 +107,17 @@ export default function SearchLotsPage() {
         if (statusFilter !== 'all' && lot.status !== statusFilter) return false;
         if (actionFilter !== 'all' && lot.action !== actionFilter) return false;
 
-        if (passCountFilter === '2plus' && lot.pass_count < 2) return false;
-        if (passCountFilter === '3plus' && lot.pass_count < 3) return false;
+        // Source filters
+        if (sourceTypeFilter !== 'all' && lot.source_type !== sourceTypeFilter) return false;
+        if (sourceNameFilter !== 'all' && lot.source_name !== sourceNameFilter) return false;
+
+        // Pass count filter - only relevant for auctions
+        if (passCountFilter !== 'all') {
+          if (sourceTypeFilter === 'all' || sourceTypeFilter === 'auction') {
+            if (passCountFilter === '2plus' && lot.pass_count < 2) return false;
+            if (passCountFilter === '3plus' && lot.pass_count < 3) return false;
+          }
+        }
 
         if (lot.year < minYear || lot.year > maxYear) return false;
         if (lot.km > maxKm) return false;
@@ -116,7 +131,10 @@ export default function SearchLotsPage() {
         if (dateA !== dateB) return dateA - dateB;
         return b.estimated_margin - a.estimated_margin;
       });
-  }, [lots, searchQuery, auctionHouseFilter, locationFilter, dateRangeFilter, yearMin, yearMax, kmMax, statusFilter, passCountFilter, actionFilter, marginMin]);
+  }, [lots, searchQuery, auctionHouseFilter, locationFilter, dateRangeFilter, yearMin, yearMax, kmMax, statusFilter, passCountFilter, actionFilter, marginMin, sourceTypeFilter, sourceNameFilter]);
+
+  // Determine if auction-specific filters should be shown
+  const showAuctionFilters = sourceTypeFilter === 'all' || sourceTypeFilter === 'auction';
 
   const handleDataChanged = () => {
     queryClient.invalidateQueries({ queryKey: ['auctionLots'] });
@@ -181,15 +199,29 @@ export default function SearchLotsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-            <Select value={auctionHouseFilter} onValueChange={setAuctionHouseFilter}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+            {/* Source Type Filter */}
+            <Select value={sourceTypeFilter} onValueChange={setSourceTypeFilter}>
               <SelectTrigger className="w-full text-xs sm:text-sm">
-                <SelectValue placeholder="Auction House" />
+                <SelectValue placeholder="Source Type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Houses</SelectItem>
-                {filterOptions?.auction_houses.map((h) => (
-                  <SelectItem key={h} value={h}>{h}</SelectItem>
+                <SelectItem value="all">All Types</SelectItem>
+                {filterOptions?.source_types.map((t) => (
+                  <SelectItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Source Name Filter */}
+            <Select value={sourceNameFilter} onValueChange={setSourceNameFilter}>
+              <SelectTrigger className="w-full text-xs sm:text-sm">
+                <SelectValue placeholder="Source" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sources</SelectItem>
+                {filterOptions?.source_names.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -231,16 +263,19 @@ export default function SearchLotsPage() {
               </SelectContent>
             </Select>
 
-            <Select value={passCountFilter} onValueChange={setPassCountFilter}>
-              <SelectTrigger className="w-full text-xs sm:text-sm">
-                <SelectValue placeholder="Pass Count" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Any Passes</SelectItem>
-                <SelectItem value="2plus">2+ Passes</SelectItem>
-                <SelectItem value="3plus">3+ Passes</SelectItem>
-              </SelectContent>
-            </Select>
+            {/* Pass count filter - only show for auctions or all */}
+            {showAuctionFilters && (
+              <Select value={passCountFilter} onValueChange={setPassCountFilter}>
+                <SelectTrigger className="w-full text-xs sm:text-sm">
+                  <SelectValue placeholder="Pass Count" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any Passes</SelectItem>
+                  <SelectItem value="2plus">2+ Passes</SelectItem>
+                  <SelectItem value="3plus">3+ Passes</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
 
             <Select value={actionFilter} onValueChange={setActionFilter}>
               <SelectTrigger className="w-full text-xs sm:text-sm">
@@ -301,17 +336,15 @@ export default function SearchLotsPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
+                    <TableHead className="text-xs whitespace-nowrap">Source</TableHead>
                     <TableHead className="text-xs whitespace-nowrap">Date</TableHead>
-                    <TableHead className="text-xs whitespace-nowrap">House</TableHead>
                     <TableHead className="text-xs whitespace-nowrap">Location</TableHead>
                     <TableHead className="text-xs whitespace-nowrap">Make</TableHead>
                     <TableHead className="text-xs whitespace-nowrap">Model</TableHead>
                     <TableHead className="text-xs whitespace-nowrap">Variant</TableHead>
                     <TableHead className="text-xs whitespace-nowrap text-right">Year</TableHead>
                     <TableHead className="text-xs whitespace-nowrap text-right">KM</TableHead>
-                    <TableHead className="text-xs whitespace-nowrap text-right">Reserve</TableHead>
-                    <TableHead className="text-xs whitespace-nowrap text-right">Bid</TableHead>
-                    <TableHead className="text-xs whitespace-nowrap text-right">Passes</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap text-right">Price</TableHead>
                     <TableHead className="text-xs whitespace-nowrap text-right">Margin</TableHead>
                     <TableHead className="text-xs whitespace-nowrap text-center">Score</TableHead>
                     <TableHead className="text-xs whitespace-nowrap text-center">Action</TableHead>
@@ -321,21 +354,24 @@ export default function SearchLotsPage() {
                 <TableBody>
                   {filteredLots.map((lot) => (
                     <TableRow
-                      key={lot.lot_id}
+                      key={lot.lot_key || lot.listing_key || lot.lot_id}
                       className="cursor-pointer hover:bg-muted/30"
                       onClick={() => setSelectedLot(lot)}
                     >
+                      <TableCell className="text-xs whitespace-nowrap">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{lot.source_name || lot.auction_house}</span>
+                          <span className="text-muted-foreground capitalize">{lot.source_type || 'auction'}</span>
+                        </div>
+                      </TableCell>
                       <TableCell className="text-xs whitespace-nowrap">{formatLotDate(lot.auction_datetime)}</TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">{lot.auction_house}</TableCell>
                       <TableCell className="text-xs whitespace-nowrap">{lot.location}</TableCell>
                       <TableCell className="text-xs whitespace-nowrap font-medium">{lot.make}</TableCell>
                       <TableCell className="text-xs whitespace-nowrap">{lot.model}</TableCell>
                       <TableCell className="text-xs whitespace-nowrap max-w-[120px] truncate">{lot.variant_normalised || lot.variant_raw}</TableCell>
                       <TableCell className="text-xs text-right">{lot.year || '-'}</TableCell>
                       <TableCell className="text-xs text-right">{lot.km ? formatNumber(lot.km) : '-'}</TableCell>
-                      <TableCell className="text-xs text-right">{lot.reserve ? formatCurrency(lot.reserve) : '-'}</TableCell>
-                      <TableCell className="text-xs text-right">{lot.highest_bid ? formatCurrency(lot.highest_bid) : '-'}</TableCell>
-                      <TableCell className="text-xs text-right">{lot.pass_count || 0}</TableCell>
+                      <TableCell className="text-xs text-right">{lot.price_current || lot.reserve ? formatCurrency(lot.price_current || lot.reserve) : '-'}</TableCell>
                       <TableCell className="text-xs text-right font-medium text-emerald-500">{formatCurrency(lot.estimated_margin)}</TableCell>
                       <TableCell className="text-xs text-center">{lot.confidence_score}</TableCell>
                       <TableCell className="text-center">

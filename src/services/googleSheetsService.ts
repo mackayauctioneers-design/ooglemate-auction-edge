@@ -155,6 +155,27 @@ function parseAuctionLot(row: any): AuctionLot {
   const lotId = row.lot_id || '';
   const lotKey = row.lot_key || (auctionHouse && lotId ? `${auctionHouse}:${lotId}` : '');
   
+  // Multi-source fields with defaults
+  const sourceType = row.source_type || 'auction';
+  const sourceName = row.source_name || auctionHouse;
+  const listingId = row.listing_id || '';
+  
+  // Compute listing_key
+  let listingKey = row.listing_key || '';
+  if (!listingKey && sourceName) {
+    if (listingId) {
+      listingKey = `${sourceName}:${listingId}`;
+    } else if (row.listing_url) {
+      // Simple hash for URL
+      listingKey = `${sourceName}:${simpleHash(row.listing_url)}`;
+    }
+  }
+  
+  // For auctions, price_current maps from reserve or highest_bid
+  const reserve = parseFloat(row.reserve) || 0;
+  const highestBid = parseFloat(row.highest_bid) || 0;
+  const priceCurrent = parseFloat(row.price_current) || (sourceType === 'auction' ? (reserve || highestBid) : 0);
+  
   const lot: AuctionLot = {
     lot_id: lotId,
     lot_key: lotKey,
@@ -172,8 +193,8 @@ function parseAuctionLot(row: any): AuctionLot {
     fuel: row.fuel || '',
     drivetrain: row.drivetrain || '',
     transmission: row.transmission || '',
-    reserve: parseFloat(row.reserve) || 0,
-    highest_bid: parseFloat(row.highest_bid) || 0,
+    reserve: reserve,
+    highest_bid: highestBid,
     status: row.status || 'listed',
     pass_count: parseInt(row.pass_count) || 0,
     description_score: parseInt(row.description_score) || 0,
@@ -186,6 +207,16 @@ function parseAuctionLot(row: any): AuctionLot {
     last_status: row.last_status || '',
     last_seen_at: row.last_seen_at || '',
     relist_group_id: row.relist_group_id || '',
+    // Multi-source fields
+    source_type: sourceType,
+    source_name: sourceName,
+    listing_id: listingId,
+    listing_key: listingKey,
+    price_current: priceCurrent,
+    price_prev: parseFloat(row.price_prev) || 0,
+    price_drop_count: parseInt(row.price_drop_count) || 0,
+    relist_count: parseInt(row.relist_count) || 0,
+    first_seen_at: row.first_seen_at || '',
     _rowIndex: row._rowIndex,
   };
 
@@ -201,6 +232,17 @@ function parseAuctionLot(row: any): AuctionLot {
   lot.action = hasValidSheetAction ? sheetAction : determineLotAction(lot.confidence_score);
 
   return lot;
+}
+
+// Simple hash function for URL-based listing_key
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
 }
 
 function parseSaleLog(row: any): SaleLog {
@@ -232,7 +274,10 @@ const LOT_HEADERS = [
   'make', 'model', 'variant_raw', 'variant_normalised', 'year', 'km', 'fuel', 'drivetrain',
   'transmission', 'reserve', 'highest_bid', 'status', 'pass_count', 'description_score',
   'estimated_get_out', 'estimated_margin', 'confidence_score', 'action', 'visible_to_dealers', 
-  'updated_at', 'last_status', 'last_seen_at', 'relist_group_id'
+  'updated_at', 'last_status', 'last_seen_at', 'relist_group_id',
+  // Multi-source fields
+  'source_type', 'source_name', 'listing_id', 'listing_key', 'price_current', 'price_prev',
+  'price_drop_count', 'relist_count', 'first_seen_at'
 ];
 
 const SALES_LOG_HEADERS = [
@@ -460,8 +505,14 @@ export const googleSheetsService = {
     }
   },
 
-  // Get lot filter options
-  getLotFilterOptions: async (): Promise<{ auction_houses: string[]; locations: string[]; makes: string[] }> => {
+  // Get lot filter options - extended for multi-source
+  getLotFilterOptions: async (): Promise<{ 
+    auction_houses: string[]; 
+    locations: string[]; 
+    makes: string[];
+    source_types: string[];
+    source_names: string[];
+  }> => {
     try {
       const response = await callSheetsApi('read', SHEETS.LOTS);
       const lots = response.data.map(parseAuctionLot);
@@ -470,9 +521,11 @@ export const googleSheetsService = {
         auction_houses: [...new Set(lots.map((l: AuctionLot) => l.auction_house))].filter(Boolean) as string[],
         locations: [...new Set(lots.map((l: AuctionLot) => l.location))].filter(Boolean) as string[],
         makes: [...new Set(lots.map((l: AuctionLot) => l.make))].filter(Boolean) as string[],
+        source_types: [...new Set(lots.map((l: AuctionLot) => l.source_type))].filter(Boolean) as string[],
+        source_names: [...new Set(lots.map((l: AuctionLot) => l.source_name))].filter(Boolean) as string[],
       };
     } catch {
-      return { auction_houses: [], locations: [], makes: [] };
+      return { auction_houses: [], locations: [], makes: [], source_types: [], source_names: [] };
     }
   },
 
@@ -514,7 +567,7 @@ export const googleSheetsService = {
     }
   },
 
-  // Upsert lots (for CSV import) - uses lot_key as upsert key
+  // Upsert lots (for CSV import) - uses lot_key for auctions, listing_key for non-auctions
   upsertLots: async (newLots: Partial<AuctionLot>[]): Promise<{ added: number; updated: number }> => {
     // Read existing lots
     let existingLots: AuctionLot[] = [];
@@ -533,41 +586,94 @@ export const googleSheetsService = {
     const validStatuses = ['listed', 'passed_in', 'sold', 'withdrawn'];
 
     for (const newLot of newLots) {
-      if (!newLot.lot_id) continue;
-      
-      // Compute lot_key for matching
+      // Determine source type
+      const sourceType = newLot.source_type || 'auction';
+      const sourceName = newLot.source_name || newLot.auction_house || '';
       const auctionHouse = newLot.auction_house || '';
-      const incomingLotKey = newLot.lot_key || `${auctionHouse}:${newLot.lot_id}`;
       
-      // Normalize status - default to 'listed' if blank or invalid
+      // For auctions: require lot_id, for non-auctions: require listing_url or listing_id
+      const isAuction = sourceType === 'auction';
+      if (isAuction && !newLot.lot_id) continue;
+      if (!isAuction && !newLot.listing_url && !newLot.listing_id) continue;
+      
+      // Compute identity keys
+      const incomingLotKey = isAuction 
+        ? (newLot.lot_key || `${auctionHouse}:${newLot.lot_id}`)
+        : '';
+      
+      let incomingListingKey = newLot.listing_key || '';
+      if (!incomingListingKey && sourceName) {
+        if (newLot.listing_id) {
+          incomingListingKey = `${sourceName}:${newLot.listing_id}`;
+        } else if (newLot.listing_url) {
+          incomingListingKey = `${sourceName}:${simpleHash(newLot.listing_url)}`;
+        }
+      }
+      
+      // Normalize status
       let incomingStatus = (newLot.status || 'listed').toLowerCase() as 'listed' | 'passed_in' | 'sold' | 'withdrawn';
       if (!validStatuses.includes(incomingStatus)) {
         incomingStatus = 'listed';
       }
       
-      const existingIndex = existingLots.findIndex(l => l.lot_key === incomingLotKey);
+      // Find existing lot: auctions use lot_key, non-auctions use listing_key
+      const existingIndex = isAuction
+        ? existingLots.findIndex(l => l.lot_key === incomingLotKey)
+        : existingLots.findIndex(l => l.listing_key === incomingListingKey);
       
       if (existingIndex >= 0) {
         // Update existing lot
         const existing = existingLots[existingIndex];
         
-        // Pass count rule: ONLY increment when previous status was NOT passed_in and new status IS passed_in
+        // AUCTION-SPECIFIC: Pass count rule (only for auctions)
         let passCount = existing.pass_count;
-        if (existing.status !== 'passed_in' && incomingStatus === 'passed_in') {
+        if (isAuction && existing.status !== 'passed_in' && incomingStatus === 'passed_in') {
           passCount = existing.pass_count + 1;
         }
-        // If both are passed_in or neither is passed_in, keep existing pass_count
+        
+        // NON-AUCTION: Price drop detection
+        let priceDropCount = existing.price_drop_count || 0;
+        let pricePrev = existing.price_prev || 0;
+        const oldPriceCurrent = existing.price_current || 0;
+        const newPriceCurrent = newLot.price_current || 0;
+        
+        if (!isAuction && newPriceCurrent > 0 && oldPriceCurrent > 0 && newPriceCurrent < oldPriceCurrent) {
+          priceDropCount++;
+          pricePrev = oldPriceCurrent;
+        }
+        
+        // NON-AUCTION: Relist detection (if last_seen_at > 7 days ago)
+        let relistCount = existing.relist_count || 0;
+        if (!isAuction && existing.last_seen_at) {
+          const lastSeen = new Date(existing.last_seen_at);
+          const daysSinceLastSeen = (new Date().getTime() - lastSeen.getTime()) / (1000 * 60 * 60 * 24);
+          if (daysSinceLastSeen > 7) {
+            relistCount++;
+          }
+        }
         
         const mergedLot: AuctionLot = {
           ...existing,
           ...newLot,
-          lot_key: incomingLotKey,
+          lot_key: incomingLotKey || existing.lot_key,
+          listing_key: incomingListingKey || existing.listing_key,
           status: incomingStatus,
           pass_count: passCount,
-          last_status: existing.status, // Store previous status
+          last_status: existing.status,
           last_seen_at: nowISO,
           updated_at: nowISO,
+          // Non-auction lifecycle
+          price_drop_count: priceDropCount,
+          price_prev: pricePrev,
+          relist_count: relistCount,
+          // Preserve first_seen_at
+          first_seen_at: existing.first_seen_at || nowISO,
         };
+        
+        // For auctions, sync price_current from reserve/highest_bid
+        if (isAuction) {
+          mergedLot.price_current = mergedLot.reserve || mergedLot.highest_bid || 0;
+        }
         
         // Recalculate confidence if needed
         if (!newLot.confidence_score) {
@@ -581,12 +687,11 @@ export const googleSheetsService = {
         updated++;
       } else {
         // Add new lot
-        // If status is passed_in on first insert, set pass_count = 1
-        const passCount = incomingStatus === 'passed_in' ? 1 : 0;
+        const passCount = isAuction && incomingStatus === 'passed_in' ? 1 : 0;
         
         const fullLot: AuctionLot = {
           lot_key: incomingLotKey,
-          lot_id: newLot.lot_id,
+          lot_id: newLot.lot_id || '',
           event_id: newLot.event_id || '',
           auction_house: auctionHouse,
           location: newLot.location || '',
@@ -608,14 +713,28 @@ export const googleSheetsService = {
           description_score: newLot.description_score || 0,
           estimated_get_out: newLot.estimated_get_out || 0,
           estimated_margin: newLot.estimated_margin || 0,
-          confidence_score: newLot.confidence_score || calculateLotConfidenceScore(newLot as AuctionLot),
-          action: newLot.action || determineLotAction(newLot.confidence_score || 0),
+          confidence_score: newLot.confidence_score || 0,
+          action: newLot.action || 'Watch',
           visible_to_dealers: newLot.visible_to_dealers || 'N',
           updated_at: nowISO,
           last_status: '',
           last_seen_at: nowISO,
           relist_group_id: newLot.relist_group_id || '',
+          // Multi-source fields
+          source_type: sourceType,
+          source_name: sourceName,
+          listing_id: newLot.listing_id || '',
+          listing_key: incomingListingKey,
+          price_current: newLot.price_current || newLot.reserve || newLot.highest_bid || 0,
+          price_prev: 0,
+          price_drop_count: 0,
+          relist_count: 0,
+          first_seen_at: nowISO,
         };
+        
+        // Calculate confidence
+        fullLot.confidence_score = calculateLotConfidenceScore(fullLot);
+        fullLot.action = determineLotAction(fullLot.confidence_score);
         
         await callSheetsApi('append', SHEETS.LOTS, fullLot);
         added++;
