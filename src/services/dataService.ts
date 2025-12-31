@@ -3,7 +3,7 @@
 
 import { googleSheetsService } from './googleSheetsService';
 import { dataService as mockDataService } from './mockData';
-import { AuctionOpportunity, SaleFingerprint, Dealer, AlertLog, AuctionEvent, AuctionLot } from '@/types';
+import { AuctionOpportunity, SaleFingerprint, Dealer, AlertLog, AuctionEvent, AuctionLot, SaleLog } from '@/types';
 
 // Toggle this to switch between mock data and Google Sheets
 const USE_GOOGLE_SHEETS = true;
@@ -49,6 +49,14 @@ export const dataService = {
       return googleSheetsService.addFingerprint(fp);
     }
     return mockDataService.addFingerprint(fp);
+  },
+
+  // Upsert fingerprint - update if exists for same dealer + strict fields
+  upsertFingerprint: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'max_km' | 'is_active'>): Promise<SaleFingerprint> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.upsertFingerprint(fp);
+    }
+    throw new Error('Mock data does not support upserting fingerprints');
   },
 
   deactivateFingerprint: async (fingerprintId: string): Promise<void> => {
@@ -128,5 +136,30 @@ export const dataService = {
       return googleSheetsService.upsertLots(lots);
     }
     throw new Error('Mock data does not support upserting lots');
+  },
+
+  // ========== SALES LOG ==========
+
+  getSalesLog: async (limit?: number): Promise<SaleLog[]> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getSalesLog(limit);
+    }
+    return [];
+  },
+
+  addSaleLog: async (sale: Omit<SaleLog, 'sale_id' | 'created_at'>): Promise<SaleLog> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.addSaleLog(sale);
+    }
+    throw new Error('Mock data does not support adding sales');
+  },
+
+  importSalesWithFingerprints: async (
+    sales: Array<Omit<SaleLog, 'sale_id' | 'created_at'>>
+  ): Promise<{ imported: number; fingerprintsUpdated: number; errors: Array<{ row: number; reason: string }> }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.importSalesWithFingerprints(sales);
+    }
+    throw new Error('Mock data does not support importing sales');
   },
 };

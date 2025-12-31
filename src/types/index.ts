@@ -55,6 +55,27 @@ export interface SaleFingerprint extends SheetRowMeta {
   is_active: 'Y' | 'N';
 }
 
+export interface SaleLog extends SheetRowMeta {
+  sale_id: string;
+  dealer_name: string;
+  dealer_whatsapp: string;
+  deposit_date: string;
+  make: string;
+  model: string;
+  variant_normalised: string;
+  year: number;
+  km: number;
+  engine: string;
+  drivetrain: string;
+  transmission: string;
+  buy_price?: number;
+  sell_price?: number;
+  days_to_deposit?: number;
+  notes?: string;
+  source: 'Manual' | 'CSV';
+  created_at: string;
+}
+
 export interface Dealer extends SheetRowMeta {
   dealer_name: string;
   whatsapp: string;
