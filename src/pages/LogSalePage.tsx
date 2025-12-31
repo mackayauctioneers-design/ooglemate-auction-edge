@@ -200,23 +200,21 @@ export default function LogSalePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="dealer">Dealer *</Label>
-                    <Select
+                    <Input
+                      id="dealer"
                       value={formData.dealer_name}
-                      onValueChange={(v) => updateField('dealer_name', v)}
-                    >
-                      <SelectTrigger className="bg-input">
-                        <SelectValue placeholder="Select dealer" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-popover border border-border z-50">
-                        {dealers
-                          .filter(dealer => dealer.dealer_name && dealer.dealer_name.trim() !== '')
-                          .map(dealer => (
-                            <SelectItem key={dealer.dealer_name} value={dealer.dealer_name}>
-                              {dealer.dealer_name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
+                      onChange={(e) => updateField('dealer_name', e.target.value)}
+                      placeholder="Type or select dealer"
+                      list="dealer-list"
+                      className="bg-input"
+                    />
+                    <datalist id="dealer-list">
+                      {dealers
+                        .filter(dealer => dealer.dealer_name && dealer.dealer_name.trim() !== '')
+                        .map(dealer => (
+                          <option key={dealer.dealer_name} value={dealer.dealer_name} />
+                        ))}
+                    </datalist>
                   </div>
 
                   <div className="space-y-2">
