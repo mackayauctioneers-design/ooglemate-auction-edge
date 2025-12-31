@@ -6,6 +6,7 @@ import {
   AlertLog,
   AuctionEvent,
   AuctionLot,
+  SaleLog,
   calculateConfidenceScore,
   determineAction,
   calculateLotConfidenceScore,
@@ -19,6 +20,7 @@ const SHEETS = {
   ALERTS: 'Alert_Log',
   EVENTS: 'Auction_Events',
   LOTS: 'Auction_Lots',
+  SALES_LOG: 'Sales_Log',
 };
 
 // Helper to call the edge function
@@ -201,12 +203,42 @@ function parseAuctionLot(row: any): AuctionLot {
   return lot;
 }
 
+function parseSaleLog(row: any): SaleLog {
+  return {
+    sale_id: row.sale_id || '',
+    dealer_name: row.dealer_name || '',
+    dealer_whatsapp: row.dealer_whatsapp || '',
+    deposit_date: row.deposit_date || '',
+    make: row.make || '',
+    model: row.model || '',
+    variant_normalised: row.variant_normalised || '',
+    year: parseInt(row.year) || 0,
+    km: parseInt(row.km) || 0,
+    engine: row.engine || '',
+    drivetrain: row.drivetrain || '',
+    transmission: row.transmission || '',
+    buy_price: row.buy_price ? parseFloat(row.buy_price) : undefined,
+    sell_price: row.sell_price ? parseFloat(row.sell_price) : undefined,
+    days_to_deposit: row.days_to_deposit ? parseInt(row.days_to_deposit) : undefined,
+    notes: row.notes || '',
+    source: row.source || 'Manual',
+    created_at: row.created_at || '',
+    _rowIndex: row._rowIndex,
+  };
+}
+
 const LOT_HEADERS = [
   'lot_key', 'lot_id', 'event_id', 'auction_house', 'location', 'auction_datetime', 'listing_url',
   'make', 'model', 'variant_raw', 'variant_normalised', 'year', 'km', 'fuel', 'drivetrain',
   'transmission', 'reserve', 'highest_bid', 'status', 'pass_count', 'description_score',
   'estimated_get_out', 'estimated_margin', 'confidence_score', 'action', 'visible_to_dealers', 
   'updated_at', 'last_status', 'last_seen_at', 'relist_group_id'
+];
+
+const SALES_LOG_HEADERS = [
+  'sale_id', 'dealer_name', 'dealer_whatsapp', 'deposit_date', 'make', 'model',
+  'variant_normalised', 'year', 'km', 'engine', 'drivetrain', 'transmission',
+  'buy_price', 'sell_price', 'days_to_deposit', 'notes', 'source', 'created_at'
 ];
 
 export const googleSheetsService = {
@@ -554,5 +586,165 @@ export const googleSheetsService = {
     }
 
     return { added, updated };
+  },
+
+  // ========== SALES LOG ==========
+
+  // Get sales log (last N entries)
+  getSalesLog: async (limit?: number): Promise<SaleLog[]> => {
+    try {
+      const response = await callSheetsApi('read', SHEETS.SALES_LOG);
+      const sales = response.data.map(parseSaleLog);
+      // Sort by created_at descending
+      sales.sort((a: SaleLog, b: SaleLog) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      return limit ? sales.slice(0, limit) : sales;
+    } catch {
+      // Create sheet if it doesn't exist
+      await callSheetsApi('create', SHEETS.SALES_LOG, { headers: SALES_LOG_HEADERS });
+      return [];
+    }
+  },
+
+  // Add a sale log entry
+  addSaleLog: async (sale: Omit<SaleLog, 'sale_id' | 'created_at'>): Promise<SaleLog> => {
+    // Ensure sheet exists
+    try {
+      await callSheetsApi('read', SHEETS.SALES_LOG);
+    } catch {
+      await callSheetsApi('create', SHEETS.SALES_LOG, { headers: SALES_LOG_HEADERS });
+    }
+
+    const newSale: SaleLog = {
+      ...sale,
+      sale_id: `SALE-${Date.now()}`,
+      created_at: new Date().toISOString(),
+    };
+    
+    await callSheetsApi('append', SHEETS.SALES_LOG, newSale);
+    return newSale;
+  },
+
+  // Upsert fingerprint - update if exists for same dealer + strict fields, else create new
+  upsertFingerprint: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'max_km' | 'is_active'>): Promise<SaleFingerprint> => {
+    const depositDate = new Date(fp.sale_date);
+    const expiresAt = new Date(depositDate);
+    expiresAt.setDate(expiresAt.getDate() + 120);
+    
+    const newData = {
+      sale_date: fp.sale_date,
+      expires_at: expiresAt.toISOString().split('T')[0],
+      max_km: fp.sale_km + 15000,
+      is_active: 'Y' as const,
+    };
+    
+    // Read existing fingerprints to check for duplicates
+    const response = await callSheetsApi('read', SHEETS.FINGERPRINTS);
+    const fingerprints = response.data.map(parseFingerprint);
+    
+    // Find matching fingerprint by dealer + strict fields
+    const existingIndex = fingerprints.findIndex((existing: SaleFingerprint) =>
+      existing.dealer_name === fp.dealer_name &&
+      existing.make === fp.make &&
+      existing.model === fp.model &&
+      existing.variant_normalised === fp.variant_normalised &&
+      existing.year === fp.year &&
+      existing.engine === fp.engine &&
+      existing.drivetrain === fp.drivetrain &&
+      existing.transmission === fp.transmission
+    );
+    
+    if (existingIndex >= 0) {
+      // Update existing fingerprint
+      const existing = fingerprints[existingIndex];
+      const updatedFp: SaleFingerprint = {
+        ...existing,
+        sale_date: newData.sale_date,
+        sale_km: fp.sale_km,
+        max_km: newData.max_km,
+        expires_at: newData.expires_at,
+        is_active: newData.is_active,
+        dealer_whatsapp: fp.dealer_whatsapp || existing.dealer_whatsapp,
+        shared_opt_in: fp.shared_opt_in || existing.shared_opt_in,
+      };
+      
+      await callSheetsApi('update', SHEETS.FINGERPRINTS, updatedFp, existing._rowIndex!);
+      return updatedFp;
+    } else {
+      // Create new fingerprint
+      const newFingerprint: SaleFingerprint = {
+        ...fp,
+        fingerprint_id: `FP-${Date.now()}`,
+        ...newData,
+      };
+      
+      await callSheetsApi('append', SHEETS.FINGERPRINTS, newFingerprint);
+      return newFingerprint;
+    }
+  },
+
+  // Batch import sales from CSV
+  importSalesWithFingerprints: async (
+    sales: Array<Omit<SaleLog, 'sale_id' | 'created_at'>>
+  ): Promise<{ imported: number; fingerprintsUpdated: number; errors: Array<{ row: number; reason: string }> }> => {
+    // Ensure sheet exists
+    try {
+      await callSheetsApi('read', SHEETS.SALES_LOG);
+    } catch {
+      await callSheetsApi('create', SHEETS.SALES_LOG, { headers: SALES_LOG_HEADERS });
+    }
+
+    const requiredFields = ['dealer_name', 'deposit_date', 'make', 'model', 'variant_normalised', 'year', 'km', 'engine', 'drivetrain', 'transmission'];
+    const errors: Array<{ row: number; reason: string }> = [];
+    let imported = 0;
+    let fingerprintsUpdated = 0;
+
+    for (let i = 0; i < sales.length; i++) {
+      const sale = sales[i];
+      
+      // Validate required fields
+      const missingFields = requiredFields.filter(field => {
+        const value = (sale as any)[field];
+        return value === undefined || value === null || value === '';
+      });
+      
+      if (missingFields.length > 0) {
+        errors.push({ row: i + 1, reason: `Missing: ${missingFields.join(', ')}` });
+        continue;
+      }
+
+      try {
+        // Add to Sales_Log
+        const newSale: SaleLog = {
+          ...sale,
+          sale_id: `SALE-${Date.now()}-${i}`,
+          created_at: new Date().toISOString(),
+        };
+        await callSheetsApi('append', SHEETS.SALES_LOG, newSale);
+        imported++;
+
+        // Upsert fingerprint
+        await googleSheetsService.upsertFingerprint({
+          dealer_name: sale.dealer_name,
+          dealer_whatsapp: sale.dealer_whatsapp || '',
+          sale_date: sale.deposit_date,
+          make: sale.make,
+          model: sale.model,
+          variant_normalised: sale.variant_normalised,
+          year: sale.year,
+          sale_km: sale.km,
+          engine: sale.engine,
+          drivetrain: sale.drivetrain,
+          transmission: sale.transmission,
+          shared_opt_in: 'N',
+        });
+        fingerprintsUpdated++;
+      } catch (error) {
+        errors.push({ row: i + 1, reason: `Failed to save: ${error}` });
+      }
+    }
+
+    return { imported, fingerprintsUpdated, errors };
   },
 };
