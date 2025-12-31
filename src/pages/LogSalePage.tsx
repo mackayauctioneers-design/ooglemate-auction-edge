@@ -242,19 +242,19 @@ export default function LogSalePage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="make">Make *</Label>
-                      <Select
+                      <Input
+                        id="make"
                         value={formData.make}
-                        onValueChange={(v) => updateField('make', v)}
-                      >
-                        <SelectTrigger className="bg-input">
-                          <SelectValue placeholder="Select make" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {commonMakes.map(make => (
-                            <SelectItem key={make} value={make}>{make}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        onChange={(e) => updateField('make', e.target.value)}
+                        placeholder="Type or select make"
+                        list="make-list"
+                        className="bg-input"
+                      />
+                      <datalist id="make-list">
+                        {commonMakes.map(make => (
+                          <option key={make} value={make} />
+                        ))}
+                      </datalist>
                     </div>
 
                     <div className="space-y-2">
@@ -263,9 +263,16 @@ export default function LogSalePage() {
                         id="model"
                         value={formData.model}
                         onChange={(e) => updateField('model', e.target.value)}
-                        placeholder="e.g. Hilux, Ranger"
+                        placeholder="Type or select model"
+                        list="model-list"
                         className="bg-input"
                       />
+                      <datalist id="model-list">
+                        {/* Get unique models from recent sales for suggestions */}
+                        {[...new Set(recentSales.map(s => s.model).filter(Boolean))].map(model => (
+                          <option key={model} value={model} />
+                        ))}
+                      </datalist>
                     </div>
 
                     <div className="space-y-2">
