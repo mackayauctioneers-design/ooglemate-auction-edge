@@ -207,9 +207,9 @@ export default function LogSalePage() {
                       <SelectTrigger className="bg-input">
                         <SelectValue placeholder="Select dealer" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="bg-popover border border-border z-50">
                         {dealers
-                          .filter(dealer => dealer.dealer_name)
+                          .filter(dealer => dealer.dealer_name && dealer.dealer_name.trim() !== '')
                           .map(dealer => (
                             <SelectItem key={dealer.dealer_name} value={dealer.dealer_name}>
                               {dealer.dealer_name}
