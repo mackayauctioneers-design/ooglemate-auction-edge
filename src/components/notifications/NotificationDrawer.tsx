@@ -9,7 +9,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { dataService } from '@/services/dataService';
 import { AlertLog } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,7 +19,8 @@ import {
   ExternalLink, 
   Eye,
   ChevronRight,
-  Loader2 
+  Loader2,
+  CheckCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -35,16 +35,20 @@ export function NotificationDrawer({ open, onOpenChange, onRefresh }: Notificati
   const { isAdmin, currentUser } = useAuth();
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isMarkingAll, setIsMarkingAll] = useState(false);
 
   const loadAlerts = async () => {
     setIsLoading(true);
     try {
       const allAlerts = await dataService.getAlerts();
       
+      // Filter to BUY alerts only (Watch→Buy)
+      let filtered = allAlerts.filter(a => a.action_change === 'Watch→Buy');
+      
       // Filter by dealer if not admin
-      const filtered = isAdmin 
-        ? allAlerts 
-        : allAlerts.filter(a => a.dealer_name === currentUser?.dealer_name);
+      if (!isAdmin) {
+        filtered = filtered.filter(a => a.dealer_name === currentUser?.dealer_name);
+      }
       
       // Sort by created_at descending, new first
       filtered.sort((a, b) => {
@@ -94,6 +98,22 @@ export function NotificationDrawer({ open, onOpenChange, onRefresh }: Notificati
     }
   };
 
+  const handleMarkAllRead = async () => {
+    setIsMarkingAll(true);
+    try {
+      const dealerName = isAdmin ? undefined : currentUser?.dealer_name;
+      const count = await dataService.markAllBuyAlertsRead(dealerName);
+      await loadAlerts();
+      onRefresh();
+      toast.success(`Marked ${count} alert${count !== 1 ? 's' : ''} as read`);
+    } catch (error) {
+      console.error('Failed to mark all as read:', error);
+      toast.error('Failed to update');
+    } finally {
+      setIsMarkingAll(false);
+    }
+  };
+
   const handleOpenListing = (link: string | undefined, e: React.MouseEvent) => {
     e.stopPropagation();
     if (link) {
@@ -114,16 +134,28 @@ export function NotificationDrawer({ open, onOpenChange, onRefresh }: Notificati
         <SheetHeader className="p-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2">
             <Bell className="h-5 w-5 text-primary" />
-            Notifications
+            BUY Alerts
             {newCount > 0 && (
               <Badge variant="default" className="ml-2">
                 {newCount} new
               </Badge>
             )}
           </SheetTitle>
+          {newCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={handleMarkAllRead}
+              disabled={isMarkingAll}
+            >
+              <CheckCheck className="h-4 w-4 mr-1" />
+              Mark all BUY alerts read
+            </Button>
+          )}
         </SheetHeader>
 
-        <ScrollArea className="h-[calc(100vh-8rem)]">
+        <ScrollArea className="h-[calc(100vh-10rem)]">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -132,7 +164,7 @@ export function NotificationDrawer({ open, onOpenChange, onRefresh }: Notificati
             <div className="flex flex-col items-center justify-center py-12 text-center px-4">
               <Bell className="h-10 w-10 text-muted-foreground mb-3" />
               <p className="text-sm text-muted-foreground">
-                No notifications yet
+                No BUY alerts yet
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Alerts appear when lots move from Watch to Buy
