@@ -261,7 +261,7 @@ export function LotEditor({ lot, onClose, onSaved }: LotEditorProps) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Status</Label>
-              <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
+              <Select value={formData.status} onValueChange={(v: 'listed' | 'passed_in' | 'sold' | 'withdrawn') => setFormData({ ...formData, status: v })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

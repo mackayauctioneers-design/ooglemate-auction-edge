@@ -22,7 +22,6 @@ export default function UpcomingAuctionsPage() {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   
   const [auctionHouseFilter, setAuctionHouseFilter] = useState<string>('all');
   const [locationFilter, setLocationFilter] = useState<string>('all');
