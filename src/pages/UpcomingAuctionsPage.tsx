@@ -114,15 +114,15 @@ export default function UpcomingAuctionsPage() {
 
   return (
     <AppLayout>
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Upcoming Auctions</h1>
-            <p className="text-muted-foreground">Scheduled auction events</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Upcoming Auctions</h1>
+            <p className="text-sm text-muted-foreground">Scheduled auction events</p>
           </div>
           {isAdmin && (
-            <Button onClick={() => setIsCreating(true)} className="gap-2">
+            <Button onClick={() => setIsCreating(true)} className="gap-2 w-full sm:w-auto">
               <Plus className="h-4 w-4" />
               Add Event
             </Button>
@@ -130,9 +130,9 @@ export default function UpcomingAuctionsPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Select value={auctionHouseFilter} onValueChange={setAuctionHouseFilter}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="Auction House" />
             </SelectTrigger>
             <SelectContent>
@@ -144,7 +144,7 @@ export default function UpcomingAuctionsPage() {
           </Select>
 
           <Select value={locationFilter} onValueChange={setLocationFilter}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="Location" />
             </SelectTrigger>
             <SelectContent>
@@ -156,7 +156,7 @@ export default function UpcomingAuctionsPage() {
           </Select>
 
           <Select value={dateRangeFilter} onValueChange={(v) => setDateRangeFilter(v as DateRangeFilter)}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="Date Range" />
             </SelectTrigger>
             <SelectContent>
@@ -183,12 +183,12 @@ export default function UpcomingAuctionsPage() {
                 <h2 className="text-lg font-semibold text-foreground border-b border-border pb-2">
                   {formatDateHeader(dateKey)}
                 </h2>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                   {dayEvents.map((event) => (
                     <Card key={event.event_id} className="relative group">
-                      <CardContent className="p-4 space-y-3">
+                      <CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3">
                         <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-semibold text-foreground line-clamp-2">
+                          <h3 className="font-semibold text-foreground text-sm sm:text-base line-clamp-2">
                             {event.event_title}
                           </h3>
                           {isAdmin && (
@@ -196,21 +196,21 @@ export default function UpcomingAuctionsPage() {
                               variant="ghost"
                               size="iconSm"
                               onClick={() => setEditingEvent(event)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0"
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
                           )}
                         </div>
                         
-                        <div className="space-y-1 text-sm">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary">{event.auction_house}</Badge>
-                          </div>
-                          <p className="text-muted-foreground">{event.location}</p>
-                          <p className="text-muted-foreground font-medium">
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                          <Badge variant="secondary" className="text-xs">{event.auction_house}</Badge>
+                          <span className="text-muted-foreground">•</span>
+                          <span className="text-muted-foreground">{event.location}</span>
+                          <span className="text-muted-foreground">•</span>
+                          <span className="text-muted-foreground font-medium">
                             {formatEventTime(event.start_datetime)} AEST
-                          </p>
+                          </span>
                         </div>
                         
                         <Button
