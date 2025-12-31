@@ -5,8 +5,11 @@ import {
   Dealer, 
   AlertLog,
   AuctionEvent,
+  AuctionLot,
   calculateConfidenceScore,
-  determineAction
+  determineAction,
+  calculateLotConfidenceScore,
+  determineLotAction
 } from '@/types';
 
 const SHEETS = {
@@ -15,6 +18,7 @@ const SHEETS = {
   DEALERS: 'Dealers',
   ALERTS: 'Alert_Log',
   EVENTS: 'Auction_Events',
+  LOTS: 'Auction_Lots',
 };
 
 // Helper to call the edge function
@@ -139,6 +143,61 @@ function parseAuctionEvent(row: any): AuctionEvent {
     _rowIndex: row._rowIndex,
   };
 }
+
+function parseAuctionLot(row: any): AuctionLot {
+  const sheetAction = row.action?.toString().trim();
+  const hasValidSheetAction = sheetAction === 'Buy' || sheetAction === 'Watch';
+  
+  const lot: AuctionLot = {
+    lot_id: row.lot_id || '',
+    event_id: row.event_id || '',
+    auction_house: row.auction_house || '',
+    location: row.location || '',
+    auction_datetime: row.auction_datetime || '',
+    listing_url: row.listing_url || '',
+    make: row.make || '',
+    model: row.model || '',
+    variant_raw: row.variant_raw || '',
+    variant_normalised: row.variant_normalised || '',
+    year: parseInt(row.year) || 0,
+    km: parseInt(row.km) || 0,
+    fuel: row.fuel || '',
+    drivetrain: row.drivetrain || '',
+    transmission: row.transmission || '',
+    reserve: parseFloat(row.reserve) || 0,
+    highest_bid: parseFloat(row.highest_bid) || 0,
+    status: row.status || 'listed',
+    pass_count: parseInt(row.pass_count) || 0,
+    description_score: parseInt(row.description_score) || 0,
+    estimated_get_out: parseFloat(row.estimated_get_out) || 0,
+    estimated_margin: parseFloat(row.estimated_margin) || 0,
+    confidence_score: 0,
+    action: 'Watch',
+    visible_to_dealers: row.visible_to_dealers || 'N',
+    updated_at: row.updated_at || new Date().toISOString(),
+    _rowIndex: row._rowIndex,
+  };
+
+  // Calculate confidence score if blank
+  const sheetConfidence = parseInt(row.confidence_score);
+  if (!isNaN(sheetConfidence) && sheetConfidence > 0) {
+    lot.confidence_score = sheetConfidence;
+  } else {
+    lot.confidence_score = calculateLotConfidenceScore(lot);
+  }
+  
+  // Use sheet action if valid, otherwise calculate
+  lot.action = hasValidSheetAction ? sheetAction : determineLotAction(lot.confidence_score);
+
+  return lot;
+}
+
+const LOT_HEADERS = [
+  'lot_id', 'event_id', 'auction_house', 'location', 'auction_datetime', 'listing_url',
+  'make', 'model', 'variant_raw', 'variant_normalised', 'year', 'km', 'fuel', 'drivetrain',
+  'transmission', 'reserve', 'highest_bid', 'status', 'pass_count', 'description_score',
+  'estimated_get_out', 'estimated_margin', 'confidence_score', 'action', 'visible_to_dealers', 'updated_at'
+];
 
 export const googleSheetsService = {
   // Get all opportunities with optional filters
@@ -294,5 +353,169 @@ export const googleSheetsService = {
       auction_houses: [...new Set(events.map((e: AuctionEvent) => e.auction_house))].filter(Boolean) as string[],
       locations: [...new Set(events.map((e: AuctionEvent) => e.location))].filter(Boolean) as string[],
     };
+  },
+
+  // ========== AUCTION LOTS ==========
+
+  // Get all lots (create sheet if needed)
+  getLots: async (isAdmin: boolean): Promise<AuctionLot[]> => {
+    try {
+      const response = await callSheetsApi('read', SHEETS.LOTS);
+      const lots = response.data.map(parseAuctionLot);
+      
+      // Filter by visibility for dealers
+      if (!isAdmin) {
+        return lots.filter((lot: AuctionLot) => lot.visible_to_dealers === 'Y');
+      }
+      return lots;
+    } catch (error) {
+      // Sheet might not exist, try to create it
+      console.log('Lots sheet may not exist, attempting to create...');
+      try {
+        await callSheetsApi('create', SHEETS.LOTS, { headers: LOT_HEADERS });
+        return [];
+      } catch (createError) {
+        console.error('Failed to create lots sheet:', createError);
+        return [];
+      }
+    }
+  },
+
+  // Get lot filter options
+  getLotFilterOptions: async (): Promise<{ auction_houses: string[]; locations: string[]; makes: string[] }> => {
+    try {
+      const response = await callSheetsApi('read', SHEETS.LOTS);
+      const lots = response.data.map(parseAuctionLot);
+      
+      return {
+        auction_houses: [...new Set(lots.map((l: AuctionLot) => l.auction_house))].filter(Boolean) as string[],
+        locations: [...new Set(lots.map((l: AuctionLot) => l.location))].filter(Boolean) as string[],
+        makes: [...new Set(lots.map((l: AuctionLot) => l.make))].filter(Boolean) as string[],
+      };
+    } catch {
+      return { auction_houses: [], locations: [], makes: [] };
+    }
+  },
+
+  // Add a new lot
+  addLot: async (lot: Omit<AuctionLot, 'lot_id' | 'updated_at' | 'confidence_score' | 'action'>): Promise<AuctionLot> => {
+    const confidenceScore = calculateLotConfidenceScore(lot as AuctionLot);
+    const action = determineLotAction(confidenceScore);
+    
+    const newLot: AuctionLot = {
+      ...lot,
+      lot_id: `LOT-${Date.now()}`,
+      confidence_score: confidenceScore,
+      action: action,
+      updated_at: new Date().toISOString(),
+    };
+    
+    await callSheetsApi('append', SHEETS.LOTS, newLot);
+    return newLot;
+  },
+
+  // Update an existing lot
+  updateLot: async (lot: AuctionLot): Promise<void> => {
+    if (lot._rowIndex !== undefined) {
+      const updatedLot = {
+        ...lot,
+        updated_at: new Date().toISOString(),
+      };
+      await callSheetsApi('update', SHEETS.LOTS, updatedLot, lot._rowIndex);
+    }
+  },
+
+  // Upsert lots (for CSV import)
+  upsertLots: async (newLots: Partial<AuctionLot>[]): Promise<{ added: number; updated: number }> => {
+    // Read existing lots
+    let existingLots: AuctionLot[] = [];
+    let headers: string[] = LOT_HEADERS;
+    
+    try {
+      const response = await callSheetsApi('read', SHEETS.LOTS);
+      existingLots = response.data.map(parseAuctionLot);
+      headers = response.headers || LOT_HEADERS;
+    } catch {
+      // Create sheet if it doesn't exist
+      await callSheetsApi('create', SHEETS.LOTS, { headers: LOT_HEADERS });
+    }
+
+    let added = 0;
+    let updated = 0;
+
+    for (const newLot of newLots) {
+      if (!newLot.lot_id) continue;
+      
+      const existingIndex = existingLots.findIndex(l => l.lot_id === newLot.lot_id);
+      
+      if (existingIndex >= 0) {
+        // Update existing lot
+        const existing = existingLots[existingIndex];
+        
+        // Handle pass_count increment for passed_in status
+        let passCount = existing.pass_count;
+        if (newLot.status === 'passed_in' && existing.status !== 'passed_in') {
+          passCount = existing.pass_count + 1;
+        } else if (newLot.pass_count !== undefined) {
+          passCount = newLot.pass_count;
+        }
+        
+        const mergedLot: AuctionLot = {
+          ...existing,
+          ...newLot,
+          pass_count: passCount,
+          updated_at: new Date().toISOString(),
+        };
+        
+        // Recalculate confidence if needed
+        if (!newLot.confidence_score) {
+          mergedLot.confidence_score = calculateLotConfidenceScore(mergedLot);
+        }
+        if (!newLot.action) {
+          mergedLot.action = determineLotAction(mergedLot.confidence_score);
+        }
+        
+        await callSheetsApi('update', SHEETS.LOTS, mergedLot, existing._rowIndex!);
+        updated++;
+      } else {
+        // Add new lot
+        const confidenceScore = newLot.confidence_score || calculateLotConfidenceScore(newLot as AuctionLot);
+        const action = newLot.action || determineLotAction(confidenceScore);
+        
+        const fullLot: AuctionLot = {
+          lot_id: newLot.lot_id,
+          event_id: newLot.event_id || '',
+          auction_house: newLot.auction_house || '',
+          location: newLot.location || '',
+          auction_datetime: newLot.auction_datetime || '',
+          listing_url: newLot.listing_url || '',
+          make: newLot.make || '',
+          model: newLot.model || '',
+          variant_raw: newLot.variant_raw || '',
+          variant_normalised: newLot.variant_normalised || '',
+          year: newLot.year || 0,
+          km: newLot.km || 0,
+          fuel: newLot.fuel || '',
+          drivetrain: newLot.drivetrain || '',
+          transmission: newLot.transmission || '',
+          reserve: newLot.reserve || 0,
+          highest_bid: newLot.highest_bid || 0,
+          status: newLot.status || 'listed',
+          pass_count: newLot.pass_count || 0,
+          description_score: newLot.description_score || 0,
+          estimated_get_out: newLot.estimated_get_out || 0,
+          estimated_margin: newLot.estimated_margin || 0,
+          confidence_score: confidenceScore,
+          action: action,
+          visible_to_dealers: newLot.visible_to_dealers || 'N',
+          updated_at: new Date().toISOString(),
+        };
+        
+        await callSheetsApi('append', SHEETS.LOTS, fullLot);
+        added++;
+      }
+    }
+
+    return { added, updated };
   },
 };

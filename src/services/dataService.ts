@@ -3,7 +3,7 @@
 
 import { googleSheetsService } from './googleSheetsService';
 import { dataService as mockDataService } from './mockData';
-import { AuctionOpportunity, SaleFingerprint, Dealer, AlertLog, AuctionEvent } from '@/types';
+import { AuctionOpportunity, SaleFingerprint, Dealer, AlertLog, AuctionEvent, AuctionLot } from '@/types';
 
 // Toggle this to switch between mock data and Google Sheets
 const USE_GOOGLE_SHEETS = true;
@@ -91,5 +91,42 @@ export const dataService = {
       return googleSheetsService.getEventFilterOptions();
     }
     return { auction_houses: [], locations: [] };
+  },
+
+  // ========== AUCTION LOTS ==========
+
+  getLots: async (isAdmin: boolean): Promise<AuctionLot[]> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getLots(isAdmin);
+    }
+    return [];
+  },
+
+  getLotFilterOptions: async (): Promise<{ auction_houses: string[]; locations: string[]; makes: string[] }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getLotFilterOptions();
+    }
+    return { auction_houses: [], locations: [], makes: [] };
+  },
+
+  addLot: async (lot: Omit<AuctionLot, 'lot_id' | 'updated_at' | 'confidence_score' | 'action'>): Promise<AuctionLot> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.addLot(lot);
+    }
+    throw new Error('Mock data does not support adding lots');
+  },
+
+  updateLot: async (lot: AuctionLot): Promise<void> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.updateLot(lot);
+    }
+    throw new Error('Mock data does not support updating lots');
+  },
+
+  upsertLots: async (lots: Partial<AuctionLot>[]): Promise<{ added: number; updated: number }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.upsertLots(lots);
+    }
+    throw new Error('Mock data does not support upserting lots');
   },
 };
