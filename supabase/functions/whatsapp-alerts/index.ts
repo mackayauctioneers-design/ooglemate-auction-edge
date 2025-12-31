@@ -28,6 +28,15 @@ async function sendWhatsAppMessage(
   const authToken = Deno.env.get('TWILIO_AUTH_TOKEN');
   const fromNumber = Deno.env.get('TWILIO_WHATSAPP_FROM');
 
+  console.log('Twilio config check:', {
+    hasSid: !!accountSid,
+    sidLength: accountSid?.length,
+    sidPrefix: accountSid?.substring(0, 4),
+    hasToken: !!authToken,
+    tokenLength: authToken?.length,
+    fromNumber: fromNumber,
+  });
+
   if (!accountSid || !authToken || !fromNumber) {
     return { success: false, error: 'Missing Twilio configuration' };
   }
@@ -35,6 +44,8 @@ async function sendWhatsAppMessage(
   // Ensure numbers are in WhatsApp format
   const formattedTo = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`;
   const formattedFrom = fromNumber.startsWith('whatsapp:') ? fromNumber : `whatsapp:${fromNumber}`;
+
+  console.log('Sending WhatsApp:', { to: formattedTo, from: formattedFrom });
 
   try {
     const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
@@ -54,10 +65,11 @@ async function sendWhatsAppMessage(
     });
 
     const data = await response.json();
+    console.log('Twilio response:', { status: response.status, data });
 
     if (!response.ok) {
-      console.error('Twilio error:', data);
-      return { success: false, error: data.message || 'Failed to send message' };
+      console.error('Twilio error details:', JSON.stringify(data));
+      return { success: false, error: data.message || data.code || 'Failed to send message' };
     }
 
     console.log('WhatsApp message sent:', data.sid);
