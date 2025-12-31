@@ -3,17 +3,19 @@
 
 import { googleSheetsService } from './googleSheetsService';
 import { dataService as mockDataService } from './mockData';
-import { AuctionOpportunity, SaleFingerprint, Dealer, AlertLog, AuctionEvent, AuctionLot, SaleLog } from '@/types';
+import { SaleFingerprint, Dealer, AlertLog, AuctionEvent, AuctionLot, SaleLog } from '@/types';
 
 // Toggle this to switch between mock data and Google Sheets
 const USE_GOOGLE_SHEETS = true;
 
 export const dataService = {
-  getOpportunities: async (isAdmin: boolean, dealerFingerprints?: SaleFingerprint[]): Promise<AuctionOpportunity[]> => {
+  // Get opportunities as filtered view of Auction_Lots
+  getOpportunities: async (isAdmin: boolean, dealerFingerprints?: SaleFingerprint[]): Promise<AuctionLot[]> => {
     if (USE_GOOGLE_SHEETS) {
       return googleSheetsService.getOpportunities(isAdmin, dealerFingerprints);
     }
-    return mockDataService.getOpportunities(isAdmin, dealerFingerprints);
+    // Mock data not supported for new opportunities model
+    return [];
   },
 
   getFingerprints: async (): Promise<SaleFingerprint[]> => {

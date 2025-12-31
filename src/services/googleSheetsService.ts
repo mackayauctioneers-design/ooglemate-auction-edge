@@ -242,44 +242,77 @@ const SALES_LOG_HEADERS = [
 ];
 
 export const googleSheetsService = {
-  // Get all opportunities with optional filters
-  getOpportunities: async (isAdmin: boolean, dealerFingerprints?: SaleFingerprint[]): Promise<AuctionOpportunity[]> => {
-    const response = await callSheetsApi('read', SHEETS.OPPORTUNITIES);
-    const opportunities = response.data.map(parseOpportunity);
-    
-    return opportunities.filter((opp: AuctionOpportunity) => {
+  // Get opportunities as a filtered view of Auction_Lots
+  // Data source: Auction_Lots only (not a separate opportunities table)
+  getOpportunities: async (isAdmin: boolean, dealerFingerprints?: SaleFingerprint[]): Promise<AuctionLot[]> => {
+    // Read from Auction_Lots
+    let lots: AuctionLot[] = [];
+    try {
+      const response = await callSheetsApi('read', SHEETS.LOTS);
+      lots = response.data.map(parseAuctionLot);
+    } catch {
+      return [];
+    }
+
+    // Apply filtering rules in order:
+    // 1. visible_to_dealers = "Y" for dealers (admin sees all)
+    // 2. status IN ("listed", "passed_in")
+    // 3. estimated_margin >= 1000
+    // 4. action IN ("Watch", "Buy")
+    const filtered = lots.filter((lot: AuctionLot) => {
+      // Admin sees all; dealers only see visible_to_dealers = Y
+      if (!isAdmin && lot.visible_to_dealers !== 'Y') return false;
+      
+      // Status filter
+      if (!['listed', 'passed_in'].includes(lot.status)) return false;
+      
       // Margin threshold
-      if (opp.estimated_margin < 1000) return false;
+      if (lot.estimated_margin < 1000) return false;
       
-      // Admin sees all visible_to_dealers rows
-      if (isAdmin) return true;
+      // Action filter
+      if (!['Watch', 'Buy'].includes(lot.action)) return false;
       
-      // Dealers only see visible_to_dealers = Y AND matching fingerprints
-      if (opp.visible_to_dealers !== 'Y') return false;
-      
-      // Check if matches any dealer fingerprint
-      if (dealerFingerprints && dealerFingerprints.length > 0) {
-        const today = new Date().toISOString().split('T')[0];
-        const hasMatch = dealerFingerprints.some((fp: SaleFingerprint) => {
-          if (fp.is_active !== 'Y') return false;
-          if (fp.expires_at < today) return false;
-          
-          return (
-            opp.make === fp.make &&
-            opp.model === fp.model &&
-            opp.variant_normalised === fp.variant_normalised &&
-            opp.engine === fp.engine &&
-            opp.drivetrain === fp.drivetrain &&
-            opp.transmission === fp.transmission &&
-            Math.abs(opp.year - fp.year) <= 1 &&
-            opp.km <= fp.max_km
-          );
-        });
-        return hasMatch;
-      }
-      
-      return false;
+      return true;
     });
+
+    // Apply sorting:
+    // Primary: action (Buy first, then Watch)
+    // Secondary: confidence_score descending
+    // Tertiary: auction_datetime ascending
+    filtered.sort((a, b) => {
+      // Primary: Buy first
+      if (a.action !== b.action) {
+        return a.action === 'Buy' ? -1 : 1;
+      }
+      // Secondary: confidence_score descending
+      if (a.confidence_score !== b.confidence_score) {
+        return b.confidence_score - a.confidence_score;
+      }
+      // Tertiary: auction_datetime ascending
+      const dateA = new Date(a.auction_datetime).getTime() || 0;
+      const dateB = new Date(b.auction_datetime).getTime() || 0;
+      return dateA - dateB;
+    });
+
+    return filtered;
+  },
+
+  // Log action change to Alert_Log (Watch → Buy detection)
+  logActionChange: async (lot: AuctionLot, previousAction: 'Watch' | 'Buy', newAction: 'Watch' | 'Buy'): Promise<void> => {
+    if (previousAction === 'Watch' && newAction === 'Buy') {
+      const alert: AlertLog = {
+        alert_id: `ALT-${Date.now()}`,
+        sent_at: new Date().toISOString(),
+        recipient_whatsapp: '', // Not sending yet, log only
+        lot_id: lot.lot_key,
+        fingerprint_id: '',
+        action_change: `${previousAction} → ${newAction}`,
+        message_text: `Lot ${lot.lot_key} (${lot.make} ${lot.model}) changed from Watch to Buy`,
+        status: 'queued',
+      };
+      
+      await callSheetsApi('append', SHEETS.ALERTS, alert);
+    }
   },
 
   // Get all fingerprints
@@ -339,16 +372,20 @@ export const googleSheetsService = {
     }
   },
 
-  // Get unique filter values
+  // Get unique filter values from Auction_Lots
   getFilterOptions: async (): Promise<{ auction_houses: string[]; locations: string[]; makes: string[] }> => {
-    const response = await callSheetsApi('read', SHEETS.OPPORTUNITIES);
-    const opportunities = response.data.map(parseOpportunity);
-    
-    return {
-      auction_houses: [...new Set(opportunities.map((o: AuctionOpportunity) => o.auction_house))].filter(Boolean) as string[],
-      locations: [...new Set(opportunities.map((o: AuctionOpportunity) => o.location))].filter(Boolean) as string[],
-      makes: [...new Set(opportunities.map((o: AuctionOpportunity) => o.make))].filter(Boolean) as string[],
-    };
+    try {
+      const response = await callSheetsApi('read', SHEETS.LOTS);
+      const lots = response.data.map(parseAuctionLot);
+      
+      return {
+        auction_houses: [...new Set(lots.map((l: AuctionLot) => l.auction_house))].filter(Boolean) as string[],
+        locations: [...new Set(lots.map((l: AuctionLot) => l.location))].filter(Boolean) as string[],
+        makes: [...new Set(lots.map((l: AuctionLot) => l.make))].filter(Boolean) as string[],
+      };
+    } catch {
+      return { auction_houses: [], locations: [], makes: [] };
+    }
   },
 
   // Add alert log entry
