@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { PushNotificationPrompt } from '@/components/notifications/PushNotificationPrompt';
 
 const navItems = [
   { path: '/', label: "Today's Opportunities", icon: BarChart3 },
@@ -103,13 +104,7 @@ export function AppSidebar() {
           
           {!collapsed && (
             <>
-              <Button
-                variant="ghost"
-                size="iconSm"
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
+              <PushNotificationPrompt showOnMount />
               <Button
                 variant="ghost"
                 size="iconSm"
