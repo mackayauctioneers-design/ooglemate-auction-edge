@@ -72,7 +72,7 @@ export function AuctionEventEditor({ event, onClose, onSaved }: AuctionEventEdit
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="max-w-[95vw] sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Event' : 'Create Event'}</DialogTitle>
         </DialogHeader>
@@ -88,24 +88,26 @@ export function AuctionEventEditor({ event, onClose, onSaved }: AuctionEventEdit
             />
           </div>
           
-          <div className="space-y-2">
-            <Label htmlFor="auction_house">Auction House *</Label>
-            <Input
-              id="auction_house"
-              value={formData.auction_house}
-              onChange={(e) => setFormData({ ...formData, auction_house: e.target.value })}
-              placeholder="e.g. Pickles"
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="location">Location *</Label>
-            <Input
-              id="location"
-              value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              placeholder="e.g. Sydney"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="auction_house">Auction House *</Label>
+              <Input
+                id="auction_house"
+                value={formData.auction_house}
+                onChange={(e) => setFormData({ ...formData, auction_house: e.target.value })}
+                placeholder="e.g. Pickles"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="location">Location *</Label>
+              <Input
+                id="location"
+                value={formData.location}
+                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                placeholder="e.g. Sydney"
+              />
+            </div>
           </div>
           
           <div className="space-y-2">
@@ -142,11 +144,11 @@ export function AuctionEventEditor({ event, onClose, onSaved }: AuctionEventEdit
             </Select>
           </div>
           
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button type="button" variant="outline" onClick={onClose} className="w-full sm:w-auto">
               Cancel
             </Button>
-            <Button type="submit" disabled={saveMutation.isPending}>
+            <Button type="submit" disabled={saveMutation.isPending} className="w-full sm:w-auto">
               {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {isEditing ? 'Save Changes' : 'Create Event'}
             </Button>
