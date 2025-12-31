@@ -136,20 +136,46 @@ function parseDealer(row: any): Dealer {
 }
 
 function parseAlert(row: any): AlertLog {
+  // Normalize status from legacy values
+  let status: 'new' | 'read' | 'acknowledged' = 'new';
+  if (row.status === 'read') status = 'read';
+  else if (row.status === 'acknowledged') status = 'acknowledged';
+  // Legacy statuses map to 'new' for unread
+  else if (row.status === 'sent' || row.status === 'queued' || row.status === 'failed') status = 'new';
+
+  // Parse why_flagged - could be JSON array or comma-separated string
+  let whyFlagged: string[] = [];
+  if (row.why_flagged) {
+    try {
+      whyFlagged = JSON.parse(row.why_flagged);
+    } catch {
+      whyFlagged = row.why_flagged.split(',').map((s: string) => s.trim());
+    }
+  }
+
   return {
     alert_id: row.alert_id || '',
-    sent_at: row.sent_at || '',
-    recipient_whatsapp: row.recipient_whatsapp || '',
+    created_at: row.created_at || row.sent_at || '',
+    dealer_name: row.dealer_name || '',
+    recipient_whatsapp: row.recipient_whatsapp || undefined,
+    channel: 'in_app',
     lot_id: row.lot_id || '',
     fingerprint_id: row.fingerprint_id || '',
-    dealer_name: row.dealer_name || '',
-    previous_action: row.previous_action || 'Watch',
-    new_action: row.new_action || 'Buy',
     action_change: row.action_change || '',
     message_text: row.message_text || '',
-    status: row.status || 'queued',
-    error_message: row.error_message || undefined,
-    retry_count: row.retry_count ? parseInt(row.retry_count) : 0,
+    link: row.link || row.listing_url || '',
+    status,
+    read_at: row.read_at || undefined,
+    acknowledged_at: row.acknowledged_at || undefined,
+    dedup_key: row.dedup_key || '',
+    lot_make: row.lot_make || '',
+    lot_model: row.lot_model || '',
+    lot_variant: row.lot_variant || '',
+    lot_year: row.lot_year ? parseInt(row.lot_year) : undefined,
+    auction_house: row.auction_house || '',
+    auction_datetime: row.auction_datetime || '',
+    estimated_margin: row.estimated_margin ? parseFloat(row.estimated_margin) : undefined,
+    why_flagged: whyFlagged.length > 0 ? whyFlagged : undefined,
     _rowIndex: row._rowIndex,
   };
 }
@@ -381,23 +407,59 @@ export const googleSheetsService = {
   },
 
   // Log action change to Alert_Log (Watch → Buy detection)
+  // Creates in-app alerts for matching fingerprints
   logActionChange: async (lot: AuctionLot, previousAction: 'Watch' | 'Buy', newAction: 'Watch' | 'Buy'): Promise<void> => {
     if (previousAction === 'Watch' && newAction === 'Buy') {
-      const alert: AlertLog = {
-        alert_id: `ALT-${Date.now()}`,
-        sent_at: new Date().toISOString(),
-        recipient_whatsapp: '', // Will be populated when sending
-        lot_id: lot.lot_key,
-        fingerprint_id: '',
-        dealer_name: '',
-        previous_action: previousAction,
-        new_action: newAction,
-        action_change: `${previousAction} → ${newAction}`,
-        message_text: `Lot ${lot.lot_key} (${lot.make} ${lot.model}) changed from Watch to Buy`,
-        status: 'queued',
-      };
-      
-      await callSheetsApi('append', SHEETS.ALERTS, alert);
+      // Get all active fingerprints that match this lot
+      const fingerprints = await googleSheetsService.getFingerprints();
+      const matchingFingerprints = fingerprints.filter(fp => 
+        fp.is_active === 'Y' &&
+        fp.make === lot.make &&
+        fp.model === lot.model &&
+        fp.variant_normalised === lot.variant_normalised
+      );
+
+      const today = new Date().toISOString().split('T')[0];
+      const flagReasons = getLotFlagReasons(lot);
+
+      // Get existing alerts for deduplication
+      const existingAlerts = await googleSheetsService.getAlerts();
+
+      for (const fp of matchingFingerprints) {
+        const dedupKey = `${fp.dealer_name}|${lot.lot_key}|Watch→Buy|${today}`;
+        
+        // Check deduplication
+        const isDuplicate = existingAlerts.some(a => a.dedup_key === dedupKey);
+        if (isDuplicate) {
+          console.log(`Skipping duplicate alert for ${fp.dealer_name} on lot ${lot.lot_key}`);
+          continue;
+        }
+
+        const alert: AlertLog = {
+          alert_id: `ALT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          created_at: new Date().toISOString(),
+          dealer_name: fp.dealer_name,
+          channel: 'in_app',
+          lot_id: lot.lot_key,
+          fingerprint_id: fp.fingerprint_id,
+          action_change: 'Watch→Buy',
+          message_text: `${lot.year} ${lot.make} ${lot.model} ${lot.variant_normalised || ''} moved to BUY`,
+          link: lot.listing_url,
+          status: 'new',
+          dedup_key: dedupKey,
+          lot_make: lot.make,
+          lot_model: lot.model,
+          lot_variant: lot.variant_normalised,
+          lot_year: lot.year,
+          auction_house: lot.auction_house,
+          auction_datetime: lot.auction_datetime,
+          estimated_margin: lot.estimated_margin,
+          why_flagged: flagReasons,
+        };
+        
+        await callSheetsApi('append', SHEETS.ALERTS, alert);
+        console.log(`Created in-app alert for ${fp.dealer_name} on lot ${lot.lot_key}`);
+      }
     }
   },
 
@@ -987,212 +1049,46 @@ export const googleSheetsService = {
     }
   },
 
-  // Check if WhatsApp alerts are enabled
-  isWhatsAppAlertsEnabled: async (): Promise<boolean> => {
-    const value = await googleSheetsService.getSetting('whatsapp_alerts_enabled');
-    return value === 'true';
-  },
-
-  // Toggle WhatsApp alerts
-  setWhatsAppAlertsEnabled: async (enabled: boolean): Promise<void> => {
-    await googleSheetsService.upsertSetting('whatsapp_alerts_enabled', enabled ? 'true' : 'false');
-  },
-
-  // Send queued WhatsApp alerts
-  processQueuedAlerts: async (): Promise<{ processed: number; sent: number; errors: number }> => {
-    // Check if alerts are enabled
-    const enabled = await googleSheetsService.isWhatsAppAlertsEnabled();
-    if (!enabled) {
-      console.log('WhatsApp alerts disabled, skipping processing');
-      return { processed: 0, sent: 0, errors: 0 };
-    }
-
-    // Get all alerts
+  // Get alerts for a specific dealer
+  getDealerAlerts: async (dealerName: string): Promise<AlertLog[]> => {
     const alerts = await googleSheetsService.getAlerts();
-    const queuedAlerts = alerts.filter(a => 
-      a.status === 'queued' && 
-      a.previous_action === 'Watch' && 
-      a.new_action === 'Buy'
-    );
-
-    if (queuedAlerts.length === 0) {
-      return { processed: 0, sent: 0, errors: 0 };
-    }
-
-    // Get lots for message formatting
-    const lots = await googleSheetsService.getLots(true);
-    const fingerprints = await googleSheetsService.getFingerprints();
-
-    let processed = 0;
-    let sent = 0;
-    let errors = 0;
-
-    for (const alert of queuedAlerts) {
-      processed++;
-
-      // Find the lot
-      const lot = lots.find(l => l.lot_key === alert.lot_id);
-      if (!lot) {
-        console.log(`Lot not found for alert ${alert.alert_id}`);
-        errors++;
-        continue;
-      }
-
-      // Find matching fingerprints to get recipient(s)
-      const matchingFingerprints = fingerprints.filter(fp => 
-        fp.is_active === 'Y' &&
-        fp.make === lot.make &&
-        fp.model === lot.model &&
-        fp.variant_normalised === lot.variant_normalised
-      );
-
-      if (matchingFingerprints.length === 0) {
-        console.log(`No matching fingerprints for lot ${lot.lot_key}`);
-        continue;
-      }
-
-      // Check deduplication: no more than 1 message per lot per dealer per 24h
-      const now = new Date();
-      const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-      for (const fp of matchingFingerprints) {
-        // Check if we've already sent to this dealer for this lot in last 24h
-        const recentSent = alerts.find(a => 
-          a.lot_id === lot.lot_key &&
-          a.dealer_name === fp.dealer_name &&
-          a.status === 'sent' &&
-          new Date(a.sent_at) > last24h
-        );
-
-        if (recentSent) {
-          console.log(`Skipping duplicate for ${fp.dealer_name} on lot ${lot.lot_key}`);
-          continue;
-        }
-
-        // Get flag reasons for the message
-        const flagReasons = getLotFlagReasons(lot);
-
-        // Call the WhatsApp edge function
-        try {
-          const { data: result, error } = await supabase.functions.invoke('whatsapp-alerts', {
-            body: {
-              action: 'send',
-              alert: {
-                ...alert,
-                recipient_whatsapp: fp.dealer_whatsapp,
-              },
-              lot: {
-                ...lot,
-                why_flagged: flagReasons,
-              },
-            },
-          });
-
-          if (error) {
-            console.error('WhatsApp send error:', error);
-            errors++;
-            // Update alert with error
-            if (alert._rowIndex !== undefined) {
-              await callSheetsApi('update', SHEETS.ALERTS, {
-                ...alert,
-                status: 'failed',
-                error_message: error.message,
-                retry_count: (alert.retry_count || 0) + 1,
-              }, alert._rowIndex);
-            }
-            continue;
-          }
-
-          if (result?.status === 'sent') {
-            sent++;
-            // Update alert as sent
-            if (alert._rowIndex !== undefined) {
-              await callSheetsApi('update', SHEETS.ALERTS, {
-                ...alert,
-                status: 'sent',
-                sent_at: new Date().toISOString(),
-                recipient_whatsapp: fp.dealer_whatsapp,
-                dealer_name: fp.dealer_name,
-              }, alert._rowIndex);
-            }
-          } else if (result?.status === 'queued') {
-            // Still queued (outside send window)
-            console.log('Alert kept queued:', result.reason);
-          } else {
-            errors++;
-            if (alert._rowIndex !== undefined) {
-              await callSheetsApi('update', SHEETS.ALERTS, {
-                ...alert,
-                status: 'failed',
-                error_message: result?.error || 'Unknown error',
-                retry_count: (alert.retry_count || 0) + 1,
-              }, alert._rowIndex);
-            }
-          }
-        } catch (err) {
-          console.error('Failed to process alert:', err);
-          errors++;
-        }
-      }
-    }
-
-    return { processed, sent, errors };
+    return alerts.filter(a => a.dealer_name === dealerName);
   },
 
-  // Manually trigger sending for a specific alert
-  sendAlert: async (alertId: string): Promise<{ success: boolean; error?: string }> => {
-    const enabled = await googleSheetsService.isWhatsAppAlertsEnabled();
-    if (!enabled) {
-      return { success: false, error: 'WhatsApp alerts are disabled' };
-    }
+  // Get unread alert count
+  getUnreadAlertCount: async (dealerName?: string): Promise<number> => {
+    const alerts = await googleSheetsService.getAlerts();
+    return alerts.filter(a => 
+      a.status === 'new' && 
+      (!dealerName || a.dealer_name === dealerName)
+    ).length;
+  },
 
+  // Mark alert as read
+  markAlertRead: async (alertId: string): Promise<void> => {
     const alerts = await googleSheetsService.getAlerts();
     const alert = alerts.find(a => a.alert_id === alertId);
     
-    if (!alert) {
-      return { success: false, error: 'Alert not found' };
+    if (alert && alert._rowIndex !== undefined && alert.status === 'new') {
+      await callSheetsApi('update', SHEETS.ALERTS, {
+        ...alert,
+        status: 'read',
+        read_at: new Date().toISOString(),
+      }, alert._rowIndex);
     }
+  },
 
-    const lots = await googleSheetsService.getLots(true);
-    const lot = lots.find(l => l.lot_key === alert.lot_id);
+  // Mark alert as acknowledged
+  acknowledgeAlert: async (alertId: string): Promise<void> => {
+    const alerts = await googleSheetsService.getAlerts();
+    const alert = alerts.find(a => a.alert_id === alertId);
     
-    if (!lot) {
-      return { success: false, error: 'Lot not found' };
-    }
-
-    const flagReasons = getLotFlagReasons(lot);
-
-    try {
-      const { data: result, error } = await supabase.functions.invoke('whatsapp-alerts', {
-        body: {
-          action: 'send',
-          alert,
-          lot: {
-            ...lot,
-            why_flagged: flagReasons,
-          },
-        },
-      });
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-
-      if (result?.status === 'sent') {
-        // Update alert as sent
-        if (alert._rowIndex !== undefined) {
-          await callSheetsApi('update', SHEETS.ALERTS, {
-            ...alert,
-            status: 'sent',
-            sent_at: new Date().toISOString(),
-          }, alert._rowIndex);
-        }
-        return { success: true };
-      }
-
-      return { success: false, error: result?.error || result?.reason || 'Unknown error' };
-    } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+    if (alert && alert._rowIndex !== undefined) {
+      await callSheetsApi('update', SHEETS.ALERTS, {
+        ...alert,
+        status: 'acknowledged',
+        acknowledged_at: new Date().toISOString(),
+      }, alert._rowIndex);
     }
   },
 };

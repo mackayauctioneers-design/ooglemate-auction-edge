@@ -4,8 +4,6 @@ import { dataService } from '@/services/dataService';
 import { AlertLog } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -15,28 +13,42 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-import { Bell, CheckCircle, Clock, AlertTriangle, Settings, Send, RefreshCw } from 'lucide-react';
+import { Bell, CheckCircle, Eye, EyeOff, ExternalLink, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 
+type StatusFilter = 'all' | 'new' | 'read' | 'acknowledged';
+
 export default function AlertsPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, currentUser } = useAuth();
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [whatsAppEnabled, setWhatsAppEnabled] = useState(false);
-  const [isToggling, setIsToggling] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [alertList, enabled] = await Promise.all([
-        dataService.getAlerts(),
-        dataService.isWhatsAppAlertsEnabled(),
-      ]);
-      setAlerts(alertList);
-      setWhatsAppEnabled(enabled);
+      const alertList = await dataService.getAlerts();
+      
+      // Filter by dealer if not admin
+      const filtered = isAdmin 
+        ? alertList 
+        : alertList.filter(a => a.dealer_name === currentUser?.dealer_name);
+      
+      // Sort by created_at descending (newest first)
+      filtered.sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      
+      setAlerts(filtered);
     } catch (error) {
       console.error('Failed to load alerts:', error);
       toast.error('Failed to load alerts');
@@ -47,68 +59,46 @@ export default function AlertsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [isAdmin, currentUser]);
 
-  const handleToggleWhatsApp = async () => {
-    setIsToggling(true);
+  const handleMarkRead = async (alertId: string) => {
     try {
-      const newValue = !whatsAppEnabled;
-      await dataService.setWhatsAppAlertsEnabled(newValue);
-      setWhatsAppEnabled(newValue);
-      toast.success(`WhatsApp alerts ${newValue ? 'enabled' : 'disabled'}`);
+      await dataService.markAlertRead(alertId);
+      toast.success('Marked as read');
+      await loadData();
     } catch (error) {
-      console.error('Failed to toggle WhatsApp alerts:', error);
-      toast.error('Failed to update setting');
-    } finally {
-      setIsToggling(false);
+      console.error('Failed to mark as read:', error);
+      toast.error('Failed to update');
     }
   };
 
-  const handleProcessQueue = async () => {
-    setIsProcessing(true);
+  const handleAcknowledge = async (alertId: string) => {
     try {
-      const result = await dataService.processQueuedAlerts();
-      toast.success(`Processed ${result.processed} alerts. Sent: ${result.sent}, Errors: ${result.errors}`);
-      await loadData(); // Refresh the list
+      await dataService.acknowledgeAlert(alertId);
+      toast.success('Acknowledged');
+      await loadData();
     } catch (error) {
-      console.error('Failed to process queue:', error);
-      toast.error('Failed to process queued alerts');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleSendAlert = async (alertId: string) => {
-    try {
-      const result = await dataService.sendAlert(alertId);
-      if (result.success) {
-        toast.success('Alert sent successfully');
-        await loadData();
-      } else {
-        toast.error(result.error || 'Failed to send alert');
-      }
-    } catch (error) {
-      console.error('Failed to send alert:', error);
-      toast.error('Failed to send alert');
+      console.error('Failed to acknowledge:', error);
+      toast.error('Failed to update');
     }
   };
 
   const getStatusIcon = (status: AlertLog['status']) => {
     switch (status) {
-      case 'sent':
+      case 'new':
+        return <Bell className="h-4 w-4 text-action-buy" />;
+      case 'read':
+        return <Eye className="h-4 w-4 text-action-watch" />;
+      case 'acknowledged':
         return <CheckCircle className="h-4 w-4 text-primary" />;
-      case 'queued':
-        return <Clock className="h-4 w-4 text-action-watch" />;
-      case 'failed':
-        return <AlertTriangle className="h-4 w-4 text-destructive" />;
     }
   };
 
   const getStatusBadge = (status: AlertLog['status']) => {
-    const variants: Record<string, "default" | "outline" | "destructive"> = {
-      sent: 'default',
-      queued: 'outline',
-      failed: 'destructive',
+    const variants: Record<string, "default" | "outline" | "secondary"> = {
+      new: 'default',
+      read: 'outline',
+      acknowledged: 'secondary',
     };
     return (
       <Badge variant={variants[status]} className="gap-1.5">
@@ -118,17 +108,14 @@ export default function AlertsPage() {
     );
   };
 
-  const queuedCount = alerts.filter(a => a.status === 'queued').length;
+  // Apply status filter
+  const filteredAlerts = statusFilter === 'all' 
+    ? alerts 
+    : alerts.filter(a => a.status === statusFilter);
 
-  if (!isAdmin) {
-    return (
-      <AppLayout>
-        <div className="p-6 flex items-center justify-center min-h-[50vh]">
-          <p className="text-muted-foreground">Admin access required</p>
-        </div>
-      </AppLayout>
-    );
-  }
+  const newCount = alerts.filter(a => a.status === 'new').length;
+  const readCount = alerts.filter(a => a.status === 'read').length;
+  const acknowledgedCount = alerts.filter(a => a.status === 'acknowledged').length;
 
   return (
     <AppLayout>
@@ -136,77 +123,52 @@ export default function AlertsPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
             <Bell className="h-6 w-6 text-primary" />
-            Alert Log
+            {isAdmin ? 'All Alerts' : 'My Alerts'}
           </h1>
           <p className="text-muted-foreground mt-1">
-            Track WhatsApp notifications sent to dealers
+            In-app notifications for Watch → Buy transitions
           </p>
         </div>
 
-        {/* Admin Controls Card */}
-        <Card className="border-primary/20">
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Settings className="h-5 w-5" />
-              WhatsApp Alert Settings
-            </CardTitle>
-            <CardDescription>
-              Control WhatsApp notifications for Watch → Buy transitions
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="whatsapp-toggle" className="text-base font-medium">
-                  WhatsApp Alerts Enabled
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  {whatsAppEnabled 
-                    ? 'Alerts will be sent to dealers when lots move to Buy status' 
-                    : 'Alerts are logged but not sent to dealers'}
-                </p>
-              </div>
-              <Switch
-                id="whatsapp-toggle"
-                checked={whatsAppEnabled}
-                onCheckedChange={handleToggleWhatsApp}
-                disabled={isToggling || isLoading}
-              />
-            </div>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-3 gap-4">
+          <Card className={newCount > 0 ? 'border-action-buy/50 bg-action-buy/5' : ''}>
+            <CardHeader className="pb-2">
+              <CardDescription>New</CardDescription>
+              <CardTitle className="text-2xl">{newCount}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Read</CardDescription>
+              <CardTitle className="text-2xl">{readCount}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Acknowledged</CardDescription>
+              <CardTitle className="text-2xl">{acknowledgedCount}</CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
 
-            {whatsAppEnabled && queuedCount > 0 && (
-              <div className="flex items-center justify-between pt-2 border-t">
-                <div className="space-y-0.5">
-                  <p className="text-sm font-medium">
-                    {queuedCount} alert{queuedCount !== 1 ? 's' : ''} queued
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Processing will send alerts within the 07:00-19:00 AEST window
-                  </p>
-                </div>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={handleProcessQueue}
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? (
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4 mr-2" />
-                  )}
-                  Process Queue
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="bg-muted/30 border border-border rounded-lg p-4 text-sm text-muted-foreground">
-          <p className="flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            Alerts are sent between 7:00 AM - 7:00 PM AEST. Outside these hours, alerts are queued.
-          </p>
+        {/* Filter */}
+        <div className="flex items-center gap-3">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="new">New</SelectItem>
+              <SelectItem value="read">Read</SelectItem>
+              <SelectItem value="acknowledged">Acknowledged</SelectItem>
+            </SelectContent>
+          </Select>
+          <span className="text-sm text-muted-foreground">
+            {filteredAlerts.length} alert{filteredAlerts.length !== 1 ? 's' : ''}
+          </span>
         </div>
 
         {isLoading ? (
@@ -217,10 +179,14 @@ export default function AlertsPage() {
               ))}
             </div>
           </div>
-        ) : alerts.length === 0 ? (
+        ) : filteredAlerts.length === 0 ? (
           <div className="bg-card border border-border rounded-lg p-12 text-center">
             <Bell className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No alerts have been logged yet.</p>
+            <p className="text-muted-foreground">
+              {statusFilter === 'all' 
+                ? 'No alerts yet. Alerts are created when lots move from Watch to Buy.'
+                : `No ${statusFilter} alerts.`}
+            </p>
           </div>
         ) : (
           <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -229,46 +195,93 @@ export default function AlertsPage() {
                 <TableRow className="border-b border-border hover:bg-transparent">
                   <TableHead className="table-header-cell">Status</TableHead>
                   <TableHead className="table-header-cell">Time</TableHead>
-                  <TableHead className="table-header-cell">Dealer</TableHead>
-                  <TableHead className="table-header-cell">Recipient</TableHead>
-                  <TableHead className="table-header-cell">Lot ID</TableHead>
-                  <TableHead className="table-header-cell">Action</TableHead>
-                  <TableHead className="table-header-cell">Message</TableHead>
-                  {whatsAppEnabled && <TableHead className="table-header-cell w-24"></TableHead>}
+                  {isAdmin && <TableHead className="table-header-cell">Dealer</TableHead>}
+                  <TableHead className="table-header-cell">Vehicle</TableHead>
+                  <TableHead className="table-header-cell">Auction</TableHead>
+                  <TableHead className="table-header-cell">Est. Margin</TableHead>
+                  <TableHead className="table-header-cell">Flags</TableHead>
+                  <TableHead className="table-header-cell w-48">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {alerts.map((alert) => (
-                  <TableRow key={alert.alert_id} className="border-b border-border">
+                {filteredAlerts.map((alert) => (
+                  <TableRow 
+                    key={alert.alert_id} 
+                    className={`border-b border-border ${alert.status === 'new' ? 'bg-action-buy/5' : ''}`}
+                  >
                     <TableCell>{getStatusBadge(alert.status)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground mono">
-                      {format(new Date(alert.sent_at), 'dd MMM HH:mm')}
+                      {alert.created_at ? format(new Date(alert.created_at), 'dd MMM HH:mm') : '-'}
                     </TableCell>
-                    <TableCell className="text-sm">{alert.dealer_name || '-'}</TableCell>
-                    <TableCell className="text-sm mono">{alert.recipient_whatsapp || '-'}</TableCell>
-                    <TableCell className="text-sm mono text-muted-foreground">{alert.lot_id}</TableCell>
+                    {isAdmin && (
+                      <TableCell className="text-sm font-medium">{alert.dealer_name || '-'}</TableCell>
+                    )}
                     <TableCell>
-                      <Badge variant="buy" className="text-xs">{alert.action_change}</Badge>
+                      <div className="text-sm">
+                        <span className="font-medium">
+                          {alert.lot_year} {alert.lot_make} {alert.lot_model}
+                        </span>
+                        {alert.lot_variant && (
+                          <span className="text-muted-foreground ml-1">{alert.lot_variant}</span>
+                        )}
+                      </div>
                     </TableCell>
-                    <TableCell className="max-w-md">
-                      <p className="text-sm text-muted-foreground truncate">{alert.message_text}</p>
-                      {alert.error_message && (
-                        <p className="text-xs text-destructive mt-1">{alert.error_message}</p>
+                    <TableCell className="text-sm">
+                      <div>{alert.auction_house || '-'}</div>
+                      {alert.auction_datetime && (
+                        <div className="text-xs text-muted-foreground">
+                          {format(new Date(alert.auction_datetime), 'dd MMM yyyy')}
+                        </div>
                       )}
                     </TableCell>
-                    {whatsAppEnabled && (
-                      <TableCell>
-                        {(alert.status === 'queued' || alert.status === 'failed') && (
+                    <TableCell className="text-sm font-medium">
+                      {alert.estimated_margin 
+                        ? `$${alert.estimated_margin.toLocaleString()}`
+                        : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {alert.why_flagged?.slice(0, 3).map((flag, i) => (
+                          <Badge key={i} variant="outline" className="text-xs">
+                            {flag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {alert.link && (
                           <Button 
                             variant="ghost" 
                             size="sm"
-                            onClick={() => handleSendAlert(alert.alert_id)}
+                            onClick={() => window.open(alert.link, '_blank')}
                           >
-                            <Send className="h-4 w-4" />
+                            <ExternalLink className="h-4 w-4 mr-1" />
+                            Open
                           </Button>
                         )}
-                      </TableCell>
-                    )}
+                        {alert.status === 'new' && (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleMarkRead(alert.alert_id)}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            Read
+                          </Button>
+                        )}
+                        {alert.status !== 'acknowledged' && (
+                          <Button 
+                            variant="secondary" 
+                            size="sm"
+                            onClick={() => handleAcknowledge(alert.alert_id)}
+                          >
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            Ack
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
