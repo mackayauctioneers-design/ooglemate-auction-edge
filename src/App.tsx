@@ -10,6 +10,7 @@ import FingerprintsPage from "./pages/FingerprintsPage";
 import AlertsPage from "./pages/AlertsPage";
 import HelpPage from "./pages/HelpPage";
 import UpcomingAuctionsPage from "./pages/UpcomingAuctionsPage";
+import SearchLotsPage from "./pages/SearchLotsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<OpportunitiesPage />} />
             <Route path="/upcoming-auctions" element={<UpcomingAuctionsPage />} />
+            <Route path="/search-lots" element={<SearchLotsPage />} />
             <Route path="/log-sale" element={<LogSalePage />} />
             <Route path="/fingerprints" element={<FingerprintsPage />} />
             <Route path="/alerts" element={<AlertsPage />} />

@@ -83,6 +83,78 @@ export interface AuctionEvent extends SheetRowMeta {
   active: 'Y' | 'N';
 }
 
+export interface AuctionLot extends SheetRowMeta {
+  lot_id: string;
+  event_id: string;
+  auction_house: string;
+  location: string;
+  auction_datetime: string;
+  listing_url: string;
+  make: string;
+  model: string;
+  variant_raw: string;
+  variant_normalised: string;
+  year: number;
+  km: number;
+  fuel: string;
+  drivetrain: string;
+  transmission: string;
+  reserve: number;
+  highest_bid: number;
+  status: 'listed' | 'passed_in' | 'sold' | 'withdrawn';
+  pass_count: number;
+  description_score: number;
+  estimated_get_out: number;
+  estimated_margin: number;
+  confidence_score: number;
+  action: 'Watch' | 'Buy';
+  visible_to_dealers: 'Y' | 'N';
+  updated_at: string;
+  // For reserve softening detection
+  previous_reserve?: number;
+}
+
+// Calculate lot confidence score
+export function calculateLotConfidenceScore(lot: AuctionLot): number {
+  let score = 0;
+  if (lot.pass_count >= 2) score += 1;
+  if (lot.pass_count >= 3) score += 1;
+  if (lot.description_score <= 1) score += 1;
+  if (lot.estimated_margin >= 2000) score += 1;
+  return score;
+}
+
+// Determine lot action from confidence
+export function determineLotAction(confidenceScore: number): 'Buy' | 'Watch' {
+  return confidenceScore >= 3 ? 'Buy' : 'Watch';
+}
+
+// Get lot flag reasons
+export type LotFlagReason = 
+  | 'PASSED IN x3+'
+  | 'PASSED IN x2'
+  | 'UNDER-SPECIFIED'
+  | 'RESERVE SOFTENING'
+  | 'MARGIN OK';
+
+export function getLotFlagReasons(lot: AuctionLot): LotFlagReason[] {
+  const reasons: LotFlagReason[] = [];
+  
+  if (lot.pass_count >= 3) reasons.push('PASSED IN x3+');
+  else if (lot.pass_count === 2) reasons.push('PASSED IN x2');
+  
+  if (lot.description_score <= 1) reasons.push('UNDER-SPECIFIED');
+  
+  if (lot.previous_reserve && lot.reserve < lot.previous_reserve) {
+    const dropPercent = ((lot.previous_reserve - lot.reserve) / lot.previous_reserve) * 100;
+    if (dropPercent >= 5) reasons.push('RESERVE SOFTENING');
+  }
+  
+  if (lot.estimated_margin >= 1000) reasons.push('MARGIN OK');
+  
+  return reasons;
+}
+
 // UI State Types
 export interface OpportunityFilters {
   auction_house: string | null;

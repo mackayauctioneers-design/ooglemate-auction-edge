@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { format, parseISO, addDays, isAfter, isBefore, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { ExternalLink, Plus, Pencil, Loader2 } from 'lucide-react';
+import { ExternalLink, Plus, Pencil, Loader2, Search } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,6 +20,8 @@ type DateRangeFilter = 'next7' | 'next14' | 'all';
 
 export default function UpcomingAuctionsPage() {
   const { isAdmin } = useAuth();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   
   const [auctionHouseFilter, setAuctionHouseFilter] = useState<string>('all');
@@ -213,15 +216,29 @@ export default function UpcomingAuctionsPage() {
                           </span>
                         </div>
                         
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full gap-2"
-                          onClick={() => window.open(event.event_url, '_blank')}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          Open
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 gap-2"
+                            onClick={() => {
+                              const dateKey = format(toZonedTime(parseISO(event.start_datetime), AEST_TIMEZONE), 'yyyy-MM-dd');
+                              navigate(`/search-lots?auction_house=${encodeURIComponent(event.auction_house)}&location=${encodeURIComponent(event.location)}&date=${dateKey}`);
+                            }}
+                          >
+                            <Search className="h-4 w-4" />
+                            View Lots
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => window.open(event.event_url, '_blank')}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            Open
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
