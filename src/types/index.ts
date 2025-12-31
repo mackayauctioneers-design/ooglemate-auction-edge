@@ -73,6 +73,16 @@ export interface AlertLog extends SheetRowMeta {
   status: 'sent' | 'queued' | 'failed';
 }
 
+export interface AuctionEvent extends SheetRowMeta {
+  event_id: string;
+  event_title: string;
+  auction_house: string;
+  location: string;
+  start_datetime: string;
+  event_url: string;
+  active: 'Y' | 'N';
+}
+
 // UI State Types
 export interface OpportunityFilters {
   auction_house: string | null;
