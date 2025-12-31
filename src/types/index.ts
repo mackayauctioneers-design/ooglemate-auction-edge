@@ -85,6 +85,7 @@ export interface AuctionEvent extends SheetRowMeta {
 
 export interface AuctionLot extends SheetRowMeta {
   lot_id: string;
+  lot_key: string; // Computed: auction_house + ":" + lot_id
   event_id: string;
   auction_house: string;
   location: string;
@@ -110,6 +111,10 @@ export interface AuctionLot extends SheetRowMeta {
   action: 'Watch' | 'Buy';
   visible_to_dealers: 'Y' | 'N';
   updated_at: string;
+  // New lifecycle fields
+  last_status: string;
+  last_seen_at: string;
+  relist_group_id: string;
   // For reserve softening detection
   previous_reserve?: number;
 }

@@ -14,10 +14,11 @@ interface LotCsvImportProps {
 }
 
 const CSV_HEADERS = [
-  'lot_id', 'event_id', 'auction_house', 'location', 'auction_datetime', 'listing_url',
+  'lot_key', 'lot_id', 'event_id', 'auction_house', 'location', 'auction_datetime', 'listing_url',
   'make', 'model', 'variant_raw', 'variant_normalised', 'year', 'km', 'fuel', 'drivetrain',
   'transmission', 'reserve', 'highest_bid', 'status', 'pass_count', 'description_score',
-  'estimated_get_out', 'estimated_margin', 'confidence_score', 'action', 'visible_to_dealers', 'updated_at'
+  'estimated_get_out', 'estimated_margin', 'confidence_score', 'action', 'visible_to_dealers', 
+  'updated_at', 'last_status', 'last_seen_at', 'relist_group_id'
 ];
 
 function parseCSV(csvText: string): Partial<AuctionLot>[] {

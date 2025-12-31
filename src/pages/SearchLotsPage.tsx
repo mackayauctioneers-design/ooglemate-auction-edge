@@ -364,6 +364,7 @@ export default function SearchLotsPage() {
               setEditingLot(selectedLot);
               setSelectedLot(null);
             }}
+            onUpdated={handleDataChanged}
           />
         )}
 
