@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AuctionOpportunity, formatCurrency, formatNumber } from '@/types';
+import { AuctionLot, formatCurrency, formatNumber } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,23 +12,24 @@ import {
 } from '@/components/ui/table';
 import { ExternalLink, ChevronUp, ChevronDown } from 'lucide-react';
 import { OpportunityDrawer } from './OpportunityDrawer';
+import { format } from 'date-fns';
 
 interface OpportunityTableProps {
-  opportunities: AuctionOpportunity[];
+  opportunities: AuctionLot[];
   isLoading: boolean;
 }
 
-type SortField = 'action' | 'estimated_margin' | 'pass_count' | 'confidence_score' | 'year' | 'km';
+type SortField = 'action' | 'estimated_margin' | 'pass_count' | 'confidence_score' | 'year' | 'km' | 'auction_datetime';
 type SortDirection = 'asc' | 'desc';
 
 export function OpportunityTable({ opportunities, isLoading }: OpportunityTableProps) {
-  const [selectedOpportunity, setSelectedOpportunity] = useState<AuctionOpportunity | null>(null);
+  const [selectedOpportunity, setSelectedOpportunity] = useState<AuctionLot | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [sortField, setSortField] = useState<SortField>('estimated_margin');
+  const [sortField, setSortField] = useState<SortField>('action');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  const handleRowClick = (opp: AuctionOpportunity) => {
-    setSelectedOpportunity(opp);
+  const handleRowClick = (lot: AuctionLot) => {
+    setSelectedOpportunity(lot);
     setDrawerOpen(true);
   };
 
@@ -49,6 +50,10 @@ export function OpportunityTable({ opportunities, isLoading }: OpportunityTableP
       case 'action':
         aVal = a.action === 'Buy' ? 1 : 0;
         bVal = b.action === 'Buy' ? 1 : 0;
+        break;
+      case 'auction_datetime':
+        aVal = new Date(a.auction_datetime).getTime() || 0;
+        bVal = new Date(b.auction_datetime).getTime() || 0;
         break;
       default:
         aVal = a[sortField];
@@ -74,6 +79,15 @@ export function OpportunityTable({ opportunities, isLoading }: OpportunityTableP
     if (score >= 3) return 'text-primary';
     if (score >= 2) return 'text-action-watch';
     return 'text-destructive';
+  };
+
+  const formatAuctionDate = (dateStr: string) => {
+    if (!dateStr) return '-';
+    try {
+      return format(new Date(dateStr), 'dd MMM HH:mm');
+    } catch {
+      return dateStr;
+    }
   };
 
   if (isLoading) {
@@ -110,6 +124,12 @@ export function OpportunityTable({ opportunities, isLoading }: OpportunityTableP
                   Action <SortIcon field="action" />
                 </TableHead>
                 <TableHead className="table-header-cell">Auction</TableHead>
+                <TableHead 
+                  className="table-header-cell cursor-pointer hover:text-foreground"
+                  onClick={() => handleSort('auction_datetime')}
+                >
+                  Date <SortIcon field="auction_datetime" />
+                </TableHead>
                 <TableHead className="table-header-cell">Vehicle</TableHead>
                 <TableHead 
                   className="table-header-cell cursor-pointer hover:text-foreground text-right"
@@ -123,8 +143,6 @@ export function OpportunityTable({ opportunities, isLoading }: OpportunityTableP
                 >
                   KM <SortIcon field="km" />
                 </TableHead>
-                <TableHead className="table-header-cell text-right">Reserve</TableHead>
-                <TableHead className="table-header-cell text-right">Bid</TableHead>
                 <TableHead 
                   className="table-header-cell cursor-pointer hover:text-foreground text-right"
                   onClick={() => handleSort('pass_count')}
@@ -147,51 +165,48 @@ export function OpportunityTable({ opportunities, isLoading }: OpportunityTableP
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedOpportunities.map((opp) => (
+              {sortedOpportunities.map((lot) => (
                 <TableRow
-                  key={opp.lot_id}
+                  key={lot.lot_key}
                   className="table-row-interactive border-b border-border"
-                  onClick={() => handleRowClick(opp)}
+                  onClick={() => handleRowClick(lot)}
                 >
                   <TableCell>
-                    <Badge variant={opp.action === 'Buy' ? 'buy' : 'watch'}>
-                      {opp.action}
+                    <Badge variant={lot.action === 'Buy' ? 'buy' : 'watch'}>
+                      {lot.action}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
-                    {opp.auction_house}
+                    {lot.auction_house}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm mono">
+                    {formatAuctionDate(lot.auction_datetime)}
                   </TableCell>
                   <TableCell>
                     <div>
-                      <p className="font-medium text-foreground">{opp.make} {opp.model}</p>
-                      <p className="text-xs text-muted-foreground">{opp.variant_normalised}</p>
+                      <p className="font-medium text-foreground">{lot.make} {lot.model}</p>
+                      <p className="text-xs text-muted-foreground">{lot.variant_normalised}</p>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right mono text-sm">{opp.year}</TableCell>
+                  <TableCell className="text-right mono text-sm">{lot.year}</TableCell>
                   <TableCell className="text-right mono text-sm text-muted-foreground">
-                    {formatNumber(opp.km)}
-                  </TableCell>
-                  <TableCell className="text-right mono text-sm">
-                    {formatCurrency(opp.reserve)}
-                  </TableCell>
-                  <TableCell className="text-right mono text-sm text-muted-foreground">
-                    {formatCurrency(opp.highest_bid)}
+                    {formatNumber(lot.km)}
                   </TableCell>
                   <TableCell className="text-right">
-                    {opp.pass_count > 0 && (
-                      <Badge variant={opp.pass_count >= 3 ? 'passed' : 'outline'} className="text-xs">
-                        {opp.pass_count}
+                    {lot.pass_count > 0 && (
+                      <Badge variant={lot.pass_count >= 3 ? 'passed' : 'outline'} className="text-xs">
+                        {lot.pass_count}
                       </Badge>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
                     <span className="mono font-semibold text-primary">
-                      {formatCurrency(opp.estimated_margin)}
+                      {formatCurrency(lot.estimated_margin)}
                     </span>
                   </TableCell>
                   <TableCell className="text-center">
-                    <span className={`mono font-bold ${getConfidenceColor(opp.confidence_score)}`}>
-                      {opp.confidence_score}
+                    <span className={`mono font-bold ${getConfidenceColor(lot.confidence_score)}`}>
+                      {lot.confidence_score}
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
@@ -201,7 +216,7 @@ export function OpportunityTable({ opportunities, isLoading }: OpportunityTableP
                       asChild
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <a href={opp.listing_url} target="_blank" rel="noopener noreferrer">
+                      <a href={lot.listing_url} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-foreground" />
                       </a>
                     </Button>
@@ -214,7 +229,7 @@ export function OpportunityTable({ opportunities, isLoading }: OpportunityTableP
       </div>
 
       <OpportunityDrawer
-        opportunity={selectedOpportunity}
+        lot={selectedOpportunity}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
       />

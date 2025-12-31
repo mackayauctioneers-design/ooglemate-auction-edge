@@ -2,15 +2,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { OpportunityTable } from '@/components/opportunities/OpportunityTable';
 import { OpportunityFiltersPanel } from '@/components/opportunities/OpportunityFilters';
-import { AuctionOpportunity, OpportunityFilters, SaleFingerprint } from '@/types';
+import { AuctionLot, OpportunityFilters, SaleFingerprint } from '@/types';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/contexts/AuthContext';
 import { Car, TrendingUp, AlertTriangle } from 'lucide-react';
 
 export default function OpportunitiesPage() {
   const { isAdmin, currentUser } = useAuth();
-  const [opportunities, setOpportunities] = useState<AuctionOpportunity[]>([]);
-  const [filteredOpportunities, setFilteredOpportunities] = useState<AuctionOpportunity[]>([]);
+  const [opportunities, setOpportunities] = useState<AuctionLot[]>([]);
+  const [filteredOpportunities, setFilteredOpportunities] = useState<AuctionLot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterOptions, setFilterOptions] = useState({ auction_houses: [] as string[], locations: [] as string[], makes: [] as string[] });
   const [dealerFingerprints, setDealerFingerprints] = useState<SaleFingerprint[]>([]);
@@ -35,6 +35,7 @@ export default function OpportunitiesPage() {
         setDealerFingerprints(fingerprints);
       }
 
+      // getOpportunities now returns filtered Auction_Lots
       const opps = await dataService.getOpportunities(isAdmin, isAdmin ? undefined : fingerprints);
       setOpportunities(opps);
       
