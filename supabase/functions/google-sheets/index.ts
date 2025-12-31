@@ -153,6 +153,56 @@ async function updateRow(
   }
 }
 
+// Create a new sheet with headers
+async function createSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetName: string,
+  headers: string[]
+): Promise<void> {
+  // First, add the new sheet
+  const batchUpdateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+  
+  const addSheetResponse = await fetch(batchUpdateUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      requests: [{
+        addSheet: {
+          properties: { title: sheetName }
+        }
+      }]
+    }),
+  });
+
+  if (!addSheetResponse.ok) {
+    const error = await addSheetResponse.text();
+    console.error(`Create sheet error for ${sheetName}:`, error);
+    throw new Error(`Failed to create sheet ${sheetName}: ${error}`);
+  }
+
+  // Then add the headers
+  const headerUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A1?valueInputOption=USER_ENTERED`;
+  
+  const headerResponse = await fetch(headerUrl, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ values: [headers] }),
+  });
+
+  if (!headerResponse.ok) {
+    const error = await headerResponse.text();
+    console.error(`Header write error for ${sheetName}:`, error);
+    throw new Error(`Failed to write headers to ${sheetName}: ${error}`);
+  }
+}
+
 // Convert sheet rows to objects using headers
 function rowsToObjects(rows: any[][]): any[] {
   if (rows.length < 2) return [];
@@ -243,6 +293,16 @@ serve(async (req) => {
         const rowValues = objectToRow(data, headers);
         await updateRow(accessToken, spreadsheetId, sheet, rowIndex, rowValues);
         console.log(`Updated row ${rowIndex} in ${sheet}`);
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'create': {
+        const headers = data.headers || [];
+        await createSheet(accessToken, spreadsheetId, sheet, headers);
+        console.log(`Created sheet ${sheet} with headers: ${headers.join(', ')}`);
         return new Response(
           JSON.stringify({ success: true }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
