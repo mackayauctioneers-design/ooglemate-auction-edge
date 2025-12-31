@@ -110,6 +110,19 @@ function parseFingerprint(row: any): SaleFingerprint {
 }
 
 function parseDealer(row: any): Dealer {
+  // Handle pipe-separated format from malformed sheet headers
+  const pipeKey = Object.keys(row).find(k => k.includes('|') && k.includes('dealer_name'));
+  if (pipeKey && row[pipeKey]) {
+    const parts = row[pipeKey].split('|').map((p: string) => p.trim());
+    return {
+      dealer_name: parts[0] || '',
+      whatsapp: parts[1] || '',
+      role: parts[2] || 'dealer',
+      enabled: parts[3] || 'Y',
+      _rowIndex: row._rowIndex,
+    };
+  }
+  
   return {
     dealer_name: row.dealer_name || '',
     whatsapp: row.whatsapp || '',
