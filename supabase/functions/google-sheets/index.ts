@@ -309,6 +309,32 @@ serve(async (req) => {
         );
       }
 
+      case 'reset_headers': {
+        // Replace the first row (headers) in an existing sheet
+        const headers = data.headers || [];
+        const headerUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheet)}!A1?valueInputOption=USER_ENTERED`;
+        
+        const headerResponse = await fetch(headerUrl, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ values: [headers] }),
+        });
+
+        if (!headerResponse.ok) {
+          const error = await headerResponse.text();
+          throw new Error(`Failed to reset headers: ${error}`);
+        }
+        
+        console.log(`Reset headers for ${sheet}: ${headers.join(', ')}`);
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: 'Invalid action' }),
