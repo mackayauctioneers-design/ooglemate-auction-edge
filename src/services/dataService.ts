@@ -187,11 +187,25 @@ export const dataService = {
     return 0;
   },
 
+  getUnreadBuyAlerts: async (dealerName?: string): Promise<AlertLog[]> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getUnreadBuyAlerts(dealerName);
+    }
+    return [];
+  },
+
   markAlertRead: async (alertId: string): Promise<void> => {
     if (USE_GOOGLE_SHEETS) {
       return googleSheetsService.markAlertRead(alertId);
     }
     throw new Error('Mock data does not support marking alerts read');
+  },
+
+  markAllBuyAlertsRead: async (dealerName?: string): Promise<number> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.markAllBuyAlertsRead(dealerName);
+    }
+    return 0;
   },
 
   acknowledgeAlert: async (alertId: string): Promise<void> => {

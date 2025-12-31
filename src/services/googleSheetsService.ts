@@ -1055,13 +1055,24 @@ export const googleSheetsService = {
     return alerts.filter(a => a.dealer_name === dealerName);
   },
 
-  // Get unread alert count
+  // Get unread BUY alert count (Watch→Buy only)
   getUnreadAlertCount: async (dealerName?: string): Promise<number> => {
     const alerts = await googleSheetsService.getAlerts();
     return alerts.filter(a => 
       a.status === 'new' && 
+      a.action_change === 'Watch→Buy' &&
       (!dealerName || a.dealer_name === dealerName)
     ).length;
+  },
+
+  // Get unread BUY alerts (Watch→Buy only)
+  getUnreadBuyAlerts: async (dealerName?: string): Promise<AlertLog[]> => {
+    const alerts = await googleSheetsService.getAlerts();
+    return alerts.filter(a => 
+      a.status === 'new' && 
+      a.action_change === 'Watch→Buy' &&
+      (!dealerName || a.dealer_name === dealerName)
+    );
   },
 
   // Mark alert as read
@@ -1076,6 +1087,29 @@ export const googleSheetsService = {
         read_at: new Date().toISOString(),
       }, alert._rowIndex);
     }
+  },
+
+  // Mark all BUY alerts as read for a dealer
+  markAllBuyAlertsRead: async (dealerName?: string): Promise<number> => {
+    const alerts = await googleSheetsService.getAlerts();
+    const buyAlerts = alerts.filter(a => 
+      a.status === 'new' && 
+      a.action_change === 'Watch→Buy' &&
+      (!dealerName || a.dealer_name === dealerName)
+    );
+    
+    let count = 0;
+    for (const alert of buyAlerts) {
+      if (alert._rowIndex !== undefined) {
+        await callSheetsApi('update', SHEETS.ALERTS, {
+          ...alert,
+          status: 'read',
+          read_at: new Date().toISOString(),
+        }, alert._rowIndex);
+        count++;
+      }
+    }
+    return count;
   },
 
   // Mark alert as acknowledged
