@@ -35,6 +35,10 @@ async function callSheetsApi(action: string, sheet: string, data?: any, rowIndex
 
 // Parse sheet data to typed objects
 function parseOpportunity(row: any): AuctionOpportunity {
+  // Read action from sheet if present (normalize to 'Buy' or 'Watch')
+  const sheetAction = row.action?.toString().trim();
+  const hasValidSheetAction = sheetAction === 'Buy' || sheetAction === 'Watch';
+
   const opp: AuctionOpportunity = {
     lot_id: row.lot_id || '',
     auction_house: row.auction_house || '',
@@ -66,9 +70,11 @@ function parseOpportunity(row: any): AuctionOpportunity {
     _rowIndex: row._rowIndex,
   };
 
-  // Calculate confidence score and action
+  // Calculate confidence score
   opp.confidence_score = calculateConfidenceScore(opp);
-  opp.action = determineAction(opp.confidence_score);
+  
+  // Use sheet action if valid, otherwise calculate from confidence score
+  opp.action = hasValidSheetAction ? sheetAction : determineAction(opp.confidence_score);
 
   return opp;
 }
