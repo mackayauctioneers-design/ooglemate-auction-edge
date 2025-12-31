@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 const navItems = [
   { path: '/', label: "Today's Opportunities", icon: BarChart3 },
@@ -41,20 +42,23 @@ export function AppSidebar() {
         collapsed ? "w-16" : "w-64"
       )}
     >
-      {/* Logo */}
+      {/* Logo and Notification Bell */}
       <div className={cn(
-        "flex items-center gap-3 px-4 h-16 border-b border-sidebar-border",
+        "flex items-center justify-between px-4 h-16 border-b border-sidebar-border",
         collapsed && "justify-center px-2"
       )}>
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground font-bold text-lg">
-          O
-        </div>
-        {!collapsed && (
-          <div>
-            <h1 className="font-semibold text-foreground">OogleMate</h1>
-            <p className="text-xs text-muted-foreground">Auction Edge</p>
+        <div className={cn("flex items-center gap-3", collapsed && "gap-0")}>
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground font-bold text-lg">
+            O
           </div>
-        )}
+          {!collapsed && (
+            <div>
+              <h1 className="font-semibold text-foreground">OogleMate</h1>
+              <p className="text-xs text-muted-foreground">Auction Edge</p>
+            </div>
+          )}
+        </div>
+        {!collapsed && <NotificationBell />}
       </div>
 
       {/* Navigation */}

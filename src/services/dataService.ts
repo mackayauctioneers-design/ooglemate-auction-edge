@@ -171,33 +171,33 @@ export const dataService = {
     throw new Error('Mock data does not support importing sales');
   },
 
-  // ========== SETTINGS ==========
+  // ========== IN-APP ALERTS ==========
 
-  isWhatsAppAlertsEnabled: async (): Promise<boolean> => {
+  getDealerAlerts: async (dealerName: string): Promise<AlertLog[]> => {
     if (USE_GOOGLE_SHEETS) {
-      return googleSheetsService.isWhatsAppAlertsEnabled();
+      return googleSheetsService.getDealerAlerts(dealerName);
     }
-    return false;
+    return [];
   },
 
-  setWhatsAppAlertsEnabled: async (enabled: boolean): Promise<void> => {
+  getUnreadAlertCount: async (dealerName?: string): Promise<number> => {
     if (USE_GOOGLE_SHEETS) {
-      return googleSheetsService.setWhatsAppAlertsEnabled(enabled);
+      return googleSheetsService.getUnreadAlertCount(dealerName);
     }
-    throw new Error('Mock data does not support settings');
+    return 0;
   },
 
-  processQueuedAlerts: async (): Promise<{ processed: number; sent: number; errors: number }> => {
+  markAlertRead: async (alertId: string): Promise<void> => {
     if (USE_GOOGLE_SHEETS) {
-      return googleSheetsService.processQueuedAlerts();
+      return googleSheetsService.markAlertRead(alertId);
     }
-    throw new Error('Mock data does not support processing alerts');
+    throw new Error('Mock data does not support marking alerts read');
   },
 
-  sendAlert: async (alertId: string): Promise<{ success: boolean; error?: string }> => {
+  acknowledgeAlert: async (alertId: string): Promise<void> => {
     if (USE_GOOGLE_SHEETS) {
-      return googleSheetsService.sendAlert(alertId);
+      return googleSheetsService.acknowledgeAlert(alertId);
     }
-    throw new Error('Mock data does not support sending alerts');
+    throw new Error('Mock data does not support acknowledging alerts');
   },
 };

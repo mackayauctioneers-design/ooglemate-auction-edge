@@ -85,18 +85,28 @@ export interface Dealer extends SheetRowMeta {
 
 export interface AlertLog extends SheetRowMeta {
   alert_id: string;
-  sent_at: string;
-  recipient_whatsapp: string;
+  created_at: string;
+  dealer_name: string;
+  recipient_whatsapp?: string; // Legacy, kept for backwards compatibility
+  channel: 'in_app';
   lot_id: string;
   fingerprint_id: string;
-  dealer_name: string;
-  previous_action: 'Watch' | 'Buy';
-  new_action: 'Watch' | 'Buy';
   action_change: string;
   message_text: string;
-  status: 'sent' | 'queued' | 'failed';
-  error_message?: string;
-  retry_count?: number;
+  link?: string;
+  status: 'new' | 'read' | 'acknowledged';
+  read_at?: string;
+  acknowledged_at?: string;
+  dedup_key: string; // dealer_name + lot_id + action_change + YYYY-MM-DD
+  // Lot details for display
+  lot_make?: string;
+  lot_model?: string;
+  lot_variant?: string;
+  lot_year?: number;
+  auction_house?: string;
+  auction_datetime?: string;
+  estimated_margin?: number;
+  why_flagged?: string[];
 }
 
 export interface AppSettings extends SheetRowMeta {
