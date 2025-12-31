@@ -43,6 +43,7 @@ export function LotEditor({ lot, onClose, onSaved }: LotEditorProps) {
     estimated_get_out: lot?.estimated_get_out?.toString() || '',
     estimated_margin: lot?.estimated_margin?.toString() || '',
     visible_to_dealers: lot?.visible_to_dealers === 'Y',
+    relist_group_id: lot?.relist_group_id || '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -73,6 +74,7 @@ export function LotEditor({ lot, onClose, onSaved }: LotEditorProps) {
         estimated_get_out: parseFloat(formData.estimated_get_out) || 0,
         estimated_margin: parseFloat(formData.estimated_margin) || 0,
         visible_to_dealers: formData.visible_to_dealers ? 'Y' : 'N',
+        relist_group_id: formData.relist_group_id,
       };
 
       if (isEditing && lot) {
@@ -300,6 +302,16 @@ export function LotEditor({ lot, onClose, onSaved }: LotEditorProps) {
                 placeholder="https://..."
               />
             </div>
+          </div>
+
+          {/* Relist Group ID */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Relist Group ID</Label>
+            <Input
+              value={formData.relist_group_id}
+              onChange={(e) => setFormData({ ...formData, relist_group_id: e.target.value })}
+              placeholder="Link re-runs of same vehicle..."
+            />
           </div>
 
           {/* Visibility */}

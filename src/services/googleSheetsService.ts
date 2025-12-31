@@ -148,10 +148,16 @@ function parseAuctionLot(row: any): AuctionLot {
   const sheetAction = row.action?.toString().trim();
   const hasValidSheetAction = sheetAction === 'Buy' || sheetAction === 'Watch';
   
+  // Compute lot_key from auction_house and lot_id
+  const auctionHouse = row.auction_house || '';
+  const lotId = row.lot_id || '';
+  const lotKey = row.lot_key || (auctionHouse && lotId ? `${auctionHouse}:${lotId}` : '');
+  
   const lot: AuctionLot = {
-    lot_id: row.lot_id || '',
+    lot_id: lotId,
+    lot_key: lotKey,
     event_id: row.event_id || '',
-    auction_house: row.auction_house || '',
+    auction_house: auctionHouse,
     location: row.location || '',
     auction_datetime: row.auction_datetime || '',
     listing_url: row.listing_url || '',
@@ -175,6 +181,9 @@ function parseAuctionLot(row: any): AuctionLot {
     action: 'Watch',
     visible_to_dealers: row.visible_to_dealers || 'N',
     updated_at: row.updated_at || new Date().toISOString(),
+    last_status: row.last_status || '',
+    last_seen_at: row.last_seen_at || '',
+    relist_group_id: row.relist_group_id || '',
     _rowIndex: row._rowIndex,
   };
 
@@ -193,10 +202,11 @@ function parseAuctionLot(row: any): AuctionLot {
 }
 
 const LOT_HEADERS = [
-  'lot_id', 'event_id', 'auction_house', 'location', 'auction_datetime', 'listing_url',
+  'lot_key', 'lot_id', 'event_id', 'auction_house', 'location', 'auction_datetime', 'listing_url',
   'make', 'model', 'variant_raw', 'variant_normalised', 'year', 'km', 'fuel', 'drivetrain',
   'transmission', 'reserve', 'highest_bid', 'status', 'pass_count', 'description_score',
-  'estimated_get_out', 'estimated_margin', 'confidence_score', 'action', 'visible_to_dealers', 'updated_at'
+  'estimated_get_out', 'estimated_margin', 'confidence_score', 'action', 'visible_to_dealers', 
+  'updated_at', 'last_status', 'last_seen_at', 'relist_group_id'
 ];
 
 export const googleSheetsService = {
@@ -398,16 +408,26 @@ export const googleSheetsService = {
   },
 
   // Add a new lot
-  addLot: async (lot: Omit<AuctionLot, 'lot_id' | 'updated_at' | 'confidence_score' | 'action'>): Promise<AuctionLot> => {
+  addLot: async (lot: Omit<AuctionLot, 'lot_id' | 'lot_key' | 'updated_at' | 'confidence_score' | 'action' | 'last_status' | 'last_seen_at'>): Promise<AuctionLot> => {
     const confidenceScore = calculateLotConfidenceScore(lot as AuctionLot);
     const action = determineLotAction(confidenceScore);
+    const nowISO = new Date().toISOString();
+    const lotId = `LOT-${Date.now()}`;
+    const lotKey = `${lot.auction_house}:${lotId}`;
+    
+    // If status is passed_in on first insert, set pass_count = 1
+    const passCount = lot.status === 'passed_in' ? 1 : 0;
     
     const newLot: AuctionLot = {
       ...lot,
-      lot_id: `LOT-${Date.now()}`,
+      lot_id: lotId,
+      lot_key: lotKey,
+      pass_count: passCount,
       confidence_score: confidenceScore,
       action: action,
-      updated_at: new Date().toISOString(),
+      updated_at: nowISO,
+      last_status: '',
+      last_seen_at: nowISO,
     };
     
     await callSheetsApi('append', SHEETS.LOTS, newLot);
@@ -425,16 +445,14 @@ export const googleSheetsService = {
     }
   },
 
-  // Upsert lots (for CSV import)
+  // Upsert lots (for CSV import) - uses lot_key as upsert key
   upsertLots: async (newLots: Partial<AuctionLot>[]): Promise<{ added: number; updated: number }> => {
     // Read existing lots
     let existingLots: AuctionLot[] = [];
-    let headers: string[] = LOT_HEADERS;
     
     try {
       const response = await callSheetsApi('read', SHEETS.LOTS);
       existingLots = response.data.map(parseAuctionLot);
-      headers = response.headers || LOT_HEADERS;
     } catch {
       // Create sheet if it doesn't exist
       await callSheetsApi('create', SHEETS.LOTS, { headers: LOT_HEADERS });
@@ -442,29 +460,44 @@ export const googleSheetsService = {
 
     let added = 0;
     let updated = 0;
+    const nowISO = new Date().toISOString();
+    const validStatuses = ['listed', 'passed_in', 'sold', 'withdrawn'];
 
     for (const newLot of newLots) {
       if (!newLot.lot_id) continue;
       
-      const existingIndex = existingLots.findIndex(l => l.lot_id === newLot.lot_id);
+      // Compute lot_key for matching
+      const auctionHouse = newLot.auction_house || '';
+      const incomingLotKey = newLot.lot_key || `${auctionHouse}:${newLot.lot_id}`;
+      
+      // Normalize status - default to 'listed' if blank or invalid
+      let incomingStatus = (newLot.status || 'listed').toLowerCase() as 'listed' | 'passed_in' | 'sold' | 'withdrawn';
+      if (!validStatuses.includes(incomingStatus)) {
+        incomingStatus = 'listed';
+      }
+      
+      const existingIndex = existingLots.findIndex(l => l.lot_key === incomingLotKey);
       
       if (existingIndex >= 0) {
         // Update existing lot
         const existing = existingLots[existingIndex];
         
-        // Handle pass_count increment for passed_in status
+        // Pass count rule: ONLY increment when previous status was NOT passed_in and new status IS passed_in
         let passCount = existing.pass_count;
-        if (newLot.status === 'passed_in' && existing.status !== 'passed_in') {
+        if (existing.status !== 'passed_in' && incomingStatus === 'passed_in') {
           passCount = existing.pass_count + 1;
-        } else if (newLot.pass_count !== undefined) {
-          passCount = newLot.pass_count;
         }
+        // If both are passed_in or neither is passed_in, keep existing pass_count
         
         const mergedLot: AuctionLot = {
           ...existing,
           ...newLot,
+          lot_key: incomingLotKey,
+          status: incomingStatus,
           pass_count: passCount,
-          updated_at: new Date().toISOString(),
+          last_status: existing.status, // Store previous status
+          last_seen_at: nowISO,
+          updated_at: nowISO,
         };
         
         // Recalculate confidence if needed
@@ -479,13 +512,14 @@ export const googleSheetsService = {
         updated++;
       } else {
         // Add new lot
-        const confidenceScore = newLot.confidence_score || calculateLotConfidenceScore(newLot as AuctionLot);
-        const action = newLot.action || determineLotAction(confidenceScore);
+        // If status is passed_in on first insert, set pass_count = 1
+        const passCount = incomingStatus === 'passed_in' ? 1 : 0;
         
         const fullLot: AuctionLot = {
+          lot_key: incomingLotKey,
           lot_id: newLot.lot_id,
           event_id: newLot.event_id || '',
-          auction_house: newLot.auction_house || '',
+          auction_house: auctionHouse,
           location: newLot.location || '',
           auction_datetime: newLot.auction_datetime || '',
           listing_url: newLot.listing_url || '',
@@ -500,15 +534,18 @@ export const googleSheetsService = {
           transmission: newLot.transmission || '',
           reserve: newLot.reserve || 0,
           highest_bid: newLot.highest_bid || 0,
-          status: newLot.status || 'listed',
-          pass_count: newLot.pass_count || 0,
+          status: incomingStatus,
+          pass_count: passCount,
           description_score: newLot.description_score || 0,
           estimated_get_out: newLot.estimated_get_out || 0,
           estimated_margin: newLot.estimated_margin || 0,
-          confidence_score: confidenceScore,
-          action: action,
+          confidence_score: newLot.confidence_score || calculateLotConfidenceScore(newLot as AuctionLot),
+          action: newLot.action || determineLotAction(newLot.confidence_score || 0),
           visible_to_dealers: newLot.visible_to_dealers || 'N',
-          updated_at: new Date().toISOString(),
+          updated_at: nowISO,
+          last_status: '',
+          last_seen_at: nowISO,
+          relist_group_id: newLot.relist_group_id || '',
         };
         
         await callSheetsApi('append', SHEETS.LOTS, fullLot);
