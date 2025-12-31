@@ -208,11 +208,13 @@ export default function LogSalePage() {
                         <SelectValue placeholder="Select dealer" />
                       </SelectTrigger>
                       <SelectContent>
-                        {dealers.map(dealer => (
-                          <SelectItem key={dealer.dealer_name} value={dealer.dealer_name}>
-                            {dealer.dealer_name}
-                          </SelectItem>
-                        ))}
+                        {dealers
+                          .filter(dealer => dealer.dealer_name)
+                          .map(dealer => (
+                            <SelectItem key={dealer.dealer_name} value={dealer.dealer_name}>
+                              {dealer.dealer_name}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
