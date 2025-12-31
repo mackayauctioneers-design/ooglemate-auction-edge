@@ -7,10 +7,12 @@ import {
   AuctionEvent,
   AuctionLot,
   SaleLog,
+  AppSettings,
   calculateConfidenceScore,
   determineAction,
   calculateLotConfidenceScore,
-  determineLotAction
+  determineLotAction,
+  getLotFlagReasons
 } from '@/types';
 
 const SHEETS = {
@@ -21,6 +23,7 @@ const SHEETS = {
   EVENTS: 'Auction_Events',
   LOTS: 'Auction_Lots',
   SALES_LOG: 'Sales_Log',
+  SETTINGS: 'Settings',
 };
 
 // Helper to call the edge function
@@ -139,9 +142,14 @@ function parseAlert(row: any): AlertLog {
     recipient_whatsapp: row.recipient_whatsapp || '',
     lot_id: row.lot_id || '',
     fingerprint_id: row.fingerprint_id || '',
+    dealer_name: row.dealer_name || '',
+    previous_action: row.previous_action || 'Watch',
+    new_action: row.new_action || 'Buy',
     action_change: row.action_change || '',
     message_text: row.message_text || '',
     status: row.status || 'queued',
+    error_message: row.error_message || undefined,
+    retry_count: row.retry_count ? parseInt(row.retry_count) : 0,
     _rowIndex: row._rowIndex,
   };
 }
@@ -378,9 +386,12 @@ export const googleSheetsService = {
       const alert: AlertLog = {
         alert_id: `ALT-${Date.now()}`,
         sent_at: new Date().toISOString(),
-        recipient_whatsapp: '', // Not sending yet, log only
+        recipient_whatsapp: '', // Will be populated when sending
         lot_id: lot.lot_key,
         fingerprint_id: '',
+        dealer_name: '',
+        previous_action: previousAction,
+        new_action: newAction,
         action_change: `${previousAction} → ${newAction}`,
         message_text: `Lot ${lot.lot_key} (${lot.make} ${lot.model}) changed from Watch to Buy`,
         status: 'queued',
@@ -934,5 +945,254 @@ export const googleSheetsService = {
     }
 
     return { imported, fingerprintsUpdated, errors };
+  },
+
+  // Get app settings
+  getSettings: async (): Promise<AppSettings[]> => {
+    try {
+      const response = await callSheetsApi('read', SHEETS.SETTINGS);
+      return response.data.map((row: any): AppSettings => ({
+        setting_key: row.setting_key || '',
+        setting_value: row.setting_value || '',
+        updated_at: row.updated_at || '',
+        _rowIndex: row._rowIndex,
+      }));
+    } catch {
+      return [];
+    }
+  },
+
+  // Get a specific setting value
+  getSetting: async (key: string): Promise<string | null> => {
+    const settings = await googleSheetsService.getSettings();
+    const setting = settings.find(s => s.setting_key === key);
+    return setting?.setting_value || null;
+  },
+
+  // Update or create a setting
+  upsertSetting: async (key: string, value: string): Promise<void> => {
+    const settings = await googleSheetsService.getSettings();
+    const existing = settings.find(s => s.setting_key === key);
+
+    const settingData: AppSettings = {
+      setting_key: key,
+      setting_value: value,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existing && existing._rowIndex !== undefined) {
+      await callSheetsApi('update', SHEETS.SETTINGS, settingData, existing._rowIndex);
+    } else {
+      await callSheetsApi('append', SHEETS.SETTINGS, settingData);
+    }
+  },
+
+  // Check if WhatsApp alerts are enabled
+  isWhatsAppAlertsEnabled: async (): Promise<boolean> => {
+    const value = await googleSheetsService.getSetting('whatsapp_alerts_enabled');
+    return value === 'true';
+  },
+
+  // Toggle WhatsApp alerts
+  setWhatsAppAlertsEnabled: async (enabled: boolean): Promise<void> => {
+    await googleSheetsService.upsertSetting('whatsapp_alerts_enabled', enabled ? 'true' : 'false');
+  },
+
+  // Send queued WhatsApp alerts
+  processQueuedAlerts: async (): Promise<{ processed: number; sent: number; errors: number }> => {
+    // Check if alerts are enabled
+    const enabled = await googleSheetsService.isWhatsAppAlertsEnabled();
+    if (!enabled) {
+      console.log('WhatsApp alerts disabled, skipping processing');
+      return { processed: 0, sent: 0, errors: 0 };
+    }
+
+    // Get all alerts
+    const alerts = await googleSheetsService.getAlerts();
+    const queuedAlerts = alerts.filter(a => 
+      a.status === 'queued' && 
+      a.previous_action === 'Watch' && 
+      a.new_action === 'Buy'
+    );
+
+    if (queuedAlerts.length === 0) {
+      return { processed: 0, sent: 0, errors: 0 };
+    }
+
+    // Get lots for message formatting
+    const lots = await googleSheetsService.getLots(true);
+    const fingerprints = await googleSheetsService.getFingerprints();
+
+    let processed = 0;
+    let sent = 0;
+    let errors = 0;
+
+    for (const alert of queuedAlerts) {
+      processed++;
+
+      // Find the lot
+      const lot = lots.find(l => l.lot_key === alert.lot_id);
+      if (!lot) {
+        console.log(`Lot not found for alert ${alert.alert_id}`);
+        errors++;
+        continue;
+      }
+
+      // Find matching fingerprints to get recipient(s)
+      const matchingFingerprints = fingerprints.filter(fp => 
+        fp.is_active === 'Y' &&
+        fp.make === lot.make &&
+        fp.model === lot.model &&
+        fp.variant_normalised === lot.variant_normalised
+      );
+
+      if (matchingFingerprints.length === 0) {
+        console.log(`No matching fingerprints for lot ${lot.lot_key}`);
+        continue;
+      }
+
+      // Check deduplication: no more than 1 message per lot per dealer per 24h
+      const now = new Date();
+      const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+      for (const fp of matchingFingerprints) {
+        // Check if we've already sent to this dealer for this lot in last 24h
+        const recentSent = alerts.find(a => 
+          a.lot_id === lot.lot_key &&
+          a.dealer_name === fp.dealer_name &&
+          a.status === 'sent' &&
+          new Date(a.sent_at) > last24h
+        );
+
+        if (recentSent) {
+          console.log(`Skipping duplicate for ${fp.dealer_name} on lot ${lot.lot_key}`);
+          continue;
+        }
+
+        // Get flag reasons for the message
+        const flagReasons = getLotFlagReasons(lot);
+
+        // Call the WhatsApp edge function
+        try {
+          const { data: result, error } = await supabase.functions.invoke('whatsapp-alerts', {
+            body: {
+              action: 'send',
+              alert: {
+                ...alert,
+                recipient_whatsapp: fp.dealer_whatsapp,
+              },
+              lot: {
+                ...lot,
+                why_flagged: flagReasons,
+              },
+            },
+          });
+
+          if (error) {
+            console.error('WhatsApp send error:', error);
+            errors++;
+            // Update alert with error
+            if (alert._rowIndex !== undefined) {
+              await callSheetsApi('update', SHEETS.ALERTS, {
+                ...alert,
+                status: 'failed',
+                error_message: error.message,
+                retry_count: (alert.retry_count || 0) + 1,
+              }, alert._rowIndex);
+            }
+            continue;
+          }
+
+          if (result?.status === 'sent') {
+            sent++;
+            // Update alert as sent
+            if (alert._rowIndex !== undefined) {
+              await callSheetsApi('update', SHEETS.ALERTS, {
+                ...alert,
+                status: 'sent',
+                sent_at: new Date().toISOString(),
+                recipient_whatsapp: fp.dealer_whatsapp,
+                dealer_name: fp.dealer_name,
+              }, alert._rowIndex);
+            }
+          } else if (result?.status === 'queued') {
+            // Still queued (outside send window)
+            console.log('Alert kept queued:', result.reason);
+          } else {
+            errors++;
+            if (alert._rowIndex !== undefined) {
+              await callSheetsApi('update', SHEETS.ALERTS, {
+                ...alert,
+                status: 'failed',
+                error_message: result?.error || 'Unknown error',
+                retry_count: (alert.retry_count || 0) + 1,
+              }, alert._rowIndex);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to process alert:', err);
+          errors++;
+        }
+      }
+    }
+
+    return { processed, sent, errors };
+  },
+
+  // Manually trigger sending for a specific alert
+  sendAlert: async (alertId: string): Promise<{ success: boolean; error?: string }> => {
+    const enabled = await googleSheetsService.isWhatsAppAlertsEnabled();
+    if (!enabled) {
+      return { success: false, error: 'WhatsApp alerts are disabled' };
+    }
+
+    const alerts = await googleSheetsService.getAlerts();
+    const alert = alerts.find(a => a.alert_id === alertId);
+    
+    if (!alert) {
+      return { success: false, error: 'Alert not found' };
+    }
+
+    const lots = await googleSheetsService.getLots(true);
+    const lot = lots.find(l => l.lot_key === alert.lot_id);
+    
+    if (!lot) {
+      return { success: false, error: 'Lot not found' };
+    }
+
+    const flagReasons = getLotFlagReasons(lot);
+
+    try {
+      const { data: result, error } = await supabase.functions.invoke('whatsapp-alerts', {
+        body: {
+          action: 'send',
+          alert,
+          lot: {
+            ...lot,
+            why_flagged: flagReasons,
+          },
+        },
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      if (result?.status === 'sent') {
+        // Update alert as sent
+        if (alert._rowIndex !== undefined) {
+          await callSheetsApi('update', SHEETS.ALERTS, {
+            ...alert,
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+          }, alert._rowIndex);
+        }
+        return { success: true };
+      }
+
+      return { success: false, error: result?.error || result?.reason || 'Unknown error' };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+    }
   },
 };

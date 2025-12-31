@@ -89,9 +89,20 @@ export interface AlertLog extends SheetRowMeta {
   recipient_whatsapp: string;
   lot_id: string;
   fingerprint_id: string;
+  dealer_name: string;
+  previous_action: 'Watch' | 'Buy';
+  new_action: 'Watch' | 'Buy';
   action_change: string;
   message_text: string;
   status: 'sent' | 'queued' | 'failed';
+  error_message?: string;
+  retry_count?: number;
+}
+
+export interface AppSettings extends SheetRowMeta {
+  setting_key: string;
+  setting_value: string;
+  updated_at: string;
 }
 
 export interface AuctionEvent extends SheetRowMeta {

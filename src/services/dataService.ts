@@ -170,4 +170,34 @@ export const dataService = {
     }
     throw new Error('Mock data does not support importing sales');
   },
+
+  // ========== SETTINGS ==========
+
+  isWhatsAppAlertsEnabled: async (): Promise<boolean> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.isWhatsAppAlertsEnabled();
+    }
+    return false;
+  },
+
+  setWhatsAppAlertsEnabled: async (enabled: boolean): Promise<void> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.setWhatsAppAlertsEnabled(enabled);
+    }
+    throw new Error('Mock data does not support settings');
+  },
+
+  processQueuedAlerts: async (): Promise<{ processed: number; sent: number; errors: number }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.processQueuedAlerts();
+    }
+    throw new Error('Mock data does not support processing alerts');
+  },
+
+  sendAlert: async (alertId: string): Promise<{ success: boolean; error?: string }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.sendAlert(alertId);
+    }
+    throw new Error('Mock data does not support sending alerts');
+  },
 };
