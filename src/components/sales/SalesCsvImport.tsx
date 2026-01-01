@@ -267,6 +267,13 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
           drivetrain: rowData.drivetrain,
           transmission: rowData.transmission,
           fingerprint_generated: 'N',
+          // Calculate gross_profit if both prices available
+          gross_profit: rowData.sell_price && rowData.buy_price 
+            ? rowData.sell_price - rowData.buy_price 
+            : undefined,
+          activate: 'N',
+          do_not_replicate: 'N',
+          tags: undefined,
         });
       });
 

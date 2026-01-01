@@ -361,7 +361,7 @@ const SALES_IMPORTS_RAW_HEADERS = [
 const SALES_NORMALISED_HEADERS = [
   'sale_id', 'import_id', 'dealer_name', 'sale_date', 'make', 'model', 'variant_raw', 'variant_normalised',
   'sale_price', 'days_to_sell', 'location', 'km', 'quality_flag', 'notes', 'year', 'engine', 'drivetrain',
-  'transmission', 'fingerprint_generated', 'fingerprint_id'
+  'transmission', 'fingerprint_generated', 'fingerprint_id', 'gross_profit', 'activate', 'do_not_replicate', 'tags'
 ];
 
 // Parse Sales Imports Raw
@@ -401,6 +401,10 @@ function parseSalesNormalised(row: any): SalesNormalised {
     transmission: row.transmission || undefined,
     fingerprint_generated: row.fingerprint_generated || 'N',
     fingerprint_id: row.fingerprint_id || undefined,
+    gross_profit: row.gross_profit ? parseFloat(row.gross_profit) : undefined,
+    activate: row.activate || 'N',
+    do_not_replicate: row.do_not_replicate || 'N',
+    tags: row.tags || undefined,
     _rowIndex: row._rowIndex,
   };
 }
@@ -1286,6 +1290,7 @@ export const googleSheetsService = {
   },
 
   // Generate fingerprints from selected normalised sales
+  // Only generates from rows where activate=Y AND do_not_replicate!=Y
   generateFingerprintsFromNormalised: async (saleIds: string[]): Promise<{
     created: number;
     updated: number;
@@ -1307,6 +1312,16 @@ export const googleSheetsService = {
         continue;
       }
 
+      // CRITICAL: Only generate from activate=Y AND do_not_replicate!=Y
+      if (sale.activate !== 'Y') {
+        errors.push(`Sale ${sale.sale_id}: Not activated (set Activate=Y first)`);
+        continue;
+      }
+      if (sale.do_not_replicate === 'Y') {
+        errors.push(`Sale ${sale.sale_id}: Marked as Do Not Replicate`);
+        continue;
+      }
+
       // Validate required fields for fingerprint
       if (!sale.make || !sale.model || !sale.dealer_name) {
         errors.push(`Sale ${sale.sale_id}: Missing make, model, or dealer_name`);
@@ -1317,7 +1332,7 @@ export const googleSheetsService = {
         // Determine fingerprint type based on km availability
         const hasKm = sale.km !== undefined && sale.km !== null && sale.km > 0;
 
-        // Create fingerprint
+        // Create fingerprint with source linkbacks
         const fp = await googleSheetsService.upsertFingerprint({
           dealer_name: sale.dealer_name,
           dealer_whatsapp: '',
@@ -1334,11 +1349,15 @@ export const googleSheetsService = {
         });
 
         // Update sale with fingerprint reference
+        const fingerprintNotes = hasKm 
+          ? sale.notes 
+          : `${sale.notes || ''} [spec_only - no km]`.trim();
+        
         await googleSheetsService.updateSalesNormalised({
           ...sale,
           fingerprint_generated: 'Y',
           fingerprint_id: fp.fingerprint_id,
-          notes: hasKm ? sale.notes : `${sale.notes || ''} [spec_only - no km]`.trim(),
+          notes: fingerprintNotes,
         });
 
         // Count as created or updated based on upsert result

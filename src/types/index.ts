@@ -109,6 +109,11 @@ export interface SalesNormalised extends SheetRowMeta {
   transmission?: string;
   fingerprint_generated: 'Y' | 'N';
   fingerprint_id?: string;
+  // New activation/filtering columns
+  gross_profit?: number;
+  activate: 'Y' | 'N';
+  do_not_replicate: 'Y' | 'N';
+  tags?: string;
 }
 
 export interface Dealer extends SheetRowMeta {
