@@ -83,7 +83,19 @@ async function getAccessToken(serviceAccount: ServiceAccountKey): Promise<string
   return data.access_token;
 }
 
-// Read data from a sheet
+// Default headers for auto-created sheets
+const SHEET_HEADERS: Record<string, string[]> = {
+  'Sales_Imports_Raw': [
+    'import_id', 'uploaded_at', 'dealer_name', 'source', 'original_row_json', 'parse_status', 'parse_notes'
+  ],
+  'Sales_Normalised': [
+    'sale_id', 'import_id', 'dealer_name', 'sale_date', 'make', 'model', 'variant_raw', 'variant_normalised',
+    'sale_price', 'days_to_sell', 'location', 'km', 'quality_flag', 'notes', 'year', 'engine', 'drivetrain',
+    'transmission', 'fingerprint_generated', 'fingerprint_id', 'gross_profit', 'activate', 'do_not_replicate', 'tags'
+  ],
+};
+
+// Read data from a sheet (auto-creates if missing)
 async function readSheet(accessToken: string, spreadsheetId: string, sheetName: string): Promise<any[][]> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}`;
   
@@ -92,9 +104,19 @@ async function readSheet(accessToken: string, spreadsheetId: string, sheetName: 
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    console.error(`Read error for ${sheetName}:`, error);
-    throw new Error(`Failed to read sheet ${sheetName}: ${error}`);
+    const errorText = await response.text();
+    // Check if sheet doesn't exist (400 error with "Unable to parse range")
+    if (response.status === 400 && errorText.includes('Unable to parse range')) {
+      console.log(`Sheet ${sheetName} not found, attempting to create...`);
+      const headers = SHEET_HEADERS[sheetName];
+      if (headers) {
+        await createSheet(accessToken, spreadsheetId, sheetName, headers);
+        console.log(`Created sheet ${sheetName} with default headers`);
+        return [headers]; // Return just headers for empty sheet
+      }
+    }
+    console.error(`Read error for ${sheetName}:`, errorText);
+    throw new Error(`Failed to read sheet ${sheetName}: ${errorText}`);
   }
 
   const data = await response.json();
