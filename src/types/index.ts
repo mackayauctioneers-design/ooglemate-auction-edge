@@ -120,6 +120,20 @@ export interface SalesNormalised extends SheetRowMeta {
   tags?: string;
 }
 
+// Fingerprint Sync Log - audit trail for sync operations
+export interface FingerprintSyncLog {
+  synclog_id: string;
+  run_at: string;
+  mode: 'full' | 'dry_run';
+  rows_scanned: number;
+  rows_eligible: number;
+  rows_created: number;
+  rows_updated: number;
+  rows_skipped: number;
+  skip_reason_counts: string; // JSON: { "missing_dealer": 5, "not_activated": 10, ... }
+  errors: string; // JSON array of error strings
+}
+
 export interface Dealer extends SheetRowMeta {
   dealer_name: string;
   whatsapp: string;
