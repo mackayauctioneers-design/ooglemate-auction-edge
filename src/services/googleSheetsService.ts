@@ -2117,6 +2117,26 @@ export const googleSheetsService = {
       await callSheetsApi('update', SHEETS.SAVED_SEARCHES, updated, search._rowIndex);
     }
   },
+
+  // Update diagnostics for a saved search after run
+  updateSavedSearchDiagnostics: async (searchId: string, diagnostics: {
+    last_run_status: 'success' | 'failed';
+    last_http_status: number;
+    last_listings_found: number;
+    last_listings_upserted: number;
+    last_error_message: string;
+  }): Promise<void> => {
+    const searches = await googleSheetsService.getSavedSearches();
+    const search = searches.find(s => s.search_id === searchId);
+    if (search && search._rowIndex !== undefined) {
+      const updated = { 
+        ...search, 
+        last_run_at: new Date().toISOString(),
+        ...diagnostics,
+      };
+      await callSheetsApi('update', SHEETS.SAVED_SEARCHES, updated, search._rowIndex);
+    }
+  },
 };
 
 // Parse saved search from sheet row
@@ -2132,6 +2152,12 @@ function parseSavedSearch(row: any): SavedSearch {
     last_run_at: row.last_run_at || '',
     notes: row.notes || '',
     created_at: row.created_at || '',
+    // Diagnostics
+    last_run_status: row.last_run_status || undefined,
+    last_http_status: row.last_http_status ? parseInt(row.last_http_status) : undefined,
+    last_listings_found: row.last_listings_found ? parseInt(row.last_listings_found) : undefined,
+    last_listings_upserted: row.last_listings_upserted ? parseInt(row.last_listings_upserted) : undefined,
+    last_error_message: row.last_error_message || undefined,
     _rowIndex: row._rowIndex,
   };
 }

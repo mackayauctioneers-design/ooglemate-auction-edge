@@ -127,7 +127,10 @@ const SHEET_HEADERS: Record<string, string[]> = {
   // Saved Searches - admin-managed search URLs for automated ingestion
   'Saved_Searches': [
     'search_id', 'source_site', 'label', 'search_url', 'refresh_frequency_hours', 
-    'max_pages', 'enabled', 'last_run_at', 'notes', 'created_at'
+    'max_pages', 'enabled', 'last_run_at', 'notes', 'created_at',
+    // Run diagnostics
+    'last_run_status', 'last_http_status', 'last_listings_found', 
+    'last_listings_upserted', 'last_error_message'
   ],
 };
 

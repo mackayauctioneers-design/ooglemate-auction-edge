@@ -16,6 +16,14 @@ interface ParsedListing {
   lot_id?: string;
 }
 
+interface RunLog {
+  fetchedUrl: string;
+  httpStatus: number;
+  responseSize: number;
+  htmlPreview: string;
+  listingUrlsSample: string[];
+}
+
 interface RunResult {
   success: boolean;
   searchId: string;
@@ -24,6 +32,10 @@ interface RunResult {
   added: number;
   updated: number;
   error?: string;
+  // Diagnostics
+  httpStatus?: number;
+  listingsFound: number;
+  runLog: RunLog;
 }
 
 // Simple HTML entity decoder
@@ -41,6 +53,23 @@ function decodeHtmlEntities(text: string): string {
 // Extract text content from HTML (strip tags)
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Sanitize HTML for preview (remove scripts, styles, etc)
+function sanitizeHtmlPreview(html: string, maxLength: number = 300): string {
+  // Remove script and style tags with content
+  let clean = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  if (clean.length > maxLength) {
+    clean = clean.substring(0, maxLength) + '...';
+  }
+  
+  return clean || '(empty response)';
 }
 
 // Extract year from text (4-digit number between 1990-2030)
@@ -265,8 +294,8 @@ function parseGenericListings(html: string, baseUrl: string): ParsedListing[] {
   return listings;
 }
 
-// Fetch a page with timeout
-async function fetchPage(url: string, timeoutMs = 10000): Promise<string | null> {
+// Fetch a page with timeout - now returns status and body
+async function fetchPage(url: string, timeoutMs = 10000): Promise<{ status: number; body: string | null; redirected: boolean }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
@@ -283,18 +312,18 @@ async function fetchPage(url: string, timeoutMs = 10000): Promise<string | null>
     
     clearTimeout(timeoutId);
     
-    if (!response.ok) {
-      console.log(`Fetch failed with status: ${response.status}`);
-      return null;
-    }
-    
     const text = await response.text();
-    console.log(`Fetched ${text.length} bytes`);
-    return text;
+    console.log(`Fetched ${text.length} bytes, status: ${response.status}`);
+    
+    return {
+      status: response.status,
+      body: response.ok ? text : null,
+      redirected: response.redirected,
+    };
   } catch (error) {
     clearTimeout(timeoutId);
     console.error(`Fetch error: ${error}`);
-    return null;
+    return { status: 0, body: null, redirected: false };
   }
 }
 
@@ -340,7 +369,18 @@ serve(async (req) => {
     
     if (!searchUrl) {
       return new Response(
-        JSON.stringify({ success: false, error: 'No search URL provided' }),
+        JSON.stringify({ 
+          success: false, 
+          error: 'No search URL provided',
+          listingsFound: 0,
+          runLog: {
+            fetchedUrl: '',
+            httpStatus: 0,
+            responseSize: 0,
+            htmlPreview: 'No URL provided',
+            listingUrlsSample: [],
+          }
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -350,10 +390,35 @@ serve(async (req) => {
     let pagesProcessed = 0;
     const maxPagesToFetch = maxPages || 2;
     
+    // Track diagnostics from first page fetch
+    let firstFetchStatus = 0;
+    let firstFetchSize = 0;
+    let firstFetchHtmlPreview = '';
+    let wasRedirected = false;
+    
     while (pagesProcessed < maxPagesToFetch) {
-      const html = await fetchPage(currentUrl);
+      const fetchResult = await fetchPage(currentUrl);
       
-      if (!html) {
+      // Store first page diagnostics
+      if (pagesProcessed === 0) {
+        firstFetchStatus = fetchResult.status;
+        firstFetchSize = fetchResult.body?.length || 0;
+        wasRedirected = fetchResult.redirected;
+        
+        if (fetchResult.body) {
+          firstFetchHtmlPreview = sanitizeHtmlPreview(fetchResult.body);
+        } else if (fetchResult.redirected) {
+          firstFetchHtmlPreview = 'blocked/redirected';
+        } else if (fetchResult.status === 403) {
+          firstFetchHtmlPreview = 'blocked (403 Forbidden)';
+        } else if (fetchResult.status === 404) {
+          firstFetchHtmlPreview = 'not found (404)';
+        } else {
+          firstFetchHtmlPreview = `fetch failed (status: ${fetchResult.status})`;
+        }
+      }
+      
+      if (!fetchResult.body) {
         console.log(`Failed to fetch page ${pagesProcessed + 1}, stopping`);
         break;
       }
@@ -361,11 +426,11 @@ serve(async (req) => {
       // Parse based on source site
       let pageListings: ParsedListing[];
       if (sourceSite === 'Pickles') {
-        pageListings = parsePicklesListings(html, currentUrl);
+        pageListings = parsePicklesListings(fetchResult.body, currentUrl);
       } else if (sourceSite === 'Manheim') {
-        pageListings = parseManheimListings(html, currentUrl);
+        pageListings = parseManheimListings(fetchResult.body, currentUrl);
       } else {
-        pageListings = parseGenericListings(html, currentUrl);
+        pageListings = parseGenericListings(fetchResult.body, currentUrl);
       }
       
       console.log(`Page ${pagesProcessed + 1}: Found ${pageListings.length} listings`);
@@ -399,8 +464,8 @@ serve(async (req) => {
       
       // Try to find next page link
       if (pagesProcessed < maxPagesToFetch) {
-        const nextPageMatch = html.match(/href="([^"]*(?:page=|p=|offset=)[^"]*)"/i) ||
-                              html.match(/<a[^>]*class="[^"]*next[^"]*"[^>]*href="([^"]*)"/i);
+        const nextPageMatch = fetchResult.body.match(/href="([^"]*(?:page=|p=|offset=)[^"]*)"/i) ||
+                              fetchResult.body.match(/<a[^>]*class="[^"]*next[^"]*"[^>]*href="([^"]*)"/i);
         
         if (nextPageMatch) {
           let nextUrl = nextPageMatch[1];
@@ -428,13 +493,29 @@ serve(async (req) => {
     
     console.log(`Total unique listings found: ${allListings.length}`);
     
+    // Build run log
+    const runLog: RunLog = {
+      fetchedUrl: searchUrl,
+      httpStatus: firstFetchStatus,
+      responseSize: firstFetchSize,
+      htmlPreview: firstFetchHtmlPreview,
+      listingUrlsSample: allListings.slice(0, 10).map(l => l.listing_url),
+    };
+    
+    // Determine success based on whether we got any data
+    const success = firstFetchStatus === 200 || allListings.length > 0;
+    
     const result: RunResult = {
-      success: true,
+      success,
       searchId,
       label,
       listings: allListings,
       added: 0,
       updated: 0,
+      httpStatus: firstFetchStatus,
+      listingsFound: allListings.length,
+      runLog,
+      error: success ? undefined : (wasRedirected ? 'Page redirected (likely blocked)' : `HTTP ${firstFetchStatus}`),
     };
     
     return new Response(
@@ -444,13 +525,23 @@ serve(async (req) => {
     
   } catch (error) {
     console.error('Error running saved search:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
         listings: [],
         added: 0,
         updated: 0,
+        httpStatus: 0,
+        listingsFound: 0,
+        runLog: {
+          fetchedUrl: '',
+          httpStatus: 0,
+          responseSize: 0,
+          htmlPreview: `Error: ${errorMessage}`,
+          listingUrlsSample: [],
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

@@ -38,10 +38,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { googleSheetsService } from '@/services/googleSheetsService';
 import { supabase } from '@/integrations/supabase/client';
-import { SavedSearch, AuctionLot } from '@/types';
-import { Plus, Pencil, Trash2, Play, Loader2, ExternalLink, Clock, RefreshCw, PlayCircle, AlertCircle } from 'lucide-react';
+import { SavedSearch, AuctionLot, SavedSearchRunLog } from '@/types';
+import { Plus, Pencil, Trash2, Play, Loader2, ExternalLink, Clock, RefreshCw, PlayCircle, AlertCircle, CheckCircle2, XCircle, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -58,6 +66,11 @@ export default function SavedSearchesPage() {
   const [lastRunError, setLastRunError] = useState<Record<string, string>>({});
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [searchToDelete, setSearchToDelete] = useState<SavedSearch | null>(null);
+  
+  // Run log drawer state
+  const [runLogDrawerOpen, setRunLogDrawerOpen] = useState(false);
+  const [selectedRunLog, setSelectedRunLog] = useState<SavedSearchRunLog | null>(null);
+  const [selectedSearchLabel, setSelectedSearchLabel] = useState('');
   
   // Form state
   const [formData, setFormData] = useState({
@@ -194,7 +207,7 @@ export default function SavedSearchesPage() {
     }
   }
 
-  async function runSearchNow(search: SavedSearch): Promise<{ added: number; updated: number; error?: string }> {
+  async function runSearchNow(search: SavedSearch): Promise<{ added: number; updated: number; error?: string; runLog?: SavedSearchRunLog }> {
     setRunningSearchId(search.search_id);
     setLastRunError(prev => ({ ...prev, [search.search_id]: '' }));
     
@@ -212,10 +225,6 @@ export default function SavedSearchesPage() {
       
       if (error) {
         throw new Error(error.message || 'Failed to run search');
-      }
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Search returned no results');
       }
       
       // Convert parsed listings to AuctionLot format and upsert
@@ -248,8 +257,39 @@ export default function SavedSearchesPage() {
         updated = upsertResult.updated;
       }
       
-      // Update last_run_at
-      await googleSheetsService.updateSavedSearchLastRun(search.search_id);
+      // Update search with diagnostics
+      const diagnostics: {
+        last_run_status: 'success' | 'failed';
+        last_http_status: number;
+        last_listings_found: number;
+        last_listings_upserted: number;
+        last_error_message: string;
+      } = {
+        last_run_status: result.success ? 'success' : 'failed',
+        last_http_status: result.httpStatus || 0,
+        last_listings_found: result.listingsFound || 0,
+        last_listings_upserted: added + updated,
+        last_error_message: result.error || '',
+      };
+      
+      await googleSheetsService.updateSavedSearchDiagnostics(search.search_id, diagnostics);
+      
+      // Build run log
+      const runLog: SavedSearchRunLog = result.runLog || {
+        searchId: search.search_id,
+        fetchedUrl: search.search_url,
+        httpStatus: result.httpStatus || 0,
+        responseSize: 0,
+        htmlPreview: '',
+        listingUrlsSample: [],
+      };
+      
+      if (!result.success) {
+        const errorMessage = result.error || 'Search returned no results';
+        setLastRunError(prev => ({ ...prev, [search.search_id]: errorMessage }));
+        toast.error(`Run failed: ${errorMessage}`);
+        return { added: 0, updated: 0, error: errorMessage, runLog };
+      }
       
       if (added > 0 || updated > 0) {
         toast.success(`Saved Search ran: ${added} listings added, ${updated} updated`);
@@ -260,12 +300,33 @@ export default function SavedSearchesPage() {
       }
       
       await loadSearches();
-      return { added, updated };
+      return { added, updated, runLog };
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to run search:', error);
       setLastRunError(prev => ({ ...prev, [search.search_id]: errorMessage }));
+      
+      // Update diagnostics with error
+      try {
+        const errorDiagnostics: {
+          last_run_status: 'success' | 'failed';
+          last_http_status: number;
+          last_listings_found: number;
+          last_listings_upserted: number;
+          last_error_message: string;
+        } = {
+          last_run_status: 'failed',
+          last_http_status: 0,
+          last_listings_found: 0,
+          last_listings_upserted: 0,
+          last_error_message: errorMessage,
+        };
+        await googleSheetsService.updateSavedSearchDiagnostics(search.search_id, errorDiagnostics);
+      } catch (e) {
+        console.error('Failed to update diagnostics:', e);
+      }
+      
       toast.error(`Run failed: ${errorMessage}`);
       return { added: 0, updated: 0, error: errorMessage };
     } finally {
@@ -325,9 +386,58 @@ export default function SavedSearchesPage() {
     }
   }
 
+  function openRunLogDrawer(search: SavedSearch) {
+    // Build run log from last run data
+    const runLog: SavedSearchRunLog = {
+      searchId: search.search_id,
+      fetchedUrl: search.search_url,
+      httpStatus: search.last_http_status || 0,
+      responseSize: 0,
+      htmlPreview: search.last_run_status === 'failed' 
+        ? (search.last_error_message || 'No details available')
+        : 'Run log only available immediately after execution',
+      listingUrlsSample: [],
+    };
+    
+    setSelectedRunLog(runLog);
+    setSelectedSearchLabel(search.label);
+    setRunLogDrawerOpen(true);
+  }
+
+  function getStatusBadge(search: SavedSearch) {
+    if (!search.last_run_status) {
+      return <Badge variant="outline" className="text-muted-foreground">Not run</Badge>;
+    }
+    
+    if (search.last_run_status === 'success') {
+      return (
+        <Badge variant="default" className="bg-green-600/10 text-green-600 hover:bg-green-600/20">
+          <CheckCircle2 className="h-3 w-3 mr-1" />
+          Success
+        </Badge>
+      );
+    }
+    
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger>
+            <Badge variant="destructive" className="bg-destructive/10 text-destructive hover:bg-destructive/20">
+              <XCircle className="h-3 w-3 mr-1" />
+              Failed
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="max-w-xs">{search.last_error_message || 'Unknown error'}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
   return (
     <AppLayout>
-      <div className="container max-w-6xl py-8 space-y-6">
+      <div className="container max-w-7xl py-8 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -361,7 +471,7 @@ export default function SavedSearchesPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Total Searches</CardDescription>
@@ -378,9 +488,17 @@ export default function SavedSearchesPage() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription>Disabled</CardDescription>
-              <CardTitle className="text-3xl text-muted-foreground">
-                {searches.filter(s => s.enabled === 'N').length}
+              <CardDescription>Last Run Success</CardDescription>
+              <CardTitle className="text-3xl text-green-600">
+                {searches.filter(s => s.last_run_status === 'success').length}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Last Run Failed</CardDescription>
+              <CardTitle className="text-3xl text-destructive">
+                {searches.filter(s => s.last_run_status === 'failed').length}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -402,117 +520,161 @@ export default function SavedSearchesPage() {
                 </Button>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Label</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Frequency</TableHead>
-                    <TableHead>Max Pages</TableHead>
-                    <TableHead>Last Run</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {searches.map((search) => (
-                    <TableRow key={search.search_id}>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <span className="font-medium">{search.label}</span>
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <a
-                              href={search.search_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="hover:text-primary flex items-center gap-1 truncate max-w-[200px]"
-                            >
-                              {search.search_url.length > 40 
-                                ? search.search_url.substring(0, 40) + '...' 
-                                : search.search_url}
-                              <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                            </a>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={
-                          search.source_site === 'Pickles' ? 'default' :
-                          search.source_site === 'Manheim' ? 'secondary' : 'outline'
-                        }>
-                          {search.source_site}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm">
-                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                          {search.refresh_frequency_hours}h
-                        </div>
-                      </TableCell>
-                      <TableCell>{search.max_pages}</TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {formatLastRun(search.last_run_at)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Switch
-                          checked={search.enabled === 'Y'}
-                          onCheckedChange={() => toggleEnabled(search)}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="iconSm"
-                                  onClick={() => runSearchNow(search)}
-                                  disabled={runningSearchId === search.search_id || runningAll}
-                                  className={lastRunError[search.search_id] ? 'text-destructive' : ''}
-                                >
-                                  {runningSearchId === search.search_id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : lastRunError[search.search_id] ? (
-                                    <AlertCircle className="h-4 w-4" />
-                                  ) : (
-                                    <Play className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {lastRunError[search.search_id] 
-                                  ? `Run failed: ${lastRunError[search.search_id]}`
-                                  : 'Run now'
-                                }
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                          <Button
-                            variant="ghost"
-                            size="iconSm"
-                            onClick={() => openEditDialog(search)}
-                            title="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="iconSm"
-                            onClick={() => confirmDelete(search)}
-                            title="Delete"
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Label</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead>Last Run</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-center">HTTP</TableHead>
+                      <TableHead className="text-center">Found</TableHead>
+                      <TableHead className="text-center">Upserted</TableHead>
+                      <TableHead>Enabled</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {searches.map((search) => (
+                      <TableRow key={search.search_id}>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <span className="font-medium">{search.label}</span>
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <a
+                                href={search.search_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:text-primary flex items-center gap-1 truncate max-w-[200px]"
+                              >
+                                {search.search_url.length > 40 
+                                  ? search.search_url.substring(0, 40) + '...' 
+                                  : search.search_url}
+                                <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                              </a>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={
+                            search.source_site === 'Pickles' ? 'default' :
+                            search.source_site === 'Manheim' ? 'secondary' : 'outline'
+                          }>
+                            {search.source_site}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground">
+                            {formatLastRun(search.last_run_at)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {getStatusBadge(search)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {search.last_http_status ? (
+                            <Badge 
+                              variant="outline" 
+                              className={
+                                search.last_http_status === 200 ? 'text-green-600 border-green-600/30' :
+                                search.last_http_status >= 400 ? 'text-destructive border-destructive/30' : ''
+                              }
+                            >
+                              {search.last_http_status}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {search.last_listings_found !== undefined ? (
+                            <span className="font-medium">{search.last_listings_found}</span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {search.last_listings_upserted !== undefined ? (
+                            <span className="font-medium">{search.last_listings_upserted}</span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={search.enabled === 'Y'}
+                            onCheckedChange={() => toggleEnabled(search)}
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="iconSm"
+                                    onClick={() => runSearchNow(search)}
+                                    disabled={runningSearchId === search.search_id || runningAll}
+                                    className={lastRunError[search.search_id] ? 'text-destructive' : ''}
+                                  >
+                                    {runningSearchId === search.search_id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : lastRunError[search.search_id] ? (
+                                      <AlertCircle className="h-4 w-4" />
+                                    ) : (
+                                      <Play className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {lastRunError[search.search_id] 
+                                    ? `Run failed: ${lastRunError[search.search_id]}`
+                                    : 'Run now'
+                                  }
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="iconSm"
+                                    onClick={() => openRunLogDrawer(search)}
+                                    disabled={!search.last_run_at}
+                                  >
+                                    <FileText className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>View run log</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <Button
+                              variant="ghost"
+                              size="iconSm"
+                              onClick={() => openEditDialog(search)}
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="iconSm"
+                              onClick={() => confirmDelete(search)}
+                              title="Delete"
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -537,6 +699,9 @@ export default function SavedSearchesPage() {
             </p>
             <p>
               • If a page cannot be fetched (blocked/timeout), the search fails silently - use Manual Add Listing instead.
+            </p>
+            <p>
+              • <strong>Run diagnostics</strong> show HTTP status, listings found, and upserted count for each run.
             </p>
           </CardContent>
         </Card>
@@ -657,6 +822,104 @@ export default function SavedSearchesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Run Log Drawer */}
+      <Sheet open={runLogDrawerOpen} onOpenChange={setRunLogDrawerOpen}>
+        <SheetContent className="sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Run Log: {selectedSearchLabel}</SheetTitle>
+            <SheetDescription>
+              Diagnostic information from the last search execution
+            </SheetDescription>
+          </SheetHeader>
+          
+          {selectedRunLog && (
+            <ScrollArea className="h-[calc(100vh-10rem)] mt-6">
+              <div className="space-y-6 pr-4">
+                {/* Fetched URL */}
+                <div>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">Fetched URL</Label>
+                  <div className="mt-1 p-3 bg-muted rounded-md">
+                    <a 
+                      href={selectedRunLog.fetchedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline break-all"
+                    >
+                      {selectedRunLog.fetchedUrl}
+                    </a>
+                  </div>
+                </div>
+
+                {/* HTTP Status */}
+                <div>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">HTTP Status</Label>
+                  <div className="mt-1">
+                    <Badge 
+                      variant="outline" 
+                      className={
+                        selectedRunLog.httpStatus === 200 ? 'text-green-600 border-green-600/30' :
+                        selectedRunLog.httpStatus >= 400 ? 'text-destructive border-destructive/30' :
+                        selectedRunLog.httpStatus === 0 ? 'text-muted-foreground' : ''
+                      }
+                    >
+                      {selectedRunLog.httpStatus || 'No response'}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Response Size */}
+                <div>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">Response Size</Label>
+                  <div className="mt-1 text-sm">
+                    {selectedRunLog.responseSize > 0 
+                      ? `${(selectedRunLog.responseSize / 1024).toFixed(1)} KB`
+                      : 'Unknown'
+                    }
+                  </div>
+                </div>
+
+                {/* HTML Preview */}
+                <div>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">HTML Preview (first 300 chars)</Label>
+                  <div className="mt-1 p-3 bg-muted rounded-md">
+                    <pre className="text-xs whitespace-pre-wrap break-all font-mono">
+                      {selectedRunLog.htmlPreview || '(no content)'}
+                    </pre>
+                  </div>
+                </div>
+
+                {/* Listing URLs Sample */}
+                <div>
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Parsed Listing URLs (first 10)
+                  </Label>
+                  <div className="mt-1 space-y-1">
+                    {selectedRunLog.listingUrlsSample.length > 0 ? (
+                      selectedRunLog.listingUrlsSample.map((url, i) => (
+                        <div key={i} className="p-2 bg-muted rounded text-xs">
+                          <a 
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline break-all"
+                          >
+                            {url}
+                          </a>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No listing URLs available. Run the search to capture this data.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
+          )}
+        </SheetContent>
+      </Sheet>
     </AppLayout>
   );
 }
