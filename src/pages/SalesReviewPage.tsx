@@ -23,7 +23,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Fingerprint, RefreshCw, Filter, Check, AlertTriangle, XCircle, 
-  TrendingUp, TrendingDown, Tag, Zap, Ban, BarChart3, UserCircle
+  TrendingUp, TrendingDown, Tag, Zap, Ban, BarChart3, UserCircle,
+  Play, Eye, Wand2, FileText
 } from 'lucide-react';
 import {
   Dialog,
@@ -56,6 +57,25 @@ export default function SalesReviewPage() {
   const [generating, setGenerating] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncPreview, setSyncPreview] = useState<{
+    eligible: number;
+    skipped: number;
+    skipReasons: Record<string, number>;
+  } | null>(null);
+  const [syncLogDialogOpen, setSyncLogDialogOpen] = useState(false);
+  const [syncLogs, setSyncLogs] = useState<Array<{
+    synclog_id: string;
+    run_at: string;
+    mode: string;
+    rows_scanned: number;
+    rows_eligible: number;
+    rows_created: number;
+    rows_updated: number;
+    rows_skipped: number;
+    skip_reason_counts: string;
+    errors: string;
+  }>>([]);
 
   // Tag dialog
   const [tagDialogOpen, setTagDialogOpen] = useState(false);
@@ -459,6 +479,103 @@ export default function SalesReviewPage() {
     }
   };
 
+  // Preview sync (dry run)
+  const handlePreviewSync = async () => {
+    setSyncing(true);
+    try {
+      const result = await dataService.syncFingerprintsFromSales({
+        dryRun: true,
+        defaultDealerName: currentUser?.dealer_name,
+      });
+      setSyncPreview({
+        eligible: result.eligible,
+        skipped: result.skipped,
+        skipReasons: result.skipReasons,
+      });
+      toast({
+        title: `Preview: ${result.eligible} eligible, ${result.skipped} skipped`,
+        description: Object.entries(result.skipReasons)
+          .map(([reason, count]) => `${reason}: ${count}`)
+          .slice(0, 3)
+          .join(', '),
+      });
+    } catch (error) {
+      toast({ title: 'Error previewing sync', variant: 'destructive' });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Run full sync
+  const handleRunSync = async () => {
+    setSyncing(true);
+    try {
+      const result = await dataService.syncFingerprintsFromSales({
+        dryRun: false,
+        defaultDealerName: currentUser?.dealer_name,
+      });
+      
+      const totalGenerated = result.created + result.updated;
+      
+      if (result.errors.length > 0) {
+        toast({
+          title: `${totalGenerated} fingerprints synced, ${result.errors.length} errors`,
+          description: (
+            <Button 
+              variant="link" 
+              className="p-0 h-auto text-primary" 
+              onClick={() => handleViewSyncLogs()}
+            >
+              View Sync Log
+            </Button>
+          ),
+        });
+      } else {
+        toast({
+          title: `${totalGenerated} fingerprints synced`,
+          description: `Created: ${result.created}, Updated: ${result.updated}, Skipped: ${result.skipped}`,
+        });
+      }
+      
+      setSyncPreview(null);
+      loadData();
+    } catch (error) {
+      toast({ title: 'Error running sync', variant: 'destructive' });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // View sync logs
+  const handleViewSyncLogs = async () => {
+    try {
+      const logs = await dataService.getSyncLogs(10);
+      setSyncLogs(logs);
+      setSyncLogDialogOpen(true);
+    } catch (error) {
+      toast({ title: 'Error loading sync logs', variant: 'destructive' });
+    }
+  };
+
+  // Bulk extract variants
+  const handleBulkExtractVariants = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkUpdating(true);
+    try {
+      const result = await dataService.bulkExtractVariants(Array.from(selectedIds));
+      toast({
+        title: `Extracted ${result.updated} variants`,
+        description: result.failed > 0 ? `${result.failed} failed (no pattern match)` : undefined,
+      });
+      setSelectedIds(new Set());
+      loadData();
+    } catch (error) {
+      toast({ title: 'Error extracting variants', variant: 'destructive' });
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
@@ -468,6 +585,21 @@ export default function SalesReviewPage() {
             <p className="text-muted-foreground">Store all, Activate selected • Review imports and generate fingerprints</p>
           </div>
           <div className="flex gap-2 flex-wrap">
+            {currentUser?.role === 'admin' && (
+              <>
+                <Button onClick={handlePreviewSync} disabled={syncing} variant="outline">
+                  <Eye className={`h-4 w-4 mr-2 ${syncing ? 'animate-pulse' : ''}`} />
+                  Preview Sync
+                </Button>
+                <Button onClick={handleRunSync} disabled={syncing}>
+                  <Play className={`h-4 w-4 mr-2 ${syncing ? 'animate-pulse' : ''}`} />
+                  {syncing ? 'Syncing...' : 'Sync → Fingerprints'}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={handleViewSyncLogs} title="View Sync Logs">
+                  <FileText className="h-4 w-4" />
+                </Button>
+              </>
+            )}
             {activatedWithoutFingerprint > 0 && (
               <Button onClick={handleBackfillFingerprints} disabled={backfilling}>
                 <Fingerprint className={`h-4 w-4 mr-2 ${backfilling ? 'animate-pulse' : ''}`} />
@@ -522,6 +654,32 @@ export default function SalesReviewPage() {
           )}
         </div>
 
+        {/* Sync Preview Banner */}
+        {syncPreview && (
+          <Card className="border-amber-500/50 bg-amber-500/10">
+            <CardContent className="py-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Sync Preview: {syncPreview.eligible} eligible, {syncPreview.skipped} skipped</p>
+                  <p className="text-xs text-muted-foreground">
+                    {Object.entries(syncPreview.skipReasons)
+                      .map(([reason, count]) => `${reason.replace(/_/g, ' ')}: ${count}`)
+                      .join(' • ')}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={handleRunSync} disabled={syncing}>
+                    <Play className="h-3 w-3 mr-1" /> Run Sync
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSyncPreview(null)}>
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Bulk Actions */}
         {selectedIds.size > 0 && (
           <Card className="border-primary/50 bg-primary/5">
@@ -541,6 +699,9 @@ export default function SalesReviewPage() {
                 setDealerDialogOpen(true);
               }} disabled={bulkUpdating}>
                 <UserCircle className="h-3 w-3 mr-1" /> Set Dealer
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleBulkExtractVariants} disabled={bulkUpdating}>
+                <Wand2 className="h-3 w-3 mr-1" /> Extract Variant
               </Button>
               <Button 
                 size="sm"
@@ -893,6 +1054,50 @@ export default function SalesReviewPage() {
               <Button onClick={bulkSetDealerName} disabled={!newDealerName.trim() || bulkUpdating}>
                 Set Dealer
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Sync Log Dialog */}
+        <Dialog open={syncLogDialogOpen} onOpenChange={setSyncLogDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Fingerprint Sync Log</DialogTitle>
+            </DialogHeader>
+            <ScrollArea className="h-[400px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Mode</TableHead>
+                    <TableHead className="text-right">Scanned</TableHead>
+                    <TableHead className="text-right">Eligible</TableHead>
+                    <TableHead className="text-right">Created</TableHead>
+                    <TableHead className="text-right">Skipped</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {syncLogs.map(log => (
+                    <TableRow key={log.synclog_id}>
+                      <TableCell className="text-xs">
+                        {new Date(log.run_at).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={log.mode === 'dry_run' ? 'outline' : 'default'}>
+                          {log.mode === 'dry_run' ? 'Preview' : 'Full'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{log.rows_scanned}</TableCell>
+                      <TableCell className="text-right">{log.rows_eligible}</TableCell>
+                      <TableCell className="text-right text-emerald-400">{log.rows_created}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{log.rows_skipped}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSyncLogDialogOpen(false)}>Close</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

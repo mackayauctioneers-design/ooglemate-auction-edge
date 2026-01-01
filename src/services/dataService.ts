@@ -312,4 +312,46 @@ export const dataService = {
     }
     throw new Error('Mock data does not support backfilling fingerprints');
   },
+
+  // Comprehensive sync with audit logging
+  syncFingerprintsFromSales: async (options?: {
+    dryRun?: boolean;
+    defaultDealerName?: string;
+    saleIds?: string[];
+  }): Promise<{
+    created: number;
+    updated: number;
+    skipped: number;
+    eligible: number;
+    scanned: number;
+    skipReasons: Record<string, number>;
+    errors: string[];
+    syncLogId: string;
+  }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.syncFingerprintsFromSales(options);
+    }
+    throw new Error('Mock data does not support fingerprint sync');
+  },
+
+  // Get sync logs
+  getSyncLogs: async (limit?: number) => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getSyncLogs(limit);
+    }
+    return [];
+  },
+
+  // Bulk extract variants
+  bulkExtractVariants: async (saleIds: string[]): Promise<{ updated: number; failed: number }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.bulkExtractVariants(saleIds);
+    }
+    throw new Error('Mock data does not support variant extraction');
+  },
+
+  // Extract variant helper (for single use)
+  extractVariant: (text: string): string => {
+    return googleSheetsService.extractVariant(text);
+  },
 };

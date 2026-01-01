@@ -10,6 +10,7 @@ import {
   AppSettings,
   SalesImportRaw,
   SalesNormalised,
+  FingerprintSyncLog,
   calculateConfidenceScore,
   determineAction,
   calculateLotConfidenceScore,
@@ -28,6 +29,7 @@ const SHEETS = {
   SETTINGS: 'Settings',
   SALES_IMPORTS_RAW: 'Sales_Imports_Raw',
   SALES_NORMALISED: 'Sales_Normalised',
+  FINGERPRINT_SYNC_LOG: 'Fingerprint_Sync_Log',
 };
 
 // Helper to call the edge function
@@ -1466,5 +1468,361 @@ export const googleSheetsService = {
     // Use existing function with the sale IDs
     const saleIds = needsFingerprint.map(s => s.sale_id);
     return googleSheetsService.generateFingerprintsFromNormalised(saleIds);
+  },
+
+  // ========== COMPREHENSIVE FINGERPRINT SYNC ==========
+
+  // Extract variant from description/variant_raw using common patterns
+  extractVariant: (text: string): string => {
+    if (!text) return '';
+    
+    // Common variant patterns to extract
+    const patterns = [
+      // Toyota/Ford/Mazda variants
+      /\b(SR5|GXL|VX|GX|SX|ZX|GLX|GLS|GTI|GT|VTI|VTi|LTZ|LT|LS|RS|SS|HSV|ST|STI|XLT|FX4|Wildtrak|Raptor|Laramie|Lariat|Sport|Limited|Platinum|Executive|Prestige|Highline|Sportline|R-Line|S-Line|M Sport|AMG|Type R|Nismo|TRD|GR)\b/i,
+      // Trim levels
+      /\b(Premium|Luxury|Elite|Base|Standard|Touring|Adventure|Rugged|Rogue|Urban|Country)\b/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        return match[1].toUpperCase();
+      }
+    }
+    
+    return '';
+  },
+
+  // Comprehensive sync with audit logging
+  syncFingerprintsFromSales: async (options: {
+    dryRun?: boolean;
+    defaultDealerName?: string;
+    saleIds?: string[]; // Optional - sync only specific sales
+  } = {}): Promise<{
+    created: number;
+    updated: number;
+    skipped: number;
+    eligible: number;
+    scanned: number;
+    skipReasons: Record<string, number>;
+    errors: string[];
+    syncLogId: string;
+  }> => {
+    const { dryRun = false, defaultDealerName, saleIds } = options;
+    
+    // Load all sales
+    const allSales = await googleSheetsService.getSalesNormalised();
+    const existingFingerprints = await googleSheetsService.getFingerprints();
+    
+    // Filter to specific sales if provided
+    const salesToProcess = saleIds 
+      ? allSales.filter(s => saleIds.includes(s.sale_id))
+      : allSales;
+    
+    const scanned = salesToProcess.length;
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    const skipReasons: Record<string, number> = {};
+    const errors: string[] = [];
+    const eligible: SalesNormalised[] = [];
+    
+    const addSkipReason = (reason: string) => {
+      skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+      skipped++;
+    };
+    
+    // Eligibility check for each row
+    for (const sale of salesToProcess) {
+      // Rule 1: activate = 'Y' AND do_not_replicate != 'Y'
+      if (sale.activate !== 'Y') {
+        addSkipReason('not_activated');
+        continue;
+      }
+      if (sale.do_not_replicate === 'Y') {
+        addSkipReason('do_not_replicate');
+        continue;
+      }
+      
+      // Rule 2: dealer_name present (can default)
+      let dealerName = sale.dealer_name;
+      if (!dealerName && defaultDealerName) {
+        dealerName = defaultDealerName;
+      }
+      if (!dealerName) {
+        addSkipReason('missing_dealer_name');
+        continue;
+      }
+      
+      // Rule 3: make present
+      if (!sale.make) {
+        addSkipReason('missing_make');
+        continue;
+      }
+      
+      // Rule 4: model present
+      if (!sale.model) {
+        addSkipReason('missing_model');
+        continue;
+      }
+      
+      // Rule 5: year present
+      if (!sale.year) {
+        addSkipReason('missing_year');
+        continue;
+      }
+      
+      // Rule 6: variant_normalised present (try fallback)
+      let variantNormalised = sale.variant_normalised;
+      if (!variantNormalised) {
+        // Try to extract from variant_raw or description
+        variantNormalised = googleSheetsService.extractVariant(sale.variant_raw || '');
+      }
+      if (!variantNormalised) {
+        addSkipReason('missing_variant');
+        continue;
+      }
+      
+      // This sale is eligible
+      eligible.push({
+        ...sale,
+        dealer_name: dealerName,
+        variant_normalised: variantNormalised,
+      });
+    }
+    
+    // If dry run, return early with counts
+    if (dryRun) {
+      const syncLogId = `SYNC-${Date.now()}-DRY`;
+      
+      // Write sync log even for dry run
+      const syncLog: FingerprintSyncLog = {
+        synclog_id: syncLogId,
+        run_at: new Date().toISOString(),
+        mode: 'dry_run',
+        rows_scanned: scanned,
+        rows_eligible: eligible.length,
+        rows_created: 0,
+        rows_updated: 0,
+        rows_skipped: skipped,
+        skip_reason_counts: JSON.stringify(skipReasons),
+        errors: JSON.stringify([]),
+      };
+      
+      try {
+        await callSheetsApi('append', SHEETS.FINGERPRINT_SYNC_LOG, syncLog);
+      } catch (e) {
+        console.error('Failed to write sync log:', e);
+      }
+      
+      return {
+        created: 0,
+        updated: 0,
+        skipped,
+        eligible: eligible.length,
+        scanned,
+        skipReasons,
+        errors: [],
+        syncLogId,
+      };
+    }
+    
+    // Build fingerprint unique key index for idempotent upsert
+    // Key: dealer_name + make + model + variant_normalised + year + fingerprint_type
+    const fingerprintIndex = new Map<string, SaleFingerprint>();
+    existingFingerprints.forEach(fp => {
+      const key = [
+        fp.dealer_name,
+        fp.make,
+        fp.model,
+        fp.variant_normalised,
+        String(fp.year),
+        fp.fingerprint_type || 'full',
+      ].join('|').toLowerCase();
+      fingerprintIndex.set(key, fp);
+    });
+    
+    // Process eligible sales
+    for (const sale of eligible) {
+      try {
+        // Determine fingerprint type
+        const hasKm = sale.km !== undefined && sale.km !== null && sale.km > 0;
+        const hasFullSpecs = hasKm && sale.engine && sale.drivetrain && sale.transmission;
+        const fingerprintType = hasFullSpecs ? 'full' : 'spec_only';
+        
+        // Build unique key
+        const key = [
+          sale.dealer_name,
+          sale.make,
+          sale.model,
+          sale.variant_normalised,
+          String(sale.year),
+          fingerprintType,
+        ].join('|').toLowerCase();
+        
+        // Check if fingerprint exists
+        const existingFp = fingerprintIndex.get(key);
+        
+        // Calculate expires_at
+        const saleDate = new Date(sale.sale_date || new Date());
+        const expiresAt = new Date(saleDate);
+        expiresAt.setDate(expiresAt.getDate() + 120);
+        const expiresAtStr = expiresAt.toISOString().split('T')[0];
+        
+        // Max km calculation
+        const maxKm = fingerprintType === 'spec_only' ? 999999 : (sale.km || 0) + 15000;
+        
+        if (existingFp) {
+          // Update existing fingerprint - reactivate and update expires_at
+          const updatedFp: SaleFingerprint = {
+            ...existingFp,
+            is_active: 'Y',
+            expires_at: expiresAtStr,
+            source_sale_id: sale.sale_id,
+            source_import_id: sale.import_id,
+          };
+          
+          if (existingFp._rowIndex !== undefined) {
+            await callSheetsApi('update', SHEETS.FINGERPRINTS, updatedFp, existingFp._rowIndex);
+          }
+          updated++;
+        } else {
+          // Create new fingerprint
+          const newFp: SaleFingerprint = {
+            fingerprint_id: `FP-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+            dealer_name: sale.dealer_name,
+            dealer_whatsapp: '',
+            sale_date: sale.sale_date || '',
+            expires_at: expiresAtStr,
+            make: sale.make,
+            model: sale.model,
+            variant_normalised: sale.variant_normalised || '',
+            year: sale.year || 0,
+            sale_km: sale.km || 0,
+            max_km: maxKm,
+            engine: sale.engine || '',
+            drivetrain: sale.drivetrain || '',
+            transmission: sale.transmission || '',
+            shared_opt_in: 'N',
+            is_active: 'Y',
+            fingerprint_type: fingerprintType,
+            source_sale_id: sale.sale_id,
+            source_import_id: sale.import_id,
+          };
+          
+          await callSheetsApi('append', SHEETS.FINGERPRINTS, newFp);
+          
+          // Add to index to prevent duplicates within this sync
+          fingerprintIndex.set(key, newFp);
+          created++;
+        }
+        
+        // Update sales row with fingerprint_generated = Y
+        if (sale._rowIndex !== undefined) {
+          await googleSheetsService.updateSalesNormalised({
+            ...sale,
+            fingerprint_generated: 'Y',
+            notes: fingerprintType === 'spec_only' 
+              ? `${sale.notes || ''} [spec_only]`.trim() 
+              : sale.notes,
+          });
+        }
+      } catch (err) {
+        errors.push(`Sale ${sale.sale_id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+    }
+    
+    // Write sync log
+    const syncLogId = `SYNC-${Date.now()}`;
+    const syncLog: FingerprintSyncLog = {
+      synclog_id: syncLogId,
+      run_at: new Date().toISOString(),
+      mode: 'full',
+      rows_scanned: scanned,
+      rows_eligible: eligible.length,
+      rows_created: created,
+      rows_updated: updated,
+      rows_skipped: skipped,
+      skip_reason_counts: JSON.stringify(skipReasons),
+      errors: JSON.stringify(errors),
+    };
+    
+    try {
+      await callSheetsApi('append', SHEETS.FINGERPRINT_SYNC_LOG, syncLog);
+    } catch (e) {
+      console.error('Failed to write sync log:', e);
+    }
+    
+    return {
+      created,
+      updated,
+      skipped,
+      eligible: eligible.length,
+      scanned,
+      skipReasons,
+      errors,
+      syncLogId,
+    };
+  },
+
+  // Get sync logs for viewing
+  getSyncLogs: async (limit?: number): Promise<FingerprintSyncLog[]> => {
+    try {
+      const response = await callSheetsApi('read', SHEETS.FINGERPRINT_SYNC_LOG);
+      let logs = response.data.map((row: any) => ({
+        synclog_id: row.synclog_id || '',
+        run_at: row.run_at || '',
+        mode: row.mode || 'full',
+        rows_scanned: parseInt(row.rows_scanned) || 0,
+        rows_eligible: parseInt(row.rows_eligible) || 0,
+        rows_created: parseInt(row.rows_created) || 0,
+        rows_updated: parseInt(row.rows_updated) || 0,
+        rows_skipped: parseInt(row.rows_skipped) || 0,
+        skip_reason_counts: row.skip_reason_counts || '{}',
+        errors: row.errors || '[]',
+      }));
+      
+      // Sort by run_at DESC
+      logs.sort((a: FingerprintSyncLog, b: FingerprintSyncLog) => 
+        new Date(b.run_at).getTime() - new Date(a.run_at).getTime()
+      );
+      
+      if (limit) {
+        logs = logs.slice(0, limit);
+      }
+      
+      return logs;
+    } catch {
+      return [];
+    }
+  },
+
+  // Bulk update variant_normalised by extracting from variant_raw
+  bulkExtractVariants: async (saleIds: string[]): Promise<{ updated: number; failed: number }> => {
+    const sales = await googleSheetsService.getSalesNormalised();
+    const toUpdate = sales.filter(s => saleIds.includes(s.sale_id));
+    
+    let updated = 0;
+    let failed = 0;
+    
+    for (const sale of toUpdate) {
+      const extracted = googleSheetsService.extractVariant(sale.variant_raw || '');
+      if (extracted && sale._rowIndex !== undefined) {
+        try {
+          await googleSheetsService.updateSalesNormalised({
+            ...sale,
+            variant_normalised: extracted,
+          });
+          updated++;
+        } catch {
+          failed++;
+        }
+      } else {
+        failed++;
+      }
+    }
+    
+    return { updated, failed };
   },
 };

@@ -98,6 +98,10 @@ const SHEET_HEADERS: Record<string, string[]> = {
     'variant_normalised', 'year', 'sale_km', 'max_km', 'engine', 'drivetrain', 'transmission', 
     'shared_opt_in', 'is_active', 'fingerprint_type', 'source_sale_id', 'source_import_id'
   ],
+  'Fingerprint_Sync_Log': [
+    'synclog_id', 'run_at', 'mode', 'rows_scanned', 'rows_eligible', 'rows_created', 'rows_updated', 
+    'rows_skipped', 'skip_reason_counts', 'errors'
+  ],
 };
 
 // Read data from a sheet (auto-creates if missing, adds headers if empty)
