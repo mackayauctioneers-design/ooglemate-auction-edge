@@ -62,6 +62,7 @@ export default function SalesReviewPage() {
   const [newTag, setNewTag] = useState('');
 
   // Dealer name dialog
+  const [dealers, setDealers] = useState<string[]>([]);
   const [dealerDialogOpen, setDealerDialogOpen] = useState(false);
   const [newDealerName, setNewDealerName] = useState('');
 
@@ -101,7 +102,7 @@ export default function SalesReviewPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [salesData, options] = await Promise.all([
+      const [salesData, options, dealerList] = await Promise.all([
         dataService.getSalesNormalised({
           importId: filters.importId || undefined,
           dealerName: filters.dealerName || undefined,
@@ -112,9 +113,11 @@ export default function SalesReviewPage() {
           dateTo: filters.dateTo || undefined,
         }),
         dataService.getSalesNormalisedFilterOptions(),
+        dataService.getDealers(),
       ]);
       setSales(salesData);
       setFilterOptions(options);
+      setDealers(dealerList.map(d => d.dealer_name));
     } catch (error) {
       toast({ title: 'Error loading data', variant: 'destructive' });
     } finally {
@@ -871,20 +874,16 @@ export default function SalesReviewPage() {
               <DialogTitle>Set Dealer Name for {selectedIds.size} Sales</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
-              <Input
-                placeholder="Dealer name"
-                value={newDealerName}
-                onChange={(e) => setNewDealerName(e.target.value)}
-              />
-              {currentUser?.dealer_name && newDealerName !== currentUser.dealer_name && (
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => setNewDealerName(currentUser.dealer_name)}
-                >
-                  Use current: {currentUser.dealer_name}
-                </Button>
-              )}
+              <Select value={newDealerName} onValueChange={setNewDealerName}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select dealer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {dealers.map(dealer => (
+                    <SelectItem key={dealer} value={dealer}>{dealer}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDealerDialogOpen(false)}>Cancel</Button>
