@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.whatsapp-alerts]
 verify_jwt = false
+
+[functions.run-saved-search]
+verify_jwt = false
