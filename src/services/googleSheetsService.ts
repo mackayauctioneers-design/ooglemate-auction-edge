@@ -1184,7 +1184,7 @@ export const googleSheetsService = {
 
   // ========== SALES IMPORTS (Audit Trail) ==========
 
-  // Append raw import rows (immutable - never delete)
+  // Append raw import rows (immutable - never delete) - uses batch append to avoid rate limits
   appendSalesImportsRaw: async (rows: SalesImportRaw[]): Promise<void> => {
     // Ensure sheet exists
     try {
@@ -1193,9 +1193,9 @@ export const googleSheetsService = {
       await callSheetsApi('create', SHEETS.SALES_IMPORTS_RAW, { headers: SALES_IMPORTS_RAW_HEADERS });
     }
 
-    // Append each row
-    for (const row of rows) {
-      await callSheetsApi('append', SHEETS.SALES_IMPORTS_RAW, row);
+    // Batch append all rows in a single API call to avoid rate limits
+    if (rows.length > 0) {
+      await callSheetsApi('batch_append', SHEETS.SALES_IMPORTS_RAW, rows);
     }
   },
 
@@ -1215,7 +1215,7 @@ export const googleSheetsService = {
 
   // ========== SALES NORMALISED ==========
 
-  // Append normalised sales
+  // Append normalised sales - uses batch append to avoid rate limits
   appendSalesNormalised: async (rows: SalesNormalised[]): Promise<void> => {
     // Ensure sheet exists
     try {
@@ -1224,9 +1224,9 @@ export const googleSheetsService = {
       await callSheetsApi('create', SHEETS.SALES_NORMALISED, { headers: SALES_NORMALISED_HEADERS });
     }
 
-    // Append each row
-    for (const row of rows) {
-      await callSheetsApi('append', SHEETS.SALES_NORMALISED, row);
+    // Batch append all rows in a single API call to avoid rate limits
+    if (rows.length > 0) {
+      await callSheetsApi('batch_append', SHEETS.SALES_NORMALISED, rows);
     }
   },
 
