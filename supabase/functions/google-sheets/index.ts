@@ -95,7 +95,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   ],
 };
 
-// Read data from a sheet (auto-creates if missing)
+// Read data from a sheet (auto-creates if missing, adds headers if empty)
 async function readSheet(accessToken: string, spreadsheetId: string, sheetName: string): Promise<any[][]> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}`;
   
@@ -110,9 +110,19 @@ async function readSheet(accessToken: string, spreadsheetId: string, sheetName: 
       console.log(`Sheet ${sheetName} not found, attempting to create...`);
       const headers = SHEET_HEADERS[sheetName];
       if (headers) {
-        await createSheet(accessToken, spreadsheetId, sheetName, headers);
-        console.log(`Created sheet ${sheetName} with default headers`);
-        return [headers]; // Return just headers for empty sheet
+        try {
+          await createSheet(accessToken, spreadsheetId, sheetName, headers);
+          console.log(`Created sheet ${sheetName} with default headers`);
+          return [headers]; // Return just headers for empty sheet
+        } catch (createError: any) {
+          // Sheet might already exist but be empty - try adding headers only
+          if (createError.message?.includes('already exists')) {
+            console.log(`Sheet ${sheetName} exists but may be empty, adding headers...`);
+            await addHeadersToSheet(accessToken, spreadsheetId, sheetName, headers);
+            return [headers];
+          }
+          throw createError;
+        }
       }
     }
     console.error(`Read error for ${sheetName}:`, errorText);
@@ -120,7 +130,45 @@ async function readSheet(accessToken: string, spreadsheetId: string, sheetName: 
   }
 
   const data = await response.json();
-  return data.values || [];
+  const values = data.values || [];
+  
+  // If sheet exists but is empty or has no headers, add default headers
+  if (values.length === 0) {
+    const headers = SHEET_HEADERS[sheetName];
+    if (headers) {
+      console.log(`Sheet ${sheetName} is empty, adding default headers...`);
+      await addHeadersToSheet(accessToken, spreadsheetId, sheetName, headers);
+      return [headers];
+    }
+  }
+  
+  return values;
+}
+
+// Add headers to an existing empty sheet
+async function addHeadersToSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetName: string,
+  headers: string[]
+): Promise<void> {
+  const headerUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A1?valueInputOption=USER_ENTERED`;
+  
+  const headerResponse = await fetch(headerUrl, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ values: [headers] }),
+  });
+
+  if (!headerResponse.ok) {
+    const error = await headerResponse.text();
+    console.error(`Header write error for ${sheetName}:`, error);
+    throw new Error(`Failed to write headers to ${sheetName}: ${error}`);
+  }
+  console.log(`Added headers to ${sheetName}: ${headers.join(', ')}`);
 }
 
 // Write/append data to a sheet
