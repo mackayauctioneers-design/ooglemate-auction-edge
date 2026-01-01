@@ -53,6 +53,10 @@ export interface SaleFingerprint extends SheetRowMeta {
   transmission: string;
   shared_opt_in: 'Y' | 'N';
   is_active: 'Y' | 'N';
+  // New fields for source tracking and spec-only fingerprints
+  fingerprint_type?: 'full' | 'spec_only';
+  source_sale_id?: string;
+  source_import_id?: string;
 }
 
 export interface SaleLog extends SheetRowMeta {

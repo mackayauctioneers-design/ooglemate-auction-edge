@@ -112,6 +112,9 @@ function parseFingerprint(row: any): SaleFingerprint {
     transmission: row.transmission || '',
     shared_opt_in: row.shared_opt_in || 'N',
     is_active: row.is_active || 'Y',
+    fingerprint_type: row.fingerprint_type || 'full',
+    source_sale_id: row.source_sale_id || undefined,
+    source_import_id: row.source_import_id || undefined,
     _rowIndex: row._rowIndex,
   };
 }
@@ -1321,18 +1324,20 @@ export const googleSheetsService = {
         continue;
       }
 
-      // Validate required fields for fingerprint
+      // Validate required fields for fingerprint - relaxed: only need make, model, dealer
       if (!sale.make || !sale.model || !sale.dealer_name) {
         errors.push(`Sale ${sale.sale_id}: Missing make, model, or dealer_name`);
         continue;
       }
 
       try {
-        // Determine fingerprint type based on km availability
+        // Determine fingerprint type based on km/engine/drivetrain/transmission availability
         const hasKm = sale.km !== undefined && sale.km !== null && sale.km > 0;
+        const hasFullSpecs = hasKm && sale.engine && sale.drivetrain && sale.transmission;
+        const fingerprintType = hasFullSpecs ? 'full' : 'spec_only';
 
         // Create fingerprint with source linkbacks
-        const fp = await googleSheetsService.upsertFingerprint({
+        const fp = await googleSheetsService.upsertFingerprintFromSale({
           dealer_name: sale.dealer_name,
           dealer_whatsapp: '',
           sale_date: sale.sale_date,
@@ -1345,12 +1350,15 @@ export const googleSheetsService = {
           drivetrain: sale.drivetrain || '',
           transmission: sale.transmission || '',
           shared_opt_in: 'N',
+          fingerprint_type: fingerprintType,
+          source_sale_id: sale.sale_id,
+          source_import_id: sale.import_id,
         });
 
         // Update sale with fingerprint reference
-        const fingerprintNotes = hasKm 
-          ? sale.notes 
-          : `${sale.notes || ''} [spec_only - no km]`.trim();
+        const fingerprintNotes = fingerprintType === 'spec_only'
+          ? `${sale.notes || ''} [spec_only]`.trim()
+          : sale.notes;
         
         await googleSheetsService.updateSalesNormalised({
           ...sale,
@@ -1359,8 +1367,8 @@ export const googleSheetsService = {
           notes: fingerprintNotes,
         });
 
-        // Count as created or updated based on upsert result
-        if (fp.fingerprint_id.startsWith('FP-')) {
+        // Count as created or updated based on whether it existed before
+        if (fp._isNew) {
           created++;
         } else {
           updated++;
@@ -1371,5 +1379,92 @@ export const googleSheetsService = {
     }
 
     return { created, updated, skipped, errors };
+  },
+
+  // New upsert function that tracks source_sale_id for idempotency
+  upsertFingerprintFromSale: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'max_km' | 'is_active'> & { 
+    fingerprint_type: 'full' | 'spec_only';
+    source_sale_id: string;
+    source_import_id: string;
+  }): Promise<SaleFingerprint & { _isNew: boolean }> => {
+    const existingFingerprints = await googleSheetsService.getFingerprints();
+    
+    // Check for existing fingerprint by source_sale_id first (idempotent)
+    const existingBySource = existingFingerprints.find(
+      (f: SaleFingerprint) => f.source_sale_id === fp.source_sale_id
+    );
+
+    const saleDate = new Date(fp.sale_date || new Date());
+    const expiresAt = new Date(saleDate);
+    expiresAt.setDate(expiresAt.getDate() + 120);
+    
+    // For spec_only, max_km is not meaningful but we still set it
+    const maxKm = fp.fingerprint_type === 'spec_only' ? 999999 : fp.sale_km + 15000;
+
+    if (existingBySource) {
+      // Update existing fingerprint - just reactivate it
+      const updatedFp: SaleFingerprint = {
+        ...existingBySource,
+        is_active: 'Y',
+        expires_at: expiresAt.toISOString().split('T')[0],
+      };
+      
+      if (existingBySource._rowIndex !== undefined) {
+        await callSheetsApi('update', SHEETS.FINGERPRINTS, updatedFp, existingBySource._rowIndex);
+      }
+      
+      return { ...updatedFp, _isNew: false };
+    }
+
+    // Create new fingerprint
+    const newFingerprint: SaleFingerprint = {
+      fingerprint_id: `FP-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      dealer_name: fp.dealer_name,
+      dealer_whatsapp: fp.dealer_whatsapp || '',
+      sale_date: fp.sale_date,
+      expires_at: expiresAt.toISOString().split('T')[0],
+      make: fp.make,
+      model: fp.model,
+      variant_normalised: fp.variant_normalised,
+      year: fp.year,
+      sale_km: fp.sale_km,
+      max_km: maxKm,
+      engine: fp.engine,
+      drivetrain: fp.drivetrain,
+      transmission: fp.transmission,
+      shared_opt_in: fp.shared_opt_in || 'N',
+      is_active: 'Y',
+      fingerprint_type: fp.fingerprint_type,
+      source_sale_id: fp.source_sale_id,
+      source_import_id: fp.source_import_id,
+    };
+    
+    await callSheetsApi('append', SHEETS.FINGERPRINTS, newFingerprint);
+    return { ...newFingerprint, _isNew: true };
+  },
+
+  // Backfill: generate fingerprints for all activate=Y rows that don't have one
+  backfillFingerprintsFromActivated: async (): Promise<{
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: string[];
+  }> => {
+    const sales = await googleSheetsService.getSalesNormalised();
+    
+    // Find rows that are activate=Y, do_not_replicate!=Y, and no fingerprint generated
+    const needsFingerprint = sales.filter((s: SalesNormalised) => 
+      s.activate === 'Y' && 
+      s.do_not_replicate !== 'Y' && 
+      s.fingerprint_generated !== 'Y'
+    );
+
+    if (needsFingerprint.length === 0) {
+      return { created: 0, updated: 0, skipped: 0, errors: [] };
+    }
+
+    // Use existing function with the sale IDs
+    const saleIds = needsFingerprint.map(s => s.sale_id);
+    return googleSheetsService.generateFingerprintsFromNormalised(saleIds);
   },
 };

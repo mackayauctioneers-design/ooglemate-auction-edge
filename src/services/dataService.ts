@@ -300,4 +300,16 @@ export const dataService = {
     }
     throw new Error('Mock data does not support generating fingerprints');
   },
+
+  backfillFingerprintsFromActivated: async (): Promise<{
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: string[];
+  }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.backfillFingerprintsFromActivated();
+    }
+    throw new Error('Mock data does not support backfilling fingerprints');
+  },
 };
