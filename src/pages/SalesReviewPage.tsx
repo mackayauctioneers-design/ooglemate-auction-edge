@@ -4,6 +4,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { dataService } from '@/services/dataService';
 import { SalesNormalised, formatCurrency } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { 
   Table, 
   TableBody, 
@@ -22,7 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Fingerprint, RefreshCw, Filter, Check, AlertTriangle, XCircle, 
-  TrendingUp, TrendingDown, Tag, Zap, Ban, BarChart3
+  TrendingUp, TrendingDown, Tag, Zap, Ban, BarChart3, UserCircle
 } from 'lucide-react';
 import {
   Dialog,
@@ -47,6 +48,7 @@ interface VehicleAggregation {
 export default function SalesReviewPage() {
   useDocumentTitle(0);
   const { toast } = useToast();
+  const { currentUser } = useAuth();
 
   const [sales, setSales] = useState<SalesNormalised[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +60,10 @@ export default function SalesReviewPage() {
   // Tag dialog
   const [tagDialogOpen, setTagDialogOpen] = useState(false);
   const [newTag, setNewTag] = useState('');
+
+  // Dealer name dialog
+  const [dealerDialogOpen, setDealerDialogOpen] = useState(false);
+  const [newDealerName, setNewDealerName] = useState('');
 
   // Filters
   const [filterOptions, setFilterOptions] = useState<{
@@ -336,6 +342,28 @@ export default function SalesReviewPage() {
     }
   };
 
+  const bulkSetDealerName = async () => {
+    if (selectedIds.size === 0 || !newDealerName.trim()) return;
+    setBulkUpdating(true);
+    try {
+      for (const id of selectedIds) {
+        const sale = sales.find(s => s.sale_id === id);
+        if (sale) {
+          await dataService.updateSalesNormalised({ ...sale, dealer_name: newDealerName.trim() });
+        }
+      }
+      toast({ title: `Set dealer to "${newDealerName}" on ${selectedIds.size} rows` });
+      setSelectedIds(new Set());
+      setNewDealerName('');
+      setDealerDialogOpen(false);
+      loadData();
+    } catch (error) {
+      toast({ title: 'Error setting dealer name', variant: 'destructive' });
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
   const handleGenerateFingerprints = async () => {
     // Only generate from activate=Y AND do_not_replicate!=Y
     const eligibleIds = Array.from(selectedIds).filter(id => {
@@ -501,6 +529,12 @@ export default function SalesReviewPage() {
               </Button>
               <Button size="sm" variant="outline" onClick={() => setTagDialogOpen(true)} disabled={bulkUpdating}>
                 <Tag className="h-3 w-3 mr-1" /> Add Tag
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => {
+                setNewDealerName(currentUser?.dealer_name || '');
+                setDealerDialogOpen(true);
+              }} disabled={bulkUpdating}>
+                <UserCircle className="h-3 w-3 mr-1" /> Set Dealer
               </Button>
               <Button 
                 size="sm"
@@ -825,6 +859,37 @@ export default function SalesReviewPage() {
               <Button variant="outline" onClick={() => setTagDialogOpen(false)}>Cancel</Button>
               <Button onClick={bulkAddTag} disabled={!newTag.trim() || bulkUpdating}>
                 Add Tag
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dealer Name Dialog */}
+        <Dialog open={dealerDialogOpen} onOpenChange={setDealerDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Set Dealer Name for {selectedIds.size} Sales</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Input
+                placeholder="Dealer name"
+                value={newDealerName}
+                onChange={(e) => setNewDealerName(e.target.value)}
+              />
+              {currentUser?.dealer_name && newDealerName !== currentUser.dealer_name && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setNewDealerName(currentUser.dealer_name)}
+                >
+                  Use current: {currentUser.dealer_name}
+                </Button>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDealerDialogOpen(false)}>Cancel</Button>
+              <Button onClick={bulkSetDealerName} disabled={!newDealerName.trim() || bulkUpdating}>
+                Set Dealer
               </Button>
             </DialogFooter>
           </DialogContent>
