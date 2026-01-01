@@ -32,9 +32,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { googleSheetsService } from '@/services/googleSheetsService';
-import { SavedSearch } from '@/types';
-import { Plus, Pencil, Trash2, Play, Loader2, ExternalLink, Clock, RefreshCw } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { SavedSearch, AuctionLot } from '@/types';
+import { Plus, Pencil, Trash2, Play, Loader2, ExternalLink, Clock, RefreshCw, PlayCircle, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -47,6 +54,8 @@ export default function SavedSearchesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSearch, setEditingSearch] = useState<SavedSearch | null>(null);
   const [runningSearchId, setRunningSearchId] = useState<string | null>(null);
+  const [runningAll, setRunningAll] = useState(false);
+  const [lastRunError, setLastRunError] = useState<Record<string, string>>({});
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [searchToDelete, setSearchToDelete] = useState<SavedSearch | null>(null);
   
@@ -185,18 +194,125 @@ export default function SavedSearchesPage() {
     }
   }
 
-  async function runSearchNow(search: SavedSearch) {
+  async function runSearchNow(search: SavedSearch): Promise<{ added: number; updated: number; error?: string }> {
     setRunningSearchId(search.search_id);
+    setLastRunError(prev => ({ ...prev, [search.search_id]: '' }));
+    
     try {
-      // For now, just update last_run_at - actual scraping would be done by a backend job
+      // Call edge function to fetch and parse listings
+      const { data: result, error } = await supabase.functions.invoke('run-saved-search', {
+        body: {
+          searchId: search.search_id,
+          label: search.label,
+          searchUrl: search.search_url,
+          sourceSite: search.source_site,
+          maxPages: search.max_pages,
+        },
+      });
+      
+      if (error) {
+        throw new Error(error.message || 'Failed to run search');
+      }
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Search returned no results');
+      }
+      
+      // Convert parsed listings to AuctionLot format and upsert
+      const listings = result.listings || [];
+      let added = 0;
+      let updated = 0;
+      
+      if (listings.length > 0) {
+        const lotsToUpsert: Partial<AuctionLot>[] = listings.map((listing: any) => ({
+          listing_id: `${search.source_site}:${listing.lot_id || simpleHash(listing.listing_url)}`,
+          lot_id: listing.lot_id || '',
+          listing_url: listing.listing_url,
+          source: 'auction' as const,
+          source_type: 'auction' as const,
+          source_site: search.source_site,
+          source_name: search.source_site,
+          auction_house: search.source_site,
+          make: listing.make || '',
+          model: listing.model || '',
+          variant_raw: listing.title || '',
+          year: listing.year || 0,
+          km: listing.km || 0,
+          price_current: listing.price || 0,
+          reserve: listing.price || 0,
+          status: 'listed' as const,
+        }));
+        
+        const upsertResult = await googleSheetsService.upsertLots(lotsToUpsert);
+        added = upsertResult.added;
+        updated = upsertResult.updated;
+      }
+      
+      // Update last_run_at
       await googleSheetsService.updateSavedSearchLastRun(search.search_id);
-      toast.success(`Search "${search.label}" marked as run. Scraping integration pending.`);
-      loadSearches();
+      
+      if (added > 0 || updated > 0) {
+        toast.success(`Saved Search ran: ${added} listings added, ${updated} updated`);
+      } else if (listings.length === 0) {
+        toast.info(`Saved Search ran: no listings found`);
+      } else {
+        toast.info(`Saved Search ran: no new listings`);
+      }
+      
+      await loadSearches();
+      return { added, updated };
+      
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to run search:', error);
-      toast.error('Failed to run search');
+      setLastRunError(prev => ({ ...prev, [search.search_id]: errorMessage }));
+      toast.error(`Run failed: ${errorMessage}`);
+      return { added: 0, updated: 0, error: errorMessage };
     } finally {
       setRunningSearchId(null);
+    }
+  }
+  
+  // Simple hash for generating listing IDs from URLs
+  function simpleHash(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash).toString(36);
+  }
+  
+  async function runAllEnabled() {
+    const enabledSearches = searches.filter(s => s.enabled === 'Y');
+    
+    if (enabledSearches.length === 0) {
+      toast.info('No enabled searches to run');
+      return;
+    }
+    
+    setRunningAll(true);
+    let totalAdded = 0;
+    let totalUpdated = 0;
+    let failedCount = 0;
+    
+    for (const search of enabledSearches) {
+      const result = await runSearchNow(search);
+      if (result.error) {
+        failedCount++;
+      } else {
+        totalAdded += result.added;
+        totalUpdated += result.updated;
+      }
+    }
+    
+    setRunningAll(false);
+    
+    if (failedCount > 0) {
+      toast.warning(`Completed: ${totalAdded} added, ${totalUpdated} updated. ${failedCount} search(es) failed.`);
+    } else {
+      toast.success(`All searches complete: ${totalAdded} added, ${totalUpdated} updated`);
     }
   }
 
@@ -221,7 +337,19 @@ export default function SavedSearchesPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={loadSearches} disabled={loading}>
+            <Button 
+              variant="secondary" 
+              onClick={runAllEnabled} 
+              disabled={runningAll || loading || searches.filter(s => s.enabled === 'Y').length === 0}
+            >
+              {runningAll ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <PlayCircle className="h-4 w-4 mr-2" />
+              )}
+              Run All Enabled
+            </Button>
+            <Button variant="outline" onClick={loadSearches} disabled={loading || runningAll}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
@@ -335,19 +463,33 @@ export default function SavedSearchesPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="iconSm"
-                            onClick={() => runSearchNow(search)}
-                            disabled={runningSearchId === search.search_id}
-                            title="Run now"
-                          >
-                            {runningSearchId === search.search_id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Play className="h-4 w-4" />
-                            )}
-                          </Button>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="iconSm"
+                                  onClick={() => runSearchNow(search)}
+                                  disabled={runningSearchId === search.search_id || runningAll}
+                                  className={lastRunError[search.search_id] ? 'text-destructive' : ''}
+                                >
+                                  {runningSearchId === search.search_id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : lastRunError[search.search_id] ? (
+                                    <AlertCircle className="h-4 w-4" />
+                                  ) : (
+                                    <Play className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {lastRunError[search.search_id] 
+                                  ? `Run failed: ${lastRunError[search.search_id]}`
+                                  : 'Run now'
+                                }
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                           <Button
                             variant="ghost"
                             size="iconSm"
@@ -382,7 +524,7 @@ export default function SavedSearchesPage() {
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-2">
             <p>
-              • Enabled searches are polled automatically based on their refresh frequency.
+              • Click <strong>Run now</strong> to fetch and parse listings from a search URL using simple HTTP fetch.
             </p>
             <p>
               • Each listing found is assigned a stable <code className="bg-muted px-1 rounded">listing_id</code> and upserted into the Listings table.
@@ -391,7 +533,10 @@ export default function SavedSearchesPage() {
               • Listings participate in pass_count tracking, price monitoring, and fingerprint matching.
             </p>
             <p>
-              • Use "Run now" to trigger an immediate fetch (scraping integration pending).
+              • <strong>Run All Enabled</strong> executes all enabled searches sequentially and shows a summary.
+            </p>
+            <p>
+              • If a page cannot be fetched (blocked/timeout), the search fails silently - use Manual Add Listing instead.
             </p>
           </CardContent>
         </Card>
