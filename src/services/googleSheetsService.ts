@@ -1018,7 +1018,8 @@ export const googleSheetsService = {
     }
 
     // Relaxed validation for CSV - only core vehicle identification required
-    const csvRequiredFields = ['dealer_name', 'deposit_date', 'make', 'model', 'year'];
+    // dealer_name is NOT required - it should default from the logged-in user
+    const csvRequiredFields = ['deposit_date', 'make', 'model', 'year'];
     const errors: Array<{ row: number; reason: string }> = [];
     let imported = 0;
     // Note: fingerprintsUpdated stays 0 for CSV imports since activate defaults to N
@@ -1042,7 +1043,8 @@ export const googleSheetsService = {
         // Add to Sales_Log with defaults for optional fields
         const newSale: SaleLog = {
           ...sale,
-          // Ensure optional fields have defaults
+          // Ensure optional fields have defaults (dealer_name should already be set by frontend)
+          dealer_name: sale.dealer_name || 'Unknown',
           variant_normalised: sale.variant_normalised || '',
           km: sale.km || 0,
           engine: sale.engine || '',
