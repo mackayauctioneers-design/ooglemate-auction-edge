@@ -12,6 +12,7 @@ import HelpPage from "./pages/HelpPage";
 import UpcomingAuctionsPage from "./pages/UpcomingAuctionsPage";
 import SearchLotsPage from "./pages/SearchLotsPage";
 import SalesReviewPage from "./pages/SalesReviewPage";
+import MatchesPage from "./pages/MatchesPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ const App = () => (
             <Route path="/" element={<OpportunitiesPage />} />
             <Route path="/upcoming-auctions" element={<UpcomingAuctionsPage />} />
             <Route path="/search-lots" element={<SearchLotsPage />} />
+            <Route path="/matches" element={<MatchesPage />} />
             <Route path="/log-sale" element={<LogSalePage />} />
             <Route path="/sales-review" element={<SalesReviewPage />} />
             <Route path="/fingerprints" element={<FingerprintsPage />} />
