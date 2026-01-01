@@ -4,6 +4,7 @@ import { dataService } from '@/services/dataService';
 import { SaleFingerprint, formatNumber } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -26,13 +27,15 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { format, differenceInDays } from 'date-fns';
-import { Fingerprint, XCircle, Clock, Users } from 'lucide-react';
+import { Fingerprint, XCircle, Clock, Users, RefreshCw } from 'lucide-react';
 
 export default function FingerprintsPage() {
   const { isAdmin } = useAuth();
   const { toast } = useToast();
   const [fingerprints, setFingerprints] = useState<SaleFingerprint[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isReactivating, setIsReactivating] = useState(false);
 
   const loadFingerprints = async () => {
     setIsLoading(true);
@@ -67,10 +70,87 @@ export default function FingerprintsPage() {
     }
   };
 
+  const handleReactivateSelected = async () => {
+    if (selectedIds.size === 0) return;
+    
+    setIsReactivating(true);
+    try {
+      const result = await dataService.reactivateFingerprints(Array.from(selectedIds));
+      toast({
+        title: "Fingerprints reactivated",
+        description: `${result.reactivated} fingerprint(s) reactivated with 120-day expiry from today.${result.failed > 0 ? ` ${result.failed} failed.` : ''}`,
+      });
+      setSelectedIds(new Set());
+      loadFingerprints();
+    } catch (error) {
+      toast({
+        title: "Failed to reactivate",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsReactivating(false);
+    }
+  };
+
   const getDaysRemaining = (expiresAt: string) => {
     const days = differenceInDays(new Date(expiresAt), new Date());
-    return Math.max(0, days);
+    return days;
   };
+
+  const isHistoricalImport = (fp: SaleFingerprint) => {
+    // If it has import_id or source is from CSV, it's historical
+    return !!fp.source_import_id;
+  };
+
+  const getStatusInfo = (fp: SaleFingerprint) => {
+    const daysRemaining = getDaysRemaining(fp.expires_at);
+    const isExpired = daysRemaining < 0;
+    const isActive = fp.is_active === 'Y' && !isExpired;
+    const isHistorical = isHistoricalImport(fp);
+
+    if (isActive) {
+      return { label: 'Active', variant: 'default' as const, canReactivate: false };
+    }
+    if (isExpired && isHistorical) {
+      return { 
+        label: 'Expired (historical)', 
+        variant: 'outline' as const, 
+        canReactivate: true,
+        tooltip: 'This fingerprint was created from a historical CSV import and can be reactivated.'
+      };
+    }
+    if (isExpired) {
+      return { label: 'Expired', variant: 'outline' as const, canReactivate: true };
+    }
+    return { label: 'Inactive', variant: 'outline' as const, canReactivate: true };
+  };
+
+  const toggleSelection = (id: string) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedIds(newSet);
+  };
+
+  const toggleSelectAll = () => {
+    const reactivatable = fingerprints.filter(fp => getStatusInfo(fp).canReactivate);
+    if (selectedIds.size === reactivatable.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(reactivatable.map(fp => fp.fingerprint_id)));
+    }
+  };
+
+  // Get counts
+  const reactivatableFingerprints = fingerprints.filter(fp => getStatusInfo(fp).canReactivate);
+  const expiredHistoricalCount = fingerprints.filter(fp => {
+    const daysRemaining = getDaysRemaining(fp.expires_at);
+    return daysRemaining < 0 && isHistoricalImport(fp);
+  }).length;
 
   if (!isAdmin) {
     return (
@@ -85,15 +165,44 @@ export default function FingerprintsPage() {
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-            <Fingerprint className="h-6 w-6 text-primary" />
-            Sale Fingerprints
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Manage active fingerprints for matching auction opportunities
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
+              <Fingerprint className="h-6 w-6 text-primary" />
+              Sale Fingerprints
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Manage active fingerprints for matching auction opportunities
+            </p>
+          </div>
+          
+          {/* Bulk actions */}
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">
+                {selectedIds.size} selected
+              </span>
+              <Button 
+                onClick={handleReactivateSelected}
+                disabled={isReactivating}
+                size="sm"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isReactivating ? 'animate-spin' : ''}`} />
+                Reactivate Selected
+              </Button>
+            </div>
+          )}
         </div>
+
+        {/* Info banner for expired historical */}
+        {expiredHistoricalCount > 0 && (
+          <div className="bg-muted/50 border border-border rounded-lg p-4">
+            <p className="text-sm text-muted-foreground">
+              <strong>{expiredHistoricalCount}</strong> fingerprint(s) from historical CSV imports are expired. 
+              Select them and click "Reactivate Selected" to set their expiry to 120 days from today.
+            </p>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="bg-card border border-border rounded-lg p-8 animate-pulse">
@@ -113,6 +222,13 @@ export default function FingerprintsPage() {
             <Table>
               <TableHeader>
                 <TableRow className="border-b border-border hover:bg-transparent">
+                  <TableHead className="table-header-cell w-10">
+                    <Checkbox 
+                      checked={selectedIds.size === reactivatableFingerprints.length && reactivatableFingerprints.length > 0}
+                      onCheckedChange={toggleSelectAll}
+                      disabled={reactivatableFingerprints.length === 0}
+                    />
+                  </TableHead>
                   <TableHead className="table-header-cell">Status</TableHead>
                   <TableHead className="table-header-cell">Dealer</TableHead>
                   <TableHead className="table-header-cell">Vehicle</TableHead>
@@ -126,15 +242,25 @@ export default function FingerprintsPage() {
               <TableBody>
                 {fingerprints.map((fp) => {
                   const daysRemaining = getDaysRemaining(fp.expires_at);
-                  const isExpired = daysRemaining === 0;
-                  const isActive = fp.is_active === 'Y' && !isExpired;
+                  const statusInfo = getStatusInfo(fp);
+                  const isActive = statusInfo.label === 'Active';
 
                   return (
                     <TableRow key={fp.fingerprint_id} className="border-b border-border">
                       <TableCell>
-                        <Badge variant={isActive ? 'default' : 'outline'}>
-                          {isActive ? 'Active' : isExpired ? 'Expired' : 'Inactive'}
+                        <Checkbox 
+                          checked={selectedIds.has(fp.fingerprint_id)}
+                          onCheckedChange={() => toggleSelection(fp.fingerprint_id)}
+                          disabled={!statusInfo.canReactivate}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusInfo.variant} title={statusInfo.tooltip}>
+                          {statusInfo.label}
                         </Badge>
+                        {fp.fingerprint_type === 'spec_only' && (
+                          <Badge variant="outline" className="ml-1 text-xs">spec only</Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div>
@@ -152,8 +278,8 @@ export default function FingerprintsPage() {
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         <div className="space-y-0.5">
-                          <p>{fp.engine}</p>
-                          <p>{fp.drivetrain} • {fp.transmission}</p>
+                          <p>{fp.engine || '-'}</p>
+                          <p>{fp.drivetrain || '-'} • {fp.transmission || '-'}</p>
                         </div>
                       </TableCell>
                       <TableCell className="text-right mono text-sm">
@@ -169,6 +295,10 @@ export default function FingerprintsPage() {
                               {daysRemaining}
                             </span>
                           </div>
+                        ) : daysRemaining < 0 ? (
+                          <span className="text-muted-foreground mono text-sm">
+                            {daysRemaining}d
+                          </span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}

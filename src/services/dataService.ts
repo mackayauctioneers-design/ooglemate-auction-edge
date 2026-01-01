@@ -354,4 +354,12 @@ export const dataService = {
   extractVariant: (text: string): string => {
     return googleSheetsService.extractVariant(text);
   },
+
+  // Bulk reactivate fingerprints
+  reactivateFingerprints: async (fingerprintIds: string[]): Promise<{ reactivated: number; failed: number }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.reactivateFingerprints(fingerprintIds);
+    }
+    throw new Error('Mock data does not support reactivating fingerprints');
+  },
 };

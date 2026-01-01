@@ -1396,8 +1396,11 @@ export const googleSheetsService = {
       (f: SaleFingerprint) => f.source_sale_id === fp.source_sale_id
     );
 
-    const saleDate = new Date(fp.sale_date || new Date());
-    const expiresAt = new Date(saleDate);
+    // For CSV imports (has source_import_id), use activation date (now) + 120 days
+    // For manual entries, use sale_date + 120 days
+    const isFromCsvImport = !!fp.source_import_id;
+    const baseDate = isFromCsvImport ? new Date() : new Date(fp.sale_date || new Date());
+    const expiresAt = new Date(baseDate);
     expiresAt.setDate(expiresAt.getDate() + 120);
     
     // For spec_only, max_km is not meaningful but we still set it
@@ -1665,8 +1668,11 @@ export const googleSheetsService = {
         const existingFp = fingerprintIndex.get(key);
         
         // Calculate expires_at
-        const saleDate = new Date(sale.sale_date || new Date());
-        const expiresAt = new Date(saleDate);
+        // For CSV imports (has import_id), use activation date (now) + 120 days
+        // For manual entries, use sale_date + 120 days
+        const isFromCsvImport = !!sale.import_id;
+        const baseDate = isFromCsvImport ? new Date() : new Date(sale.sale_date || new Date());
+        const expiresAt = new Date(baseDate);
         expiresAt.setDate(expiresAt.getDate() + 120);
         const expiresAtStr = expiresAt.toISOString().split('T')[0];
         
@@ -1824,5 +1830,38 @@ export const googleSheetsService = {
     }
     
     return { updated, failed };
+  },
+
+  // Bulk reactivate fingerprints - sets expires_at = today + 120 days and is_active = Y
+  reactivateFingerprints: async (fingerprintIds: string[]): Promise<{ reactivated: number; failed: number }> => {
+    const fingerprints = await googleSheetsService.getFingerprints();
+    const toReactivate = fingerprints.filter(fp => fingerprintIds.includes(fp.fingerprint_id));
+    
+    let reactivated = 0;
+    let failed = 0;
+    
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 120);
+    const expiresAtStr = expiresAt.toISOString().split('T')[0];
+    
+    for (const fp of toReactivate) {
+      if (fp._rowIndex !== undefined) {
+        try {
+          const updatedFp: SaleFingerprint = {
+            ...fp,
+            is_active: 'Y',
+            expires_at: expiresAtStr,
+          };
+          await callSheetsApi('update', SHEETS.FINGERPRINTS, updatedFp, fp._rowIndex);
+          reactivated++;
+        } catch {
+          failed++;
+        }
+      } else {
+        failed++;
+      }
+    }
+    
+    return { reactivated, failed };
   },
 };
