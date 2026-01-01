@@ -356,6 +356,22 @@ serve(async (req) => {
         );
       }
 
+      case 'batch_append': {
+        // Batch append multiple rows in a single API call (avoids rate limits)
+        const existingRows = await readSheet(accessToken, spreadsheetId, sheet);
+        const headers = existingRows[0] || (data.length > 0 ? Object.keys(data[0]) : []);
+        
+        // Convert all objects to row arrays
+        const allRowValues = data.map((item: any) => objectToRow(item, headers));
+        
+        await appendToSheet(accessToken, spreadsheetId, sheet, allRowValues);
+        console.log(`Batch appended ${data.length} rows to ${sheet}`);
+        return new Response(
+          JSON.stringify({ success: true, count: data.length }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       case 'update': {
         // First read headers
         const existingRows = await readSheet(accessToken, spreadsheetId, sheet);
