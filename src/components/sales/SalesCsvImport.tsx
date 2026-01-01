@@ -97,11 +97,60 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
 
     setCsvRows(rows);
 
-    // Auto-map columns with exact or similar names
+    // Auto-map columns with exact or similar names + DMS export aliases
+    const DMS_COLUMN_ALIASES: Record<string, string> = {
+      // DMS Sold Stock export mappings
+      'odometer_km': 'km',
+      'odometerKm': 'km',
+      'odometer': 'km',
+      'kms': 'km',
+      'kilometres': 'km',
+      'sale_date': 'deposit_date',
+      'saleDate': 'deposit_date',
+      'sold_date': 'deposit_date',
+      'soldDate': 'deposit_date',
+      'sale_price_gst_inc': 'sell_price',
+      'salePriceGstInc': 'sell_price',
+      'sale_price': 'sell_price',
+      'salePrice': 'sell_price',
+      'sold_price': 'sell_price',
+      'soldPrice': 'sell_price',
+      'total_cost_gst_inc': 'buy_price',
+      'totalCostGstInc': 'buy_price',
+      'total_cost': 'buy_price',
+      'totalCost': 'buy_price',
+      'cost_price': 'buy_price',
+      'costPrice': 'buy_price',
+      'cost': 'buy_price',
+      'days_in_stock': 'days_to_deposit',
+      'daysInStock': 'days_to_deposit',
+      'description': 'variant_normalised',
+      'variant': 'variant_normalised',
+      'model_variant': 'variant_normalised',
+      'modelVariant': 'variant_normalised',
+      'rego': 'notes',
+      'stock_no': 'notes',
+      'stockNo': 'notes',
+    };
+
     const newMapping: Record<string, string> = { ...columnMapping };
     headers.forEach(header => {
       const normalizedHeader = header.toLowerCase().replace(/[_\s-]/g, '');
       
+      // First check DMS aliases (exact match on original header)
+      const aliasKey = header.toLowerCase().replace(/\s+/g, '_');
+      if (DMS_COLUMN_ALIASES[aliasKey] && !Object.values(newMapping).includes(DMS_COLUMN_ALIASES[aliasKey])) {
+        newMapping[header] = DMS_COLUMN_ALIASES[aliasKey];
+        return;
+      }
+      
+      // Also check normalized version
+      if (DMS_COLUMN_ALIASES[normalizedHeader] && !Object.values(newMapping).includes(DMS_COLUMN_ALIASES[normalizedHeader])) {
+        newMapping[header] = DMS_COLUMN_ALIASES[normalizedHeader];
+        return;
+      }
+      
+      // Then try standard field matching
       ALL_FIELDS.forEach(field => {
         const normalizedField = field.toLowerCase().replace(/[_\s-]/g, '');
         if (normalizedHeader === normalizedField || normalizedHeader.includes(normalizedField)) {
