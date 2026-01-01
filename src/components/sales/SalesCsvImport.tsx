@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { dataService } from '@/services/dataService';
 import { SaleLog, SalesImportRaw, SalesNormalised } from '@/types';
-import { Upload, ArrowRight, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { Upload, ArrowRight, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface SalesCsvImportProps {
@@ -43,6 +44,11 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
   const [csvRows, setCsvRows] = useState<string[][]>([]);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{
+    step: number;
+    totalSteps: number;
+    message: string;
+  }>({ step: 0, totalSteps: 4, message: '' });
   const [importResult, setImportResult] = useState<{
     imported: number;
     fingerprintsUpdated: number;
@@ -203,13 +209,16 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
     }
 
     setIsImporting(true);
+    setImportProgress({ step: 0, totalSteps: 4, message: 'Preparing import...' });
 
     // Generate import_id for audit trail
     const importId = `IMP-${Date.now()}`;
     const uploadedAt = new Date().toISOString();
 
     try {
-      // 1. Store raw rows in Sales_Imports_Raw (immutable audit trail)
+      // Step 1: Store raw rows in Sales_Imports_Raw (immutable audit trail)
+      setImportProgress({ step: 1, totalSteps: 4, message: `Saving ${csvRows.length} raw rows to audit trail...` });
+      
       const rawRows: SalesImportRaw[] = csvRows.map((row, idx) => {
         const rowObj: Record<string, string> = {};
         csvHeaders.forEach((header, i) => {
@@ -229,7 +238,9 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
 
       await dataService.appendSalesImportsRaw(rawRows);
 
-      // 2. Parse and normalise rows, storing in Sales_Normalised
+      // Step 2: Parse and normalise rows, storing in Sales_Normalised
+      setImportProgress({ step: 2, totalSteps: 4, message: `Normalising ${csvRows.length} rows...` });
+      
       const normalisedRows: SalesNormalised[] = [];
       const parseErrors: Array<{ row: number; reason: string }> = [];
 
@@ -292,7 +303,9 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
 
       await dataService.appendSalesNormalised(normalisedRows);
 
-      // 3. Also run the legacy import for backwards compatibility with Sales_Log
+      // Step 3: Also run the legacy import for backwards compatibility with Sales_Log
+      setImportProgress({ step: 3, totalSteps: 4, message: `Saving to Sales Log...` });
+      
       const sales: Array<Omit<SaleLog, 'sale_id' | 'created_at'>> = csvRows.map(row => {
         const sale: any = {
           source: 'CSV' as const,
@@ -322,6 +335,9 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
         return sale as Omit<SaleLog, 'sale_id' | 'created_at'>;
       });
 
+      // Step 4: Finalize import
+      setImportProgress({ step: 4, totalSteps: 4, message: `Finalizing import...` });
+      
       const result = await dataService.importSalesWithFingerprints(sales);
       setImportResult(result);
       setStep('result');
@@ -470,6 +486,27 @@ deposit_date,make,model,variant_normalised,year,km,engine,drivetrain,transmissio
                 Missing engine/drivetrain/transmission will create spec-only fingerprints (lower confidence matching).
               </p>
             </div>
+            
+            {/* Progress indicator during import */}
+            {isImporting && (
+              <div className="space-y-3 p-4 rounded-lg bg-muted/50 border">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <div className="flex-1">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-medium">{importProgress.message}</span>
+                      <span className="text-xs text-muted-foreground">
+                        Step {importProgress.step} of {importProgress.totalSteps}
+                      </span>
+                    </div>
+                    <Progress value={(importProgress.step / importProgress.totalSteps) * 100} className="h-2" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Processing {csvRows.length} rows...
+                </p>
+              </div>
+            )}
           </div>
         )}
 
