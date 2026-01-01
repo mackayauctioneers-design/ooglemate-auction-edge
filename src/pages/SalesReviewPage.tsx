@@ -399,6 +399,7 @@ export default function SalesReviewPage() {
   const allSelected = sortedSales.length > 0 && sortedSales.every(s => selectedIds.has(s.sale_id));
   const activatedCount = sales.filter(s => s.activate === 'Y').length;
   const doNotReplicateCount = sales.filter(s => s.do_not_replicate === 'Y').length;
+  const fingerprintCount = sales.filter(s => s.fingerprint_generated === 'Y').length;
   const activatedWithoutFingerprint = sales.filter(s => 
     s.activate === 'Y' && 
     s.do_not_replicate !== 'Y' && 
@@ -447,12 +448,15 @@ export default function SalesReviewPage() {
         </div>
 
         {/* Stats bar */}
-        <div className="flex gap-4 text-sm">
+        <div className="flex gap-4 text-sm flex-wrap">
           <Badge variant="outline" className="px-3 py-1">
             Total: {sales.length}
           </Badge>
           <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 px-3 py-1">
             <Zap className="w-3 h-3 mr-1" /> Activated: {activatedCount}
+          </Badge>
+          <Badge className="bg-primary/20 text-primary border-primary/30 px-3 py-1">
+            <Fingerprint className="w-3 h-3 mr-1" /> Fingerprints: {fingerprintCount}
           </Badge>
           <Badge className="bg-red-500/20 text-red-400 border-red-500/30 px-3 py-1">
             <Ban className="w-3 h-3 mr-1" /> Do Not Replicate: {doNotReplicateCount}
