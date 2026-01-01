@@ -102,6 +102,28 @@ const SHEET_HEADERS: Record<string, string[]> = {
     'synclog_id', 'run_at', 'mode', 'rows_scanned', 'rows_eligible', 'rows_created', 'rows_updated', 
     'rows_skipped', 'skip_reason_counts', 'errors'
   ],
+  // Canonical Listings table (renamed from Auction_Lots)
+  'Listings': [
+    // Identity
+    'listing_id', 'lot_key', 'lot_id', 'listing_key',
+    // Source
+    'source', 'source_site', 'source_type', 'source_name',
+    // Event/Location
+    'event_id', 'auction_house', 'location', 'auction_datetime', 'listing_url',
+    // Vehicle
+    'make', 'model', 'variant_raw', 'variant_normalised', 'year', 'km', 'fuel', 'drivetrain', 'transmission',
+    // Pricing
+    'reserve', 'highest_bid', 'first_seen_price', 'last_seen_price', 'price_current', 'price_prev', 'price_change_pct',
+    // Lifecycle
+    'status', 'pass_count', 'price_drop_count', 'relist_count',
+    'first_seen_at', 'last_seen_at', 'last_auction_date', 'days_listed',
+    // Scoring
+    'description_score', 'estimated_get_out', 'estimated_margin', 'confidence_score', 'action', 'visible_to_dealers',
+    // Tracking
+    'updated_at', 'last_status', 'relist_group_id',
+    // Override
+    'manual_confidence_score', 'manual_action', 'override_enabled'
+  ],
 };
 
 // Read data from a sheet (auto-creates if missing, adds headers if empty)
