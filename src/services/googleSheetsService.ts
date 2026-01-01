@@ -8,6 +8,8 @@ import {
   AuctionLot,
   SaleLog,
   AppSettings,
+  SalesImportRaw,
+  SalesNormalised,
   calculateConfidenceScore,
   determineAction,
   calculateLotConfidenceScore,
@@ -24,6 +26,8 @@ const SHEETS = {
   LOTS: 'Auction_Lots',
   SALES_LOG: 'Sales_Log',
   SETTINGS: 'Settings',
+  SALES_IMPORTS_RAW: 'Sales_Imports_Raw',
+  SALES_NORMALISED: 'Sales_Normalised',
 };
 
 // Helper to call the edge function
@@ -349,6 +353,57 @@ const SALES_LOG_HEADERS = [
   'variant_normalised', 'year', 'km', 'engine', 'drivetrain', 'transmission',
   'buy_price', 'sell_price', 'days_to_deposit', 'notes', 'source', 'created_at'
 ];
+
+const SALES_IMPORTS_RAW_HEADERS = [
+  'import_id', 'uploaded_at', 'dealer_name', 'source', 'original_row_json', 'parse_status', 'parse_notes'
+];
+
+const SALES_NORMALISED_HEADERS = [
+  'sale_id', 'import_id', 'dealer_name', 'sale_date', 'make', 'model', 'variant_raw', 'variant_normalised',
+  'sale_price', 'days_to_sell', 'location', 'km', 'quality_flag', 'notes', 'year', 'engine', 'drivetrain',
+  'transmission', 'fingerprint_generated', 'fingerprint_id'
+];
+
+// Parse Sales Imports Raw
+function parseSalesImportRaw(row: any): SalesImportRaw {
+  return {
+    import_id: row.import_id || '',
+    uploaded_at: row.uploaded_at || '',
+    dealer_name: row.dealer_name || '',
+    source: row.source || '',
+    original_row_json: row.original_row_json || '',
+    parse_status: row.parse_status || 'success',
+    parse_notes: row.parse_notes || '',
+    _rowIndex: row._rowIndex,
+  };
+}
+
+// Parse Sales Normalised
+function parseSalesNormalised(row: any): SalesNormalised {
+  return {
+    sale_id: row.sale_id || '',
+    import_id: row.import_id || '',
+    dealer_name: row.dealer_name || '',
+    sale_date: row.sale_date || '',
+    make: row.make || '',
+    model: row.model || '',
+    variant_raw: row.variant_raw || '',
+    variant_normalised: row.variant_normalised || '',
+    sale_price: row.sale_price ? parseFloat(row.sale_price) : undefined,
+    days_to_sell: row.days_to_sell ? parseInt(row.days_to_sell) : undefined,
+    location: row.location || undefined,
+    km: row.km ? parseInt(row.km) : undefined,
+    quality_flag: row.quality_flag || 'review',
+    notes: row.notes || undefined,
+    year: row.year ? parseInt(row.year) : undefined,
+    engine: row.engine || undefined,
+    drivetrain: row.drivetrain || undefined,
+    transmission: row.transmission || undefined,
+    fingerprint_generated: row.fingerprint_generated || 'N',
+    fingerprint_id: row.fingerprint_id || undefined,
+    _rowIndex: row._rowIndex,
+  };
+}
 
 export const googleSheetsService = {
   // Get opportunities as a filtered view of Auction_Lots
@@ -1124,5 +1179,179 @@ export const googleSheetsService = {
         acknowledged_at: new Date().toISOString(),
       }, alert._rowIndex);
     }
+  },
+
+  // ========== SALES IMPORTS (Audit Trail) ==========
+
+  // Append raw import rows (immutable - never delete)
+  appendSalesImportsRaw: async (rows: SalesImportRaw[]): Promise<void> => {
+    // Ensure sheet exists
+    try {
+      await callSheetsApi('read', SHEETS.SALES_IMPORTS_RAW);
+    } catch {
+      await callSheetsApi('create', SHEETS.SALES_IMPORTS_RAW, { headers: SALES_IMPORTS_RAW_HEADERS });
+    }
+
+    // Append each row
+    for (const row of rows) {
+      await callSheetsApi('append', SHEETS.SALES_IMPORTS_RAW, row);
+    }
+  },
+
+  // Get all raw imports
+  getSalesImportsRaw: async (importId?: string): Promise<SalesImportRaw[]> => {
+    try {
+      const response = await callSheetsApi('read', SHEETS.SALES_IMPORTS_RAW);
+      let rows = response.data.map(parseSalesImportRaw);
+      if (importId) {
+        rows = rows.filter((r: SalesImportRaw) => r.import_id === importId);
+      }
+      return rows;
+    } catch {
+      return [];
+    }
+  },
+
+  // ========== SALES NORMALISED ==========
+
+  // Append normalised sales
+  appendSalesNormalised: async (rows: SalesNormalised[]): Promise<void> => {
+    // Ensure sheet exists
+    try {
+      await callSheetsApi('read', SHEETS.SALES_NORMALISED);
+    } catch {
+      await callSheetsApi('create', SHEETS.SALES_NORMALISED, { headers: SALES_NORMALISED_HEADERS });
+    }
+
+    // Append each row
+    for (const row of rows) {
+      await callSheetsApi('append', SHEETS.SALES_NORMALISED, row);
+    }
+  },
+
+  // Get normalised sales with optional filters
+  getSalesNormalised: async (filters?: {
+    importId?: string;
+    dealerName?: string;
+    qualityFlag?: string;
+    make?: string;
+    model?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<SalesNormalised[]> => {
+    try {
+      const response = await callSheetsApi('read', SHEETS.SALES_NORMALISED);
+      let rows = response.data.map(parseSalesNormalised);
+
+      if (filters) {
+        if (filters.importId) rows = rows.filter((r: SalesNormalised) => r.import_id === filters.importId);
+        if (filters.dealerName) rows = rows.filter((r: SalesNormalised) => r.dealer_name === filters.dealerName);
+        if (filters.qualityFlag) rows = rows.filter((r: SalesNormalised) => r.quality_flag === filters.qualityFlag);
+        if (filters.make) rows = rows.filter((r: SalesNormalised) => r.make === filters.make);
+        if (filters.model) rows = rows.filter((r: SalesNormalised) => r.model === filters.model);
+        if (filters.dateFrom) rows = rows.filter((r: SalesNormalised) => r.sale_date >= filters.dateFrom!);
+        if (filters.dateTo) rows = rows.filter((r: SalesNormalised) => r.sale_date <= filters.dateTo!);
+      }
+
+      return rows;
+    } catch {
+      return [];
+    }
+  },
+
+  // Get unique filter values for Sales Normalised
+  getSalesNormalisedFilterOptions: async (): Promise<{
+    importIds: string[];
+    dealers: string[];
+    makes: string[];
+    models: string[];
+    qualityFlags: string[];
+  }> => {
+    const rows = await googleSheetsService.getSalesNormalised();
+    return {
+      importIds: [...new Set(rows.map(r => r.import_id).filter(Boolean))].sort(),
+      dealers: [...new Set(rows.map(r => r.dealer_name).filter(Boolean))].sort(),
+      makes: [...new Set(rows.map(r => r.make).filter(Boolean))].sort(),
+      models: [...new Set(rows.map(r => r.model).filter(Boolean))].sort(),
+      qualityFlags: ['good', 'review', 'incomplete'],
+    };
+  },
+
+  // Update a normalised sale row
+  updateSalesNormalised: async (sale: SalesNormalised): Promise<void> => {
+    if (sale._rowIndex === undefined) {
+      throw new Error('Cannot update sale without row index');
+    }
+    await callSheetsApi('update', SHEETS.SALES_NORMALISED, sale, sale._rowIndex);
+  },
+
+  // Generate fingerprints from selected normalised sales
+  generateFingerprintsFromNormalised: async (saleIds: string[]): Promise<{
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: string[];
+  }> => {
+    const sales = await googleSheetsService.getSalesNormalised();
+    const selected = sales.filter((s: SalesNormalised) => saleIds.includes(s.sale_id));
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (const sale of selected) {
+      // Skip if already generated
+      if (sale.fingerprint_generated === 'Y') {
+        skipped++;
+        continue;
+      }
+
+      // Validate required fields for fingerprint
+      if (!sale.make || !sale.model || !sale.dealer_name) {
+        errors.push(`Sale ${sale.sale_id}: Missing make, model, or dealer_name`);
+        continue;
+      }
+
+      try {
+        // Determine fingerprint type based on km availability
+        const hasKm = sale.km !== undefined && sale.km !== null && sale.km > 0;
+
+        // Create fingerprint
+        const fp = await googleSheetsService.upsertFingerprint({
+          dealer_name: sale.dealer_name,
+          dealer_whatsapp: '',
+          sale_date: sale.sale_date,
+          make: sale.make,
+          model: sale.model,
+          variant_normalised: sale.variant_normalised || '',
+          year: sale.year || 0,
+          sale_km: hasKm ? sale.km! : 0,
+          engine: sale.engine || '',
+          drivetrain: sale.drivetrain || '',
+          transmission: sale.transmission || '',
+          shared_opt_in: 'N',
+        });
+
+        // Update sale with fingerprint reference
+        await googleSheetsService.updateSalesNormalised({
+          ...sale,
+          fingerprint_generated: 'Y',
+          fingerprint_id: fp.fingerprint_id,
+          notes: hasKm ? sale.notes : `${sale.notes || ''} [spec_only - no km]`.trim(),
+        });
+
+        // Count as created or updated based on upsert result
+        if (fp.fingerprint_id.startsWith('FP-')) {
+          created++;
+        } else {
+          updated++;
+        }
+      } catch (err) {
+        errors.push(`Sale ${sale.sale_id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+    }
+
+    return { created, updated, skipped, errors };
   },
 };

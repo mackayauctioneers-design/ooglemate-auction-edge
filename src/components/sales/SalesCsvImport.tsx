@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { dataService } from '@/services/dataService';
-import { SaleLog } from '@/types';
+import { SaleLog, SalesImportRaw, SalesNormalised } from '@/types';
 import { Upload, ArrowRight, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -191,8 +191,88 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
 
     setIsImporting(true);
 
+    // Generate import_id for audit trail
+    const importId = `IMP-${Date.now()}`;
+    const uploadedAt = new Date().toISOString();
+
     try {
-      // Convert rows to sale objects
+      // 1. Store raw rows in Sales_Imports_Raw (immutable audit trail)
+      const rawRows: SalesImportRaw[] = csvRows.map((row, idx) => {
+        const rowObj: Record<string, string> = {};
+        csvHeaders.forEach((header, i) => {
+          rowObj[header] = row[i] || '';
+        });
+        
+        return {
+          import_id: importId,
+          uploaded_at: uploadedAt,
+          dealer_name: dealerName,
+          source: 'EasyCars',
+          original_row_json: JSON.stringify(rowObj),
+          parse_status: 'success' as const,
+          parse_notes: '',
+        };
+      });
+
+      await dataService.appendSalesImportsRaw(rawRows);
+
+      // 2. Parse and normalise rows, storing in Sales_Normalised
+      const normalisedRows: SalesNormalised[] = [];
+      const parseErrors: Array<{ row: number; reason: string }> = [];
+
+      csvRows.forEach((row, idx) => {
+        const rowData: Record<string, any> = {};
+        csvHeaders.forEach((header, i) => {
+          const field = columnMapping[header];
+          if (field && row[i] !== undefined) {
+            const value = row[i];
+            if (field === 'year' || field === 'km' || field === 'days_to_deposit') {
+              rowData[field] = parseInt(value) || undefined;
+            } else if (field === 'buy_price' || field === 'sell_price') {
+              const parsed = parseFloat(value.replace(/[,$]/g, ''));
+              rowData[field] = isNaN(parsed) ? undefined : parsed;
+            } else {
+              rowData[field] = value;
+            }
+          }
+        });
+
+        // Determine quality flag
+        let qualityFlag: 'good' | 'review' | 'incomplete' = 'good';
+        const requiredForGood = ['make', 'model', 'year', 'deposit_date'];
+        const missingForGood = requiredForGood.filter(f => !rowData[f]);
+        if (missingForGood.length > 0) {
+          qualityFlag = 'incomplete';
+        } else if (!rowData.km || !rowData.variant_normalised) {
+          qualityFlag = 'review';
+        }
+
+        normalisedRows.push({
+          sale_id: `SALE-${importId}-${idx}`,
+          import_id: importId,
+          dealer_name: dealerName,
+          sale_date: rowData.deposit_date || '',
+          make: rowData.make || '',
+          model: rowData.model || '',
+          variant_raw: rowData.variant_raw || rowData.variant_normalised || '',
+          variant_normalised: rowData.variant_normalised || '',
+          sale_price: rowData.sell_price,
+          days_to_sell: rowData.days_to_deposit,
+          location: rowData.location,
+          km: rowData.km,
+          quality_flag: qualityFlag,
+          notes: rowData.notes,
+          year: rowData.year,
+          engine: rowData.engine,
+          drivetrain: rowData.drivetrain,
+          transmission: rowData.transmission,
+          fingerprint_generated: 'N',
+        });
+      });
+
+      await dataService.appendSalesNormalised(normalisedRows);
+
+      // 3. Also run the legacy import for backwards compatibility with Sales_Log
       const sales: Array<Omit<SaleLog, 'sale_id' | 'created_at'>> = csvRows.map(row => {
         const sale: any = {
           source: 'CSV' as const,
@@ -212,7 +292,6 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
               const parsed = parseFloat(value.replace(/[,$]/g, ''));
               sale[field] = isNaN(parsed) ? undefined : parsed;
             } else if (field === 'dealer_name' || field === 'dealer_whatsapp') {
-              // Override with mapped value if provided
               if (value) sale[field] = value;
             } else {
               sale[field] = value;
@@ -230,7 +309,7 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
       if (result.imported > 0) {
         toast({
           title: 'Import complete',
-          description: `${result.imported} sales imported, ${result.fingerprintsUpdated} fingerprints synced.`,
+          description: `${result.imported} sales imported, ${result.fingerprintsUpdated} fingerprints synced. Import ID: ${importId}`,
         });
       }
     } catch (error) {
