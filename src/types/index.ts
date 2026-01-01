@@ -147,6 +147,22 @@ export interface SavedSearch extends SheetRowMeta {
   last_run_at: string;
   notes: string;
   created_at: string;
+  // Run diagnostics
+  last_run_status?: 'success' | 'failed';
+  last_http_status?: number;
+  last_listings_found?: number;
+  last_listings_upserted?: number;
+  last_error_message?: string;
+}
+
+// Run log entry for debugging
+export interface SavedSearchRunLog {
+  searchId: string;
+  fetchedUrl: string;
+  httpStatus: number;
+  responseSize: number;
+  htmlPreview: string; // First 300 chars sanitized or "blocked/redirected"
+  listingUrlsSample: string[]; // First 10 parsed listing URLs
 }
 
 export interface Dealer extends SheetRowMeta {
