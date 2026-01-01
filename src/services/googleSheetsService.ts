@@ -1258,7 +1258,7 @@ export const googleSheetsService = {
     }
   },
 
-  // Get normalised sales with optional filters
+  // Get normalised sales with optional filters (deduplicated)
   getSalesNormalised: async (filters?: {
     importId?: string;
     dealerName?: string;
@@ -1271,6 +1271,25 @@ export const googleSheetsService = {
     try {
       const response = await callSheetsApi('read', SHEETS.SALES_NORMALISED);
       let rows = response.data.map(parseSalesNormalised);
+
+      // Deduplicate based on composite key: make + model + year + km + sale_date + dealer_name
+      // Keep the first occurrence (which has the lowest row index, i.e. earliest entry)
+      const seen = new Set<string>();
+      rows = rows.filter((r: SalesNormalised) => {
+        const key = [
+          r.dealer_name?.toLowerCase().trim() || '',
+          r.make?.toLowerCase().trim() || '',
+          r.model?.toLowerCase().trim() || '',
+          r.year || '',
+          r.km || '',
+          r.sale_date || '',
+        ].join('|');
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
 
       if (filters) {
         if (filters.importId) rows = rows.filter((r: SalesNormalised) => r.import_id === filters.importId);
