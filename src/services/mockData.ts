@@ -271,6 +271,7 @@ export const mockFingerprints: SaleFingerprint[] = [
     variant_normalised: 'SR5',
     year: 2021,
     sale_km: 40000,
+    min_km: 25000,
     max_km: 55000,
     engine: 'Diesel',
     drivetrain: '4WD',
@@ -289,6 +290,7 @@ export const mockFingerprints: SaleFingerprint[] = [
     variant_normalised: 'GT',
     year: 2020,
     sale_km: 50000,
+    min_km: 35000,
     max_km: 65000,
     engine: 'Petrol Turbo',
     drivetrain: 'AWD',
@@ -387,18 +389,23 @@ export const dataService = {
   },
 
   // Add a new sale fingerprint
-  addFingerprint: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'max_km' | 'is_active'>): Promise<SaleFingerprint> => {
+  addFingerprint: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'min_km' | 'max_km' | 'is_active'>): Promise<SaleFingerprint> => {
     await new Promise(resolve => setTimeout(resolve, 300));
     
     const saleDate = new Date(fp.sale_date);
     const expiresAt = new Date(saleDate);
     expiresAt.setDate(expiresAt.getDate() + 120);
     
+    // Symmetric KM range
+    const minKm = Math.max(0, fp.sale_km - 15000);
+    const maxKm = fp.sale_km + 15000;
+    
     const newFingerprint: SaleFingerprint = {
       ...fp,
       fingerprint_id: `FP-${Date.now()}`,
       expires_at: expiresAt.toISOString().split('T')[0],
-      max_km: fp.sale_km + 15000,
+      min_km: minKm,
+      max_km: maxKm,
       is_active: 'Y',
     };
     

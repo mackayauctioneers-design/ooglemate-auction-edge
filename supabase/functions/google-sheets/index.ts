@@ -95,7 +95,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   ],
   'Sale_Fingerprints': [
     'fingerprint_id', 'dealer_name', 'dealer_whatsapp', 'sale_date', 'expires_at', 'make', 'model', 
-    'variant_normalised', 'year', 'sale_km', 'max_km', 'engine', 'drivetrain', 'transmission', 
+    'variant_normalised', 'year', 'sale_km', 'min_km', 'max_km', 'engine', 'drivetrain', 'transmission', 
     'shared_opt_in', 'is_active', 'fingerprint_type', 'source_sale_id', 'source_import_id'
   ],
   'Fingerprint_Sync_Log': [

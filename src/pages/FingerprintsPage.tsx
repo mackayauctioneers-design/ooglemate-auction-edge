@@ -36,6 +36,7 @@ export default function FingerprintsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isReactivating, setIsReactivating] = useState(false);
+  const [isBackfilling, setIsBackfilling] = useState(false);
 
   const loadFingerprints = async () => {
     setIsLoading(true);
@@ -90,6 +91,26 @@ export default function FingerprintsPage() {
       });
     } finally {
       setIsReactivating(false);
+    }
+  };
+
+  const handleBackfillMinKm = async () => {
+    setIsBackfilling(true);
+    try {
+      const result = await dataService.backfillMinKm();
+      toast({
+        title: "KM ranges updated",
+        description: `${result.updated} fingerprint(s) updated with symmetric KM ranges.${result.skipped > 0 ? ` ${result.skipped} already correct.` : ''}`,
+      });
+      loadFingerprints();
+    } catch (error) {
+      toast({
+        title: "Failed to backfill",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBackfilling(false);
     }
   };
 
@@ -177,21 +198,32 @@ export default function FingerprintsPage() {
           </div>
           
           {/* Bulk actions */}
-          {selectedIds.size > 0 && (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">
-                {selectedIds.size} selected
-              </span>
-              <Button 
-                onClick={handleReactivateSelected}
-                disabled={isReactivating}
-                size="sm"
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${isReactivating ? 'animate-spin' : ''}`} />
-                Reactivate Selected
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {selectedIds.size > 0 && (
+              <>
+                <span className="text-sm text-muted-foreground">
+                  {selectedIds.size} selected
+                </span>
+                <Button 
+                  onClick={handleReactivateSelected}
+                  disabled={isReactivating}
+                  size="sm"
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isReactivating ? 'animate-spin' : ''}`} />
+                  Reactivate Selected
+                </Button>
+              </>
+            )}
+            <Button 
+              onClick={handleBackfillMinKm}
+              disabled={isBackfilling}
+              variant="outline"
+              size="sm"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isBackfilling ? 'animate-spin' : ''}`} />
+              Backfill KM Ranges
+            </Button>
+          </div>
         </div>
 
         {/* Info banner for expired historical */}
@@ -283,9 +315,15 @@ export default function FingerprintsPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right mono text-sm">
-                        <span className="text-muted-foreground">{formatNumber(fp.sale_km)}</span>
-                        <span className="text-muted-foreground mx-1">-</span>
-                        <span className="text-foreground">{formatNumber(fp.max_km)}</span>
+                        {fp.fingerprint_type === 'spec_only' ? (
+                          <span className="text-muted-foreground">Any</span>
+                        ) : (
+                          <>
+                            <span className="text-muted-foreground">{formatNumber(fp.min_km)}</span>
+                            <span className="text-muted-foreground mx-1">–</span>
+                            <span className="text-foreground">{formatNumber(fp.max_km)}</span>
+                          </>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         {isActive ? (
