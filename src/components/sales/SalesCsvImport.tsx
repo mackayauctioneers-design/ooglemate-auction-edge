@@ -18,15 +18,20 @@ interface SalesCsvImportProps {
   onImportComplete: () => void;
 }
 
-const REQUIRED_FIELDS = [
-  'dealer_name', 'deposit_date', 'make', 'model', 'variant_normalised',
-  'year', 'km', 'engine', 'drivetrain', 'transmission'
+// CSV imports have relaxed validation - only core fields required
+const CSV_REQUIRED_FIELDS = ['make', 'model', 'year', 'deposit_date'];
+
+// Optional fields for CSV (engine, drivetrain, transmission create spec_only fingerprints)
+const CSV_OPTIONAL_FIELDS = [
+  'dealer_name', 'dealer_whatsapp', 'variant_normalised', 'km', 
+  'engine', 'drivetrain', 'transmission',
+  'buy_price', 'sell_price', 'days_to_deposit', 'notes'
 ];
 
-const ALL_FIELDS = [
-  ...REQUIRED_FIELDS,
-  'dealer_whatsapp', 'buy_price', 'sell_price', 'days_to_deposit', 'notes'
-];
+const ALL_FIELDS = [...CSV_REQUIRED_FIELDS, ...CSV_OPTIONAL_FIELDS];
+
+// Fields that can use special "use current" defaults
+const DEFAULTABLE_FIELDS = ['dealer_name'];
 
 const SETTING_KEY_PREFIX = 'csv_mapping_';
 
@@ -169,9 +174,17 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
   };
 
   const handleImport = async () => {
-    // Validate all required fields are mapped
+    // Validate only CSV required fields are mapped (relaxed validation)
     const mappedFields = Object.values(columnMapping);
-    const missingRequired = REQUIRED_FIELDS.filter(f => !mappedFields.includes(f));
+    
+    // Check for required fields - dealer_name can be defaulted
+    const missingRequired = CSV_REQUIRED_FIELDS.filter(f => {
+      if (f === 'dealer_name') {
+        // dealer_name is optional for CSV - defaults to current dealer
+        return false;
+      }
+      return !mappedFields.includes(f);
+    });
     
     if (missingRequired.length > 0) {
       toast({
@@ -410,7 +423,7 @@ deposit_date,make,model,variant_normalised,year,km,engine,drivetrain,transmissio
               className="min-h-[150px] font-mono text-sm"
             />
             <p className="text-xs text-muted-foreground">
-              Required fields: dealer_name (or uses current dealer), deposit_date, make, model, variant_normalised, year, km, engine, drivetrain, transmission
+              Required: make, model, year, deposit_date (or sale_date). Dealer defaults to current dealer.
             </p>
           </div>
         )}
@@ -439,7 +452,7 @@ deposit_date,make,model,variant_normalised,year,km,engine,drivetrain,transmissio
                         <SelectItem value="skip">-- Skip --</SelectItem>
                         {ALL_FIELDS.map((field) => (
                           <SelectItem key={field} value={field}>
-                            {field} {REQUIRED_FIELDS.includes(field) ? '*' : ''}
+                            {field} {CSV_REQUIRED_FIELDS.includes(field) ? '*' : ''}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -448,9 +461,15 @@ deposit_date,make,model,variant_normalised,year,km,engine,drivetrain,transmissio
                 ))}
               </div>
             </ScrollArea>
-            <p className="text-xs text-muted-foreground">
-              * Required fields. Mapping will be saved for future imports.
-            </p>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">
+                * Required fields. Mapping will be saved for future imports.
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                Missing engine/drivetrain/transmission will create spec-only fingerprints (lower confidence matching).
+              </p>
+            </div>
           </div>
         )}
 

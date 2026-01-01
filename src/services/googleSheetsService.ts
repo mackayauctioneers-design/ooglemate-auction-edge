@@ -1004,7 +1004,9 @@ export const googleSheetsService = {
     }
   },
 
-  // Batch import sales from CSV
+  // Batch import sales from CSV with relaxed validation
+  // CSV imports only require: make, model, year, deposit_date
+  // CSV imports default to activate=N - fingerprints generated separately from Sales Review
   importSalesWithFingerprints: async (
     sales: Array<Omit<SaleLog, 'sale_id' | 'created_at'>>
   ): Promise<{ imported: number; fingerprintsUpdated: number; errors: Array<{ row: number; reason: string }> }> => {
@@ -1015,16 +1017,18 @@ export const googleSheetsService = {
       await callSheetsApi('create', SHEETS.SALES_LOG, { headers: SALES_LOG_HEADERS });
     }
 
-    const requiredFields = ['dealer_name', 'deposit_date', 'make', 'model', 'variant_normalised', 'year', 'km', 'engine', 'drivetrain', 'transmission'];
+    // Relaxed validation for CSV - only core vehicle identification required
+    const csvRequiredFields = ['dealer_name', 'deposit_date', 'make', 'model', 'year'];
     const errors: Array<{ row: number; reason: string }> = [];
     let imported = 0;
-    let fingerprintsUpdated = 0;
+    // Note: fingerprintsUpdated stays 0 for CSV imports since activate defaults to N
+    const fingerprintsUpdated = 0;
 
     for (let i = 0; i < sales.length; i++) {
       const sale = sales[i];
       
-      // Validate required fields
-      const missingFields = requiredFields.filter(field => {
+      // Validate only CSV required fields
+      const missingFields = csvRequiredFields.filter(field => {
         const value = (sale as any)[field];
         return value === undefined || value === null || value === '';
       });
@@ -1035,31 +1039,24 @@ export const googleSheetsService = {
       }
 
       try {
-        // Add to Sales_Log
+        // Add to Sales_Log with defaults for optional fields
         const newSale: SaleLog = {
           ...sale,
+          // Ensure optional fields have defaults
+          variant_normalised: sale.variant_normalised || '',
+          km: sale.km || 0,
+          engine: sale.engine || '',
+          drivetrain: sale.drivetrain || '',
+          transmission: sale.transmission || '',
           sale_id: `SALE-${Date.now()}-${i}`,
           created_at: new Date().toISOString(),
         };
         await callSheetsApi('append', SHEETS.SALES_LOG, newSale);
         imported++;
 
-        // Upsert fingerprint
-        await googleSheetsService.upsertFingerprint({
-          dealer_name: sale.dealer_name,
-          dealer_whatsapp: sale.dealer_whatsapp || '',
-          sale_date: sale.deposit_date,
-          make: sale.make,
-          model: sale.model,
-          variant_normalised: sale.variant_normalised,
-          year: sale.year,
-          sale_km: sale.km,
-          engine: sale.engine,
-          drivetrain: sale.drivetrain,
-          transmission: sale.transmission,
-          shared_opt_in: 'N',
-        });
-        fingerprintsUpdated++;
+        // NOTE: Do NOT auto-generate fingerprints for CSV imports
+        // CSV-imported rows default to activate=N in Sales_Normalised
+        // Fingerprints are generated manually via Sales Review page after admin approval
       } catch (error) {
         errors.push({ row: i + 1, reason: `Failed to save: ${error}` });
       }
