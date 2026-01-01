@@ -62,7 +62,6 @@ export default function SalesReviewPage() {
   const [newTag, setNewTag] = useState('');
 
   // Dealer name dialog
-  const [dealers, setDealers] = useState<string[]>([]);
   const [dealerDialogOpen, setDealerDialogOpen] = useState(false);
   const [newDealerName, setNewDealerName] = useState('');
 
@@ -102,7 +101,7 @@ export default function SalesReviewPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [salesData, options, dealerList] = await Promise.all([
+      const [salesData, options] = await Promise.all([
         dataService.getSalesNormalised({
           importId: filters.importId || undefined,
           dealerName: filters.dealerName || undefined,
@@ -113,11 +112,9 @@ export default function SalesReviewPage() {
           dateTo: filters.dateTo || undefined,
         }),
         dataService.getSalesNormalisedFilterOptions(),
-        dataService.getDealers(),
       ]);
       setSales(salesData);
       setFilterOptions(options);
-      setDealers(dealerList.map(d => d.dealer_name));
     } catch (error) {
       toast({ title: 'Error loading data', variant: 'destructive' });
     } finally {
@@ -879,7 +876,7 @@ export default function SalesReviewPage() {
                   <SelectValue placeholder="Select dealer" />
                 </SelectTrigger>
                 <SelectContent>
-                  {dealers.map(dealer => (
+                  {filterOptions.dealers.map(dealer => (
                     <SelectItem key={dealer} value={dealer}>{dealer}</SelectItem>
                   ))}
                 </SelectContent>
