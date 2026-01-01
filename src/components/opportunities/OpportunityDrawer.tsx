@@ -109,10 +109,10 @@ export function OpportunityDrawer({ lot, open, onOpenChange }: OpportunityDrawer
             <div className="stat-card">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Reserve</p>
               <p className="text-xl font-bold text-foreground mono">{formatCurrency(lot.reserve)}</p>
-              {lot.previous_reserve && lot.previous_reserve > lot.reserve && (
+              {lot.price_prev && lot.price_prev > lot.reserve && (
                 <p className="text-xs text-primary flex items-center gap-1 mt-1">
                   <TrendingDown className="h-3 w-3" />
-                  from {formatCurrency(lot.previous_reserve)}
+                  from {formatCurrency(lot.price_prev)}
                 </p>
               )}
             </div>
