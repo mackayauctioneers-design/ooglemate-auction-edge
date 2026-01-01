@@ -88,7 +88,7 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
     setCsvHeaders(headers);
 
     // Parse rows
-    const rows = lines.slice(1).map(line => {
+    const allRows = lines.slice(1).map(line => {
       // Simple CSV parsing (handles quoted values with commas)
       const values: string[] = [];
       let current = '';
@@ -108,6 +108,41 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
       values.push(current.trim());
       return values;
     }).filter(row => row.some(cell => cell)); // Filter empty rows
+
+    // Deduplicate rows based on key fields (make, model, year, deposit_date/sale_date, km)
+    const seen = new Set<string>();
+    const duplicateCount = { count: 0 };
+    const rows = allRows.filter(row => {
+      // Build a key from the row values matching key columns
+      const keyParts: string[] = [];
+      headers.forEach((header, idx) => {
+        const normalizedHeader = header.toLowerCase().replace(/[_\s-]/g, '');
+        // Include key identification fields in dedup key
+        if (['make', 'model', 'year', 'km', 'depositdate', 'saledate', 'solddate'].includes(normalizedHeader)) {
+          keyParts.push((row[idx] || '').toLowerCase().trim());
+        }
+      });
+      const key = keyParts.join('|');
+      
+      // Empty keys (no matching columns yet) - keep all
+      if (key === '' || keyParts.every(p => p === '')) {
+        return true;
+      }
+      
+      if (seen.has(key)) {
+        duplicateCount.count++;
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+
+    if (duplicateCount.count > 0) {
+      toast({
+        title: 'Duplicates removed',
+        description: `Removed ${duplicateCount.count} duplicate row${duplicateCount.count > 1 ? 's' : ''} from CSV.`,
+      });
+    }
 
     setCsvRows(rows);
 
