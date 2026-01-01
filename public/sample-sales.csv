@@ -1,0 +1,11 @@
+sale_date,make,model,variant,year,km,sale_price,buy_price,days_to_sell,location
+2025-12-15,Toyota,Hilux,SR5 Double Cab,2021,45000,52000,45000,21,Sydney
+2025-12-10,Ford,Ranger,Wildtrak,2022,32000,58000,51000,14,Melbourne
+2025-12-08,Mazda,CX-5,Touring,2020,61000,38000,32000,28,Brisbane
+2025-12-05,Volkswagen,Amarok,Highline,2021,55000,48000,44000,35,Perth
+2025-11-28,Toyota,Landcruiser,Sahara,2019,78000,95000,82000,7,Sydney
+2025-11-25,Nissan,Navara,ST-X,2022,28000,42000,38500,18,Adelaide
+2025-11-20,Mitsubishi,Triton,GLX-R,2021,52000,35000,38000,42,Melbourne
+2025-11-15,Isuzu,D-Max,LS-U,2020,68000,41000,36000,12,Brisbane
+2025-11-10,Hyundai,Tucson,Highlander,2022,25000,44000,39000,25,Sydney
+2025-11-05,Kia,Sportage,GT-Line,2021,38000,39000,33000,19,Perth
