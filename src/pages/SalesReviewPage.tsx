@@ -53,6 +53,7 @@ export default function SalesReviewPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [generating, setGenerating] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
 
   // Tag dialog
   const [tagDialogOpen, setTagDialogOpen] = useState(false);
@@ -247,13 +248,39 @@ export default function SalesReviewPage() {
     if (selectedIds.size === 0) return;
     setBulkUpdating(true);
     try {
-      for (const id of selectedIds) {
+      const idsToUpdate = Array.from(selectedIds);
+      
+      // First update all activate flags
+      for (const id of idsToUpdate) {
         const sale = sales.find(s => s.sale_id === id);
         if (sale) {
           await dataService.updateSalesNormalised({ ...sale, activate: value });
         }
       }
-      toast({ title: `Set ${selectedIds.size} rows to Activate=${value}` });
+      
+      // If setting activate=Y, auto-generate fingerprints for eligible rows
+      if (value === 'Y') {
+        const eligibleIds = idsToUpdate.filter(id => {
+          const sale = sales.find(s => s.sale_id === id);
+          return sale && sale.do_not_replicate !== 'Y' && sale.fingerprint_generated !== 'Y';
+        });
+        
+        if (eligibleIds.length > 0) {
+          const result = await dataService.generateFingerprintsFromNormalised(eligibleIds);
+          const totalGenerated = result.created + result.updated;
+          toast({ 
+            title: `Activated ${idsToUpdate.length} rows`,
+            description: totalGenerated > 0 
+              ? `${totalGenerated} fingerprints generated` 
+              : undefined
+          });
+        } else {
+          toast({ title: `Set ${selectedIds.size} rows to Activate=${value}` });
+        }
+      } else {
+        toast({ title: `Set ${selectedIds.size} rows to Activate=${value}` });
+      }
+      
       setSelectedIds(new Set());
       loadData();
     } catch (error) {
@@ -372,6 +399,30 @@ export default function SalesReviewPage() {
   const allSelected = sortedSales.length > 0 && sortedSales.every(s => selectedIds.has(s.sale_id));
   const activatedCount = sales.filter(s => s.activate === 'Y').length;
   const doNotReplicateCount = sales.filter(s => s.do_not_replicate === 'Y').length;
+  const activatedWithoutFingerprint = sales.filter(s => 
+    s.activate === 'Y' && 
+    s.do_not_replicate !== 'Y' && 
+    s.fingerprint_generated !== 'Y'
+  ).length;
+
+  const handleBackfillFingerprints = async () => {
+    setBackfilling(true);
+    try {
+      const result = await dataService.backfillFingerprintsFromActivated();
+      const totalGenerated = result.created + result.updated;
+      toast({
+        title: `${totalGenerated} fingerprints generated`,
+        description: result.errors.length > 0 
+          ? `${result.errors.length} errors occurred` 
+          : undefined,
+      });
+      loadData();
+    } catch (error) {
+      toast({ title: 'Error backfilling fingerprints', variant: 'destructive' });
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   return (
     <AppLayout>
@@ -382,6 +433,12 @@ export default function SalesReviewPage() {
             <p className="text-muted-foreground">Store all, Activate selected • Review imports and generate fingerprints</p>
           </div>
           <div className="flex gap-2 flex-wrap">
+            {activatedWithoutFingerprint > 0 && (
+              <Button onClick={handleBackfillFingerprints} disabled={backfilling}>
+                <Fingerprint className={`h-4 w-4 mr-2 ${backfilling ? 'animate-pulse' : ''}`} />
+                {backfilling ? 'Generating...' : `Backfill ${activatedWithoutFingerprint} Fingerprints`}
+              </Button>
+            )}
             <Button variant="outline" onClick={loadData} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
