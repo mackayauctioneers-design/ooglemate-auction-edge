@@ -97,6 +97,15 @@ function parseOpportunity(row: any): AuctionOpportunity {
 }
 
 function parseFingerprint(row: any): SaleFingerprint {
+  const saleKm = parseInt(row.sale_km) || 0;
+  // For min_km, use stored value or calculate from sale_km (symmetric range)
+  const minKm = row.min_km !== undefined && row.min_km !== '' 
+    ? parseInt(row.min_km) 
+    : Math.max(0, saleKm - 15000);
+  const maxKm = row.max_km !== undefined && row.max_km !== '' 
+    ? parseInt(row.max_km) 
+    : saleKm + 15000;
+    
   return {
     fingerprint_id: row.fingerprint_id || '',
     dealer_name: row.dealer_name || '',
@@ -107,8 +116,9 @@ function parseFingerprint(row: any): SaleFingerprint {
     model: row.model || '',
     variant_normalised: row.variant_normalised || '',
     year: parseInt(row.year) || 0,
-    sale_km: parseInt(row.sale_km) || 0,
-    max_km: parseInt(row.max_km) || 0,
+    sale_km: saleKm,
+    min_km: minKm,
+    max_km: maxKm,
     engine: row.engine || '',
     drivetrain: row.drivetrain || '',
     transmission: row.transmission || '',
@@ -554,16 +564,21 @@ export const googleSheetsService = {
   },
 
   // Add a new sale fingerprint
-  addFingerprint: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'max_km' | 'is_active'>): Promise<SaleFingerprint> => {
+  addFingerprint: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'min_km' | 'max_km' | 'is_active'>): Promise<SaleFingerprint> => {
     const saleDate = new Date(fp.sale_date);
     const expiresAt = new Date(saleDate);
     expiresAt.setDate(expiresAt.getDate() + 120);
+    
+    // Symmetric KM range
+    const minKm = Math.max(0, fp.sale_km - 15000);
+    const maxKm = fp.sale_km + 15000;
     
     const newFingerprint: SaleFingerprint = {
       ...fp,
       fingerprint_id: `FP-${Date.now()}`,
       expires_at: expiresAt.toISOString().split('T')[0],
-      max_km: fp.sale_km + 15000,
+      min_km: minKm,
+      max_km: maxKm,
       is_active: 'Y',
     };
     
@@ -952,15 +967,20 @@ export const googleSheetsService = {
   },
 
   // Upsert fingerprint - update if exists for same dealer + strict fields, else create new
-  upsertFingerprint: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'max_km' | 'is_active'>): Promise<SaleFingerprint> => {
+  upsertFingerprint: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'min_km' | 'max_km' | 'is_active'>): Promise<SaleFingerprint> => {
     const depositDate = new Date(fp.sale_date);
     const expiresAt = new Date(depositDate);
     expiresAt.setDate(expiresAt.getDate() + 120);
     
+    // Symmetric KM range
+    const minKm = Math.max(0, fp.sale_km - 15000);
+    const maxKm = fp.sale_km + 15000;
+    
     const newData = {
       sale_date: fp.sale_date,
       expires_at: expiresAt.toISOString().split('T')[0],
-      max_km: fp.sale_km + 15000,
+      min_km: minKm,
+      max_km: maxKm,
       is_active: 'Y' as const,
     };
     
@@ -987,6 +1007,7 @@ export const googleSheetsService = {
         ...existing,
         sale_date: newData.sale_date,
         sale_km: fp.sale_km,
+        min_km: newData.min_km,
         max_km: newData.max_km,
         expires_at: newData.expires_at,
         is_active: newData.is_active,
@@ -1384,7 +1405,7 @@ export const googleSheetsService = {
   },
 
   // New upsert function that tracks source_sale_id for idempotency
-  upsertFingerprintFromSale: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'max_km' | 'is_active'> & { 
+  upsertFingerprintFromSale: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'min_km' | 'max_km' | 'is_active'> & { 
     fingerprint_type: 'full' | 'spec_only';
     source_sale_id: string;
     source_import_id: string;
@@ -1403,7 +1424,9 @@ export const googleSheetsService = {
     const expiresAt = new Date(baseDate);
     expiresAt.setDate(expiresAt.getDate() + 120);
     
-    // For spec_only, max_km is not meaningful but we still set it
+    // Symmetric KM range: sale_km ± 15000
+    // For spec_only, km is not meaningful
+    const minKm = fp.fingerprint_type === 'spec_only' ? 0 : Math.max(0, fp.sale_km - 15000);
     const maxKm = fp.fingerprint_type === 'spec_only' ? 999999 : fp.sale_km + 15000;
 
     if (existingBySource) {
@@ -1412,6 +1435,8 @@ export const googleSheetsService = {
         ...existingBySource,
         is_active: 'Y',
         expires_at: expiresAt.toISOString().split('T')[0],
+        min_km: minKm,
+        max_km: maxKm,
       };
       
       if (existingBySource._rowIndex !== undefined) {
@@ -1433,6 +1458,7 @@ export const googleSheetsService = {
       variant_normalised: fp.variant_normalised,
       year: fp.year,
       sale_km: fp.sale_km,
+      min_km: minKm,
       max_km: maxKm,
       engine: fp.engine,
       drivetrain: fp.drivetrain,
@@ -1676,8 +1702,10 @@ export const googleSheetsService = {
         expiresAt.setDate(expiresAt.getDate() + 120);
         const expiresAtStr = expiresAt.toISOString().split('T')[0];
         
-        // Max km calculation
-        const maxKm = fingerprintType === 'spec_only' ? 999999 : (sale.km || 0) + 15000;
+        // Symmetric KM range calculation
+        const saleKm = sale.km || 0;
+        const minKm = fingerprintType === 'spec_only' ? 0 : Math.max(0, saleKm - 15000);
+        const maxKm = fingerprintType === 'spec_only' ? 999999 : saleKm + 15000;
         
         if (existingFp) {
           // Update existing fingerprint - reactivate and update expires_at
@@ -1705,7 +1733,8 @@ export const googleSheetsService = {
             model: sale.model,
             variant_normalised: sale.variant_normalised || '',
             year: sale.year || 0,
-            sale_km: sale.km || 0,
+            sale_km: saleKm,
+            min_km: minKm,
             max_km: maxKm,
             engine: sale.engine || '',
             drivetrain: sale.drivetrain || '',
@@ -1863,5 +1892,44 @@ export const googleSheetsService = {
     }
     
     return { reactivated, failed };
+  },
+
+  // Backfill min_km for existing fingerprints that don't have it
+  backfillMinKm: async (): Promise<{ updated: number; skipped: number }> => {
+    const fingerprints = await googleSheetsService.getFingerprints();
+    
+    let updated = 0;
+    let skipped = 0;
+    
+    for (const fp of fingerprints) {
+      // Only update fingerprints that have sale_km but no proper min_km
+      // (min_km defaults to 0 if missing, so check if it needs recalculation)
+      const expectedMinKm = fp.fingerprint_type === 'spec_only' ? 0 : Math.max(0, fp.sale_km - 15000);
+      const expectedMaxKm = fp.fingerprint_type === 'spec_only' ? 999999 : fp.sale_km + 15000;
+      
+      // Skip if already correct
+      if (fp.min_km === expectedMinKm && fp.max_km === expectedMaxKm) {
+        skipped++;
+        continue;
+      }
+      
+      if (fp._rowIndex !== undefined) {
+        try {
+          const updatedFp: SaleFingerprint = {
+            ...fp,
+            min_km: expectedMinKm,
+            max_km: expectedMaxKm,
+          };
+          await callSheetsApi('update', SHEETS.FINGERPRINTS, updatedFp, fp._rowIndex);
+          updated++;
+        } catch {
+          skipped++;
+        }
+      } else {
+        skipped++;
+      }
+    }
+    
+    return { updated, skipped };
   },
 };

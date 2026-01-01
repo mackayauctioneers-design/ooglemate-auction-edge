@@ -46,7 +46,7 @@ export const dataService = {
     return mockDataService.getAlerts();
   },
 
-  addFingerprint: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'max_km' | 'is_active'>): Promise<SaleFingerprint> => {
+  addFingerprint: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'min_km' | 'max_km' | 'is_active'>): Promise<SaleFingerprint> => {
     if (USE_GOOGLE_SHEETS) {
       return googleSheetsService.addFingerprint(fp);
     }
@@ -54,7 +54,7 @@ export const dataService = {
   },
 
   // Upsert fingerprint - update if exists for same dealer + strict fields
-  upsertFingerprint: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'max_km' | 'is_active'>): Promise<SaleFingerprint> => {
+  upsertFingerprint: async (fp: Omit<SaleFingerprint, 'fingerprint_id' | 'expires_at' | 'min_km' | 'max_km' | 'is_active'>): Promise<SaleFingerprint> => {
     if (USE_GOOGLE_SHEETS) {
       return googleSheetsService.upsertFingerprint(fp);
     }
@@ -361,5 +361,13 @@ export const dataService = {
       return googleSheetsService.reactivateFingerprints(fingerprintIds);
     }
     throw new Error('Mock data does not support reactivating fingerprints');
+  },
+
+  // Backfill min_km for existing fingerprints
+  backfillMinKm: async (): Promise<{ updated: number; skipped: number }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.backfillMinKm();
+    }
+    throw new Error('Mock data does not support backfilling min_km');
   },
 };

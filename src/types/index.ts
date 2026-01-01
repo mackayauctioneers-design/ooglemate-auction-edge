@@ -47,7 +47,8 @@ export interface SaleFingerprint extends SheetRowMeta {
   variant_normalised: string;
   year: number;
   sale_km: number;
-  max_km: number;
+  min_km: number; // max(0, sale_km - 15000)
+  max_km: number; // sale_km + 15000
   engine: string;
   drivetrain: string;
   transmission: string;
@@ -381,7 +382,14 @@ export function isStrictMatch(opp: AuctionOpportunity, fp: SaleFingerprint): boo
   ) return false;
   
   if (Math.abs(opp.year - fp.year) > 1) return false;
-  if (opp.km > fp.max_km) return false;
+  
+  // For spec-only fingerprints (no km), skip km check
+  // For km-aware fingerprints, check symmetric range: min_km <= listing_km <= max_km
+  if (fp.fingerprint_type !== 'spec_only' && fp.sale_km > 0) {
+    const minKm = fp.min_km ?? Math.max(0, fp.sale_km - 15000);
+    const maxKm = fp.max_km ?? fp.sale_km + 15000;
+    if (opp.km < minKm || opp.km > maxKm) return false;
+  }
   
   return true;
 }
