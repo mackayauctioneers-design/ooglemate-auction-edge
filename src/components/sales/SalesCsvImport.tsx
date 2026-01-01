@@ -28,7 +28,7 @@ const ALL_FIELDS = [
   'dealer_whatsapp', 'buy_price', 'sell_price', 'days_to_deposit', 'notes'
 ];
 
-const STORAGE_KEY = 'salesCsvMapping';
+const SETTING_KEY_PREFIX = 'csv_mapping_';
 
 export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp, onImportComplete }: SalesCsvImportProps) {
   const { toast } = useToast();
@@ -44,19 +44,22 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
     errors: Array<{ row: number; reason: string }>;
   } | null>(null);
 
-  // Load saved mapping for dealer
+  // Load saved mapping for dealer from backend
   useEffect(() => {
-    if (dealerName) {
-      const saved = localStorage.getItem(`${STORAGE_KEY}_${dealerName}`);
-      if (saved) {
+    if (dealerName && open) {
+      const loadSavedMapping = async () => {
         try {
-          setColumnMapping(JSON.parse(saved));
+          const saved = await dataService.getSetting(`${SETTING_KEY_PREFIX}${dealerName}`);
+          if (saved) {
+            setColumnMapping(JSON.parse(saved));
+          }
         } catch {
-          // Ignore invalid saved data
+          // Ignore errors loading saved mapping
         }
-      }
+      };
+      loadSavedMapping();
     }
-  }, [dealerName]);
+  }, [dealerName, open]);
 
   const parseCsv = () => {
     const lines = csvText.trim().split('\n');
@@ -179,8 +182,12 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
       return;
     }
 
-    // Save mapping for future imports
-    localStorage.setItem(`${STORAGE_KEY}_${dealerName}`, JSON.stringify(columnMapping));
+    // Save mapping for future imports to backend
+    try {
+      await dataService.upsertSetting(`${SETTING_KEY_PREFIX}${dealerName}`, JSON.stringify(columnMapping));
+    } catch {
+      // Non-critical - continue with import even if saving mapping fails
+    }
 
     setIsImporting(true);
 

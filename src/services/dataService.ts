@@ -214,4 +214,20 @@ export const dataService = {
     }
     throw new Error('Mock data does not support acknowledging alerts');
   },
+
+  // ========== SETTINGS ==========
+
+  getSetting: async (key: string): Promise<string | null> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getSetting(key);
+    }
+    return null;
+  },
+
+  upsertSetting: async (key: string, value: string): Promise<void> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.upsertSetting(key, value);
+    }
+    throw new Error('Mock data does not support settings');
+  },
 };
