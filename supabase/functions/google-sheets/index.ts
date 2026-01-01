@@ -93,6 +93,11 @@ const SHEET_HEADERS: Record<string, string[]> = {
     'sale_price', 'days_to_sell', 'location', 'km', 'quality_flag', 'notes', 'year', 'engine', 'drivetrain',
     'transmission', 'fingerprint_generated', 'fingerprint_id', 'gross_profit', 'activate', 'do_not_replicate', 'tags'
   ],
+  'Sale_Fingerprints': [
+    'fingerprint_id', 'dealer_name', 'dealer_whatsapp', 'sale_date', 'expires_at', 'make', 'model', 
+    'variant_normalised', 'year', 'sale_km', 'max_km', 'engine', 'drivetrain', 'transmission', 
+    'shared_opt_in', 'is_active', 'fingerprint_type', 'source_sale_id', 'source_import_id'
+  ],
 };
 
 // Read data from a sheet (auto-creates if missing, adds headers if empty)
@@ -140,6 +145,19 @@ async function readSheet(accessToken: string, spreadsheetId: string, sheetName: 
       await addHeadersToSheet(accessToken, spreadsheetId, sheetName, headers);
       return [headers];
     }
+  }
+  
+  // Check for malformed headers (pipe-separated in a single cell)
+  const expectedHeaders = SHEET_HEADERS[sheetName];
+  if (expectedHeaders && values.length > 0 && values[0].length === 1 && values[0][0]?.includes('|')) {
+    console.log(`Sheet ${sheetName} has malformed pipe-separated headers, fixing...`);
+    await addHeadersToSheet(accessToken, spreadsheetId, sheetName, expectedHeaders);
+    // If there's no data beyond headers, return just the fixed headers
+    if (values.length === 1) {
+      return [expectedHeaders];
+    }
+    // Otherwise, return fixed headers + existing data
+    values[0] = expectedHeaders;
   }
   
   return values;
