@@ -135,6 +135,20 @@ export interface FingerprintSyncLog {
   errors: string; // JSON array of error strings
 }
 
+// Saved Search - admin-managed search URLs for automated ingestion
+export interface SavedSearch extends SheetRowMeta {
+  search_id: string;
+  source_site: 'Pickles' | 'Manheim' | 'Other';
+  label: string;
+  search_url: string;
+  refresh_frequency_hours: number;
+  max_pages: number;
+  enabled: 'Y' | 'N';
+  last_run_at: string;
+  notes: string;
+  created_at: string;
+}
+
 export interface Dealer extends SheetRowMeta {
   dealer_name: string;
   whatsapp: string;

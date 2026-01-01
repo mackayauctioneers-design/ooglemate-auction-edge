@@ -13,6 +13,7 @@ import UpcomingAuctionsPage from "./pages/UpcomingAuctionsPage";
 import SearchLotsPage from "./pages/SearchLotsPage";
 import SalesReviewPage from "./pages/SalesReviewPage";
 import MatchesPage from "./pages/MatchesPage";
+import SavedSearchesPage from "./pages/SavedSearchesPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/log-sale" element={<LogSalePage />} />
             <Route path="/sales-review" element={<SalesReviewPage />} />
             <Route path="/fingerprints" element={<FingerprintsPage />} />
+            <Route path="/saved-searches" element={<SavedSearchesPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/help" element={<HelpPage />} />
             <Route path="*" element={<NotFound />} />

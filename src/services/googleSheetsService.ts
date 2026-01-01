@@ -11,6 +11,7 @@ import {
   SalesImportRaw,
   SalesNormalised,
   FingerprintSyncLog,
+  SavedSearch,
   calculateConfidenceScore,
   determineAction,
   calculateLotConfidenceScore,
@@ -30,6 +31,7 @@ const SHEETS = {
   SALES_IMPORTS_RAW: 'Sales_Imports_Raw',
   SALES_NORMALISED: 'Sales_Normalised',
   FINGERPRINT_SYNC_LOG: 'Fingerprint_Sync_Log',
+  SAVED_SEARCHES: 'Saved_Searches',
 };
 
 // Helper to call the edge function
@@ -2066,4 +2068,70 @@ export const googleSheetsService = {
     
     return { updated, skipped };
   },
+
+  // ========== SAVED SEARCHES ==========
+  
+  // Get all saved searches
+  getSavedSearches: async (): Promise<SavedSearch[]> => {
+    try {
+      const response = await callSheetsApi('read', SHEETS.SAVED_SEARCHES);
+      return response.data.map((row: any) => parseSavedSearch(row));
+    } catch {
+      return [];
+    }
+  },
+
+  // Add a new saved search
+  addSavedSearch: async (search: Omit<SavedSearch, 'search_id' | 'created_at' | '_rowIndex'>): Promise<SavedSearch> => {
+    const newSearch: SavedSearch = {
+      ...search,
+      search_id: `SS-${Date.now()}`,
+      created_at: new Date().toISOString(),
+    };
+    await callSheetsApi('append', SHEETS.SAVED_SEARCHES, newSearch);
+    return newSearch;
+  },
+
+  // Update a saved search
+  updateSavedSearch: async (search: SavedSearch): Promise<void> => {
+    if (search._rowIndex === undefined) {
+      throw new Error('Cannot update search without row index');
+    }
+    await callSheetsApi('update', SHEETS.SAVED_SEARCHES, search, search._rowIndex);
+  },
+
+  // Delete a saved search
+  deleteSavedSearch: async (search: SavedSearch): Promise<void> => {
+    if (search._rowIndex === undefined) {
+      throw new Error('Cannot delete search without row index');
+    }
+    await callSheetsApi('delete', SHEETS.SAVED_SEARCHES, null, search._rowIndex);
+  },
+
+  // Update last_run_at for a saved search
+  updateSavedSearchLastRun: async (searchId: string): Promise<void> => {
+    const searches = await googleSheetsService.getSavedSearches();
+    const search = searches.find(s => s.search_id === searchId);
+    if (search && search._rowIndex !== undefined) {
+      const updated = { ...search, last_run_at: new Date().toISOString() };
+      await callSheetsApi('update', SHEETS.SAVED_SEARCHES, updated, search._rowIndex);
+    }
+  },
 };
+
+// Parse saved search from sheet row
+function parseSavedSearch(row: any): SavedSearch {
+  return {
+    search_id: row.search_id || '',
+    source_site: row.source_site || 'Other',
+    label: row.label || '',
+    search_url: row.search_url || '',
+    refresh_frequency_hours: parseInt(row.refresh_frequency_hours) || 12,
+    max_pages: parseInt(row.max_pages) || 2,
+    enabled: row.enabled === 'Y' ? 'Y' : 'N',
+    last_run_at: row.last_run_at || '',
+    notes: row.notes || '',
+    created_at: row.created_at || '',
+    _rowIndex: row._rowIndex,
+  };
+}
