@@ -12,7 +12,8 @@ import {
   Calendar,
   Search,
   ClipboardList,
-  Crosshair
+  Crosshair,
+  Bookmark
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -29,6 +30,7 @@ const navItems = [
   { path: '/log-sale', label: 'Log Sale', icon: FileText },
   { path: '/sales-review', label: 'Sales Review', icon: ClipboardList, adminOnly: true },
   { path: '/fingerprints', label: 'Sale Fingerprints', icon: Car, adminOnly: true },
+  { path: '/saved-searches', label: 'Saved Searches', icon: Bookmark, adminOnly: true },
   { path: '/alerts', label: 'Alert Log', icon: Bell, adminOnly: true },
   { path: '/help', label: 'How to Use', icon: HelpCircle },
 ];

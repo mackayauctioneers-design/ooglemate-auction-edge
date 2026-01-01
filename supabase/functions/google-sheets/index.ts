@@ -124,6 +124,11 @@ const SHEET_HEADERS: Record<string, string[]> = {
     // Override
     'manual_confidence_score', 'manual_action', 'override_enabled'
   ],
+  // Saved Searches - admin-managed search URLs for automated ingestion
+  'Saved_Searches': [
+    'search_id', 'source_site', 'label', 'search_url', 'refresh_frequency_hours', 
+    'max_pages', 'enabled', 'last_run_at', 'notes', 'created_at'
+  ],
 };
 
 // Read data from a sheet (auto-creates if missing, adds headers if empty)
