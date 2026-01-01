@@ -3,7 +3,7 @@
 
 import { googleSheetsService } from './googleSheetsService';
 import { dataService as mockDataService } from './mockData';
-import { SaleFingerprint, Dealer, AlertLog, AuctionEvent, AuctionLot, SaleLog } from '@/types';
+import { SaleFingerprint, Dealer, AlertLog, AuctionEvent, AuctionLot, SaleLog, SalesImportRaw, SalesNormalised } from '@/types';
 
 // Toggle this to switch between mock data and Google Sheets
 const USE_GOOGLE_SHEETS = true;
@@ -229,5 +229,75 @@ export const dataService = {
       return googleSheetsService.upsertSetting(key, value);
     }
     throw new Error('Mock data does not support settings');
+  },
+
+  // ========== SALES IMPORTS (Audit Trail) ==========
+
+  appendSalesImportsRaw: async (rows: SalesImportRaw[]): Promise<void> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.appendSalesImportsRaw(rows);
+    }
+    throw new Error('Mock data does not support sales imports');
+  },
+
+  getSalesImportsRaw: async (importId?: string): Promise<SalesImportRaw[]> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getSalesImportsRaw(importId);
+    }
+    return [];
+  },
+
+  appendSalesNormalised: async (rows: SalesNormalised[]): Promise<void> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.appendSalesNormalised(rows);
+    }
+    throw new Error('Mock data does not support sales normalised');
+  },
+
+  getSalesNormalised: async (filters?: {
+    importId?: string;
+    dealerName?: string;
+    qualityFlag?: string;
+    make?: string;
+    model?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<SalesNormalised[]> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getSalesNormalised(filters);
+    }
+    return [];
+  },
+
+  getSalesNormalisedFilterOptions: async (): Promise<{
+    importIds: string[];
+    dealers: string[];
+    makes: string[];
+    models: string[];
+    qualityFlags: string[];
+  }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getSalesNormalisedFilterOptions();
+    }
+    return { importIds: [], dealers: [], makes: [], models: [], qualityFlags: [] };
+  },
+
+  updateSalesNormalised: async (sale: SalesNormalised): Promise<void> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.updateSalesNormalised(sale);
+    }
+    throw new Error('Mock data does not support updating sales normalised');
+  },
+
+  generateFingerprintsFromNormalised: async (saleIds: string[]): Promise<{
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: string[];
+  }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.generateFingerprintsFromNormalised(saleIds);
+    }
+    throw new Error('Mock data does not support generating fingerprints');
   },
 };

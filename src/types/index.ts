@@ -76,6 +76,41 @@ export interface SaleLog extends SheetRowMeta {
   created_at: string;
 }
 
+// Sales Import Raw - immutable audit trail of all CSV imports
+export interface SalesImportRaw extends SheetRowMeta {
+  import_id: string;
+  uploaded_at: string;
+  dealer_name: string;
+  source: string; // e.g., 'EasyCars'
+  original_row_json: string; // JSON stringified original row
+  parse_status: 'success' | 'error' | 'skipped';
+  parse_notes: string;
+}
+
+// Sales Normalised - parsed and cleaned sales data for review
+export interface SalesNormalised extends SheetRowMeta {
+  sale_id: string;
+  import_id: string;
+  dealer_name: string;
+  sale_date: string;
+  make: string;
+  model: string;
+  variant_raw: string;
+  variant_normalised: string;
+  sale_price?: number;
+  days_to_sell?: number;
+  location?: string;
+  km?: number; // nullable - affects fingerprint type
+  quality_flag: 'good' | 'review' | 'incomplete';
+  notes?: string;
+  year?: number;
+  engine?: string;
+  drivetrain?: string;
+  transmission?: string;
+  fingerprint_generated: 'Y' | 'N';
+  fingerprint_id?: string;
+}
+
 export interface Dealer extends SheetRowMeta {
   dealer_name: string;
   whatsapp: string;

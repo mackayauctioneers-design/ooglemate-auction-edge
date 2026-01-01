@@ -11,6 +11,7 @@ import AlertsPage from "./pages/AlertsPage";
 import HelpPage from "./pages/HelpPage";
 import UpcomingAuctionsPage from "./pages/UpcomingAuctionsPage";
 import SearchLotsPage from "./pages/SearchLotsPage";
+import SalesReviewPage from "./pages/SalesReviewPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ const App = () => (
             <Route path="/upcoming-auctions" element={<UpcomingAuctionsPage />} />
             <Route path="/search-lots" element={<SearchLotsPage />} />
             <Route path="/log-sale" element={<LogSalePage />} />
+            <Route path="/sales-review" element={<SalesReviewPage />} />
             <Route path="/fingerprints" element={<FingerprintsPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/help" element={<HelpPage />} />
