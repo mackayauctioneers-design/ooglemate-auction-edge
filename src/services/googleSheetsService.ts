@@ -24,7 +24,7 @@ const SHEETS = {
   DEALERS: 'Dealers',
   ALERTS: 'Alert_Log',
   EVENTS: 'Auction_Events',
-  LOTS: 'Auction_Lots',
+  LOTS: 'Listings', // Renamed from Auction_Lots to canonical Listings
   SALES_LOG: 'Sales_Log',
   SETTINGS: 'Settings',
   SALES_IMPORTS_RAW: 'Sales_Imports_Raw',
@@ -212,45 +212,76 @@ function parseAuctionEvent(row: any): AuctionEvent {
   };
 }
 
-function parseAuctionLot(row: any): AuctionLot {
+function parseListing(row: any): AuctionLot {
   // Compute lot_key from auction_house and lot_id
   const auctionHouse = row.auction_house || '';
   const lotId = row.lot_id || '';
   const lotKey = row.lot_key || (auctionHouse && lotId ? `${auctionHouse}:${lotId}` : '');
   
-  // Multi-source fields with defaults
-  const sourceType = row.source_type || 'auction';
-  const sourceName = row.source_name || auctionHouse;
-  const listingId = row.listing_id || '';
+  // Source fields - support both new (source/source_site) and legacy (source_type/source_name)
+  const source = row.source || row.source_type || 'auction';
+  const sourceSite = row.source_site || row.source_name || auctionHouse;
+  const listingId = row.listing_id || (source === 'auction' ? `${auctionHouse}:${lotId}` : '');
   
   // Compute listing_key
   let listingKey = row.listing_key || '';
-  if (!listingKey && sourceName) {
+  if (!listingKey && sourceSite) {
     if (listingId) {
-      listingKey = `${sourceName}:${listingId}`;
+      listingKey = `${sourceSite}:${listingId}`;
     } else if (row.listing_url) {
-      listingKey = `${sourceName}:${simpleHash(row.listing_url)}`;
+      listingKey = `${sourceSite}:${simpleHash(row.listing_url)}`;
     }
   }
   
-  // For auctions, price_current maps from reserve or highest_bid
+  // Pricing
   const reserve = parseFloat(row.reserve) || 0;
   const highestBid = parseFloat(row.highest_bid) || 0;
-  const priceCurrent = parseFloat(row.price_current) || (sourceType === 'auction' ? (reserve || highestBid) : 0);
+  const firstSeenPrice = parseFloat(row.first_seen_price) || reserve || highestBid || 0;
+  const lastSeenPrice = parseFloat(row.last_seen_price) || parseFloat(row.price_current) || reserve || highestBid || 0;
+  const priceCurrent = lastSeenPrice;
+  const pricePrev = parseFloat(row.price_prev) || 0;
+  
+  // Calculate price_change_pct
+  let priceChangePct = parseFloat(row.price_change_pct) || 0;
+  if (!priceChangePct && firstSeenPrice > 0 && lastSeenPrice !== firstSeenPrice) {
+    priceChangePct = ((lastSeenPrice - firstSeenPrice) / firstSeenPrice) * 100;
+  }
+  
+  // Calculate days_listed
+  const firstSeenAt = row.first_seen_at || '';
+  let daysListed = parseInt(row.days_listed) || 0;
+  if (!daysListed && firstSeenAt) {
+    const firstSeen = new Date(firstSeenAt);
+    const now = new Date();
+    daysListed = Math.floor((now.getTime() - firstSeen.getTime()) / (1000 * 60 * 60 * 24));
+  }
   
   // Parse override fields
   const overrideEnabled = row.override_enabled === 'Y' ? 'Y' : 'N';
   const manualConfidenceScore = row.manual_confidence_score ? parseInt(row.manual_confidence_score) : undefined;
   const manualAction = (row.manual_action === 'Buy' || row.manual_action === 'Watch') ? row.manual_action : undefined;
   
-  const lot: AuctionLot = {
+  const listing: AuctionLot = {
+    // Identity
+    listing_id: listingId,
     lot_id: lotId,
     lot_key: lotKey,
+    listing_key: listingKey,
+    
+    // Source
+    source: source,
+    source_site: sourceSite,
+    source_type: source, // Legacy
+    source_name: sourceSite, // Legacy
+    
+    // Event/Location
     event_id: row.event_id || '',
     auction_house: auctionHouse,
     location: row.location || '',
     auction_datetime: row.auction_datetime || '',
     listing_url: row.listing_url || '',
+    
+    // Vehicle
     make: row.make || '',
     model: row.model || '',
     variant_raw: row.variant_raw || '',
@@ -260,31 +291,40 @@ function parseAuctionLot(row: any): AuctionLot {
     fuel: row.fuel || '',
     drivetrain: row.drivetrain || '',
     transmission: row.transmission || '',
+    
+    // Pricing
     reserve: reserve,
     highest_bid: highestBid,
+    first_seen_price: firstSeenPrice,
+    last_seen_price: lastSeenPrice,
+    price_current: priceCurrent,
+    price_prev: pricePrev,
+    price_change_pct: priceChangePct,
+    
+    // Lifecycle
     status: row.status || 'listed',
     pass_count: parseInt(row.pass_count) || 0,
+    price_drop_count: parseInt(row.price_drop_count) || 0,
+    relist_count: parseInt(row.relist_count) || 0,
+    first_seen_at: firstSeenAt,
+    last_seen_at: row.last_seen_at || '',
+    last_auction_date: row.last_auction_date || '',
+    days_listed: daysListed,
+    
+    // Scoring
     description_score: parseInt(row.description_score) || 0,
     estimated_get_out: parseFloat(row.estimated_get_out) || 0,
     estimated_margin: parseFloat(row.estimated_margin) || 0,
     confidence_score: 0,
     action: 'Watch',
     visible_to_dealers: row.visible_to_dealers || 'N',
+    
+    // Tracking
     updated_at: row.updated_at || new Date().toISOString(),
     last_status: row.last_status || '',
-    last_seen_at: row.last_seen_at || '',
     relist_group_id: row.relist_group_id || '',
-    // Multi-source fields
-    source_type: sourceType,
-    source_name: sourceName,
-    listing_id: listingId,
-    listing_key: listingKey,
-    price_current: priceCurrent,
-    price_prev: parseFloat(row.price_prev) || 0,
-    price_drop_count: parseInt(row.price_drop_count) || 0,
-    relist_count: parseInt(row.relist_count) || 0,
-    first_seen_at: row.first_seen_at || '',
-    // Override fields
+    
+    // Override
     override_enabled: overrideEnabled,
     manual_confidence_score: manualConfidenceScore,
     manual_action: manualAction,
@@ -293,27 +333,30 @@ function parseAuctionLot(row: any): AuctionLot {
 
   // Calculate confidence score - use override if enabled, else auto-calculate
   if (overrideEnabled === 'Y' && manualConfidenceScore !== undefined) {
-    lot.confidence_score = manualConfidenceScore;
+    listing.confidence_score = manualConfidenceScore;
   } else {
     const sheetConfidence = parseInt(row.confidence_score);
     if (!isNaN(sheetConfidence) && sheetConfidence > 0) {
-      lot.confidence_score = sheetConfidence;
+      listing.confidence_score = sheetConfidence;
     } else {
-      lot.confidence_score = calculateLotConfidenceScore(lot);
+      listing.confidence_score = calculateLotConfidenceScore(listing);
     }
   }
   
   // Determine action - use override if enabled, else auto-calculate
   if (overrideEnabled === 'Y' && manualAction) {
-    lot.action = manualAction;
+    listing.action = manualAction;
   } else {
     const sheetAction = row.action?.toString().trim();
     const hasValidSheetAction = sheetAction === 'Buy' || sheetAction === 'Watch';
-    lot.action = hasValidSheetAction ? sheetAction : determineLotAction(lot.confidence_score);
+    listing.action = hasValidSheetAction ? sheetAction : determineLotAction(listing.confidence_score);
   }
 
-  return lot;
+  return listing;
 }
+
+// Legacy alias
+const parseAuctionLot = parseListing;
 
 // Simple hash function for URL-based listing_key
 function simpleHash(str: string): string {
@@ -350,18 +393,30 @@ function parseSaleLog(row: any): SaleLog {
   };
 }
 
-const LOT_HEADERS = [
-  'lot_key', 'lot_id', 'event_id', 'auction_house', 'location', 'auction_datetime', 'listing_url',
-  'make', 'model', 'variant_raw', 'variant_normalised', 'year', 'km', 'fuel', 'drivetrain',
-  'transmission', 'reserve', 'highest_bid', 'status', 'pass_count', 'description_score',
-  'estimated_get_out', 'estimated_margin', 'confidence_score', 'action', 'visible_to_dealers', 
-  'updated_at', 'last_status', 'last_seen_at', 'relist_group_id',
-  // Multi-source fields
-  'source_type', 'source_name', 'listing_id', 'listing_key', 'price_current', 'price_prev',
-  'price_drop_count', 'relist_count', 'first_seen_at',
-  // Override fields
+const LISTING_HEADERS = [
+  // Identity
+  'listing_id', 'lot_key', 'lot_id', 'listing_key',
+  // Source
+  'source', 'source_site', 'source_type', 'source_name',
+  // Event/Location
+  'event_id', 'auction_house', 'location', 'auction_datetime', 'listing_url',
+  // Vehicle
+  'make', 'model', 'variant_raw', 'variant_normalised', 'year', 'km', 'fuel', 'drivetrain', 'transmission',
+  // Pricing
+  'reserve', 'highest_bid', 'first_seen_price', 'last_seen_price', 'price_current', 'price_prev', 'price_change_pct',
+  // Lifecycle
+  'status', 'pass_count', 'price_drop_count', 'relist_count',
+  'first_seen_at', 'last_seen_at', 'last_auction_date', 'days_listed',
+  // Scoring
+  'description_score', 'estimated_get_out', 'estimated_margin', 'confidence_score', 'action', 'visible_to_dealers',
+  // Tracking
+  'updated_at', 'last_status', 'relist_group_id',
+  // Override
   'manual_confidence_score', 'manual_action', 'override_enabled'
 ];
+
+// Legacy alias
+const LOT_HEADERS = LISTING_HEADERS;
 
 const SALES_LOG_HEADERS = [
   'sale_id', 'dealer_name', 'dealer_whatsapp', 'deposit_date', 'make', 'model',
@@ -807,26 +862,38 @@ export const googleSheetsService = {
         // Update existing lot
         const existing = existingLots[existingIndex];
         
-        // AUCTION-SPECIFIC: Pass count rule (only for auctions)
-        let passCount = existing.pass_count;
-        if (isAuction && existing.status !== 'passed_in' && incomingStatus === 'passed_in') {
-          passCount = existing.pass_count + 1;
+        // AUCTION-SPECIFIC: Pass count rule
+        // Increment pass_count ONLY when:
+        // 1. status becomes passed_in AND
+        // 2. auction_date > previous last_auction_date (not a re-import of same run)
+        let passCount = existing.pass_count || 0;
+        let lastAuctionDate = existing.last_auction_date || '';
+        
+        if (isAuction && incomingStatus === 'passed_in') {
+          const incomingAuctionDate = newLot.auction_datetime || '';
+          const prevAuctionDate = existing.last_auction_date || '';
+          
+          // Only increment if this is a NEW passed_in event (different auction date)
+          if (incomingAuctionDate && incomingAuctionDate > prevAuctionDate) {
+            passCount = existing.pass_count + 1;
+            lastAuctionDate = incomingAuctionDate;
+          }
         }
         
-        // NON-AUCTION: Price drop detection
+        // Price tracking
+        const oldPrice = existing.last_seen_price || existing.price_current || 0;
+        const newPrice = newLot.price_current || newLot.reserve || newLot.highest_bid || 0;
         let priceDropCount = existing.price_drop_count || 0;
         let pricePrev = existing.price_prev || 0;
-        const oldPriceCurrent = existing.price_current || 0;
-        const newPriceCurrent = newLot.price_current || 0;
         
-        if (!isAuction && newPriceCurrent > 0 && oldPriceCurrent > 0 && newPriceCurrent < oldPriceCurrent) {
+        if (newPrice > 0 && oldPrice > 0 && newPrice < oldPrice) {
           priceDropCount++;
-          pricePrev = oldPriceCurrent;
+          pricePrev = oldPrice;
         }
         
-        // NON-AUCTION: Relist detection (if last_seen_at > 7 days ago)
+        // Relist detection (if last_seen_at > 7 days ago)
         let relistCount = existing.relist_count || 0;
-        if (!isAuction && existing.last_seen_at) {
+        if (existing.last_seen_at) {
           const lastSeen = new Date(existing.last_seen_at);
           const daysSinceLastSeen = (new Date().getTime() - lastSeen.getTime()) / (1000 * 60 * 60 * 24);
           if (daysSinceLastSeen > 7) {
@@ -834,28 +901,53 @@ export const googleSheetsService = {
           }
         }
         
+        // Compute days_listed
+        const firstSeenAt = existing.first_seen_at || nowISO;
+        const daysListed = Math.floor((new Date().getTime() - new Date(firstSeenAt).getTime()) / (1000 * 60 * 60 * 24));
+        
+        // Compute price_change_pct
+        const firstSeenPrice = existing.first_seen_price || oldPrice;
+        const priceChangePct = firstSeenPrice > 0 ? ((newPrice - firstSeenPrice) / firstSeenPrice) * 100 : 0;
+        
         const mergedLot: AuctionLot = {
           ...existing,
           ...newLot,
+          // Identity - preserve
+          listing_id: existing.listing_id || (isAuction ? `${auctionHouse}:${newLot.lot_id || existing.lot_id}` : (newLot.listing_id || '')),
           lot_key: incomingLotKey || existing.lot_key,
           listing_key: incomingListingKey || existing.listing_key,
+          
+          // Source - use existing or new
+          source: existing.source || sourceType,
+          source_site: existing.source_site || sourceName,
+          source_type: sourceType,
+          source_name: sourceName,
+          
+          // Status
           status: incomingStatus,
-          pass_count: passCount,
           last_status: existing.status,
-          last_seen_at: nowISO,
-          updated_at: nowISO,
-          // Non-auction lifecycle
-          price_drop_count: priceDropCount,
+          
+          // Auction lifecycle
+          pass_count: passCount,
+          last_auction_date: lastAuctionDate,
+          
+          // Price tracking
+          first_seen_price: existing.first_seen_price || firstSeenPrice,
+          last_seen_price: newPrice || oldPrice,
+          price_current: newPrice || oldPrice,
           price_prev: pricePrev,
+          price_change_pct: priceChangePct,
+          price_drop_count: priceDropCount,
+          
+          // Relist tracking
           relist_count: relistCount,
-          // Preserve first_seen_at
-          first_seen_at: existing.first_seen_at || nowISO,
+          
+          // Timestamps
+          first_seen_at: firstSeenAt,
+          last_seen_at: nowISO,
+          days_listed: daysListed,
+          updated_at: nowISO,
         };
-        
-        // For auctions, sync price_current from reserve/highest_bid
-        if (isAuction) {
-          mergedLot.price_current = mergedLot.reserve || mergedLot.highest_bid || 0;
-        }
         
         // Recalculate confidence if needed
         if (!newLot.confidence_score) {
@@ -870,15 +962,29 @@ export const googleSheetsService = {
       } else {
         // Add new lot
         const passCount = isAuction && incomingStatus === 'passed_in' ? 1 : 0;
+        const initialPrice = newLot.price_current || newLot.reserve || newLot.highest_bid || 0;
         
         const fullLot: AuctionLot = {
+          // Identity
+          listing_id: isAuction ? `${auctionHouse}:${newLot.lot_id || ''}` : (newLot.listing_id || ''),
           lot_key: incomingLotKey,
           lot_id: newLot.lot_id || '',
+          listing_key: incomingListingKey,
+          
+          // Source
+          source: sourceType,
+          source_site: sourceName,
+          source_type: sourceType,
+          source_name: sourceName,
+          
+          // Event/Location
           event_id: newLot.event_id || '',
           auction_house: auctionHouse,
           location: newLot.location || '',
           auction_datetime: newLot.auction_datetime || '',
           listing_url: newLot.listing_url || '',
+          
+          // Vehicle
           make: newLot.make || '',
           model: newLot.model || '',
           variant_raw: newLot.variant_raw || '',
@@ -888,30 +994,39 @@ export const googleSheetsService = {
           fuel: newLot.fuel || '',
           drivetrain: newLot.drivetrain || '',
           transmission: newLot.transmission || '',
+          
+          // Pricing
           reserve: newLot.reserve || 0,
           highest_bid: newLot.highest_bid || 0,
+          first_seen_price: initialPrice,
+          last_seen_price: initialPrice,
+          price_current: initialPrice,
+          price_prev: 0,
+          price_change_pct: 0,
+          
+          // Lifecycle
           status: incomingStatus,
           pass_count: passCount,
+          price_drop_count: 0,
+          relist_count: 0,
+          first_seen_at: nowISO,
+          last_seen_at: nowISO,
+          last_auction_date: isAuction && incomingStatus === 'passed_in' ? (newLot.auction_datetime || nowISO) : '',
+          days_listed: 0,
+          
+          // Scoring
           description_score: newLot.description_score || 0,
           estimated_get_out: newLot.estimated_get_out || 0,
           estimated_margin: newLot.estimated_margin || 0,
           confidence_score: newLot.confidence_score || 0,
           action: newLot.action || 'Watch',
           visible_to_dealers: newLot.visible_to_dealers || 'N',
+          
+          // Tracking
           updated_at: nowISO,
           last_status: '',
-          last_seen_at: nowISO,
           relist_group_id: newLot.relist_group_id || '',
-          // Multi-source fields
-          source_type: sourceType,
-          source_name: sourceName,
-          listing_id: newLot.listing_id || '',
-          listing_key: incomingListingKey,
-          price_current: newLot.price_current || newLot.reserve || newLot.highest_bid || 0,
-          price_prev: 0,
-          price_drop_count: 0,
-          relist_count: 0,
-          first_seen_at: nowISO,
+          
           // Override fields (defaults)
           override_enabled: 'N',
         };

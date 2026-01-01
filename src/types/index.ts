@@ -187,14 +187,33 @@ export interface AuctionEvent extends SheetRowMeta {
 // Source types for multi-source listings
 export type SourceType = 'auction' | 'classified' | 'retail' | 'dealer';
 
-export interface AuctionLot extends SheetRowMeta {
-  lot_id: string;
-  lot_key: string; // Computed: auction_house + ":" + lot_id (for auctions)
+// Listing status - applies to all source types
+export type ListingStatus = 'listed' | 'passed_in' | 'sold' | 'withdrawn';
+
+// Canonical Listings interface - unified for all sources
+export interface Listing extends SheetRowMeta {
+  // Identity fields
+  listing_id: string; // For auctions: auction_house + ":" + lot_number, stable across weeks
+  lot_id: string; // Legacy/auction lot number
+  lot_key: string; // Legacy: auction_house + ":" + lot_id
+  listing_key: string; // Computed unique key for non-auctions
+  
+  // Source information
+  source: SourceType; // 'auction', 'classified', 'retail', 'dealer'
+  source_site: string; // auction_house or site name
+  
+  // Legacy fields for backwards compatibility (map to source/source_site)
+  source_type: SourceType;
+  source_name: string;
+  
+  // Event/Location
   event_id: string;
   auction_house: string;
   location: string;
-  auction_datetime: string;
+  auction_datetime: string; // For auctions: auction date
   listing_url: string;
+  
+  // Vehicle details
   make: string;
   model: string;
   variant_raw: string;
@@ -204,41 +223,52 @@ export interface AuctionLot extends SheetRowMeta {
   fuel: string;
   drivetrain: string;
   transmission: string;
+  
+  // Pricing
   reserve: number;
   highest_bid: number;
-  status: 'listed' | 'passed_in' | 'sold' | 'withdrawn';
-  pass_count: number;
+  first_seen_price: number; // Price when first imported
+  last_seen_price: number; // Current/most recent price
+  price_current: number; // Alias for last_seen_price
+  price_prev: number; // Previous price (for change detection)
+  price_change_pct: number; // ((last - first) / first) * 100
+  
+  // Lifecycle
+  status: ListingStatus;
+  pass_count: number; // Auctions only: incremented when passed_in AND auction_date > prev
+  price_drop_count: number; // Number of price decreases observed
+  relist_count: number; // Number of times relisted (>7 day gap)
+  
+  // Timestamps
+  first_seen_at: string;
+  last_seen_at: string;
+  last_auction_date: string; // For pass_count logic: the auction_date when last passed_in
+  days_listed: number; // Computed: (today - first_seen_at) in days
+  
+  // Scoring
   description_score: number;
   estimated_get_out: number;
   estimated_margin: number;
   confidence_score: number;
   action: 'Watch' | 'Buy';
   visible_to_dealers: 'Y' | 'N';
+  
+  // Tracking
   updated_at: string;
-  // Lifecycle fields
   last_status: string;
-  last_seen_at: string;
   relist_group_id: string;
-  // For reserve softening detection
-  previous_reserve?: number;
-  // Multi-source support fields
-  source_type: SourceType;
-  source_name: string;
-  listing_id: string;
-  listing_key: string; // Computed unique key for all sources
-  price_current: number;
-  price_prev: number;
-  price_drop_count: number;
-  relist_count: number;
-  first_seen_at: string;
+  
   // Manual override fields
   manual_confidence_score?: number;
   manual_action?: 'Watch' | 'Buy';
   override_enabled: 'Y' | 'N';
 }
 
-// Calculate lot confidence score
-export function calculateLotConfidenceScore(lot: AuctionLot): number {
+// Backwards compatibility alias
+export type AuctionLot = Listing;
+
+// Calculate lot/listing confidence score
+export function calculateLotConfidenceScore(lot: Listing): number {
   let score = 0;
   if (lot.pass_count >= 2) score += 1;
   if (lot.pass_count >= 3) score += 1;
@@ -252,45 +282,53 @@ export function determineLotAction(confidenceScore: number): 'Buy' | 'Watch' {
   return confidenceScore >= 3 ? 'Buy' : 'Watch';
 }
 
-// Get lot flag reasons - extended for retail signals
+// Pressure flag reasons - extended for all source types
 export type LotFlagReason = 
   | 'PASSED IN x3+'
   | 'PASSED IN x2'
   | 'UNDER-SPECIFIED'
   | 'RESERVE SOFTENING'
   | 'MARGIN OK'
-  | 'PRICE DROPPING'
-  | 'FATIGUE LISTING'
+  | 'PRICE_DROPPING'
+  | 'FATIGUE_LISTING'
   | 'RELISTED'
   | 'OVERRIDDEN';
 
-export function getLotFlagReasons(lot: AuctionLot): LotFlagReason[] {
+// Get pressure flags for a listing
+export function getLotFlagReasons(lot: Listing): LotFlagReason[] {
   const reasons: LotFlagReason[] = [];
   
   // Override indicator
   if (lot.override_enabled === 'Y') reasons.push('OVERRIDDEN');
   
-  // Auction signals
-  if (lot.source_type === 'auction' || !lot.source_type) {
+  // Auction-specific signals
+  const isAuction = lot.source === 'auction' || lot.source_type === 'auction' || (!lot.source && !lot.source_type);
+  if (isAuction) {
     if (lot.pass_count >= 3) reasons.push('PASSED IN x3+');
     else if (lot.pass_count === 2) reasons.push('PASSED IN x2');
     
-    if (lot.previous_reserve && lot.reserve < lot.previous_reserve) {
-      const dropPercent = ((lot.previous_reserve - lot.reserve) / lot.previous_reserve) * 100;
+    // Reserve softening for auctions
+    if (lot.price_prev && lot.price_current && lot.price_current < lot.price_prev) {
+      const dropPercent = ((lot.price_prev - lot.price_current) / lot.price_prev) * 100;
       if (dropPercent >= 5) reasons.push('RESERVE SOFTENING');
     }
   }
   
-  // Retail/classified signals
-  if (lot.price_drop_count >= 1) reasons.push('PRICE DROPPING');
-  if (lot.relist_count >= 1) reasons.push('RELISTED');
+  // Universal pressure signals
+  // PRICE_DROPPING: price_change_pct <= -5%
+  if (lot.price_change_pct && lot.price_change_pct <= -5) {
+    reasons.push('PRICE_DROPPING');
+  }
   
-  // Days listed fatigue (calculate from first_seen_at)
-  if (lot.first_seen_at) {
-    const firstSeen = new Date(lot.first_seen_at);
-    const now = new Date();
-    const daysListed = Math.floor((now.getTime() - firstSeen.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysListed >= 14) reasons.push('FATIGUE LISTING');
+  // FATIGUE_LISTING: days_listed >= 14
+  const daysListed = lot.days_listed || (lot.first_seen_at 
+    ? Math.floor((new Date().getTime() - new Date(lot.first_seen_at).getTime()) / (1000 * 60 * 60 * 24))
+    : 0);
+  if (daysListed >= 14) reasons.push('FATIGUE_LISTING');
+  
+  // RELISTED: pass_count >= 2 (auctions) or relist_count >= 1 (others)
+  if (lot.pass_count >= 2 || lot.relist_count >= 1) {
+    reasons.push('RELISTED');
   }
   
   if (lot.description_score <= 1) reasons.push('UNDER-SPECIFIED');

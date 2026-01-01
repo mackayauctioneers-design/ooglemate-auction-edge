@@ -30,8 +30,8 @@ const flagColors: Record<LotFlagReason, string> = {
   'UNDER-SPECIFIED': 'bg-yellow-600',
   'RESERVE SOFTENING': 'bg-purple-600',
   'MARGIN OK': 'bg-emerald-600',
-  'PRICE DROPPING': 'bg-blue-600',
-  'FATIGUE LISTING': 'bg-rose-600',
+  'PRICE_DROPPING': 'bg-blue-600',
+  'FATIGUE_LISTING': 'bg-rose-600',
   'RELISTED': 'bg-cyan-600',
   'OVERRIDDEN': 'bg-indigo-600',
 };
