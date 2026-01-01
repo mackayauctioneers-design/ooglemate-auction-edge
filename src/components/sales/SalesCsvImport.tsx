@@ -244,17 +244,81 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
     }
 
     setIsImporting(true);
-    setImportProgress({ step: 0, totalSteps: 4, message: 'Preparing import...' });
+    setImportProgress({ step: 0, totalSteps: 5, message: 'Checking for existing records...' });
 
     // Generate import_id for audit trail
     const importId = `IMP-${Date.now()}`;
     const uploadedAt = new Date().toISOString();
 
     try {
-      // Step 1: Store raw rows in Sales_Imports_Raw (immutable audit trail)
-      setImportProgress({ step: 1, totalSteps: 4, message: `Saving ${csvRows.length} raw rows to audit trail...` });
+      // Step 1: Fetch existing sales to check for duplicates
+      setImportProgress({ step: 1, totalSteps: 5, message: 'Loading existing sales for duplicate check...' });
       
-      const rawRows: SalesImportRaw[] = csvRows.map((row, idx) => {
+      const existingSales = await dataService.getSalesNormalised({ dealerName });
+      
+      // Build set of existing keys (make|model|year|date|km)
+      const existingKeys = new Set<string>();
+      existingSales.forEach(sale => {
+        const key = [
+          (sale.make || '').toLowerCase().trim(),
+          (sale.model || '').toLowerCase().trim(),
+          String(sale.year || ''),
+          (sale.sale_date || '').trim(),
+          String(sale.km || ''),
+        ].join('|');
+        existingKeys.add(key);
+      });
+
+      // Filter out CSV rows that already exist in database
+      const newRows: string[][] = [];
+      let skippedDuplicates = 0;
+
+      csvRows.forEach(row => {
+        const rowData: Record<string, any> = {};
+        csvHeaders.forEach((header, i) => {
+          const field = columnMapping[header];
+          if (field && row[i] !== undefined) {
+            rowData[field] = row[i];
+          }
+        });
+
+        const key = [
+          (rowData.make || '').toLowerCase().trim(),
+          (rowData.model || '').toLowerCase().trim(),
+          String(parseInt(rowData.year) || ''),
+          (rowData.deposit_date || '').trim(),
+          String(parseInt(rowData.km) || ''),
+        ].join('|');
+
+        if (existingKeys.has(key)) {
+          skippedDuplicates++;
+        } else {
+          newRows.push(row);
+          existingKeys.add(key); // Prevent duplicates within this import too
+        }
+      });
+
+      if (skippedDuplicates > 0) {
+        toast({
+          title: 'Duplicates skipped',
+          description: `${skippedDuplicates} row${skippedDuplicates > 1 ? 's' : ''} already exist in database and will be skipped.`,
+        });
+      }
+
+      if (newRows.length === 0) {
+        toast({
+          title: 'No new records',
+          description: 'All rows already exist in the database.',
+          variant: 'destructive',
+        });
+        setIsImporting(false);
+        return;
+      }
+
+      // Step 2: Store raw rows in Sales_Imports_Raw (immutable audit trail)
+      setImportProgress({ step: 2, totalSteps: 5, message: `Saving ${newRows.length} raw rows to audit trail...` });
+      
+      const rawRows: SalesImportRaw[] = newRows.map((row, idx) => {
         const rowObj: Record<string, string> = {};
         csvHeaders.forEach((header, i) => {
           rowObj[header] = row[i] || '';
@@ -273,13 +337,13 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
 
       await dataService.appendSalesImportsRaw(rawRows);
 
-      // Step 2: Parse and normalise rows, storing in Sales_Normalised
-      setImportProgress({ step: 2, totalSteps: 4, message: `Normalising ${csvRows.length} rows...` });
+      // Step 3: Parse and normalise rows, storing in Sales_Normalised
+      setImportProgress({ step: 3, totalSteps: 5, message: `Normalising ${newRows.length} rows...` });
       
       const normalisedRows: SalesNormalised[] = [];
       const parseErrors: Array<{ row: number; reason: string }> = [];
 
-      csvRows.forEach((row, idx) => {
+      newRows.forEach((row, idx) => {
         const rowData: Record<string, any> = {};
         csvHeaders.forEach((header, i) => {
           const field = columnMapping[header];
@@ -338,10 +402,10 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
 
       await dataService.appendSalesNormalised(normalisedRows);
 
-      // Step 3: Also run the legacy import for backwards compatibility with Sales_Log
-      setImportProgress({ step: 3, totalSteps: 4, message: `Saving to Sales Log...` });
+      // Step 4: Also run the legacy import for backwards compatibility with Sales_Log
+      setImportProgress({ step: 4, totalSteps: 5, message: `Saving to Sales Log...` });
       
-      const sales: Array<Omit<SaleLog, 'sale_id' | 'created_at'>> = csvRows.map(row => {
+      const sales: Array<Omit<SaleLog, 'sale_id' | 'created_at'>> = newRows.map(row => {
         const sale: any = {
           source: 'CSV' as const,
           dealer_name: dealerName,
@@ -370,8 +434,8 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
         return sale as Omit<SaleLog, 'sale_id' | 'created_at'>;
       });
 
-      // Step 4: Finalize import
-      setImportProgress({ step: 4, totalSteps: 4, message: `Finalizing import...` });
+      // Step 5: Finalize import
+      setImportProgress({ step: 5, totalSteps: 5, message: `Finalizing import...` });
       
       const result = await dataService.importSalesWithFingerprints(sales);
       setImportResult(result);
