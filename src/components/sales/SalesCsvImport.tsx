@@ -366,13 +366,48 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
 
         {step === 'paste' && (
           <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <label className="flex-1">
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        const text = event.target?.result as string;
+                        if (text) {
+                          setCsvText(text);
+                        }
+                      };
+                      reader.readAsText(file);
+                    }
+                    e.target.value = ''; // Reset for re-upload
+                  }}
+                />
+                <div className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-muted-foreground/25 rounded-lg cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors">
+                  <Upload className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Click to upload CSV file</span>
+                </div>
+              </label>
+            </div>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">or paste data</span>
+              </div>
+            </div>
             <Textarea
               value={csvText}
               onChange={(e) => setCsvText(e.target.value)}
               placeholder="Paste CSV data here...
 deposit_date,make,model,variant_normalised,year,km,engine,drivetrain,transmission
 2024-01-15,Toyota,Hilux,SR5,2022,45000,Diesel,4WD,Automatic"
-              className="min-h-[200px] font-mono text-sm"
+              className="min-h-[150px] font-mono text-sm"
             />
             <p className="text-xs text-muted-foreground">
               Required fields: dealer_name (or uses current dealer), deposit_date, make, model, variant_normalised, year, km, engine, drivetrain, transmission
