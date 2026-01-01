@@ -207,7 +207,7 @@ export default function SavedSearchesPage() {
     }
   }
 
-  async function runSearchNow(search: SavedSearch): Promise<{ added: number; updated: number; error?: string; runLog?: SavedSearchRunLog }> {
+  async function runSearchNow(search: SavedSearch, skipReload = false): Promise<{ added: number; updated: number; error?: string; runLog?: SavedSearchRunLog; success: boolean }> {
     setRunningSearchId(search.search_id);
     setLastRunError(prev => ({ ...prev, [search.search_id]: '' }));
     
@@ -287,20 +287,25 @@ export default function SavedSearchesPage() {
       if (!result.success) {
         const errorMessage = result.error || 'Search returned no results';
         setLastRunError(prev => ({ ...prev, [search.search_id]: errorMessage }));
-        toast.error(`Run failed: ${errorMessage}`);
-        return { added: 0, updated: 0, error: errorMessage, runLog };
+        if (!skipReload) {
+          toast.error(`Run failed: ${errorMessage}`);
+          await loadSearches();
+        }
+        return { added: 0, updated: 0, error: errorMessage, runLog, success: false };
       }
       
-      if (added > 0 || updated > 0) {
-        toast.success(`Saved Search ran: ${added} listings added, ${updated} updated`);
-      } else if (listings.length === 0) {
-        toast.info(`Saved Search ran: no listings found`);
-      } else {
-        toast.info(`Saved Search ran: no new listings`);
+      if (!skipReload) {
+        if (added > 0 || updated > 0) {
+          toast.success(`Saved Search ran: ${added} listings added, ${updated} updated`);
+        } else if (listings.length === 0) {
+          toast.info(`Saved Search ran: no listings found`);
+        } else {
+          toast.info(`Saved Search ran: no new listings`);
+        }
+        await loadSearches();
       }
       
-      await loadSearches();
-      return { added, updated, runLog };
+      return { added, updated, runLog, success: true };
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -327,8 +332,10 @@ export default function SavedSearchesPage() {
         console.error('Failed to update diagnostics:', e);
       }
       
-      toast.error(`Run failed: ${errorMessage}`);
-      return { added: 0, updated: 0, error: errorMessage };
+      if (!skipReload) {
+        toast.error(`Run failed: ${errorMessage}`);
+      }
+      return { added: 0, updated: 0, error: errorMessage, success: false };
     } finally {
       setRunningSearchId(null);
     }
@@ -354,27 +361,26 @@ export default function SavedSearchesPage() {
     }
     
     setRunningAll(true);
-    let totalAdded = 0;
-    let totalUpdated = 0;
+    let successCount = 0;
     let failedCount = 0;
     
+    // Run all searches sequentially, skip individual reloads
     for (const search of enabledSearches) {
-      const result = await runSearchNow(search);
-      if (result.error) {
-        failedCount++;
+      const result = await runSearchNow(search, true); // skipReload = true
+      if (result.success) {
+        successCount++;
       } else {
-        totalAdded += result.added;
-        totalUpdated += result.updated;
+        failedCount++;
       }
     }
     
+    // Reload once at the end
+    await loadSearches();
+    
     setRunningAll(false);
     
-    if (failedCount > 0) {
-      toast.warning(`Completed: ${totalAdded} added, ${totalUpdated} updated. ${failedCount} search(es) failed.`);
-    } else {
-      toast.success(`All searches complete: ${totalAdded} added, ${totalUpdated} updated`);
-    }
+    // Show summary toast
+    toast.info(`Ran ${enabledSearches.length} searches: ${successCount} succeeded, ${failedCount} failed`);
   }
 
   function formatLastRun(dateStr: string): string {
