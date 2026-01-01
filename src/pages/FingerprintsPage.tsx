@@ -4,6 +4,12 @@ import { dataService } from '@/services/dataService';
 import { SaleFingerprint, formatNumber } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
@@ -287,12 +293,25 @@ export default function FingerprintsPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Badge variant={statusInfo.variant} title={statusInfo.tooltip}>
-                          {statusInfo.label}
-                        </Badge>
-                        {fp.fingerprint_type === 'spec_only' && (
-                          <Badge variant="outline" className="ml-1 text-xs">spec only</Badge>
-                        )}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge variant={statusInfo.variant} title={statusInfo.tooltip}>
+                            {statusInfo.label}
+                          </Badge>
+                          {fp.fingerprint_type === 'spec_only' && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant="secondary" className="text-xs font-medium uppercase">
+                                    Spec-Only
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <p>KM is not enforced for this fingerprint. Manual judgement applies when reviewing matches.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div>
@@ -316,13 +335,13 @@ export default function FingerprintsPage() {
                       </TableCell>
                       <TableCell className="text-right mono text-sm">
                         {fp.fingerprint_type === 'spec_only' ? (
-                          <span className="text-muted-foreground">Any</span>
+                          <span className="text-muted-foreground text-xs whitespace-nowrap">
+                            Spec-only (km not enforced)
+                          </span>
                         ) : (
-                          <>
-                            <span className="text-muted-foreground">{formatNumber(fp.min_km)}</span>
-                            <span className="text-muted-foreground mx-1">–</span>
-                            <span className="text-foreground">{formatNumber(fp.max_km)}</span>
-                          </>
+                          <span className="whitespace-nowrap">
+                            {formatNumber(fp.min_km)} – {formatNumber(fp.max_km)} km
+                          </span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
