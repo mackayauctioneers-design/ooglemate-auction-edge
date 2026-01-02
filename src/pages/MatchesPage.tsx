@@ -83,19 +83,42 @@ function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | nu
   // Determine if this is a spec-only fingerprint
   const isSpecOnly = isSpecOnlyFingerprint(fp);
   
-  // ========== TIER 1: Exact variant match ==========
-  if (lot.variant_normalised?.toLowerCase().trim() === fp.variant_normalised?.toLowerCase().trim()) {
-    if (isSpecOnly) {
-      // Spec-only: skip KM, engine, drivetrain, transmission checks
+  // ========== SPEC-ONLY FINGERPRINTS: Tier-2 only, visibility-only ==========
+  // Spec-only fingerprints can only create Tier-2 Probable matches
+  // They must never auto-promote to BUY and never trigger alerts
+  if (isSpecOnly) {
+    // Exact variant match - still Tier-2 Probable for spec-only
+    if (lot.variant_normalised?.toLowerCase().trim() === fp.variant_normalised?.toLowerCase().trim()) {
       return {
         fingerprint: fp,
         lot,
         matchType: 'spec_only',
-        lane: 'Advisory',
-        tier: 'tier1',
-        matchConfidence: 'exact',
+        lane: 'Probable', // Forced to Probable for spec-only
+        tier: 'tier2', // Forced to Tier-2 for spec-only
+        matchConfidence: 'probable', // Never 'exact' - prevents BUY promotion
       };
     }
+    
+    // Variant family match for spec-only
+    const lotFamily = getVariantFamily(lot.variant_family);
+    const fpFamily = getVariantFamily(fp.variant_family);
+    
+    if (lotFamily && fpFamily && lotFamily === fpFamily) {
+      return {
+        fingerprint: fp,
+        lot,
+        matchType: 'spec_only',
+        lane: 'Probable',
+        tier: 'tier2',
+        matchConfidence: 'probable',
+      };
+    }
+    
+    return null; // No match for spec-only fingerprint
+  }
+  
+  // ========== TIER 1: Exact variant match (FULL fingerprints only) ==========
+  if (lot.variant_normalised?.toLowerCase().trim() === fp.variant_normalised?.toLowerCase().trim()) {
     
     // Full fingerprint: check additional specs
     if (fp.engine && lot.fuel && fp.engine.toLowerCase().trim() !== lot.fuel.toLowerCase().trim()) {
@@ -122,21 +145,19 @@ function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | nu
     }
   }
   
-  // ========== TIER 2: Variant family match ==========
+  // ========== TIER 2: Variant family match (FULL fingerprints only) ==========
   // Use ONLY stored variant_family values - no on-the-fly derivation
   const lotFamily = getVariantFamily(lot.variant_family);
   const fpFamily = getVariantFamily(fp.variant_family);
   
   // If both have a family and they match
   if (lotFamily && fpFamily && lotFamily === fpFamily) {
-    // For Tier 2, KM check only applies to full fingerprints with valid km bounds
-    if (!isSpecOnly) {
-      const minKm = fp.min_km!;
-      const maxKm = fp.max_km!;
-      
-      if (lot.km < minKm || lot.km > maxKm) {
-        return null; // KM out of range for full fingerprint
-      }
+    // KM check for full fingerprints
+    const minKm = fp.min_km!;
+    const maxKm = fp.max_km!;
+    
+    if (lot.km < minKm || lot.km > maxKm) {
+      return null; // KM out of range for full fingerprint
     }
     
     return {
@@ -400,9 +421,25 @@ export default function MatchesPage() {
         </TableCell>
         <TableCell>{auctionDate}</TableCell>
         <TableCell>
-          <Badge variant={matchType === 'km_bounded' ? 'outline' : matchType === 'variant_family' ? 'secondary' : 'secondary'} className="text-xs">
-            {matchType === 'km_bounded' ? 'KM-bounded' : matchType === 'variant_family' ? 'Variant family' : 'Spec-only'}
-          </Badge>
+          <div className="flex flex-col gap-1">
+            <Badge variant={matchType === 'km_bounded' ? 'outline' : matchType === 'variant_family' ? 'secondary' : 'secondary'} className="text-xs">
+              {matchType === 'km_bounded' ? 'KM-bounded' : matchType === 'variant_family' ? 'Variant family' : 'Spec-only'}
+            </Badge>
+            {matchType === 'spec_only' && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="text-xs border-orange-500/50 text-orange-400">
+                      SPEC-ONLY (km ignored)
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <span>Visibility-only match. Cannot auto-promote to BUY or trigger alerts.</span>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
         </TableCell>
         <TableCell className="text-center">
           <Badge variant="outline">{lot.confidence_score}</Badge>
