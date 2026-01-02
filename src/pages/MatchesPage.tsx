@@ -218,39 +218,76 @@ export default function MatchesPage() {
     return true;
   };
   
+  // Tolerant check for Pickles source (handles variations like 'Pickles', 'Pickles Catalogue', 'pickles auction')
+  const isPicklesSource = (lot: AuctionLot): boolean => {
+    const source = (lot.source_name || '').toLowerCase();
+    const auctionHouse = (lot.auction_house || '').toLowerCase();
+    return source.includes('pickles') || auctionHouse.includes('pickles') || auctionHouse === 'pickles';
+  };
+  
+  // Try to parse date from auction_datetime or auction_date, returns null if unparseable
+  const parseAuctionDate = (lot: AuctionLot): { date: Date | null; source: 'datetime' | 'date' | 'none' } => {
+    if (lot.auction_datetime) {
+      const d = new Date(lot.auction_datetime);
+      if (!isNaN(d.getTime())) return { date: d, source: 'datetime' };
+    }
+    if ((lot as any).auction_date) {
+      const d = new Date((lot as any).auction_date);
+      if (!isNaN(d.getTime())) return { date: d, source: 'date' };
+    }
+    return { date: null, source: 'none' };
+  };
+  
+  // Get reason why lot is excluded from visibility scope
+  const getVisibilityExclusionReason = (lot: AuctionLot): string | null => {
+    // Check visibility flag (admin can override)
+    if (lot.visible_to_dealers !== 'Y') return 'visible_to_dealers != Y';
+    
+    // Must be Pickles source
+    if (!isPicklesSource(lot)) return 'not Pickles source';
+    
+    // Must have valid status
+    const validStatuses = ['catalogue', 'upcoming', 'listed'];
+    if (!validStatuses.includes(lot.status || '')) return `status '${lot.status}' not in [catalogue, upcoming, listed]`;
+    
+    // Check date - we allow missing/unparseable dates for visibility (labeled "date unknown")
+    const { date, source } = parseAuctionDate(lot);
+    if (date) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (date < today) return `auction date ${date.toISOString().split('T')[0]} is in the past`;
+    }
+    // If date missing, we still include - no exclusion reason
+    
+    return null; // Not excluded
+  };
+  
   const isVisibilityScope = (lot: AuctionLot): boolean => {
-    // Visibility scope: Future catalogue lots for Tier-2 matching ONLY
+    // Visibility scope: Pickles catalogue lots for Tier-2 matching ONLY
     // These NEVER trigger BUY, NEVER trigger alerts
     
+    // Visibility = Y (or admin override - for now just check Y)
     if (lot.visible_to_dealers !== 'Y') return false;
     
-    // Must have future auction date
-    if (!lot.auction_datetime) return false;
-    const auctionDate = new Date(lot.auction_datetime);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const isFutureAuction = auctionDate >= today;
-    if (!isFutureAuction) return false;
+    // Must be Pickles source (tolerant check)
+    if (!isPicklesSource(lot)) return false;
     
-    // VISIBILITY SCOPE CRITERIA (any of):
-    // 1. source_name = 'Pickles Catalogue' (regardless of status)
-    // 2. status IN ('catalogue', 'upcoming')
+    // Must have valid status for visibility
+    const validStatuses = ['catalogue', 'upcoming', 'listed'];
+    if (!validStatuses.includes(lot.status || '')) return false;
     
-    if (lot.source_name === 'Pickles Catalogue') {
-      return true;
+    // Check auction date - include if:
+    // 1. Date is in the future
+    // 2. OR date is missing/unparseable (labeled "date unknown" in UI)
+    const { date } = parseAuctionDate(lot);
+    if (date) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (date < today) return false; // Past date = not visibility scope
     }
+    // If no parseable date, still include for visibility
     
-    if (['catalogue', 'upcoming'].includes(lot.status || '')) {
-      return true;
-    }
-    
-    // Also catch any 'listed' lot with future date that escaped execution scope
-    // (execution scope requires auction_date <= today)
-    if (lot.status === 'listed') {
-      return true;
-    }
-    
-    return false;
+    return true;
   };
   
   // ========== PRE-COMPUTE CANDIDATE LOT SETS ==========
@@ -440,6 +477,85 @@ export default function MatchesPage() {
     const fullFingerprints = fingerprints.filter(fp => !isSpecOnlyFingerprint(fp)).length;
     const specOnlyFingerprints = fingerprints.filter(fp => isSpecOnlyFingerprint(fp)).length;
     
+    // ========== VISIBILITY SCOPE DEBUG ==========
+    // Analyze the 56 lots with family to understand why they might be excluded
+    const lotsWithFamilyList = lots.filter(l => l.variant_family);
+    
+    // Count by source values (top 10)
+    const sourceCountMap: Record<string, number> = {};
+    lotsWithFamilyList.forEach(l => {
+      const src = l.source_name || l.source || '(empty)';
+      sourceCountMap[src] = (sourceCountMap[src] || 0) + 1;
+    });
+    const sourceCounts = Object.entries(sourceCountMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+    
+    // Count by auction_house values
+    const auctionHouseCountMap: Record<string, number> = {};
+    lotsWithFamilyList.forEach(l => {
+      const ah = l.auction_house || '(empty)';
+      auctionHouseCountMap[ah] = (auctionHouseCountMap[ah] || 0) + 1;
+    });
+    const auctionHouseCounts = Object.entries(auctionHouseCountMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+    
+    // Count by status values
+    const statusCountMap: Record<string, number> = {};
+    lotsWithFamilyList.forEach(l => {
+      const st = l.status || '(empty)';
+      statusCountMap[st] = (statusCountMap[st] || 0) + 1;
+    });
+    const statusCounts = Object.entries(statusCountMap)
+      .sort((a, b) => b[1] - a[1]);
+    
+    // Count parseable dates
+    let auctionDatetimeParseable = 0;
+    let auctionDateParseable = 0;
+    let visibleToDealersY = 0;
+    
+    lotsWithFamilyList.forEach(l => {
+      if (l.auction_datetime) {
+        const d = new Date(l.auction_datetime);
+        if (!isNaN(d.getTime())) auctionDatetimeParseable++;
+      }
+      if ((l as any).auction_date) {
+        const d = new Date((l as any).auction_date);
+        if (!isNaN(d.getTime())) auctionDateParseable++;
+      }
+      if (l.visible_to_dealers === 'Y') visibleToDealersY++;
+    });
+    
+    // Sample excluded lots (up to 5)
+    const excludedSamples: Array<{
+      lot_id: string;
+      source: string;
+      auction_house: string;
+      status: string;
+      auction_datetime: string;
+      auction_date: string;
+      visible_to_dealers: string;
+      excluded_reason: string;
+    }> = [];
+    
+    for (const lot of lotsWithFamilyList) {
+      if (excludedSamples.length >= 5) break;
+      const reason = getVisibilityExclusionReason(lot);
+      if (reason) {
+        excludedSamples.push({
+          lot_id: lot.lot_key || lot.listing_key || '(no id)',
+          source: lot.source_name || lot.source || '(empty)',
+          auction_house: lot.auction_house || '(empty)',
+          status: lot.status || '(empty)',
+          auction_datetime: lot.auction_datetime || '(empty)',
+          auction_date: (lot as any).auction_date || '(empty)',
+          visible_to_dealers: lot.visible_to_dealers || '(empty)',
+          excluded_reason: reason,
+        });
+      }
+    }
+    
     return {
       activeFingerprints,
       lotsInScope,
@@ -452,6 +568,17 @@ export default function MatchesPage() {
       lotsWithFamily,
       fullFingerprints,
       specOnlyFingerprints,
+      // Visibility debug
+      visibilityDebug: {
+        totalLotsWithFamily: lotsWithFamilyList.length,
+        sourceCounts,
+        auctionHouseCounts,
+        statusCounts,
+        auctionDatetimeParseable,
+        auctionDateParseable,
+        visibleToDealersY,
+        excludedSamples,
+      },
     };
   }, [fingerprints, lots, allMatches, executionScopeLots, visibilityScopeLots]);
   
@@ -758,6 +885,108 @@ export default function MatchesPage() {
               <div className="text-sm text-amber-500 mt-2">
                 ⚠️ Tier-2 matching requires variant_family. Run "Backfill Variant Family" in Admin Tools.
               </div>
+            )}
+            
+            {/* Visibility Scope Debug Panel */}
+            {diagnostics.visibilityDebug && diagnostics.lotsWithFamily > 0 && (
+              <Collapsible>
+                <CollapsibleTrigger asChild>
+                  <button className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mt-3 pt-3 border-t border-border w-full text-left">
+                    <ChevronRight className="h-4 w-4" />
+                    🔍 Visibility Scope Debug ({diagnostics.visibilityDebug.totalLotsWithFamily} lots w/ family)
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3 space-y-4">
+                  {/* Source counts */}
+                  <div>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-2">Count by source (top 10):</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {diagnostics.visibilityDebug.sourceCounts.map(([source, count]) => (
+                        <Badge key={source} variant="outline" className="text-xs">
+                          {source}: {count}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Auction house counts */}
+                  <div>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-2">Count by auction_house:</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {diagnostics.visibilityDebug.auctionHouseCounts.map(([ah, count]) => (
+                        <Badge key={ah} variant="outline" className="text-xs">
+                          {ah}: {count}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Status counts */}
+                  <div>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-2">Count by status:</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {diagnostics.visibilityDebug.statusCounts.map(([st, count]) => (
+                        <Badge key={st} variant="outline" className="text-xs">
+                          {st}: {count}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Date parseable counts */}
+                  <div className="grid grid-cols-3 gap-4 text-xs">
+                    <div>
+                      <span className="text-muted-foreground">auction_datetime parseable:</span>
+                      <span className="ml-2 font-medium">{diagnostics.visibilityDebug.auctionDatetimeParseable}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">auction_date parseable:</span>
+                      <span className="ml-2 font-medium">{diagnostics.visibilityDebug.auctionDateParseable}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">visible_to_dealers = Y:</span>
+                      <span className="ml-2 font-medium">{diagnostics.visibilityDebug.visibleToDealersY}</span>
+                    </div>
+                  </div>
+                  
+                  {/* Excluded samples */}
+                  {diagnostics.visibilityDebug.excludedSamples.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-medium text-muted-foreground mb-2">Sample excluded lots (first 5):</h4>
+                      <div className="overflow-x-auto">
+                        <table className="text-xs w-full">
+                          <thead>
+                            <tr className="border-b border-border">
+                              <th className="text-left py-1 px-2">lot_id</th>
+                              <th className="text-left py-1 px-2">source</th>
+                              <th className="text-left py-1 px-2">auction_house</th>
+                              <th className="text-left py-1 px-2">status</th>
+                              <th className="text-left py-1 px-2">auction_datetime</th>
+                              <th className="text-left py-1 px-2">auction_date</th>
+                              <th className="text-left py-1 px-2">visible</th>
+                              <th className="text-left py-1 px-2 text-red-400">excluded_reason</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {diagnostics.visibilityDebug.excludedSamples.map((sample, i) => (
+                              <tr key={i} className="border-b border-border/50">
+                                <td className="py-1 px-2 font-mono">{sample.lot_id}</td>
+                                <td className="py-1 px-2">{sample.source}</td>
+                                <td className="py-1 px-2">{sample.auction_house}</td>
+                                <td className="py-1 px-2">{sample.status}</td>
+                                <td className="py-1 px-2 font-mono text-[10px]">{sample.auction_datetime}</td>
+                                <td className="py-1 px-2 font-mono text-[10px]">{sample.auction_date}</td>
+                                <td className="py-1 px-2">{sample.visible_to_dealers}</td>
+                                <td className="py-1 px-2 text-red-400">{sample.excluded_reason}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
             )}
           </div>
         )}
