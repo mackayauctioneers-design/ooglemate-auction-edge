@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2 } from 'lucide-react';
+import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +22,7 @@ export default function AdminToolsPage() {
   const [showLifecycleTest, setShowLifecycleTest] = useState(false);
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [isImporting12931, setIsImporting12931] = useState(false);
+  const [isBackfillingFamily, setIsBackfillingFamily] = useState(false);
 
   const handleImportCatalogue12931 = async () => {
     setIsImporting12931(true);
@@ -77,6 +78,23 @@ export default function AdminToolsPage() {
       toast.error('Failed to rebuild search index');
     } finally {
       setIsRebuilding(false);
+    }
+  };
+
+  const handleBackfillVariantFamily = async () => {
+    setIsBackfillingFamily(true);
+    try {
+      const result = await dataService.backfillVariantFamily();
+      toast.success(
+        `Variant family backfill complete: ${result.fingerprintsUpdated} fingerprints updated, ${result.lotsUpdated} lots updated`
+      );
+      // Refresh matches after backfill
+      await queryClient.invalidateQueries({ queryKey: ['matches'] });
+      await queryClient.invalidateQueries({ queryKey: ['auctionLots'] });
+    } catch (error) {
+      toast.error('Failed to backfill variant family: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsBackfillingFamily(false);
     }
   };
 
@@ -207,6 +225,30 @@ export default function AdminToolsPage() {
               >
                 {isImporting12931 ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                 {isImporting12931 ? 'Importing...' : 'Import 12931 Now'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Backfill Variant Family */}
+          <Card className="border-blue-500/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Tags className="h-5 w-5 text-blue-500" />
+                Backfill Variant Family
+              </CardTitle>
+              <CardDescription>
+                Derive variant_family (SR5, GXL, XLT, etc.) for fingerprints and listings to enable Tier-2 matching
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button 
+                onClick={handleBackfillVariantFamily}
+                className="w-full gap-2"
+                variant="outline"
+                disabled={isBackfillingFamily}
+              >
+                {isBackfillingFamily ? <Loader2 className="h-4 w-4 animate-spin" /> : <Tags className="h-4 w-4" />}
+                {isBackfillingFamily ? 'Backfilling...' : 'Backfill Variant Family'}
               </Button>
             </CardContent>
           </Card>

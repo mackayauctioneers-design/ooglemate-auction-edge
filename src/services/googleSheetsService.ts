@@ -18,7 +18,8 @@ import {
   determineLotAction,
   getLotFlagReasons,
   getPressureSignals,
-  shouldExcludeListing
+  shouldExcludeListing,
+  extractVariantFamily
 } from '@/types';
 
 const SHEETS = {
@@ -145,6 +146,7 @@ function parseFingerprint(row: any): SaleFingerprint {
     make: row.make || '',
     model: row.model || '',
     variant_normalised: row.variant_normalised || '',
+    variant_family: row.variant_family || undefined,
     year: parseInt(row.year) || 0,
     sale_km: saleKm,
     min_km: minKm,
@@ -318,6 +320,7 @@ function parseListing(row: any): AuctionLot {
     model: row.model || '',
     variant_raw: row.variant_raw || '',
     variant_normalised: row.variant_normalised || '',
+    variant_family: row.variant_family || undefined,
     year: parseInt(row.year) || 0,
     km: parseInt(row.km) || 0,
     fuel: row.fuel || '',
@@ -440,6 +443,8 @@ const LISTING_HEADERS = [
   'source', 'source_site', 'source_type', 'source_name',
   // Event/Location
   'event_id', 'auction_house', 'location', 'auction_datetime', 'listing_url',
+  // Variant family for tier-2 matching
+  'variant_family',
   // Vehicle
   'make', 'model', 'variant_raw', 'variant_normalised', 'year', 'km', 'fuel', 'drivetrain', 'transmission',
   // Pricing
@@ -2131,6 +2136,85 @@ export const googleSheetsService = {
     }
     
     return { updated, skipped };
+  },
+
+  // Backfill variant_family for existing fingerprints and listings
+  backfillVariantFamily: async (): Promise<{ 
+    fingerprintsUpdated: number; 
+    fingerprintsSkipped: number;
+    lotsUpdated: number;
+    lotsSkipped: number;
+  }> => {
+    let fingerprintsUpdated = 0;
+    let fingerprintsSkipped = 0;
+    let lotsUpdated = 0;
+    let lotsSkipped = 0;
+
+    // Backfill fingerprints
+    const fingerprints = await googleSheetsService.getFingerprints();
+    for (const fp of fingerprints) {
+      // Skip if already has variant_family
+      if (fp.variant_family) {
+        fingerprintsSkipped++;
+        continue;
+      }
+      
+      // Derive from variant_normalised
+      const derived = extractVariantFamily(fp.variant_normalised);
+      if (!derived) {
+        fingerprintsSkipped++;
+        continue;
+      }
+      
+      if (fp._rowIndex !== undefined) {
+        try {
+          const updatedFp: SaleFingerprint = {
+            ...fp,
+            variant_family: derived,
+          };
+          await callSheetsApi('update', SHEETS.FINGERPRINTS, updatedFp, fp._rowIndex);
+          fingerprintsUpdated++;
+        } catch {
+          fingerprintsSkipped++;
+        }
+      } else {
+        fingerprintsSkipped++;
+      }
+    }
+
+    // Backfill listings
+    const lots = await googleSheetsService.getLots(true);
+    for (const lot of lots) {
+      // Skip if already has variant_family
+      if (lot.variant_family) {
+        lotsSkipped++;
+        continue;
+      }
+      
+      // Derive from variant_normalised or variant_raw
+      const derived = extractVariantFamily(lot.variant_normalised || lot.variant_raw);
+      if (!derived) {
+        lotsSkipped++;
+        continue;
+      }
+      
+      if (lot._rowIndex !== undefined) {
+        try {
+          const updatedLot: AuctionLot = {
+            ...lot,
+            variant_family: derived,
+          };
+          await callSheetsApi('update', SHEETS.LOTS, updatedLot, lot._rowIndex);
+          lotsUpdated++;
+        } catch {
+          lotsSkipped++;
+        }
+      } else {
+        lotsSkipped++;
+      }
+    }
+    
+    return { fingerprintsUpdated, fingerprintsSkipped, lotsUpdated, lotsSkipped };
   },
 
   // ========== SAVED SEARCHES ==========

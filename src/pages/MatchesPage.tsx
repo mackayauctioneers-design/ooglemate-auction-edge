@@ -286,11 +286,17 @@ export default function MatchesPage() {
     const strictMatches = allMatches.filter(m => m.tier === 'tier1').length;
     const probableMatchCount = allMatches.filter(m => m.tier === 'tier2').length;
     
+    // Count records with variant_family populated
+    const fingerprintsWithFamily = fingerprints.filter(fp => fp.variant_family).length;
+    const lotsWithFamily = lots.filter(l => l.variant_family).length;
+    
     return {
       activeFingerprints,
       lotsInScope,
       strictMatches,
       probableMatchCount,
+      fingerprintsWithFamily,
+      lotsWithFamily,
     };
   }, [fingerprints, lots, allMatches]);
   
@@ -495,7 +501,7 @@ export default function MatchesPage() {
               <Info className="h-4 w-4 text-muted-foreground" />
               Match Evaluation Diagnostics
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-sm">
               <div className="space-y-1">
                 <div className="text-muted-foreground">Active Fingerprints</div>
                 <div className="text-xl font-semibold text-foreground">{diagnostics.activeFingerprints}</div>
@@ -511,6 +517,14 @@ export default function MatchesPage() {
               <div className="space-y-1">
                 <div className="text-muted-foreground">Probable Matches (Tier 2)</div>
                 <div className="text-xl font-semibold text-blue-500">{diagnostics.probableMatchCount}</div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Fingerprints w/ Family</div>
+                <div className="text-xl font-semibold text-foreground">{diagnostics.fingerprintsWithFamily}</div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Lots w/ Family</div>
+                <div className="text-xl font-semibold text-foreground">{diagnostics.lotsWithFamily}</div>
               </div>
             </div>
             {lastEvaluation && (
@@ -529,6 +543,11 @@ export default function MatchesPage() {
             {diagnostics.lotsInScope === 0 && (
               <div className="text-sm text-amber-500 mt-2">
                 ⚠️ No lots in scope. Import listings from Pickles or other sources.
+              </div>
+            )}
+            {(diagnostics.fingerprintsWithFamily === 0 || diagnostics.lotsWithFamily === 0) && (
+              <div className="text-sm text-amber-500 mt-2">
+                ⚠️ Tier-2 matching requires variant_family. Run "Backfill Variant Family" in Admin Tools.
               </div>
             )}
           </div>
