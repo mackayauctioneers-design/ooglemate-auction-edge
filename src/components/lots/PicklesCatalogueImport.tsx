@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Loader2, AlertCircle, CheckCircle, FileSpreadsheet } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle, FileSpreadsheet, ClipboardPaste } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { dataService } from '@/services/dataService';
 import { Listing, shouldExcludeListing } from '@/types';
 import { toast } from '@/hooks/use-toast';
@@ -35,22 +37,51 @@ function complianceDateToYear(compDate: string): number {
 // Parse a single lot entry from catalogue text
 function parseLotEntry(text: string, eventId: string, auctionDate: string): Partial<Listing> | null {
   try {
-    const parts = text.split(',').map(p => p.trim());
-    if (parts.length < 5) return null;
+    // Support both formats:
+    // 1. "N CP: MM/YYYY" (txt/csv)
+    // 2. "| N | CP: MM/YYYY, ..." (PDF table format)
+    
+    let lotNumber = '';
+    let complianceDate = '';
+    let restOfText = text;
 
-    // First part: "N CP: MM/YYYY"
-    const firstPart = parts[0];
-    const lotMatch = firstPart.match(/^(\d+)\s+CP:\s*(\d{2}\/\d{4})/);
-    if (!lotMatch) return null;
+    // Try table format first (from PDF): "| 1 | CP: 08/2015, Ford, ..."
+    const tableMatch = text.match(/^\|\s*(\d+)\s*\|\s*CP:\s*(\d{2}\/\d{4})/);
+    if (tableMatch) {
+      lotNumber = tableMatch[1];
+      complianceDate = tableMatch[2];
+      // Remove table delimiters for easier parsing
+      restOfText = text.replace(/^\|\s*\d+\s*\|\s*/, '');
+    } else {
+      // Try plain text format: "1 CP: 08/2015"
+      const plainMatch = text.match(/^(\d+)\s+CP:\s*(\d{2}\/\d{4})/);
+      if (plainMatch) {
+        lotNumber = plainMatch[1];
+        complianceDate = plainMatch[2];
+      }
+    }
+    
+    if (!lotNumber || !complianceDate) return null;
 
-    const lotNumber = lotMatch[1];
-    const complianceDate = lotMatch[2];
     const year = complianceDateToYear(complianceDate);
+    
+    // Split by commas for parsing
+    const parts = restOfText.split(',').map(p => p.trim());
+    if (parts.length < 4) return null;
+
+    // Find first part that starts with "CP:" and extract make/model after it
+    let makeModelIdx = 0;
+    for (let i = 0; i < parts.length; i++) {
+      if (parts[i].match(/^CP:/i)) {
+        makeModelIdx = i + 1;
+        break;
+      }
+    }
 
     // Core fields
-    const make = parts[1] || '';
-    const model = parts[2] || '';
-    const variant_raw = parts[3] || '';
+    const make = parts[makeModelIdx] || '';
+    const model = parts[makeModelIdx + 1] || '';
+    const variant_raw = parts[makeModelIdx + 2] || '';
 
     // Optional fields - scan remaining parts
     let transmission = '';
@@ -59,8 +90,9 @@ function parseLotEntry(text: string, eventId: string, auctionDate: string): Part
     let km = 0;
     let colour = '';
     let location = '';
+    let drivetrain = '';
 
-    for (let i = 4; i < parts.length; i++) {
+    for (let i = makeModelIdx + 3; i < parts.length; i++) {
       const part = parts[i];
       
       if (part.match(/automatic|manual|cvt|dct/i) && !transmission) {
@@ -70,7 +102,7 @@ function parseLotEntry(text: string, eventId: string, auctionDate: string): Part
         engine = part;
       }
       else if (part.match(/Diesel|Petrol|Electric|Hybrid/i) && !fuel) {
-        fuel = part;
+        fuel = part.match(/diesel/i) ? 'Diesel' : part.match(/petrol/i) ? 'Petrol' : part;
       }
       else if (part.match(/\d+\s*\(Kms/i) && !km) {
         const kmMatch = part.match(/(\d+)\s*\(Kms/);
@@ -80,7 +112,16 @@ function parseLotEntry(text: string, eventId: string, auctionDate: string): Part
         colour = part.replace(/^Colour:\s*/i, '');
       }
       else if (part.match(/\b(VIC|NSW|QLD|SA|WA|TAS|NT|ACT)\b/i) && !location) {
-        location = part;
+        // Extract just the state or full location
+        const stateMatch = part.match(/([A-Za-z\s]+),?\s*(VIC|NSW|QLD|SA|WA|TAS|NT|ACT)/i);
+        if (stateMatch) {
+          location = stateMatch[0].trim();
+        } else {
+          location = part.trim();
+        }
+      }
+      else if (part.match(/4WD|AWD|2WD|RWD|FWD/i) && !drivetrain) {
+        drivetrain = part.match(/4WD/i) ? '4WD' : part.match(/AWD/i) ? 'AWD' : part;
       }
     }
 
@@ -109,7 +150,7 @@ function parseLotEntry(text: string, eventId: string, auctionDate: string): Part
       year,
       km,
       fuel,
-      drivetrain: '',
+      drivetrain,
       transmission,
       reserve: 0,
       highest_bid: 0,
@@ -144,34 +185,83 @@ function parseLotEntry(text: string, eventId: string, auctionDate: string): Part
 }
 
 // Parse full catalogue text into lot entries with exclusion check
+// Supports both plain text and PDF markdown table formats
 function parseCatalogue(rawText: string, eventId: string, auctionDate: string): ParsedLotWithText[] {
   const results: ParsedLotWithText[] = [];
-  const lotPattern = /(\d+)\s+CP:/g;
-  const matches: { index: number }[] = [];
-  let match: RegExpExecArray | null;
-
-  while ((match = lotPattern.exec(rawText)) !== null) {
-    matches.push({ index: match.index });
-  }
-
-  for (let i = 0; i < matches.length; i++) {
-    const startIdx = matches[i].index;
-    const endIdx = i + 1 < matches.length ? matches[i + 1].index : rawText.length;
-    const lotText = rawText.substring(startIdx, endIdx);
-    const parsed = parseLotEntry(lotText, eventId, auctionDate);
-    if (parsed) {
-      // Apply exclusion check using catalogue text
-      const exclusionCheck = shouldExcludeListing(parsed, lotText);
-      if (exclusionCheck.excluded) {
-        parsed.excluded_reason = 'condition_risk';
-        parsed.excluded_keyword = exclusionCheck.keyword;
-        parsed.visible_to_dealers = 'N';
+  
+  // Detect if this is PDF markdown table format (contains "| Lot | Description")
+  const isPdfTable = rawText.includes('| Lot | Description');
+  
+  if (isPdfTable) {
+    // Parse table rows: | N | CP: MM/YYYY, Make, Model, ... |
+    const tableRowPattern = /\|\s*(\d+)\s*\|\s*(CP:[^|]+)\|/g;
+    let match: RegExpExecArray | null;
+    
+    while ((match = tableRowPattern.exec(rawText)) !== null) {
+      const lotNumber = match[1];
+      const description = match[2].trim();
+      const lotText = `${lotNumber} ${description}`;
+      const parsed = parseLotEntry(lotText, eventId, auctionDate);
+      if (parsed) {
+        const exclusionCheck = shouldExcludeListing(parsed, description);
+        if (exclusionCheck.excluded) {
+          parsed.excluded_reason = 'condition_risk';
+          parsed.excluded_keyword = exclusionCheck.keyword;
+          parsed.visible_to_dealers = 'N';
+        }
+        results.push({ lot: parsed, catalogueText: description });
       }
-      results.push({ lot: parsed, catalogueText: lotText });
+    }
+  } else {
+    // Original plain text parsing
+    const lotPattern = /(\d+)\s+CP:/g;
+    const matches: { index: number }[] = [];
+    let match: RegExpExecArray | null;
+
+    while ((match = lotPattern.exec(rawText)) !== null) {
+      matches.push({ index: match.index });
+    }
+
+    for (let i = 0; i < matches.length; i++) {
+      const startIdx = matches[i].index;
+      const endIdx = i + 1 < matches.length ? matches[i + 1].index : rawText.length;
+      const lotText = rawText.substring(startIdx, endIdx);
+      const parsed = parseLotEntry(lotText, eventId, auctionDate);
+      if (parsed) {
+        const exclusionCheck = shouldExcludeListing(parsed, lotText);
+        if (exclusionCheck.excluded) {
+          parsed.excluded_reason = 'condition_risk';
+          parsed.excluded_keyword = exclusionCheck.keyword;
+          parsed.visible_to_dealers = 'N';
+        }
+        results.push({ lot: parsed, catalogueText: lotText });
+      }
     }
   }
 
   return results;
+}
+
+// Extract event info from PDF text (e.g., "12931 - National Online Motor Vehicle Auction" and "2/1/2026")
+function extractEventInfo(text: string): { eventId: string; auctionDate: string } {
+  let eventId = '';
+  let auctionDate = format(new Date(), 'yyyy-MM-dd');
+  
+  // Extract event ID from header like "# 12931 - National Online"
+  const eventMatch = text.match(/^#?\s*(\d{4,})\s*-/m);
+  if (eventMatch) eventId = eventMatch[1];
+  
+  // Extract date range like "2/1/2026 - 4/1/2026" - use the end date as auction date
+  const dateMatch = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*-\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (dateMatch) {
+    // Use end date (last 3 groups)
+    const day = dateMatch[4].padStart(2, '0');
+    const month = dateMatch[5].padStart(2, '0');
+    const year = dateMatch[6];
+    auctionDate = `${year}-${month}-${day}`;
+  }
+  
+  return { eventId, auctionDate };
 }
 
 export function PicklesCatalogueImport({ onClose, onImported }: PicklesCatalogueImportProps) {
@@ -198,11 +288,26 @@ export function PicklesCatalogueImport({ onClose, onImported }: PicklesCatalogue
     try {
       const text = await file.text();
       setRawText(text);
+      // Try to extract event info from file name first
       const eventMatch = file.name.match(/(\d{4,})/);
       if (eventMatch) setEventId(eventMatch[1]);
+      // Then try to extract from content
+      const extracted = extractEventInfo(text);
+      if (extracted.eventId && !eventId) setEventId(extracted.eventId);
+      if (extracted.auctionDate !== format(new Date(), 'yyyy-MM-dd')) setAuctionDate(extracted.auctionDate);
     } catch {
-      setError('Failed to read file');
+      setError('Failed to read file. Note: PDF files must be pasted as text.');
     }
+  };
+
+  const handleTextChange = (text: string) => {
+    setRawText(text);
+    setParsedResults([]);
+    setResult(null);
+    // Auto-extract event info from pasted text
+    const extracted = extractEventInfo(text);
+    if (extracted.eventId) setEventId(extracted.eventId);
+    if (extracted.auctionDate !== format(new Date(), 'yyyy-MM-dd')) setAuctionDate(extracted.auctionDate);
   };
 
   const handlePreview = () => {
@@ -254,15 +359,40 @@ export function PicklesCatalogueImport({ onClose, onImported }: PicklesCatalogue
             Import Pickles Catalogue
           </DialogTitle>
           <DialogDescription>
-            Upload catalogue file. Lots will be added to Auction_Lots and become eligible for matching.
+            Upload a file or paste PDF text. Lots will be imported and become eligible for matching.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Catalogue File</Label>
-            <Input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={handleFileUpload} />
-          </div>
+          <Tabs defaultValue="paste" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="paste" className="gap-2">
+                <ClipboardPaste className="h-4 w-4" />
+                Paste Text
+              </TabsTrigger>
+              <TabsTrigger value="file" className="gap-2">
+                <FileSpreadsheet className="h-4 w-4" />
+                Upload File
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="paste" className="space-y-2">
+              <Label>Paste catalogue text (from PDF or document)</Label>
+              <Textarea
+                placeholder="Paste the catalogue content here...&#10;&#10;Example:&#10;| 1 | CP: 08/2015, Ford, Ranger, PX MkII XLT, ..."
+                value={rawText}
+                onChange={(e) => handleTextChange(e.target.value)}
+                className="min-h-[120px] font-mono text-xs"
+              />
+              {rawText && (
+                <p className="text-xs text-muted-foreground">{rawText.length.toLocaleString()} characters</p>
+              )}
+            </TabsContent>
+            <TabsContent value="file" className="space-y-2">
+              <Label>Upload catalogue file (.xlsx, .csv, .txt)</Label>
+              <Input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={handleFileUpload} />
+              <p className="text-xs text-muted-foreground">Note: PDF files cannot be uploaded directly. Use the "Paste Text" tab instead.</p>
+            </TabsContent>
+          </Tabs>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
