@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { format, parseISO, addDays, isAfter, isBefore, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical, Clock } from 'lucide-react';
+import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical, Clock, FileSpreadsheet } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,12 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuctionLot, formatCurrency, formatNumber, getPressureSignals } from '@/types';
 import { LotDetailDrawer } from '@/components/lots/LotDetailDrawer';
 import { LotEditor } from '@/components/lots/LotEditor';
 import { LotCsvImport } from '@/components/lots/LotCsvImport';
+import { PicklesCatalogueImport } from '@/components/lots/PicklesCatalogueImport';
 import { LifecycleTest } from '@/components/lots/LifecycleTest';
 
 const AEST_TIMEZONE = 'Australia/Sydney';
@@ -52,6 +54,7 @@ export default function SearchLotsPage() {
   const [editingLot, setEditingLot] = useState<AuctionLot | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isImportingCatalogue, setIsImportingCatalogue] = useState(false);
   const [showLifecycleTest, setShowLifecycleTest] = useState(false);
 
   const { data: lots = [], isLoading } = useQuery({
@@ -143,6 +146,7 @@ export default function SearchLotsPage() {
     setEditingLot(null);
     setIsCreating(false);
     setIsImporting(false);
+    setIsImportingCatalogue(false);
   };
 
   const formatLotDate = (datetime: string) => {
@@ -176,10 +180,24 @@ export default function SearchLotsPage() {
                 <FlaskConical className="h-4 w-4" />
                 <span className="hidden sm:inline">Run Lifecycle Test</span>
               </Button>
-              <Button variant="outline" onClick={() => setIsImporting(true)} className="gap-2">
-                <Upload className="h-4 w-4" />
-                <span className="hidden sm:inline">Import</span>
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2">
+                    <Upload className="h-4 w-4" />
+                    <span className="hidden sm:inline">Import</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setIsImporting(true)} className="gap-2">
+                    <Upload className="h-4 w-4" />
+                    CSV Import
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setIsImportingCatalogue(true)} className="gap-2">
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Pickles Catalogue
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button onClick={() => setIsCreating(true)} className="gap-2">
                 <Plus className="h-4 w-4" />
                 <span className="hidden sm:inline">Add Lot</span>
@@ -476,6 +494,14 @@ export default function SearchLotsPage() {
         {isImporting && (
           <LotCsvImport
             onClose={() => setIsImporting(false)}
+            onImported={handleDataChanged}
+          />
+        )}
+
+        {/* Pickles Catalogue Import */}
+        {isImportingCatalogue && (
+          <PicklesCatalogueImport
+            onClose={() => setIsImportingCatalogue(false)}
             onImported={handleDataChanged}
           />
         )}
