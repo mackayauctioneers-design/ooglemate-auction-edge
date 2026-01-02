@@ -240,11 +240,10 @@ export default function MatchesPage() {
   
   // Get reason why lot is excluded from visibility scope
   const getVisibilityExclusionReason = (lot: AuctionLot): string | null => {
-    // Check visibility flag (admin can override)
-    if (lot.visible_to_dealers !== 'Y') return 'visible_to_dealers != Y';
+    const pickles = isPicklesSource(lot);
     
-    // Must be Pickles source
-    if (!isPicklesSource(lot)) return 'not Pickles source';
+    // Must be either Pickles source OR visible_to_dealers = Y
+    if (!pickles && lot.visible_to_dealers !== 'Y') return 'not Pickles and visible_to_dealers != Y';
     
     // Must have valid status
     const validStatuses = ['catalogue', 'upcoming', 'listed'];
@@ -266,11 +265,12 @@ export default function MatchesPage() {
     // Visibility scope: Pickles catalogue lots for Tier-2 matching ONLY
     // These NEVER trigger BUY, NEVER trigger alerts
     
-    // Visibility = Y (or admin override - for now just check Y)
-    if (lot.visible_to_dealers !== 'Y') return false;
+    // Include if Pickles source OR visible_to_dealers = Y (Pickles lots don't require visible_to_dealers)
+    const pickles = isPicklesSource(lot);
+    if (!pickles && lot.visible_to_dealers !== 'Y') return false;
     
     // Must be Pickles source (tolerant check)
-    if (!isPicklesSource(lot)) return false;
+    if (!pickles) return false;
     
     // Must have valid status for visibility
     const validStatuses = ['catalogue', 'upcoming', 'listed'];
