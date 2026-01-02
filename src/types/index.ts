@@ -314,8 +314,8 @@ export function determineLotAction(confidenceScore: number): 'Buy' | 'Watch' {
 
 // Pressure flag reasons - extended for all source types
 export type LotFlagReason = 
-  | 'PASSED IN x3+'
-  | 'PASSED IN x2'
+  | 'FAILED TO SELL x3+'
+  | 'RELISTED x2 (inferred)'
   | 'UNDER-SPECIFIED'
   | 'RESERVE SOFTENING'
   | 'MARGIN OK'
@@ -334,8 +334,8 @@ export function getLotFlagReasons(lot: Listing): LotFlagReason[] {
   // Auction-specific signals
   const isAuction = lot.source === 'auction' || lot.source_type === 'auction' || (!lot.source && !lot.source_type);
   if (isAuction) {
-    if (lot.pass_count >= 3) reasons.push('PASSED IN x3+');
-    else if (lot.pass_count === 2) reasons.push('PASSED IN x2');
+    if (lot.pass_count >= 3) reasons.push('FAILED TO SELL x3+');
+    else if (lot.pass_count === 2) reasons.push('RELISTED x2 (inferred)');
     
     // Reserve softening for auctions
     if (lot.price_prev && lot.price_current && lot.price_current < lot.price_prev) {

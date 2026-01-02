@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AuctionLot, formatCurrency, formatNumber, getLotFlagReasons, LotFlagReason, calculateLotConfidenceScore, determineLotAction } from '@/types';
 import { dataService } from '@/services/dataService';
 import { toast } from '@/hooks/use-toast';
@@ -25,8 +26,8 @@ interface LotDetailDrawerProps {
 }
 
 const flagColors: Record<LotFlagReason, string> = {
-  'PASSED IN x3+': 'bg-red-600',
-  'PASSED IN x2': 'bg-orange-600',
+  'FAILED TO SELL x3+': 'bg-red-600',
+  'RELISTED x2 (inferred)': 'bg-orange-600',
   'UNDER-SPECIFIED': 'bg-yellow-600',
   'RESERVE SOFTENING': 'bg-purple-600',
   'MARGIN OK': 'bg-emerald-600',
@@ -34,6 +35,12 @@ const flagColors: Record<LotFlagReason, string> = {
   'FATIGUE_LISTING': 'bg-rose-600',
   'RELISTED': 'bg-cyan-600',
   'OVERRIDDEN': 'bg-indigo-600',
+};
+
+// Tooltip explanations for inferred flags
+const flagTooltips: Partial<Record<LotFlagReason, string>> = {
+  'FAILED TO SELL x3+': 'Derived from repeated auction listings without SOLD outcome. Bid-room data not available.',
+  'RELISTED x2 (inferred)': 'Derived from repeated auction listings without SOLD outcome. Bid-room data not available.',
 };
 
 export function LotDetailDrawer({ lot, isAdmin, onClose, onEdit, onUpdated }: LotDetailDrawerProps) {
@@ -173,11 +180,28 @@ export function LotDetailDrawer({ lot, isAdmin, onClose, onEdit, onUpdated }: Lo
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-foreground">Why Flagged</h3>
               <div className="flex flex-wrap gap-2">
-                {flagReasons.map((reason) => (
-                  <Badge key={reason} className={`${flagColors[reason]} text-white text-xs`}>
-                    {reason}
-                  </Badge>
-                ))}
+                <TooltipProvider>
+                  {flagReasons.map((reason) => {
+                    const tooltipText = flagTooltips[reason];
+                    const badge = (
+                      <Badge key={reason} className={`${flagColors[reason]} text-white text-xs`}>
+                        {reason}
+                      </Badge>
+                    );
+                    
+                    if (tooltipText) {
+                      return (
+                        <Tooltip key={reason}>
+                          <TooltipTrigger asChild>{badge}</TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p>{tooltipText}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    }
+                    return badge;
+                  })}
+                </TooltipProvider>
               </div>
             </div>
           )}
