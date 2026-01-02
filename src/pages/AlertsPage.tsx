@@ -20,12 +20,47 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-import { Bell, CheckCircle, Eye, EyeOff, ExternalLink, Filter } from 'lucide-react';
+import { Bell, CheckCircle, Eye, EyeOff, ExternalLink, Filter, CheckCheck, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 
 type StatusFilter = 'all' | 'new' | 'read' | 'acknowledged';
+
+// Helper to parse BUY conditions from why_flagged
+function parseBuyConditions(whyFlagged?: string[]): { 
+  conditions: { label: string; met: boolean }[]; 
+  allMet: boolean;
+  waitingForPressure: boolean;
+} {
+  const flags = whyFlagged || [];
+  
+  const conditions = [
+    { 
+      label: 'Pass count ≥ 2', 
+      met: flags.some(f => f.includes('FAILED TO SELL') || f.includes('RELISTED') || f.includes('PASSED IN'))
+    },
+    { 
+      label: 'Days listed ≥ 14', 
+      met: flags.includes('FATIGUE_LISTING')
+    },
+    { 
+      label: 'Reserve softening ≥ 5%', 
+      met: flags.includes('RESERVE SOFTENING') || flags.includes('PRICE_DROPPING')
+    },
+  ];
+  
+  const hasPressure = conditions.some(c => c.met);
+  const waitingForPressure = !hasPressure;
+  
+  return { conditions, allMet: hasPressure, waitingForPressure };
+}
 
 export default function AlertsPage() {
   const { isAdmin, currentUser } = useAuth();
@@ -240,13 +275,51 @@ export default function AlertsPage() {
                         : '-'}
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {alert.why_flagged?.slice(0, 3).map((flag, i) => (
-                          <Badge key={i} variant="outline" className="text-xs">
-                            {flag}
-                          </Badge>
-                        ))}
-                      </div>
+                      {(() => {
+                        const { conditions, allMet, waitingForPressure } = parseBuyConditions(alert.why_flagged);
+                        
+                        if (alert.action_change?.includes('Buy')) {
+                          // BUY alert - show conditions checklist
+                          return (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="flex items-center gap-1.5">
+                                    <CheckCheck className="h-4 w-4 text-action-buy" />
+                                    <span className="text-xs font-medium text-action-buy">BUY conditions met</span>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="max-w-xs">
+                                  <div className="text-xs space-y-1">
+                                    <div className="font-medium mb-1">Pressure signals (≥1 required):</div>
+                                    {conditions.map((c, i) => (
+                                      <div key={i} className="flex items-center gap-1.5">
+                                        {c.met ? (
+                                          <CheckCircle className="h-3 w-3 text-action-buy" />
+                                        ) : (
+                                          <div className="h-3 w-3 rounded-full border border-muted-foreground/50" />
+                                        )}
+                                        <span className={c.met ? 'text-foreground' : 'text-muted-foreground'}>{c.label}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          );
+                        }
+                        
+                        // Non-BUY or waiting for pressure
+                        return (
+                          <div className="flex flex-wrap gap-1">
+                            {alert.why_flagged?.slice(0, 3).map((flag, i) => (
+                              <Badge key={i} variant="outline" className="text-xs">
+                                {flag}
+                              </Badge>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">

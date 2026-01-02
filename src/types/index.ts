@@ -313,12 +313,53 @@ export function calculateLotConfidenceScore(lot: Listing): number {
   if (lot.pass_count >= 3) score += 1;
   if (lot.description_score <= 1) score += 1;
   if (lot.estimated_margin >= 2000) score += 1;
+  // Reserve softening adds +1
+  if (lot.price_prev && lot.price_current && lot.price_current < lot.price_prev) {
+    const dropPercent = ((lot.price_prev - lot.price_current) / lot.price_prev) * 100;
+    if (dropPercent >= 5) score += 1;
+  }
   return score;
 }
 
-// Determine lot action from confidence
-export function determineLotAction(confidenceScore: number): 'Buy' | 'Watch' {
-  return confidenceScore >= 3 ? 'Buy' : 'Watch';
+// Check if listing has at least one pressure signal for BUY gate
+export interface PressureSignals {
+  passCount2Plus: boolean;
+  daysListed14Plus: boolean;
+  reserveSoftening5Plus: boolean;
+  hasPressure: boolean;
+}
+
+export function getPressureSignals(lot: Listing): PressureSignals {
+  const passCount2Plus = lot.pass_count >= 2;
+  const daysListed14Plus = (lot.days_listed || 0) >= 14;
+  
+  let reserveSoftening5Plus = false;
+  if (lot.price_prev && lot.price_current && lot.price_current < lot.price_prev) {
+    const dropPercent = ((lot.price_prev - lot.price_current) / lot.price_prev) * 100;
+    reserveSoftening5Plus = dropPercent >= 5;
+  }
+  
+  return {
+    passCount2Plus,
+    daysListed14Plus,
+    reserveSoftening5Plus,
+    hasPressure: passCount2Plus || daysListed14Plus || reserveSoftening5Plus,
+  };
+}
+
+// Determine lot action from confidence + pressure gate
+// BUY requires: confidence >= 4 AND at least one pressure signal
+// WATCH: confidence >= 2
+export function determineLotAction(confidenceScore: number, lot?: Listing): 'Buy' | 'Watch' {
+  if (confidenceScore >= 4 && lot) {
+    const pressure = getPressureSignals(lot);
+    if (pressure.hasPressure) {
+      return 'Buy';
+    }
+    // High confidence but no pressure - keep as Watch
+    return 'Watch';
+  }
+  return 'Watch';
 }
 
 // Pressure flag reasons - extended for all source types
@@ -436,9 +477,36 @@ export function calculateConfidenceScore(opp: AuctionOpportunity): number {
   return score;
 }
 
-// Determine action based on confidence
-export function determineAction(confidenceScore: number): 'Buy' | 'Watch' {
-  return confidenceScore >= 3 ? 'Buy' : 'Watch';
+// Check pressure signals for AuctionOpportunity
+export function getOppPressureSignals(opp: AuctionOpportunity): PressureSignals {
+  const passCount2Plus = opp.pass_count >= 2;
+  const daysListed14Plus = false; // Not tracked on opportunities
+  
+  let reserveSoftening5Plus = false;
+  if (opp.previous_reserve && opp.reserve < opp.previous_reserve) {
+    const dropPercent = ((opp.previous_reserve - opp.reserve) / opp.previous_reserve) * 100;
+    reserveSoftening5Plus = dropPercent >= 5;
+  }
+  
+  return {
+    passCount2Plus,
+    daysListed14Plus,
+    reserveSoftening5Plus,
+    hasPressure: passCount2Plus || daysListed14Plus || reserveSoftening5Plus,
+  };
+}
+
+// Determine action based on confidence + pressure gate
+// BUY requires: confidence >= 4 AND at least one pressure signal
+export function determineAction(confidenceScore: number, opp?: AuctionOpportunity): 'Buy' | 'Watch' {
+  if (confidenceScore >= 4 && opp) {
+    const pressure = getOppPressureSignals(opp);
+    if (pressure.hasPressure) {
+      return 'Buy';
+    }
+    return 'Watch';
+  }
+  return 'Watch';
 }
 
 // Strict matching check

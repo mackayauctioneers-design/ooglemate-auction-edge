@@ -2,13 +2,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { dataService } from '@/services/dataService';
-import { SaleFingerprint, AuctionLot, formatNumber, formatCurrency } from '@/types';
+import { SaleFingerprint, AuctionLot, formatNumber, formatCurrency, getPressureSignals } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { ExternalLink, Target, Crosshair, Loader2 } from 'lucide-react';
+import { ExternalLink, Target, Crosshair, Loader2, Clock } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -236,12 +236,36 @@ export default function MatchesPage() {
           <Badge variant="outline">{lot.confidence_score}</Badge>
         </TableCell>
         <TableCell>
-          <Badge 
-            variant={lot.action === 'Buy' ? 'default' : 'secondary'}
-            className={lot.action === 'Buy' ? 'bg-emerald-600' : ''}
-          >
-            {lot.action}
-          </Badge>
+          {(() => {
+            const isWaitingForPressure = lot.confidence_score >= 4 && lot.action === 'Watch' && !getPressureSignals(lot).hasPressure;
+            
+            if (isWaitingForPressure) {
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="gap-1 border-amber-500/50 text-amber-500">
+                        <Clock className="h-3 w-3" />
+                        Watch
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <span>Waiting for pressure signal (pass ≥2, days ≥14, or reserve drop ≥5%)</span>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            }
+            
+            return (
+              <Badge 
+                variant={lot.action === 'Buy' ? 'default' : 'secondary'}
+                className={lot.action === 'Buy' ? 'bg-emerald-600' : ''}
+              >
+                {lot.action}
+              </Badge>
+            );
+          })()}
         </TableCell>
         <TableCell>
           {lot.listing_url && lot.invalid_source !== 'Y' ? (

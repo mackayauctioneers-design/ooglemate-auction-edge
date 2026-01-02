@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { format, parseISO, addDays, isAfter, isBefore, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical } from 'lucide-react';
+import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical, Clock } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/contexts/AuthContext';
-import { AuctionLot, formatCurrency, formatNumber } from '@/types';
+import { AuctionLot, formatCurrency, formatNumber, getPressureSignals } from '@/types';
 import { LotDetailDrawer } from '@/components/lots/LotDetailDrawer';
 import { LotEditor } from '@/components/lots/LotEditor';
 import { LotCsvImport } from '@/components/lots/LotCsvImport';
@@ -376,12 +376,36 @@ export default function SearchLotsPage() {
                       <TableCell className="text-xs text-right font-medium text-emerald-500">{formatCurrency(lot.estimated_margin)}</TableCell>
                       <TableCell className="text-xs text-center">{lot.confidence_score}</TableCell>
                       <TableCell className="text-center">
-                        <Badge
-                          variant={lot.action === 'Buy' ? 'default' : 'secondary'}
-                          className={lot.action === 'Buy' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}
-                        >
-                          {lot.action}
-                        </Badge>
+                        {(() => {
+                          const isWaitingForPressure = lot.confidence_score >= 4 && lot.action === 'Watch' && !getPressureSignals(lot).hasPressure;
+                          
+                          if (isWaitingForPressure) {
+                            return (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge variant="outline" className="gap-1 border-amber-500/50 text-amber-500">
+                                      <Clock className="h-3 w-3" />
+                                      Watch
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <span>Waiting for pressure signal (pass ≥2, days ≥14, or reserve drop ≥5%)</span>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          }
+                          
+                          return (
+                            <Badge
+                              variant={lot.action === 'Buy' ? 'default' : 'secondary'}
+                              className={lot.action === 'Buy' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}
+                            >
+                              {lot.action}
+                            </Badge>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         {lot.listing_url && lot.invalid_source !== 'Y' ? (

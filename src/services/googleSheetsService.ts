@@ -16,7 +16,8 @@ import {
   determineAction,
   calculateLotConfidenceScore,
   determineLotAction,
-  getLotFlagReasons
+  getLotFlagReasons,
+  getPressureSignals
 } from '@/types';
 
 const SHEETS = {
@@ -118,8 +119,8 @@ function parseOpportunity(row: any): AuctionOpportunity {
   // Calculate confidence score
   opp.confidence_score = calculateConfidenceScore(opp);
   
-  // Use sheet action if valid, otherwise calculate from confidence score
-  opp.action = hasValidSheetAction ? sheetAction : determineAction(opp.confidence_score);
+  // Use sheet action if valid, otherwise calculate from confidence + pressure
+  opp.action = hasValidSheetAction ? sheetAction : determineAction(opp.confidence_score, opp);
 
   return opp;
 }
@@ -377,13 +378,13 @@ function parseListing(row: any): AuctionLot {
     }
   }
   
-  // Determine action - use override if enabled, else auto-calculate
+  // Determine action - use override if enabled, else auto-calculate with pressure gate
   if (overrideEnabled === 'Y' && manualAction) {
     listing.action = manualAction;
   } else {
     const sheetAction = row.action?.toString().trim();
     const hasValidSheetAction = sheetAction === 'Buy' || sheetAction === 'Watch';
-    listing.action = hasValidSheetAction ? sheetAction : determineLotAction(listing.confidence_score);
+    listing.action = hasValidSheetAction ? sheetAction : determineLotAction(listing.confidence_score, listing);
   }
 
   return listing;
