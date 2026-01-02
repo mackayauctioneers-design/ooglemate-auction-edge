@@ -91,12 +91,14 @@ const SHEET_HEADERS: Record<string, string[]> = {
   'Sales_Normalised': [
     'sale_id', 'import_id', 'dealer_name', 'sale_date', 'make', 'model', 'variant_raw', 'variant_normalised',
     'sale_price', 'days_to_sell', 'location', 'km', 'quality_flag', 'notes', 'year', 'engine', 'drivetrain',
-    'transmission', 'fingerprint_generated', 'fingerprint_id', 'gross_profit', 'activate', 'do_not_replicate', 'tags'
+    'transmission', 'fingerprint_generated', 'fingerprint_id', 'gross_profit', 'activate', 'do_not_replicate', 'tags',
+    'do_not_buy', 'do_not_buy_reason'
   ],
   'Sale_Fingerprints': [
     'fingerprint_id', 'dealer_name', 'dealer_whatsapp', 'sale_date', 'expires_at', 'make', 'model', 
     'variant_normalised', 'year', 'sale_km', 'min_km', 'max_km', 'engine', 'drivetrain', 'transmission', 
-    'shared_opt_in', 'is_active', 'fingerprint_type', 'source_sale_id', 'source_import_id'
+    'shared_opt_in', 'is_active', 'fingerprint_type', 'source_sale_id', 'source_import_id',
+    'do_not_buy', 'do_not_buy_reason'
   ],
   'Fingerprint_Sync_Log': [
     'synclog_id', 'run_at', 'mode', 'rows_scanned', 'rows_eligible', 'rows_created', 'rows_updated', 

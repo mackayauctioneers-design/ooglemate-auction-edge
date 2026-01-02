@@ -24,7 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Fingerprint, RefreshCw, Filter, Check, AlertTriangle, XCircle, 
   TrendingUp, TrendingDown, Tag, Zap, Ban, BarChart3, UserCircle,
-  Play, Eye, Wand2, FileText
+  Play, Eye, Wand2, FileText, ShieldX
 } from 'lucide-react';
 import {
   Dialog,
@@ -85,6 +85,10 @@ export default function SalesReviewPage() {
   const [allDealers, setAllDealers] = useState<string[]>([]);
   const [dealerDialogOpen, setDealerDialogOpen] = useState(false);
   const [newDealerName, setNewDealerName] = useState('');
+
+  // Do Not Buy dialog
+  const [doNotBuyDialogOpen, setDoNotBuyDialogOpen] = useState(false);
+  const [doNotBuyReason, setDoNotBuyReason] = useState('');
 
   // Filters
   const [filterOptions, setFilterOptions] = useState<{
@@ -173,7 +177,18 @@ export default function SalesReviewPage() {
     if (activePreset === 'winners') {
       filtered = filtered.filter(s => s.gross_profit !== undefined && s.gross_profit > 0);
     } else if (activePreset === 'losers') {
-      filtered = filtered.filter(s => s.gross_profit !== undefined && s.gross_profit < 0);
+      // "Repeat Losers" - negative profit OR bottom quartile
+      const withProfit = filtered.filter(s => s.gross_profit !== undefined);
+      if (withProfit.length > 0) {
+        const sortedByProfit = [...withProfit].sort((a, b) => (a.gross_profit || 0) - (b.gross_profit || 0));
+        const q1Index = Math.floor(sortedByProfit.length * 0.25);
+        const q1Threshold = sortedByProfit[q1Index]?.gross_profit || 0;
+        filtered = filtered.filter(s => 
+          s.gross_profit !== undefined && (s.gross_profit <= 0 || s.gross_profit <= q1Threshold)
+        );
+      }
+    } else if (activePreset === 'do_not_buy') {
+      filtered = filtered.filter(s => s.do_not_buy === 'Y');
     }
     
     // Sort: gross_profit DESC (nulls last), then days_to_sell ASC
@@ -453,10 +468,12 @@ export default function SalesReviewPage() {
   const allSelected = sortedSales.length > 0 && sortedSales.every(s => selectedIds.has(s.sale_id));
   const activatedCount = sales.filter(s => s.activate === 'Y').length;
   const doNotReplicateCount = sales.filter(s => s.do_not_replicate === 'Y').length;
+  const doNotBuyCount = sales.filter(s => s.do_not_buy === 'Y').length;
   const fingerprintCount = sales.filter(s => s.fingerprint_generated === 'Y').length;
   const activatedWithoutFingerprint = sales.filter(s => 
     s.activate === 'Y' && 
     s.do_not_replicate !== 'Y' && 
+    s.do_not_buy !== 'Y' &&
     s.fingerprint_generated !== 'Y'
   ).length;
 
@@ -576,6 +593,45 @@ export default function SalesReviewPage() {
     }
   };
 
+  // Bulk Set Do Not Buy
+  const bulkSetDoNotBuy = async () => {
+    if (selectedIds.size === 0 || !doNotBuyReason.trim()) return;
+    setBulkUpdating(true);
+    try {
+      const result = await dataService.setDoNotBuy(Array.from(selectedIds), doNotBuyReason.trim());
+      toast({ 
+        title: `Do Not Buy set on ${result.salesUpdated} sales`,
+        description: result.fingerprintsDeactivated > 0 
+          ? `${result.fingerprintsDeactivated} fingerprints deactivated` 
+          : undefined,
+      });
+      setSelectedIds(new Set());
+      setDoNotBuyReason('');
+      setDoNotBuyDialogOpen(false);
+      loadData();
+    } catch (error) {
+      toast({ title: 'Error setting Do Not Buy', variant: 'destructive' });
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
+  // Bulk Clear Do Not Buy
+  const bulkClearDoNotBuy = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkUpdating(true);
+    try {
+      const result = await dataService.clearDoNotBuy(Array.from(selectedIds));
+      toast({ title: `Cleared Do Not Buy on ${result.salesUpdated} sales` });
+      setSelectedIds(new Set());
+      loadData();
+    } catch (error) {
+      toast({ title: 'Error clearing Do Not Buy', variant: 'destructive' });
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
@@ -627,10 +683,15 @@ export default function SalesReviewPage() {
           <Badge className="bg-red-500/20 text-red-400 border-red-500/30 px-3 py-1">
             <Ban className="w-3 h-3 mr-1" /> Do Not Replicate: {doNotReplicateCount}
           </Badge>
+          {doNotBuyCount > 0 && (
+            <Badge className="bg-destructive/20 text-destructive border-destructive/30 px-3 py-1">
+              <ShieldX className="w-3 h-3 mr-1" /> Do Not Buy: {doNotBuyCount}
+            </Badge>
+          )}
         </div>
 
         {/* Presets */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button 
             variant={activePreset === 'winners' ? 'default' : 'outline'} 
             size="sm"
@@ -645,8 +706,18 @@ export default function SalesReviewPage() {
             onClick={() => applyPreset(activePreset === 'losers' ? null : 'losers')}
           >
             <TrendingDown className="h-4 w-4 mr-2" />
-            Find Repeat Losers
+            Repeat Losers
           </Button>
+          {doNotBuyCount > 0 && (
+            <Button 
+              variant={activePreset === 'do_not_buy' ? 'destructive' : 'outline'} 
+              size="sm"
+              onClick={() => applyPreset(activePreset === 'do_not_buy' ? null : 'do_not_buy')}
+            >
+              <ShieldX className="h-4 w-4 mr-2" />
+              Do Not Buy ({doNotBuyCount})
+            </Button>
+          )}
           {activePreset && (
             <Button variant="ghost" size="sm" onClick={() => applyPreset(null)}>
               Clear Preset
@@ -702,6 +773,9 @@ export default function SalesReviewPage() {
               </Button>
               <Button size="sm" variant="outline" onClick={handleBulkExtractVariants} disabled={bulkUpdating}>
                 <Wand2 className="h-3 w-3 mr-1" /> Extract Variant
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => setDoNotBuyDialogOpen(true)} disabled={bulkUpdating}>
+                <ShieldX className="h-3 w-3 mr-1" /> Do Not Buy
               </Button>
               <Button 
                 size="sm"
@@ -915,6 +989,11 @@ export default function SalesReviewPage() {
                             </TableCell>
                             <TableCell>
                               <div className="flex gap-1 flex-wrap">
+                                {sale.do_not_buy === 'Y' && (
+                                  <Badge className="bg-destructive/20 text-destructive border-destructive/30 text-xs">
+                                    <ShieldX className="w-2 h-2 mr-0.5" />DNB
+                                  </Badge>
+                                )}
                                 {sale.activate === 'Y' && (
                                   <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
                                     <Zap className="w-2 h-2 mr-0.5" />Active
@@ -1098,6 +1177,39 @@ export default function SalesReviewPage() {
             </ScrollArea>
             <DialogFooter>
               <Button variant="outline" onClick={() => setSyncLogDialogOpen(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Do Not Buy Dialog */}
+        <Dialog open={doNotBuyDialogOpen} onOpenChange={setDoNotBuyDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <ShieldX className="h-5 w-5" />
+                Set Do Not Buy on {selectedIds.size} Sales
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              This will prevent fingerprints from being generated for these vehicles and deactivate any existing fingerprints.
+            </p>
+            <Select value={doNotBuyReason} onValueChange={setDoNotBuyReason}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select reason..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Repeat loss">Repeat loss</SelectItem>
+                <SelectItem value="Slow turn">Slow turn</SelectItem>
+                <SelectItem value="Warranty risk">Warranty risk</SelectItem>
+                <SelectItem value="Quality issues">Quality issues</SelectItem>
+                <SelectItem value="Low margin">Low margin</SelectItem>
+              </SelectContent>
+            </Select>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDoNotBuyDialogOpen(false)}>Cancel</Button>
+              <Button variant="destructive" onClick={bulkSetDoNotBuy} disabled={!doNotBuyReason || bulkUpdating}>
+                Set Do Not Buy
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

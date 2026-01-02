@@ -58,6 +58,9 @@ export interface SaleFingerprint extends SheetRowMeta {
   fingerprint_type?: 'full' | 'spec_only';
   source_sale_id?: string;
   source_import_id?: string;
+  // Do Not Buy protection
+  do_not_buy?: 'Y' | 'N';
+  do_not_buy_reason?: string;
 }
 
 export interface SaleLog extends SheetRowMeta {
@@ -119,6 +122,9 @@ export interface SalesNormalised extends SheetRowMeta {
   activate: 'Y' | 'N';
   do_not_replicate: 'Y' | 'N';
   tags?: string;
+  // Do Not Buy protection
+  do_not_buy?: 'Y' | 'N';
+  do_not_buy_reason?: string;
 }
 
 // Fingerprint Sync Log - audit trail for sync operations

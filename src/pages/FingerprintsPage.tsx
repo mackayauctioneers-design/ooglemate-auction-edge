@@ -297,6 +297,11 @@ export default function FingerprintsPage() {
                           <Badge variant={statusInfo.variant} title={statusInfo.tooltip}>
                             {statusInfo.label}
                           </Badge>
+                          {fp.do_not_buy === 'Y' && (
+                            <Badge variant="destructive" className="text-xs font-medium uppercase">
+                              DO NOT BUY
+                            </Badge>
+                          )}
                           {fp.fingerprint_type === 'spec_only' && (
                             <TooltipProvider>
                               <Tooltip>
