@@ -102,67 +102,126 @@ function extractPrice(text: string): number | undefined {
   return undefined;
 }
 
+// Validate listing URL - reject placeholders and invalid URLs
+function isValidListingUrl(url: string): boolean {
+  if (!url || url.length < 10) return false;
+  
+  // Reject placeholder/test URLs
+  const invalidPatterns = [
+    'example.com',
+    'test.example',
+    'placeholder',
+    'localhost',
+    '127.0.0.1',
+    'invalid',
+  ];
+  
+  const urlLower = url.toLowerCase();
+  for (const pattern of invalidPatterns) {
+    if (urlLower.includes(pattern)) return false;
+  }
+  
+  // Must be a valid absolute URL
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 // Parse Pickles-style listings
 function parsePicklesListings(html: string, baseUrl: string): ParsedListing[] {
   const listings: ParsedListing[] = [];
   
-  // Look for listing cards - Pickles uses various patterns
-  // Pattern 1: href containing /item/ or /lot/
-  const linkPattern = /href="([^"]*(?:\/item\/|\/lot\/|\/cars\/|\/trucks\/)[^"]*)"/gi;
-  const links = [...html.matchAll(linkPattern)];
+  // Pickles URL patterns - look for actual listing detail pages
+  // Common patterns: /item/12345, /lot/12345, /cars/detail/12345, /trucks/detail/12345
+  // Also look for data-href attributes which Pickles sometimes uses
+  const linkPatterns = [
+    /href="([^"]*(?:\/item\/|\/lot\/|\/detail\/)[^"]*\d+[^"]*)"/gi,
+    /data-href="([^"]*(?:\/item\/|\/lot\/|\/detail\/)[^"]*\d+[^"]*)"/gi,
+    /href="(https?:\/\/www\.pickles\.com\.au[^"]*\/\d+[^"]*)"/gi,
+  ];
   
   const seenUrls = new Set<string>();
+  const seenLotIds = new Set<string>();
   
-  for (const linkMatch of links) {
-    let url = linkMatch[1];
+  for (const pattern of linkPatterns) {
+    const links = [...html.matchAll(pattern)];
     
-    // Make absolute URL
-    if (url.startsWith('/')) {
-      try {
-        const base = new URL(baseUrl);
-        url = `${base.protocol}//${base.host}${url}`;
-      } catch {
+    for (const linkMatch of links) {
+      let url = linkMatch[1];
+      
+      // Skip non-listing URLs
+      if (url.includes('javascript:') || url.includes('#') || url.includes('login')) {
         continue;
       }
+      
+      // Make absolute URL
+      if (url.startsWith('/')) {
+        try {
+          const base = new URL(baseUrl);
+          url = `${base.protocol}//${base.host}${url}`;
+        } catch {
+          console.log(`Failed to create absolute URL from: ${url}`);
+          continue;
+        }
+      }
+      
+      // Validate URL
+      if (!isValidListingUrl(url)) {
+        console.log(`Skipping invalid URL: ${url}`);
+        continue;
+      }
+      
+      if (seenUrls.has(url)) continue;
+      seenUrls.add(url);
+      
+      // Extract lot ID from URL - must have numeric ID
+      let lotId: string | undefined;
+      const lotIdMatch = url.match(/(?:\/item\/|\/lot\/|\/detail\/|\/|id=)(\d{5,})/i);
+      if (lotIdMatch) {
+        lotId = lotIdMatch[1];
+        // Skip if we've already seen this lot ID (dedup)
+        if (seenLotIds.has(lotId)) continue;
+        seenLotIds.add(lotId);
+      } else {
+        // No valid lot ID found - skip this URL
+        console.log(`Skipping URL without valid lot ID: ${url}`);
+        continue;
+      }
+      
+      // Try to find nearby title/description text
+      const linkIndex = html.indexOf(linkMatch[0]);
+      const contextStart = Math.max(0, linkIndex - 500);
+      const contextEnd = Math.min(html.length, linkIndex + 2000);
+      const context = html.substring(contextStart, contextEnd);
+      
+      // Look for title in nearby tags
+      let title = '';
+      const titleMatch = context.match(/<h[1-6][^>]*>([^<]+)<\/h[1-6]>/i) ||
+                         context.match(/class="[^"]*title[^"]*"[^>]*>([^<]+)</i) ||
+                         context.match(/alt="([^"]+)"/i);
+      if (titleMatch) {
+        title = decodeHtmlEntities(stripHtml(titleMatch[1]));
+      }
+      
+      const fullText = stripHtml(context);
+      
+      console.log(`Found valid Pickles listing: ${lotId} -> ${url}`);
+      
+      listings.push({
+        listing_url: url,
+        title: title || 'Unknown Vehicle',
+        year: extractYear(fullText),
+        km: extractKm(fullText),
+        price: extractPrice(fullText),
+        lot_id: lotId,
+      });
     }
-    
-    if (seenUrls.has(url)) continue;
-    seenUrls.add(url);
-    
-    // Try to find nearby title/description text
-    const linkIndex = html.indexOf(linkMatch[0]);
-    const contextStart = Math.max(0, linkIndex - 500);
-    const contextEnd = Math.min(html.length, linkIndex + 2000);
-    const context = html.substring(contextStart, contextEnd);
-    
-    // Look for title in nearby tags
-    let title = '';
-    const titleMatch = context.match(/<h[1-6][^>]*>([^<]+)<\/h[1-6]>/i) ||
-                       context.match(/class="[^"]*title[^"]*"[^>]*>([^<]+)</i) ||
-                       context.match(/alt="([^"]+)"/i);
-    if (titleMatch) {
-      title = decodeHtmlEntities(stripHtml(titleMatch[1]));
-    }
-    
-    // Extract lot ID from URL
-    let lotId: string | undefined;
-    const lotIdMatch = url.match(/(?:\/item\/|\/lot\/|id=)(\d+)/i);
-    if (lotIdMatch) {
-      lotId = lotIdMatch[1];
-    }
-    
-    const fullText = stripHtml(context);
-    
-    listings.push({
-      listing_url: url,
-      title: title || 'Unknown Vehicle',
-      year: extractYear(fullText),
-      km: extractKm(fullText),
-      price: extractPrice(fullText),
-      lot_id: lotId,
-    });
   }
   
+  console.log(`Pickles parser found ${listings.length} valid listings`);
   return listings;
 }
 
@@ -175,6 +234,7 @@ function parseManheimListings(html: string, baseUrl: string): ParsedListing[] {
   const links = [...html.matchAll(linkPattern)];
   
   const seenUrls = new Set<string>();
+  const seenLotIds = new Set<string>();
   
   for (const linkMatch of links) {
     let url = linkMatch[1];
@@ -188,8 +248,26 @@ function parseManheimListings(html: string, baseUrl: string): ParsedListing[] {
       }
     }
     
+    // Validate URL
+    if (!isValidListingUrl(url)) {
+      console.log(`Skipping invalid Manheim URL: ${url}`);
+      continue;
+    }
+    
     if (seenUrls.has(url)) continue;
     seenUrls.add(url);
+    
+    let lotId: string | undefined;
+    const lotIdMatch = url.match(/(?:\/vehicle\/|\/lot\/|\/stock\/|id=)(\w+)/i);
+    if (lotIdMatch) {
+      lotId = lotIdMatch[1];
+      if (seenLotIds.has(lotId)) continue;
+      seenLotIds.add(lotId);
+    } else {
+      // No valid lot ID - skip
+      console.log(`Skipping Manheim URL without lot ID: ${url}`);
+      continue;
+    }
     
     const linkIndex = html.indexOf(linkMatch[0]);
     const contextStart = Math.max(0, linkIndex - 500);
@@ -203,13 +281,9 @@ function parseManheimListings(html: string, baseUrl: string): ParsedListing[] {
       title = decodeHtmlEntities(stripHtml(titleMatch[1]));
     }
     
-    let lotId: string | undefined;
-    const lotIdMatch = url.match(/(?:\/vehicle\/|\/lot\/|\/stock\/|id=)(\w+)/i);
-    if (lotIdMatch) {
-      lotId = lotIdMatch[1];
-    }
-    
     const fullText = stripHtml(context);
+    
+    console.log(`Found valid Manheim listing: ${lotId} -> ${url}`);
     
     listings.push({
       listing_url: url,
@@ -221,6 +295,7 @@ function parseManheimListings(html: string, baseUrl: string): ParsedListing[] {
     });
   }
   
+  console.log(`Manheim parser found ${listings.length} valid listings`);
   return listings;
 }
 
@@ -265,6 +340,11 @@ function parseGenericListings(html: string, baseUrl: string): ParsedListing[] {
       }
     }
     
+    // Validate URL
+    if (!isValidListingUrl(url)) {
+      continue;
+    }
+    
     if (seenUrls.has(url)) continue;
     seenUrls.add(url);
     
@@ -291,6 +371,7 @@ function parseGenericListings(html: string, baseUrl: string): ParsedListing[] {
     });
   }
   
+  console.log(`Generic parser found ${listings.length} valid listings`);
   return listings;
 }
 

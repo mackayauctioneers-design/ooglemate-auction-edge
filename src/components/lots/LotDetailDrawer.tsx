@@ -459,16 +459,36 @@ export function LotDetailDrawer({ lot, isAdmin, onClose, onEdit, onUpdated }: Lo
           </div>
 
           {/* Open Listing Button */}
-          {lot.listing_url && (
-            <Button
-              variant="default"
-              className="w-full gap-2"
-              onClick={() => window.open(lot.listing_url, '_blank')}
-            >
-              <ExternalLink className="h-4 w-4" />
-              Open Listing
-            </Button>
-          )}
+          {lot.listing_url ? (
+            lot.invalid_source === 'Y' ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      className="w-full gap-2 opacity-50 cursor-not-allowed"
+                      disabled
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Open Listing
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Source link unavailable</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <Button
+                variant="default"
+                className="w-full gap-2"
+                onClick={() => window.open(lot.listing_url, '_blank')}
+              >
+                <ExternalLink className="h-4 w-4" />
+                Open Listing
+              </Button>
+            )
+          ) : null}
         </div>
       </SheetContent>
     </Sheet>
