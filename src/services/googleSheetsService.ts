@@ -2552,6 +2552,121 @@ export const googleSheetsService = {
     
     return { lotsUpdated, lotsSkipped };
   },
+
+  // Backfill make/model normalization for existing sales (resolve numeric IDs to text labels)
+  backfillSalesMakeModel: async (): Promise<{
+    salesUpdated: number;
+    salesSkipped: number;
+    unresolved: Array<{ saleId: string; make: string; model: string }>;
+  }> => {
+    // Dynamically import to avoid circular deps
+    const { normalizeMakeModel, isNumericId } = await import('@/utils/dmsLookup');
+    
+    console.log('[backfillSalesMakeModel] Starting backfill...');
+    
+    // Get all normalised sales (raw rows to access _rowIndex)
+    const response = await callSheetsApi('read', SHEETS.SALES_NORMALISED);
+    const allSales = response.data || [];
+    
+    console.log(`[backfillSalesMakeModel] Found ${allSales.length} sales records`);
+    
+    let salesUpdated = 0;
+    let salesSkipped = 0;
+    const unresolved: Array<{ saleId: string; make: string; model: string }> = [];
+    const updates: Array<{ rowIndex: number; data: any }> = [];
+    
+    for (const row of allSales) {
+      const make = row.make || '';
+      const model = row.model || '';
+      const saleId = row.sale_id || '';
+      
+      // Check if either field is numeric
+      if (!isNumericId(make) && !isNumericId(model)) {
+        salesSkipped++;
+        continue;
+      }
+      
+      // Normalize
+      const normalized = normalizeMakeModel(make, model);
+      
+      // Check if we actually resolved anything new
+      const makeResolved = normalized.make !== make;
+      const modelResolved = normalized.model !== model;
+      
+      if (!makeResolved && !modelResolved) {
+        // Numeric ID but couldn't resolve
+        if (isNumericId(make) || isNumericId(model)) {
+          unresolved.push({ saleId, make, model });
+        }
+        salesSkipped++;
+        continue;
+      }
+      
+      // Prepare update
+      const updateData: any = {
+        ...row,
+        make: normalized.make,
+        model: normalized.model,
+      };
+      
+      // Store original IDs if resolved
+      if (normalized.make_id) {
+        updateData.make_id = normalized.make_id;
+      }
+      if (normalized.model_id) {
+        updateData.model_id = normalized.model_id;
+      }
+      
+      updates.push({
+        rowIndex: row._rowIndex,
+        data: updateData,
+      });
+    }
+    
+    console.log(`[backfillSalesMakeModel] ${updates.length} sales need normalization, ${unresolved.length} unresolved`);
+    
+    // Apply updates
+    for (const update of updates) {
+      try {
+        await callSheetsApi('update', SHEETS.SALES_NORMALISED, update.data, update.rowIndex);
+        salesUpdated++;
+      } catch (error) {
+        console.error(`[backfillSalesMakeModel] Failed to update sale at row ${update.rowIndex}:`, error);
+        salesSkipped++;
+      }
+    }
+    
+    // Also update Sales_Log for consistency
+    try {
+      const salesLogResponse = await callSheetsApi('read', SHEETS.SALES_LOG);
+      const allSalesLog = salesLogResponse.data || [];
+      
+      for (const row of allSalesLog) {
+        const make = row.make || '';
+        const model = row.model || '';
+        
+        if (!isNumericId(make) && !isNumericId(model)) continue;
+        
+        const normalized = normalizeMakeModel(make, model);
+        const makeResolved = normalized.make !== make;
+        const modelResolved = normalized.model !== model;
+        
+        if (!makeResolved && !modelResolved) continue;
+        
+        await callSheetsApi('update', SHEETS.SALES_LOG, {
+          ...row,
+          make: normalized.make,
+          model: normalized.model,
+        }, row._rowIndex);
+      }
+    } catch (error) {
+      console.error('[backfillSalesMakeModel] Error updating Sales_Log:', error);
+    }
+    
+    console.log(`[backfillSalesMakeModel] Complete: ${salesUpdated} updated, ${salesSkipped} skipped`);
+    
+    return { salesUpdated, salesSkipped, unresolved };
+  },
 };
 
 // Parse saved search from sheet row
