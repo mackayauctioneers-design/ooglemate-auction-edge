@@ -45,6 +45,7 @@ export interface SaleFingerprint extends SheetRowMeta {
   make: string;
   model: string;
   variant_normalised: string;
+  variant_family?: string; // Derived: SR5, GXL, XLT, etc.
   year: number;
   sale_km: number;
   min_km: number; // max(0, sale_km - 15000)
@@ -254,6 +255,7 @@ export interface Listing extends SheetRowMeta {
   model: string;
   variant_raw: string;
   variant_normalised: string;
+  variant_family?: string; // Derived: SR5, GXL, XLT, etc.
   year: number;
   km: number;
   fuel: string;
@@ -593,4 +595,76 @@ export function formatCurrency(value: number): string {
 // Format number with commas
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-AU').format(value);
+}
+
+// ========== VARIANT FAMILY EXTRACTION ==========
+
+// Common variant family tokens (uppercase normalized)
+const VARIANT_FAMILY_TOKENS = [
+  // Toyota
+  'SR5', 'GXL', 'GX', 'SR', 'RUGGED', 'RUGGED X', 'ROGUE', 'WORKMATE', 'SAHARA', 'VX', 'KAKADU',
+  // Ford
+  'XLT', 'WILDTRAK', 'FX4', 'SPORT', 'RAPTOR', 'XL', 'XLS', 'TREND',
+  // Holden/Chevrolet
+  'LT', 'LTZ', 'Z71', 'LS', 'SS', 'SSV', 'SV6', 'REDLINE',
+  // Isuzu
+  'LS-M', 'LS-U', 'LS-T', 'SX', 'X-TERRAIN',
+  // Mitsubishi
+  'GLX', 'GLS', 'GSR', 'EXCEED', 'TOBY PRICE',
+  // Nissan
+  'ST', 'ST-X', 'PRO-4X', 'SL', 'N-TREK', 'WARRIOR',
+  // Mazda
+  'GT', 'XTR', 'GSX', 'TOURING', 'BOSS',
+  // VW
+  'SPORTLINE', 'CORE', 'STYLE', 'LIFE', 'CANYON',
+  // Generic high-value
+  'LIMITED', 'PREMIUM', 'PLATINUM', 'TITANIUM', 'ULTIMATE',
+];
+
+// Words to strip from variant text before family extraction
+const STRIP_WORDS = [
+  'DOUBLE CAB', 'DUAL CAB', 'EXTRA CAB', 'SINGLE CAB', 'CREW CAB',
+  'CAB CHASSIS', 'PICKUP', 'UTE', 'UTILITY', 'WAGON', 'SUV',
+  'AUTO', 'AUTOMATIC', 'MANUAL', 'CVT', 'DSG',
+  '4X4', '4X2', 'AWD', '2WD', '4WD',
+  '2.8L', '3.0L', '2.4L', '2.0L', '3.5L', '2.7L', '1.8L',
+  'TURBO', 'DIESEL', 'PETROL', 'HYBRID', 'TDI', 'D4D',
+  'MY', 'SERIES', 'EDITION',
+];
+
+/**
+ * Extract variant family from variant text.
+ * Returns uppercase normalized family token (e.g., "SR5", "XLT", "WILDTRAK").
+ * Returns undefined if no known family token is found.
+ */
+export function extractVariantFamily(variantText: string | undefined | null): string | undefined {
+  if (!variantText) return undefined;
+  
+  // Normalize: uppercase and strip noise words
+  let normalized = variantText.toUpperCase();
+  
+  // Remove strip words
+  for (const word of STRIP_WORDS) {
+    normalized = normalized.replace(new RegExp(`\\b${word}\\b`, 'gi'), ' ');
+  }
+  
+  // Remove numbers that aren't part of family tokens (e.g., "2021", "150000")
+  normalized = normalized.replace(/\b\d{4,}\b/g, ' '); // 4+ digit numbers (years, km)
+  
+  // Clean up whitespace
+  normalized = normalized.replace(/\s+/g, ' ').trim();
+  
+  // Look for known family tokens (in priority order - more specific first)
+  // Sort by length descending to match "RUGGED X" before "RUGGED"
+  const sortedTokens = [...VARIANT_FAMILY_TOKENS].sort((a, b) => b.length - a.length);
+  
+  for (const token of sortedTokens) {
+    // Use word boundary matching
+    const pattern = new RegExp(`\\b${token.replace(/-/g, '[\\s-]?')}\\b`, 'i');
+    if (pattern.test(normalized)) {
+      return token.toUpperCase();
+    }
+  }
+  
+  return undefined;
 }
