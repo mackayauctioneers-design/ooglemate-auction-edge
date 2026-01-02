@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { format, parseISO, addDays, isAfter, isBefore, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical, Clock, FileSpreadsheet, Ban } from 'lucide-react';
+import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical, Clock, FileSpreadsheet, Ban, X } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,14 @@ import { LifecycleTest } from '@/components/lots/LifecycleTest';
 const AEST_TIMEZONE = 'Australia/Sydney';
 
 type DateRangeFilter = 'today' | 'next7' | 'next14' | 'all';
+
+// Interface for active filters display
+interface ActiveFilter {
+  key: string;
+  label: string;
+  value: string;
+  onClear: () => void;
+}
 
 export default function SearchLotsPage() {
   const { isAdmin } = useAuth();
@@ -68,6 +76,72 @@ export default function SearchLotsPage() {
     queryFn: () => dataService.getLotFilterOptions(),
   });
 
+  // Clear all filters
+  const clearAllFilters = useCallback(() => {
+    setSearchQuery('');
+    setAuctionHouseFilter('all');
+    setLocationFilter('all');
+    setDateRangeFilter('all');
+    setYearMin('');
+    setYearMax('');
+    setKmMax('');
+    setStatusFilter('all');
+    setPassCountFilter('all');
+    setActionFilter('all');
+    setMarginMin('1000');
+    setSourceTypeFilter('all');
+    setSourceNameFilter('all');
+    setShowExcluded(false);
+  }, []);
+
+  // Get list of active filters for chips display
+  const activeFilters = useMemo((): ActiveFilter[] => {
+    const filters: ActiveFilter[] = [];
+    
+    if (searchQuery) {
+      filters.push({ key: 'search', label: 'Search', value: `"${searchQuery}"`, onClear: () => setSearchQuery('') });
+    }
+    if (sourceTypeFilter !== 'all') {
+      filters.push({ key: 'sourceType', label: 'Type', value: sourceTypeFilter, onClear: () => setSourceTypeFilter('all') });
+    }
+    if (sourceNameFilter !== 'all') {
+      filters.push({ key: 'sourceName', label: 'Source', value: sourceNameFilter, onClear: () => setSourceNameFilter('all') });
+    }
+    if (locationFilter !== 'all') {
+      filters.push({ key: 'location', label: 'Location', value: locationFilter, onClear: () => setLocationFilter('all') });
+    }
+    if (dateRangeFilter !== 'all') {
+      const dateLabels = { today: 'Today', next7: 'Next 7 Days', next14: 'Next 14 Days' };
+      filters.push({ key: 'date', label: 'Date', value: dateLabels[dateRangeFilter], onClear: () => setDateRangeFilter('all') });
+    }
+    if (statusFilter !== 'all') {
+      filters.push({ key: 'status', label: 'Status', value: statusFilter, onClear: () => setStatusFilter('all') });
+    }
+    if (passCountFilter !== 'all') {
+      filters.push({ key: 'passCount', label: 'Passes', value: passCountFilter === '2plus' ? '2+' : '3+', onClear: () => setPassCountFilter('all') });
+    }
+    if (actionFilter !== 'all') {
+      filters.push({ key: 'action', label: 'Action', value: actionFilter, onClear: () => setActionFilter('all') });
+    }
+    if (yearMin) {
+      filters.push({ key: 'yearMin', label: 'Min Year', value: yearMin, onClear: () => setYearMin('') });
+    }
+    if (yearMax) {
+      filters.push({ key: 'yearMax', label: 'Max Year', value: yearMax, onClear: () => setYearMax('') });
+    }
+    if (kmMax) {
+      filters.push({ key: 'kmMax', label: 'Max KM', value: formatNumber(parseInt(kmMax)), onClear: () => setKmMax('') });
+    }
+    if (marginMin && marginMin !== '1000') {
+      filters.push({ key: 'marginMin', label: 'Min Margin', value: `$${marginMin}`, onClear: () => setMarginMin('1000') });
+    }
+    if (showExcluded) {
+      filters.push({ key: 'showExcluded', label: 'Showing Excluded', value: 'Yes', onClear: () => setShowExcluded(false) });
+    }
+    
+    return filters;
+  }, [searchQuery, sourceTypeFilter, sourceNameFilter, locationFilter, dateRangeFilter, statusFilter, passCountFilter, actionFilter, yearMin, yearMax, kmMax, marginMin, showExcluded]);
+
   // Filter and sort lots
   const filteredLots = useMemo(() => {
     const now = startOfDay(new Date());
@@ -87,14 +161,30 @@ export default function SearchLotsPage() {
         // Margin filter (default 1000) - skip for excluded lots being shown
         if (!lot.excluded_reason && lot.estimated_margin < minMargin) return false;
 
-        // Search query - include source fields
+        // FIXED: Keyword search - case-insensitive match across multiple fields
         if (searchQuery) {
-          const q = searchQuery.toLowerCase();
-          const searchFields = [
-            lot.make, lot.model, lot.variant_raw, lot.variant_normalised,
-            lot.source_type, lot.source_name
-          ].join(' ').toLowerCase();
-          if (!searchFields.includes(q)) return false;
+          const q = searchQuery.toLowerCase().trim();
+          const searchableFields = [
+            lot.lot_id,
+            lot.auction_house,
+            lot.location,
+            lot.make,
+            lot.model,
+            lot.variant_raw,
+            lot.variant_normalised,
+            lot.source,
+            lot.source_site,
+            lot.source_type,
+            lot.source_name
+          ];
+          
+          // Normalize and trim all fields, then check if query matches any
+          const matchFound = searchableFields.some(field => {
+            if (!field) return false;
+            return field.toString().toLowerCase().trim().includes(q);
+          });
+          
+          if (!matchFound) return false;
         }
 
         // Date range filter
@@ -112,7 +202,7 @@ export default function SearchLotsPage() {
           }
         }
 
-        // Other filters
+        // Other filters - only apply if not set to 'all'
         if (auctionHouseFilter !== 'all' && lot.auction_house !== auctionHouseFilter) return false;
         if (locationFilter !== 'all' && lot.location !== locationFilter) return false;
         if (statusFilter !== 'all' && lot.status !== statusFilter) return false;
@@ -356,6 +446,33 @@ export default function SearchLotsPage() {
               className="text-xs sm:text-sm"
             />
           </div>
+          
+          {/* Active Filters Chips + Clear All */}
+          {activeFilters.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">Active filters:</span>
+              {activeFilters.map((filter) => (
+                <Badge 
+                  key={filter.key} 
+                  variant="secondary" 
+                  className="gap-1 pl-2 pr-1 py-1 cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                  onClick={filter.onClear}
+                >
+                  <span className="text-xs font-normal">{filter.label}:</span>
+                  <span className="text-xs font-medium">{filter.value}</span>
+                  <X className="h-3 w-3 ml-1" />
+                </Badge>
+              ))}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearAllFilters}
+                className="text-xs text-muted-foreground hover:text-destructive"
+              >
+                Clear all
+              </Button>
+            </div>
+          )}
           
           {/* Admin: Show Excluded Toggle */}
           {isAdmin && excludedCount > 0 && (

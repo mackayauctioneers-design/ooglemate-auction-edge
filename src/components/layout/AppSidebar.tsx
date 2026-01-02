@@ -4,7 +4,6 @@ import {
   BarChart3, 
   FileText, 
   Bell, 
-  Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -13,7 +12,8 @@ import {
   Search,
   ClipboardList,
   Crosshair,
-  Bookmark
+  Bookmark,
+  Wrench
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -32,6 +32,7 @@ const navItems = [
   { path: '/fingerprints', label: 'Sale Fingerprints', icon: Car, adminOnly: true },
   { path: '/saved-searches', label: 'Saved Searches', icon: Bookmark, adminOnly: true },
   { path: '/alerts', label: 'Alert Log', icon: Bell, adminOnly: true },
+  { path: '/admin-tools', label: 'Admin Tools', icon: Wrench, adminOnly: true },
   { path: '/help', label: 'How to Use', icon: HelpCircle },
 ];
 
