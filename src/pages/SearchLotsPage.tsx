@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { format, parseISO, addDays, isAfter, isBefore, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical, Clock, FileSpreadsheet, Ban, X } from 'lucide-react';
+import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical, Clock, FileSpreadsheet, Ban, X, Bug, RotateCcw } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,7 +53,8 @@ export default function SearchLotsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [passCountFilter, setPassCountFilter] = useState('all');
   const [actionFilter, setActionFilter] = useState('all');
-  const [marginMin, setMarginMin] = useState('1000');
+  const [marginMin, setMarginMin] = useState('');
+  const [showDebug, setShowDebug] = useState(false); // Admin debug toggle
   // Multi-source filters
   const [sourceTypeFilter, setSourceTypeFilter] = useState('all');
   const [sourceNameFilter, setSourceNameFilter] = useState('all');
@@ -76,7 +77,7 @@ export default function SearchLotsPage() {
     queryFn: () => dataService.getLotFilterOptions(),
   });
 
-  // Clear all filters
+  // Clear all filters and reload data
   const clearAllFilters = useCallback(() => {
     setSearchQuery('');
     setAuctionHouseFilter('all');
@@ -88,11 +89,17 @@ export default function SearchLotsPage() {
     setStatusFilter('all');
     setPassCountFilter('all');
     setActionFilter('all');
-    setMarginMin('1000');
+    setMarginMin('');
     setSourceTypeFilter('all');
     setSourceNameFilter('all');
     setShowExcluded(false);
   }, []);
+
+  const resetAndReload = useCallback(() => {
+    clearAllFilters();
+    queryClient.invalidateQueries({ queryKey: ['auctionLots'] });
+    queryClient.invalidateQueries({ queryKey: ['lotFilterOptions'] });
+  }, [clearAllFilters, queryClient]);
 
   // Get list of active filters for chips display
   const activeFilters = useMemo((): ActiveFilter[] => {
@@ -132,8 +139,8 @@ export default function SearchLotsPage() {
     if (kmMax) {
       filters.push({ key: 'kmMax', label: 'Max KM', value: formatNumber(parseInt(kmMax)), onClear: () => setKmMax('') });
     }
-    if (marginMin && marginMin !== '1000') {
-      filters.push({ key: 'marginMin', label: 'Min Margin', value: `$${marginMin}`, onClear: () => setMarginMin('1000') });
+    if (marginMin) {
+      filters.push({ key: 'marginMin', label: 'Min Margin', value: `$${marginMin}`, onClear: () => setMarginMin('') });
     }
     if (showExcluded) {
       filters.push({ key: 'showExcluded', label: 'Showing Excluded', value: 'Yes', onClear: () => setShowExcluded(false) });
@@ -440,7 +447,7 @@ export default function SearchLotsPage() {
             />
             <Input
               type="number"
-              placeholder="Min margin (default 1000)"
+              placeholder="Min margin"
               value={marginMin}
               onChange={(e) => setMarginMin(e.target.value)}
               className="text-xs sm:text-sm"
@@ -474,18 +481,89 @@ export default function SearchLotsPage() {
             </div>
           )}
           
-          {/* Admin: Show Excluded Toggle */}
-          {isAdmin && excludedCount > 0 && (
+          {/* Admin: Show Excluded Toggle + Debug Toggle */}
+          {isAdmin && (
             <div className="flex items-center gap-2">
+              {excludedCount > 0 && (
+                <Button
+                  variant={showExcluded ? 'destructive' : 'outline'}
+                  size="sm"
+                  onClick={() => setShowExcluded(!showExcluded)}
+                  className="gap-2"
+                >
+                  <Ban className="h-4 w-4" />
+                  {showExcluded ? `Hide ${excludedCount} Excluded` : `Show ${excludedCount} Excluded`}
+                </Button>
+              )}
               <Button
-                variant={showExcluded ? 'destructive' : 'outline'}
+                variant={showDebug ? 'secondary' : 'outline'}
                 size="sm"
-                onClick={() => setShowExcluded(!showExcluded)}
+                onClick={() => setShowDebug(!showDebug)}
                 className="gap-2"
               >
-                <Ban className="h-4 w-4" />
-                {showExcluded ? `Hide ${excludedCount} Excluded` : `Show ${excludedCount} Excluded`}
+                <Bug className="h-4 w-4" />
+                Debug
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={resetAndReload}
+                className="gap-2"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Reset & Reload
+              </Button>
+            </div>
+          )}
+
+          {/* Admin Debug Panel */}
+          {isAdmin && showDebug && (
+            <div className="bg-muted/50 border rounded-lg p-4 space-y-3 text-sm font-mono">
+              <h3 className="font-semibold text-foreground flex items-center gap-2">
+                <Bug className="h-4 w-4" />
+                Debug Panel
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-muted-foreground mb-1">Total lots loaded (before filters):</p>
+                  <p className="text-lg font-bold text-foreground">{lots.length}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground mb-1">Filtered results:</p>
+                  <p className="text-lg font-bold text-foreground">{filteredLots.length}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-muted-foreground mb-1">Active filter state:</p>
+                <pre className="bg-background p-2 rounded border text-xs overflow-x-auto">
+{JSON.stringify({
+  searchQuery: searchQuery || '(empty)',
+  sourceTypeFilter,
+  sourceNameFilter,
+  locationFilter,
+  dateRangeFilter,
+  statusFilter,
+  passCountFilter,
+  actionFilter,
+  yearMin: yearMin || '(any)',
+  yearMax: yearMax || '(any)',
+  kmMax: kmMax || '(any)',
+  marginMin: marginMin || '(any)',
+  showExcluded
+}, null, 2)}
+                </pre>
+              </div>
+              <div>
+                <p className="text-muted-foreground mb-1">First 10 loaded lots (make/model/variant):</p>
+                <div className="bg-background p-2 rounded border text-xs max-h-40 overflow-y-auto">
+                  {lots.slice(0, 10).map((lot, i) => (
+                    <div key={lot.lot_key || lot.listing_key || i} className="py-0.5">
+                      <span className="text-primary">{i + 1}.</span> {lot.make} {lot.model} {lot.variant_normalised || lot.variant_raw || '-'} (margin: {lot.estimated_margin})
+                    </div>
+                  ))}
+                  {lots.length === 0 && <span className="text-muted-foreground">No lots loaded</span>}
+                </div>
+              </div>
             </div>
           )}
         </div>
