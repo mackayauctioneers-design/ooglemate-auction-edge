@@ -64,6 +64,7 @@ export default function SavedSearchesPage() {
   const [runningSearchId, setRunningSearchId] = useState<string | null>(null);
   const [runningAll, setRunningAll] = useState(false);
   const [lastRunError, setLastRunError] = useState<Record<string, string>>({});
+  const [localDiagnostics, setLocalDiagnostics] = useState<Record<string, Partial<SavedSearch>>>({});
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [searchToDelete, setSearchToDelete] = useState<SavedSearch | null>(null);
   
@@ -103,12 +104,23 @@ export default function SavedSearchesPage() {
     try {
       const data = await googleSheetsService.getSavedSearches();
       setSearches(data);
+      // Clear local diagnostics after fresh load from backend
+      setLocalDiagnostics({});
     } catch (error) {
       console.error('Failed to load saved searches:', error);
       toast.error('Failed to load saved searches');
     } finally {
       setLoading(false);
     }
+  }
+  
+  // Helper to get search with local diagnostics merged
+  function getSearchWithDiagnostics(search: SavedSearch): SavedSearch {
+    const localDiag = localDiagnostics[search.search_id];
+    if (localDiag) {
+      return { ...search, ...localDiag };
+    }
+    return search;
   }
 
   function openAddDialog() {
@@ -257,22 +269,26 @@ export default function SavedSearchesPage() {
         updated = upsertResult.updated;
       }
       
-      // Update search with diagnostics
-      const diagnostics: {
-        last_run_status: 'success' | 'failed';
-        last_http_status: number;
-        last_listings_found: number;
-        last_listings_upserted: number;
-        last_error_message: string;
-      } = {
-        last_run_status: result.success ? 'success' : 'failed',
+      // Build diagnostics
+      const diagnostics = {
+        last_run_status: (result.success ? 'success' : 'failed') as 'success' | 'failed',
         last_http_status: result.httpStatus || 0,
         last_listings_found: result.listingsFound || 0,
         last_listings_upserted: added + updated,
         last_error_message: result.error || '',
+        last_run_at: new Date().toISOString(),
       };
       
-      await googleSheetsService.updateSavedSearchDiagnostics(search.search_id, diagnostics);
+      // Update local diagnostics immediately for instant UI feedback
+      setLocalDiagnostics(prev => ({
+        ...prev,
+        [search.search_id]: diagnostics,
+      }));
+      
+      // Update backend (async, don't block UI)
+      googleSheetsService.updateSavedSearchDiagnostics(search.search_id, diagnostics).catch(e => {
+        console.error('Failed to update diagnostics in backend:', e);
+      });
       
       // Build run log
       const runLog: SavedSearchRunLog = result.runLog || {
@@ -289,7 +305,6 @@ export default function SavedSearchesPage() {
         setLastRunError(prev => ({ ...prev, [search.search_id]: errorMessage }));
         if (!skipReload) {
           toast.error(`Run failed: ${errorMessage}`);
-          await loadSearches();
         }
         return { added: 0, updated: 0, error: errorMessage, runLog, success: false };
       }
@@ -302,7 +317,6 @@ export default function SavedSearchesPage() {
         } else {
           toast.info(`Saved Search ran: no new listings`);
         }
-        await loadSearches();
       }
       
       return { added, updated, runLog, success: true };
@@ -312,25 +326,26 @@ export default function SavedSearchesPage() {
       console.error('Failed to run search:', error);
       setLastRunError(prev => ({ ...prev, [search.search_id]: errorMessage }));
       
-      // Update diagnostics with error
-      try {
-        const errorDiagnostics: {
-          last_run_status: 'success' | 'failed';
-          last_http_status: number;
-          last_listings_found: number;
-          last_listings_upserted: number;
-          last_error_message: string;
-        } = {
-          last_run_status: 'failed',
-          last_http_status: 0,
-          last_listings_found: 0,
-          last_listings_upserted: 0,
-          last_error_message: errorMessage,
-        };
-        await googleSheetsService.updateSavedSearchDiagnostics(search.search_id, errorDiagnostics);
-      } catch (e) {
-        console.error('Failed to update diagnostics:', e);
-      }
+      // Build error diagnostics
+      const errorDiagnostics = {
+        last_run_status: 'failed' as const,
+        last_http_status: 0,
+        last_listings_found: 0,
+        last_listings_upserted: 0,
+        last_error_message: errorMessage,
+        last_run_at: new Date().toISOString(),
+      };
+      
+      // Update local diagnostics immediately
+      setLocalDiagnostics(prev => ({
+        ...prev,
+        [search.search_id]: errorDiagnostics,
+      }));
+      
+      // Update backend (async)
+      googleSheetsService.updateSavedSearchDiagnostics(search.search_id, errorDiagnostics).catch(e => {
+        console.error('Failed to update diagnostics in backend:', e);
+      });
       
       if (!skipReload) {
         toast.error(`Run failed: ${errorMessage}`);
@@ -496,7 +511,7 @@ export default function SavedSearchesPage() {
             <CardHeader className="pb-2">
               <CardDescription>Last Run Success</CardDescription>
               <CardTitle className="text-3xl text-green-600">
-                {searches.filter(s => s.last_run_status === 'success').length}
+                {searches.map(getSearchWithDiagnostics).filter(s => s.last_run_status === 'success').length}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -504,7 +519,7 @@ export default function SavedSearchesPage() {
             <CardHeader className="pb-2">
               <CardDescription>Last Run Failed</CardDescription>
               <CardTitle className="text-3xl text-destructive">
-                {searches.filter(s => s.last_run_status === 'failed').length}
+                {searches.map(getSearchWithDiagnostics).filter(s => s.last_run_status === 'failed').length}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -542,75 +557,77 @@ export default function SavedSearchesPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {searches.map((search) => (
-                      <TableRow key={search.search_id}>
-                        <TableCell>
-                          <div className="space-y-1">
-                            <span className="font-medium">{search.label}</span>
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <a
-                                href={search.search_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="hover:text-primary flex items-center gap-1 truncate max-w-[200px]"
-                              >
-                                {search.search_url.length > 40 
-                                  ? search.search_url.substring(0, 40) + '...' 
-                                  : search.search_url}
-                                <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                              </a>
+                    {searches.map((rawSearch) => {
+                      const search = getSearchWithDiagnostics(rawSearch);
+                      return (
+                        <TableRow key={search.search_id}>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <span className="font-medium">{search.label}</span>
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <a
+                                  href={search.search_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="hover:text-primary flex items-center gap-1 truncate max-w-[200px]"
+                                >
+                                  {search.search_url.length > 40 
+                                    ? search.search_url.substring(0, 40) + '...' 
+                                    : search.search_url}
+                                  <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                                </a>
+                              </div>
                             </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={
-                            search.source_site === 'Pickles' ? 'default' :
-                            search.source_site === 'Manheim' ? 'secondary' : 'outline'
-                          }>
-                            {search.source_site}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm text-muted-foreground">
-                            {formatLastRun(search.last_run_at)}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {getStatusBadge(search)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {search.last_http_status ? (
-                            <Badge 
-                              variant="outline" 
-                              className={
-                                search.last_http_status === 200 ? 'text-green-600 border-green-600/30' :
-                                search.last_http_status >= 400 ? 'text-destructive border-destructive/30' : ''
-                              }
-                            >
-                              {search.last_http_status}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={
+                              search.source_site === 'Pickles' ? 'default' :
+                              search.source_site === 'Manheim' ? 'secondary' : 'outline'
+                            }>
+                              {search.source_site}
                             </Badge>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {search.last_listings_found !== undefined ? (
-                            <span className="font-medium">{search.last_listings_found}</span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {search.last_listings_upserted !== undefined ? (
-                            <span className="font-medium">{search.last_listings_upserted}</span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {formatLastRun(search.last_run_at)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {getStatusBadge(search)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {search.last_http_status ? (
+                              <Badge 
+                                variant="outline" 
+                                className={
+                                  search.last_http_status === 200 ? 'text-green-600 border-green-600/30' :
+                                  search.last_http_status >= 400 ? 'text-destructive border-destructive/30' : ''
+                                }
+                              >
+                                {search.last_http_status}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {search.last_listings_found !== undefined ? (
+                              <span className="font-medium">{search.last_listings_found}</span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {search.last_listings_upserted !== undefined ? (
+                              <span className="font-medium">{search.last_listings_upserted}</span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
                         <TableCell>
                           <Switch
                             checked={search.enabled === 'Y'}
-                            onCheckedChange={() => toggleEnabled(search)}
+                            onCheckedChange={() => toggleEnabled(rawSearch)}
                           />
                         </TableCell>
                         <TableCell className="text-right">
@@ -621,7 +638,7 @@ export default function SavedSearchesPage() {
                                   <Button
                                     variant="ghost"
                                     size="iconSm"
-                                    onClick={() => runSearchNow(search)}
+                                    onClick={() => runSearchNow(rawSearch)}
                                     disabled={runningSearchId === search.search_id || runningAll}
                                     className={lastRunError[search.search_id] ? 'text-destructive' : ''}
                                   >
@@ -660,7 +677,7 @@ export default function SavedSearchesPage() {
                             <Button
                               variant="ghost"
                               size="iconSm"
-                              onClick={() => openEditDialog(search)}
+                              onClick={() => openEditDialog(rawSearch)}
                               title="Edit"
                             >
                               <Pencil className="h-4 w-4" />
@@ -668,7 +685,7 @@ export default function SavedSearchesPage() {
                             <Button
                               variant="ghost"
                               size="iconSm"
-                              onClick={() => confirmDelete(search)}
+                              onClick={() => confirmDelete(rawSearch)}
                               title="Delete"
                               className="text-destructive hover:text-destructive"
                             >
@@ -677,7 +694,8 @@ export default function SavedSearchesPage() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
