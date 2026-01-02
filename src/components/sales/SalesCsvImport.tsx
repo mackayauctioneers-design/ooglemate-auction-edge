@@ -470,12 +470,37 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
     }
   };
 
+  // Update mapping for a specific CSV column - each column maintains independent state
   const updateMapping = (csvColumn: string, targetField: string) => {
-    setColumnMapping(prev => ({
-      ...prev,
-      [csvColumn]: targetField === 'skip' ? '' : targetField,
-    }));
+    setColumnMapping(prev => {
+      const newMapping = { ...prev };
+      newMapping[csvColumn] = targetField === 'skip' ? '' : targetField;
+      return newMapping;
+    });
   };
+
+  // Check for duplicate mappings (same target field mapped to multiple CSV columns)
+  const getDuplicateMappings = (): Record<string, string[]> => {
+    const fieldToColumns: Record<string, string[]> = {};
+    Object.entries(columnMapping).forEach(([csvCol, targetField]) => {
+      if (targetField && targetField !== '') {
+        if (!fieldToColumns[targetField]) {
+          fieldToColumns[targetField] = [];
+        }
+        fieldToColumns[targetField].push(csvCol);
+      }
+    });
+    // Return only fields with multiple columns mapped
+    const duplicates: Record<string, string[]> = {};
+    Object.entries(fieldToColumns).forEach(([field, columns]) => {
+      if (columns.length > 1) {
+        duplicates[field] = columns;
+      }
+    });
+    return duplicates;
+  };
+
+  const duplicateMappings = getDuplicateMappings();
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -550,15 +575,15 @@ deposit_date,make,model,variant_normalised,year,km,engine,drivetrain,transmissio
             </p>
             <ScrollArea className="h-[300px] border rounded-md p-3">
               <div className="space-y-3">
-                {csvHeaders.map((header) => (
-                  <div key={header} className="flex items-center gap-3">
+                {csvHeaders.map((header, index) => (
+                  <div key={`${index}-${header}`} className="flex items-center gap-3">
                     <div className="w-1/3 text-sm font-mono truncate" title={header}>
                       {header}
                     </div>
                     <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                     <Select
                       value={columnMapping[header] || 'skip'}
-                      onValueChange={(v) => updateMapping(header, v)}
+                      onValueChange={(value) => updateMapping(header, value)}
                     >
                       <SelectTrigger className="w-1/2">
                         <SelectValue />
@@ -576,6 +601,29 @@ deposit_date,make,model,variant_normalised,year,km,engine,drivetrain,transmissio
                 ))}
               </div>
             </ScrollArea>
+            
+            {/* Warning for duplicate mappings */}
+            {Object.keys(duplicateMappings).length > 0 && (
+              <div className="p-3 rounded-md bg-amber-500/10 border border-amber-500/30">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm">
+                    <p className="font-medium text-amber-700 dark:text-amber-400">Duplicate mappings detected</p>
+                    <ul className="mt-1 text-xs text-amber-600 dark:text-amber-400 space-y-0.5">
+                      {Object.entries(duplicateMappings).map(([field, columns]) => (
+                        <li key={field}>
+                          <span className="font-mono">{field}</span> mapped to: {columns.map(c => `"${c}"`).join(', ')}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Each field should only be mapped to one CSV column.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">
                 * Required fields. Mapping will be saved for future imports.
