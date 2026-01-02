@@ -9,78 +9,9 @@ import { PicklesCatalogueImport } from '@/components/lots/PicklesCatalogueImport
 import { LotCsvImport } from '@/components/lots/LotCsvImport';
 import { LifecycleTest } from '@/components/lots/LifecycleTest';
 import { dataService } from '@/services/dataService';
-import { Listing, shouldExcludeListing } from '@/types';
+import { parsePicklesCatalogue } from '@/utils/picklesCatalogueParser';
 import { toast } from 'sonner';
 import { Navigate } from 'react-router-dom';
-
-// Parse lot entry from PDF table format
-function parsePdfLotEntry(text: string, eventId: string, auctionDate: string): Partial<Listing> | null {
-  try {
-    const tableMatch = text.match(/^\|\s*(\d+)\s*\|\s*CP:\s*(\d{2}\/\d{4})/);
-    if (!tableMatch) return null;
-
-    const lotNumber = tableMatch[1];
-    const compDate = tableMatch[2];
-    const yearMatch = compDate.match(/(\d{2})\/(\d{4})/);
-    const year = yearMatch ? parseInt(yearMatch[2]) : new Date().getFullYear();
-    
-    const restOfText = text.replace(/^\|\s*\d+\s*\|\s*/, '');
-    const parts = restOfText.split(',').map(p => p.trim());
-    
-    let makeModelIdx = 0;
-    for (let i = 0; i < parts.length; i++) {
-      if (parts[i].match(/^CP:/i)) {
-        makeModelIdx = i + 1;
-        break;
-      }
-    }
-
-    const make = parts[makeModelIdx] || '';
-    const model = parts[makeModelIdx + 1] || '';
-    const variant_raw = parts[makeModelIdx + 2] || '';
-
-    let transmission = '', engine = '', fuel = '', km = 0, colour = '', location = '', drivetrain = '';
-
-    for (let i = makeModelIdx + 3; i < parts.length; i++) {
-      const part = parts[i];
-      if (part.match(/automatic|manual|cvt|dct/i) && !transmission) {
-        transmission = part.match(/auto/i) ? 'Auto' : part.match(/manual/i) ? 'Manual' : part;
-      } else if (part.match(/^\d+\.?\d*\s*Ltr$/i) && !engine) {
-        engine = part;
-      } else if (part.match(/Diesel|Petrol|Electric|Hybrid/i) && !fuel) {
-        fuel = part.match(/diesel/i) ? 'Diesel' : part.match(/petrol/i) ? 'Petrol' : part;
-      } else if (part.match(/\d+\s*\(Kms/i) && !km) {
-        const kmMatch = part.match(/(\d+)\s*\(Kms/);
-        if (kmMatch) km = parseInt(kmMatch[1].replace(/,/g, ''));
-      } else if (part.match(/^Colour:\s*/i) && !colour) {
-        colour = part.replace(/^Colour:\s*/i, '');
-      } else if (part.match(/\b(VIC|NSW|QLD|SA|WA|TAS|NT|ACT)\b/i) && !location) {
-        const stateMatch = part.match(/([A-Za-z\s]+),?\s*(VIC|NSW|QLD|SA|WA|TAS|NT|ACT)/i);
-        location = stateMatch ? stateMatch[0].trim() : part.trim();
-      } else if (part.match(/4WD|AWD|2WD|RWD|FWD/i) && !drivetrain) {
-        drivetrain = part.match(/4WD/i) ? '4WD' : part.match(/AWD/i) ? 'AWD' : part;
-      }
-    }
-
-    const now = new Date().toISOString();
-    const lot_key = `Pickles:${lotNumber}`;
-
-    return {
-      listing_id: lot_key, lot_id: lotNumber, lot_key, listing_key: lot_key,
-      source: 'auction', source_site: 'Pickles', source_type: 'auction', source_name: 'Pickles Catalogue',
-      event_id: eventId, auction_house: 'Pickles', location, auction_datetime: auctionDate,
-      listing_url: '', make, model, variant_raw, variant_normalised: variant_raw, year, km, fuel,
-      drivetrain, transmission, reserve: 0, highest_bid: 0, first_seen_price: 0, last_seen_price: 0,
-      price_current: 0, price_prev: 0, price_change_pct: 0, status: 'listed', pass_count: 0,
-      price_drop_count: 0, relist_count: 0, first_seen_at: now, last_seen_at: now,
-      last_auction_date: auctionDate, days_listed: 0, description_score: 2, estimated_get_out: 0,
-      estimated_margin: 0, confidence_score: 0, action: 'Watch', visible_to_dealers: 'Y',
-      updated_at: now, last_status: 'listed', relist_group_id: '', override_enabled: 'N', invalid_source: 'N',
-    };
-  } catch {
-    return null;
-  }
-}
 
 export default function AdminToolsPage() {
   const { isAdmin } = useAuth();
@@ -101,31 +32,15 @@ export default function AdminToolsPage() {
       const eventId = '12931';
       const auctionDate = '2026-01-04';
       
-      const tableRowPattern = /\|\s*(\d+)\s*\|\s*(CP:[^|]+)\|/g;
-      const lots: Partial<Listing>[] = [];
-      let match: RegExpExecArray | null;
+      // Use the dedicated parser
+      const parsedLots = parsePicklesCatalogue(rawText, eventId, auctionDate);
       
-      while ((match = tableRowPattern.exec(rawText)) !== null) {
-        const lotNumber = match[1];
-        const description = match[2].trim();
-        const lotText = `| ${lotNumber} | ${description}`;
-        const parsed = parsePdfLotEntry(lotText, eventId, auctionDate);
-        if (parsed) {
-          const exclusionCheck = shouldExcludeListing(parsed, description);
-          if (exclusionCheck.excluded) {
-            parsed.excluded_reason = 'condition_risk';
-            parsed.excluded_keyword = exclusionCheck.keyword;
-            parsed.visible_to_dealers = 'N';
-          }
-          lots.push(parsed);
-        }
-      }
-      
-      if (lots.length === 0) {
+      if (parsedLots.length === 0) {
         toast.error('No lots parsed from catalogue');
         return;
       }
       
+      const lots = parsedLots.map(p => p.lot);
       const result = await dataService.upsertLots(lots);
       toast.success(`Imported ${result.added} new, updated ${result.updated} lots from catalogue 12931`);
       queryClient.invalidateQueries({ queryKey: ['auctionLots'] });
