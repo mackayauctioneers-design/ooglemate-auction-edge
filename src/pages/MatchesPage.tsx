@@ -259,30 +259,68 @@ export default function MatchesPage() {
     return false;
   };
   
-  // Compute all matches
+  // ========== PRE-COMPUTE CANDIDATE LOT SETS ==========
+  // Split lots into separate candidate pools for Tier-1 vs Tier-2 matching
+  const { executionScopeLots, visibilityScopeLots } = useMemo(() => {
+    const execution: AuctionLot[] = [];
+    const visibility: AuctionLot[] = [];
+    
+    for (const lot of lots) {
+      // Skip sold/withdrawn entirely
+      if (lot.status === 'sold' || lot.status === 'withdrawn') continue;
+      
+      if (isExecutionScope(lot)) {
+        execution.push(lot);
+      } else if (isVisibilityScope(lot)) {
+        visibility.push(lot);
+      }
+    }
+    
+    return { executionScopeLots: execution, visibilityScopeLots: visibility };
+  }, [lots]);
+  
+  // ========== COMPUTE MATCHES ==========
+  // Tier-1: Uses ONLY execution scope lots
+  // Tier-2: Uses UNION of execution scope + visibility scope lots
   const allMatches = useMemo(() => {
     const matches: Match[] = [];
+    
+    // ========== TIER-1 MATCHING: Execution Scope Only ==========
+    // These can produce Precision/Advisory matches eligible for BUY
     for (const fp of fingerprints) {
-      for (const lot of lots) {
-        // Skip sold/withdrawn lots entirely
-        if (lot.status === 'sold' || lot.status === 'withdrawn') continue;
-        
-        // Determine scope eligibility
-        const inExecutionScope = isExecutionScope(lot);
-        const inVisibilityScope = isVisibilityScope(lot);
-        
-        // Must be in at least one scope
-        if (!inExecutionScope && !inVisibilityScope) continue;
-        
+      for (const lot of executionScopeLots) {
+        const match = matchLotToFingerprint(lot, fp);
+        if (match && match.tier === 'tier1') {
+          matches.push(match);
+        }
+      }
+    }
+    
+    // ========== TIER-2 MATCHING: Both Scopes ==========
+    // Execution scope lots can also produce Tier-2 (Probable) matches
+    for (const fp of fingerprints) {
+      for (const lot of executionScopeLots) {
+        const match = matchLotToFingerprint(lot, fp);
+        if (match && match.tier === 'tier2') {
+          matches.push(match);
+        }
+      }
+    }
+    
+    // ========== TIER-2 MATCHING: Visibility Scope (UPCOMING) ==========
+    // These are VISIBILITY-ONLY: NEVER BUY, NEVER alert
+    for (const fp of fingerprints) {
+      for (const lot of visibilityScopeLots) {
         const match = matchLotToFingerprint(lot, fp);
         if (match) {
-          // Visibility scope lots (future catalogue) can ONLY produce Tier-2 matches
-          // They must NEVER trigger BUY or alerts
-          if (inVisibilityScope && !inExecutionScope) {
-            if (match.tier !== 'tier2') continue; // Tier-1 not allowed for visibility-only
-            // Force match metadata to reflect upcoming status
-            match.matchConfidence = 'probable'; // Ensure never auto-promotes
-          }
+          // Force Tier-2 for visibility scope - safety override
+          match.tier = 'tier2';
+          match.lane = 'Probable';
+          match.matchConfidence = 'probable'; // Ensure never auto-promotes to BUY
+          match.matchType = 'variant_family'; // Mark as variant-family type
+          
+          // Add visibility flag to lot for UI labeling
+          (lot as any)._visibilityOnly = true;
           
           matches.push(match);
         }
@@ -290,7 +328,7 @@ export default function MatchesPage() {
     }
     
     return matches;
-  }, [fingerprints, lots]);
+  }, [fingerprints, executionScopeLots, visibilityScopeLots]);
   
   // Filter and sort matches
   const filteredMatches = useMemo(() => {
@@ -387,17 +425,18 @@ export default function MatchesPage() {
   const diagnostics = useMemo(() => {
     const activeFingerprints = fingerprints.length;
     
-    // Execution Scope: Tier-1/BUY eligible lots
-    const executionLotsInScope = lots.filter(l => isExecutionScope(l)).length;
-    
-    // Visibility Scope: Tier-2/Probable only (future catalogue)
-    const visibilityLotsInScope = lots.filter(l => isVisibilityScope(l)).length;
+    // Use pre-computed scope arrays for accurate counts
+    const executionLotsCount = executionScopeLots.length;
+    const visibilityLotsCount = visibilityScopeLots.length;
     
     // Combined scope (for display)
-    const lotsInScope = executionLotsInScope + visibilityLotsInScope;
+    const lotsInScope = executionLotsCount + visibilityLotsCount;
     
     const strictMatches = allMatches.filter(m => m.tier === 'tier1').length;
     const probableMatchCount = allMatches.filter(m => m.tier === 'tier2').length;
+    
+    // Count visibility-only matches (upcoming)
+    const upcomingMatches = allMatches.filter(m => (m.lot as any)._visibilityOnly).length;
     
     // Count records with variant_family populated
     const fingerprintsWithFamily = fingerprints.filter(fp => fp.variant_family).length;
@@ -410,16 +449,17 @@ export default function MatchesPage() {
     return {
       activeFingerprints,
       lotsInScope,
-      executionLotsInScope,
-      visibilityLotsInScope,
+      executionLotsInScope: executionLotsCount,
+      visibilityLotsInScope: visibilityLotsCount,
       strictMatches,
       probableMatchCount,
+      upcomingMatches,
       fingerprintsWithFamily,
       lotsWithFamily,
       fullFingerprints,
       specOnlyFingerprints,
     };
-  }, [fingerprints, lots, allMatches]);
+  }, [fingerprints, lots, allMatches, executionScopeLots, visibilityScopeLots]);
   
   const renderMatchRow = (match: Match) => {
     const { fingerprint, lot, matchType, lane, matchConfidence } = match;
@@ -479,6 +519,22 @@ export default function MatchesPage() {
             <Badge variant={matchType === 'km_bounded' ? 'outline' : matchType === 'variant_family' ? 'secondary' : 'secondary'} className="text-xs">
               {matchType === 'km_bounded' ? 'KM-bounded' : matchType === 'variant_family' ? 'Variant family' : 'Spec-only'}
             </Badge>
+            {/* PROBABLE – UPCOMING badge for visibility-scope lots */}
+            {(lot as any)._visibilityOnly && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="text-xs border-purple-500/50 text-purple-400 bg-purple-500/10">
+                      PROBABLE – UPCOMING
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <span>Future auction lot. Cannot auto-BUY or trigger alerts.</span>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {/* SPEC-ONLY badge for spec-only fingerprint matches */}
             {matchType === 'spec_only' && (
               <TooltipProvider>
                 <Tooltip>
@@ -681,6 +737,9 @@ export default function MatchesPage() {
             {diagnostics.visibilityLotsInScope > 0 && (
               <div className="text-xs text-blue-500 mt-2">
                 ℹ️ Visibility scope includes {diagnostics.visibilityLotsInScope} future catalogue lots (Probable matching only – never triggers BUY)
+                {diagnostics.upcomingMatches > 0 && (
+                  <span className="ml-1">• {diagnostics.upcomingMatches} upcoming matches found</span>
+                )}
               </div>
             )}
             {lastEvaluation && (
