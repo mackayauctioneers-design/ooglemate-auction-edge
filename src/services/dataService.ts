@@ -431,4 +431,16 @@ export const dataService = {
     }
     throw new Error('Mock data does not support backfilling Pickles status');
   },
+
+  // Backfill make/model normalization for existing sales (resolve numeric IDs to text labels)
+  backfillSalesMakeModel: async (): Promise<{
+    salesUpdated: number;
+    salesSkipped: number;
+    unresolved: Array<{ saleId: string; make: string; model: string }>;
+  }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.backfillSalesMakeModel();
+    }
+    throw new Error('Mock data does not support backfilling sales make/model');
+  },
 };

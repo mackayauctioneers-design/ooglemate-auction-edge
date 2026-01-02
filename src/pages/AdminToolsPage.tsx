@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database } from 'lucide-react';
+import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database, Car } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +28,12 @@ export default function AdminToolsPage() {
   const [kmFixStats, setKmFixStats] = useState<{ fingerprintsFixed: number; fullFingerprints: number; specOnlyFingerprints: number } | null>(null);
   const [isBackfillingStatus, setIsBackfillingStatus] = useState(false);
   const [statusBackfillStats, setStatusBackfillStats] = useState<{ lotsUpdated: number; lotsSkipped: number } | null>(null);
+  const [isBackfillingMakeModel, setIsBackfillingMakeModel] = useState(false);
+  const [makeModelStats, setMakeModelStats] = useState<{ 
+    salesUpdated: number; 
+    salesSkipped: number; 
+    unresolved: Array<{ saleId: string; make: string; model: string }>;
+  } | null>(null);
 
   const handleImportCatalogue12931 = async () => {
     setIsImporting12931(true);
@@ -170,6 +176,26 @@ export default function AdminToolsPage() {
       toast.error('Failed to backfill Pickles status: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsBackfillingStatus(false);
+    }
+  };
+
+  const handleBackfillMakeModel = async () => {
+    setIsBackfillingMakeModel(true);
+    try {
+      const result = await dataService.backfillSalesMakeModel();
+      toast.success(
+        `Make/Model backfill complete: ${result.salesUpdated} sales normalized`
+      );
+      setMakeModelStats(result);
+      
+      // Refresh sales data
+      await queryClient.invalidateQueries({ queryKey: ['salesNormalised'] });
+      await queryClient.invalidateQueries({ queryKey: ['matches'] });
+      
+    } catch (error) {
+      toast.error('Failed to backfill make/model: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsBackfillingMakeModel(false);
     }
   };
 
@@ -392,6 +418,47 @@ export default function AdminToolsPage() {
                 <div className="text-xs text-muted-foreground border rounded p-2 bg-muted/50">
                   <div>Lots normalized: <span className="font-medium text-green-500">{statusBackfillStats.lotsUpdated}</span></div>
                   <div>Lots skipped: <span className="font-medium">{statusBackfillStats.lotsSkipped}</span></div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Backfill Sales Make/Model */}
+          <Card className="border-orange-500/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Car className="h-5 w-5 text-orange-500" />
+                Backfill Sales Make/Model
+              </CardTitle>
+              <CardDescription>
+                Resolve numeric DMS IDs (e.g. 2438) to text labels (e.g. Toyota) for existing sales
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button 
+                onClick={handleBackfillMakeModel}
+                className="w-full gap-2"
+                variant="outline"
+                disabled={isBackfillingMakeModel}
+              >
+                {isBackfillingMakeModel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Car className="h-4 w-4" />}
+                {isBackfillingMakeModel ? 'Normalizing...' : 'Backfill Make/Model'}
+              </Button>
+              {makeModelStats && (
+                <div className="text-xs text-muted-foreground border rounded p-2 bg-muted/50">
+                  <div>Sales normalized: <span className="font-medium text-orange-500">{makeModelStats.salesUpdated}</span></div>
+                  <div>Sales skipped: <span className="font-medium">{makeModelStats.salesSkipped}</span></div>
+                  {makeModelStats.unresolved.length > 0 && (
+                    <div className="mt-1 pt-1 border-t">
+                      <div className="text-amber-500">Unresolved IDs ({makeModelStats.unresolved.length}):</div>
+                      {makeModelStats.unresolved.slice(0, 5).map((u, i) => (
+                        <div key={i} className="text-xs">Make: {u.make}, Model: {u.model}</div>
+                      ))}
+                      {makeModelStats.unresolved.length > 5 && (
+                        <div className="text-xs">...and {makeModelStats.unresolved.length - 5} more</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>

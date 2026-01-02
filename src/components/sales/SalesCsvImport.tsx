@@ -10,6 +10,7 @@ import { SaleLog, SalesImportRaw, SalesNormalised } from '@/types';
 import { Upload, ArrowRight, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { normalizeMakeModel, isNumericId } from '@/utils/dmsLookup';
 
 interface SalesCsvImportProps {
   open: boolean;
@@ -385,6 +386,16 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
           }
         });
 
+        // Normalize make/model if they are numeric IDs
+        if (rowData.make || rowData.model) {
+          const normalized = normalizeMakeModel(rowData.make || '', rowData.model || '');
+          rowData.make = normalized.make;
+          rowData.model = normalized.model;
+          // Store original IDs if they were numeric
+          if (normalized.make_id) rowData.make_id = normalized.make_id;
+          if (normalized.model_id) rowData.model_id = normalized.model_id;
+        }
+
         // Determine quality flag
         let qualityFlag: 'good' | 'review' | 'incomplete' = 'good';
         const requiredForGood = ['make', 'model', 'year', 'deposit_date'];
@@ -392,6 +403,11 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
         if (missingForGood.length > 0) {
           qualityFlag = 'incomplete';
         } else if (!rowData.km || !rowData.variant_normalised) {
+          qualityFlag = 'review';
+        }
+        
+        // Flag if make/model still looks numeric after normalization (unresolved)
+        if (isNumericId(rowData.make) || isNumericId(rowData.model)) {
           qualityFlag = 'review';
         }
 
@@ -455,6 +471,13 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
             }
           }
         });
+
+        // Normalize make/model for Sales_Log as well
+        if (sale.make || sale.model) {
+          const normalized = normalizeMakeModel(sale.make || '', sale.model || '');
+          sale.make = normalized.make;
+          sale.model = normalized.model;
+        }
 
         return sale as Omit<SaleLog, 'sale_id' | 'created_at'>;
       });
