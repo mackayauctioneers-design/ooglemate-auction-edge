@@ -420,4 +420,15 @@ export const dataService = {
     }
     throw new Error('Mock data does not support Do Not Buy');
   },
+
+  // Backfill Pickles status: normalize numeric status codes to string statuses
+  backfillPicklesStatus: async (): Promise<{
+    lotsUpdated: number;
+    lotsSkipped: number;
+  }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.backfillPicklesStatus();
+    }
+    throw new Error('Mock data does not support backfilling Pickles status');
+  },
 };

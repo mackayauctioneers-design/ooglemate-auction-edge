@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags } from 'lucide-react';
+import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +26,8 @@ export default function AdminToolsPage() {
   const [backfillStats, setBackfillStats] = useState<{ fingerprintsWithFamily: number; lotsWithFamily: number } | null>(null);
   const [isFixingKm, setIsFixingKm] = useState(false);
   const [kmFixStats, setKmFixStats] = useState<{ fingerprintsFixed: number; fullFingerprints: number; specOnlyFingerprints: number } | null>(null);
+  const [isBackfillingStatus, setIsBackfillingStatus] = useState(false);
+  const [statusBackfillStats, setStatusBackfillStats] = useState<{ lotsUpdated: number; lotsSkipped: number } | null>(null);
 
   const handleImportCatalogue12931 = async () => {
     setIsImporting12931(true);
@@ -149,6 +151,25 @@ export default function AdminToolsPage() {
       toast.error('Failed to fix spec-only KM: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsFixingKm(false);
+    }
+  };
+
+  const handleBackfillPicklesStatus = async () => {
+    setIsBackfillingStatus(true);
+    try {
+      const result = await dataService.backfillPicklesStatus();
+      toast.success(
+        `Status backfill complete: ${result.lotsUpdated} lots normalized`
+      );
+      setStatusBackfillStats(result);
+      
+      // Auto-trigger rebuild search index after backfill
+      await handleRebuildSearchIndex();
+      
+    } catch (error) {
+      toast.error('Failed to backfill Pickles status: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsBackfillingStatus(false);
     }
   };
 
@@ -341,6 +362,36 @@ export default function AdminToolsPage() {
                     <div>Full fingerprints (KM enforced): <span className="font-medium text-emerald-500">{kmFixStats.fullFingerprints}</span></div>
                     <div>Spec-only fingerprints (KM ignored): <span className="font-medium text-amber-500">{kmFixStats.specOnlyFingerprints}</span></div>
                   </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Backfill Pickles Status */}
+          <Card className="border-green-500/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Database className="h-5 w-5 text-green-500" />
+                Backfill Pickles Status
+              </CardTitle>
+              <CardDescription>
+                Normalize numeric status codes (0, 2) to string statuses (catalogue, passed_in) for Pickles lots
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button 
+                onClick={handleBackfillPicklesStatus}
+                className="w-full gap-2"
+                variant="outline"
+                disabled={isBackfillingStatus}
+              >
+                {isBackfillingStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+                {isBackfillingStatus ? 'Normalizing...' : 'Backfill Pickles Status'}
+              </Button>
+              {statusBackfillStats && (
+                <div className="text-xs text-muted-foreground border rounded p-2 bg-muted/50">
+                  <div>Lots normalized: <span className="font-medium text-green-500">{statusBackfillStats.lotsUpdated}</span></div>
+                  <div>Lots skipped: <span className="font-medium">{statusBackfillStats.lotsSkipped}</span></div>
                 </div>
               )}
             </CardContent>
