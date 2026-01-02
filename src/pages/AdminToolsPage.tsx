@@ -23,6 +23,7 @@ export default function AdminToolsPage() {
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [isImporting12931, setIsImporting12931] = useState(false);
   const [isBackfillingFamily, setIsBackfillingFamily] = useState(false);
+  const [backfillStats, setBackfillStats] = useState<{ fingerprintsWithFamily: number; lotsWithFamily: number } | null>(null);
 
   const handleImportCatalogue12931 = async () => {
     setIsImporting12931(true);
@@ -91,6 +92,19 @@ export default function AdminToolsPage() {
       // Refresh matches after backfill
       await queryClient.invalidateQueries({ queryKey: ['matches'] });
       await queryClient.invalidateQueries({ queryKey: ['auctionLots'] });
+      
+      // Verify persistence by re-reading data and counting variant_family
+      const [fingerprints, lots] = await Promise.all([
+        dataService.getFingerprints(),
+        dataService.getLots(true),
+      ]);
+      const fingerprintsWithFamily = fingerprints.filter(fp => fp.variant_family).length;
+      const lotsWithFamily = lots.filter(l => l.variant_family).length;
+      setBackfillStats({ fingerprintsWithFamily, lotsWithFamily });
+      
+      if (fingerprintsWithFamily === 0 && lotsWithFamily === 0 && (result.fingerprintsUpdated > 0 || result.lotsUpdated > 0)) {
+        toast.warning('Backfill reported updates but verification shows 0 records with variant_family. Check sheet headers.');
+      }
     } catch (error) {
       toast.error('Failed to backfill variant family: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
@@ -240,7 +254,7 @@ export default function AdminToolsPage() {
                 Derive variant_family (SR5, GXL, XLT, etc.) for fingerprints and listings to enable Tier-2 matching
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
               <Button 
                 onClick={handleBackfillVariantFamily}
                 className="w-full gap-2"
@@ -250,6 +264,12 @@ export default function AdminToolsPage() {
                 {isBackfillingFamily ? <Loader2 className="h-4 w-4 animate-spin" /> : <Tags className="h-4 w-4" />}
                 {isBackfillingFamily ? 'Backfilling...' : 'Backfill Variant Family'}
               </Button>
+              {backfillStats && (
+                <div className="text-xs text-muted-foreground border rounded p-2 bg-muted/50">
+                  <div>Fingerprints with variant_family: <span className="font-medium">{backfillStats.fingerprintsWithFamily}</span></div>
+                  <div>Lots with variant_family: <span className="font-medium">{backfillStats.lotsWithFamily}</span></div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

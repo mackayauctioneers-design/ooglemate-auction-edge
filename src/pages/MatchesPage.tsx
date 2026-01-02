@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { dataService } from '@/services/dataService';
-import { SaleFingerprint, AuctionLot, formatNumber, formatCurrency, getPressureSignals, extractVariantFamily } from '@/types';
+import { SaleFingerprint, AuctionLot, formatNumber, formatCurrency, getPressureSignals } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,10 +35,11 @@ interface MatchFilters {
   minConfidence: number;
 }
 
-// Get variant family for matching (from stored value or derived)
-function getVariantFamily(variant: string | undefined, storedFamily: string | undefined): string | undefined {
-  if (storedFamily) return storedFamily.toUpperCase();
-  return extractVariantFamily(variant);
+// Get variant family for matching - ONLY use stored value, don't derive on-the-fly
+// Derivation should only happen during backfill, not during matching
+function getVariantFamily(storedFamily: string | undefined): string | undefined {
+  if (storedFamily && storedFamily.trim()) return storedFamily.toUpperCase().trim();
+  return undefined;
 }
 
 // Match a lot against a fingerprint using the matching rules
@@ -110,8 +111,9 @@ function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | nu
   }
   
   // ========== TIER 2: Variant family match ==========
-  const lotFamily = getVariantFamily(lot.variant_normalised || lot.variant_raw, lot.variant_family);
-  const fpFamily = getVariantFamily(fp.variant_normalised, fp.variant_family);
+  // Use ONLY stored variant_family values - no on-the-fly derivation
+  const lotFamily = getVariantFamily(lot.variant_family);
+  const fpFamily = getVariantFamily(fp.variant_family);
   
   // If both have a family and they match
   if (lotFamily && fpFamily && lotFamily === fpFamily) {
