@@ -6,9 +6,19 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { dataService } from '@/services/dataService';
-import { Listing } from '@/types';
+import { Listing, shouldExcludeListing } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+
+interface PicklesCatalogueImportProps {
+  onClose: () => void;
+  onImported: () => void;
+}
+
+interface ParsedLotWithText {
+  lot: Partial<Listing>;
+  catalogueText: string;
+}
 
 interface PicklesCatalogueImportProps {
   onClose: () => void;
@@ -133,9 +143,9 @@ function parseLotEntry(text: string, eventId: string, auctionDate: string): Part
   }
 }
 
-// Parse full catalogue text into lot entries
-function parseCatalogue(rawText: string, eventId: string, auctionDate: string): Partial<Listing>[] {
-  const lots: Partial<Listing>[] = [];
+// Parse full catalogue text into lot entries with exclusion check
+function parseCatalogue(rawText: string, eventId: string, auctionDate: string): ParsedLotWithText[] {
+  const results: ParsedLotWithText[] = [];
   const lotPattern = /(\d+)\s+CP:/g;
   const matches: { index: number }[] = [];
   let match: RegExpExecArray | null;
@@ -149,10 +159,19 @@ function parseCatalogue(rawText: string, eventId: string, auctionDate: string): 
     const endIdx = i + 1 < matches.length ? matches[i + 1].index : rawText.length;
     const lotText = rawText.substring(startIdx, endIdx);
     const parsed = parseLotEntry(lotText, eventId, auctionDate);
-    if (parsed) lots.push(parsed);
+    if (parsed) {
+      // Apply exclusion check using catalogue text
+      const exclusionCheck = shouldExcludeListing(parsed, lotText);
+      if (exclusionCheck.excluded) {
+        parsed.excluded_reason = 'condition_risk';
+        parsed.excluded_keyword = exclusionCheck.keyword;
+        parsed.visible_to_dealers = 'N';
+      }
+      results.push({ lot: parsed, catalogueText: lotText });
+    }
   }
 
-  return lots;
+  return results;
 }
 
 export function PicklesCatalogueImport({ onClose, onImported }: PicklesCatalogueImportProps) {
@@ -160,9 +179,13 @@ export function PicklesCatalogueImport({ onClose, onImported }: PicklesCatalogue
   const [eventId, setEventId] = useState('');
   const [auctionDate, setAuctionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [isImporting, setIsImporting] = useState(false);
-  const [parsedLots, setParsedLots] = useState<Partial<Listing>[]>([]);
+  const [parsedResults, setParsedResults] = useState<ParsedLotWithText[]>([]);
   const [error, setError] = useState('');
   const [result, setResult] = useState<{ added: number; updated: number } | null>(null);
+
+  // Derived counts
+  const excludedCount = parsedResults.filter(r => r.lot.excluded_reason).length;
+  const validCount = parsedResults.length - excludedCount;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -170,7 +193,7 @@ export function PicklesCatalogueImport({ onClose, onImported }: PicklesCatalogue
 
     setError('');
     setResult(null);
-    setParsedLots([]);
+    setParsedResults([]);
 
     try {
       const text = await file.text();
@@ -191,27 +214,28 @@ export function PicklesCatalogueImport({ onClose, onImported }: PicklesCatalogue
       return;
     }
 
-    const lots = parseCatalogue(rawText, eventId, auctionDate);
-    if (lots.length === 0) {
+    const results = parseCatalogue(rawText, eventId, auctionDate);
+    if (results.length === 0) {
       setError('No valid lots found');
       return;
     }
-    setParsedLots(lots);
+    setParsedResults(results);
   };
 
   const handleImport = async () => {
-    if (parsedLots.length === 0 || !eventId.trim()) return;
+    if (parsedResults.length === 0 || !eventId.trim()) return;
 
     setIsImporting(true);
     setError('');
 
     try {
       // Use standard upsertLots - respects lot_key uniqueness, pass_count, lifecycle
-      const result = await dataService.upsertLots(parsedLots);
+      const lotsToImport = parsedResults.map(r => r.lot);
+      const result = await dataService.upsertLots(lotsToImport);
       setResult(result);
       toast({
         title: 'Import complete',
-        description: `Added ${result.added}, updated ${result.updated} lots.`,
+        description: `Added ${result.added}, updated ${result.updated} lots.${excludedCount > 0 ? ` (${excludedCount} excluded)` : ''}`,
       });
       onImported();
     } catch (err) {
@@ -265,19 +289,29 @@ export function PicklesCatalogueImport({ onClose, onImported }: PicklesCatalogue
             </Alert>
           )}
 
-          {parsedLots.length > 0 && !result && (
+          {parsedResults.length > 0 && !result && (
             <div className="space-y-2">
-              <p className="text-sm font-medium">{parsedLots.length} lots to import</p>
+              <p className="text-sm font-medium">
+                {parsedResults.length} lots to import
+                {excludedCount > 0 && (
+                  <span className="text-destructive ml-2">({excludedCount} excluded due to condition risk)</span>
+                )}
+              </p>
               <div className="max-h-40 overflow-y-auto border rounded-lg p-2 text-xs space-y-1">
-                {parsedLots.slice(0, 10).map((lot, i) => (
-                  <div key={i} className="flex gap-2 py-1 border-b border-border/50 last:border-0">
-                    <span className="font-mono text-muted-foreground w-8">#{lot.lot_id}</span>
-                    <span className="font-medium">{lot.make} {lot.model}</span>
-                    <span className="text-muted-foreground">{lot.year}</span>
-                    {lot.km ? <span className="text-muted-foreground ml-auto">{lot.km.toLocaleString()} km</span> : null}
+                {parsedResults.slice(0, 10).map((item, i) => (
+                  <div key={i} className={`flex gap-2 py-1 border-b border-border/50 last:border-0 ${item.lot.excluded_reason ? 'opacity-50' : ''}`}>
+                    <span className="font-mono text-muted-foreground w-8">#{item.lot.lot_id}</span>
+                    <span className="font-medium">{item.lot.make} {item.lot.model}</span>
+                    <span className="text-muted-foreground">{item.lot.year}</span>
+                    {item.lot.excluded_reason && (
+                      <span className="text-destructive text-[10px] ml-auto">EXCLUDED: {item.lot.excluded_keyword}</span>
+                    )}
+                    {!item.lot.excluded_reason && item.lot.km ? (
+                      <span className="text-muted-foreground ml-auto">{item.lot.km.toLocaleString()} km</span>
+                    ) : null}
                   </div>
                 ))}
-                {parsedLots.length > 10 && <p className="text-muted-foreground">...and {parsedLots.length - 10} more</p>}
+                {parsedResults.length > 10 && <p className="text-muted-foreground">...and {parsedResults.length - 10} more</p>}
               </div>
             </div>
           )}
@@ -287,9 +321,9 @@ export function PicklesCatalogueImport({ onClose, onImported }: PicklesCatalogue
             {!result && (
               <>
                 <Button variant="secondary" onClick={handlePreview} disabled={!rawText.trim() || isImporting}>Preview</Button>
-                <Button onClick={handleImport} disabled={parsedLots.length === 0 || isImporting || !eventId.trim()} className="gap-2">
+                <Button onClick={handleImport} disabled={parsedResults.length === 0 || isImporting || !eventId.trim()} className="gap-2">
                   {isImporting && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Import {parsedLots.length} Lots
+                  Import {parsedResults.length} Lots
                 </Button>
               </>
             )}

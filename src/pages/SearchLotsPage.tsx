@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { format, parseISO, addDays, isAfter, isBefore, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical, Clock, FileSpreadsheet } from 'lucide-react';
+import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical, Clock, FileSpreadsheet, Ban } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,6 +49,7 @@ export default function SearchLotsPage() {
   // Multi-source filters
   const [sourceTypeFilter, setSourceTypeFilter] = useState('all');
   const [sourceNameFilter, setSourceNameFilter] = useState('all');
+  const [showExcluded, setShowExcluded] = useState(false); // Admin only - show excluded lots
 
   const [selectedLot, setSelectedLot] = useState<AuctionLot | null>(null);
   const [editingLot, setEditingLot] = useState<AuctionLot | null>(null);
@@ -77,8 +78,14 @@ export default function SearchLotsPage() {
 
     return lots
       .filter((lot) => {
-        // Margin filter (default 1000)
-        if (lot.estimated_margin < minMargin) return false;
+        // Exclusion filter: hide excluded lots from dealers, show for admins only if toggled
+        if (lot.excluded_reason) {
+          if (!isAdmin) return false; // Dealers never see excluded lots
+          if (!showExcluded) return false; // Admin toggle to show/hide
+        }
+        
+        // Margin filter (default 1000) - skip for excluded lots being shown
+        if (!lot.excluded_reason && lot.estimated_margin < minMargin) return false;
 
         // Search query - include source fields
         if (searchQuery) {
@@ -129,13 +136,19 @@ export default function SearchLotsPage() {
         return true;
       })
       .sort((a, b) => {
+        // Excluded lots sort last
+        if (a.excluded_reason && !b.excluded_reason) return 1;
+        if (!a.excluded_reason && b.excluded_reason) return -1;
         // Sort by auction_datetime ascending, then estimated_margin descending
         const dateA = a.auction_datetime ? parseISO(a.auction_datetime).getTime() : 0;
         const dateB = b.auction_datetime ? parseISO(b.auction_datetime).getTime() : 0;
         if (dateA !== dateB) return dateA - dateB;
         return b.estimated_margin - a.estimated_margin;
       });
-  }, [lots, searchQuery, auctionHouseFilter, locationFilter, dateRangeFilter, yearMin, yearMax, kmMax, statusFilter, passCountFilter, actionFilter, marginMin, sourceTypeFilter, sourceNameFilter]);
+  }, [lots, searchQuery, auctionHouseFilter, locationFilter, dateRangeFilter, yearMin, yearMax, kmMax, statusFilter, passCountFilter, actionFilter, marginMin, sourceTypeFilter, sourceNameFilter, isAdmin, showExcluded]);
+
+  // Count excluded lots for admin indicator
+  const excludedCount = useMemo(() => lots.filter(l => l.excluded_reason).length, [lots]);
 
   // Determine if auction-specific filters should be shown
   const showAuctionFilters = sourceTypeFilter === 'all' || sourceTypeFilter === 'auction';
@@ -167,7 +180,12 @@ export default function SearchLotsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-foreground">Search Lots</h1>
-            <p className="text-sm text-muted-foreground">{filteredLots.length} lots found</p>
+            <p className="text-sm text-muted-foreground">
+              {filteredLots.length} lots found
+              {isAdmin && excludedCount > 0 && (
+                <span className="ml-2 text-destructive">({excludedCount} excluded)</span>
+              )}
+            </p>
           </div>
           {isAdmin && (
             <div className="flex gap-2">
@@ -338,6 +356,21 @@ export default function SearchLotsPage() {
               className="text-xs sm:text-sm"
             />
           </div>
+          
+          {/* Admin: Show Excluded Toggle */}
+          {isAdmin && excludedCount > 0 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant={showExcluded ? 'destructive' : 'outline'}
+                size="sm"
+                onClick={() => setShowExcluded(!showExcluded)}
+                className="gap-2"
+              >
+                <Ban className="h-4 w-4" />
+                {showExcluded ? `Hide ${excludedCount} Excluded` : `Show ${excludedCount} Excluded`}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Lots Table */}
@@ -371,94 +404,117 @@ export default function SearchLotsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredLots.map((lot) => (
-                    <TableRow
-                      key={lot.lot_key || lot.listing_key || lot.lot_id}
-                      className="cursor-pointer hover:bg-muted/30"
-                      onClick={() => setSelectedLot(lot)}
-                    >
-                      <TableCell className="text-xs whitespace-nowrap">
-                        <div className="flex flex-col">
-                          <span className="font-medium">{lot.source_name || lot.auction_house}</span>
-                          <span className="text-muted-foreground capitalize">{lot.source_type || 'auction'}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">{formatLotDate(lot.auction_datetime)}</TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">{lot.location}</TableCell>
-                      <TableCell className="text-xs whitespace-nowrap font-medium">{lot.make}</TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">{lot.model}</TableCell>
-                      <TableCell className="text-xs whitespace-nowrap max-w-[120px] truncate">{lot.variant_normalised || lot.variant_raw}</TableCell>
-                      <TableCell className="text-xs text-right">{lot.year || '-'}</TableCell>
-                      <TableCell className="text-xs text-right">{lot.km ? formatNumber(lot.km) : '-'}</TableCell>
-                      <TableCell className="text-xs text-right">{lot.price_current || lot.reserve ? formatCurrency(lot.price_current || lot.reserve) : '-'}</TableCell>
-                      <TableCell className="text-xs text-right font-medium text-emerald-500">{formatCurrency(lot.estimated_margin)}</TableCell>
-                      <TableCell className="text-xs text-center">{lot.confidence_score}</TableCell>
-                      <TableCell className="text-center">
-                        {(() => {
-                          const isWaitingForPressure = lot.confidence_score >= 4 && lot.action === 'Watch' && !getPressureSignals(lot).hasPressure;
-                          
-                          if (isWaitingForPressure) {
-                            return (
+                  {filteredLots.map((lot) => {
+                    const isExcluded = !!lot.excluded_reason;
+                    
+                    return (
+                      <TableRow
+                        key={lot.lot_key || lot.listing_key || lot.lot_id}
+                        className={`cursor-pointer hover:bg-muted/30 ${isExcluded ? 'opacity-50 bg-muted/20' : ''}`}
+                        onClick={() => setSelectedLot(lot)}
+                      >
+                        <TableCell className="text-xs whitespace-nowrap">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex flex-col">
+                              <span className="font-medium">{lot.source_name || lot.auction_house}</span>
+                              <span className="text-muted-foreground capitalize">{lot.source_type || 'auction'}</span>
+                            </div>
+                            {isExcluded && (
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Badge variant="outline" className="gap-1 border-amber-500/50 text-amber-500">
-                                      <Clock className="h-3 w-3" />
-                                      Watch
+                                    <Badge variant="destructive" className="gap-1 text-[10px] px-1.5 py-0">
+                                      <Ban className="h-2.5 w-2.5" />
+                                      EXCLUDED
                                     </Badge>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <span>Waiting for pressure signal (pass ≥2, days ≥14, or reserve drop ≥5%)</span>
+                                    <span>Excluded: {lot.excluded_keyword || 'condition risk'}</span>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">{formatLotDate(lot.auction_datetime)}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">{lot.location}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap font-medium">{lot.make}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">{lot.model}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap max-w-[120px] truncate">{lot.variant_normalised || lot.variant_raw}</TableCell>
+                        <TableCell className="text-xs text-right">{lot.year || '-'}</TableCell>
+                        <TableCell className="text-xs text-right">{lot.km ? formatNumber(lot.km) : '-'}</TableCell>
+                        <TableCell className="text-xs text-right">{lot.price_current || lot.reserve ? formatCurrency(lot.price_current || lot.reserve) : '-'}</TableCell>
+                        <TableCell className="text-xs text-right font-medium text-emerald-500">{isExcluded ? '-' : formatCurrency(lot.estimated_margin)}</TableCell>
+                        <TableCell className="text-xs text-center">{isExcluded ? '-' : lot.confidence_score}</TableCell>
+                        <TableCell className="text-center">
+                          {isExcluded ? (
+                            <Badge variant="outline" className="text-muted-foreground border-muted">N/A</Badge>
+                          ) : (() => {
+                            const isWaitingForPressure = lot.confidence_score >= 4 && lot.action === 'Watch' && !getPressureSignals(lot).hasPressure;
+                            
+                            if (isWaitingForPressure) {
+                              return (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="outline" className="gap-1 border-amber-500/50 text-amber-500">
+                                        <Clock className="h-3 w-3" />
+                                        Watch
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <span>Waiting for pressure signal (pass ≥2, days ≥14, or reserve drop ≥5%)</span>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              );
+                            }
+                            
+                            return (
+                              <Badge
+                                variant={lot.action === 'Buy' ? 'default' : 'secondary'}
+                                className={lot.action === 'Buy' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}
+                              >
+                                {lot.action}
+                              </Badge>
                             );
-                          }
-                          
-                          return (
-                            <Badge
-                              variant={lot.action === 'Buy' ? 'default' : 'secondary'}
-                              className={lot.action === 'Buy' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}
+                          })()}
+                        </TableCell>
+                        <TableCell>
+                          {lot.listing_url && lot.invalid_source !== 'Y' && !isExcluded ? (
+                            <Button
+                              variant="ghost"
+                              size="iconSm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(lot.listing_url, '_blank');
+                              }}
                             >
-                              {lot.action}
-                            </Badge>
-                          );
-                        })()}
-                      </TableCell>
-                      <TableCell>
-                        {lot.listing_url && lot.invalid_source !== 'Y' ? (
-                          <Button
-                            variant="ghost"
-                            size="iconSm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(lot.listing_url, '_blank');
-                            }}
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                        ) : lot.listing_url ? (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="iconSm"
-                                  className="opacity-50 cursor-not-allowed"
-                                  disabled
-                                >
-                                  <ExternalLink className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Source link unavailable</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
-                  ))}</TableBody>
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                          ) : lot.listing_url && !isExcluded ? (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="iconSm"
+                                    className="opacity-50 cursor-not-allowed"
+                                    disabled
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Source link unavailable</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}</TableBody>
               </Table>
             </div>
           </div>
