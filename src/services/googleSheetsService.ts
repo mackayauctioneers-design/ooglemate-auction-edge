@@ -2150,8 +2150,35 @@ export const googleSheetsService = {
     let lotsUpdated = 0;
     let lotsSkipped = 0;
 
-    // Backfill fingerprints
+    // Step 1: Ensure headers include variant_family by triggering a reset_headers call
+    // This ensures the sheet has the correct schema before we try to write variant_family
+    try {
+      await callSheetsApi('reset_headers', SHEETS.FINGERPRINTS, { 
+        headers: [
+          'fingerprint_id', 'dealer_name', 'dealer_whatsapp', 'sale_date', 'expires_at', 'make', 'model', 
+          'variant_normalised', 'variant_family', 'year', 'sale_km', 'min_km', 'max_km', 'engine', 'drivetrain', 'transmission', 
+          'shared_opt_in', 'is_active', 'fingerprint_type', 'source_sale_id', 'source_import_id',
+          'do_not_buy', 'do_not_buy_reason'
+        ]
+      });
+      console.log('Reset Sale_Fingerprints headers to include variant_family');
+    } catch (headerError) {
+      console.error('Failed to reset fingerprints headers:', headerError);
+    }
+
+    try {
+      await callSheetsApi('reset_headers', SHEETS.LOTS, { 
+        headers: LISTING_HEADERS
+      });
+      console.log('Reset Listings headers to include variant_family');
+    } catch (headerError) {
+      console.error('Failed to reset listings headers:', headerError);
+    }
+
+    // Step 2: Backfill fingerprints
     const fingerprints = await googleSheetsService.getFingerprints();
+    console.log(`Backfilling variant_family for ${fingerprints.length} fingerprints`);
+    
     for (const fp of fingerprints) {
       // Skip if already has variant_family
       if (fp.variant_family) {
@@ -2174,7 +2201,9 @@ export const googleSheetsService = {
           };
           await callSheetsApi('update', SHEETS.FINGERPRINTS, updatedFp, fp._rowIndex);
           fingerprintsUpdated++;
-        } catch {
+          console.log(`Updated fingerprint ${fp.fingerprint_id} with variant_family: ${derived}`);
+        } catch (err) {
+          console.error(`Failed to update fingerprint ${fp.fingerprint_id}:`, err);
           fingerprintsSkipped++;
         }
       } else {
@@ -2182,8 +2211,10 @@ export const googleSheetsService = {
       }
     }
 
-    // Backfill listings
+    // Step 3: Backfill listings
     const lots = await googleSheetsService.getLots(true);
+    console.log(`Backfilling variant_family for ${lots.length} listings`);
+    
     for (const lot of lots) {
       // Skip if already has variant_family
       if (lot.variant_family) {
@@ -2206,7 +2237,9 @@ export const googleSheetsService = {
           };
           await callSheetsApi('update', SHEETS.LOTS, updatedLot, lot._rowIndex);
           lotsUpdated++;
-        } catch {
+          console.log(`Updated lot ${lot.lot_key || lot.listing_key} with variant_family: ${derived}`);
+        } catch (err) {
+          console.error(`Failed to update lot ${lot.lot_key || lot.listing_key}:`, err);
           lotsSkipped++;
         }
       } else {
@@ -2214,6 +2247,7 @@ export const googleSheetsService = {
       }
     }
     
+    console.log(`Backfill complete: ${fingerprintsUpdated} fingerprints, ${lotsUpdated} lots updated`);
     return { fingerprintsUpdated, fingerprintsSkipped, lotsUpdated, lotsSkipped };
   },
 
