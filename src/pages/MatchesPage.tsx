@@ -35,6 +35,28 @@ interface MatchFilters {
   minConfidence: number;
 }
 
+// Normalize Pickles numeric status codes to string statuses
+// Pickles catalogue uses: 0 = catalogue/listed, 2 = passed_in
+function normalizeStatus(status: string | undefined): string {
+  if (!status) return '';
+  const trimmed = status.trim();
+  
+  // Handle numeric status codes (from Pickles)
+  if (trimmed === '0') return 'catalogue';
+  if (trimmed === '1') return 'listed';
+  if (trimmed === '2') return 'passed_in';
+  if (trimmed === '3') return 'sold';
+  if (trimmed === '4') return 'withdrawn';
+  
+  // Already a string status - normalize casing
+  const lower = trimmed.toLowerCase();
+  if (['catalogue', 'upcoming', 'listed', 'passed_in', 'sold', 'withdrawn'].includes(lower)) {
+    return lower;
+  }
+  
+  return trimmed; // Return as-is if unrecognized
+}
+
 // Get variant family for matching - ONLY use stored value, don't derive on-the-fly
 // Derivation should only happen during backfill, not during matching
 function getVariantFamily(storedFamily: string | undefined): string | undefined {
@@ -202,8 +224,11 @@ export default function MatchesPage() {
   // Visibility Scope (Tier-2 / Probable only): source='Pickles Catalogue', status IN ('catalogue','upcoming'), auction_date >= today
   
   const isExecutionScope = (lot: AuctionLot): boolean => {
+    // Normalize status for comparison
+    const status = normalizeStatus(lot.status);
+    
     // Must be active status for execution
-    if (!['listed', 'passed_in'].includes(lot.status || '')) return false;
+    if (!['listed', 'passed_in'].includes(status)) return false;
     if (lot.visible_to_dealers !== 'Y') return false;
     
     // Auction date must be today or past (real inventory ready for execution)
@@ -245,12 +270,13 @@ export default function MatchesPage() {
     // Must be either Pickles source OR visible_to_dealers = Y
     if (!pickles && lot.visible_to_dealers !== 'Y') return 'not Pickles and visible_to_dealers != Y';
     
-    // Must have valid status
+    // Must have valid status (using normalized status)
+    const status = normalizeStatus(lot.status);
     const validStatuses = ['catalogue', 'upcoming', 'listed'];
-    if (!validStatuses.includes(lot.status || '')) return `status '${lot.status}' not in [catalogue, upcoming, listed]`;
+    if (!validStatuses.includes(status)) return `status '${lot.status}' → normalized '${status}' not in [catalogue, upcoming, listed]`;
     
     // Check date - we allow missing/unparseable dates for visibility (labeled "date unknown")
-    const { date, source } = parseAuctionDate(lot);
+    const { date } = parseAuctionDate(lot);
     if (date) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -272,9 +298,10 @@ export default function MatchesPage() {
     // Must be Pickles source (tolerant check)
     if (!pickles) return false;
     
-    // Must have valid status for visibility
+    // Must have valid status for visibility (using normalized status)
+    const status = normalizeStatus(lot.status);
     const validStatuses = ['catalogue', 'upcoming', 'listed'];
-    if (!validStatuses.includes(lot.status || '')) return false;
+    if (!validStatuses.includes(status)) return false;
     
     // Check auction date - include if:
     // 1. Date is in the future
@@ -491,13 +518,22 @@ export default function MatchesPage() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10);
     
-    // Count by status values
+    // Count by status values (raw)
     const statusCountMap: Record<string, number> = {};
     lotsWithFamilyList.forEach(l => {
       const st = l.status || '(empty)';
       statusCountMap[st] = (statusCountMap[st] || 0) + 1;
     });
     const statusCounts = Object.entries(statusCountMap)
+      .sort((a, b) => b[1] - a[1]);
+    
+    // Count by normalized status values
+    const statusNormalisedCountMap: Record<string, number> = {};
+    lotsWithFamilyList.forEach(l => {
+      const st = normalizeStatus(l.status) || '(empty)';
+      statusNormalisedCountMap[st] = (statusNormalisedCountMap[st] || 0) + 1;
+    });
+    const statusNormalisedCounts = Object.entries(statusNormalisedCountMap)
       .sort((a, b) => b[1] - a[1]);
     
     // Count parseable dates
@@ -564,6 +600,7 @@ export default function MatchesPage() {
         sourceCounts,
         auctionHouseCounts,
         statusCounts,
+        statusNormalisedCounts,
         auctionDatetimeParseable,
         auctionDateParseable,
         visibleToDealersY,
@@ -911,12 +948,24 @@ export default function MatchesPage() {
                     </div>
                   </div>
                   
-                  {/* Status counts */}
+                  {/* Status counts (raw) */}
                   <div>
-                    <h4 className="text-xs font-medium text-muted-foreground mb-2">Count by status:</h4>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-2">Count by status (raw):</h4>
                     <div className="flex flex-wrap gap-2">
                       {diagnostics.visibilityDebug.statusCounts.map(([st, count]) => (
                         <Badge key={st} variant="outline" className="text-xs">
+                          {st}: {count}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Status counts (normalized) */}
+                  <div>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-2">Count by status (normalized):</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {diagnostics.visibilityDebug.statusNormalisedCounts.map(([st, count]) => (
+                        <Badge key={st} variant="outline" className="text-xs bg-primary/10">
                           {st}: {count}
                         </Badge>
                       ))}
