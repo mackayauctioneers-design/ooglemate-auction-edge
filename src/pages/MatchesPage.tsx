@@ -311,8 +311,8 @@ export default function MatchesPage() {
   }, [lots]);
   
   // ========== COMPUTE MATCHES ==========
-  // Tier-1: Uses ONLY execution scope lots
-  // Tier-2: Uses UNION of execution scope + visibility scope lots
+  // Tier-1: Uses ONLY execution scope lots (BUY eligible)
+  // Tier-2: Uses ONLY visibility scope lots (Probable only, NEVER BUY)
   const allMatches = useMemo(() => {
     const matches: Match[] = [];
     
@@ -327,19 +327,9 @@ export default function MatchesPage() {
       }
     }
     
-    // ========== TIER-2 MATCHING: Both Scopes ==========
-    // Execution scope lots can also produce Tier-2 (Probable) matches
-    for (const fp of fingerprints) {
-      for (const lot of executionScopeLots) {
-        const match = matchLotToFingerprint(lot, fp);
-        if (match && match.tier === 'tier2') {
-          matches.push(match);
-        }
-      }
-    }
-    
-    // ========== TIER-2 MATCHING: Visibility Scope (UPCOMING) ==========
+    // ========== TIER-2 MATCHING: Visibility Scope ONLY ==========
     // These are VISIBILITY-ONLY: NEVER BUY, NEVER alert
+    // Tier-2 candidates come EXCLUSIVELY from visibilityScopeLots
     for (const fp of fingerprints) {
       for (const lot of visibilityScopeLots) {
         const match = matchLotToFingerprint(lot, fp);
