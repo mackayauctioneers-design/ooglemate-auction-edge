@@ -600,19 +600,20 @@ export function formatNumber(value: number): string {
 // ========== VARIANT FAMILY EXTRACTION ==========
 
 // Common variant family tokens (uppercase normalized)
+// Whitelist from user requirements: SR5, GXL, XLT, ST, ST-X, WILDTRAK, LT, LTZ, Z71, ZR2, GL, GX, VX, SAHARA, GR, GT, RS
 const VARIANT_FAMILY_TOKENS = [
   // Toyota
-  'SR5', 'GXL', 'GX', 'SR', 'RUGGED', 'RUGGED X', 'ROGUE', 'WORKMATE', 'SAHARA', 'VX', 'KAKADU',
+  'SR5', 'GXL', 'GX', 'GL', 'SR', 'RUGGED', 'RUGGED X', 'ROGUE', 'WORKMATE', 'SAHARA', 'VX', 'KAKADU', 'GR',
   // Ford
-  'XLT', 'WILDTRAK', 'FX4', 'SPORT', 'RAPTOR', 'XL', 'XLS', 'TREND',
+  'XLT', 'WILDTRAK', 'FX4', 'SPORT', 'RAPTOR', 'XL', 'XLS', 'TREND', 'ST',
   // Holden/Chevrolet
-  'LT', 'LTZ', 'Z71', 'LS', 'SS', 'SSV', 'SV6', 'REDLINE',
+  'LT', 'LTZ', 'Z71', 'ZR2', 'LS', 'SS', 'SSV', 'SV6', 'REDLINE', 'RS',
   // Isuzu
   'LS-M', 'LS-U', 'LS-T', 'SX', 'X-TERRAIN',
   // Mitsubishi
   'GLX', 'GLS', 'GSR', 'EXCEED', 'TOBY PRICE',
   // Nissan
-  'ST', 'ST-X', 'PRO-4X', 'SL', 'N-TREK', 'WARRIOR',
+  'ST-X', 'PRO-4X', 'SL', 'N-TREK', 'WARRIOR',
   // Mazda
   'GT', 'XTR', 'GSX', 'TOURING', 'BOSS',
   // VW
