@@ -219,40 +219,34 @@ export default function MatchesPage() {
   };
   
   const isVisibilityScope = (lot: AuctionLot): boolean => {
+    // Visibility scope: Future catalogue lots for Tier-2 matching ONLY
+    // These NEVER trigger BUY, NEVER trigger alerts
+    
     if (lot.visible_to_dealers !== 'Y') return false;
     
-    // Visibility scope: Future auction lots (catalogue/upcoming inventory)
-    // Includes:
-    // 1. Pickles Catalogue lots with future auction dates
-    // 2. Any lot with status 'catalogue' or 'upcoming'
-    // 3. Any lot with future auction date that's not yet in execution scope
+    // Must have future auction date
+    if (!lot.auction_datetime) return false;
+    const auctionDate = new Date(lot.auction_datetime);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const isFutureAuction = auctionDate >= today;
+    if (!isFutureAuction) return false;
     
-    // Check for future auction date
-    const hasFutureAuction = (() => {
-      if (!lot.auction_datetime) return false;
-      const auctionDate = new Date(lot.auction_datetime);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return auctionDate >= today;
-    })();
+    // VISIBILITY SCOPE CRITERIA (any of):
+    // 1. source_name = 'Pickles Catalogue' (regardless of status)
+    // 2. status IN ('catalogue', 'upcoming')
     
-    // Pickles Catalogue source with future auction = visibility scope
-    if (lot.source_name === 'Pickles Catalogue' && hasFutureAuction) {
+    if (lot.source_name === 'Pickles Catalogue') {
       return true;
     }
     
-    // Status-based visibility scope
-    if (['catalogue', 'upcoming'].includes(lot.status || '') && hasFutureAuction) {
+    if (['catalogue', 'upcoming'].includes(lot.status || '')) {
       return true;
     }
     
-    // Any lot with future auction that isn't in execution scope
-    if (hasFutureAuction && !['sold', 'withdrawn'].includes(lot.status || '')) {
-      // Check it's not already in execution scope
-      if (!['listed', 'passed_in'].includes(lot.status || '')) {
-        return true;
-      }
-      // Even 'listed' with future date = visibility only
+    // Also catch any 'listed' lot with future date that escaped execution scope
+    // (execution scope requires auction_date <= today)
+    if (lot.status === 'listed') {
       return true;
     }
     
