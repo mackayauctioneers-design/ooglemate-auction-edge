@@ -371,6 +371,19 @@ export const dataService = {
     throw new Error('Mock data does not support backfilling min_km');
   },
 
+  // Backfill variant_family for fingerprints and listings
+  backfillVariantFamily: async (): Promise<{ 
+    fingerprintsUpdated: number; 
+    fingerprintsSkipped: number;
+    lotsUpdated: number;
+    lotsSkipped: number;
+  }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.backfillVariantFamily();
+    }
+    throw new Error('Mock data does not support backfilling variant_family');
+  },
+
   // ========== DO NOT BUY PROTECTION ==========
 
   setDoNotBuy: async (saleIds: string[], reason: string): Promise<{
