@@ -205,26 +205,58 @@ export default function MatchesPage() {
     // Must be active status for execution
     if (!['listed', 'passed_in'].includes(lot.status || '')) return false;
     if (lot.visible_to_dealers !== 'Y') return false;
-    // Auction date must be today or past (real inventory)
+    
+    // Auction date must be today or past (real inventory ready for execution)
+    // Future-dated lots go to visibility scope only
     if (lot.auction_datetime) {
       const auctionDate = new Date(lot.auction_datetime);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      if (auctionDate > today) return false;
+      if (auctionDate > today) return false; // Future = visibility only
     }
+    
     return true;
   };
   
   const isVisibilityScope = (lot: AuctionLot): boolean => {
-    // Must be catalogue/upcoming status
-    if (!['catalogue', 'upcoming'].includes(lot.status || '')) return false;
     if (lot.visible_to_dealers !== 'Y') return false;
-    // Must be future auction (upcoming inventory)
-    if (!lot.auction_datetime) return false;
-    const auctionDate = new Date(lot.auction_datetime);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return auctionDate >= today;
+    
+    // Visibility scope: Future auction lots (catalogue/upcoming inventory)
+    // Includes:
+    // 1. Pickles Catalogue lots with future auction dates
+    // 2. Any lot with status 'catalogue' or 'upcoming'
+    // 3. Any lot with future auction date that's not yet in execution scope
+    
+    // Check for future auction date
+    const hasFutureAuction = (() => {
+      if (!lot.auction_datetime) return false;
+      const auctionDate = new Date(lot.auction_datetime);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return auctionDate >= today;
+    })();
+    
+    // Pickles Catalogue source with future auction = visibility scope
+    if (lot.source_name === 'Pickles Catalogue' && hasFutureAuction) {
+      return true;
+    }
+    
+    // Status-based visibility scope
+    if (['catalogue', 'upcoming'].includes(lot.status || '') && hasFutureAuction) {
+      return true;
+    }
+    
+    // Any lot with future auction that isn't in execution scope
+    if (hasFutureAuction && !['sold', 'withdrawn'].includes(lot.status || '')) {
+      // Check it's not already in execution scope
+      if (!['listed', 'passed_in'].includes(lot.status || '')) {
+        return true;
+      }
+      // Even 'listed' with future date = visibility only
+      return true;
+    }
+    
+    return false;
   };
   
   // Compute all matches
