@@ -128,14 +128,34 @@ function parseOpportunity(row: any): AuctionOpportunity {
 }
 
 function parseFingerprint(row: any): SaleFingerprint {
-  const saleKm = parseInt(row.sale_km) || 0;
-  // For min_km, use stored value or calculate from sale_km (symmetric range)
-  const minKm = row.min_km !== undefined && row.min_km !== '' 
-    ? parseInt(row.min_km) 
-    : Math.max(0, saleKm - 15000);
-  const maxKm = row.max_km !== undefined && row.max_km !== '' 
-    ? parseInt(row.max_km) 
-    : saleKm + 15000;
+  const saleKm = row.sale_km ? parseInt(row.sale_km) : undefined;
+  
+  // Parse min_km and max_km - preserve NULL/undefined for spec-only fingerprints
+  let minKm: number | undefined = undefined;
+  let maxKm: number | undefined = undefined;
+  
+  if (row.min_km !== undefined && row.min_km !== '' && row.min_km !== null) {
+    minKm = parseInt(row.min_km);
+    // Treat as undefined if it's the placeholder value
+    if (minKm >= 900000) minKm = undefined;
+  }
+  
+  if (row.max_km !== undefined && row.max_km !== '' && row.max_km !== null) {
+    maxKm = parseInt(row.max_km);
+    // Treat as undefined if it's a placeholder-derived value
+    if (maxKm >= 900000) maxKm = undefined;
+  }
+  
+  // For fingerprints with sale_km but no explicit min/max, calculate them
+  // ONLY if this is NOT a spec_only fingerprint
+  const fingerprintType = row.fingerprint_type || (saleKm ? 'full' : 'spec_only');
+  
+  if (fingerprintType === 'full' && saleKm && minKm === undefined) {
+    minKm = Math.max(0, saleKm - 15000);
+  }
+  if (fingerprintType === 'full' && saleKm && maxKm === undefined) {
+    maxKm = saleKm + 15000;
+  }
     
   return {
     fingerprint_id: row.fingerprint_id || '',
@@ -148,7 +168,7 @@ function parseFingerprint(row: any): SaleFingerprint {
     variant_normalised: row.variant_normalised || '',
     variant_family: row.variant_family || undefined,
     year: parseInt(row.year) || 0,
-    sale_km: saleKm,
+    sale_km: saleKm || 0,
     min_km: minKm,
     max_km: maxKm,
     engine: row.engine || '',
@@ -156,7 +176,7 @@ function parseFingerprint(row: any): SaleFingerprint {
     transmission: row.transmission || '',
     shared_opt_in: row.shared_opt_in || 'N',
     is_active: row.is_active || 'Y',
-    fingerprint_type: row.fingerprint_type || 'full',
+    fingerprint_type: fingerprintType,
     source_sale_id: row.source_sale_id || undefined,
     source_import_id: row.source_import_id || undefined,
     do_not_buy: row.do_not_buy || 'N',
@@ -2138,8 +2158,58 @@ export const googleSheetsService = {
     return { updated, skipped };
   },
 
+  // Fix KM for spec-only fingerprints: clear placeholder KM ranges
+  fixSpecOnlyKm: async (): Promise<{ 
+    fingerprintsFixed: number; 
+    fingerprintsSkipped: number;
+  }> => {
+    let fingerprintsFixed = 0;
+    let fingerprintsSkipped = 0;
+    
+    const fingerprints = await googleSheetsService.getFingerprints();
+    console.log(`Checking ${fingerprints.length} fingerprints for spec-only KM fix`);
+    
+    for (const fp of fingerprints) {
+      // Check if fingerprint needs fixing:
+      // - min_km >= 900,000 (placeholder value)
+      // - OR sale_km is falsy (no source km data)
+      const hasPlaceholderKm = (fp.min_km !== undefined && fp.min_km !== null && fp.min_km >= 900000);
+      const hasNoSourceKm = !fp.sale_km;
+      
+      if (!hasPlaceholderKm && !hasNoSourceKm) {
+        fingerprintsSkipped++;
+        continue;
+      }
+      
+      if (fp._rowIndex === undefined) {
+        fingerprintsSkipped++;
+        continue;
+      }
+      
+      try {
+        // Create updated fingerprint with NULL km values and spec_only type
+        const updatedFp: SaleFingerprint = {
+          ...fp,
+          min_km: undefined as any,  // Will be written as empty/null
+          max_km: undefined as any,  // Will be written as empty/null
+          fingerprint_type: 'spec_only',
+        };
+        
+        await callSheetsApi('update', SHEETS.FINGERPRINTS, updatedFp, fp._rowIndex);
+        fingerprintsFixed++;
+        console.log(`Fixed fingerprint ${fp.fingerprint_id}: set to spec_only, cleared KM ranges`);
+      } catch (err) {
+        console.error(`Failed to fix fingerprint ${fp.fingerprint_id}:`, err);
+        fingerprintsSkipped++;
+      }
+    }
+    
+    console.log(`Spec-only KM fix complete: ${fingerprintsFixed} fixed, ${fingerprintsSkipped} skipped`);
+    return { fingerprintsFixed, fingerprintsSkipped };
+  },
+
   // Backfill variant_family for existing fingerprints and listings
-  backfillVariantFamily: async (): Promise<{ 
+  backfillVariantFamily: async (): Promise<{
     fingerprintsUpdated: number; 
     fingerprintsSkipped: number;
     lotsUpdated: number;

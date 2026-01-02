@@ -42,6 +42,18 @@ function getVariantFamily(storedFamily: string | undefined): string | undefined 
   return undefined;
 }
 
+// Helper: Check if fingerprint is spec-only (should ignore KM)
+function isSpecOnlyFingerprint(fp: SaleFingerprint): boolean {
+  // Explicit spec_only type
+  if (fp.fingerprint_type === 'spec_only') return true;
+  // No sale_km means spec-only
+  if (!fp.sale_km) return true;
+  // NULL min/max km means spec-only (properly backfilled)
+  if (fp.min_km === null || fp.min_km === undefined) return true;
+  if (fp.max_km === null || fp.max_km === undefined) return true;
+  return false;
+}
+
 // Match a lot against a fingerprint using the matching rules
 // Returns Match with tier information for sorting
 function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | null {
@@ -68,11 +80,11 @@ function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | nu
     lot.model?.toLowerCase().trim() !== fp.model?.toLowerCase().trim()
   ) return null;
   
+  // Determine if this is a spec-only fingerprint
+  const isSpecOnly = isSpecOnlyFingerprint(fp);
+  
   // ========== TIER 1: Exact variant match ==========
   if (lot.variant_normalised?.toLowerCase().trim() === fp.variant_normalised?.toLowerCase().trim()) {
-    // Determine if this is a spec-only fingerprint
-    const isSpecOnly = fp.fingerprint_type === 'spec_only' || !fp.sale_km;
-    
     if (isSpecOnly) {
       // Spec-only: skip KM, engine, drivetrain, transmission checks
       return {
@@ -93,9 +105,9 @@ function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | nu
     } else if (fp.transmission && lot.transmission && fp.transmission.toLowerCase().trim() !== lot.transmission.toLowerCase().trim()) {
       // Fall through to tier 2
     } else {
-      // KM range check: symmetric range (sale_km ± 15000)
-      const minKm = fp.min_km ?? Math.max(0, (fp.sale_km || 0) - 15000);
-      const maxKm = fp.max_km ?? (fp.sale_km || 0) + 15000;
+      // KM range check: ONLY for full fingerprints with valid min/max km
+      const minKm = fp.min_km!;
+      const maxKm = fp.max_km!;
       
       if (lot.km >= minKm && lot.km <= maxKm) {
         return {
@@ -117,13 +129,10 @@ function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | nu
   
   // If both have a family and they match
   if (lotFamily && fpFamily && lotFamily === fpFamily) {
-    // For Tier 2, KM check only applies to full fingerprints
-    const isSpecOnly = fp.fingerprint_type === 'spec_only' || !fp.sale_km;
-    
+    // For Tier 2, KM check only applies to full fingerprints with valid km bounds
     if (!isSpecOnly) {
-      // Full fingerprint: check KM range
-      const minKm = fp.min_km ?? Math.max(0, (fp.sale_km || 0) - 15000);
-      const maxKm = fp.max_km ?? (fp.sale_km || 0) + 15000;
+      const minKm = fp.min_km!;
+      const maxKm = fp.max_km!;
       
       if (lot.km < minKm || lot.km > maxKm) {
         return null; // KM out of range for full fingerprint
@@ -320,6 +329,10 @@ export default function MatchesPage() {
     const fingerprintsWithFamily = fingerprints.filter(fp => fp.variant_family).length;
     const lotsWithFamily = lots.filter(l => l.variant_family).length;
     
+    // Count full vs spec-only fingerprints
+    const fullFingerprints = fingerprints.filter(fp => !isSpecOnlyFingerprint(fp)).length;
+    const specOnlyFingerprints = fingerprints.filter(fp => isSpecOnlyFingerprint(fp)).length;
+    
     return {
       activeFingerprints,
       lotsInScope,
@@ -328,6 +341,8 @@ export default function MatchesPage() {
       probableMatchCount,
       fingerprintsWithFamily,
       lotsWithFamily,
+      fullFingerprints,
+      specOnlyFingerprints,
     };
   }, [fingerprints, lots, allMatches]);
   
@@ -532,10 +547,18 @@ export default function MatchesPage() {
               <Info className="h-4 w-4 text-muted-foreground" />
               Match Evaluation Diagnostics
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 text-sm">
               <div className="space-y-1">
                 <div className="text-muted-foreground">Active Fingerprints</div>
                 <div className="text-xl font-semibold text-foreground">{diagnostics.activeFingerprints}</div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Full (KM enforced)</div>
+                <div className="text-xl font-semibold text-emerald-500">{diagnostics.fullFingerprints}</div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Spec-Only (KM ignored)</div>
+                <div className="text-xl font-semibold text-amber-500">{diagnostics.specOnlyFingerprints}</div>
               </div>
               <div className="space-y-1">
                 <div className="text-muted-foreground">Lots in Scope</div>

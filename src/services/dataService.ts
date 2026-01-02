@@ -384,6 +384,17 @@ export const dataService = {
     throw new Error('Mock data does not support backfilling variant_family');
   },
 
+  // Fix KM for spec-only fingerprints (clear placeholder values)
+  fixSpecOnlyKm: async (): Promise<{
+    fingerprintsFixed: number;
+    fingerprintsSkipped: number;
+  }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.fixSpecOnlyKm();
+    }
+    throw new Error('Mock data does not support fixing spec-only KM');
+  },
+
   // ========== DO NOT BUY PROTECTION ==========
 
   setDoNotBuy: async (saleIds: string[], reason: string): Promise<{
