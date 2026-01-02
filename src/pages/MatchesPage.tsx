@@ -241,13 +241,29 @@ export default function MatchesPage() {
           </Badge>
         </TableCell>
         <TableCell>
-          {lot.listing_url && (
+          {lot.listing_url && lot.invalid_source !== 'Y' ? (
             <Button variant="ghost" size="sm" asChild>
               <a href={lot.listing_url} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-4 w-4" />
               </a>
             </Button>
-          )}
+          ) : lot.listing_url ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="opacity-50 cursor-not-allowed"
+                  disabled
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Source link unavailable</p>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
         </TableCell>
       </TableRow>
     );

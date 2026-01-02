@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuctionLot, formatCurrency, formatNumber } from '@/types';
@@ -383,16 +384,36 @@ export default function SearchLotsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="iconSm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.open(lot.listing_url, '_blank');
-                          }}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
+                        {lot.listing_url && lot.invalid_source !== 'Y' ? (
+                          <Button
+                            variant="ghost"
+                            size="iconSm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(lot.listing_url, '_blank');
+                            }}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        ) : lot.listing_url ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="iconSm"
+                                  className="opacity-50 cursor-not-allowed"
+                                  disabled
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Source link unavailable</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))}</TableBody>

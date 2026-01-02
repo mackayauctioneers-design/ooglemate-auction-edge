@@ -34,6 +34,32 @@ const SHEETS = {
   SAVED_SEARCHES: 'Saved_Searches',
 };
 
+// Check if a listing URL is invalid (placeholder, example, or empty)
+function isInvalidListingUrl(url: string): boolean {
+  if (!url || url.length < 10) return true;
+  
+  const invalidPatterns = [
+    'example.com',
+    'test.example',
+    'placeholder',
+    'localhost',
+    '127.0.0.1',
+    'invalid',
+  ];
+  
+  const urlLower = url.toLowerCase();
+  for (const pattern of invalidPatterns) {
+    if (urlLower.includes(pattern)) return true;
+  }
+  
+  // Must start with http:// or https://
+  if (!urlLower.startsWith('http://') && !urlLower.startsWith('https://')) {
+    return true;
+  }
+  
+  return false;
+}
+
 // Helper to call the edge function
 async function callSheetsApi(action: string, sheet: string, data?: any, rowIndex?: number) {
   const { data: response, error } = await supabase.functions.invoke('google-sheets', {
@@ -330,6 +356,10 @@ function parseListing(row: any): AuctionLot {
     override_enabled: overrideEnabled,
     manual_confidence_score: manualConfidenceScore,
     manual_action: manualAction,
+    
+    // Data quality
+    invalid_source: row.invalid_source === 'Y' ? 'Y' : 'N',
+    
     _rowIndex: row._rowIndex,
   };
 
@@ -414,7 +444,9 @@ const LISTING_HEADERS = [
   // Tracking
   'updated_at', 'last_status', 'relist_group_id',
   // Override
-  'manual_confidence_score', 'manual_action', 'override_enabled'
+  'manual_confidence_score', 'manual_action', 'override_enabled',
+  // Data quality
+  'invalid_source'
 ];
 
 // Legacy alias
@@ -1031,6 +1063,9 @@ export const googleSheetsService = {
           
           // Override fields (defaults)
           override_enabled: 'N',
+          
+          // Data quality - check if listing_url is valid
+          invalid_source: isInvalidListingUrl(newLot.listing_url || '') ? 'Y' : 'N',
         };
         
         // Calculate confidence

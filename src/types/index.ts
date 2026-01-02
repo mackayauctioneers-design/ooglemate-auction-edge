@@ -292,6 +292,9 @@ export interface Listing extends SheetRowMeta {
   manual_confidence_score?: number;
   manual_action?: 'Watch' | 'Buy';
   override_enabled: 'Y' | 'N';
+  
+  // Data quality flags
+  invalid_source: 'Y' | 'N'; // Set to 'Y' if listing_url is missing or invalid
 }
 
 // Backwards compatibility alias

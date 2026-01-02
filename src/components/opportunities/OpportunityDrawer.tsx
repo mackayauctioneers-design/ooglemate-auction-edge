@@ -7,6 +7,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ExternalLink, Calendar, Gauge, MapPin, Building2, AlertTriangle, TrendingDown } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -177,12 +178,28 @@ export function OpportunityDrawer({ lot, open, onOpenChange }: OpportunityDrawer
 
           {/* Actions */}
           <section className="pt-4 border-t border-border">
-            <Button asChild className="w-full" variant="action">
-              <a href={lot.listing_url} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-4 w-4" />
-                Open Listing
-              </a>
-            </Button>
+            {lot.listing_url && lot.invalid_source !== 'Y' ? (
+              <Button asChild className="w-full" variant="default">
+                <a href={lot.listing_url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Open Listing
+                </a>
+              </Button>
+            ) : (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button className="w-full opacity-50 cursor-not-allowed" variant="secondary" disabled>
+                      <ExternalLink className="h-4 w-4" />
+                      Open Listing
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Source link unavailable</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </section>
         </div>
       </SheetContent>
