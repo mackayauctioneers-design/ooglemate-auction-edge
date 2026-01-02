@@ -197,12 +197,34 @@ export default function MatchesPage() {
     return Array.from(houses).sort();
   }, [lots]);
   
-  // Helper: Check if a lot is a future catalogue lot (Pickles upcoming)
-  const isFutureCatalogueLot = (lot: AuctionLot): boolean => {
+  // ========== SCOPING LAYERS ==========
+  // Execution Scope (Tier-1 / BUY eligible): status IN ('listed','passed_in'), auction_date <= today
+  // Visibility Scope (Tier-2 / Probable only): source='Pickles Catalogue', status IN ('catalogue','upcoming'), auction_date >= today
+  
+  const isExecutionScope = (lot: AuctionLot): boolean => {
+    // Must be active status for execution
+    if (!['listed', 'passed_in'].includes(lot.status || '')) return false;
+    if (lot.visible_to_dealers !== 'Y') return false;
+    // Auction date must be today or past (real inventory)
+    if (lot.auction_datetime) {
+      const auctionDate = new Date(lot.auction_datetime);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (auctionDate > today) return false;
+    }
+    return true;
+  };
+  
+  const isVisibilityScope = (lot: AuctionLot): boolean => {
+    // Must be catalogue/upcoming status
     if (!['catalogue', 'upcoming'].includes(lot.status || '')) return false;
+    if (lot.visible_to_dealers !== 'Y') return false;
+    // Must be future auction (upcoming inventory)
     if (!lot.auction_datetime) return false;
     const auctionDate = new Date(lot.auction_datetime);
-    return auctionDate > new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return auctionDate >= today;
   };
   
   // Compute all matches
@@ -210,17 +232,25 @@ export default function MatchesPage() {
     const matches: Match[] = [];
     for (const fp of fingerprints) {
       for (const lot of lots) {
-        // Only consider active lots
+        // Skip sold/withdrawn lots entirely
         if (lot.status === 'sold' || lot.status === 'withdrawn') continue;
-        if (lot.visible_to_dealers !== 'Y') continue;
         
-        // Future catalogue lots are only eligible for Tier-2 (Probable) matching
-        const isCatalogueLot = isFutureCatalogueLot(lot);
+        // Determine scope eligibility
+        const inExecutionScope = isExecutionScope(lot);
+        const inVisibilityScope = isVisibilityScope(lot);
+        
+        // Must be in at least one scope
+        if (!inExecutionScope && !inVisibilityScope) continue;
         
         const match = matchLotToFingerprint(lot, fp);
         if (match) {
-          // If it's a catalogue lot, only include Tier-2 matches
-          if (isCatalogueLot && match.tier !== 'tier2') continue;
+          // Visibility scope lots (future catalogue) can ONLY produce Tier-2 matches
+          // They must NEVER trigger BUY or alerts
+          if (inVisibilityScope && !inExecutionScope) {
+            if (match.tier !== 'tier2') continue; // Tier-1 not allowed for visibility-only
+            // Force match metadata to reflect upcoming status
+            match.matchConfidence = 'probable'; // Ensure never auto-promotes
+          }
           
           matches.push(match);
         }
@@ -325,24 +355,15 @@ export default function MatchesPage() {
   const diagnostics = useMemo(() => {
     const activeFingerprints = fingerprints.length;
     
-    // Count lots in scope: standard lots + future catalogue lots (for Tier-2)
-    const standardLotsInScope = lots.filter(l => 
-      l.status !== 'sold' && 
-      l.status !== 'withdrawn' && 
-      l.status !== 'catalogue' &&
-      l.status !== 'upcoming' &&
-      l.visible_to_dealers === 'Y'
-    ).length;
+    // Execution Scope: Tier-1/BUY eligible lots
+    const executionLotsInScope = lots.filter(l => isExecutionScope(l)).length;
     
-    const catalogueLotsInScope = lots.filter(l => {
-      if (!['catalogue', 'upcoming'].includes(l.status || '')) return false;
-      if (l.visible_to_dealers !== 'Y') return false;
-      if (!l.auction_datetime) return false;
-      const auctionDate = new Date(l.auction_datetime);
-      return auctionDate > new Date();
-    }).length;
+    // Visibility Scope: Tier-2/Probable only (future catalogue)
+    const visibilityLotsInScope = lots.filter(l => isVisibilityScope(l)).length;
     
-    const lotsInScope = standardLotsInScope + catalogueLotsInScope;
+    // Combined scope (for display)
+    const lotsInScope = executionLotsInScope + visibilityLotsInScope;
+    
     const strictMatches = allMatches.filter(m => m.tier === 'tier1').length;
     const probableMatchCount = allMatches.filter(m => m.tier === 'tier2').length;
     
@@ -357,7 +378,8 @@ export default function MatchesPage() {
     return {
       activeFingerprints,
       lotsInScope,
-      catalogueLotsInScope,
+      executionLotsInScope,
+      visibilityLotsInScope,
       strictMatches,
       probableMatchCount,
       fingerprintsWithFamily,
@@ -598,11 +620,14 @@ export default function MatchesPage() {
                 <div className="text-xl font-semibold text-amber-500">{diagnostics.specOnlyFingerprints}</div>
               </div>
               <div className="space-y-1">
-                <div className="text-muted-foreground">Lots in Scope</div>
-                <div className="text-xl font-semibold text-foreground">{diagnostics.lotsInScope}</div>
-                {diagnostics.catalogueLotsInScope > 0 && (
-                  <div className="text-xs text-blue-500">incl. {diagnostics.catalogueLotsInScope} catalogue</div>
-                )}
+                <div className="text-muted-foreground">Lots in Scope (Execution)</div>
+                <div className="text-xl font-semibold text-foreground">{diagnostics.executionLotsInScope}</div>
+                <div className="text-xs text-muted-foreground">Tier-1 / BUY eligible</div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Lots in Scope (Visibility)</div>
+                <div className="text-xl font-semibold text-blue-500">{diagnostics.visibilityLotsInScope}</div>
+                <div className="text-xs text-muted-foreground">Tier-2 / Probable only</div>
               </div>
               <div className="space-y-1">
                 <div className="text-muted-foreground">Strict Matches (Tier 1)</div>
@@ -621,9 +646,9 @@ export default function MatchesPage() {
                 <div className="text-xl font-semibold text-foreground">{diagnostics.lotsWithFamily}</div>
               </div>
             </div>
-            {diagnostics.catalogueLotsInScope > 0 && (
+            {diagnostics.visibilityLotsInScope > 0 && (
               <div className="text-xs text-blue-500 mt-2">
-                ℹ️ Includes future catalogue lots (Probable matching only – never triggers BUY)
+                ℹ️ Visibility scope includes {diagnostics.visibilityLotsInScope} future catalogue lots (Probable matching only – never triggers BUY)
               </div>
             )}
             {lastEvaluation && (
