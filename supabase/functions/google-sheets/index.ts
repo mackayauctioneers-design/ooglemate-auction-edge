@@ -124,7 +124,11 @@ const SHEET_HEADERS: Record<string, string[]> = {
     // Tracking
     'updated_at', 'last_status', 'relist_group_id',
     // Override
-    'manual_confidence_score', 'manual_action', 'override_enabled'
+    'manual_confidence_score', 'manual_action', 'override_enabled',
+    // Data quality
+    'invalid_source',
+    // Exclusion (condition risk)
+    'excluded_reason', 'excluded_keyword'
   ],
   // Saved Searches - admin-managed search URLs for automated ingestion
   'Saved_Searches': [

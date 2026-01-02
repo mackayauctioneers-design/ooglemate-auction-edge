@@ -17,7 +17,8 @@ import {
   calculateLotConfidenceScore,
   determineLotAction,
   getLotFlagReasons,
-  getPressureSignals
+  getPressureSignals,
+  shouldExcludeListing
 } from '@/types';
 
 const SHEETS = {
@@ -362,6 +363,10 @@ function parseListing(row: any): AuctionLot {
     
     // Data quality
     invalid_source: row.invalid_source === 'Y' ? 'Y' : 'N',
+    
+    // Exclusion (condition risk)
+    excluded_reason: row.excluded_reason || undefined,
+    excluded_keyword: row.excluded_keyword || undefined,
     
     _rowIndex: row._rowIndex,
   };
@@ -1074,9 +1079,22 @@ export const googleSheetsService = {
           invalid_source: isInvalidListingUrl(newLot.listing_url || '') ? 'Y' : 'N',
         };
         
-        // Calculate confidence
-        fullLot.confidence_score = calculateLotConfidenceScore(fullLot);
-        fullLot.action = determineLotAction(fullLot.confidence_score);
+        // Apply condition exclusion filter BEFORE scoring
+        const exclusionCheck = shouldExcludeListing(fullLot);
+        if (exclusionCheck.excluded) {
+          fullLot.excluded_reason = 'condition_risk';
+          fullLot.excluded_keyword = exclusionCheck.keyword;
+          fullLot.visible_to_dealers = 'N'; // Hidden from dealers
+        }
+        
+        // Calculate confidence (only if not excluded)
+        if (!fullLot.excluded_reason) {
+          fullLot.confidence_score = calculateLotConfidenceScore(fullLot);
+          fullLot.action = determineLotAction(fullLot.confidence_score);
+        } else {
+          fullLot.confidence_score = 0;
+          fullLot.action = 'Watch';
+        }
         
         await callSheetsApi('append', SHEETS.LOTS, fullLot);
         added++;

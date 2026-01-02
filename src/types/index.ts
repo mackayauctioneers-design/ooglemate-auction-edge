@@ -301,6 +301,47 @@ export interface Listing extends SheetRowMeta {
   
   // Data quality flags
   invalid_source: 'Y' | 'N'; // Set to 'Y' if listing_url is missing or invalid
+  
+  // Exclusion fields (condition risk - damaged/mining/write-off)
+  excluded_reason?: string; // e.g., 'condition_risk'
+  excluded_keyword?: string; // The keyword that triggered exclusion
+}
+
+// ========== CONDITION EXCLUSION FILTER ==========
+
+// Keywords that indicate damaged, mining, or write-off vehicles
+export const CONDITION_EXCLUSION_KEYWORDS = [
+  'damage', 'damaged', 'hail', 'flood', 'water', 'fire', 'burn',
+  'salvage', 'statutory', 'repairable write-off', 'wovr', 'written off',
+  'insurance loss', 'accident', 'crash', 'structural', 'chassis', 'bent',
+  'mine', 'mines', 'mining', 'ex mine', 'ex-mines', 'underground', 'site vehicle'
+];
+
+// Check if any exclusion keyword is present in text (case-insensitive)
+export function checkConditionExclusion(texts: (string | undefined)[]): { excluded: boolean; keyword?: string } {
+  const combined = texts.filter(Boolean).join(' ').toLowerCase();
+  
+  for (const keyword of CONDITION_EXCLUSION_KEYWORDS) {
+    // Use word boundary matching for short words to avoid false positives
+    const pattern = keyword.length <= 4 
+      ? new RegExp(`\\b${keyword}\\b`, 'i')
+      : new RegExp(keyword, 'i');
+    
+    if (pattern.test(combined)) {
+      return { excluded: true, keyword };
+    }
+  }
+  
+  return { excluded: false };
+}
+
+// Check if a listing should be excluded based on condition keywords
+export function shouldExcludeListing(lot: Partial<Listing>, catalogueText?: string): { excluded: boolean; keyword?: string } {
+  return checkConditionExclusion([
+    lot.variant_raw,
+    lot.variant_normalised,
+    catalogueText,
+  ]);
 }
 
 // Backwards compatibility alias
