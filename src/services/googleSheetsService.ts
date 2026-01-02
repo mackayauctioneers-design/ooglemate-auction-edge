@@ -2467,6 +2467,91 @@ export const googleSheetsService = {
       }, fp._rowIndex);
     }
   },
+
+  // Backfill Pickles status: normalize numeric status codes to string statuses
+  backfillPicklesStatus: async (): Promise<{
+    lotsUpdated: number;
+    lotsSkipped: number;
+  }> => {
+    console.log('[backfillPicklesStatus] Starting backfill...');
+    
+    // Get all lots (raw, not parsed, to access _rowIndex)
+    const response = await callSheetsApi('read', SHEETS.LOTS);
+    const allLots = response.data || [];
+    
+    // Filter to Pickles lots only
+    const picklesLots = allLots.filter((row: any) => {
+      const auctionHouse = (row.auction_house || '').toLowerCase();
+      const sourceName = (row.source_name || '').toLowerCase();
+      return auctionHouse.includes('pickles') || sourceName.includes('pickles');
+    });
+    
+    console.log(`[backfillPicklesStatus] Found ${picklesLots.length} Pickles lots`);
+    
+    let lotsUpdated = 0;
+    let lotsSkipped = 0;
+    const updates: Array<{ rowIndex: number; status: string; raw_status?: string }> = [];
+    
+    // Normalize Pickles numeric status codes to string statuses
+    const normalizeStatus = (status: string | undefined): string | undefined => {
+      if (!status) return undefined;
+      const trimmed = status.trim();
+      
+      // Handle numeric status codes (from Pickles)
+      if (trimmed === '0') return 'catalogue';
+      if (trimmed === '1') return 'listed';
+      if (trimmed === '2') return 'passed_in';
+      if (trimmed === '3') return 'sold';
+      if (trimmed === '4') return 'withdrawn';
+      
+      // Already a valid string status
+      const lower = trimmed.toLowerCase();
+      if (['catalogue', 'upcoming', 'listed', 'passed_in', 'sold', 'withdrawn'].includes(lower)) {
+        return lower;
+      }
+      
+      return undefined; // Unrecognized
+    };
+    
+    for (const row of picklesLots) {
+      const currentStatus = row.status;
+      const normalizedStatus = normalizeStatus(currentStatus);
+      
+      // Skip if status is already normalized or unrecognizable
+      if (!normalizedStatus || normalizedStatus === currentStatus) {
+        lotsSkipped++;
+        continue;
+      }
+      
+      // Mark for update
+      updates.push({
+        rowIndex: row._rowIndex,
+        status: normalizedStatus,
+        raw_status: currentStatus, // Keep original for reference
+      });
+    }
+    
+    console.log(`[backfillPicklesStatus] ${updates.length} lots need status normalization`);
+    
+    // Apply updates
+    for (const update of updates) {
+      try {
+        await callSheetsApi('update', SHEETS.LOTS, {
+          status: update.status,
+          raw_status: update.raw_status,
+          updated_at: new Date().toISOString(),
+        }, update.rowIndex);
+        lotsUpdated++;
+      } catch (error) {
+        console.error(`[backfillPicklesStatus] Failed to update lot at row ${update.rowIndex}:`, error);
+        lotsSkipped++;
+      }
+    }
+    
+    console.log(`[backfillPicklesStatus] Complete: ${lotsUpdated} updated, ${lotsSkipped} skipped`);
+    
+    return { lotsUpdated, lotsSkipped };
+  },
 };
 
 // Parse saved search from sheet row
