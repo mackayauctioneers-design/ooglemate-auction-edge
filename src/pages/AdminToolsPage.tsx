@@ -24,6 +24,8 @@ export default function AdminToolsPage() {
   const [isImporting12931, setIsImporting12931] = useState(false);
   const [isBackfillingFamily, setIsBackfillingFamily] = useState(false);
   const [backfillStats, setBackfillStats] = useState<{ fingerprintsWithFamily: number; lotsWithFamily: number } | null>(null);
+  const [isFixingKm, setIsFixingKm] = useState(false);
+  const [kmFixStats, setKmFixStats] = useState<{ fingerprintsFixed: number; fullFingerprints: number; specOnlyFingerprints: number } | null>(null);
 
   const handleImportCatalogue12931 = async () => {
     setIsImporting12931(true);
@@ -109,6 +111,44 @@ export default function AdminToolsPage() {
       toast.error('Failed to backfill variant family: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsBackfillingFamily(false);
+    }
+  };
+
+  const handleFixSpecOnlyKm = async () => {
+    setIsFixingKm(true);
+    try {
+      const result = await dataService.fixSpecOnlyKm();
+      toast.success(
+        `KM fix complete: ${result.fingerprintsFixed} fingerprints corrected`
+      );
+      // Refresh matches after fix
+      await queryClient.invalidateQueries({ queryKey: ['matches'] });
+      await queryClient.invalidateQueries({ queryKey: ['fingerprints'] });
+      
+      // Verify by re-reading fingerprints and counting types
+      const fingerprints = await dataService.getFingerprints();
+      const fullFingerprints = fingerprints.filter(fp => 
+        fp.fingerprint_type !== 'spec_only' && 
+        fp.sale_km && 
+        fp.min_km !== null && fp.min_km !== undefined &&
+        fp.max_km !== null && fp.max_km !== undefined
+      ).length;
+      const specOnlyFingerprints = fingerprints.filter(fp => 
+        fp.fingerprint_type === 'spec_only' || 
+        !fp.sale_km || 
+        fp.min_km === null || fp.min_km === undefined ||
+        fp.max_km === null || fp.max_km === undefined
+      ).length;
+      
+      setKmFixStats({ 
+        fingerprintsFixed: result.fingerprintsFixed,
+        fullFingerprints, 
+        specOnlyFingerprints 
+      });
+    } catch (error) {
+      toast.error('Failed to fix spec-only KM: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsFixingKm(false);
     }
   };
 
@@ -268,6 +308,39 @@ export default function AdminToolsPage() {
                 <div className="text-xs text-muted-foreground border rounded p-2 bg-muted/50">
                   <div>Fingerprints with variant_family: <span className="font-medium">{backfillStats.fingerprintsWithFamily}</span></div>
                   <div>Lots with variant_family: <span className="font-medium">{backfillStats.lotsWithFamily}</span></div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Fix Spec-Only KM */}
+          <Card className="border-amber-500/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Wrench className="h-5 w-5 text-amber-500" />
+                Fix KM for Spec-Only
+              </CardTitle>
+              <CardDescription>
+                Clear placeholder KM ranges (≥900k) from fingerprints without source KM data. Sets fingerprint_type to spec_only.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button 
+                onClick={handleFixSpecOnlyKm}
+                className="w-full gap-2"
+                variant="outline"
+                disabled={isFixingKm}
+              >
+                {isFixingKm ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}
+                {isFixingKm ? 'Fixing...' : 'Fix KM for Spec-Only Fingerprints'}
+              </Button>
+              {kmFixStats && (
+                <div className="text-xs text-muted-foreground border rounded p-2 bg-muted/50">
+                  <div>Fingerprints fixed: <span className="font-medium text-amber-500">{kmFixStats.fingerprintsFixed}</span></div>
+                  <div className="mt-1 pt-1 border-t">
+                    <div>Full fingerprints (KM enforced): <span className="font-medium text-emerald-500">{kmFixStats.fullFingerprints}</span></div>
+                    <div>Spec-only fingerprints (KM ignored): <span className="font-medium text-amber-500">{kmFixStats.specOnlyFingerprints}</span></div>
+                  </div>
                 </div>
               )}
             </CardContent>
