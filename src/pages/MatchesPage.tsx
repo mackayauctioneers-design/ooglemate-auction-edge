@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { dataService } from '@/services/dataService';
@@ -8,10 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { ExternalLink, Target, Crosshair, Loader2, Clock, AlertCircle } from 'lucide-react';
+import { ExternalLink, Target, Crosshair, Loader2, Clock, AlertCircle, RefreshCw, Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { toast } from '@/hooks/use-toast';
 
 // Match tiers: Tier 1 (Exact) = Precision, Tier 2 (Variant Family) = Probable
 type MatchTier = 'tier1' | 'tier2';
@@ -141,10 +143,13 @@ function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | nu
 
 export default function MatchesPage() {
   useDocumentTitle(0);
+  const { isAdmin } = useAuth();
   
   const [fingerprints, setFingerprints] = useState<SaleFingerprint[]>([]);
   const [lots, setLots] = useState<AuctionLot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastEvaluation, setLastEvaluation] = useState<Date | null>(null);
   const [filters, setFilters] = useState<MatchFilters>({
     lane: 'all',
     auctionHouse: 'all',
@@ -152,6 +157,7 @@ export default function MatchesPage() {
     minConfidence: 0,
   });
   const [advisoryOpen, setAdvisoryOpen] = useState(true);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   
   // Get unique auction houses from lots
   const auctionHouses = useMemo(() => {
@@ -228,24 +234,65 @@ export default function MatchesPage() {
   const advisoryMatches = filteredMatches.filter(m => m.lane === 'Advisory');
   const probableMatches = filteredMatches.filter(m => m.lane === 'Probable');
   
-  useEffect(() => {
-    async function loadData() {
+  // Load data function
+  const loadData = useCallback(async (showRefreshToast = false) => {
+    if (showRefreshToast) {
+      setRefreshing(true);
+    } else {
       setLoading(true);
-      try {
-        const [fps, allLots] = await Promise.all([
-          dataService.getFingerprints(),
-          dataService.getLots(true), // Get all lots for matching
-        ]);
-        setFingerprints(fps.filter(fp => fp.is_active === 'Y'));
-        setLots(allLots);
-      } catch (error) {
-        console.error('Failed to load data:', error);
-      } finally {
-        setLoading(false);
-      }
     }
-    loadData();
+    try {
+      const [fps, allLots] = await Promise.all([
+        dataService.getFingerprints(),
+        dataService.getLots(true), // Get all lots for matching
+      ]);
+      setFingerprints(fps.filter(fp => fp.is_active === 'Y'));
+      setLots(allLots);
+      setLastEvaluation(new Date());
+      
+      if (showRefreshToast) {
+        toast({
+          title: "Matches refreshed",
+          description: `Evaluated ${fps.filter(fp => fp.is_active === 'Y').length} fingerprints against ${allLots.length} lots`,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load data:', error);
+      if (showRefreshToast) {
+        toast({
+          title: "Refresh failed",
+          description: "Could not reload match data",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+  
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+  
+  // Diagnostic counts for admin panel
+  const diagnostics = useMemo(() => {
+    const activeFingerprints = fingerprints.length;
+    const lotsInScope = lots.filter(l => 
+      l.status !== 'sold' && 
+      l.status !== 'withdrawn' && 
+      l.visible_to_dealers === 'Y'
+    ).length;
+    const strictMatches = allMatches.filter(m => m.tier === 'tier1').length;
+    const probableMatchCount = allMatches.filter(m => m.tier === 'tier2').length;
+    
+    return {
+      activeFingerprints,
+      lotsInScope,
+      strictMatches,
+      probableMatchCount,
+    };
+  }, [fingerprints, lots, allMatches]);
   
   const renderMatchRow = (match: Match) => {
     const { fingerprint, lot, matchType, lane, matchConfidence } = match;
@@ -407,12 +454,85 @@ export default function MatchesPage() {
     <AppLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Matches</h1>
-          <p className="text-muted-foreground">
-            Live matches between active fingerprints and current listings
-          </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Matches</h1>
+            <p className="text-muted-foreground">
+              Live matches between active fingerprints and current listings
+            </p>
+          </div>
+          
+          {/* Admin controls */}
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowDiagnostics(!showDiagnostics)}
+                className="gap-1"
+              >
+                <Info className="h-4 w-4" />
+                {showDiagnostics ? 'Hide' : 'Why no matches?'}
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => loadData(true)}
+                disabled={refreshing}
+                className="gap-1"
+              >
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                Refresh Matches
+              </Button>
+            </div>
+          )}
         </div>
+        
+        {/* Admin diagnostics panel */}
+        {isAdmin && showDiagnostics && (
+          <div className="bg-muted/50 border border-border rounded-lg p-4 space-y-3">
+            <h3 className="font-medium text-foreground flex items-center gap-2">
+              <Info className="h-4 w-4 text-muted-foreground" />
+              Match Evaluation Diagnostics
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Active Fingerprints</div>
+                <div className="text-xl font-semibold text-foreground">{diagnostics.activeFingerprints}</div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Lots in Scope</div>
+                <div className="text-xl font-semibold text-foreground">{diagnostics.lotsInScope}</div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Strict Matches (Tier 1)</div>
+                <div className="text-xl font-semibold text-emerald-500">{diagnostics.strictMatches}</div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Probable Matches (Tier 2)</div>
+                <div className="text-xl font-semibold text-blue-500">{diagnostics.probableMatchCount}</div>
+              </div>
+            </div>
+            {lastEvaluation && (
+              <div className="text-xs text-muted-foreground pt-2 border-t border-border">
+                Last evaluated: {lastEvaluation.toLocaleString('en-AU', { 
+                  dateStyle: 'medium', 
+                  timeStyle: 'short' 
+                })}
+              </div>
+            )}
+            {diagnostics.activeFingerprints === 0 && (
+              <div className="text-sm text-amber-500 mt-2">
+                ⚠️ No active fingerprints. Create fingerprints from sales data to enable matching.
+              </div>
+            )}
+            {diagnostics.lotsInScope === 0 && (
+              <div className="text-sm text-amber-500 mt-2">
+                ⚠️ No lots in scope. Import listings from Pickles or other sources.
+              </div>
+            )}
+          </div>
+        )}
         
         {/* Filters */}
         <div className="flex flex-wrap gap-4 items-center bg-card p-4 rounded-lg border border-border">
