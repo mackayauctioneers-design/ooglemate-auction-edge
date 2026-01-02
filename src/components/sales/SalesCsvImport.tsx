@@ -42,7 +42,8 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
   const [csvText, setCsvText] = useState('');
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [csvRows, setCsvRows] = useState<string[][]>([]);
-  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
+  // Keyed by column INDEX (not header name) to avoid shared state with duplicate headers
+  const [columnMapping, setColumnMapping] = useState<Record<number, string>>({});
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{
     step: number;
@@ -54,6 +55,8 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
     fingerprintsUpdated: number;
     errors: Array<{ row: number; reason: string }>;
   } | null>(null);
+  // Saved mapping by header name (for persistence across sessions)
+  const [savedHeaderMapping, setSavedHeaderMapping] = useState<Record<string, string>>({});
 
   // Load saved mapping for dealer from backend
   useEffect(() => {
@@ -62,7 +65,11 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
         try {
           const saved = await dataService.getSetting(`${SETTING_KEY_PREFIX}${dealerName}`);
           if (saved) {
-            setColumnMapping(JSON.parse(saved));
+            // Saved mappings are keyed by header name for persistence
+            // We'll apply them when parsing CSV based on header names
+            const savedMapping = JSON.parse(saved);
+            // Store as index-based mapping will be applied in parseCsv
+            setSavedHeaderMapping(savedMapping);
           }
         } catch {
           // Ignore errors loading saved mapping
@@ -182,32 +189,44 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
       'stockNo': 'notes',
     };
 
-    const newMapping: Record<string, string> = { ...columnMapping };
-    headers.forEach(header => {
+    // Build index-based mapping
+    const newMapping: Record<number, string> = {};
+    const usedFields = new Set<string>();
+    
+    headers.forEach((header, index) => {
       const normalizedHeader = header.toLowerCase().replace(/[_\s-]/g, '');
+      
+      // First check if we have a saved mapping for this header name
+      if (savedHeaderMapping[header] && !usedFields.has(savedHeaderMapping[header])) {
+        newMapping[index] = savedHeaderMapping[header];
+        usedFields.add(savedHeaderMapping[header]);
+        return;
+      }
       
       // First check DMS aliases (exact match on original header)
       const aliasKey = header.toLowerCase().replace(/\s+/g, '_');
-      if (DMS_COLUMN_ALIASES[aliasKey] && !Object.values(newMapping).includes(DMS_COLUMN_ALIASES[aliasKey])) {
-        newMapping[header] = DMS_COLUMN_ALIASES[aliasKey];
+      if (DMS_COLUMN_ALIASES[aliasKey] && !usedFields.has(DMS_COLUMN_ALIASES[aliasKey])) {
+        newMapping[index] = DMS_COLUMN_ALIASES[aliasKey];
+        usedFields.add(DMS_COLUMN_ALIASES[aliasKey]);
         return;
       }
       
       // Also check normalized version
-      if (DMS_COLUMN_ALIASES[normalizedHeader] && !Object.values(newMapping).includes(DMS_COLUMN_ALIASES[normalizedHeader])) {
-        newMapping[header] = DMS_COLUMN_ALIASES[normalizedHeader];
+      if (DMS_COLUMN_ALIASES[normalizedHeader] && !usedFields.has(DMS_COLUMN_ALIASES[normalizedHeader])) {
+        newMapping[index] = DMS_COLUMN_ALIASES[normalizedHeader];
+        usedFields.add(DMS_COLUMN_ALIASES[normalizedHeader]);
         return;
       }
       
       // Then try standard field matching
-      ALL_FIELDS.forEach(field => {
+      for (const field of ALL_FIELDS) {
         const normalizedField = field.toLowerCase().replace(/[_\s-]/g, '');
-        if (normalizedHeader === normalizedField || normalizedHeader.includes(normalizedField)) {
-          if (!Object.values(newMapping).includes(field)) {
-            newMapping[header] = field;
-          }
+        if ((normalizedHeader === normalizedField || normalizedHeader.includes(normalizedField)) && !usedFields.has(field)) {
+          newMapping[index] = field;
+          usedFields.add(field);
+          break;
         }
-      });
+      }
     });
 
     setColumnMapping(newMapping);
@@ -236,9 +255,15 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
       return;
     }
 
-    // Save mapping for future imports to backend
+    // Save mapping for future imports to backend (convert to header-based for persistence)
     try {
-      await dataService.upsertSetting(`${SETTING_KEY_PREFIX}${dealerName}`, JSON.stringify(columnMapping));
+      const headerBasedMapping: Record<string, string> = {};
+      csvHeaders.forEach((header, index) => {
+        if (columnMapping[index]) {
+          headerBasedMapping[header] = columnMapping[index];
+        }
+      });
+      await dataService.upsertSetting(`${SETTING_KEY_PREFIX}${dealerName}`, JSON.stringify(headerBasedMapping));
     } catch {
       // Non-critical - continue with import even if saving mapping fails
     }
@@ -276,7 +301,7 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
       csvRows.forEach(row => {
         const rowData: Record<string, any> = {};
         csvHeaders.forEach((header, i) => {
-          const field = columnMapping[header];
+          const field = columnMapping[i];
           if (field && row[i] !== undefined) {
             rowData[field] = row[i];
           }
@@ -346,7 +371,7 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
       newRows.forEach((row, idx) => {
         const rowData: Record<string, any> = {};
         csvHeaders.forEach((header, i) => {
-          const field = columnMapping[header];
+          const field = columnMapping[i];
           if (field && row[i] !== undefined) {
             const value = row[i];
             if (field === 'year' || field === 'km' || field === 'days_to_deposit') {
@@ -413,7 +438,7 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
         };
 
         csvHeaders.forEach((header, index) => {
-          const field = columnMapping[header];
+          const field = columnMapping[index];
           if (field && row[index] !== undefined) {
             const value = row[index];
             
@@ -470,11 +495,15 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
     }
   };
 
-  // Update mapping for a specific CSV column - each column maintains independent state
-  const updateMapping = (csvColumn: string, targetField: string) => {
+  // Update mapping for a specific CSV column by index - each column maintains independent state
+  const updateMapping = (columnIndex: number, targetField: string) => {
     setColumnMapping(prev => {
       const newMapping = { ...prev };
-      newMapping[csvColumn] = targetField === 'skip' ? '' : targetField;
+      if (targetField === 'skip' || targetField === '') {
+        delete newMapping[columnIndex];
+      } else {
+        newMapping[columnIndex] = targetField;
+      }
       return newMapping;
     });
   };
@@ -482,12 +511,14 @@ export function SalesCsvImport({ open, onOpenChange, dealerName, dealerWhatsapp,
   // Check for duplicate mappings (same target field mapped to multiple CSV columns)
   const getDuplicateMappings = (): Record<string, string[]> => {
     const fieldToColumns: Record<string, string[]> = {};
-    Object.entries(columnMapping).forEach(([csvCol, targetField]) => {
+    Object.entries(columnMapping).forEach(([colIndex, targetField]) => {
       if (targetField && targetField !== '') {
         if (!fieldToColumns[targetField]) {
           fieldToColumns[targetField] = [];
         }
-        fieldToColumns[targetField].push(csvCol);
+        // Convert index to header name for display
+        const headerName = csvHeaders[parseInt(colIndex)] || `Column ${colIndex}`;
+        fieldToColumns[targetField].push(headerName);
       }
     });
     // Return only fields with multiple columns mapped
@@ -582,8 +613,8 @@ deposit_date,make,model,variant_normalised,year,km,engine,drivetrain,transmissio
                     </div>
                     <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                     <Select
-                      value={columnMapping[header] || 'skip'}
-                      onValueChange={(value) => updateMapping(header, value)}
+                      value={columnMapping[index] || 'skip'}
+                      onValueChange={(value) => updateMapping(index, value)}
                     >
                       <SelectTrigger className="w-1/2">
                         <SelectValue />
