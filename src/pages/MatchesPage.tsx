@@ -2,32 +2,45 @@ import { useState, useEffect, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { dataService } from '@/services/dataService';
-import { SaleFingerprint, AuctionLot, formatNumber, formatCurrency, getPressureSignals } from '@/types';
+import { SaleFingerprint, AuctionLot, formatNumber, formatCurrency, getPressureSignals, extractVariantFamily } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { ExternalLink, Target, Crosshair, Loader2, Clock } from 'lucide-react';
+import { ExternalLink, Target, Crosshair, Loader2, Clock, AlertCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
+// Match tiers: Tier 1 (Exact) = Precision, Tier 2 (Variant Family) = Probable
+type MatchTier = 'tier1' | 'tier2';
+type MatchLane = 'Precision' | 'Advisory' | 'Probable';
+
 interface Match {
   fingerprint: SaleFingerprint;
   lot: AuctionLot;
-  matchType: 'km_bounded' | 'spec_only';
-  lane: 'Precision' | 'Advisory';
+  matchType: 'km_bounded' | 'spec_only' | 'variant_family';
+  lane: MatchLane;
+  tier: MatchTier;
+  matchConfidence: 'exact' | 'probable';
 }
 
 interface MatchFilters {
-  lane: 'all' | 'Precision' | 'Advisory';
+  lane: 'all' | 'Precision' | 'Advisory' | 'Probable';
   auctionHouse: string;
   action: 'all' | 'Watch' | 'Buy';
   minConfidence: number;
 }
 
+// Get variant family for matching (from stored value or derived)
+function getVariantFamily(variant: string | undefined, storedFamily: string | undefined): string | undefined {
+  if (storedFamily) return storedFamily.toUpperCase();
+  return extractVariantFamily(variant);
+}
+
 // Match a lot against a fingerprint using the matching rules
+// Returns Match with tier information for sorting
 function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | null {
   // Check if fingerprint is active
   if (fp.is_active !== 'Y') return null;
@@ -43,46 +56,87 @@ function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | nu
   const expiresAt = new Date(fp.expires_at);
   if (today > expiresAt) return null;
   
-  // Check make/model/variant - all must match
-  if (
-    lot.make?.toLowerCase().trim() !== fp.make?.toLowerCase().trim() ||
-    lot.model?.toLowerCase().trim() !== fp.model?.toLowerCase().trim() ||
-    lot.variant_normalised?.toLowerCase().trim() !== fp.variant_normalised?.toLowerCase().trim()
-  ) return null;
-  
   // Year tolerance: ±1
   if (Math.abs((lot.year || 0) - (fp.year || 0)) > 1) return null;
   
-  // Determine if this is a spec-only fingerprint
-  const isSpecOnly = fp.fingerprint_type === 'spec_only' || !fp.sale_km;
+  // Check make/model - must always match
+  if (
+    lot.make?.toLowerCase().trim() !== fp.make?.toLowerCase().trim() ||
+    lot.model?.toLowerCase().trim() !== fp.model?.toLowerCase().trim()
+  ) return null;
   
-  if (isSpecOnly) {
-    // Spec-only: skip KM, engine, drivetrain, transmission checks
+  // ========== TIER 1: Exact variant match ==========
+  if (lot.variant_normalised?.toLowerCase().trim() === fp.variant_normalised?.toLowerCase().trim()) {
+    // Determine if this is a spec-only fingerprint
+    const isSpecOnly = fp.fingerprint_type === 'spec_only' || !fp.sale_km;
+    
+    if (isSpecOnly) {
+      // Spec-only: skip KM, engine, drivetrain, transmission checks
+      return {
+        fingerprint: fp,
+        lot,
+        matchType: 'spec_only',
+        lane: 'Advisory',
+        tier: 'tier1',
+        matchConfidence: 'exact',
+      };
+    }
+    
+    // Full fingerprint: check additional specs
+    if (fp.engine && lot.fuel && fp.engine.toLowerCase().trim() !== lot.fuel.toLowerCase().trim()) {
+      // Fall through to tier 2
+    } else if (fp.drivetrain && lot.drivetrain && fp.drivetrain.toLowerCase().trim() !== lot.drivetrain.toLowerCase().trim()) {
+      // Fall through to tier 2
+    } else if (fp.transmission && lot.transmission && fp.transmission.toLowerCase().trim() !== lot.transmission.toLowerCase().trim()) {
+      // Fall through to tier 2
+    } else {
+      // KM range check: symmetric range (sale_km ± 15000)
+      const minKm = fp.min_km ?? Math.max(0, (fp.sale_km || 0) - 15000);
+      const maxKm = fp.max_km ?? (fp.sale_km || 0) + 15000;
+      
+      if (lot.km >= minKm && lot.km <= maxKm) {
+        return {
+          fingerprint: fp,
+          lot,
+          matchType: 'km_bounded',
+          lane: 'Precision',
+          tier: 'tier1',
+          matchConfidence: 'exact',
+        };
+      }
+    }
+  }
+  
+  // ========== TIER 2: Variant family match ==========
+  const lotFamily = getVariantFamily(lot.variant_normalised || lot.variant_raw, lot.variant_family);
+  const fpFamily = getVariantFamily(fp.variant_normalised, fp.variant_family);
+  
+  // If both have a family and they match
+  if (lotFamily && fpFamily && lotFamily === fpFamily) {
+    // For Tier 2, KM check only applies to full fingerprints
+    const isSpecOnly = fp.fingerprint_type === 'spec_only' || !fp.sale_km;
+    
+    if (!isSpecOnly) {
+      // Full fingerprint: check KM range
+      const minKm = fp.min_km ?? Math.max(0, (fp.sale_km || 0) - 15000);
+      const maxKm = fp.max_km ?? (fp.sale_km || 0) + 15000;
+      
+      if (lot.km < minKm || lot.km > maxKm) {
+        return null; // KM out of range for full fingerprint
+      }
+    }
+    
     return {
       fingerprint: fp,
       lot,
-      matchType: 'spec_only',
-      lane: 'Advisory',
+      matchType: 'variant_family',
+      lane: 'Probable',
+      tier: 'tier2',
+      matchConfidence: 'probable',
     };
   }
   
-  // Full fingerprint: check additional specs
-  if (fp.engine && lot.fuel && fp.engine.toLowerCase().trim() !== lot.fuel.toLowerCase().trim()) return null;
-  if (fp.drivetrain && lot.drivetrain && fp.drivetrain.toLowerCase().trim() !== lot.drivetrain.toLowerCase().trim()) return null;
-  if (fp.transmission && lot.transmission && fp.transmission.toLowerCase().trim() !== lot.transmission.toLowerCase().trim()) return null;
-  
-  // KM range check: symmetric range (sale_km ± 15000)
-  const minKm = fp.min_km ?? Math.max(0, (fp.sale_km || 0) - 15000);
-  const maxKm = fp.max_km ?? (fp.sale_km || 0) + 15000;
-  
-  if (lot.km < minKm || lot.km > maxKm) return null;
-  
-  return {
-    fingerprint: fp,
-    lot,
-    matchType: 'km_bounded',
-    lane: 'Precision',
-  };
+  return null;
 }
 
 export default function MatchesPage() {
@@ -147,23 +201,32 @@ export default function MatchesPage() {
       result = result.filter(m => m.lot.confidence_score >= filters.minConfidence);
     }
     
-    // Sort: Precision first, then by confidence DESC, then by auction date ASC
+    // Sort: Tier 1 first, then by lane (Precision > Advisory > Probable), then by confidence DESC, then by auction date ASC
     result.sort((a, b) => {
-      if (a.lane !== b.lane) {
-        return a.lane === 'Precision' ? -1 : 1;
+      // Tier first
+      if (a.tier !== b.tier) {
+        return a.tier === 'tier1' ? -1 : 1;
       }
+      // Then lane priority: Precision > Advisory > Probable
+      const laneOrder: Record<MatchLane, number> = { 'Precision': 0, 'Advisory': 1, 'Probable': 2 };
+      if (laneOrder[a.lane] !== laneOrder[b.lane]) {
+        return laneOrder[a.lane] - laneOrder[b.lane];
+      }
+      // Then confidence
       if (b.lot.confidence_score !== a.lot.confidence_score) {
         return b.lot.confidence_score - a.lot.confidence_score;
       }
+      // Then date
       return (a.lot.auction_datetime || '').localeCompare(b.lot.auction_datetime || '');
     });
     
     return result;
   }, [allMatches, filters]);
   
-  // Split into Precision and Advisory
+  // Split into lanes
   const precisionMatches = filteredMatches.filter(m => m.lane === 'Precision');
   const advisoryMatches = filteredMatches.filter(m => m.lane === 'Advisory');
+  const probableMatches = filteredMatches.filter(m => m.lane === 'Probable');
   
   useEffect(() => {
     async function loadData() {
@@ -185,7 +248,7 @@ export default function MatchesPage() {
   }, []);
   
   const renderMatchRow = (match: Match) => {
-    const { fingerprint, lot, matchType, lane } = match;
+    const { fingerprint, lot, matchType, lane, matchConfidence } = match;
     const vehicleDesc = `${fingerprint.year} ${fingerprint.make} ${fingerprint.model} ${fingerprint.variant_normalised}`;
     const source = lot.source_name || lot.auction_house || 'Unknown';
     const auctionDate = lot.auction_datetime 
@@ -209,6 +272,11 @@ export default function MatchesPage() {
                     <Crosshair className="h-3 w-3 mr-1" />
                     Precision
                   </Badge>
+                ) : lane === 'Probable' ? (
+                  <Badge variant="secondary" className="bg-blue-600/20 text-blue-400 hover:bg-blue-600/30">
+                    <AlertCircle className="h-3 w-3 mr-1" />
+                    Probable
+                  </Badge>
                 ) : (
                   <Badge variant="secondary" className="bg-amber-600/20 text-amber-400 hover:bg-amber-600/30">
                     <Target className="h-3 w-3 mr-1" />
@@ -219,6 +287,8 @@ export default function MatchesPage() {
               <TooltipContent>
                 {lane === 'Precision' 
                   ? 'KM-bounded match with full specs verified'
+                  : lane === 'Probable'
+                  ? 'Variant family match (e.g., SR5 ↔ SR5) – requires additional pressure signals before promotion to BUY'
                   : 'Spec-only match – KM not enforced, manual judgment applies'}
               </TooltipContent>
             </Tooltip>
@@ -231,8 +301,8 @@ export default function MatchesPage() {
         </TableCell>
         <TableCell>{auctionDate}</TableCell>
         <TableCell>
-          <Badge variant={matchType === 'km_bounded' ? 'outline' : 'secondary'} className="text-xs">
-            {matchType === 'km_bounded' ? 'KM-bounded' : 'Spec-only'}
+          <Badge variant={matchType === 'km_bounded' ? 'outline' : matchType === 'variant_family' ? 'secondary' : 'secondary'} className="text-xs">
+            {matchType === 'km_bounded' ? 'KM-bounded' : matchType === 'variant_family' ? 'Variant family' : 'Spec-only'}
           </Badge>
         </TableCell>
         <TableCell className="text-center">
@@ -240,6 +310,25 @@ export default function MatchesPage() {
         </TableCell>
         <TableCell>
           {(() => {
+            // Tier 2 (Probable) matches never auto-upgrade to BUY
+            if (matchConfidence === 'probable') {
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="gap-1 border-blue-500/50 text-blue-500">
+                        <Clock className="h-3 w-3" />
+                        Watch
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <span>Probable match – requires additional pressure signals before BUY promotion</span>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            }
+            
             const isWaitingForPressure = lot.confidence_score >= 4 && lot.action === 'Watch' && !getPressureSignals(lot).hasPressure;
             
             if (isWaitingForPressure) {
@@ -340,6 +429,7 @@ export default function MatchesPage() {
                 <SelectItem value="all">All</SelectItem>
                 <SelectItem value="Precision">Precision</SelectItem>
                 <SelectItem value="Advisory">Advisory</SelectItem>
+                <SelectItem value="Probable">Probable</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -443,6 +533,34 @@ export default function MatchesPage() {
                       <TableHeader>{tableHeaders}</TableHeader>
                       <TableBody>
                         {advisoryMatches.map(renderMatchRow)}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+            
+            {/* Probable Matches (Tier 2 - Variant Family) - Collapsible */}
+            {(filters.lane === 'all' || filters.lane === 'Probable') && probableMatches.length > 0 && (
+              <Collapsible defaultOpen={false}>
+                <CollapsibleTrigger asChild>
+                  <button className="flex items-center gap-2 text-lg font-semibold text-foreground hover:text-foreground/80 transition-colors">
+                    <ChevronRight className="h-5 w-5 group-data-[state=open]:hidden" />
+                    <ChevronDown className="h-5 w-5 hidden group-data-[state=open]:block" />
+                    <AlertCircle className="h-5 w-5 text-blue-500" />
+                    Probable Matches (Variant Family)
+                    <Badge variant="outline" className="ml-2">{probableMatches.length}</Badge>
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2">
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    <p className="text-xs text-muted-foreground bg-muted/50 px-4 py-2 border-b border-border">
+                      These matches are based on variant family (e.g., SR5, XLT) rather than exact variant. They do NOT auto-upgrade to BUY and require additional pressure signals.
+                    </p>
+                    <Table>
+                      <TableHeader>{tableHeaders}</TableHeader>
+                      <TableBody>
+                        {probableMatches.map(renderMatchRow)}
                       </TableBody>
                     </Table>
                   </div>

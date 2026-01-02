@@ -96,7 +96,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   ],
   'Sale_Fingerprints': [
     'fingerprint_id', 'dealer_name', 'dealer_whatsapp', 'sale_date', 'expires_at', 'make', 'model', 
-    'variant_normalised', 'year', 'sale_km', 'min_km', 'max_km', 'engine', 'drivetrain', 'transmission', 
+    'variant_normalised', 'variant_family', 'year', 'sale_km', 'min_km', 'max_km', 'engine', 'drivetrain', 'transmission', 
     'shared_opt_in', 'is_active', 'fingerprint_type', 'source_sale_id', 'source_import_id',
     'do_not_buy', 'do_not_buy_reason'
   ],
@@ -112,6 +112,8 @@ const SHEET_HEADERS: Record<string, string[]> = {
     'source', 'source_site', 'source_type', 'source_name',
     // Event/Location
     'event_id', 'auction_house', 'location', 'auction_datetime', 'listing_url',
+    // Variant family for tier-2 matching
+    'variant_family',
     // Vehicle
     'make', 'model', 'variant_raw', 'variant_normalised', 'year', 'km', 'fuel', 'drivetrain', 'transmission',
     // Pricing
