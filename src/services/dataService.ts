@@ -370,4 +370,30 @@ export const dataService = {
     }
     throw new Error('Mock data does not support backfilling min_km');
   },
+
+  // ========== DO NOT BUY PROTECTION ==========
+
+  setDoNotBuy: async (saleIds: string[], reason: string): Promise<{
+    salesUpdated: number;
+    fingerprintsDeactivated: number;
+  }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.setDoNotBuy(saleIds, reason);
+    }
+    throw new Error('Mock data does not support Do Not Buy');
+  },
+
+  clearDoNotBuy: async (saleIds: string[]): Promise<{ salesUpdated: number }> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.clearDoNotBuy(saleIds);
+    }
+    throw new Error('Mock data does not support Do Not Buy');
+  },
+
+  updateFingerprintDoNotBuy: async (fingerprintId: string, doNotBuy: 'Y' | 'N', reason?: string): Promise<void> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.updateFingerprintDoNotBuy(fingerprintId, doNotBuy, reason);
+    }
+    throw new Error('Mock data does not support Do Not Buy');
+  },
 };

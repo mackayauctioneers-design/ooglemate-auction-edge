@@ -32,6 +32,9 @@ function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | nu
   // Check if fingerprint is active
   if (fp.is_active !== 'Y') return null;
   
+  // Check if fingerprint is marked as do_not_buy
+  if (fp.do_not_buy === 'Y') return null;
+  
   // Check expiry
   const today = new Date();
   const expiresAt = new Date(fp.expires_at);

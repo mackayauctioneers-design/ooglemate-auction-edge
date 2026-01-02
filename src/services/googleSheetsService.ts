@@ -155,6 +155,8 @@ function parseFingerprint(row: any): SaleFingerprint {
     fingerprint_type: row.fingerprint_type || 'full',
     source_sale_id: row.source_sale_id || undefined,
     source_import_id: row.source_import_id || undefined,
+    do_not_buy: row.do_not_buy || 'N',
+    do_not_buy_reason: row.do_not_buy_reason || undefined,
     _rowIndex: row._rowIndex,
   };
 }
@@ -465,7 +467,8 @@ const SALES_IMPORTS_RAW_HEADERS = [
 const SALES_NORMALISED_HEADERS = [
   'sale_id', 'import_id', 'dealer_name', 'sale_date', 'make', 'model', 'variant_raw', 'variant_normalised',
   'sale_price', 'days_to_sell', 'location', 'km', 'quality_flag', 'notes', 'year', 'engine', 'drivetrain',
-  'transmission', 'fingerprint_generated', 'fingerprint_id', 'gross_profit', 'activate', 'do_not_replicate', 'tags'
+  'transmission', 'fingerprint_generated', 'fingerprint_id', 'gross_profit', 'activate', 'do_not_replicate', 'tags',
+  'do_not_buy', 'do_not_buy_reason'
 ];
 
 // Parse Sales Imports Raw
@@ -509,6 +512,8 @@ function parseSalesNormalised(row: any): SalesNormalised {
     activate: row.activate || 'N',
     do_not_replicate: row.do_not_replicate || 'N',
     tags: row.tags || undefined,
+    do_not_buy: row.do_not_buy || 'N',
+    do_not_buy_reason: row.do_not_buy_reason || undefined,
     _rowIndex: row._rowIndex,
   };
 }
@@ -1508,13 +1513,17 @@ export const googleSheetsService = {
         continue;
       }
 
-      // CRITICAL: Only generate from activate=Y AND do_not_replicate!=Y
+      // CRITICAL: Only generate from activate=Y AND do_not_replicate!=Y AND do_not_buy!=Y
       if (sale.activate !== 'Y') {
         errors.push(`Sale ${sale.sale_id}: Not activated (set Activate=Y first)`);
         continue;
       }
       if (sale.do_not_replicate === 'Y') {
         errors.push(`Sale ${sale.sale_id}: Marked as Do Not Replicate`);
+        continue;
+      }
+      if (sale.do_not_buy === 'Y') {
+        errors.push(`Sale ${sale.sale_id}: Marked as Do Not Buy`);
         continue;
       }
 
@@ -1654,10 +1663,11 @@ export const googleSheetsService = {
   }> => {
     const sales = await googleSheetsService.getSalesNormalised();
     
-    // Find rows that are activate=Y, do_not_replicate!=Y, and no fingerprint generated
+    // Find rows that are activate=Y, do_not_replicate!=Y, do_not_buy!=Y, and no fingerprint generated
     const needsFingerprint = sales.filter((s: SalesNormalised) => 
       s.activate === 'Y' && 
       s.do_not_replicate !== 'Y' && 
+      s.do_not_buy !== 'Y' &&
       s.fingerprint_generated !== 'Y'
     );
 
@@ -2170,6 +2180,84 @@ export const googleSheetsService = {
         ...diagnostics,
       };
       await callSheetsApi('update', SHEETS.SAVED_SEARCHES, updated, search._rowIndex);
+    }
+  },
+
+  // ========== DO NOT BUY PROTECTION ==========
+
+  // Set do_not_buy on sales and deactivate related fingerprints
+  setDoNotBuy: async (saleIds: string[], reason: string): Promise<{
+    salesUpdated: number;
+    fingerprintsDeactivated: number;
+  }> => {
+    const sales = await googleSheetsService.getSalesNormalised();
+    const fingerprints = await googleSheetsService.getFingerprints();
+    
+    let salesUpdated = 0;
+    let fingerprintsDeactivated = 0;
+    
+    for (const saleId of saleIds) {
+      const sale = sales.find((s: SalesNormalised) => s.sale_id === saleId);
+      if (!sale || sale._rowIndex === undefined) continue;
+      
+      // Update sale with do_not_buy flag
+      await googleSheetsService.updateSalesNormalised({
+        ...sale,
+        do_not_buy: 'Y',
+        do_not_buy_reason: reason,
+      });
+      salesUpdated++;
+      
+      // If there's a linked fingerprint, deactivate it
+      if (sale.fingerprint_id) {
+        const fp = fingerprints.find((f: SaleFingerprint) => f.fingerprint_id === sale.fingerprint_id);
+        if (fp && fp._rowIndex !== undefined && fp.is_active === 'Y') {
+          await callSheetsApi('update', SHEETS.FINGERPRINTS, {
+            ...fp,
+            is_active: 'N',
+            do_not_buy: 'Y',
+            do_not_buy_reason: reason,
+          }, fp._rowIndex);
+          fingerprintsDeactivated++;
+        }
+      }
+    }
+    
+    return { salesUpdated, fingerprintsDeactivated };
+  },
+
+  // Clear do_not_buy flag
+  clearDoNotBuy: async (saleIds: string[]): Promise<{ salesUpdated: number }> => {
+    const sales = await googleSheetsService.getSalesNormalised();
+    let salesUpdated = 0;
+    
+    for (const saleId of saleIds) {
+      const sale = sales.find((s: SalesNormalised) => s.sale_id === saleId);
+      if (!sale || sale._rowIndex === undefined) continue;
+      
+      await googleSheetsService.updateSalesNormalised({
+        ...sale,
+        do_not_buy: 'N',
+        do_not_buy_reason: '',
+      });
+      salesUpdated++;
+    }
+    
+    return { salesUpdated };
+  },
+
+  // Update fingerprint do_not_buy status
+  updateFingerprintDoNotBuy: async (fingerprintId: string, doNotBuy: 'Y' | 'N', reason?: string): Promise<void> => {
+    const fingerprints = await googleSheetsService.getFingerprints();
+    const fp = fingerprints.find((f: SaleFingerprint) => f.fingerprint_id === fingerprintId);
+    
+    if (fp && fp._rowIndex !== undefined) {
+      await callSheetsApi('update', SHEETS.FINGERPRINTS, {
+        ...fp,
+        do_not_buy: doNotBuy,
+        do_not_buy_reason: reason || '',
+        is_active: doNotBuy === 'Y' ? 'N' : fp.is_active, // Deactivate if do_not_buy
+      }, fp._rowIndex);
     }
   },
 };
