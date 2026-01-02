@@ -225,7 +225,7 @@ export interface AuctionEvent extends SheetRowMeta {
 export type SourceType = 'auction' | 'classified' | 'retail' | 'dealer';
 
 // Listing status - applies to all source types
-export type ListingStatus = 'listed' | 'passed_in' | 'sold' | 'withdrawn';
+export type ListingStatus = 'listed' | 'passed_in' | 'sold' | 'withdrawn' | 'catalogue' | 'upcoming';
 
 // Canonical Listings interface - unified for all sources
 export interface Listing extends SheetRowMeta {

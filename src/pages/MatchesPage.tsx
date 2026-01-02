@@ -167,6 +167,14 @@ export default function MatchesPage() {
     return Array.from(houses).sort();
   }, [lots]);
   
+  // Helper: Check if a lot is a future catalogue lot (Pickles upcoming)
+  const isFutureCatalogueLot = (lot: AuctionLot): boolean => {
+    if (!['catalogue', 'upcoming'].includes(lot.status || '')) return false;
+    if (!lot.auction_datetime) return false;
+    const auctionDate = new Date(lot.auction_datetime);
+    return auctionDate > new Date();
+  };
+  
   // Compute all matches
   const allMatches = useMemo(() => {
     const matches: Match[] = [];
@@ -176,8 +184,14 @@ export default function MatchesPage() {
         if (lot.status === 'sold' || lot.status === 'withdrawn') continue;
         if (lot.visible_to_dealers !== 'Y') continue;
         
+        // Future catalogue lots are only eligible for Tier-2 (Probable) matching
+        const isCatalogueLot = isFutureCatalogueLot(lot);
+        
         const match = matchLotToFingerprint(lot, fp);
         if (match) {
+          // If it's a catalogue lot, only include Tier-2 matches
+          if (isCatalogueLot && match.tier !== 'tier2') continue;
+          
           matches.push(match);
         }
       }
@@ -280,11 +294,25 @@ export default function MatchesPage() {
   // Diagnostic counts for admin panel
   const diagnostics = useMemo(() => {
     const activeFingerprints = fingerprints.length;
-    const lotsInScope = lots.filter(l => 
+    
+    // Count lots in scope: standard lots + future catalogue lots (for Tier-2)
+    const standardLotsInScope = lots.filter(l => 
       l.status !== 'sold' && 
       l.status !== 'withdrawn' && 
+      l.status !== 'catalogue' &&
+      l.status !== 'upcoming' &&
       l.visible_to_dealers === 'Y'
     ).length;
+    
+    const catalogueLotsInScope = lots.filter(l => {
+      if (!['catalogue', 'upcoming'].includes(l.status || '')) return false;
+      if (l.visible_to_dealers !== 'Y') return false;
+      if (!l.auction_datetime) return false;
+      const auctionDate = new Date(l.auction_datetime);
+      return auctionDate > new Date();
+    }).length;
+    
+    const lotsInScope = standardLotsInScope + catalogueLotsInScope;
     const strictMatches = allMatches.filter(m => m.tier === 'tier1').length;
     const probableMatchCount = allMatches.filter(m => m.tier === 'tier2').length;
     
@@ -295,6 +323,7 @@ export default function MatchesPage() {
     return {
       activeFingerprints,
       lotsInScope,
+      catalogueLotsInScope,
       strictMatches,
       probableMatchCount,
       fingerprintsWithFamily,
@@ -503,7 +532,7 @@ export default function MatchesPage() {
               <Info className="h-4 w-4 text-muted-foreground" />
               Match Evaluation Diagnostics
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4 text-sm">
               <div className="space-y-1">
                 <div className="text-muted-foreground">Active Fingerprints</div>
                 <div className="text-xl font-semibold text-foreground">{diagnostics.activeFingerprints}</div>
@@ -511,6 +540,9 @@ export default function MatchesPage() {
               <div className="space-y-1">
                 <div className="text-muted-foreground">Lots in Scope</div>
                 <div className="text-xl font-semibold text-foreground">{diagnostics.lotsInScope}</div>
+                {diagnostics.catalogueLotsInScope > 0 && (
+                  <div className="text-xs text-blue-500">incl. {diagnostics.catalogueLotsInScope} catalogue</div>
+                )}
               </div>
               <div className="space-y-1">
                 <div className="text-muted-foreground">Strict Matches (Tier 1)</div>
@@ -529,6 +561,11 @@ export default function MatchesPage() {
                 <div className="text-xl font-semibold text-foreground">{diagnostics.lotsWithFamily}</div>
               </div>
             </div>
+            {diagnostics.catalogueLotsInScope > 0 && (
+              <div className="text-xs text-blue-500 mt-2">
+                ℹ️ Includes future catalogue lots (Probable matching only – never triggers BUY)
+              </div>
+            )}
             {lastEvaluation && (
               <div className="text-xs text-muted-foreground pt-2 border-t border-border">
                 Last evaluated: {lastEvaluation.toLocaleString('en-AU', { 
