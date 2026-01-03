@@ -1,13 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Loader2, X, Volume2, Mic, MicOff, Play, Bug } from 'lucide-react';
+import { Loader2, X, Volume2, Mic, MicOff, Bug } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { useBobTTS } from '@/hooks/useBobTTS';
 
 // ============================================================================
 // BOB: Voice-first AI using OpenAI Realtime API (WebRTC)
+// Native conversational voice streams directly - no separate TTS needed
 // ============================================================================
 
 interface BobAvatarProps {
@@ -21,25 +20,13 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [showDebug, setShowDebug] = useState(true); // Show debug by default for troubleshooting
+  const [showDebug, setShowDebug] = useState(false);
+  const [audioActive, setAudioActive] = useState(false);
   
   // Transcripts
   const [userTranscript, setUserTranscript] = useState('');
   const [bobTranscript, setBobTranscript] = useState('');
-  const [conversationHistory, setConversationHistory] = useState<Array<{role: string, text: string, audioFailed?: boolean}>>([]);
-  
-  // TTS Hook
-  const { 
-    speak, 
-    testSound, 
-    retryPlay, 
-    unlockAudio,
-    isSpeaking: ttsSpeaking, 
-    isLoading: ttsLoading,
-    audioUnlocked,
-    debugInfo,
-    hasPendingAudio,
-  } = useBobTTS();
+  const [conversationHistory, setConversationHistory] = useState<Array<{role: string, text: string}>>([]);
   
   // WebRTC refs
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -73,6 +60,7 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
     setIsConnected(false);
     setIsListening(false);
     setIsSpeaking(false);
+    setAudioActive(false);
   }, []);
 
   const connect = useCallback(async () => {
@@ -108,15 +96,22 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
 
-      // Create audio element for remote audio
+      // Create audio element for remote audio (Bob's voice)
       const audioEl = document.createElement('audio');
       audioEl.autoplay = true;
       audioElRef.current = audioEl;
 
-      // Set up remote audio
+      // Set up remote audio - this is where Bob's voice comes through
       pc.ontrack = (e) => {
-        console.log("Received remote track");
+        console.log("Received remote audio track - Bob's voice connected");
         audioEl.srcObject = e.streams[0];
+        setAudioActive(true);
+        
+        // Try to play (may need user interaction on mobile)
+        audioEl.play().catch(err => {
+          console.warn("Audio autoplay blocked:", err);
+          toast.info("Tap anywhere to enable Bob's voice");
+        });
       };
 
       // Get local audio and add to peer connection
@@ -178,7 +173,7 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
       };
       
       await pc.setRemoteDescription(answer);
-      console.log("WebRTC connection established");
+      console.log("WebRTC connection established - Bob is ready");
 
     } catch (error) {
       console.error("Connection error:", error);
@@ -193,7 +188,7 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
 
     switch (event.type) {
       case 'session.created':
-        console.log("Session created");
+        console.log("Session created - Bob is online");
         break;
 
       case 'input_audio_buffer.speech_started':
@@ -221,10 +216,8 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
       case 'response.audio_transcript.done':
         const bobText = event.transcript || bobTranscript;
         if (bobText.trim()) {
-          // Add to history and try TTS
+          // Add to conversation history (audio plays natively via WebRTC)
           setConversationHistory(prev => [...prev, { role: 'assistant', text: bobText }]);
-          // Speak via TTS
-          speak(bobText);
         }
         setBobTranscript('');
         break;
@@ -243,7 +236,7 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
         toast.error("Bob had an issue");
         break;
     }
-  }, [bobTranscript, speak]);
+  }, [bobTranscript]);
 
   const handleOpenBob = useCallback(async () => {
     setIsOpen(true);
@@ -258,18 +251,15 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
     setIsOpen(false);
   }, [disconnect]);
 
-  const handleTestSound = useCallback(async () => {
-    console.log("Test sound button clicked");
-    const success = await testSound();
-    if (success) {
-      toast.success("Audio working!");
+  // Unlock audio on any user interaction (for mobile)
+  const handleUnlockAudio = useCallback(() => {
+    if (audioElRef.current && !audioActive) {
+      audioElRef.current.play().then(() => {
+        setAudioActive(true);
+        console.log("Audio unlocked via user interaction");
+      }).catch(console.warn);
     }
-  }, [testSound]);
-
-  const handleRetryPlay = useCallback(async () => {
-    console.log("Retry play clicked");
-    await retryPlay();
-  }, [retryPlay]);
+  }, [audioActive]);
 
   return (
     <>
@@ -298,7 +288,10 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
 
       {/* Conversation Dialog */}
       <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-        <DialogContent className="max-w-sm p-0 overflow-hidden gap-0">
+        <DialogContent 
+          className="max-w-sm p-0 overflow-hidden gap-0"
+          onClick={handleUnlockAudio}
+        >
           {/* Header */}
           <div className="bg-gradient-to-br from-primary to-primary/80 p-6 text-center text-primary-foreground relative">
             <div className="text-5xl mb-2">👨‍🔧</div>
@@ -307,9 +300,9 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
             {/* Audio status badge */}
             <div className={cn(
               "absolute top-3 left-3 px-2 py-1 rounded-full text-xs font-medium",
-              audioUnlocked ? "bg-green-500/20 text-green-200" : "bg-yellow-500/20 text-yellow-200"
+              audioActive ? "bg-green-500/20 text-green-200" : "bg-yellow-500/20 text-yellow-200"
             )}>
-              {audioUnlocked ? "🔊 Audio OK" : "🔇 Tap Test"}
+              {audioActive ? "🔊 Voice Active" : "🔇 Tap to enable"}
             </div>
             
             {/* Status indicators */}
@@ -320,19 +313,19 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
                   Connecting...
                 </p>
               )}
-              {isConnected && (ttsSpeaking || isSpeaking) && (
+              {isConnected && isSpeaking && (
                 <p className="text-sm opacity-90 flex items-center gap-1.5">
                   <Volume2 className="h-4 w-4 animate-pulse" />
-                  Speaking...
+                  Bob speaking...
                 </p>
               )}
-              {isConnected && isListening && !isSpeaking && !ttsSpeaking && (
+              {isConnected && isListening && !isSpeaking && (
                 <p className="text-sm opacity-90 flex items-center gap-1.5 animate-pulse">
                   <Mic className="h-4 w-4" />
                   Listening...
                 </p>
               )}
-              {isConnected && !isListening && !isSpeaking && !ttsSpeaking && (
+              {isConnected && !isListening && !isSpeaking && (
                 <p className="text-sm opacity-90">Ready</p>
               )}
             </div>
@@ -346,25 +339,6 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
             </button>
           </div>
 
-          {/* Test Sound Button - Always visible until audio unlocked */}
-          {!audioUnlocked && (
-            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border-b">
-              <Button 
-                onClick={handleTestSound}
-                disabled={ttsLoading}
-                className="w-full"
-                variant="outline"
-              >
-                {ttsLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <Volume2 className="h-4 w-4 mr-2" />
-                )}
-                Test Sound (Tap to unlock audio)
-              </Button>
-            </div>
-          )}
-
           {/* Debug Panel */}
           {showDebug && (
             <div className="p-2 bg-muted/50 border-b text-xs font-mono space-y-1">
@@ -377,11 +351,10 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
                   <X className="h-3 w-3" />
                 </button>
               </div>
-              <div>TTS sent: {debugInfo.requestSent ? '✅' : '❌'}</div>
-              <div>Response bytes: {debugInfo.responseBytes ?? '—'}</div>
-              <div>Audio src set: {debugInfo.audioSrcSet ? '✅' : '❌'}</div>
-              <div>Play result: {debugInfo.playResult ?? '—'}</div>
-              <div>Audio unlocked: {audioUnlocked ? '✅' : '❌'}</div>
+              <div>Connected: {isConnected ? '✅' : '❌'}</div>
+              <div>Audio active: {audioActive ? '✅' : '❌'}</div>
+              <div>Speaking: {isSpeaking ? '✅' : '❌'}</div>
+              <div>Listening: {isListening ? '✅' : '❌'}</div>
             </div>
           )}
 
@@ -412,21 +385,6 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
                 <p className="leading-relaxed">{msg.text}</p>
               </div>
             ))}
-
-            {/* Retry play button if autoplay failed */}
-            {hasPendingAudio && !ttsSpeaking && (
-              <div className="flex justify-center">
-                <Button
-                  onClick={handleRetryPlay}
-                  size="sm"
-                  variant="secondary"
-                  className="gap-2"
-                >
-                  <Play className="h-4 w-4" />
-                  Play Bob's voice
-                </Button>
-              </div>
-            )}
 
             {/* Live user transcript */}
             {userTranscript && isListening && (
