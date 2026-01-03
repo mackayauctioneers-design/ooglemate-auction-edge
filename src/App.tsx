@@ -50,11 +50,8 @@ const App = () => (
             <Route path="/valuation" element={<ValuationPage />} />
             <Route path="/help" element={<HelpPage />} />
             
-            {/* === ADMIN-ONLY ROUTES: Redirect non-admins to home === */}
-            {/* PHASE 3: VALO is admin-only during testing */}
-            <Route path="/valo" element={
-              <AdminGuard><ValoPage /></AdminGuard>
-            } />
+            {/* === VALO/Ask Bob: Available to all authenticated users === */}
+            <Route path="/valo" element={<ValoPage />} />
             
             {/* === ADMIN-ONLY ROUTES: Redirect non-admins to home === */}
             <Route path="/log-sale" element={
