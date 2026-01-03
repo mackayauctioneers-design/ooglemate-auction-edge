@@ -9,22 +9,22 @@ import { supabase } from '@/integrations/supabase/client';
 import { dataService } from '@/services/dataService';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { MeetFrankModal } from '@/components/valo/MeetFrankModal';
-import { FrankResponseLogger, determineFrankResponseType } from '@/components/valo/FrankResponseLogger';
-import { FrankAvatar } from '@/components/valo/FrankAvatar';
+import { MeetBobModal } from '@/components/valo/MeetBobModal';
+import { BobResponseLogger, determineBobResponseType } from '@/components/valo/BobResponseLogger';
+import { BobAvatar } from '@/components/valo/BobAvatar';
 
 // ============================================================================
-// SYSTEM: FRANK (VALO ENGINE)
+// SYSTEM: BOB (VALO ENGINE)
 // ============================================================================
-// Frank is the ONLY entry point - floating avatar bottom-right
-// - Tap Frank → auto voice recording
+// Bob is the ONLY entry point - floating avatar bottom-right
+// - Tap Bob → auto voice recording
 // - Recording stops after 1.5s silence
 // - Editable transcript → auto-process
 // - Response bubble with optional voice
-// - Camera opens directly when Frank needs photos
+// - Camera opens directly when Bob needs photos
 // ============================================================================
 
-interface FrankSignals {
+interface BobSignals {
   avgGross: number | null;
   avgDaysToSell: number | null;
   isRepeatLoser: boolean;
@@ -34,7 +34,7 @@ interface FrankSignals {
   priceband: 'low' | 'mid' | 'high';
 }
 
-function calculateFrankSignals(result: ValoResult): FrankSignals {
+function calculateBobSignals(result: ValoResult): BobSignals {
   const avgGross = result.expected_gross_band 
     ? (result.expected_gross_band.min + result.expected_gross_band.max) / 2 
     : null;
@@ -58,7 +58,7 @@ function calculateFrankSignals(result: ValoResult): FrankSignals {
 }
 
 // Character lines - ONLY for #1, #2, #3 responses
-const frankCharacterLines = [
+const bobCharacterLines = [
   "That's the sort of thing I'd still be thinking about after a couple schooners.",
   "Shaz would tell me not to overthink it.",
   "I've watched plenty of these after the footy…",
@@ -66,19 +66,19 @@ const frankCharacterLines = [
 
 function getOptionalCharacter(): string {
   if (Math.random() > 0.75) {
-    return " " + frankCharacterLines[Math.floor(Math.random() * frankCharacterLines.length)];
+    return " " + bobCharacterLines[Math.floor(Math.random() * bobCharacterLines.length)];
   }
   return "";
 }
 
 // ============================================================================
-// FRANK RESPONSES
+// BOB RESPONSES
 // ============================================================================
 
-const FRANK_HANDOFF = "Give me two minutes, let me check with one of the boys.";
+const BOB_HANDOFF = "Give me two minutes, let me check with one of the boys.";
 
-// Frank asks clarifying questions naturally when info is missing
-function frankClarifyingQuestion(parsed: ValoParsedVehicle): string | null {
+// Bob asks clarifying questions naturally when info is missing
+function bobClarifyingQuestion(parsed: ValoParsedVehicle): string | null {
   const missing = parsed.missing_fields || [];
   
   // Critical missing: need at minimum make/model
@@ -101,42 +101,42 @@ function frankClarifyingQuestion(parsed: ValoParsedVehicle): string | null {
   return null; // No clarification needed
 }
 
-function frankResponse1(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number, n: number): string {
+function bobResponse1(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number, n: number): string {
   const character = getOptionalCharacter();
   return `Yeah mate, that's a good fighter. I'd want to be ${buyLow} to ${buyHigh} to buy it. Turns in about ${Math.round(days)} days – demand's there. Retail ask ${sellLow} to ${sellHigh}. Got ${n} comps backing this up.${character}`;
 }
 
-function frankResponse2(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number | null, n: number): string {
+function bobResponse2(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number | null, n: number): string {
   const daysText = days ? `Turns in about ${Math.round(days)} days across the network.` : 'Velocity looks reasonable.';
   const character = getOptionalCharacter();
   return `Sits straight and square. I'd want to be ${buyLow} to ${buyHigh} to buy it. ${daysText} Retail ask ${sellLow} to ${sellHigh}. Not your direct history – ${n} network comps – so I'd want eyes on it.${character}`;
 }
 
-function frankResponse3(vehicleDesc: string, buyLow: string, buyHigh: string): string {
+function bobResponse3(vehicleDesc: string, buyLow: string, buyHigh: string): string {
   const character = getOptionalCharacter();
-  return `Look mate, I'm working off limited data here. I'd want to be ${buyLow} to ${buyHigh} to buy it – rough guide only. ${FRANK_HANDOFF} Send a few pics and I'll firm it up.${character}`;
+  return `Look mate, I'm working off limited data here. I'd want to be ${buyLow} to ${buyHigh} to buy it – rough guide only. ${BOB_HANDOFF} Send a few pics and I'll firm it up.${character}`;
 }
 
-function frankResponse4NoData(vehicleDesc: string): string {
-  return `That's nowhere – I haven't got enough runs on the board with ${vehicleDesc || 'this one'}. ${FRANK_HANDOFF} Send a few pics and I'll firm it up.`;
+function bobResponse4NoData(vehicleDesc: string): string {
+  return `That's nowhere – I haven't got enough runs on the board with ${vehicleDesc || 'this one'}. ${BOB_HANDOFF} Send a few pics and I'll firm it up.`;
 }
 
-function frankResponse5(vehicleDesc: string, buyLow: string, buyHigh: string, avgGross: number, days: number | null): string {
+function bobResponse5(vehicleDesc: string, buyLow: string, buyHigh: string, avgGross: number, days: number | null): string {
   const daysText = days ? ` in ${Math.round(days)} days` : '';
   return `That's hard work. I'd want to be ${buyLow} to ${buyHigh} to buy it. Margin's typically ${formatCurrency(avgGross)}${daysText} – any sillier and the money disappears. I don't bounce 'em, so hit it hard or walk.`;
 }
 
-function frankResponse6HardNo(vehicleDesc: string, avgGross: number, days: number | null, n: number): string {
+function bobResponse6HardNo(vehicleDesc: string, avgGross: number, days: number | null, n: number): string {
   const daysText = days ? ` and sat for ${Math.round(days)} days` : '';
   return `I'd rather keep my powder dry on this one. Your history shows ${formatCurrency(avgGross)} average gross${daysText} – that's ${n} runs where money disappeared. I price it to buy it, and I can't buy this one comfortably. Walk unless the seller's properly motivated.`;
 }
 
-function frankResponse7Slow(vehicleDesc: string, buyLow: string, buyHigh: string, days: number, avgGross: number | null): string {
+function bobResponse7Slow(vehicleDesc: string, buyLow: string, buyHigh: string, days: number, avgGross: number | null): string {
   const grossText = avgGross ? `Gross is typically ${formatCurrency(avgGross)}, but` : `But`;
   return `These are slow. I'd want to be ${buyLow} to ${buyHigh} to buy it. ${grossText} you're looking at ${Math.round(days)} days to move them. Factor in floorplan and the aggravation – money's tied up. Hit it pretty hard.`;
 }
 
-function frankResponse8BounceOnly(vehicleDesc: string, avgGross: number, days: number): string {
+function bobResponse8BounceOnly(vehicleDesc: string, avgGross: number, days: number): string {
   return `I'm not putting a number on this one. ${formatCurrency(avgGross)} gross over ${Math.round(days)} days – that's bounce territory. I don't bounce 'em. The only way to make money is timing and heat. This one's a pass unless you know something I don't.`;
 }
 
@@ -147,7 +147,7 @@ function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): st
     .filter(Boolean).join(' ');
 
   if (sample_size === 0 || !suggested_buy_range) {
-    return frankResponse4NoData(vehicleDesc);
+    return bobResponse4NoData(vehicleDesc);
   }
 
   const buyLow = formatCurrency(suggested_buy_range.min);
@@ -155,23 +155,23 @@ function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): st
   const sellLow = suggested_sell_range ? formatCurrency(suggested_sell_range.min) : null;
   const sellHigh = suggested_sell_range ? formatCurrency(suggested_sell_range.max) : null;
 
-  const signals = calculateFrankSignals(result);
+  const signals = calculateBobSignals(result);
   const lines: string[] = [];
 
   if (signals.isRepeatLoser && signals.avgGross !== null) {
-    lines.push(frankResponse6HardNo(vehicleDesc, signals.avgGross, result.typical_days_to_sell || null, sample_size));
+    lines.push(bobResponse6HardNo(vehicleDesc, signals.avgGross, result.typical_days_to_sell || null, sample_size));
   } else if (signals.isBounceOnly && signals.avgGross !== null && result.typical_days_to_sell) {
-    lines.push(frankResponse8BounceOnly(vehicleDesc, signals.avgGross, result.typical_days_to_sell));
+    lines.push(bobResponse8BounceOnly(vehicleDesc, signals.avgGross, result.typical_days_to_sell));
   } else if (signals.isSlow && result.typical_days_to_sell) {
-    lines.push(frankResponse7Slow(vehicleDesc, buyLow, buyHigh, result.typical_days_to_sell, signals.avgGross));
+    lines.push(bobResponse7Slow(vehicleDesc, buyLow, buyHigh, result.typical_days_to_sell, signals.avgGross));
   } else if (signals.isHardWork && signals.avgGross !== null) {
-    lines.push(frankResponse5(vehicleDesc, buyLow, buyHigh, signals.avgGross, result.typical_days_to_sell || null));
+    lines.push(bobResponse5(vehicleDesc, buyLow, buyHigh, signals.avgGross, result.typical_days_to_sell || null));
   } else if (confidence === 'HIGH' && tier === 'dealer' && sellLow && sellHigh && result.typical_days_to_sell) {
-    lines.push(frankResponse1(vehicleDesc, buyLow, buyHigh, sellLow, sellHigh, result.typical_days_to_sell, sample_size));
+    lines.push(bobResponse1(vehicleDesc, buyLow, buyHigh, sellLow, sellHigh, result.typical_days_to_sell, sample_size));
   } else if (confidence === 'MEDIUM' && tier === 'network' && sellLow && sellHigh) {
-    lines.push(frankResponse2(vehicleDesc, buyLow, buyHigh, sellLow, sellHigh, result.typical_days_to_sell || null, sample_size));
+    lines.push(bobResponse2(vehicleDesc, buyLow, buyHigh, sellLow, sellHigh, result.typical_days_to_sell || null, sample_size));
   } else if (confidence === 'LOW') {
-    lines.push(frankResponse3(vehicleDesc, buyLow, buyHigh));
+    lines.push(bobResponse3(vehicleDesc, buyLow, buyHigh));
   } else {
     const sourceText = tier === 'dealer' 
       ? 'Based on what you\'ve paid and got before'
@@ -215,7 +215,7 @@ export default function ValoPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsed, setParsed] = useState<ValoParsedVehicle | null>(null);
   const [result, setResult] = useState<ValoResult | null>(null);
-  const [frankResponse, setFrankResponse] = useState<string | null>(null);
+  const [bobResponse, setBobResponse] = useState<string | null>(null);
 
   // Prefill from URL (when clicking VALO button on a lot)
   useEffect(() => {
@@ -226,19 +226,19 @@ export default function ValoPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    document.title = 'Ask Frank | OogleMate';
+    document.title = 'Ask Bob | OogleMate';
     return () => { document.title = 'OogleMate'; };
   }, []);
 
   const handleProcess = async (inputText: string) => {
     if (!inputText.trim()) {
-      setFrankResponse("Sorry mate, didn't catch that. What are we looking at?");
+      setBobResponse("Sorry mate, didn't catch that. What are we looking at?");
       return;
     }
 
     setParsed(null);
     setResult(null);
-    setFrankResponse(null);
+    setBobResponse(null);
     setIsProcessing(true);
 
     try {
@@ -256,10 +256,10 @@ export default function ValoPage() {
       }
       setParsed(parsedVehicle);
 
-      // Check if Frank needs to ask clarifying questions
-      const clarifyingQ = frankClarifyingQuestion(parsedVehicle);
+      // Check if Bob needs to ask clarifying questions
+      const clarifyingQ = bobClarifyingQuestion(parsedVehicle);
       if (clarifyingQ) {
-        setFrankResponse(clarifyingQ);
+        setBobResponse(clarifyingQ);
         setIsProcessing(false);
         return;
       }
@@ -274,11 +274,11 @@ export default function ValoPage() {
       };
       setResult(fullResult);
       
-      // Generate Frank's response
+      // Generate Bob's response
       const response = generateValoResponse(fullResult, parsedVehicle);
-      setFrankResponse(response);
+      setBobResponse(response);
 
-      toast.success('Frank\'s got an answer');
+      toast.success('Bob\'s got an answer');
     } catch (err) {
       console.error('VALO error:', err);
       const msg = err instanceof Error ? err.message : 'Failed to run VALO';
@@ -399,14 +399,14 @@ export default function ValoPage() {
   const vehicleDesc = parsed ? [parsed.year, parsed.make, parsed.model, parsed.variant_family]
     .filter(Boolean).join(' ') : '';
 
-  // Determine if Frank needs photos (confidence not HIGH)
+  // Determine if Bob needs photos (confidence not HIGH)
   const needsPhotos = result ? result.confidence !== 'HIGH' : false;
 
   return (
     <AppLayout>
-      <MeetFrankModal />
+      <MeetBobModal />
       
-      <FrankResponseLogger 
+      <BobResponseLogger 
         result={result} 
         vehicleDesc={vehicleDesc} 
         isAdmin={isAdmin} 
@@ -418,7 +418,7 @@ export default function ValoPage() {
           <div className="flex items-center gap-3">
             <div className="text-4xl">👨‍🔧</div>
             <div>
-              <h1 className="text-2xl font-bold">Frank</h1>
+              <h1 className="text-2xl font-bold">Bob</h1>
             </div>
           </div>
           
@@ -431,7 +431,7 @@ export default function ValoPage() {
         </div>
 
         {/* Empty state - minimal, no instructions */}
-        {!result && !isProcessing && !frankResponse && (
+        {!result && !isProcessing && !bobResponse && (
           <div className="flex flex-col items-center justify-center py-32 text-center">
             <div className="text-7xl opacity-30">👨‍🔧</div>
           </div>
@@ -441,7 +441,7 @@ export default function ValoPage() {
         {isProcessing && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-            <p className="text-lg text-muted-foreground">Frank's thinking...</p>
+            <p className="text-lg text-muted-foreground">Bob's thinking...</p>
           </div>
         )}
 
@@ -512,7 +512,7 @@ export default function ValoPage() {
               <Badge variant="secondary">n = {result.sample_size}</Badge>
               {isAdmin && (
                 <Badge variant="outline" className="font-mono text-xs">
-                  {determineFrankResponseType(result)}
+                  {determineBobResponseType(result)}
                 </Badge>
               )}
             </div>
@@ -578,8 +578,8 @@ export default function ValoPage() {
         )}
       </div>
 
-      {/* Frank Avatar - self-contained AI voice agent */}
-      <FrankAvatar dealerName={currentUser?.dealer_name} />
+      {/* Bob Avatar - self-contained AI voice agent */}
+      <BobAvatar dealerName={currentUser?.dealer_name} />
     </AppLayout>
   );
 }

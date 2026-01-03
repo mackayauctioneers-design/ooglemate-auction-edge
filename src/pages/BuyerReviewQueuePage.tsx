@@ -38,8 +38,8 @@ interface ReviewRequest {
   created_at: string;
 }
 
-// Generate Frank's response for approved/adjusted reviews
-function generateFrankApprovalResponse(
+// Generate Bob's response for approved/adjusted reviews
+function generateBobApprovalResponse(
   status: 'approved' | 'adjusted',
   buyMin: number,
   buyMax: number,
@@ -60,7 +60,7 @@ function generateFrankApprovalResponse(
   }
 }
 
-function generateFrankRejectionResponse(adminNote: string | null): string {
+function generateBobRejectionResponse(adminNote: string | null): string {
   const noteText = adminNote ? ` ${adminNote}` : '';
   return `Mate, I've seen the photos and I'm not putting a number on this one.${noteText} Sometimes the answer's just no. Move on to the next one.`;
 }
@@ -139,7 +139,7 @@ export default function BuyerReviewQueuePage() {
       const buyMax = parseFloat(adjustedBuyMax) || selectedRequest.buy_range_max || 0;
 
       if (reviewAction === 'approve') {
-        adminResponse = generateFrankApprovalResponse(
+        adminResponse = generateBobApprovalResponse(
           'approved',
           selectedRequest.buy_range_min || 0,
           selectedRequest.buy_range_max || 0,
@@ -148,7 +148,7 @@ export default function BuyerReviewQueuePage() {
           null
         );
       } else if (reviewAction === 'adjust') {
-        adminResponse = generateFrankApprovalResponse(
+        adminResponse = generateBobApprovalResponse(
           'adjusted',
           buyMin,
           buyMax,
@@ -157,7 +157,7 @@ export default function BuyerReviewQueuePage() {
           adminNote || null
         );
       } else {
-        adminResponse = generateFrankRejectionResponse(adminNote || null);
+        adminResponse = generateBobRejectionResponse(adminNote || null);
       }
 
       const updateData: any = {
@@ -315,7 +315,7 @@ export default function BuyerReviewQueuePage() {
                   </DialogDescription>
                 </DialogHeader>
 
-                {/* Frank's Original Response */}
+                {/* Bob's Original Response */}
                 <Card className="bg-primary/5 border-primary">
                   <CardContent className="pt-4">
                     <div className="flex items-start gap-3">
@@ -323,7 +323,7 @@ export default function BuyerReviewQueuePage() {
                         <MessageSquare className="h-4 w-4" />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">Frank's Response</p>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">Bob's Response</p>
                         <p className="text-sm">{selectedRequest.frank_response}</p>
                         <div className="flex gap-2 mt-2">
                           <Badge variant="outline">{selectedRequest.confidence}</Badge>
@@ -420,7 +420,7 @@ export default function BuyerReviewQueuePage() {
                   <Card className="bg-muted">
                     <CardContent className="pt-4">
                       <p className="text-sm font-medium text-muted-foreground mb-1">
-                        Frank's Final Response ({selectedRequest.status})
+                        Bob's Final Response ({selectedRequest.status})
                       </p>
                       <p className="text-sm">{selectedRequest.admin_response}</p>
                       {selectedRequest.admin_note && (

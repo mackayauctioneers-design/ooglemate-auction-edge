@@ -12,8 +12,8 @@ verify_jwt = false
 [functions.valo-parse]
 verify_jwt = false
 
-[functions.frank]
+[functions.bob]
 verify_jwt = false
 
-[functions.frank-realtime-token]
+[functions.bob-realtime-token]
 verify_jwt = false

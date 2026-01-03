@@ -5,8 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Frank's persona - grounded Aussie wholesale valuer
-const FRANK_SYSTEM_PROMPT = `You are Frank.
+// Bob's persona - grounded Aussie wholesale valuer
+const BOB_SYSTEM_PROMPT = `You are Bob.
 
 You are an Australian wholesale car valuer with 20+ years in auctions.
 You speak like a straight-shooting Aussie knocker.
@@ -62,22 +62,19 @@ serve(async (req) => {
       );
     }
 
-    // Build messages array with conversation history
     const messages: Array<{ role: string; content: string }> = [
-      { role: "system", content: FRANK_SYSTEM_PROMPT }
+      { role: "system", content: BOB_SYSTEM_PROMPT }
     ];
     
-    // Add conversation history if provided (for multi-turn)
     if (conversationHistory && Array.isArray(conversationHistory)) {
       for (const msg of conversationHistory) {
         messages.push({ role: msg.role, content: msg.content });
       }
     }
     
-    // Add current user message
     messages.push({ role: "user", content: transcript });
 
-    console.log("Calling Lovable AI for Frank response...");
+    console.log("Calling Lovable AI for Bob response...");
     
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -88,8 +85,8 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages,
-        max_tokens: 200, // Keep Frank concise
-        temperature: 0.8, // A bit of personality variation
+        max_tokens: 200,
+        temperature: 0.8,
       }),
     });
 
@@ -111,34 +108,34 @@ serve(async (req) => {
       }
       
       return new Response(
-        JSON.stringify({ error: "Frank's having a moment, try again" }),
+        JSON.stringify({ error: "Bob's having a moment, try again" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const data = await response.json();
-    const frankResponse = data.choices?.[0]?.message?.content;
+    const bobResponse = data.choices?.[0]?.message?.content;
 
-    if (!frankResponse) {
+    if (!bobResponse) {
       console.error("No response from AI:", data);
       return new Response(
-        JSON.stringify({ error: "Frank didn't respond" }),
+        JSON.stringify({ error: "Bob didn't respond" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("Frank says:", frankResponse);
+    console.log("Bob says:", bobResponse);
 
     return new Response(
       JSON.stringify({ 
-        response: frankResponse,
+        response: bobResponse,
         role: "assistant"
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
-    console.error("Frank function error:", error);
+    console.error("Bob function error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -5,19 +5,19 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 // ============================================================================
-// FRANK: Voice-first AI using OpenAI Realtime API (WebRTC)
+// BOB: Voice-first AI using OpenAI Realtime API (WebRTC)
 // ============================================================================
-// - Tap Frank → connects to OpenAI Realtime → starts listening
-// - Frank speaks back automatically via WebRTC audio
-// - Interruption: user speaks → Frank stops and listens
+// - Tap Bob → connects to OpenAI Realtime → starts listening
+// - Bob speaks back automatically via WebRTC audio
+// - Interruption: user speaks → Bob stops and listens
 // - Live transcripts shown on screen
 // ============================================================================
 
-interface FrankAvatarProps {
+interface BobAvatarProps {
   dealerName?: string;
 }
 
-export function FrankAvatar({ dealerName }: FrankAvatarProps) {
+export function BobAvatar({ dealerName }: BobAvatarProps) {
   // Connection state
   const [isOpen, setIsOpen] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -27,7 +27,7 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
   
   // Transcripts
   const [userTranscript, setUserTranscript] = useState('');
-  const [frankTranscript, setFrankTranscript] = useState('');
+  const [bobTranscript, setBobTranscript] = useState('');
   const [conversationHistory, setConversationHistory] = useState<Array<{role: string, text: string}>>([]);
   
   // WebRTC refs
@@ -70,7 +70,7 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
     try {
       // Get ephemeral token from edge function
       const tokenResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/frank-realtime-token`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bob-realtime-token`,
         {
           method: 'POST',
           headers: {
@@ -171,7 +171,7 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
 
     } catch (error) {
       console.error("Connection error:", error);
-      toast.error("Couldn't connect to Frank");
+      toast.error("Couldn't connect to Bob");
       disconnect();
       setIsConnecting(false);
     }
@@ -186,7 +186,7 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
         break;
 
       case 'input_audio_buffer.speech_started':
-        // User started speaking - Frank should stop
+        // User started speaking - Bob should stop
         setIsListening(true);
         setIsSpeaking(false);
         break;
@@ -205,18 +205,18 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
         break;
 
       case 'response.audio_transcript.delta':
-        // Frank is speaking - accumulate transcript
+        // Bob is speaking - accumulate transcript
         setIsSpeaking(true);
-        setFrankTranscript(prev => prev + (event.delta || ''));
+        setBobTranscript(prev => prev + (event.delta || ''));
         break;
 
       case 'response.audio_transcript.done':
-        // Frank finished speaking
-        const frankText = event.transcript || frankTranscript;
-        if (frankText.trim()) {
-          setConversationHistory(prev => [...prev, { role: 'assistant', text: frankText }]);
+        // Bob finished speaking
+        const bobText = event.transcript || bobTranscript;
+        if (bobText.trim()) {
+          setConversationHistory(prev => [...prev, { role: 'assistant', text: bobText }]);
         }
-        setFrankTranscript('');
+        setBobTranscript('');
         break;
 
       case 'response.audio.done':
@@ -230,12 +230,12 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
 
       case 'error':
         console.error("Realtime error:", event.error);
-        toast.error("Frank had an issue");
+        toast.error("Bob had an issue");
         break;
     }
-  }, [frankTranscript]);
+  }, [bobTranscript]);
 
-  const handleOpenFrank = useCallback(async () => {
+  const handleOpenBob = useCallback(async () => {
     setIsOpen(true);
     // Small delay to let dialog open, then connect
     setTimeout(() => connect(), 200);
@@ -244,16 +244,16 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
   const handleClose = useCallback(() => {
     disconnect();
     setUserTranscript('');
-    setFrankTranscript('');
+    setBobTranscript('');
     setConversationHistory([]);
     setIsOpen(false);
   }, [disconnect]);
 
   return (
     <>
-      {/* Floating Frank Avatar */}
+      {/* Floating Bob Avatar */}
       <button
-        onClick={handleOpenFrank}
+        onClick={handleOpenBob}
         disabled={isConnecting}
         className={cn(
           "fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-xl",
@@ -262,7 +262,7 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
           "hover:scale-105 active:scale-95",
           isConnecting && "opacity-60"
         )}
-        aria-label="Talk to Frank"
+        aria-label="Talk to Bob"
       >
         {isConnecting ? (
           <Loader2 className="h-7 w-7 animate-spin text-primary-foreground" />
@@ -271,7 +271,7 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
         )}
       </button>
       <span className="fixed bottom-2 right-8 z-50 text-xs font-medium text-muted-foreground">
-        Frank
+        Bob
       </span>
 
       {/* Conversation Dialog */}
@@ -280,7 +280,7 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
           {/* Header */}
           <div className="bg-gradient-to-br from-primary to-primary/80 p-6 text-center text-primary-foreground relative">
             <div className="text-5xl mb-2">👨‍🔧</div>
-            <p className="font-semibold text-lg">Frank</p>
+            <p className="font-semibold text-lg">Bob</p>
             
             {/* Status indicators */}
             <div className="flex items-center justify-center gap-1.5 mt-2 min-h-[24px]">
@@ -323,7 +323,7 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
               <div className="flex items-center justify-center h-24">
                 <div className="text-center">
                   <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Calling Frank...</p>
+                  <p className="text-sm text-muted-foreground">Calling Bob...</p>
                 </div>
               </div>
             )}
@@ -338,7 +338,7 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
                 )}
               >
                 <p className="text-muted-foreground text-xs mb-1">
-                  {msg.role === 'user' ? 'You:' : 'Frank:'}
+                  {msg.role === 'user' ? 'You:' : 'Bob:'}
                 </p>
                 <p className="leading-relaxed">{msg.text}</p>
               </div>
@@ -352,16 +352,16 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
               </div>
             )}
 
-            {/* Live Frank transcript */}
-            {frankTranscript && (
+            {/* Live Bob transcript */}
+            {bobTranscript && (
               <div className="bg-primary/10 rounded-lg p-3 text-sm mr-4">
-                <p className="text-muted-foreground text-xs mb-1">Frank:</p>
-                <p className="leading-relaxed">{frankTranscript}</p>
+                <p className="text-muted-foreground text-xs mb-1">Bob:</p>
+                <p className="leading-relaxed">{bobTranscript}</p>
               </div>
             )}
 
             {/* Initial listening state */}
-            {isConnected && conversationHistory.length === 0 && !frankTranscript && !isConnecting && (
+            {isConnected && conversationHistory.length === 0 && !bobTranscript && !isConnecting && (
               <div className="flex items-center justify-center h-20">
                 <div className="text-center">
                   <div className="flex gap-1 justify-center mb-2">
@@ -386,7 +386,7 @@ export function FrankAvatar({ dealerName }: FrankAvatarProps) {
               ) : (
                 <>
                   <MicOff className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Frank is talking...</span>
+                  <span className="text-sm text-muted-foreground">Bob is talking...</span>
                 </>
               )}
             </div>

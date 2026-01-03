@@ -26,7 +26,7 @@ const queryClient = new QueryClient();
 // ============================================================================
 // ROUTING: DEALER MODE vs ADMIN MODE
 // ============================================================================
-// PHASE 3: VALO/Ask Frank is admin-only during testing phase.
+// PHASE 3: VALO/Ask Bob is admin-only during testing phase.
 // Routes wrapped in <AdminGuard> redirect non-admins to home page.
 // 
 // - Admin-only (Phase 3): valo, log-sale, sales-review, fingerprints, 
