@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, TrendingUp, DollarSign, Clock, BarChart3, AlertCircle, CheckCircle, Camera, MessageSquare } from 'lucide-react';
+import { Loader2, Sparkles, TrendingUp, DollarSign, Clock, BarChart3, AlertCircle, CheckCircle, Camera, MessageSquare, Mic, Info } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ValoParsedVehicle, ValoResult, ValoTier, ValuationConfidence, formatCurrency } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,6 +15,9 @@ import { dataService } from '@/services/dataService';
 import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { SendPicsToFrank } from '@/components/valo/SendPicsToFrank';
+import { MeetFrankModal } from '@/components/valo/MeetFrankModal';
+import { VoiceInput } from '@/components/valo/VoiceInput';
+import { FrankResponseLogger, determineFrankResponseType } from '@/components/valo/FrankResponseLogger';
 
 // ============================================================================
 // SYSTEM: FRANK (VALO ENGINE)
@@ -541,18 +544,51 @@ export default function ValoPage() {
   };
 
 
+  // Handle voice input - append to existing text
+  const handleVoiceTranscript = useCallback((text: string) => {
+    setInputText(prev => prev ? `${prev} ${text}` : text);
+  }, []);
+
+  // Build vehicle description for logging
+  const vehicleDesc = parsed ? [
+    parsed.year,
+    parsed.make,
+    parsed.model,
+    parsed.variant_family
+  ].filter(Boolean).join(' ') : '';
+
   return (
     <AppLayout>
+      {/* Meet Frank onboarding modal */}
+      <MeetFrankModal />
+      
+      {/* Response logger for Phase 3 testing */}
+      <FrankResponseLogger 
+        result={result} 
+        vehicleDesc={vehicleDesc} 
+        isAdmin={isAdmin} 
+      />
+      
       <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="p-3 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground">
-            <Sparkles className="h-6 w-6" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground">
+              <Sparkles className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">Ask Frank</h1>
+              <p className="text-muted-foreground">Your blunt, no-BS valuation mate</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold">VALO</h1>
-            <p className="text-muted-foreground">Ask VALO about a car</p>
-          </div>
+          
+          {/* Admin badge */}
+          {isAdmin && (
+            <Badge variant="outline" className="gap-1">
+              <Info className="h-3 w-3" />
+              Phase 3 Testing
+            </Badge>
+          )}
         </div>
 
         {/* Input Form */}
@@ -598,6 +634,12 @@ export default function ValoPage() {
             </div>
 
             <div className="flex items-center gap-3 pt-2">
+              {/* Voice Input - Push to Talk */}
+              <VoiceInput 
+                onTranscript={handleVoiceTranscript}
+                disabled={isParsing || isValuating}
+              />
+              
               <Button 
                 onClick={handleRunValo} 
                 disabled={isParsing || isValuating || !inputText.trim()}
@@ -612,12 +654,12 @@ export default function ValoPage() {
                 ) : isValuating ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Thinking...
+                    Frank's thinking...
                   </>
                 ) : (
                   <>
                     <Sparkles className="h-4 w-4" />
-                    Run VALO
+                    Ask Frank
                   </>
                 )}
               </Button>
@@ -628,6 +670,11 @@ export default function ValoPage() {
                 </span>
               )}
             </div>
+            
+            <p className="text-xs text-muted-foreground">
+              <Mic className="h-3 w-3 inline mr-1" />
+              Hold the mic button to speak, or just type
+            </p>
           </CardContent>
         </Card>
 
@@ -661,10 +708,16 @@ export default function ValoPage() {
                     {getConfidenceBadge(result.confidence)}
                     {getTierBadge(result.tier)}
                     <Badge variant="secondary">n = {result.sample_size}</Badge>
+                    {/* Admin: Show response type for testing */}
+                    {isAdmin && (
+                      <Badge variant="outline" className="font-mono text-xs">
+                        {determineFrankResponseType(result)}
+                      </Badge>
+                    )}
                   </div>
 
-                  {/* Send Pics to Frank - always visible on responses */}
-                  {currentUser?.dealer_name && (
+                  {/* Send Pics to Frank - show when confidence not HIGH */}
+                  {currentUser?.dealer_name && result.confidence !== 'HIGH' && (
                     <div className="pt-2">
                       <SendPicsToFrank
                         result={result}
@@ -676,6 +729,13 @@ export default function ValoPage() {
                         }}
                       />
                     </div>
+                  )}
+                  
+                  {/* High confidence - no need for pics */}
+                  {result.confidence === 'HIGH' && (
+                    <p className="text-xs text-green-600 pt-2">
+                      ✓ High confidence – no photo review needed
+                    </p>
                   )}
                 </div>
               </div>

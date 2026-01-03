@@ -26,10 +26,12 @@ const queryClient = new QueryClient();
 // ============================================================================
 // ROUTING: DEALER MODE vs ADMIN MODE
 // ============================================================================
+// PHASE 3: VALO/Ask Frank is admin-only during testing phase.
 // Routes wrapped in <AdminGuard> redirect non-admins to home page.
-// - Admin-only: log-sale, sales-review, fingerprints, saved-searches, 
-//               alerts, admin-tools, buyer-review-queue
-// - Shared: /, upcoming-auctions, search-lots, matches, valuation, valo, help
+// 
+// - Admin-only (Phase 3): valo, log-sale, sales-review, fingerprints, 
+//                         saved-searches, alerts, admin-tools, buyer-review-queue
+// - Shared: /, upcoming-auctions, search-lots, matches, valuation, help
 // ============================================================================
 
 const App = () => (
@@ -46,8 +48,13 @@ const App = () => (
             <Route path="/search-lots" element={<SearchLotsPage />} />
             <Route path="/matches" element={<MatchesPage />} />
             <Route path="/valuation" element={<ValuationPage />} />
-            <Route path="/valo" element={<ValoPage />} />
             <Route path="/help" element={<HelpPage />} />
+            
+            {/* === ADMIN-ONLY ROUTES: Redirect non-admins to home === */}
+            {/* PHASE 3: VALO is admin-only during testing */}
+            <Route path="/valo" element={
+              <AdminGuard><ValoPage /></AdminGuard>
+            } />
             
             {/* === ADMIN-ONLY ROUTES: Redirect non-admins to home === */}
             <Route path="/log-sale" element={

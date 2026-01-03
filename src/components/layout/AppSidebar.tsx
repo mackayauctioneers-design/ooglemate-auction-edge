@@ -28,9 +28,9 @@ import { PushNotificationPrompt } from '@/components/notifications/PushNotificat
 // ============================================================================
 // NAVIGATION: DEALER MODE vs ADMIN MODE
 // ============================================================================
-// Dealer Mode: Search Lots, Upcoming Auctions, Matches (results only), VALO,
-//              Send Pics to Frank, their own alerts/notifications
-// Admin Mode: Everything above PLUS Admin Tools, full diagnostics, 
+// PHASE 3: VALO/Ask Frank is admin-only during testing phase.
+// Dealer Mode: Search Lots, Upcoming Auctions, Matches (results only), Valuation
+// Admin Mode: Everything above PLUS Ask Frank, Admin Tools, full diagnostics, 
 //             Buyer Review Queue, Sales Review, Fingerprints, etc.
 // ============================================================================
 
@@ -40,8 +40,10 @@ const navItems = [
   { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
   { path: '/search-lots', label: 'Search Lots', icon: Search },
   { path: '/matches', label: 'Matches', icon: Crosshair },
-  { path: '/valo', label: 'VALO', icon: Sparkles, highlight: true },
   { path: '/valuation', label: 'Valuation', icon: DollarSign },
+  
+  // === ADMIN ONLY: PHASE 3 - Ask Frank testing ===
+  { path: '/valo', label: 'Ask Frank', icon: Sparkles, highlight: true, adminOnly: true },
   
   // === ADMIN ONLY: Sales management ===
   { path: '/log-sale', label: 'Log Sale', icon: FileText, adminOnly: true },
