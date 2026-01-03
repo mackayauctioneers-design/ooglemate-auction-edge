@@ -697,6 +697,21 @@ export default function MatchesPage() {
                 </Tooltip>
               </TooltipProvider>
             )}
+            {/* MANUAL badge for manual fingerprints */}
+            {fingerprint.is_manual === 'Y' && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="text-xs border-purple-500/50 text-purple-400">
+                      MANUAL
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <span>Created manually for testing/prospecting. Excluded from profit analytics.</span>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
         </TableCell>
         <TableCell className="text-center">

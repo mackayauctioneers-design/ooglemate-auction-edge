@@ -15,6 +15,7 @@ import SalesReviewPage from "./pages/SalesReviewPage";
 import MatchesPage from "./pages/MatchesPage";
 import SavedSearchesPage from "./pages/SavedSearchesPage";
 import AdminToolsPage from "./pages/AdminToolsPage";
+import ValuationPage from "./pages/ValuationPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -37,6 +38,7 @@ const App = () => (
             <Route path="/saved-searches" element={<SavedSearchesPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/admin-tools" element={<AdminToolsPage />} />
+            <Route path="/valuation" element={<ValuationPage />} />
             <Route path="/help" element={<HelpPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

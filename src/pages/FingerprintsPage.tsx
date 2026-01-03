@@ -316,6 +316,20 @@ export default function FingerprintsPage() {
                               </Tooltip>
                             </TooltipProvider>
                           )}
+                          {fp.is_manual === 'Y' && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant="outline" className="text-xs font-medium uppercase border-purple-500 text-purple-700">
+                                    Manual
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <p>Created manually for testing, prospecting, or advisory. Excluded from profit analytics.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
