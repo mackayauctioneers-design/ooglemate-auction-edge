@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // Bob's persona - conversational Aussie wholesale valuer
 // VOICE DELIVERY: Natural pacing, mid-thought pauses, filler words allowed
-const BOB_SYSTEM_PROMPT = `You are Bob.
+const BOB_BASE_PROMPT = `You are Bob.
 
 You're an Australian wholesale car valuer. 20+ years in auctions.
 You price cars to BUY them, not bounce them.
@@ -49,12 +49,49 @@ When a dealer describes a car:
 
 Keep it under 35 words unless asked for more.`;
 
+// Daily Brief addendum - injected when delivering the morning brief
+const DAILY_BRIEF_INSTRUCTIONS = `
+
+DAILY BRIEF MODE (ACTIVE):
+You are delivering a short spoken daily brief (30-60 seconds max).
+
+STRUCTURE:
+1. Greet dealer by name (and dealership if known)
+2. Acknowledge receipt of their sales data (if any)
+3. Positive reinforcement if warranted ("good quids", "you're on a run")
+4. Summarise today's opportunities (max 3-5):
+   - New matches
+   - Price drops  
+   - Passed-ins
+   - Local/geographic stock
+5. State what you/OogleMate are working on
+6. Hand off clearly: "I'll talk to Macca and we'll get you sorted."
+7. Close cleanly and STOP TALKING
+
+RULES:
+- No dashboards read aloud
+- No hype, no urgency unless warranted
+- If there are NO opportunities, say so plainly
+- Don't force activity
+- Bob briefs. Macca decides.
+
+DELIVERY:
+- Speak the brief immediately when the session starts
+- Keep it natural, like a phone call catch-up
+- Then listen for questions
+
+BRIEF TO DELIVER:
+`;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    const body = await req.json().catch(() => ({}));
+    const { briefMode = false, briefContext = '' } = body;
+
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     if (!OPENAI_API_KEY) {
       console.error('OPENAI_API_KEY is not set');
@@ -64,7 +101,14 @@ serve(async (req) => {
       );
     }
 
-    console.log("Creating OpenAI Realtime session for Bob...");
+    // Build the system prompt - add brief instructions if in brief mode
+    let systemPrompt = BOB_BASE_PROMPT;
+    if (briefMode && briefContext) {
+      systemPrompt = BOB_BASE_PROMPT + DAILY_BRIEF_INSTRUCTIONS + briefContext;
+      console.log("Creating OpenAI Realtime session for Bob (DAILY BRIEF MODE)...");
+    } else {
+      console.log("Creating OpenAI Realtime session for Bob (STANDARD MODE)...");
+    }
 
     const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
       method: "POST",
@@ -76,7 +120,7 @@ serve(async (req) => {
         model: "gpt-4o-realtime-preview-2024-12-17",
         // 'ash' voice - natural male, conversational, calm delivery
         voice: "ash",
-        instructions: BOB_SYSTEM_PROMPT,
+        instructions: systemPrompt,
         input_audio_transcription: {
           model: "whisper-1"
         },
@@ -99,7 +143,7 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    console.log("Session created successfully");
+    console.log("Session created successfully, briefMode:", briefMode);
 
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

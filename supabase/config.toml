@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.bob-tts]
 verify_jwt = false
+
+[functions.bob-daily-brief]
+verify_jwt = false
