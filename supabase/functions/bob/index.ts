@@ -44,6 +44,9 @@ interface WholesalePricing {
   marginBand: string;            // e.g. "8-12%" 
   observedBuyRange?: { min: number; max: number };  // Guardrail range
   liquidityWarning?: string | null;  // Warning for slow movers
+  isHitCar?: boolean;            // HIT car flag (cost-anchor mode)
+  hitCarReason?: string;         // Why it's a HIT car
+  lastKnownOwe?: number;         // Anchor price for HIT cars
 }
 
 interface ValuationData {
@@ -74,6 +77,21 @@ const POOR_LIQUIDITY_MODELS: Record<string, string[]> = {
   'bmw': ['1 series', '118i', '120i', '125i'],
   'mercedes': ['a-class', 'a180', 'a200', 'a250', 'b-class'],
   'mini': ['cooper', 'one', 'countryman', 'clubman'],
+};
+
+// Euro sedans are also HIT cars
+const EURO_SEDANS: Record<string, string[]> = {
+  'bmw': ['3 series', '320i', '330i', '5 series', '520i', '530i'],
+  'mercedes': ['c-class', 'c200', 'c300', 'e-class', 'e200', 'e300'],
+  'audi': ['a4', 'a5', 'a6'],
+  'volkswagen': ['passat', 'arteon'],
+  'volvo': ['s60', 's90', 'v60', 'v90'],
+};
+
+// HIT car thresholds
+const HIT_CAR_THRESHOLDS = {
+  HIGH_DAYS_IN_STOCK: 45,          // Avg days > 45 = slow mover
+  LARGE_MARGIN_SPREAD: 0.25,       // Gross > 25% of cost = likely retail margin, not trade
 };
 
 // Calculate recency weight (90 days = 1.0, older = decaying)
@@ -136,6 +154,102 @@ function calculatePoorLiquidityDiscount(make: string, model: string): { discount
   return { discount: 0, reason: null };
 }
 
+// Check if vehicle is a Euro sedan (HIT car category)
+function isEuroSedan(make: string, model: string): boolean {
+  const makeLower = make.toLowerCase().trim();
+  const modelLower = model.toLowerCase().trim();
+  
+  for (const [euroMake, models] of Object.entries(EURO_SEDANS)) {
+    if (makeLower.includes(euroMake) || euroMake.includes(makeLower)) {
+      for (const euroModel of models) {
+        if (modelLower.includes(euroModel) || euroModel.includes(modelLower)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Determine if this is a HIT car and why
+interface HitCarAnalysis {
+  isHitCar: boolean;
+  reasons: string[];
+  lastKnownOwe: number | null;
+  marginFromRetail: boolean;
+}
+
+function analyzeHitCarStatus(
+  comps: WeightedComp[],
+  make: string,
+  model: string,
+  avgDaysInStock: number,
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW'
+): HitCarAnalysis {
+  const reasons: string[] = [];
+  let marginFromRetail = false;
+  
+  // Get cost (owe) prices
+  const owePrices = comps
+    .map(wc => parseFloat(String(wc.record.total_cost)) || 0)
+    .filter(p => p > 0);
+  
+  const lastKnownOwe = owePrices.length > 0 ? calculateMedian(owePrices) : null;
+  
+  // Check each HIT car criterion
+  
+  // 1. High days_in_stock historically
+  if (avgDaysInStock > HIT_CAR_THRESHOLDS.HIGH_DAYS_IN_STOCK) {
+    reasons.push(`Slow seller (avg ${avgDaysInStock} days in stock)`);
+  }
+  
+  // 2. Large spread between cost and sell (margin came from retail, not trade)
+  if (owePrices.length > 0) {
+    const sellPrices = comps
+      .map(wc => parseFloat(String(wc.record.sell_price)) || 0)
+      .filter(p => p > 0);
+    
+    if (sellPrices.length > 0) {
+      const medianOwe = calculateMedian(owePrices);
+      const medianSell = calculateMedian(sellPrices);
+      const marginRatio = (medianSell - medianOwe) / medianOwe;
+      
+      if (marginRatio > HIT_CAR_THRESHOLDS.LARGE_MARGIN_SPREAD) {
+        reasons.push(`Retail margin (${(marginRatio * 100).toFixed(0)}% spread)`);
+        marginFromRetail = true;
+      }
+    }
+  }
+  
+  // 3. Known slow mover model
+  const { reason: liquidityReason } = calculatePoorLiquidityDiscount(make, model);
+  if (liquidityReason) {
+    reasons.push(liquidityReason);
+  }
+  
+  // 4. Euro sedan
+  if (isEuroSedan(make, model)) {
+    reasons.push('Euro sedan (known hard work)');
+  }
+  
+  // 5. Low or medium confidence
+  if (confidence === 'LOW') {
+    reasons.push('Low data confidence');
+  } else if (confidence === 'MEDIUM') {
+    reasons.push('Medium data confidence');
+  }
+  
+  // It's a HIT car if ANY criterion is met
+  const isHitCar = reasons.length > 0;
+  
+  return {
+    isHitCar,
+    reasons,
+    lastKnownOwe,
+    marginFromRetail
+  };
+}
+
 // Get target margin band based on price
 function getTargetMarginBand(estimatedValue: number): { margin: number; band: string } {
   if (estimatedValue < 30000) {
@@ -159,11 +273,13 @@ function calculateMedian(values: number[]): number {
 }
 
 // Calculate wholesale "own it" number - GUARDRAIL: Must stay within observed range
+// HIT CAR RULE: If vehicle is a HIT car, anchor to LAST KNOWN OWE, not sell price
 function calculateWholesalePricing(
   comps: WeightedComp[],
   make: string,
   model: string,
-  avgDaysInStock: number
+  avgDaysInStock: number,
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW'
 ): WholesalePricing | null {
   const sellPrices = comps
     .map(wc => parseFloat(String(wc.record.sell_price)) || 0)
@@ -186,7 +302,10 @@ function calculateWholesalePricing(
   // Step 2: Determine target margin by price band
   const { margin: targetMargin, band: marginBand } = getTargetMarginBand(medianSellPrice);
   
-  // Step 3: Calculate risk discounts
+  // Step 3: Analyze if this is a HIT car (cost-anchor mode)
+  const hitAnalysis = analyzeHitCarStatus(comps, make, model, avgDaysInStock, confidence);
+  
+  // Step 4: Calculate risk discounts
   const daysRisk = calculateDaysInStockRisk(avgDaysInStock);
   const hardWorkRisk = calculateHardWorkRisk(make);
   const { discount: liquidityDiscount, reason: liquidityReason } = calculatePoorLiquidityDiscount(make, model);
@@ -194,18 +313,37 @@ function calculateWholesalePricing(
   // Total risk = days + hardwork + mandatory liquidity discount (non-overlapping)
   const totalRiskDiscount = Math.min(daysRisk + hardWorkRisk + liquidityDiscount, 0.20); // Cap at 20%
   
-  // Step 4: Calculate "own it" wholesale number
-  // Formula: medianSell * (1 - targetMargin) * (1 - riskDiscount)
-  const baseWholesale = medianSellPrice * (1 - targetMargin);
-  let ownItNumber = Math.round(baseWholesale * (1 - totalRiskDiscount));
+  let ownItNumber: number;
   
-  // GUARDRAIL: Own-it number MUST stay within observed buy range
-  // Never inflate above what we've actually paid, never go below observed minimum
-  if (ownItNumber > observedBuyMax) {
-    console.log(`Guardrail: Capping own-it from $${ownItNumber} to observed max $${observedBuyMax}`);
-    ownItNumber = observedBuyMax;
+  // HIT CAR RULE: Anchor to LAST KNOWN OWE, not sell price
+  if (hitAnalysis.isHitCar && hitAnalysis.lastKnownOwe) {
+    console.log(`HIT CAR MODE: Anchoring to last known owe $${hitAnalysis.lastKnownOwe} instead of sell price`);
+    
+    // For HIT cars, start from last known owe with only minimal uplift
+    // Minimal uplift = only if we have very strong market evidence (confidence HIGH + low risk)
+    const minimalUplift = (confidence === 'HIGH' && totalRiskDiscount < 0.05) ? 0.02 : 0; // Max 2% uplift
+    
+    // Apply minimal uplift (if any) but cap at last known owe
+    ownItNumber = Math.round(hitAnalysis.lastKnownOwe * (1 + minimalUplift));
+    
+    // HIT cars: NEVER go above historical owe unless photos confirm exceptional condition
+    // This logic defaults to capping at lastKnownOwe; override happens via admin/photos
+    if (ownItNumber > hitAnalysis.lastKnownOwe) {
+      console.log(`HIT CAR: Capping at last known owe $${hitAnalysis.lastKnownOwe}`);
+      ownItNumber = hitAnalysis.lastKnownOwe;
+    }
+    
+  } else {
+    // Standard calculation: Formula: medianSell * (1 - targetMargin) * (1 - riskDiscount)
+    const baseWholesale = medianSellPrice * (1 - targetMargin);
+    ownItNumber = Math.round(baseWholesale * (1 - totalRiskDiscount));
+    
+    // GUARDRAIL: Own-it number MUST stay within observed buy range
+    if (ownItNumber > observedBuyMax) {
+      console.log(`Guardrail: Capping own-it from $${ownItNumber} to observed max $${observedBuyMax}`);
+      ownItNumber = observedBuyMax;
+    }
   }
-  // Allow going below observed min if discounts justify it (we're being conservative)
   
   return {
     ownItNumber,
@@ -215,7 +353,10 @@ function calculateWholesalePricing(
     riskDiscountApplied: totalRiskDiscount,
     marginBand,
     observedBuyRange: { min: observedBuyMin, max: observedBuyMax },
-    liquidityWarning: liquidityReason
+    liquidityWarning: liquidityReason,
+    isHitCar: hitAnalysis.isHitCar,
+    hitCarReason: hitAnalysis.reasons.join(', '),
+    lastKnownOwe: hitAnalysis.lastKnownOwe
   } as WholesalePricing;
 }
 
@@ -370,10 +511,7 @@ function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number, 
   const minPrice = Math.min(...validBuyPrices);
   const maxPrice = Math.max(...validBuyPrices);
   
-  // Calculate wholesale pricing
-  const wholesalePricing = calculateWholesalePricing(weightedComps, make, model, avgDaysInStock);
-  
-  // Determine confidence
+  // Determine confidence FIRST (needed for HIT car analysis)
   let confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   let confidenceReason: string;
   
@@ -389,6 +527,9 @@ function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number, 
     confidence = 'LOW';
     confidenceReason = `Only ${validBuyPrices.length} comparable sale(s) found`;
   }
+  
+  // Calculate wholesale pricing (with confidence for HIT car analysis)
+  const wholesalePricing = calculateWholesalePricing(weightedComps, make, model, avgDaysInStock, confidence);
   
   return {
     comps: weightedComps,
@@ -422,10 +563,29 @@ Sample size: ${compsCount} comparable sales
 
   // PRIMARY OUTPUT: Own-it wholesale number
   if (wp) {
-    context += `=== OWN-IT WHOLESALE NUMBER ===
+    // HIT CAR: Special output for cost-anchor mode
+    if (wp.isHitCar) {
+      context += `=== ⚠️ HIT CAR - COST ANCHOR MODE ===
+This is a HIT car — price it off what we owed last time, not what we sold it for.
+Reason: ${wp.hitCarReason}
+Last known OWE (anchor): $${wp.lastKnownOwe?.toLocaleString() || 'N/A'}
+Wholesale BUY price: $${wp.ownItNumber.toLocaleString()}
+
+HARD-WORK CAR RULES:
+- Anchor pricing to LAST KNOWN OWE, ignore retail outliers
+- Only minimal uplift if strong market evidence exists
+- Bob may NOT quote above historical owe unless:
+  * Photos confirm exceptional condition
+  * OR explicit dealer override is applied
+
+`;
+    } else {
+      context += `=== OWN-IT WHOLESALE NUMBER ===
 Wholesale BUY price: $${wp.ownItNumber.toLocaleString()}
 Target margin band: ${wp.marginBand}
 `;
+    }
+    
     if (wp.observedBuyRange) {
       context += `GUARDRAIL: Observed buy range from YOUR data: $${wp.observedBuyRange.min.toLocaleString()} - $${wp.observedBuyRange.max.toLocaleString()}
 `;
@@ -474,6 +634,17 @@ Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
 - If the model is flagged as poor liquidity, the discount is MANDATORY
 - Use retail context only to explain potential upside, never to justify buy price
 `;
+
+  // HIT CAR INSTRUCTION
+  if (wp && wp.isHitCar) {
+    context += `\n[HIT CAR INSTRUCTION]:
+- This is a HIT car. Say explicitly: "This is a HIT car — price it off what we owed last time, not what we sold it for."
+- Anchor ALL pricing to the last known owe ($${wp.lastKnownOwe?.toLocaleString() || 'N/A'})
+- Ignore retail outliers completely
+- Only apply minimal uplift (max 2%) if photos confirm exceptional condition
+- You may NOT quote above $${wp.lastKnownOwe?.toLocaleString() || 'N/A'} without photos or dealer override
+`;
+  }
   
   // Add guidance based on confidence
   if (valuation.confidence === 'LOW' || compsCount < 2) {
