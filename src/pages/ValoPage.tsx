@@ -15,13 +15,23 @@ import { dataService } from '@/services/dataService';
 import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
+// ============================================================================
 // FRANK (VALO) Response Generator - LOCKED LOGIC
-// All responses tied to Sales Log data. Tone must not be softened.
+// ============================================================================
+// Frank is an Australian wholesale buyer ("Aussie knocker") with 20+ years.
+// Plain spoken, confident, straight shooter. Never apologetic about margin.
+// 
+// PERSONALITY RULES:
+// - Light character (footy, Shaz, schooners) ONLY in #1, #2, #3
+// - NO personality in #4 (NEEDS EYES) or #6 (HARD NO)
+// - NEVER mention "AI", "assistant", or system internals
+// - Character exists to build trust, not entertainment
+// ============================================================================
 
 interface FrankSignals {
   avgGross: number | null;
   avgDaysToSell: number | null;
-  isRepeatLoser: boolean; // Historical gross <= 0
+  isRepeatLoser: boolean; // Historical gross <= 0 - HARD NO
   isSlow: boolean; // Days to sell > 45
   isHardWork: boolean; // Marginal gross < $1500
   priceband: 'low' | 'mid' | 'high'; // For margin protection
@@ -46,38 +56,68 @@ function calculateFrankSignals(result: ValoResult): FrankSignals {
   };
 }
 
+// Light personality lines - ONLY for #1, #2, #3 responses
+const frankPersonalityLines = [
+  "I've seen a few of these come and go over the years.",
+  "Blokes get excited about these, but the money tells the truth.",
+  "If it stacks up, I'd back it.",
+];
+
+function getOptionalPersonality(): string {
+  // 30% chance to add a light personality line
+  if (Math.random() > 0.7) {
+    return " " + frankPersonalityLines[Math.floor(Math.random() * frankPersonalityLines.length)];
+  }
+  return "";
+}
+
 // FRANK RESPONSE #1: High confidence, good margins, quick turn
+// Light personality ALLOWED
 function frankResponse1(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number, n: number): string {
-  return `Yeah mate, that's a good fighter. Based on what you've paid and got before, I'd want to be ${buyLow} to ${buyHigh} wholesale. Retail it ${sellLow} to ${sellHigh} and she'll be gone in about ${Math.round(days)} days. Got ${n} comps backing this up – solid gear.`;
+  const personality = getOptionalPersonality();
+  return `Yeah mate, that's a good fighter. Based on what you've paid and got before, I'd want to be ${buyLow} to ${buyHigh} wholesale. Retail it ${sellLow} to ${sellHigh} and she'll be gone in about ${Math.round(days)} days. Got ${n} comps backing this up.${personality}`;
 }
 
 // FRANK RESPONSE #2: Medium confidence from network
+// Light personality ALLOWED
 function frankResponse2(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number | null, n: number): string {
-  const daysText = days ? `Typically turning in ${Math.round(days)} days across the network.` : '';
-  return `Alright, I'm pulling from network outcomes here – ${n} comps from other dealers. I'd want to be ${buyLow} to ${buyHigh} to buy it. Retail ask ${sellLow} to ${sellHigh}. ${daysText} Not your direct history, so I'd want eyes on it.`;
+  const daysText = days ? ` Typically turning in ${Math.round(days)} days across the network.` : '';
+  const personality = getOptionalPersonality();
+  return `Alright, I'm pulling from network outcomes here – ${n} comps from other dealers. I'd want to be ${buyLow} to ${buyHigh} to buy it. Retail ask ${sellLow} to ${sellHigh}.${daysText} Not your direct history, so I'd want eyes on it.${personality}`;
 }
 
-// FRANK RESPONSE #3: Low confidence / proxy only
+// FRANK RESPONSE #3: Low confidence / proxy only (NEEDS EYES)
+// Light personality ALLOWED
 function frankResponse3(vehicleDesc: string, buyLow: string, buyHigh: string): string {
-  return `Look mate, I'm working off limited data here – advisory only. Rough guide says ${buyLow} to ${buyHigh} to buy it, but don't hold me to that. Get me some photos and I'll have one of the boys give it a proper look.`;
+  const personality = getOptionalPersonality();
+  return `Look mate, I'm working off limited data here – advisory only. Rough guide says ${buyLow} to ${buyHigh} to buy it, but don't hold me to that. Get me some photos and I'll have one of the boys give it a proper look.${personality}`;
 }
 
-// FRANK RESPONSE #4: REPEAT LOSER - negative history
-function frankResponse4(vehicleDesc: string, avgGross: number, days: number | null, n: number): string {
-  const daysText = days ? ` and sat for ${Math.round(days)} days` : '';
-  return `Mate, I've gotta be straight with you – your history shows you've lost money on these. Average gross was ${formatCurrency(avgGross)}${daysText}. That's ${n} runs where money disappeared. I wouldn't be buying unless the seller's properly motivated and you've fixed what went wrong last time.`;
+// FRANK RESPONSE #4: NO DATA - needs human review
+// NO personality - serious tone only
+function frankResponse4NoData(vehicleDesc: string): string {
+  return `Mate, I haven't got enough runs on the board with ${vehicleDesc || 'this one'} to give you a solid number. Based on limited data – advisory only. I'd want eyes on it before saying anything. Get me some photos and I'll have one of the boys take a proper look.`;
 }
 
 // FRANK RESPONSE #5: HARD WORK - marginal profit
+// Cautious but straightforward
 function frankResponse5(vehicleDesc: string, buyLow: string, buyHigh: string, avgGross: number, days: number | null): string {
   const daysText = days ? ` in ${Math.round(days)} days` : '';
-  return `This is honest bit of gear but it's hard work. Your margin's typically around ${formatCurrency(avgGross)}${daysText}. I'd want to be ${buyLow} to ${buyHigh} – any sillier and the money disappears. Make sure there's no hidden grief.`;
+  return `This is honest bit of gear but it's hard work. Based on what you've paid and got before, your margin's typically around ${formatCurrency(avgGross)}${daysText}. I'd want to be ${buyLow} to ${buyHigh} – any sillier and the money disappears. I've been burnt on worse – that's why I'm cautious.`;
 }
 
-// FRANK RESPONSE #6: SLOW TURNER - capital tied up
-function frankResponse6(vehicleDesc: string, buyLow: string, buyHigh: string, days: number, avgGross: number | null): string {
+// FRANK RESPONSE #6: HARD NO - repeat loser / negative history
+// NO personality, NO jokes - dead serious
+function frankResponse6HardNo(vehicleDesc: string, avgGross: number, days: number | null, n: number): string {
+  const daysText = days ? ` and sat for ${Math.round(days)} days` : '';
+  return `Mate, I've gotta be straight with you – your history shows you've lost money on these. Based on what you've paid and got before, average gross was ${formatCurrency(avgGross)}${daysText}. That's ${n} runs where money disappeared. I wouldn't be buying unless the seller's properly motivated and you've fixed what went wrong last time.`;
+}
+
+// FRANK RESPONSE #7: SLOW TURNER - capital tied up
+// Serious but not a hard no
+function frankResponse7Slow(vehicleDesc: string, buyLow: string, buyHigh: string, days: number, avgGross: number | null): string {
   const grossText = avgGross ? `Gross is typically ${formatCurrency(avgGross)} but` : `But`;
-  return `These are slow. ${grossText} you're looking at ${Math.round(days)} days average to move them. I'd want to be ${buyLow} to ${buyHigh} to protect yourself. Factor in floorplan and the aggravation – money's tied up.`;
+  return `These are slow. ${grossText} you're looking at ${Math.round(days)} days average to move them. Based on what you've paid and got before, I'd want to be ${buyLow} to ${buyHigh} to protect yourself. Factor in floorplan and the aggravation – money's tied up.`;
 }
 
 // Generate VALO's conversational response in Australian wholesale buyer tone
@@ -93,9 +133,9 @@ function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): st
     parsed.variant_family
   ].filter(Boolean).join(' ');
 
-  // No data case - NEVER invent confidence
+  // No data case - NEVER invent confidence (NEEDS EYES #4)
   if (sample_size === 0 || !suggested_buy_range) {
-    return `Mate, I haven't got enough runs on the board with ${vehicleDesc || 'this one'} to give you a solid number. Based on limited data – advisory only. I'd want eyes on it before saying anything. Get me some photos and I'll have one of the boys take a proper look.`;
+    return frankResponse4NoData(vehicleDesc);
   }
 
   const buyLow = formatCurrency(suggested_buy_range.min);
@@ -108,15 +148,15 @@ function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): st
   const lines: string[] = [];
 
   // RULE: Never override negative sales history
-  // Check for REPEAT LOSER first (gross <= 0)
+  // Check for REPEAT LOSER first (gross <= 0) - HARD NO #6
   if (signals.isRepeatLoser && signals.avgGross !== null) {
-    lines.push(frankResponse4(vehicleDesc, signals.avgGross, result.typical_days_to_sell || null, sample_size));
+    lines.push(frankResponse6HardNo(vehicleDesc, signals.avgGross, result.typical_days_to_sell || null, sample_size));
   }
-  // Check for SLOW TURNER (days > 45)
+  // Check for SLOW TURNER (days > 45) - #7
   else if (signals.isSlow && result.typical_days_to_sell) {
-    lines.push(frankResponse6(vehicleDesc, buyLow, buyHigh, result.typical_days_to_sell, signals.avgGross));
+    lines.push(frankResponse7Slow(vehicleDesc, buyLow, buyHigh, result.typical_days_to_sell, signals.avgGross));
   }
-  // Check for HARD WORK (marginal profit < $1500)
+  // Check for HARD WORK (marginal profit < $1500) - #5
   else if (signals.isHardWork && signals.avgGross !== null) {
     lines.push(frankResponse5(vehicleDesc, buyLow, buyHigh, signals.avgGross, result.typical_days_to_sell || null));
   }
