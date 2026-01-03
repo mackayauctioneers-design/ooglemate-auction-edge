@@ -35,15 +35,15 @@ import { PushNotificationPrompt } from '@/components/notifications/PushNotificat
 // ============================================================================
 
 const navItems = [
+  // === ADMIN ONLY: PHASE 3 - Ask Bob (formerly Frank) at top ===
+  { path: '/valo', label: 'Ask Bob', icon: Sparkles, highlight: true, adminOnly: true },
+  
   // === SHARED: All users ===
   { path: '/', label: "Today's Opportunities", icon: BarChart3 },
   { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
   { path: '/search-lots', label: 'Search Lots', icon: Search },
   { path: '/matches', label: 'Matches', icon: Crosshair },
   { path: '/valuation', label: 'Valuation', icon: DollarSign },
-  
-  // === ADMIN ONLY: PHASE 3 - Ask Frank testing ===
-  { path: '/valo', label: 'Ask Frank', icon: Sparkles, highlight: true, adminOnly: true },
   
   // === ADMIN ONLY: Sales management ===
   { path: '/log-sale', label: 'Log Sale', icon: FileText, adminOnly: true },
