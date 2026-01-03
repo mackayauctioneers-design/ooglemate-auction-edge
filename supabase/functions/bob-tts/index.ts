@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 // Bob TTS: Convert Bob's response text to speech using OpenAI TTS
-// Uses 'onyx' voice - the deepest male voice, closest to Australian character
+// Uses 'alloy' voice with gpt-4o-mini-tts model
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -16,6 +16,7 @@ serve(async (req) => {
     const { text } = await req.json();
     
     if (!text || typeof text !== 'string') {
+      console.error("bob-tts: Missing or invalid text");
       return new Response(
         JSON.stringify({ error: "Text is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -24,35 +25,62 @@ serve(async (req) => {
 
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     if (!OPENAI_API_KEY) {
+      console.error("bob-tts: OPENAI_API_KEY not configured");
       throw new Error("OPENAI_API_KEY not configured");
     }
 
-    // Call OpenAI TTS API
-    // Voice options: alloy, echo, fable, onyx, nova, shimmer
-    // 'onyx' is the deepest male voice - best for Bob's Aussie character
-    const response = await fetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "tts-1",
-        input: text,
-        voice: "onyx",
-        response_format: "mp3",
-        speed: 1.0,
-      }),
-    });
+    console.log(`bob-tts: Processing text (${text.length} chars): "${text.substring(0, 50)}..."`);
+
+    // TTS request with retry logic
+    const makeTTSRequest = async (): Promise<Response> => {
+      return await fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini-tts",
+          input: text,
+          voice: "alloy",
+          response_format: "mp3",
+        }),
+      });
+    };
+
+    // First attempt
+    let response = await makeTTSRequest();
+    console.log(`bob-tts: First attempt - status ${response.status}`);
+
+    // Retry once on 429 after 1.5s
+    if (response.status === 429) {
+      console.log("bob-tts: Rate limited (429), retrying in 1.5s...");
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      response = await makeTTSRequest();
+      console.log(`bob-tts: Retry attempt - status ${response.status}`);
+    }
+
+    // Still 429 after retry
+    if (response.status === 429) {
+      console.error("bob-tts: Still rate limited after retry");
+      return new Response(
+        JSON.stringify({ 
+          error: "Bob's having a smoke — try again in a sec.",
+          retryable: true 
+        }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("OpenAI TTS error:", response.status, errorText);
-      throw new Error(`TTS failed: ${response.status}`);
+      console.error(`bob-tts: OpenAI error - status ${response.status}, body: ${errorText}`);
+      throw new Error(`TTS failed: ${response.status} - ${errorText}`);
     }
 
-    // Return the audio directly as binary
+    // Get binary audio response
     const audioBuffer = await response.arrayBuffer();
+    console.log(`bob-tts: Success - ${audioBuffer.byteLength} bytes, model: gpt-4o-mini-tts`);
 
     return new Response(audioBuffer, {
       headers: {
