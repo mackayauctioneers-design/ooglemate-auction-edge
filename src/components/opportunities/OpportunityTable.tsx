@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/table';
 import { ExternalLink, ChevronUp, ChevronDown } from 'lucide-react';
 import { OpportunityDrawer } from './OpportunityDrawer';
+import { ValoButton } from '@/components/valo/ValoButton';
 import { format } from 'date-fns';
 
 interface OpportunityTableProps {
@@ -161,6 +162,7 @@ export function OpportunityTable({ opportunities, isLoading }: OpportunityTableP
                 >
                   Score <SortIcon field="confidence_score" />
                 </TableHead>
+                <TableHead className="table-header-cell text-center">VALO</TableHead>
                 <TableHead className="table-header-cell text-right">Link</TableHead>
               </TableRow>
             </TableHeader>
@@ -208,6 +210,9 @@ export function OpportunityTable({ opportunities, isLoading }: OpportunityTableP
                     <span className={`mono font-bold ${getConfidenceColor(lot.confidence_score)}`}>
                       {lot.confidence_score}
                     </span>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <ValoButton lot={lot} />
                   </TableCell>
                   <TableCell className="text-right">
                     <Button

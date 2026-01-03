@@ -16,6 +16,7 @@ import MatchesPage from "./pages/MatchesPage";
 import SavedSearchesPage from "./pages/SavedSearchesPage";
 import AdminToolsPage from "./pages/AdminToolsPage";
 import ValuationPage from "./pages/ValuationPage";
+import ValoPage from "./pages/ValoPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +40,7 @@ const App = () => (
             <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/admin-tools" element={<AdminToolsPage />} />
             <Route path="/valuation" element={<ValuationPage />} />
+            <Route path="/valo" element={<ValoPage />} />
             <Route path="/help" element={<HelpPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
