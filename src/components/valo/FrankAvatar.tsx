@@ -1,98 +1,71 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Camera, Loader2, X, Check, Volume2 } from 'lucide-react';
+import { Loader2, X, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
-import { ValoResult, ValoParsedVehicle } from '@/types';
 
 // ============================================================================
-// FRANK: Live phone call, not a chatbot
+// FRANK: Voice-first AI agent - feels like a phone call
 // ============================================================================
-// - Tap Frank → opens listening immediately (like picking up a phone)
-// - Frank SPEAKS his responses (TTS) - no play button needed
-// - If user starts talking, Frank stops speaking and listens
-// - Text always visible for reference
-// - No toggles, no modes - Frank always speaks and listens
+// - Tap Frank → opens and starts listening (like picking up a phone)
+// - User speaks → transcript sent to AI backend
+// - Frank responds via AI → auto-plays TTS
+// - If user talks while Frank speaks → interrupt and listen
+// - No buttons, no toggles - pure voice conversation
 // ============================================================================
 
-interface FrankAvatarProps {
-  onProcess: (text: string) => Promise<void>;
-  isProcessing: boolean;
-  frankResponse: string | null;
-  result: ValoResult | null;
-  parsed: ValoParsedVehicle | null;
-  dealerName?: string;
-  onPhotoSubmitted?: (requestId: string) => void;
-  needsPhotos: boolean;
+interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }
 
-const PHOTO_GUIDES = [
-  { id: 'front', label: 'Front 3/4', required: true },
-  { id: 'rear', label: 'Rear 3/4', required: true },
-  { id: 'interior', label: 'Interior', required: true },
-  { id: 'engine', label: 'Engine', required: true },
-];
+interface FrankAvatarProps {
+  dealerName?: string;
+}
 
-const SILENCE_TIMEOUT_MS = 1800; // Slightly longer for natural speech
+const SILENCE_TIMEOUT_MS = 1800;
 
-// Get Australian male voice if available, otherwise neutral male
+// Get Australian male voice if available
 function getFrankVoice(): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices();
   
-  // Priority: Australian English male voices
   const aussieMale = voices.find(v => 
     v.lang.includes('en-AU') && v.name.toLowerCase().includes('male')
   );
   if (aussieMale) return aussieMale;
   
-  // Fallback: Any Australian English voice
   const aussieVoice = voices.find(v => v.lang.includes('en-AU'));
   if (aussieVoice) return aussieVoice;
   
-  // Fallback: UK/US male voices
   const englishMale = voices.find(v => 
     (v.lang.includes('en-GB') || v.lang.includes('en-US')) && 
-    (v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('daniel') || v.name.toLowerCase().includes('james'))
+    (v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('daniel'))
   );
   if (englishMale) return englishMale;
   
-  // Fallback: Any English voice
-  const englishVoice = voices.find(v => v.lang.startsWith('en'));
-  return englishVoice || null;
+  return voices.find(v => v.lang.startsWith('en')) || null;
 }
 
-export function FrankAvatar({ 
-  onProcess, 
-  isProcessing, 
-  frankResponse, 
-  result, 
-  parsed,
-  dealerName,
-  onPhotoSubmitted,
-  needsPhotos 
-}: FrankAvatarProps) {
+export function FrankAvatar({ dealerName }: FrankAvatarProps) {
   // Conversation state
   const [isOpen, setIsOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [currentTranscript, setCurrentTranscript] = useState('');
   const [isSupported, setIsSupported] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   
-  // Photo capture state
-  const [showPhotoCapture, setShowPhotoCapture] = useState(false);
-  const [photos, setPhotos] = useState<Record<string, File | null>>({});
-  const [isUploading, setIsUploading] = useState(false);
-  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+  // Conversation history for multi-turn
+  const [conversation, setConversation] = useState<ConversationMessage[]>([]);
+  const [latestResponse, setLatestResponse] = useState<string | null>(null);
   
   // Refs
   const recognitionRef = useRef<any>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
   const accumulatedTranscriptRef = useRef('');
   const lastSpokenResponseRef = useRef<string | null>(null);
 
-  // Stop Frank speaking (when user interrupts)
+  // Stop Frank speaking
   const stopSpeaking = useCallback(() => {
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
@@ -104,50 +77,93 @@ export function FrankAvatar({
   const speakResponse = useCallback((text: string) => {
     if (!text || !window.speechSynthesis) return;
     
-    // Don't speak the same response twice
     if (lastSpokenResponseRef.current === text) return;
     lastSpokenResponseRef.current = text;
     
-    // Cancel any ongoing speech
     stopSpeaking();
     
     const utterance = new SpeechSynthesisUtterance(text);
     const voice = getFrankVoice();
-    if (voice) {
-      utterance.voice = voice;
-    }
+    if (voice) utterance.voice = voice;
     utterance.rate = 1.0;
-    utterance.pitch = 0.95; // Slightly lower for male voice
+    utterance.pitch = 0.95;
     utterance.volume = 1.0;
     
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
     
-    // Small delay to ensure voices are loaded
     setTimeout(() => {
       window.speechSynthesis.speak(utterance);
     }, 100);
   }, [stopSpeaking]);
 
-  // Auto-speak Frank's response when it changes
+  // Auto-speak when response changes
   useEffect(() => {
-    if (frankResponse && isOpen && !isProcessing && !isListening) {
-      speakResponse(frankResponse);
+    if (latestResponse && isOpen && !isProcessing && !isListening) {
+      speakResponse(latestResponse);
     }
-  }, [frankResponse, isOpen, isProcessing, isListening, speakResponse]);
+  }, [latestResponse, isOpen, isProcessing, isListening, speakResponse]);
 
-  // Load voices on mount (some browsers load them async)
+  // Load voices
   useEffect(() => {
-    const loadVoices = () => {
-      window.speechSynthesis?.getVoices();
-    };
+    const loadVoices = () => window.speechSynthesis?.getVoices();
     loadVoices();
     window.speechSynthesis?.addEventListener('voiceschanged', loadVoices);
-    return () => {
-      window.speechSynthesis?.removeEventListener('voiceschanged', loadVoices);
-    };
+    return () => window.speechSynthesis?.removeEventListener('voiceschanged', loadVoices);
   }, []);
+
+  // Call Frank AI backend
+  const callFrankAPI = useCallback(async (transcript: string) => {
+    setIsProcessing(true);
+    
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/frank`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({
+            transcript,
+            conversationHistory: conversation,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 429) {
+          toast.error("Too many requests - slow down");
+        } else if (response.status === 402) {
+          toast.error("Credits needed");
+        } else {
+          toast.error(errorData.error || "Frank's having a moment");
+        }
+        return;
+      }
+
+      const data = await response.json();
+      const frankResponse = data.response;
+      
+      if (frankResponse) {
+        // Update conversation history
+        setConversation(prev => [
+          ...prev,
+          { role: 'user', content: transcript },
+          { role: 'assistant', content: frankResponse }
+        ]);
+        setLatestResponse(frankResponse);
+      }
+    } catch (error) {
+      console.error('Frank API error:', error);
+      toast.error("Couldn't reach Frank");
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [conversation]);
 
   // Initialize speech recognition
   useEffect(() => {
@@ -163,15 +179,10 @@ export function FrankAvatar({
     recognition.lang = 'en-AU';
 
     recognition.onresult = (event: any) => {
-      // INTERRUPT: Stop Frank speaking if user starts talking
-      if (isSpeaking) {
-        stopSpeaking();
-      }
+      // Interrupt Frank if user starts talking
+      if (isSpeaking) stopSpeaking();
       
-      // Reset silence timer on any speech
-      if (silenceTimerRef.current) {
-        clearTimeout(silenceTimerRef.current);
-      }
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
       let interimTranscript = '';
       let finalTranscript = '';
@@ -185,15 +196,13 @@ export function FrankAvatar({
         }
       }
 
-      // Accumulate final transcript
       if (finalTranscript) {
         accumulatedTranscriptRef.current = (accumulatedTranscriptRef.current + ' ' + finalTranscript).trim();
       }
 
-      // Show what Frank's hearing (live feedback like a call)
       setCurrentTranscript(accumulatedTranscriptRef.current + (interimTranscript ? ' ' + interimTranscript : ''));
 
-      // Set silence timer - auto-process after natural pause
+      // Auto-process after silence
       silenceTimerRef.current = setTimeout(() => {
         finishListeningAndProcess();
       }, SILENCE_TIMEOUT_MS);
@@ -208,35 +217,15 @@ export function FrankAvatar({
       setIsListening(false);
     };
 
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
+    recognition.onend = () => setIsListening(false);
     recognitionRef.current = recognition;
 
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.abort();
-      }
-      if (silenceTimerRef.current) {
-        clearTimeout(silenceTimerRef.current);
-      }
+      recognitionRef.current?.abort();
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       stopSpeaking();
     };
   }, [isSpeaking, stopSpeaking]);
-
-  // Auto-open photo capture when Frank needs photos
-  useEffect(() => {
-    if (needsPhotos && frankResponse && dealerName && !showPhotoCapture) {
-      const timer = setTimeout(() => {
-        setShowPhotoCapture(true);
-        setCurrentPhotoIndex(0);
-        // Auto-trigger camera
-        setTimeout(() => cameraInputRef.current?.click(), 300);
-      }, 2500);
-      return () => clearTimeout(timer);
-    }
-  }, [needsPhotos, frankResponse, dealerName, showPhotoCapture]);
 
   const finishListeningAndProcess = useCallback(() => {
     if (!recognitionRef.current) return;
@@ -246,12 +235,12 @@ export function FrankAvatar({
 
     const finalText = accumulatedTranscriptRef.current.trim();
     if (finalText) {
-      onProcess(finalText);
+      callFrankAPI(finalText);
     }
     
     accumulatedTranscriptRef.current = '';
     setCurrentTranscript('');
-  }, [onProcess]);
+  }, [callFrankAPI]);
 
   const startListening = useCallback(async () => {
     if (!recognitionRef.current) return;
@@ -269,25 +258,18 @@ export function FrankAvatar({
     }
   }, []);
 
-  // Open Frank = start listening immediately (like answering a call)
+  // Open Frank = start listening immediately
   const handleOpenFrank = useCallback(() => {
     if (isProcessing) return;
     setIsOpen(true);
-    // Small delay to let dialog open, then start listening
     setTimeout(() => startListening(), 200);
   }, [isProcessing, startListening]);
 
   const handleClose = () => {
-    // Stop listening
-    if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop();
-    }
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-    }
-    // Stop speaking
+    recognitionRef.current?.stop();
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     stopSpeaking();
-    lastSpokenResponseRef.current = null; // Reset so response can be spoken again if reopened
+    lastSpokenResponseRef.current = null;
     
     setIsListening(false);
     setCurrentTranscript('');
@@ -295,98 +277,12 @@ export function FrankAvatar({
     setIsOpen(false);
   };
 
-  // Photo capture handlers
-  const handlePhotoCapture = (file: File | null) => {
-    if (!file) return;
-    
-    const currentGuide = PHOTO_GUIDES[currentPhotoIndex];
-    setPhotos(prev => ({ ...prev, [currentGuide.id]: file }));
-    
-    if (currentPhotoIndex < PHOTO_GUIDES.length - 1) {
-      setCurrentPhotoIndex(prev => prev + 1);
-      setTimeout(() => cameraInputRef.current?.click(), 400);
-    } else {
-      handleSubmitPhotos();
-    }
-  };
-
-  const handleSubmitPhotos = async () => {
-    if (!result || !parsed || !dealerName) return;
-    
-    const hasAllRequired = PHOTO_GUIDES.filter(g => g.required).every(g => photos[g.id]);
-    if (!hasAllRequired) {
-      toast.error('Need all photos');
-      return;
-    }
-
-    setIsUploading(true);
-    const requestId = crypto.randomUUID();
-    const photoPaths: string[] = [];
-
-    try {
-      for (const [photoId, file] of Object.entries(photos)) {
-        if (!file) continue;
-        const filePath = `${dealerName}/${requestId}/${photoId}-${Date.now()}.${file.name.split('.').pop()}`;
-        const { error } = await supabase.storage.from('valo-photos').upload(filePath, file);
-        if (error) throw new Error(`Upload failed`);
-        photoPaths.push(filePath);
-      }
-
-      const vehicleSummary = [parsed.year, parsed.make, parsed.model, parsed.variant_family]
-        .filter(Boolean).join(' ');
-
-      await supabase.from('valo_review_requests').insert({
-        id: requestId,
-        dealer_name: dealerName,
-        vehicle_summary: vehicleSummary,
-        frank_response: frankResponse || '',
-        buy_range_min: result.suggested_buy_range?.min || null,
-        buy_range_max: result.suggested_buy_range?.max || null,
-        sell_range_min: result.suggested_sell_range?.min || null,
-        sell_range_max: result.suggested_sell_range?.max || null,
-        confidence: result.confidence,
-        tier: result.tier,
-        parsed_vehicle: parsed as any,
-        photo_paths: photoPaths,
-        status: 'pending',
-      });
-
-      await supabase.from('valo_review_logs').insert({
-        request_id: requestId,
-        action: 'created',
-        actor: dealerName,
-        note: `${photoPaths.length} photos`,
-      });
-
-      toast.success("Sent. I'll get back to you.");
-      setShowPhotoCapture(false);
-      setPhotos({});
-      onPhotoSubmitted?.(requestId);
-    } catch (err) {
-      toast.error('Failed to send');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const uploadedCount = Object.values(photos).filter(Boolean).length;
-
-  // Fallback for unsupported browsers
+  // Fallback text input
   const [fallbackText, setFallbackText] = useState('');
 
   return (
     <>
-      {/* Hidden camera input */}
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(e) => handlePhotoCapture(e.target.files?.[0] || null)}
-      />
-
-      {/* Floating Frank Avatar - tap to call */}
+      {/* Floating Frank Avatar */}
       <button
         onClick={handleOpenFrank}
         disabled={isProcessing}
@@ -409,10 +305,10 @@ export function FrankAvatar({
         Frank
       </span>
 
-      {/* Frank conversation dialog - feels like a call */}
+      {/* Conversation Dialog */}
       <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
         <DialogContent className="max-w-sm p-0 overflow-hidden gap-0">
-          {/* Frank's face - call header */}
+          {/* Header */}
           <div className="bg-gradient-to-br from-primary to-primary/80 p-6 text-center text-primary-foreground">
             <div className="text-5xl mb-2">👨‍🔧</div>
             <p className="font-semibold text-lg">Frank</p>
@@ -430,26 +326,34 @@ export function FrankAvatar({
             )}
           </div>
 
-          {/* Conversation area */}
-          <div className="p-4 min-h-[120px] max-h-[300px] overflow-y-auto">
-            {/* Show what user is saying (live) */}
+          {/* Conversation */}
+          <div className="p-4 min-h-[120px] max-h-[300px] overflow-y-auto space-y-3">
+            {/* Conversation history */}
+            {conversation.slice(-4).map((msg, i) => (
+              <div 
+                key={i} 
+                className={cn(
+                  "rounded-lg p-3 text-sm",
+                  msg.role === 'user' ? "bg-muted" : "bg-primary/10"
+                )}
+              >
+                <p className="text-muted-foreground text-xs mb-1">
+                  {msg.role === 'user' ? 'You:' : 'Frank:'}
+                </p>
+                <p className="leading-relaxed">{msg.content}</p>
+              </div>
+            ))}
+
+            {/* Live transcript */}
             {isListening && currentTranscript && (
-              <div className="bg-muted rounded-lg p-3 text-sm mb-3">
+              <div className="bg-muted rounded-lg p-3 text-sm">
                 <p className="text-muted-foreground text-xs mb-1">You:</p>
                 <p>{currentTranscript}</p>
               </div>
             )}
 
-            {/* Frank's response */}
-            {frankResponse && !isListening && !isProcessing && (
-              <div className="bg-primary/10 rounded-lg p-3 text-sm">
-                <p className="text-muted-foreground text-xs mb-1">Frank:</p>
-                <p className="leading-relaxed">{frankResponse}</p>
-              </div>
-            )}
-
-            {/* Empty state - just started listening */}
-            {isListening && !currentTranscript && (
+            {/* Listening indicator */}
+            {isListening && !currentTranscript && conversation.length === 0 && (
               <div className="flex items-center justify-center h-20">
                 <div className="flex gap-1">
                   <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -459,87 +363,40 @@ export function FrankAvatar({
               </div>
             )}
 
-            {/* Processing state */}
+            {/* Processing */}
             {isProcessing && (
               <div className="flex items-center justify-center h-20">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
               </div>
             )}
 
-            {/* Fallback text input for unsupported browsers */}
-            {!isSupported && !frankResponse && (
-              <div className="space-y-3">
-                <textarea
-                  value={fallbackText}
-                  onChange={(e) => setFallbackText(e.target.value)}
-                  placeholder="Type the car details..."
-                  className="w-full p-3 text-sm border rounded-lg resize-none bg-background"
-                  rows={3}
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey && fallbackText.trim()) {
-                      e.preventDefault();
-                      onProcess(fallbackText.trim());
-                      setFallbackText('');
-                    }
-                  }}
-                />
-              </div>
+            {/* Fallback for unsupported browsers */}
+            {!isSupported && conversation.length === 0 && (
+              <textarea
+                value={fallbackText}
+                onChange={(e) => setFallbackText(e.target.value)}
+                placeholder="Type the car details..."
+                className="w-full p-3 text-sm border rounded-lg resize-none bg-background"
+                rows={3}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && fallbackText.trim()) {
+                    e.preventDefault();
+                    callFrankAPI(fallbackText.trim());
+                    setFallbackText('');
+                  }
+                }}
+              />
             )}
           </div>
 
-          {/* Close button - subtle */}
+          {/* Close button */}
           <button
             onClick={handleClose}
             className="absolute top-3 right-3 text-primary-foreground/70 hover:text-primary-foreground"
           >
             <X className="h-5 w-5" />
           </button>
-        </DialogContent>
-      </Dialog>
-
-      {/* Photo capture dialog */}
-      <Dialog open={showPhotoCapture} onOpenChange={setShowPhotoCapture}>
-        <DialogContent className="max-w-xs p-4">
-          <div className="text-center space-y-4">
-            <Camera className="h-8 w-8 mx-auto text-primary" />
-            <div>
-              <p className="font-medium">
-                {currentPhotoIndex < PHOTO_GUIDES.length 
-                  ? PHOTO_GUIDES[currentPhotoIndex].label
-                  : 'Done!'
-                }
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {uploadedCount}/{PHOTO_GUIDES.length}
-              </p>
-            </div>
-
-            <div className="flex justify-center gap-2">
-              {PHOTO_GUIDES.map((guide, i) => (
-                <div 
-                  key={guide.id}
-                  className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center text-xs border-2",
-                    photos[guide.id] 
-                      ? "border-green-500 bg-green-500/20" 
-                      : i === currentPhotoIndex 
-                        ? "border-primary animate-pulse"
-                        : "border-muted"
-                  )}
-                >
-                  {photos[guide.id] ? <Check className="h-4 w-4 text-green-500" /> : i + 1}
-                </div>
-              ))}
-            </div>
-
-            {isUploading && (
-              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Sending...
-              </div>
-            )}
-          </div>
         </DialogContent>
       </Dialog>
     </>

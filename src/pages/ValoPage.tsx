@@ -578,19 +578,8 @@ export default function ValoPage() {
         )}
       </div>
 
-      {/* Frank Avatar - ONLY entry point */}
-      <FrankAvatar
-        onProcess={handleProcess}
-        isProcessing={isProcessing}
-        frankResponse={frankResponse}
-        result={result}
-        parsed={parsed}
-        dealerName={currentUser?.dealer_name}
-        onPhotoSubmitted={(requestId) => {
-          toast.success("Photos sent! Frank's team will review.");
-        }}
-        needsPhotos={needsPhotos}
-      />
+      {/* Frank Avatar - self-contained AI voice agent */}
+      <FrankAvatar dealerName={currentUser?.dealer_name} />
     </AppLayout>
   );
 }

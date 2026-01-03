@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.valo-parse]
 verify_jwt = false
+
+[functions.frank]
+verify_jwt = false
