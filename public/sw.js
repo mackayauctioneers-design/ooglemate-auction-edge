@@ -52,6 +52,8 @@ self.addEventListener('push', (event) => {
       data: {
         url: data.url || '/',
         alertId: data.alertId,
+        // Bob-specific context for voice playback on tap
+        bobContext: data.data || null,
       },
       actions: [
         { action: 'open', title: 'View' },
@@ -87,6 +89,7 @@ self.addEventListener('notificationclick', (event) => {
   }
 
   const urlToOpen = event.notification.data?.url || '/';
+  const bobContext = event.notification.data?.bobContext || null;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
@@ -98,11 +101,13 @@ self.addEventListener('notificationclick', (event) => {
             type: 'NOTIFICATION_CLICK',
             url: urlToOpen,
             alertId: event.notification.data?.alertId,
+            // Include Bob context for voice playback
+            bobContext: bobContext,
           });
           return;
         }
       }
-      // Open new window if none exists
+      // Open new window if none exists - URL already has bob_context param
       return self.clients.openWindow(urlToOpen);
     })
   );
