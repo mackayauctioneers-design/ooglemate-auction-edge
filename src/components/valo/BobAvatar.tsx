@@ -160,13 +160,24 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
       };
 
       // Get local audio and add to peer connection
-      const localStream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        } 
-      });
+      let localStream: MediaStream;
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          } 
+        });
+      } catch (micError) {
+        console.error("Microphone access denied:", micError);
+        toast.error("Mic access required. Please enable microphone in your browser settings and try again.", {
+          duration: 5000,
+        });
+        disconnect();
+        setIsConnecting(false);
+        return;
+      }
       localStreamRef.current = localStream;
       pc.addTrack(localStream.getTracks()[0]);
       setIsListening(true);
