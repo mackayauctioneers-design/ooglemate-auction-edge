@@ -897,327 +897,138 @@ function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number, 
 }
 
 // Format valuation data for Bob's context
-// GLOBAL OWE-ANCHOR OUTPUT: Bob prices to buy and own, not bounce
+// BOB IS A NARRATOR, NOT A VALUER
+// All pricing is pre-computed. Bob only reads the script.
 function formatValuationContext(valuation: ValuationData, make: string, model: string, year: number): string {
-  if (valuation.comps.length === 0) {
-    return `\n\n[VALUATION DATA: No comparable sales found for ${year} ${make} ${model}. Confidence: LOW. Ask for photos and defer to the team.]\n`;
-  }
-  
-  const compsCount = valuation.comps.length;
-  const recentComps = valuation.comps.filter(wc => wc.recencyDays <= 90).length;
   const wp = valuation.wholesalePricing;
   
-  let context = `\n\n[VALUATION DATA for ${year} ${make} ${model}]
-Confidence: ${valuation.confidence}
-Reason: ${valuation.confidenceReason}
-Sample size: ${compsCount} comparable sales
-Anchor type: ${wp?.anchorType || 'N/A'}
+  // ============================================================
+  // NO DATA = NO PRICE (RULE 3)
+  // ============================================================
+  if (valuation.comps.length === 0 || !wp) {
+    return `
+[BOB SCRIPT - NO DATA]
+verdict: NO_PRICE
+vehicle: ${year} ${make} ${model}
 
+Bob says EXACTLY:
+"Yeah mate, I'm thin on that one. Haven't got enough similar runners in our book to price it properly. Send me a few pics and I'll talk to the boys."
+
+RULES:
+- DO NOT calculate a price
+- DO NOT estimate from market data  
+- DO NOT suggest a number
+- ONLY ask for photos and escalate
 `;
+  }
 
-  // PRIMARY OUTPUT: TWO-STAGE VALUATION LOGIC
-  if (wp) {
-    // ============================================================
-    // NO-COMP ESCALATION RULE (MANDATORY)
-    // If < 2 comparable OWE records, Bob must NOT price.
-    // This overrides ALL other valuation logic.
-    // ============================================================
-    if (wp.anchorType === 'ESCALATE_NO_OWE') {
-      context += `=== ⛔ NO-COMP ESCALATION (MANDATORY) ===
-verdict: NEED_PICS
-anchor_type: ESCALATE_NO_OWE
-confidence: LOW
+  // ============================================================
+  // ESCALATE - NO OWE DATA (RULE 3)
+  // ============================================================
+  if (wp.anchorType === 'ESCALATE_NO_OWE') {
+    return `
+[BOB SCRIPT - NO OWE DATA]
+verdict: NO_PRICE
+vehicle: ${year} ${make} ${model}
+owe_comps_found: ${valuation.comps.filter(c => c.record.total_cost > 0).length}
 
-PASS 1 - MYSALESDATA: FAILED (only ${valuation.comps.filter(c => c.record.total_cost > 0).length} OWE comps)
-PASS 2 - AI SANITY CLAMP: Applied
-AI Sanity Ceiling: $${wp.sanityCeiling?.toLocaleString() || 'N/A'}
-Sanity Reason: ${wp.sanityReason || 'Conservative ceiling applied'}
+Bob says EXACTLY:
+"Yeah mate, I'm thin on that one. Haven't got enough similar runners in our book to price it properly. Send me a few pics and I'll talk to the boys."
 
-Bob CANNOT find at least 2 comparable OWE records.
-- Bob must NOT output a buy price or range.
-- Bob must NOT use sell prices or market data to guess.
-- Bob must respond with escalation ONLY.
+RULES:
+- DO NOT calculate a price
+- DO NOT use retail/sell data to estimate
+- DO NOT suggest a number "to work from"
+- ONLY ask for photos and escalate
 
-[INSTRUCTION - Bob MUST say EXACTLY this]:
-"Yeah mate, I'm thin on that one.
-Haven't got enough similar runners in our book to price it properly.
-Send me a few pics and I'll talk to the boys."
-
-[DO NOT]:
-- Do NOT provide any buy price or range
-- Do NOT estimate from sell prices
-- Do NOT guess from market data
-- Do NOT suggest a number "to work from"
-
-This rule overrides ALL other valuation logic.
+This is the ONLY valid response. No exceptions.
 `;
-      
-      // Show AI sanity ceiling as maximum possible (not a price to quote)
-      if (wp.sanityCeiling) {
-        context += `
-=== AI SANITY CEILING (INTERNAL ONLY - DO NOT QUOTE) ===
-Maximum wholesale ceiling: $${wp.sanityCeiling.toLocaleString()}
-Reason: ${wp.sanityReason}
-[⛔ This is NOT a buy price. Bob cannot price without OWE data.]
-`;
-      }
-      
-      // Show retail context if available (EXPLICITLY cannot be used)
-      if (wp.medianSellPrice > 0) {
-        context += `
-=== RETAIL DATA EXISTS BUT CANNOT BE USED ===
-Median retail sell: $${wp.medianSellPrice.toLocaleString()}
-[⛔ CANNOT use retail/sell data to derive a buy price. NO OWE = NO PRICE.]
-`;
-      }
-      
-    // ============================================================
-    // AI SANITY CLAMP OVERRIDE (PASS 2 triggered on good data)
-    // Buy range exceeded ceiling - must be clamped and downgraded
-    // ============================================================
-    } else if (wp.anchorType === 'AI_SANITY_CLAMP' || wp.sanityClamped) {
-      context += `=== ⛔ AI SANITY CLAMP OVERRIDE ===
-"This needs to be hit — that's not real wholesale money."
+  }
 
-PASS 1 - MYSALESDATA: Calculated (but exceeded ceiling)
-PASS 2 - AI SANITY CLAMP: OVERRIDE APPLIED
-
-Vehicle: ${make} ${model} (SANITY CLAMP - ceiling enforced)
-Reason: ${wp.sanityReason || wp.hardWorkReason}
-AI Sanity Ceiling: $${wp.sanityCeiling?.toLocaleString()}
-Median OWE (anchor): $${wp.medianOwe?.toLocaleString() || 'N/A'}
-CLAMPED Buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
-Own-it BUY price: $${wp.ownItNumber.toLocaleString()}
-Anchor type: ${wp.anchorType}
-Verdict: ${wp.verdict}
-
-SANITY CLAMP RULES:
-- Original buy range exceeded AI ceiling of $${wp.sanityCeiling?.toLocaleString()}
-- Buy range has been CLAMPED to ceiling
-- Bob must say: "This needs to be hit — that's not real wholesale money."
-- Bob may NOT quote above $${wp.buyRangeHigh.toLocaleString()}
-
-[INSTRUCTION: Bob MUST say out loud:
-"This needs to be hit — that's not real wholesale money."
-Then give the clamped buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}]
-`;
-      
-      if (wp.observedOweRange) {
-        context += `GUARDRAIL: Observed owe range: $${wp.observedOweRange.min.toLocaleString()} - $${wp.observedOweRange.max.toLocaleString()}
-`;
-      }
-      
-      if (wp.medianSellPrice > 0) {
-        context += `
-=== RETAIL CONTEXT (REFERENCE ONLY - NOT FOR PRICING) ===
-Median retail sell: $${wp.medianSellPrice.toLocaleString()}
-[⛔ DO NOT use retail to justify buy price. SANITY CLAMP enforced.]
-`;
-      }
-      
-    // ============================================================
-    // HARD WORK VEHICLE (Cruze-class) - TIGHT CAPS
-    // ============================================================
-    } else if (wp.isHardWorkCar) {
-      context += `=== ⚠️ LOW-VALUE VEHICLE MODE (HARD WORK) ===
+  // ============================================================
+  // LOW-VALUE VEHICLE MODE (RULE 2) - Cruze, Captiva, Euro, etc.
+  // ============================================================
+  if (wp.isHardWorkCar) {
+    return `
+[BOB SCRIPT - LOW-VALUE VEHICLE]
 verdict: HIT
-anchor_type: OWE_ANCHOR  
-confidence: DOWNGRADED
+vehicle: ${year} ${make} ${model}
+demand_class: LOW_DEMAND
+reason: ${wp.hardWorkReason}
 
-"These need to be hit.
-Price it off what we owed last time, not what we jagged.
-Retail was hard work — this is not a confident buy."
+PRE-COMPUTED PRICING (Bob reads these numbers, does NOT calculate):
+- median_owe: $${wp.medianOwe?.toLocaleString() || 'N/A'}
+- buy_range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
+- own_it_number: $${wp.ownItNumber.toLocaleString()}
 
-PASS 1 - MYSALESDATA: Used (OWE anchor)
+Bob says:
+"These need to be hit. Price it off what we owed last time, not what we jagged. Retail was hard work — this is not a confident buy."
+"Looking at $${wp.buyRangeLow.toLocaleString()} to $${wp.buyRangeHigh.toLocaleString()} to own it."
 
-Vehicle: ${make} ${model} (LOW-VALUE MODE - must HIT)
-Reason: ${wp.hardWorkReason}
-Median OWE (anchor): $${wp.medianOwe?.toLocaleString() || 'N/A'}
-Buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()} (BELOW OWE - hitting it)
-Own-it BUY price: $${wp.ownItNumber.toLocaleString()}
-Anchor type: ${wp.anchorType}
-Verdict: ${wp.verdict}
-
-RULE 2 - LOW-VALUE VEHICLE MODE:
-- Bob has entered HARD-WORK mode
-- Bob has downgraded tone (no confidence)
-- Bob must HIT the car (price below OWE)
-- Bob must NOT express confidence
-- Bob is FORBIDDEN from quoting above $${wp.buyRangeHigh.toLocaleString()}
-
-[INSTRUCTION: Bob MUST say:
-"These need to be hit. Price it off what we owed last time, not what we jagged.
-Retail was hard work — this is not a confident buy."
-Then give the hit buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}]
-`;
-      
-      if (wp.observedOweRange) {
-        context += `GUARDRAIL: Observed owe range: $${wp.observedOweRange.min.toLocaleString()} - $${wp.observedOweRange.max.toLocaleString()}
-`;
-      }
-      
-      // Show retail context as explicit "ignore this" section
-      if (wp.medianSellPrice > 0) {
-        context += `
-=== RETAIL CONTEXT (REFERENCE ONLY - NOT FOR PRICING) ===
-Median retail sell: $${wp.medianSellPrice.toLocaleString()}
-[⛔ DO NOT use retail to justify buy price. This is OWE-anchor pricing.]
-`;
-      }
-      
-    // ============================================================
-    // STANDARD OWE-ANCHOR PRICING (PASS 1 SUCCESS)
-    // ============================================================
-    } else {
-      context += `=== ✅ OWE-ANCHOR WHOLESALE PRICING (PASS 1 SUCCESS) ===
-Bob prices to buy and own, not bounce.
-
-PASS 1 - MYSALESDATA: Used (OWE anchor)
-PASS 2 - AI SANITY CLAMP: Not required (within ceiling)
-
-Median OWE (anchor): $${wp.medianOwe?.toLocaleString() || 'N/A'}
-Buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
-Own-it BUY price: $${wp.ownItNumber.toLocaleString()}
-Implied margin band: ${wp.marginBand}
-Anchor type: ${wp.anchorType}
-Verdict: ${wp.verdict}
-${wp.upliftApplied ? 'Uplift applied: Yes (fast seller, high confidence)' : ''}
-`;
-      
-      if (wp.observedOweRange) {
-        context += `GUARDRAIL: Observed owe range: $${wp.observedOweRange.min.toLocaleString()} - $${wp.observedOweRange.max.toLocaleString()}
-`;
-      }
-      if (wp.riskDiscountApplied > 0) {
-        context += `Risk discount applied: ${(wp.riskDiscountApplied * 100).toFixed(0)}%
-`;
-      }
-      if (wp.liquidityWarning) {
-        context += `⚠️ LIQUIDITY WARNING: ${wp.liquidityWarning} - mandatory discount applied
-`;
-      }
-      context += `
-=== RETAIL CONTEXT (for reference only - expected exit) ===
-Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
-[NOTE: Retail is shown as expected exit/aspiration. NEVER use retail to justify buy price.]
-`;
-    }
-  }
-
-  // Supporting data
-  if (valuation.avgBuyPrice) {
-    context += `Historical avg OWE: $${valuation.avgBuyPrice.toLocaleString()}
-`;
-  }
-  if (valuation.priceRange) {
-    context += `Owe price range: $${valuation.priceRange.min.toLocaleString()} - $${valuation.priceRange.max.toLocaleString()}
-`;
-  }
-  if (valuation.avgDaysInStock) {
-    context += `Average days to sell: ${valuation.avgDaysInStock} days
-`;
-  }
-  
-  // Add top 3 recent comps as examples (always show OWE prominently)
-  context += `\nRecent sales examples (OWE-first):\n`;
-  const topComps = valuation.comps.slice(0, 3);
-  for (const wc of topComps) {
-    const r = wc.record;
-    // Always show OWE first, sell is for context
-    context += `- ${r.year} ${r.make} ${r.model} ${r.variant || ''}: OWED $${parseInt(String(r.total_cost)).toLocaleString()}, sold $${parseInt(String(r.sell_price)).toLocaleString()}, ${r.days_in_stock} days, ${wc.recencyDays} days ago\n`;
-  }
-  
-  // CRITICAL FIX — WHOLESALE ANCHORING RULES
-  context += `\n[CRITICAL FIX — WHOLESALE ANCHORING RULES]:
-
-=== RULE 1: OWE OVERRIDES EVERYTHING ===
-- If MySalesData contains ANY OWE (cost) records for same model (±2 years):
-  - Wholesale BUY range MUST anchor to OWE
-  - Bob is FORBIDDEN from exceeding historical OWE
-  - Sell price is IGNORED entirely for BUY decisions
-
-=== RULE 2: LOW-VALUE VEHICLE MODE ===
-- For known low-demand vehicles (Cruze, Captiva, Mondeo, Peugeot, etc.):
-  - Bob MUST enter HARD-WORK mode
-  - Bob MUST downgrade tone (no confidence)
-  - Bob MUST HIT the car (price BELOW OWE median)
-  - Bob must NOT express confidence
-
-=== RULE 3: NO DATA = NO NUMBER ===
-- If OWE data is missing or thin (<2 comps):
-  - Bob must NOT quote a price
-  - Bob must request photos or escalation
-  - Bob may say "send me pics / let me talk to the boys"
-
-ENFORCE:
-- OWE anchoring > AI intuition
-- Conservative bias ALWAYS
-- NEVER quote optimistic wholesale values
-- SELL price is context only (expected exit) - NEVER use for buy pricing
-`;
-
-  // AI SANITY CLAMP INSTRUCTION
-  if (wp?.sanityClamped || wp?.anchorType === 'AI_SANITY_CLAMP') {
-    context += `\n[AI SANITY CLAMP - OVERRIDE APPLIED]:
-Bob MUST say: "This needs to be hit — that's not real wholesale money."
-- AI Sanity Ceiling: $${wp.sanityCeiling?.toLocaleString()}
-- Clamped Buy Range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
-- Reason: ${wp.sanityReason}
-- You may NOT quote above the clamped ceiling
+RULES:
+- Bob NARRATES the pre-computed buy range above
+- Bob does NOT calculate or adjust these numbers
+- Bob does NOT express confidence
+- Bob may NOT quote above $${wp.buyRangeHigh.toLocaleString()}
+- Photos always welcome to tighten up
 `;
   }
 
-  // LOW-VALUE VEHICLE MODE INSTRUCTION (RULE 2)
-  if (wp?.isHardWorkCar && !wp?.sanityClamped) {
-    context += `\n[LOW-VALUE VEHICLE MODE - RULE 2]:
-- Say out loud: "These need to be hit. Price it off what we owed last time, not what we jagged. Retail was hard work — this is not a confident buy."
-- Bob has DOWNGRADED tone (no confidence)
-- Bob must HIT the car: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
-- Bob is FORBIDDEN from quoting above $${wp.buyRangeHigh.toLocaleString()}
-- Bob must NOT express confidence
+  // ============================================================
+  // SANITY CLAMP APPLIED (ceiling enforced)
+  // ============================================================
+  if (wp.sanityClamped || wp.anchorType === 'AI_SANITY_CLAMP') {
+    return `
+[BOB SCRIPT - SANITY CLAMP]
+verdict: HIT
+vehicle: ${year} ${make} ${model}
+demand_class: CLAMPED
+reason: ${wp.sanityReason}
+
+PRE-COMPUTED PRICING (Bob reads these numbers, does NOT calculate):
+- sanity_ceiling: $${wp.sanityCeiling?.toLocaleString()}
+- buy_range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
+- own_it_number: $${wp.ownItNumber.toLocaleString()}
+
+Bob says:
+"This needs to be hit — that's not real wholesale money."
+"I'd be looking at $${wp.buyRangeLow.toLocaleString()} to $${wp.buyRangeHigh.toLocaleString()} to own it."
+
+RULES:
+- Bob NARRATES the pre-computed buy range above
+- Bob does NOT calculate or adjust these numbers
+- Bob may NOT quote above $${wp.buyRangeHigh.toLocaleString()}
 `;
   }
-  
-  // NO-COMP ESCALATION INSTRUCTION (MANDATORY - OVERRIDES ALL)
-  if (wp?.anchorType === 'ESCALATE_NO_OWE') {
-    context += `\n[NO-COMP ESCALATION - MANDATORY - OVERRIDES ALL]:
-Bob MUST say EXACTLY: "Yeah mate, I'm thin on that one. Haven't got enough similar runners in our book to price it properly. Send me a few pics and I'll talk to the boys."
 
-- verdict = NEED_PICS
-- anchor_type = ESCALATE_NO_OWE  
-- confidence = LOW
+  // ============================================================
+  // STANDARD OWE-ANCHOR PRICING (RULE 1)
+  // ============================================================
+  return `
+[BOB SCRIPT - STANDARD PRICING]
+verdict: PRICED
+vehicle: ${year} ${make} ${model}
+demand_class: NORMAL
+confidence: ${valuation.confidence}
 
-DO NOT:
-- Output any buy price or range
-- Use sell prices to estimate
-- Use market data to guess
-- Suggest a number "to work from"
+PRE-COMPUTED PRICING (Bob reads these numbers, does NOT calculate):
+- median_owe: $${wp.medianOwe?.toLocaleString()}
+- buy_range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
+- own_it_number: $${wp.ownItNumber.toLocaleString()}
+- owe_range_observed: $${wp.observedOweRange?.min.toLocaleString()} - $${wp.observedOweRange?.max.toLocaleString()}
+${wp.riskDiscountApplied > 0 ? `- risk_discount: ${(wp.riskDiscountApplied * 100).toFixed(0)}%` : ''}
+${wp.liquidityWarning ? `- warning: ${wp.liquidityWarning}` : ''}
+
+Bob says:
+"Looking at $${wp.buyRangeLow.toLocaleString()} to $${wp.buyRangeHigh.toLocaleString()} to own it."
+${valuation.confidence === 'HIGH' ? '"Good fighter, I\'m confident on that range."' : '"Based on what I\'m seeing. Photos always help tighten it up."'}
+
+RULES:
+- Bob NARRATES the pre-computed buy range above
+- Bob does NOT calculate or adjust these numbers
+- Bob may mention photos help tighten the number
+- Retail context ($${wp.medianSellPrice.toLocaleString()}) is expected exit only - NOT for pricing
 `;
-  }
-  
-  // Add guidance based on confidence
-  if (valuation.confidence === 'LOW' || compsCount < 2) {
-    context += `\n[INSTRUCTION: Data is thin. Say "Mate, I'm light on data for this one. Give me two minutes, let me check with one of the boys." Ask for 4-5 photos to get a proper read.]\n`;
-  } else if (valuation.confidence === 'MEDIUM') {
-    context += `\n[INSTRUCTION: Provide the buy range, but caveat with "based on what I'm seeing". Mention photos always help tighten up the number.]\n`;
-  } else {
-    context += `\n[INSTRUCTION: Confident pricing. Lead with the buy range. Still welcome photos if they want a tighter read.]\n`;
-  }
-  
-  context += `\n[ALWAYS ACCEPT PHOTOS: If the user offers or sends photos, always say yes. Photos help with condition, spec verification, and tightening up the price.]\n`;
-  
-  // Risk warnings
-  if (wp && wp.riskDiscountApplied >= 0.05) {
-    const isEuro = HARD_WORK_MAKES.some(hw => make.toLowerCase().includes(hw));
-    if (isEuro) {
-      context += `\n[RISK WARNING: Euro unit - factor in parts/service complexity. Already discounted in buy range.]\n`;
-    }
-    if (valuation.avgDaysInStock && valuation.avgDaysInStock > 45) {
-      context += `\n[RISK WARNING: Slow mover - avg ${valuation.avgDaysInStock} days in stock. Be cautious.]\n`;
-    }
-  }
-  
-  return context;
 }
 
 // Extract vehicle details from user message
