@@ -77,6 +77,30 @@ function getOptionalCharacter(): string {
 
 const FRANK_HANDOFF = "Give me two minutes, let me check with one of the boys.";
 
+// Frank asks clarifying questions naturally when info is missing
+function frankClarifyingQuestion(parsed: ValoParsedVehicle): string | null {
+  const missing = parsed.missing_fields || [];
+  
+  // Critical missing: need at minimum make/model
+  if (!parsed.make || !parsed.model) {
+    return "What are we looking at mate? Give me the make and model.";
+  }
+  
+  // Important missing: km affects value significantly
+  if (missing.includes('km') && !parsed.km) {
+    const desc = [parsed.year, parsed.make, parsed.model].filter(Boolean).join(' ');
+    return `${desc} – got it. What's on the clock?`;
+  }
+  
+  // Year helps narrow it down
+  if (!parsed.year) {
+    const desc = [parsed.make, parsed.model].filter(Boolean).join(' ');
+    return `${desc}. What year are we talking?`;
+  }
+  
+  return null; // No clarification needed
+}
+
 function frankResponse1(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number, n: number): string {
   const character = getOptionalCharacter();
   return `Yeah mate, that's a good fighter. I'd want to be ${buyLow} to ${buyHigh} to buy it. Turns in about ${Math.round(days)} days – demand's there. Retail ask ${sellLow} to ${sellHigh}. Got ${n} comps backing this up.${character}`;
@@ -208,7 +232,7 @@ export default function ValoPage() {
 
   const handleProcess = async (inputText: string) => {
     if (!inputText.trim()) {
-      toast.error('Please describe the car');
+      setFrankResponse("Sorry mate, didn't catch that. What are we looking at?");
       return;
     }
 
@@ -232,8 +256,10 @@ export default function ValoPage() {
       }
       setParsed(parsedVehicle);
 
-      if (!parsedVehicle.make || !parsedVehicle.model) {
-        toast.error('Could not determine make and model. Please be more specific.');
+      // Check if Frank needs to ask clarifying questions
+      const clarifyingQ = frankClarifyingQuestion(parsedVehicle);
+      if (clarifyingQ) {
+        setFrankResponse(clarifyingQ);
         setIsProcessing(false);
         return;
       }
@@ -387,34 +413,27 @@ export default function ValoPage() {
       />
       
       <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto min-h-[70vh]">
-        {/* Header */}
+        {/* Minimal header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="text-4xl">👨‍🔧</div>
             <div>
-              <h1 className="text-2xl font-bold">Ask Frank</h1>
-              <p className="text-muted-foreground">Tap Frank to talk. He's all ears.</p>
+              <h1 className="text-2xl font-bold">Frank</h1>
             </div>
           </div>
           
           {isAdmin && (
-            <Badge variant="outline" className="gap-1">
+            <Badge variant="outline" className="gap-1 text-xs">
               <Info className="h-3 w-3" />
-              Phase 3
+              Testing
             </Badge>
           )}
         </div>
 
-        {/* Empty state */}
-        {!result && !isProcessing && (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="text-6xl mb-4 animate-bounce">👇</div>
-            <p className="text-lg text-muted-foreground">
-              Tap Frank in the corner to describe a car
-            </p>
-            <p className="text-sm text-muted-foreground mt-2">
-              Just talk naturally – he'll figure it out
-            </p>
+        {/* Empty state - minimal, no instructions */}
+        {!result && !isProcessing && !frankResponse && (
+          <div className="flex flex-col items-center justify-center py-32 text-center">
+            <div className="text-7xl opacity-30">👨‍🔧</div>
           </div>
         )}
 
