@@ -184,15 +184,26 @@ function frankResponse2(vehicleDesc: string, buyLow: string, buyHigh: string, se
 // Character references ALLOWED (light)
 function frankResponse3(vehicleDesc: string, buyLow: string, buyHigh: string): string {
   const character = getOptionalCharacter();
-  // 1) Verdict | 2) Buy range | 3) Reason (limited data) | 4) Caution | 5) Next action
-  return `Look mate, I'm working off limited data here. I'd want to be ${buyLow} to ${buyHigh} to buy it – rough guide only. Don't hold me to that without more to go on. Send a few pics and I'll firm it up.${character}`;
+  // 1) Verdict | 2) Buy range | 3) Reason (limited data) | HANDOFF | 5) Next action
+  return `Look mate, I'm working off limited data here. I'd want to be ${buyLow} to ${buyHigh} to buy it – rough guide only. Give me two minutes, let me check with one of the boys. Send a few pics and I'll firm it up.${character}`;
 }
+
+// FRANK HANDOFF LINE (MANDATORY OPTION)
+// "Give me two minutes, let me check with one of the boys."
+// Rules:
+// - Use when photos or second opinion materially improves the decision
+// - Replaces corporate disclaimers
+// - Must sound confident, not uncertain
+// - After this line, Frank prompts for photos or details
+// This is a trust-building handoff, not an apology.
+
+const FRANK_HANDOFF = "Give me two minutes, let me check with one of the boys.";
 
 // FRANK RESPONSE #4: NO DATA - needs human review
 // NO character - serious tone only
 function frankResponse4NoData(vehicleDesc: string): string {
-  // 1) Verdict | 4) Caution | 5) Next action
-  return `That's nowhere – I haven't got enough runs on the board with ${vehicleDesc || 'this one'}. I'd want eyes on it before putting a number down. Send a few pics and I'll have one of the boys take a proper look.`;
+  // 1) Verdict | HANDOFF | 5) Next action (pics)
+  return `That's nowhere – I haven't got enough runs on the board with ${vehicleDesc || 'this one'}. ${FRANK_HANDOFF} Send a few pics and I'll firm it up.`;
 }
 
 // FRANK RESPONSE #5: HARD WORK - marginal profit
