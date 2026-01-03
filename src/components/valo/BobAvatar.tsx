@@ -4,6 +4,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Loader2, X, Volume2, Mic, MicOff, Bug } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import bobAvatarVideo from '@/assets/bob-avatar.mp4';
 // ============================================================================
 // BOB: Voice-first AI using OpenAI Realtime API (WebRTC)
@@ -145,48 +146,29 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
       // If in brief mode, first fetch the brief context
       if (withBrief && !withPushContext) {
         console.log("Fetching daily brief context...");
-        const briefResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bob-daily-brief`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-            },
-            body: JSON.stringify({ dealerName, dealership }),
-          }
-        );
+        const { data: briefData, error: briefError } = await supabase.functions.invoke('bob-daily-brief', {
+          body: { dealerName, dealership },
+        });
         
-        if (briefResponse.ok) {
-          const briefData = await briefResponse.json();
+        if (!briefError && briefData) {
           briefContext = briefData.briefContext || '';
           console.log("Brief context loaded, opportunities:", briefData.opportunityCount);
         }
       }
 
       // Get ephemeral token from edge function
-      const tokenResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bob-realtime-token`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ 
-            briefMode: withBrief, 
-            briefContext,
-            pushMode: !!withPushContext,
-            pushContext: withPushContext,
-          }),
-        }
-      );
+      const { data, error: tokenError } = await supabase.functions.invoke('bob-realtime-token', {
+        body: { 
+          briefMode: withBrief, 
+          briefContext,
+          pushMode: !!withPushContext,
+          pushContext: withPushContext,
+        },
+      });
 
-      if (!tokenResponse.ok) {
+      if (tokenError || !data) {
         throw new Error('Failed to get session token');
       }
-
-      const data = await tokenResponse.json();
       
       if (!data.client_secret?.value) {
         throw new Error('No ephemeral token received');
