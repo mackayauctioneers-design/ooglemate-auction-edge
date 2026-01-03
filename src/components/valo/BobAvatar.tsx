@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Loader2, X, Volume2, Mic, MicOff, Bug } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -9,6 +10,27 @@ import bobAvatarVideo from '@/assets/bob-avatar.mp4';
 // Native conversational voice streams directly - no separate TTS needed
 // ============================================================================
 
+// Bob push notification context type
+interface BobPushContext {
+  alert_type: 'upcoming_watched' | 'auction_reminder' | 'passed_in' | 'price_drop' | 'buy_signal';
+  vehicle: {
+    year?: number;
+    make: string;
+    model: string;
+    variant?: string;
+  };
+  context: {
+    auction_house?: string;
+    location?: string;
+    auction_time?: string;
+    lot_id?: string;
+    price_drop_amount?: number;
+    current_price?: number;
+    estimated_margin?: number;
+  };
+  speak_context?: string;
+}
+
 interface BobAvatarProps {
   dealerName?: string;
   dealership?: string;
@@ -16,6 +38,8 @@ interface BobAvatarProps {
 }
 
 export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief = false }: BobAvatarProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  
   // Connection state
   const [isOpen, setIsOpen] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -26,11 +50,46 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
   const [audioActive, setAudioActive] = useState(false);
   const [briefMode, setBriefMode] = useState(false);
   const [hasTriggeredBrief, setHasTriggeredBrief] = useState(false);
+  const [pushContext, setPushContext] = useState<BobPushContext | null>(null);
   
   // Transcripts
   const [userTranscript, setUserTranscript] = useState('');
   const [bobTranscript, setBobTranscript] = useState('');
   const [conversationHistory, setConversationHistory] = useState<Array<{role: string, text: string}>>();
+
+  // Check for bob_context in URL (from push notification tap)
+  useEffect(() => {
+    const bobContextParam = searchParams.get('bob_context');
+    if (bobContextParam && !isOpen) {
+      try {
+        const context = JSON.parse(decodeURIComponent(bobContextParam)) as BobPushContext;
+        console.log('Bob push context from URL:', context);
+        setPushContext(context);
+        // Clear the URL param
+        setSearchParams({});
+        // Open Bob with the push context
+        handleOpenBobWithPushContext(context);
+      } catch (err) {
+        console.error('Failed to parse bob_context:', err);
+      }
+    }
+  }, [searchParams]);
+
+  // Listen for service worker messages (notification clicks when app is open)
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'NOTIFICATION_CLICK' && event.data?.bobContext) {
+        console.log('Bob context from SW message:', event.data.bobContext);
+        setPushContext(event.data.bobContext);
+        handleOpenBobWithPushContext(event.data.bobContext);
+      }
+    };
+    
+    navigator.serviceWorker?.addEventListener('message', handleMessage);
+    return () => {
+      navigator.serviceWorker?.removeEventListener('message', handleMessage);
+    };
+  }, []);
 
   // Auto-trigger brief on login
   useEffect(() => {
@@ -75,7 +134,8 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
     setAudioActive(false);
   }, []);
 
-  const connect = useCallback(async (withBrief = false) => {
+  const connect = useCallback(async (options: { withBrief?: boolean; withPushContext?: BobPushContext | null } = {}) => {
+    const { withBrief = false, withPushContext = null } = options;
     setIsConnecting(true);
     setBriefMode(withBrief);
     
@@ -83,7 +143,7 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
       let briefContext = '';
       
       // If in brief mode, first fetch the brief context
-      if (withBrief) {
+      if (withBrief && !withPushContext) {
         console.log("Fetching daily brief context...");
         const briefResponse = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bob-daily-brief`,
@@ -115,7 +175,9 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
           },
           body: JSON.stringify({ 
             briefMode: withBrief, 
-            briefContext 
+            briefContext,
+            pushMode: !!withPushContext,
+            pushContext: withPushContext,
           }),
         }
       );
@@ -131,7 +193,8 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
       }
 
       const EPHEMERAL_KEY = data.client_secret.value;
-      console.log("Got ephemeral token, establishing WebRTC connection...", withBrief ? "(BRIEF MODE)" : "");
+      const modeLabel = withPushContext ? "(PUSH MODE)" : withBrief ? "(BRIEF MODE)" : "";
+      console.log("Got ephemeral token, establishing WebRTC connection...", modeLabel);
 
       // Create peer connection
       const pc = new RTCPeerConnection();
@@ -281,7 +344,12 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
 
   const handleOpenBob = useCallback(async (withBrief = false) => {
     setIsOpen(true);
-    setTimeout(() => connect(withBrief), 200);
+    setTimeout(() => connect({ withBrief }), 200);
+  }, [connect]);
+
+  const handleOpenBobWithPushContext = useCallback(async (context: BobPushContext) => {
+    setIsOpen(true);
+    setTimeout(() => connect({ withPushContext: context }), 200);
   }, [connect]);
 
   const handleClose = useCallback(() => {
@@ -291,6 +359,7 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
     setConversationHistory([]);
     setIsOpen(false);
     setBriefMode(false);
+    setPushContext(null);
   }, [disconnect]);
 
   // Unlock audio on any user interaction (for mobile)

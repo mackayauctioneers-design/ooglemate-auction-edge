@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.bob-daily-brief]
 verify_jwt = false
+
+[functions.bob-push]
+verify_jwt = false

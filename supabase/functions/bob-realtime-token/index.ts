@@ -83,6 +83,27 @@ DELIVERY:
 BRIEF TO DELIVER:
 `;
 
+// Push notification context addendum - injected when opened from a push notification
+const PUSH_CONTEXT_INSTRUCTIONS = `
+
+PUSH NOTIFICATION MODE (ACTIVE):
+You're responding to a push notification the dealer just tapped on.
+Speak the full context immediately, then wait for questions.
+
+ALERT TYPE: {{ALERT_TYPE}}
+VEHICLE: {{VEHICLE}}
+CONTEXT: {{CONTEXT}}
+{{SPEAK_CONTEXT}}
+
+DELIVERY:
+- Start speaking immediately with the details
+- Keep it short and actionable (15-30 seconds)
+- Example for passed_in: "Right, that Hilux from Pickles Brisbane. Passed in at twenty-eight. Reserve was thirty-two. Money looks right now. Want me to run it past Macca?"
+- Example for price_drop: "Hey, that Land Cruiser you were watching dropped five grand. Down to forty-two now. Worth another look."
+- Example for buy_signal: "Got one for you. 2019 Colorado in Melbourne, good margin on it - about four grand. Ready when you are."
+- After speaking the context, wait for the dealer to respond
+`;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -90,7 +111,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { briefMode = false, briefContext = '' } = body;
+    const { briefMode = false, briefContext = '', pushMode = false, pushContext = null } = body;
 
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     if (!OPENAI_API_KEY) {
@@ -101,9 +122,20 @@ serve(async (req) => {
       );
     }
 
-    // Build the system prompt - add brief instructions if in brief mode
+    // Build the system prompt based on mode
     let systemPrompt = BOB_BASE_PROMPT;
-    if (briefMode && briefContext) {
+    
+    if (pushMode && pushContext) {
+      // Push notification mode - speak the context from the notification
+      let pushInstructions = PUSH_CONTEXT_INSTRUCTIONS
+        .replace('{{ALERT_TYPE}}', pushContext.alert_type || 'notification')
+        .replace('{{VEHICLE}}', `${pushContext.vehicle?.year || ''} ${pushContext.vehicle?.make || ''} ${pushContext.vehicle?.model || ''}`.trim())
+        .replace('{{CONTEXT}}', JSON.stringify(pushContext.context || {}))
+        .replace('{{SPEAK_CONTEXT}}', pushContext.speak_context ? `\nADDITIONAL CONTEXT: ${pushContext.speak_context}` : '');
+      
+      systemPrompt = BOB_BASE_PROMPT + pushInstructions;
+      console.log("Creating OpenAI Realtime session for Bob (PUSH NOTIFICATION MODE)...");
+    } else if (briefMode && briefContext) {
       systemPrompt = BOB_BASE_PROMPT + DAILY_BRIEF_INSTRUCTIONS + briefContext;
       console.log("Creating OpenAI Realtime session for Bob (DAILY BRIEF MODE)...");
     } else {
