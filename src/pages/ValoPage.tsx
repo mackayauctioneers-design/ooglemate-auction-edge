@@ -7,13 +7,92 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, TrendingUp, DollarSign, Clock, BarChart3, AlertCircle, CheckCircle } from 'lucide-react';
+import { Loader2, Sparkles, TrendingUp, DollarSign, Clock, BarChart3, AlertCircle, CheckCircle, Camera, MessageSquare } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ValoParsedVehicle, ValoResult, ValoTier, ValuationConfidence, formatCurrency } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { dataService } from '@/services/dataService';
 import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+
+// Generate VALO's conversational response in Australian wholesale buyer tone
+function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): string {
+  const { confidence, sample_size, suggested_buy_range, suggested_sell_range, tier, typical_days_to_sell } = result;
+  
+  // Build vehicle description
+  const vehicleDesc = [
+    parsed.year,
+    parsed.make,
+    parsed.model,
+    parsed.variant_family
+  ].filter(Boolean).join(' ');
+
+  // No data case
+  if (sample_size === 0 || !suggested_buy_range) {
+    return `Mate, I haven't got enough runs on the board with ${vehicleDesc || 'this one'} to give you a solid number. I'd want eyes on it before saying anything. Get me some photos and I'll have one of the boys take a proper look.`;
+  }
+
+  const buyLow = formatCurrency(suggested_buy_range.min);
+  const buyHigh = formatCurrency(suggested_buy_range.max);
+  const sellLow = suggested_sell_range ? formatCurrency(suggested_sell_range.min) : null;
+  const sellHigh = suggested_sell_range ? formatCurrency(suggested_sell_range.max) : null;
+
+  const lines: string[] = [];
+
+  // Opening line based on confidence
+  if (confidence === 'HIGH') {
+    const openers = [
+      `Yeah mate, that's a good fighter.`,
+      `Right, I know this one well.`,
+      `This is honest bit of gear.`,
+    ];
+    lines.push(openers[Math.floor(Math.random() * openers.length)]);
+  } else if (confidence === 'MEDIUM') {
+    lines.push(`Alright, I've got a feel for this one, but ${tier === 'network' ? "I'm pulling from the broader network here" : "the sample's a bit thin"}.`);
+  } else {
+    lines.push(`Look, I'm working off proxy data here so take this with a grain of salt.`);
+  }
+
+  // Buy range advice
+  if (confidence === 'HIGH') {
+    lines.push(`I'd want to be ${buyLow} to ${buyHigh} to buy it. Money disappears if you get silly above that.`);
+  } else if (confidence === 'MEDIUM') {
+    lines.push(`I'd be thinking ${buyLow} to ${buyHigh} to get into it, but I'd want eyes on it first.`);
+  } else {
+    lines.push(`Rough guide, you're probably looking at ${buyLow} to ${buyHigh} range, but don't hold me to that.`);
+  }
+
+  // Sell range and days
+  if (sellLow && sellHigh) {
+    if (typical_days_to_sell && typical_days_to_sell <= 30) {
+      lines.push(`Should move quick – these are turning in about ${Math.round(typical_days_to_sell)} days. Retail it around ${sellLow} to ${sellHigh}.`);
+    } else if (typical_days_to_sell) {
+      lines.push(`Expect to sit on it for ${Math.round(typical_days_to_sell)} days or so. Pitch it ${sellLow} to ${sellHigh} retail.`);
+    } else {
+      lines.push(`Retail it around ${sellLow} to ${sellHigh}.`);
+    }
+  }
+
+  // Sample size context
+  if (sample_size >= 5) {
+    lines.push(`Got ${sample_size} comps backing this up.`);
+  } else if (sample_size >= 2) {
+    lines.push(`Only ${sample_size} comps to go on, so keep that in mind.`);
+  }
+
+  // Missing fields / condition warning
+  const conditionUncertain = !parsed.km || parsed.missing_fields.includes('km');
+  if (conditionUncertain) {
+    lines.push(`Can't see the kays on this one – that'll shift things either way.`);
+  }
+
+  // Assumptions callout
+  if (parsed.assumptions && parsed.assumptions.length > 0) {
+    lines.push(`By the way, I'm assuming: ${parsed.assumptions.join('; ')}.`);
+  }
+
+  return lines.join(' ');
+}
 
 export default function ValoPage() {
   const { currentUser, isAdmin } = useAuth();
@@ -70,6 +149,10 @@ export default function ValoPage() {
       if (parseData?.error) throw new Error(parseData.error);
 
       const parsedVehicle: ValoParsedVehicle = parseData.parsed;
+      // Ensure assumptions array exists
+      if (!parsedVehicle.assumptions) {
+        parsedVehicle.assumptions = [];
+      }
       setParsed(parsedVehicle);
       setIsParsing(false);
 
@@ -90,7 +173,7 @@ export default function ValoPage() {
         timestamp: new Date().toISOString()
       });
 
-      toast.success(`Valuation complete (${valuation.tier_label})`);
+      toast.success('VALO complete');
     } catch (err) {
       console.error('VALO error:', err);
       const msg = err instanceof Error ? err.message : 'Failed to run VALO';
@@ -138,7 +221,7 @@ export default function ValoPage() {
           tier: 'dealer',
           tier_label: 'Dealer history',
           sample_size: dealerResult.sample_size,
-          top_comps: [] // Would need to expose this from the service
+          top_comps: []
         };
       }
     }
@@ -150,7 +233,6 @@ export default function ValoPage() {
       variant_family: variantFamily,
       year,
       year_tolerance: 2,
-      // Don't pass km for network - it's ignored anyway
     }, isAdmin);
 
     if (networkResult.sample_size >= 5) {
@@ -174,7 +256,7 @@ export default function ValoPage() {
       make,
       model,
       year,
-      year_tolerance: 3, // Wider tolerance
+      year_tolerance: 3,
     }, isAdmin);
 
     if (proxyResult.sample_size > 0) {
@@ -207,6 +289,11 @@ export default function ValoPage() {
     };
   };
 
+  const handleRequestBuyerReview = () => {
+    toast.info('Buyer Review feature coming soon – photos upload will be required');
+    // TODO: Implement photo upload and review request creation
+  };
+
   const getConfidenceBadge = (confidence: ValuationConfidence) => {
     switch (confidence) {
       case 'HIGH':
@@ -229,6 +316,9 @@ export default function ValoPage() {
     }
   };
 
+  // Determine if buyer review should be shown
+  const showBuyerReview = result && (result.confidence !== 'HIGH' || (parsed && !parsed.km));
+
   return (
     <AppLayout>
       <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
@@ -239,16 +329,16 @@ export default function ValoPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold">VALO</h1>
-            <p className="text-muted-foreground">AI-powered instant valuation</p>
+            <p className="text-muted-foreground">Ask VALO about a car</p>
           </div>
         </div>
 
         {/* Input Form */}
         <Card>
           <CardHeader>
-            <CardTitle>Describe the Vehicle</CardTitle>
+            <CardTitle>What are you looking at?</CardTitle>
             <CardDescription>
-              Enter any text describing the car - we'll extract the details automatically
+              Describe the car however you like – VALO will figure it out
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -295,12 +385,12 @@ export default function ValoPage() {
                 {isParsing ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Parsing...
+                    Reading...
                   </>
                 ) : isValuating ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Valuating...
+                    Thinking...
                   </>
                 ) : (
                   <>
@@ -312,7 +402,7 @@ export default function ValoPage() {
               
               {currentUser && (
                 <span className="text-sm text-muted-foreground">
-                  Dealer: {currentUser.dealer_name}
+                  {currentUser.dealer_name}
                 </span>
               )}
             </div>
@@ -331,13 +421,38 @@ export default function ValoPage() {
           </Card>
         )}
 
-        {/* Parsed Vehicle Display */}
+        {/* VALO Response - Conversational */}
+        {result && parsed && (
+          <Card className="border-primary bg-primary/5">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-lg bg-primary text-primary-foreground shrink-0">
+                  <MessageSquare className="h-5 w-5" />
+                </div>
+                <div className="space-y-4 flex-1">
+                  <p className="text-lg leading-relaxed">
+                    {generateValoResponse(result, parsed)}
+                  </p>
+                  
+                  {/* Badges row */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {getConfidenceBadge(result.confidence)}
+                    {getTierBadge(result.tier)}
+                    <Badge variant="secondary">n = {result.sample_size}</Badge>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Parsed Details (collapsible feel) */}
         {parsed && (
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-green-500" />
-                Parsed Vehicle
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                What I'm working with
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -375,13 +490,6 @@ export default function ValoPage() {
                   <p className="font-medium">{parsed.km ? parsed.km.toLocaleString() : '-'}</p>
                 </div>
               </div>
-              
-              {parsed.notes && (
-                <div className="mt-4 pt-4 border-t">
-                  <p className="text-muted-foreground text-sm">Notes</p>
-                  <p className="text-sm">{parsed.notes}</p>
-                </div>
-              )}
 
               {parsed.missing_fields.length > 0 && (
                 <div className="mt-4 flex flex-wrap gap-1">
@@ -396,132 +504,131 @@ export default function ValoPage() {
           </Card>
         )}
 
-        {/* Valuation Results */}
-        {result && (
-          <Card className="border-primary">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
-                  Valuation Result
-                </CardTitle>
-                <div className="flex items-center gap-2">
-                  {getConfidenceBadge(result.confidence)}
-                  {getTierBadge(result.tier)}
-                  <Badge variant="secondary">n = {result.sample_size}</Badge>
-                </div>
+        {/* Valuation Numbers Grid */}
+        {result && result.sample_size > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Buy Range */}
+            <Card className="p-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                <DollarSign className="h-4 w-4" />
+                Buy Range
               </div>
-              <CardDescription>
-                Based on: {result.tier_label}
-              </CardDescription>
+              <div className="text-lg font-semibold">
+                {result.suggested_buy_range 
+                  ? `${formatCurrency(result.suggested_buy_range.min)} - ${formatCurrency(result.suggested_buy_range.max)}`
+                  : 'N/A'
+                }
+              </div>
+            </Card>
+
+            {/* Sell Range */}
+            <Card className="p-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                <TrendingUp className="h-4 w-4" />
+                Sell Range
+              </div>
+              <div className="text-lg font-semibold">
+                {result.suggested_sell_range 
+                  ? `${formatCurrency(result.suggested_sell_range.min)} - ${formatCurrency(result.suggested_sell_range.max)}`
+                  : 'N/A'
+                }
+              </div>
+            </Card>
+
+            {/* Gross Band */}
+            <Card className="p-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                <BarChart3 className="h-4 w-4" />
+                Gross Band
+              </div>
+              <div className={`text-lg font-semibold ${
+                result.expected_gross_band && result.expected_gross_band.min > 0 
+                  ? 'text-green-600' 
+                  : ''
+              }`}>
+                {result.expected_gross_band 
+                  ? `${formatCurrency(result.expected_gross_band.min)} - ${formatCurrency(result.expected_gross_band.max)}`
+                  : 'N/A'
+                }
+              </div>
+            </Card>
+
+            {/* Days to Sell */}
+            <Card className="p-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                <Clock className="h-4 w-4" />
+                Days to Sell
+              </div>
+              <div className="text-lg font-semibold">
+                {result.typical_days_to_sell 
+                  ? `~${Math.round(result.typical_days_to_sell)} days`
+                  : 'N/A'
+                }
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Comparables Table (for dealer tier) */}
+        {result && result.tier === 'dealer' && result.top_comps.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Top Comparables</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {result.sample_size > 0 ? (
-                <>
-                  {/* Metrics Grid */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {/* Buy Range */}
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                        <DollarSign className="h-4 w-4" />
-                        Buy Range
-                      </div>
-                      <div className="text-lg font-semibold">
-                        {result.suggested_buy_range 
-                          ? `${formatCurrency(result.suggested_buy_range.min)} - ${formatCurrency(result.suggested_buy_range.max)}`
-                          : 'N/A'
-                        }
-                      </div>
-                    </Card>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Sell Price</TableHead>
+                    <TableHead className="text-right">Days</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {result.top_comps.map((comp, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{comp.sale_date || '-'}</TableCell>
+                      <TableCell className="text-right">
+                        {comp.sell_price ? formatCurrency(comp.sell_price) : '-'}
+                      </TableCell>
+                      <TableCell className="text-right">{comp.days_to_sell || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
 
-                    {/* Sell Range */}
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                        <TrendingUp className="h-4 w-4" />
-                        Sell Range
-                      </div>
-                      <div className="text-lg font-semibold">
-                        {result.suggested_sell_range 
-                          ? `${formatCurrency(result.suggested_sell_range.min)} - ${formatCurrency(result.suggested_sell_range.max)}`
-                          : 'N/A'
-                        }
-                      </div>
-                    </Card>
-
-                    {/* Gross Band */}
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                        <BarChart3 className="h-4 w-4" />
-                        Gross Band
-                      </div>
-                      <div className={`text-lg font-semibold ${
-                        result.expected_gross_band && result.expected_gross_band.min > 0 
-                          ? 'text-green-600' 
-                          : ''
-                      }`}>
-                        {result.expected_gross_band 
-                          ? `${formatCurrency(result.expected_gross_band.min)} - ${formatCurrency(result.expected_gross_band.max)}`
-                          : 'N/A'
-                        }
-                      </div>
-                    </Card>
-
-                    {/* Days to Sell */}
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                        <Clock className="h-4 w-4" />
-                        Days to Sell
-                      </div>
-                      <div className="text-lg font-semibold">
-                        {result.typical_days_to_sell 
-                          ? `~${Math.round(result.typical_days_to_sell)} days`
-                          : 'N/A'
-                        }
-                      </div>
-                    </Card>
-                  </div>
-
-                  {/* Comparables Table (for dealer tier) */}
-                  {result.tier === 'dealer' && result.top_comps.length > 0 && (
-                    <div className="pt-4 border-t">
-                      <h4 className="font-medium mb-3">Top Comparables</h4>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead className="text-right">Sell Price</TableHead>
-                            <TableHead className="text-right">Days</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {result.top_comps.map((comp, i) => (
-                            <TableRow key={i}>
-                              <TableCell>{comp.sale_date || '-'}</TableCell>
-                              <TableCell className="text-right">
-                                {comp.sell_price ? formatCurrency(comp.sell_price) : '-'}
-                              </TableCell>
-                              <TableCell className="text-right">{comp.days_to_sell || '-'}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-
-                  {/* Network disclaimer */}
-                  {(result.tier === 'network' || result.tier === 'proxy') && (
-                    <p className="text-sm text-muted-foreground italic">
-                      Data is anonymised. Dealer identities are never exposed.
-                    </p>
-                  )}
-                </>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p>No comparable sales found.</p>
-                  <p className="text-sm mt-1">Try a different vehicle or check the parsed details.</p>
+        {/* Request Buyer Review button */}
+        {showBuyerReview && (
+          <Card className="border-dashed">
+            <CardContent className="pt-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium">Need more certainty?</p>
+                  <p className="text-sm text-muted-foreground">
+                    Upload photos and get a reviewed valuation from our buyers
+                  </p>
                 </div>
-              )}
+                <Button variant="outline" onClick={handleRequestBuyerReview} className="gap-2">
+                  <Camera className="h-4 w-4" />
+                  Request Buyer Review
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* No data message */}
+        {result && result.sample_size === 0 && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-4 text-muted-foreground">
+                <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p>No comparable sales found in the system.</p>
+                <p className="text-sm mt-1">Request a buyer review for a manual assessment.</p>
+              </div>
             </CardContent>
           </Card>
         )}

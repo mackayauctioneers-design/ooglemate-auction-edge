@@ -747,6 +747,7 @@ export interface ValoParsedVehicle {
   km: number | null;
   notes: string | null;
   missing_fields: string[];
+  assumptions: string[];
 }
 
 export type ValoTier = 'dealer' | 'network' | 'proxy';
