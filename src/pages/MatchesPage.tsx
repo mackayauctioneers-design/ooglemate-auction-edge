@@ -820,7 +820,9 @@ export default function MatchesPage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Matches</h1>
             <p className="text-muted-foreground">
-              Live matches between active fingerprints and current listings
+              {isAdmin 
+                ? 'Live matches between active fingerprints and current listings'
+                : 'Your matched opportunities based on saved preferences'}
             </p>
           </div>
           
