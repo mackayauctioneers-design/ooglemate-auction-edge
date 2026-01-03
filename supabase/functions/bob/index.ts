@@ -48,12 +48,15 @@ interface WholesalePricing {
   hardWorkReason?: string;       // Why it's a hard work car
   medianOwe: number | null;      // Median OWE (cost) - PRIMARY ANCHOR
   // Internal log fields
-  anchorType: 'OWE_ANCHOR' | 'ESCALATE_NO_OWE';  // GLOBAL: Always OWE anchor
-  verdict: 'PRICED' | 'NEED_PICS';  // Output verdict
+  anchorType: 'OWE_ANCHOR' | 'ESCALATE_NO_OWE' | 'AI_SANITY_CLAMP';  // Pass type
+  verdict: 'PRICED' | 'NEED_PICS' | 'HIT' | 'HARD_WORK';  // Output verdict
   oweUsed?: number;
   upliftApplied?: boolean;
   buyRangeLow: number;           // Final buy range low
   buyRangeHigh: number;          // Final buy range high
+  sanityClamped?: boolean;       // Whether AI sanity clamp was applied
+  sanityCeiling?: number;        // The ceiling that was applied
+  sanityReason?: string;         // Why the clamp was applied
 }
 
 interface ValuationData {
@@ -326,6 +329,154 @@ function calculateMedian(values: number[]): number {
 // SELL price is NOT used to set buy range - context only.
 // ============================================================
 
+// ============================================================
+// AI SANITY CLAMP - PASS 2 (WHEN DATA IS THIN)
+// Conservative wholesale ceiling based on:
+// - Vehicle age
+// - Segment
+// - Brand reputation
+// - Historical demand patterns
+// ============================================================
+
+// Segments with low wholesale value ceilings
+const LOW_VALUE_SEGMENTS = {
+  // Old small cars - ceiling decays rapidly with age
+  'small_hatch': { baseCeiling: 8000, ageDecayPerYear: 1000, minCeiling: 2000 },
+  'light_car': { baseCeiling: 7000, ageDecayPerYear: 1200, minCeiling: 1500 },
+  // Known slow movers / discontinued
+  'discontinued': { baseCeiling: 6000, ageDecayPerYear: 1500, minCeiling: 1000 },
+  'problem_model': { baseCeiling: 5000, ageDecayPerYear: 1500, minCeiling: 800 },
+  // Euro hatches/sedans (hard work)
+  'euro_hatch': { baseCeiling: 9000, ageDecayPerYear: 1200, minCeiling: 2500 },
+  'euro_sedan': { baseCeiling: 12000, ageDecayPerYear: 1000, minCeiling: 3000 },
+  // Default fallback
+  'default': { baseCeiling: 25000, ageDecayPerYear: 500, minCeiling: 5000 },
+};
+
+// Discontinued / problem models (absolute low ceiling)
+const DISCONTINUED_PROBLEM_MODELS: Record<string, string[]> = {
+  'holden': ['cruze', 'captiva', 'barina', 'trax', 'astra', 'spark', 'volt'],
+  'ford': ['falcon', 'territory', 'ecosport'],
+  'great wall': ['*'],
+  'chery': ['*'],
+  'proton': ['*'],
+  'ssangyong': ['*'],
+  'mahindra': ['*'],
+  'ldv': ['*'],
+  'foton': ['*'],
+};
+
+// Small/light car models
+const SMALL_LIGHT_CARS: Record<string, string[]> = {
+  'toyota': ['yaris', 'echo', 'prius c'],
+  'honda': ['jazz', 'city', 'fit'],
+  'mazda': ['2', 'mazda2', 'demio'],
+  'hyundai': ['i20', 'accent', 'getz', 'excel'],
+  'kia': ['rio', 'picanto', 'soul'],
+  'suzuki': ['swift', 'baleno', 'celerio', 'ignis', 'alto'],
+  'nissan': ['micra', 'tiida', 'pulsar', 'almera'],
+  'mitsubishi': ['mirage', 'colt'],
+};
+
+// Calculate AI Sanity Ceiling for a vehicle
+function calculateAISanityCeiling(
+  make: string,
+  model: string,
+  year: number
+): { ceiling: number; segment: string; reason: string } {
+  const makeLower = make.toLowerCase().trim();
+  const modelLower = model.toLowerCase().trim();
+  const currentYear = new Date().getFullYear();
+  const age = currentYear - year;
+  
+  // Check if discontinued/problem model
+  for (const [dmMake, models] of Object.entries(DISCONTINUED_PROBLEM_MODELS)) {
+    if (makeLower.includes(dmMake) || dmMake.includes(makeLower)) {
+      if (models.includes('*') || models.some(m => modelLower.includes(m) || m.includes(modelLower))) {
+        const segment = LOW_VALUE_SEGMENTS['discontinued'];
+        const ceiling = Math.max(segment.baseCeiling - (age * segment.ageDecayPerYear), segment.minCeiling);
+        return {
+          ceiling: Math.round(ceiling),
+          segment: 'discontinued',
+          reason: `Discontinued/problem model (${make} ${model}) - LOW VALUE CEILING`
+        };
+      }
+    }
+  }
+  
+  // Check if known slow mover / cost-anchor-only
+  if (isCostAnchorOnlyVehicle(make, model)) {
+    const segment = LOW_VALUE_SEGMENTS['problem_model'];
+    const ceiling = Math.max(segment.baseCeiling - (age * segment.ageDecayPerYear), segment.minCeiling);
+    return {
+      ceiling: Math.round(ceiling),
+      segment: 'problem_model',
+      reason: `Known slow mover (${make} ${model}) - TIGHT CEILING`
+    };
+  }
+  
+  // Check if small/light car
+  for (const [slMake, models] of Object.entries(SMALL_LIGHT_CARS)) {
+    if (makeLower.includes(slMake) || slMake.includes(makeLower)) {
+      if (models.some(m => modelLower.includes(m) || m.includes(modelLower))) {
+        const segment = LOW_VALUE_SEGMENTS['small_hatch'];
+        const ceiling = Math.max(segment.baseCeiling - (age * segment.ageDecayPerYear), segment.minCeiling);
+        return {
+          ceiling: Math.round(ceiling),
+          segment: 'small_hatch',
+          reason: `Old small car (${age}yr ${make} ${model}) - VALUE CEILING`
+        };
+      }
+    }
+  }
+  
+  // Check if Euro hatch
+  for (const [euroMake, models] of Object.entries(POOR_LIQUIDITY_MODELS)) {
+    if (makeLower.includes(euroMake) || euroMake.includes(makeLower)) {
+      if (models.some(m => modelLower.includes(m) || m.includes(modelLower))) {
+        const segment = LOW_VALUE_SEGMENTS['euro_hatch'];
+        const ceiling = Math.max(segment.baseCeiling - (age * segment.ageDecayPerYear), segment.minCeiling);
+        return {
+          ceiling: Math.round(ceiling),
+          segment: 'euro_hatch',
+          reason: `Euro hatch/slow mover (${age}yr ${make} ${model}) - TIGHT CEILING`
+        };
+      }
+    }
+  }
+  
+  // Check if Euro sedan
+  if (isEuroSedan(make, model)) {
+    const segment = LOW_VALUE_SEGMENTS['euro_sedan'];
+    const ceiling = Math.max(segment.baseCeiling - (age * segment.ageDecayPerYear), segment.minCeiling);
+    return {
+      ceiling: Math.round(ceiling),
+      segment: 'euro_sedan',
+      reason: `Euro sedan (${age}yr ${make} ${model}) - CEILING APPLIED`
+    };
+  }
+  
+  // Age-based ceiling for any old vehicle (>10 years)
+  if (age > 10) {
+    const segment = LOW_VALUE_SEGMENTS['light_car'];
+    const ceiling = Math.max(segment.baseCeiling - (age * segment.ageDecayPerYear), segment.minCeiling);
+    return {
+      ceiling: Math.round(ceiling),
+      segment: 'old_vehicle',
+      reason: `Old vehicle (${age}yr) - AGE-BASED CEILING`
+    };
+  }
+  
+  // Default: moderate ceiling that decays with age
+  const segment = LOW_VALUE_SEGMENTS['default'];
+  const ceiling = Math.max(segment.baseCeiling - (age * segment.ageDecayPerYear), segment.minCeiling);
+  return {
+    ceiling: Math.round(ceiling),
+    segment: 'default',
+    reason: 'Standard wholesale ceiling'
+  };
+}
+
 // Buffer bands by price range
 function getOweBuffer(oweMedian: number): { low: number; high: number } {
   if (oweMedian < 15000) {
@@ -361,11 +512,14 @@ function calculateDaysVolatilityRisk(comps: WeightedComp[]): number {
 }
 
 // Calculate wholesale "own it" number
-// GLOBAL DEFAULT: Anchor to OWE (cost), NOT sell price
+// TWO-STAGE LOGIC:
+// PASS 1 - MYSALESDATA (PRIMARY): If >=2 OWE comps, anchor to OWE
+// PASS 2 - AI SANITY CLAMP: If data thin or range exceeds ceiling, clamp
 function calculateWholesalePricing(
   comps: WeightedComp[],
   make: string,
   model: string,
+  year: number,
   avgDaysInStock: number,
   confidence: 'HIGH' | 'MEDIUM' | 'LOW'
 ): WholesalePricing | null {
@@ -374,154 +528,163 @@ function calculateWholesalePricing(
     .map(wc => parseFloat(String(wc.record.total_cost)) || 0)
     .filter(p => p > 0);
   
-  // ============================================================
-  // RULE 4: If OWE comps are missing (n < 2), escalate
-  // Bob must refuse to give a firm buy number
-  // ============================================================
-  if (owePrices.length < 2) {
-    console.log(`⛔ ESCALATE_NO_OWE: Only ${owePrices.length} owe records - cannot price`);
-    
-    // Get sell prices just for context (if available)
-    const sellPrices = comps
-      .map(wc => parseFloat(String(wc.record.sell_price)) || 0)
-      .filter(p => p > 0);
-    const medianSellPrice = sellPrices.length > 0 ? calculateMedian(sellPrices) : 0;
-    
-    return {
-      ownItNumber: 0,
-      retailContext: medianSellPrice > 0 ? medianSellPrice : null,
-      medianSellPrice,
-      targetMargin: 0,
-      riskDiscountApplied: 0,
-      marginBand: 'N/A',
-      observedOweRange: undefined,
-      liquidityWarning: `Insufficient owe data (only ${owePrices.length} records)`,
-      isHardWorkCar: false,
-      hardWorkReason: undefined,
-      medianOwe: null,
-      anchorType: 'ESCALATE_NO_OWE',
-      verdict: 'NEED_PICS',
-      oweUsed: undefined,
-      upliftApplied: false,
-      buyRangeLow: 0,
-      buyRangeHigh: 0
-    };
-  }
-  
-  // ============================================================
-  // Calculate median OWE - this is the PRIMARY ANCHOR
-  // ============================================================
-  const medianOwe = calculateMedian(owePrices);
-  const observedOweMin = Math.min(...owePrices);
-  const observedOweMax = Math.max(...owePrices);
-  
-  console.log(`OWE-ANCHOR PRICING: Median owe = $${medianOwe}, Range: $${observedOweMin} - $${observedOweMax}`);
-  
-  // Get sell prices for CONTEXT ONLY (not used in buy range)
+  // Get sell prices just for context (if available)
   const sellPrices = comps
     .map(wc => parseFloat(String(wc.record.sell_price)) || 0)
     .filter(p => p > 0);
   const medianSellPrice = sellPrices.length > 0 ? calculateMedian(sellPrices) : 0;
   
-  // ============================================================
-  // Check if this is a "hard work" vehicle (Cruze-class)
-  // These get TIGHTLY capped buy ranges
-  // ============================================================
-  const isHardWork = isCostAnchorOnlyVehicle(make, model) || 
-                     analyzeHitCarStatus(comps, make, model, avgDaysInStock, confidence).isHitCar;
-  
-  const hardWorkReasons: string[] = [];
-  if (isCostAnchorOnlyVehicle(make, model)) {
-    hardWorkReasons.push(`Known slow mover (${make} ${model})`);
-  }
-  const hitAnalysis = analyzeHitCarStatus(comps, make, model, avgDaysInStock, confidence);
-  if (hitAnalysis.reasons.length > 0) {
-    hardWorkReasons.push(...hitAnalysis.reasons);
-  }
+  // Calculate AI Sanity Ceiling for this vehicle (used in PASS 2)
+  const sanityCeiling = calculateAISanityCeiling(make, model, year);
+  console.log(`AI SANITY CEILING: $${sanityCeiling.ceiling} (${sanityCeiling.segment}) - ${sanityCeiling.reason}`);
   
   // ============================================================
-  // Calculate risk buffer based on days_to_sell volatility
+  // PASS 1 - MYSALESDATA (PRIMARY)
+  // If dealer_sales_history has >=2 OWE comps: Anchor BUY range to OWE
   // ============================================================
-  const volatilityRisk = calculateDaysVolatilityRisk(comps);
-  const daysRisk = calculateDaysInStockRisk(avgDaysInStock);
-  const hardWorkRisk = calculateHardWorkRisk(make);
-  const { discount: liquidityDiscount, reason: liquidityReason } = calculatePoorLiquidityDiscount(make, model);
-  
-  const totalRiskDiscount = Math.min(volatilityRisk + daysRisk + hardWorkRisk + liquidityDiscount, 0.20);
-  
-  // ============================================================
-  // RULE 5: For "hard work" vehicles (Cruze-class), cap tightly
-  // BUY_HIGH <= OWE_median + 1200
-  // BUY_LOW <= OWE_median + 600
-  // ============================================================
-  let buyRangeLow: number;
-  let buyRangeHigh: number;
-  let upliftApplied = false;
-  
-  if (isHardWork) {
-    console.log(`⚠️ HARD WORK VEHICLE: ${make} ${model} - applying tight caps`);
-    buyRangeLow = medianOwe + 600;   // Max +$600 for hard work
-    buyRangeHigh = medianOwe + 1200; // Max +$1200 for hard work
+  if (owePrices.length >= 2) {
+    console.log(`✅ PASS 1 - MYSALESDATA: ${owePrices.length} OWE comps found - using OWE anchor`);
     
-    // Apply risk discount to buy range
-    buyRangeLow = Math.round(buyRangeLow * (1 - totalRiskDiscount));
-    buyRangeHigh = Math.round(buyRangeHigh * (1 - totalRiskDiscount));
+    const medianOwe = calculateMedian(owePrices);
+    const observedOweMin = Math.min(...owePrices);
+    const observedOweMax = Math.max(...owePrices);
     
-    // Hard work cars: buy range should never exceed owe + caps
-    buyRangeLow = Math.min(buyRangeLow, medianOwe + 600);
-    buyRangeHigh = Math.min(buyRangeHigh, medianOwe + 1200);
+    console.log(`OWE-ANCHOR PRICING: Median owe = $${medianOwe}, Range: $${observedOweMin} - $${observedOweMax}`);
     
-  } else {
-    // ============================================================
-    // Standard OWE-anchor pricing for regular vehicles
-    // BUY range = OWE anchor + buffer (per price band) ± risk
-    // ============================================================
-    const { low: bufferLow, high: bufferHigh } = getOweBuffer(medianOwe);
+    // Check if this is a "hard work" vehicle (Cruze-class)
+    const isHardWork = isCostAnchorOnlyVehicle(make, model) || 
+                       analyzeHitCarStatus(comps, make, model, avgDaysInStock, confidence).isHitCar;
     
-    buyRangeLow = medianOwe + bufferLow;
-    buyRangeHigh = medianOwe + bufferHigh;
-    
-    // Apply risk discount to reduce buy range if volatile
-    buyRangeLow = Math.round(buyRangeLow * (1 - totalRiskDiscount));
-    buyRangeHigh = Math.round(buyRangeHigh * (1 - totalRiskDiscount));
-    
-    // Allow small uplift for high confidence + fast sellers
-    if (confidence === 'HIGH' && avgDaysInStock < 30 && totalRiskDiscount < 0.05) {
-      buyRangeHigh = Math.round(buyRangeHigh * 1.03); // 3% uplift with evidence
-      upliftApplied = true;
-      console.log(`Fast seller with high confidence - allowing 3% uplift`);
+    const hardWorkReasons: string[] = [];
+    if (isCostAnchorOnlyVehicle(make, model)) {
+      hardWorkReasons.push(`Known slow mover (${make} ${model})`);
     }
+    const hitAnalysis = analyzeHitCarStatus(comps, make, model, avgDaysInStock, confidence);
+    if (hitAnalysis.reasons.length > 0) {
+      hardWorkReasons.push(...hitAnalysis.reasons);
+    }
+    
+    // Calculate risk buffer
+    const volatilityRisk = calculateDaysVolatilityRisk(comps);
+    const daysRisk = calculateDaysInStockRisk(avgDaysInStock);
+    const hardWorkRisk = calculateHardWorkRisk(make);
+    const { discount: liquidityDiscount, reason: liquidityReason } = calculatePoorLiquidityDiscount(make, model);
+    
+    const totalRiskDiscount = Math.min(volatilityRisk + daysRisk + hardWorkRisk + liquidityDiscount, 0.20);
+    
+    let buyRangeLow: number;
+    let buyRangeHigh: number;
+    let upliftApplied = false;
+    
+    if (isHardWork) {
+      console.log(`⚠️ HARD WORK VEHICLE: ${make} ${model} - applying tight caps`);
+      buyRangeLow = medianOwe + 600;   // Max +$600 for hard work
+      buyRangeHigh = medianOwe + 1200; // Max +$1200 for hard work
+      
+      buyRangeLow = Math.round(buyRangeLow * (1 - totalRiskDiscount));
+      buyRangeHigh = Math.round(buyRangeHigh * (1 - totalRiskDiscount));
+      
+      buyRangeLow = Math.min(buyRangeLow, medianOwe + 600);
+      buyRangeHigh = Math.min(buyRangeHigh, medianOwe + 1200);
+      
+    } else {
+      const { low: bufferLow, high: bufferHigh } = getOweBuffer(medianOwe);
+      
+      buyRangeLow = medianOwe + bufferLow;
+      buyRangeHigh = medianOwe + bufferHigh;
+      
+      buyRangeLow = Math.round(buyRangeLow * (1 - totalRiskDiscount));
+      buyRangeHigh = Math.round(buyRangeHigh * (1 - totalRiskDiscount));
+      
+      if (confidence === 'HIGH' && avgDaysInStock < 30 && totalRiskDiscount < 0.05) {
+        buyRangeHigh = Math.round(buyRangeHigh * 1.03);
+        upliftApplied = true;
+        console.log(`Fast seller with high confidence - allowing 3% uplift`);
+      }
+    }
+    
+    // ============================================================
+    // PASS 2 CHECK: Apply AI Sanity Clamp if buy range exceeds ceiling
+    // ============================================================
+    let sanityClamped = false;
+    let verdict: 'PRICED' | 'NEED_PICS' | 'HIT' | 'HARD_WORK' = isHardWork ? 'HARD_WORK' : 'PRICED';
+    let anchorType: 'OWE_ANCHOR' | 'ESCALATE_NO_OWE' | 'AI_SANITY_CLAMP' = 'OWE_ANCHOR';
+    
+    if (buyRangeHigh > sanityCeiling.ceiling) {
+      console.log(`⛔ SANITY CLAMP: Buy range $${buyRangeHigh} exceeds ceiling $${sanityCeiling.ceiling} - OVERRIDING`);
+      sanityClamped = true;
+      anchorType = 'AI_SANITY_CLAMP';
+      verdict = 'HIT';
+      
+      // Clamp to ceiling
+      buyRangeHigh = Math.min(buyRangeHigh, sanityCeiling.ceiling);
+      buyRangeLow = Math.min(buyRangeLow, Math.round(sanityCeiling.ceiling * 0.85));
+      
+      hardWorkReasons.push(`Sanity clamp applied: ${sanityCeiling.reason}`);
+    }
+    
+    const ownItNumber = Math.round((buyRangeLow + buyRangeHigh) / 2);
+    const impliedMargin = medianSellPrice > 0 ? (medianSellPrice - ownItNumber) / medianSellPrice : 0;
+    const marginBand = impliedMargin >= 0.10 ? '10%+' : 
+                       impliedMargin >= 0.07 ? '7-10%' : 
+                       impliedMargin >= 0.05 ? '5-7%' : '<5%';
+    
+    console.log(`OWE-ANCHOR: Buy range $${buyRangeLow} - $${buyRangeHigh}, Own-it = $${ownItNumber}`);
+    
+    return {
+      ownItNumber,
+      retailContext: medianSellPrice > 0 ? medianSellPrice : null,
+      medianSellPrice,
+      targetMargin: impliedMargin,
+      riskDiscountApplied: totalRiskDiscount,
+      marginBand,
+      observedOweRange: { min: observedOweMin, max: observedOweMax },
+      liquidityWarning: liquidityReason,
+      isHardWorkCar: isHardWork || sanityClamped,
+      hardWorkReason: hardWorkReasons.length > 0 ? hardWorkReasons.join(', ') : undefined,
+      medianOwe,
+      anchorType,
+      verdict,
+      oweUsed: medianOwe,
+      upliftApplied,
+      buyRangeLow,
+      buyRangeHigh,
+      sanityClamped,
+      sanityCeiling: sanityClamped ? sanityCeiling.ceiling : undefined,
+      sanityReason: sanityClamped ? sanityCeiling.reason : undefined
+    };
   }
   
-  // Own-it number = midpoint of buy range
-  const ownItNumber = Math.round((buyRangeLow + buyRangeHigh) / 2);
+  // ============================================================
+  // PASS 2 - AI SANITY CLAMP (WHEN DATA IS THIN)
+  // OWE comps < 2: Apply conservative wholesale sanity check
+  // Bob must NOT use sell prices or market data to guess
+  // ============================================================
+  console.log(`⛔ PASS 2 - AI SANITY CLAMP: Only ${owePrices.length} OWE comps - applying conservative ceiling`);
   
-  // Target margin calculation (for display only)
-  const impliedMargin = medianSellPrice > 0 ? (medianSellPrice - ownItNumber) / medianSellPrice : 0;
-  const marginBand = impliedMargin >= 0.10 ? '10%+' : 
-                     impliedMargin >= 0.07 ? '7-10%' : 
-                     impliedMargin >= 0.05 ? '5-7%' : '<5%';
-  
-  console.log(`OWE-ANCHOR: Buy range $${buyRangeLow} - $${buyRangeHigh}, Own-it = $${ownItNumber}`);
-  
+  // Bob cannot price without OWE data - must escalate with NEED_PICS
+  // The sanity ceiling is shown as MAXIMUM possible value (not a price)
   return {
-    ownItNumber,
+    ownItNumber: 0,
     retailContext: medianSellPrice > 0 ? medianSellPrice : null,
     medianSellPrice,
-    targetMargin: impliedMargin,
-    riskDiscountApplied: totalRiskDiscount,
-    marginBand,
-    observedOweRange: { min: observedOweMin, max: observedOweMax },
-    liquidityWarning: liquidityReason,
-    isHardWorkCar: isHardWork,
-    hardWorkReason: hardWorkReasons.length > 0 ? hardWorkReasons.join(', ') : undefined,
-    medianOwe,
-    anchorType: 'OWE_ANCHOR',
-    verdict: 'PRICED',
-    oweUsed: medianOwe,
-    upliftApplied,
-    buyRangeLow,
-    buyRangeHigh
+    targetMargin: 0,
+    riskDiscountApplied: 0,
+    marginBand: 'N/A',
+    observedOweRange: undefined,
+    liquidityWarning: `Insufficient OWE data (only ${owePrices.length} records)`,
+    isHardWorkCar: true,  // Treat as hard work when no data
+    hardWorkReason: `No OWE data - ${sanityCeiling.reason}`,
+    medianOwe: null,
+    anchorType: 'ESCALATE_NO_OWE',
+    verdict: 'NEED_PICS',
+    oweUsed: undefined,
+    upliftApplied: false,
+    buyRangeLow: 0,
+    buyRangeHigh: 0,
+    sanityClamped: true,
+    sanityCeiling: sanityCeiling.ceiling,
+    sanityReason: sanityCeiling.reason
   };
 }
 
@@ -693,8 +856,8 @@ function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number, 
     confidenceReason = `Only ${validBuyPrices.length} comparable sale(s) found`;
   }
   
-  // Calculate wholesale pricing (with confidence for HIT car analysis)
-  const wholesalePricing = calculateWholesalePricing(weightedComps, make, model, avgDaysInStock, confidence);
+  // Calculate wholesale pricing (with year for AI sanity clamp)
+  const wholesalePricing = calculateWholesalePricing(weightedComps, make, model, requestedYear, avgDaysInStock, confidence);
   
   return {
     comps: weightedComps,
@@ -728,7 +891,7 @@ Anchor type: ${wp?.anchorType || 'N/A'}
 
 `;
 
-  // PRIMARY OUTPUT: OWE-ANCHOR PRICING
+  // PRIMARY OUTPUT: TWO-STAGE VALUATION LOGIC
   if (wp) {
     // ============================================================
     // NO-COMP ESCALATION RULE (MANDATORY)
@@ -740,6 +903,11 @@ Anchor type: ${wp?.anchorType || 'N/A'}
 verdict: NEED_PICS
 anchor_type: ESCALATE_NO_OWE
 confidence: LOW
+
+PASS 1 - MYSALESDATA: FAILED (only ${valuation.comps.filter(c => c.record.total_cost > 0).length} OWE comps)
+PASS 2 - AI SANITY CLAMP: Applied
+AI Sanity Ceiling: $${wp.sanityCeiling?.toLocaleString() || 'N/A'}
+Sanity Reason: ${wp.sanityReason || 'Conservative ceiling applied'}
 
 Bob CANNOT find at least 2 comparable OWE records.
 - Bob must NOT output a buy price or range.
@@ -760,12 +928,66 @@ Send me a few pics and I'll talk to the boys."
 This rule overrides ALL other valuation logic.
 `;
       
+      // Show AI sanity ceiling as maximum possible (not a price to quote)
+      if (wp.sanityCeiling) {
+        context += `
+=== AI SANITY CEILING (INTERNAL ONLY - DO NOT QUOTE) ===
+Maximum wholesale ceiling: $${wp.sanityCeiling.toLocaleString()}
+Reason: ${wp.sanityReason}
+[⛔ This is NOT a buy price. Bob cannot price without OWE data.]
+`;
+      }
+      
       // Show retail context if available (EXPLICITLY cannot be used)
       if (wp.medianSellPrice > 0) {
         context += `
 === RETAIL DATA EXISTS BUT CANNOT BE USED ===
 Median retail sell: $${wp.medianSellPrice.toLocaleString()}
 [⛔ CANNOT use retail/sell data to derive a buy price. NO OWE = NO PRICE.]
+`;
+      }
+      
+    // ============================================================
+    // AI SANITY CLAMP OVERRIDE (PASS 2 triggered on good data)
+    // Buy range exceeded ceiling - must be clamped and downgraded
+    // ============================================================
+    } else if (wp.anchorType === 'AI_SANITY_CLAMP' || wp.sanityClamped) {
+      context += `=== ⛔ AI SANITY CLAMP OVERRIDE ===
+"This needs to be hit — that's not real wholesale money."
+
+PASS 1 - MYSALESDATA: Calculated (but exceeded ceiling)
+PASS 2 - AI SANITY CLAMP: OVERRIDE APPLIED
+
+Vehicle: ${make} ${model} (SANITY CLAMP - ceiling enforced)
+Reason: ${wp.sanityReason || wp.hardWorkReason}
+AI Sanity Ceiling: $${wp.sanityCeiling?.toLocaleString()}
+Median OWE (anchor): $${wp.medianOwe?.toLocaleString() || 'N/A'}
+CLAMPED Buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
+Own-it BUY price: $${wp.ownItNumber.toLocaleString()}
+Anchor type: ${wp.anchorType}
+Verdict: ${wp.verdict}
+
+SANITY CLAMP RULES:
+- Original buy range exceeded AI ceiling of $${wp.sanityCeiling?.toLocaleString()}
+- Buy range has been CLAMPED to ceiling
+- Bob must say: "This needs to be hit — that's not real wholesale money."
+- Bob may NOT quote above $${wp.buyRangeHigh.toLocaleString()}
+
+[INSTRUCTION: Bob MUST say out loud:
+"This needs to be hit — that's not real wholesale money."
+Then give the clamped buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}]
+`;
+      
+      if (wp.observedOweRange) {
+        context += `GUARDRAIL: Observed owe range: $${wp.observedOweRange.min.toLocaleString()} - $${wp.observedOweRange.max.toLocaleString()}
+`;
+      }
+      
+      if (wp.medianSellPrice > 0) {
+        context += `
+=== RETAIL CONTEXT (REFERENCE ONLY - NOT FOR PRICING) ===
+Median retail sell: $${wp.medianSellPrice.toLocaleString()}
+[⛔ DO NOT use retail to justify buy price. SANITY CLAMP enforced.]
 `;
       }
       
@@ -778,12 +1000,15 @@ Median retail sell: $${wp.medianSellPrice.toLocaleString()}
 Price it off what we owed last time, not what we jagged.
 Retail was hard work."
 
+PASS 1 - MYSALESDATA: Used (OWE anchor)
+
 Vehicle: ${make} ${model} (HARD WORK - tight caps applied)
 Reason: ${wp.hardWorkReason}
 Median OWE (anchor): $${wp.medianOwe?.toLocaleString() || 'N/A'}
 Buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
 Own-it BUY price: $${wp.ownItNumber.toLocaleString()}
 Anchor type: ${wp.anchorType}
+Verdict: ${wp.verdict}
 Uplift applied: ${wp.upliftApplied ? 'Yes' : 'No'}
 
 HARD WORK RULES (Cruze-class):
@@ -812,17 +1037,21 @@ Median retail sell: $${wp.medianSellPrice.toLocaleString()}
       }
       
     // ============================================================
-    // STANDARD OWE-ANCHOR PRICING
+    // STANDARD OWE-ANCHOR PRICING (PASS 1 SUCCESS)
     // ============================================================
     } else {
-      context += `=== OWE-ANCHOR WHOLESALE PRICING ===
+      context += `=== ✅ OWE-ANCHOR WHOLESALE PRICING (PASS 1 SUCCESS) ===
 Bob prices to buy and own, not bounce.
+
+PASS 1 - MYSALESDATA: Used (OWE anchor)
+PASS 2 - AI SANITY CLAMP: Not required (within ceiling)
 
 Median OWE (anchor): $${wp.medianOwe?.toLocaleString() || 'N/A'}
 Buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
 Own-it BUY price: $${wp.ownItNumber.toLocaleString()}
 Implied margin band: ${wp.marginBand}
 Anchor type: ${wp.anchorType}
+Verdict: ${wp.verdict}
 ${wp.upliftApplied ? 'Uplift applied: Yes (fast seller, high confidence)' : ''}
 `;
       
@@ -869,8 +1098,18 @@ Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
     context += `- ${r.year} ${r.make} ${r.model} ${r.variant || ''}: OWED $${parseInt(String(r.total_cost)).toLocaleString()}, sold $${parseInt(String(r.sell_price)).toLocaleString()}, ${r.days_in_stock} days, ${wc.recencyDays} days ago\n`;
   }
   
-  // GLOBAL OWE-ANCHOR GUARDRAIL INSTRUCTION
-  context += `\n[GLOBAL RULE - OWE-ANCHOR PRICING]:
+  // GLOBAL TWO-STAGE VALUATION LOGIC
+  context += `\n[GLOBAL RULE - TWO-STAGE VALUATION LOGIC]:
+=== PASS 1 - MYSALESDATA (PRIMARY) ===
+- If dealer_sales_history has >=2 OWE comps: Anchor BUY range to OWE (cost)
+- Ignore sell price - DONE
+
+=== PASS 2 - AI SANITY CLAMP (WHEN DATA IS THIN OR CEILING EXCEEDED) ===
+- If OWE comps < 2: Apply conservative wholesale sanity check
+- If calculated BUY range exceeds AI ceiling: OVERRIDE and CLAMP
+- Bob must enforce LOW-VALUE CEILING for: old small cars, slow movers, discontinued/problem models
+
+PRICING RULES:
 - Primary anchor = dealer_sales_history.total_cost (OWE)
 - SELL price is NOT used to set buy range - context only (expected exit)
 - BUY range is derived from: OWE anchor + buffer (per price band) ± risk
@@ -878,8 +1117,19 @@ Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
 - Bob prices to buy and own, not bounce
 `;
 
+  // AI SANITY CLAMP INSTRUCTION
+  if (wp?.sanityClamped || wp?.anchorType === 'AI_SANITY_CLAMP') {
+    context += `\n[AI SANITY CLAMP - OVERRIDE APPLIED]:
+Bob MUST say: "This needs to be hit — that's not real wholesale money."
+- AI Sanity Ceiling: $${wp.sanityCeiling?.toLocaleString()}
+- Clamped Buy Range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
+- Reason: ${wp.sanityReason}
+- You may NOT quote above the clamped ceiling
+`;
+  }
+
   // HARD WORK VEHICLE INSTRUCTION
-  if (wp?.isHardWorkCar) {
+  if (wp?.isHardWorkCar && !wp?.sanityClamped) {
     context += `\n[HARD WORK INSTRUCTION - Cruze-class]:
 - Say out loud: "These need to be hit. Price it off what we owed last time, not what we jagged. Retail was hard work."
 - Buy range is TIGHTLY CAPPED: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
