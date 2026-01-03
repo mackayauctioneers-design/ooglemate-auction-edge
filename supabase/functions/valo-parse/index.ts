@@ -18,6 +18,7 @@ interface ParsedVehicle {
   km: number | null;
   notes: string | null;
   missing_fields: string[];
+  assumptions: string[];
 }
 
 serve(async (req) => {
@@ -49,6 +50,7 @@ serve(async (req) => {
 RULES:
 - Extract only what is explicitly stated or can be confidently inferred
 - For uncertain fields, set to null and add to missing_fields
+- If you make ANY assumption about a field (inferring from context), add it to the assumptions array
 - Year: 4-digit year (e.g., 2025)
 - KM: numeric kilometers (e.g., 10000 for "10,000 km")
 - Make: manufacturer (Toyota, Ford, etc.)
@@ -67,7 +69,12 @@ Common Australian vehicle terms:
 - "S/C" = single cab
 - "turbo diesel" or "TD" = turbo diesel engine
 - "auto" or "AT" = automatic transmission
-- "manual" or "MT" = manual transmission`;
+- "manual" or "MT" = manual transmission
+
+ASSUMPTIONS EXAMPLES:
+- If they say "Hilux SR5" without year, and you assume current year, add "Assumed current year"
+- If they say "Land Cruiser" you might assume 4x4 - add "Assumed 4x4 drivetrain (typical for Land Cruiser)"
+- If they say "V8" with a Land Cruiser, you might assume petrol - add "Assumed petrol V8"`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -105,9 +112,14 @@ Common Australian vehicle terms:
                     type: "array", 
                     items: { type: "string" },
                     description: "Fields that could not be determined" 
+                  },
+                  assumptions: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Any assumptions made when parsing (e.g., 'Assumed 4x4 drivetrain')"
                   }
                 },
-                required: ["missing_fields"],
+                required: ["missing_fields", "assumptions"],
                 additionalProperties: false
               }
             }
@@ -154,9 +166,12 @@ Common Australian vehicle terms:
 
     const parsed: ParsedVehicle = JSON.parse(toolCall.function.arguments);
     
-    // Ensure missing_fields is always an array
+    // Ensure arrays are always present
     if (!parsed.missing_fields) {
       parsed.missing_fields = [];
+    }
+    if (!parsed.assumptions) {
+      parsed.assumptions = [];
     }
 
     // Add fields that are null to missing_fields if not already there
