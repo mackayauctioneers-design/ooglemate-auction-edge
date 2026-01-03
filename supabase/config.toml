@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.bob-realtime-token]
 verify_jwt = false
+
+[functions.bob-tts]
+verify_jwt = false

@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Info, CheckCircle, DollarSign, TrendingUp, BarChart3, Clock } from 'lucide-react';
+import { Loader2, Info, CheckCircle, DollarSign, TrendingUp, BarChart3, Clock, Volume2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ValoParsedVehicle, ValoResult, ValoTier, ValuationConfidence, formatCurrency } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MeetBobModal } from '@/components/valo/MeetBobModal';
 import { BobResponseLogger, determineBobResponseType } from '@/components/valo/BobResponseLogger';
 import { BobAvatar } from '@/components/valo/BobAvatar';
+import { useBobTTS } from '@/hooks/useBobTTS';
 
 // ============================================================================
 // SYSTEM: BOB (VALO ENGINE)
@@ -216,6 +217,10 @@ export default function ValoPage() {
   const [parsed, setParsed] = useState<ValoParsedVehicle | null>(null);
   const [result, setResult] = useState<ValoResult | null>(null);
   const [bobResponse, setBobResponse] = useState<string | null>(null);
+  
+  // TTS for Bob's voice
+  const { speak, isSpeaking, isLoading: ttsLoading } = useBobTTS();
+  const pendingTTSRef = useRef<string | null>(null);
 
   // Prefill from URL (when clicking VALO button on a lot)
   useEffect(() => {
@@ -229,6 +234,15 @@ export default function ValoPage() {
     document.title = 'Ask Bob | OogleMate';
     return () => { document.title = 'OogleMate'; };
   }, []);
+
+  // Auto-speak Bob's response when it changes
+  // TTS is triggered after response is set, within the async flow from user action
+  useEffect(() => {
+    if (bobResponse && pendingTTSRef.current !== bobResponse) {
+      pendingTTSRef.current = bobResponse;
+      speak(bobResponse);
+    }
+  }, [bobResponse, speak]);
 
   const handleProcess = async (inputText: string) => {
     if (!inputText.trim()) {
