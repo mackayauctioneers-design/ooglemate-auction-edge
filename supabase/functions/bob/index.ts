@@ -42,6 +42,8 @@ interface WholesalePricing {
   targetMargin: number;          // As percentage
   riskDiscountApplied: number;   // Total risk discount
   marginBand: string;            // e.g. "8-12%" 
+  observedBuyRange?: { min: number; max: number };  // Guardrail range
+  liquidityWarning?: string | null;  // Warning for slow movers
 }
 
 interface ValuationData {
@@ -58,6 +60,21 @@ interface ValuationData {
 
 // Euro / known hard work makes
 const HARD_WORK_MAKES = ['bmw', 'mercedes', 'audi', 'volkswagen', 'volvo', 'porsche', 'jaguar', 'land rover', 'alfa romeo', 'peugeot', 'citroen', 'renault', 'fiat', 'mini', 'saab'];
+
+// Known poor liquidity models - mandatory discount applies
+const POOR_LIQUIDITY_MODELS: Record<string, string[]> = {
+  'holden': ['cruze', 'captiva', 'barina', 'astra', 'trax'],
+  'volkswagen': ['golf', 'polo', 'passat', 'jetta', 'beetle'],
+  'peugeot': ['208', '308', '3008', '2008', '508'],
+  'citroen': ['c3', 'c4', 'c5', 'ds3', 'ds4'],
+  'renault': ['megane', 'clio', 'captur', 'koleos'],
+  'fiat': ['500', 'punto', 'tipo'],
+  'alfa romeo': ['giulietta', 'mito', '159'],
+  'audi': ['a1', 'a3'], // Euro hatches
+  'bmw': ['1 series', '118i', '120i', '125i'],
+  'mercedes': ['a-class', 'a180', 'a200', 'a250', 'b-class'],
+  'mini': ['cooper', 'one', 'countryman', 'clubman'],
+};
 
 // Calculate recency weight (90 days = 1.0, older = decaying)
 function calculateRecencyWeight(saleDateStr: string): { weight: number; days: number } {
@@ -86,7 +103,6 @@ function calculateLiquidityPenalty(daysInStock: number): number {
 
 // Calculate risk discount for days in stock
 function calculateDaysInStockRisk(avgDaysInStock: number): number {
-  // If average DIS is high, apply discount to buy price
   if (avgDaysInStock <= 21) return 0;       // No risk
   if (avgDaysInStock <= 35) return 0.02;    // 2% discount
   if (avgDaysInStock <= 50) return 0.04;    // 4% discount
@@ -101,6 +117,23 @@ function calculateHardWorkRisk(make: string): number {
     return 0.05; // 5% discount for Euro/hard work
   }
   return 0;
+}
+
+// Check if model is known poor liquidity - mandatory discount
+function calculatePoorLiquidityDiscount(make: string, model: string): { discount: number; reason: string | null } {
+  const makeLower = make.toLowerCase().trim();
+  const modelLower = model.toLowerCase().trim();
+  
+  for (const [poorMake, models] of Object.entries(POOR_LIQUIDITY_MODELS)) {
+    if (makeLower.includes(poorMake) || poorMake.includes(makeLower)) {
+      for (const poorModel of models) {
+        if (modelLower.includes(poorModel) || poorModel.includes(modelLower)) {
+          return { discount: 0.08, reason: `Known slow mover (${make} ${model})` }; // 8% mandatory discount
+        }
+      }
+    }
+  }
+  return { discount: 0, reason: null };
 }
 
 // Get target margin band based on price
@@ -125,17 +158,27 @@ function calculateMedian(values: number[]): number {
   return sorted[mid];
 }
 
-// Calculate wholesale "own it" number
+// Calculate wholesale "own it" number - GUARDRAIL: Must stay within observed range
 function calculateWholesalePricing(
   comps: WeightedComp[],
   make: string,
+  model: string,
   avgDaysInStock: number
 ): WholesalePricing | null {
   const sellPrices = comps
     .map(wc => parseFloat(String(wc.record.sell_price)) || 0)
     .filter(p => p > 0);
   
-  if (sellPrices.length === 0) return null;
+  const buyPrices = comps
+    .map(wc => parseFloat(String(wc.record.total_cost)) || 0)
+    .filter(p => p > 0);
+  
+  if (sellPrices.length === 0 || buyPrices.length === 0) return null;
+  
+  // GUARDRAIL: Get observed buy price range from our data
+  const observedBuyMin = Math.min(...buyPrices);
+  const observedBuyMax = Math.max(...buyPrices);
+  const medianBuyPrice = calculateMedian(buyPrices);
   
   // Step 1: Calculate median sell price from comps
   const medianSellPrice = calculateMedian(sellPrices);
@@ -146,12 +189,23 @@ function calculateWholesalePricing(
   // Step 3: Calculate risk discounts
   const daysRisk = calculateDaysInStockRisk(avgDaysInStock);
   const hardWorkRisk = calculateHardWorkRisk(make);
-  const totalRiskDiscount = daysRisk + hardWorkRisk;
+  const { discount: liquidityDiscount, reason: liquidityReason } = calculatePoorLiquidityDiscount(make, model);
+  
+  // Total risk = days + hardwork + mandatory liquidity discount (non-overlapping)
+  const totalRiskDiscount = Math.min(daysRisk + hardWorkRisk + liquidityDiscount, 0.20); // Cap at 20%
   
   // Step 4: Calculate "own it" wholesale number
   // Formula: medianSell * (1 - targetMargin) * (1 - riskDiscount)
   const baseWholesale = medianSellPrice * (1 - targetMargin);
-  const ownItNumber = Math.round(baseWholesale * (1 - totalRiskDiscount));
+  let ownItNumber = Math.round(baseWholesale * (1 - totalRiskDiscount));
+  
+  // GUARDRAIL: Own-it number MUST stay within observed buy range
+  // Never inflate above what we've actually paid, never go below observed minimum
+  if (ownItNumber > observedBuyMax) {
+    console.log(`Guardrail: Capping own-it from $${ownItNumber} to observed max $${observedBuyMax}`);
+    ownItNumber = observedBuyMax;
+  }
+  // Allow going below observed min if discounts justify it (we're being conservative)
   
   return {
     ownItNumber,
@@ -159,8 +213,10 @@ function calculateWholesalePricing(
     medianSellPrice,
     targetMargin,
     riskDiscountApplied: totalRiskDiscount,
-    marginBand
-  };
+    marginBand,
+    observedBuyRange: { min: observedBuyMin, max: observedBuyMax },
+    liquidityWarning: liquidityReason
+  } as WholesalePricing;
 }
 
 // Query dealer sales history from Google Sheets
@@ -228,7 +284,7 @@ async function queryDealerSalesHistory(
 }
 
 // Calculate valuation from comparables
-function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number, make: string): ValuationData {
+function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number, make: string, model: string): ValuationData {
   if (comps.length === 0) {
     return {
       comps: [],
@@ -315,7 +371,7 @@ function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number, 
   const maxPrice = Math.max(...validBuyPrices);
   
   // Calculate wholesale pricing
-  const wholesalePricing = calculateWholesalePricing(weightedComps, make, avgDaysInStock);
+  const wholesalePricing = calculateWholesalePricing(weightedComps, make, model, avgDaysInStock);
   
   // Determine confidence
   let confidence: 'HIGH' | 'MEDIUM' | 'LOW';
@@ -370,13 +426,22 @@ Sample size: ${compsCount} comparable sales
 Wholesale BUY price: $${wp.ownItNumber.toLocaleString()}
 Target margin band: ${wp.marginBand}
 `;
+    if (wp.observedBuyRange) {
+      context += `GUARDRAIL: Observed buy range from YOUR data: $${wp.observedBuyRange.min.toLocaleString()} - $${wp.observedBuyRange.max.toLocaleString()}
+`;
+    }
     if (wp.riskDiscountApplied > 0) {
       context += `Risk discount applied: ${(wp.riskDiscountApplied * 100).toFixed(0)}%
+`;
+    }
+    if (wp.liquidityWarning) {
+      context += `⚠️ LIQUIDITY WARNING: ${wp.liquidityWarning} - mandatory 8% discount applied
 `;
     }
     context += `
 === RETAIL CONTEXT (for reference only) ===
 Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
+[NOTE: Retail context is informational only. Never use retail to justify buy price.]
 `;
   }
 
@@ -401,6 +466,14 @@ Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
     const r = wc.record;
     context += `- ${r.year} ${r.make} ${r.model} ${r.variant || ''}: Bought $${parseInt(String(r.total_cost)).toLocaleString()}, Sold $${parseInt(String(r.sell_price)).toLocaleString()}, ${r.days_in_stock} days, ${wc.recencyDays} days ago\n`;
   }
+  
+  // GUARDRAIL INSTRUCTION
+  context += `\n[GUARDRAIL - MySalesData First]:
+- Your pricing MUST stay within the observed buy range from our sales data
+- NEVER inflate value using external priors or retail asking prices
+- If the model is flagged as poor liquidity, the discount is MANDATORY
+- Use retail context only to explain potential upside, never to justify buy price
+`;
   
   // Add guidance based on confidence
   if (valuation.confidence === 'LOW' || compsCount < 2) {
@@ -583,7 +656,7 @@ serve(async (req) => {
       );
       
       // Calculate valuation
-      const valuation = calculateValuation(comps, vehicleDetails.year, vehicleDetails.make);
+      const valuation = calculateValuation(comps, vehicleDetails.year, vehicleDetails.make, vehicleDetails.model);
       
       // Format context for Bob
       valuationContext = formatValuationContext(
