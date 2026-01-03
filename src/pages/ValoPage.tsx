@@ -217,6 +217,8 @@ export default function ValoPage() {
   const [parsed, setParsed] = useState<ValoParsedVehicle | null>(null);
   const [result, setResult] = useState<ValoResult | null>(null);
   const [bobResponse, setBobResponse] = useState<string | null>(null);
+  const [showOancaDebug, setShowOancaDebug] = useState(false);
+  const [oancaDebug, setOancaDebug] = useState<any>(null);
   
   // TTS for Bob's voice
   const { speak, isSpeaking, isLoading: ttsLoading } = useBobTTS();
@@ -253,6 +255,7 @@ export default function ValoPage() {
     setParsed(null);
     setResult(null);
     setBobResponse(null);
+    setOancaDebug(null);
     setIsProcessing(true);
 
     try {
@@ -278,19 +281,61 @@ export default function ValoPage() {
         return;
       }
 
-      // Step 2: Run valuation
-      const valuation = await runValoValuation(parsedVehicle, currentUser?.dealer_name);
-      const fullResult: ValoResult = {
-        parsed: parsedVehicle,
-        ...valuation,
-        request_id: crypto.randomUUID(),
-        timestamp: new Date().toISOString()
-      };
-      setResult(fullResult);
-      
-      // Generate Bob's response
-      const response = generateValoResponse(fullResult, parsedVehicle);
-      setBobResponse(response);
+      // Step 2: Call Bob edge function with OANCA Engine
+      // Bob is now a NARRATOR only - OANCA is the VALUER
+      const { data: bobData, error: bobError } = await supabase.functions.invoke('bob', {
+        body: { 
+          transcript: inputText,
+          dealerName: currentUser?.dealer_name,
+          includeDebug: isAdmin  // Admin gets OANCA debug object
+        }
+      });
+
+      if (bobError) throw new Error(bobError.message);
+      if (bobData?.error) throw new Error(bobData.error);
+
+      // Set Bob's response (narrated from OANCA)
+      setBobResponse(bobData.response);
+
+      // If admin, store OANCA debug object
+      if (isAdmin && bobData.oanca_debug) {
+        setOancaDebug(bobData.oanca_debug);
+        console.log('[OANCA DEBUG]', bobData.oanca_debug);
+      }
+
+      // Build result for display from OANCA data if available
+      if (bobData.oanca_debug) {
+        const oanca = bobData.oanca_debug;
+        const fullResult: ValoResult = {
+          parsed: parsedVehicle,
+          suggested_buy_range: oanca.allow_price 
+            ? { min: oanca.buy_low!, max: oanca.buy_high! }
+            : null,
+          suggested_sell_range: oanca.retail_context_low && oanca.retail_context_high
+            ? { min: oanca.retail_context_low, max: oanca.retail_context_high }
+            : null,
+          expected_gross_band: null,  // OANCA doesn't output this directly
+          typical_days_to_sell: null, // OANCA uses demand_class instead
+          confidence: oanca.confidence === 'HIGH' ? 'HIGH' : oanca.confidence === 'MED' ? 'MEDIUM' : 'LOW',
+          tier: 'dealer',  // OANCA always uses dealer sales history
+          tier_label: `OANCA (${oanca.verdict})`,
+          sample_size: oanca.n_comps,
+          top_comps: [],
+          request_id: crypto.randomUUID(),
+          timestamp: new Date().toISOString()
+        };
+        setResult(fullResult);
+      } else {
+        // Fallback: run local valuation for display
+        const valuation = await runValoValuation(parsedVehicle, currentUser?.dealer_name);
+        const fullResult: ValoResult = {
+          parsed: parsedVehicle,
+          ...valuation,
+          request_id: crypto.randomUUID(),
+          timestamp: new Date().toISOString()
+        };
+        setResult(fullResult);
+      }
 
       toast.success('Bob\'s got an answer');
     } catch (err) {
@@ -301,7 +346,6 @@ export default function ValoPage() {
       setIsProcessing(false);
     }
   };
-
   const runValoValuation = async (
     parsed: ValoParsedVehicle,
     dealerName?: string
@@ -436,11 +480,23 @@ export default function ValoPage() {
             </div>
           </div>
           
-          {isAdmin && (
-            <Badge variant="outline" className="gap-1 text-xs">
-              <Info className="h-3 w-3" />
-              Testing
-            </Badge>
+        {isAdmin && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowOancaDebug(!showOancaDebug)}
+                className={`px-2 py-1 text-xs rounded border transition-colors ${
+                  showOancaDebug 
+                    ? 'bg-primary text-primary-foreground border-primary' 
+                    : 'border-border hover:bg-muted'
+                }`}
+              >
+                🔧 OANCA Debug
+              </button>
+              <Badge variant="outline" className="gap-1 text-xs">
+                <Info className="h-3 w-3" />
+                Testing
+              </Badge>
+            </div>
           )}
         </div>
 
@@ -589,6 +645,81 @@ export default function ValoPage() {
               </Card>
             </div>
           </>
+        )}
+
+        {/* OANCA Debug Panel (Admin Only) */}
+        {isAdmin && showOancaDebug && oancaDebug && (
+          <Card className="border-yellow-500/50 bg-yellow-500/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-mono flex items-center gap-2">
+                🔧 OANCA_PRICE_OBJECT
+                <Badge variant="outline" className="text-xs">
+                  {oancaDebug.allow_price ? 'PRICED' : 'NO PRICE'}
+                </Badge>
+                <Badge 
+                  variant={oancaDebug.verdict === 'BUY' ? 'default' : 'secondary'}
+                  className="text-xs"
+                >
+                  {oancaDebug.verdict}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="font-mono text-xs space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-muted-foreground">allow_price:</span>{' '}
+                  <span className={oancaDebug.allow_price ? 'text-green-500' : 'text-red-500'}>
+                    {String(oancaDebug.allow_price)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">verdict:</span>{' '}
+                  <span className="font-semibold">{oancaDebug.verdict}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">demand_class:</span>{' '}
+                  {oancaDebug.demand_class || 'N/A'}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">confidence:</span>{' '}
+                  {oancaDebug.confidence || 'N/A'}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">n_comps:</span>{' '}
+                  {oancaDebug.n_comps}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">anchor_owe:</span>{' '}
+                  {oancaDebug.anchor_owe ? `$${oancaDebug.anchor_owe.toLocaleString()}` : 'N/A'}
+                </div>
+              </div>
+              
+              {oancaDebug.allow_price && (
+                <div className="pt-2 border-t border-yellow-500/20">
+                  <p className="text-muted-foreground mb-1">Approved Numbers:</p>
+                  <div className="flex gap-4">
+                    <span>buy_low: <strong>${oancaDebug.buy_low?.toLocaleString()}</strong></span>
+                    <span>buy_high: <strong>${oancaDebug.buy_high?.toLocaleString()}</strong></span>
+                  </div>
+                </div>
+              )}
+              
+              {oancaDebug.notes && oancaDebug.notes.length > 0 && (
+                <div className="pt-2 border-t border-yellow-500/20">
+                  <p className="text-muted-foreground mb-1">Notes:</p>
+                  <ul className="list-disc list-inside text-xs opacity-80">
+                    {oancaDebug.notes.map((note: string, i: number) => (
+                      <li key={i}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              <div className="pt-2 border-t border-yellow-500/20 text-muted-foreground">
+                Processing: {oancaDebug.processing_time_ms}ms | Comps: {oancaDebug.comps_used?.length || 0}
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
 
