@@ -820,3 +820,25 @@ export interface ValoRequestLog {
   confidence: ValuationConfidence;
   output_json: string;
 }
+
+// ========== OANCA ENGINE TYPES ==========
+
+export type OancaVerdict = 'BUY' | 'HIT_IT' | 'HARD_WORK' | 'NEED_PICS' | 'WALK';
+export type OancaDemandClass = 'fast' | 'average' | 'hard_work' | 'poison';
+export type OancaConfidence = 'HIGH' | 'MED' | 'LOW';
+
+export interface OancaPriceObject {
+  allow_price: boolean;
+  verdict: OancaVerdict;
+  buy_low: number | null;
+  buy_high: number | null;
+  anchor_owe: number | null;
+  demand_class: OancaDemandClass | null;
+  confidence: OancaConfidence | null;
+  n_comps: number;
+  notes: string[];
+  retail_context_low: number | null;
+  retail_context_high: number | null;
+  comps_used: string[];
+  processing_time_ms?: number;
+}

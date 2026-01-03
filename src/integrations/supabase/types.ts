@@ -14,6 +14,87 @@ export type Database = {
   }
   public: {
     Tables: {
+      valo_requests: {
+        Row: {
+          allow_price: boolean
+          anchor_owe: number | null
+          bob_response: string | null
+          buy_high: number | null
+          buy_low: number | null
+          comps_used: string[]
+          confidence: string | null
+          created_at: string
+          dealer_name: string | null
+          demand_class: string | null
+          engine: string | null
+          id: string
+          km: number | null
+          location: string | null
+          make: string
+          model: string
+          n_comps: number
+          oanca_object: Json
+          processing_time_ms: number | null
+          raw_transcript: string | null
+          transmission: string | null
+          variant_family: string | null
+          verdict: string
+          year: number
+        }
+        Insert: {
+          allow_price: boolean
+          anchor_owe?: number | null
+          bob_response?: string | null
+          buy_high?: number | null
+          buy_low?: number | null
+          comps_used?: string[]
+          confidence?: string | null
+          created_at?: string
+          dealer_name?: string | null
+          demand_class?: string | null
+          engine?: string | null
+          id?: string
+          km?: number | null
+          location?: string | null
+          make: string
+          model: string
+          n_comps?: number
+          oanca_object: Json
+          processing_time_ms?: number | null
+          raw_transcript?: string | null
+          transmission?: string | null
+          variant_family?: string | null
+          verdict: string
+          year: number
+        }
+        Update: {
+          allow_price?: boolean
+          anchor_owe?: number | null
+          bob_response?: string | null
+          buy_high?: number | null
+          buy_low?: number | null
+          comps_used?: string[]
+          confidence?: string | null
+          created_at?: string
+          dealer_name?: string | null
+          demand_class?: string | null
+          engine?: string | null
+          id?: string
+          km?: number | null
+          location?: string | null
+          make?: string
+          model?: string
+          n_comps?: number
+          oanca_object?: Json
+          processing_time_ms?: number | null
+          raw_transcript?: string | null
+          transmission?: string | null
+          variant_family?: string | null
+          verdict?: string
+          year?: number
+        }
+        Relationships: []
+      }
       valo_review_logs: {
         Row: {
           action: string
