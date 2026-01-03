@@ -56,55 +56,14 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
   // Transcripts
   const [userTranscript, setUserTranscript] = useState('');
   const [bobTranscript, setBobTranscript] = useState('');
-  const [conversationHistory, setConversationHistory] = useState<Array<{role: string, text: string}>>();
+  const [conversationHistory, setConversationHistory] = useState<Array<{role: string, text: string}>>([]);
 
-  // Check for bob_context in URL (from push notification tap)
-  useEffect(() => {
-    const bobContextParam = searchParams.get('bob_context');
-    if (bobContextParam && !isOpen) {
-      try {
-        const context = JSON.parse(decodeURIComponent(bobContextParam)) as BobPushContext;
-        console.log('Bob push context from URL:', context);
-        setPushContext(context);
-        // Clear the URL param
-        setSearchParams({});
-        // Open Bob with the push context
-        handleOpenBobWithPushContext(context);
-      } catch (err) {
-        console.error('Failed to parse bob_context:', err);
-      }
-    }
-  }, [searchParams]);
-
-  // Listen for service worker messages (notification clicks when app is open)
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'NOTIFICATION_CLICK' && event.data?.bobContext) {
-        console.log('Bob context from SW message:', event.data.bobContext);
-        setPushContext(event.data.bobContext);
-        handleOpenBobWithPushContext(event.data.bobContext);
-      }
-    };
-    
-    navigator.serviceWorker?.addEventListener('message', handleMessage);
-    return () => {
-      navigator.serviceWorker?.removeEventListener('message', handleMessage);
-    };
-  }, []);
-
-  // Auto-trigger brief on login
-  useEffect(() => {
-    if (triggerBrief && !hasTriggeredBrief && !isOpen) {
-      setHasTriggeredBrief(true);
-      handleOpenBob(true);
-    }
-  }, [triggerBrief, hasTriggeredBrief, isOpen]);
-  
   // WebRTC refs
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  
 
   // Cleanup on unmount
   useEffect(() => {
@@ -353,6 +312,46 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
       }).catch(console.warn);
     }
   }, [audioActive]);
+
+  // Check for bob_context in URL (from push notification tap)
+  useEffect(() => {
+    const bobContextParam = searchParams.get('bob_context');
+    if (bobContextParam && !isOpen) {
+      try {
+        const context = JSON.parse(decodeURIComponent(bobContextParam)) as BobPushContext;
+        console.log('Bob push context from URL:', context);
+        setPushContext(context);
+        setSearchParams({});
+        handleOpenBobWithPushContext(context);
+      } catch (err) {
+        console.error('Failed to parse bob_context:', err);
+      }
+    }
+  }, [searchParams, isOpen, setSearchParams, handleOpenBobWithPushContext]);
+
+  // Listen for service worker messages (notification clicks when app is open)
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'NOTIFICATION_CLICK' && event.data?.bobContext) {
+        console.log('Bob context from SW message:', event.data.bobContext);
+        setPushContext(event.data.bobContext);
+        handleOpenBobWithPushContext(event.data.bobContext);
+      }
+    };
+    
+    navigator.serviceWorker?.addEventListener('message', handleMessage);
+    return () => {
+      navigator.serviceWorker?.removeEventListener('message', handleMessage);
+    };
+  }, [handleOpenBobWithPushContext]);
+
+  // Auto-trigger brief on login
+  useEffect(() => {
+    if (triggerBrief && !hasTriggeredBrief && !isOpen) {
+      setHasTriggeredBrief(true);
+      handleOpenBob(true);
+    }
+  }, [triggerBrief, hasTriggeredBrief, isOpen, handleOpenBob]);
 
   return (
     <>
