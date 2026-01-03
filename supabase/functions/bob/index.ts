@@ -32,6 +32,16 @@ interface WeightedComp {
   weight: number;
   recencyDays: number;
   liquidityPenalty: number;
+  riskDiscount: number;
+}
+
+interface WholesalePricing {
+  ownItNumber: number;           // The wholesale "own it" price
+  retailContext: number | null;  // Optional retail reference
+  medianSellPrice: number;
+  targetMargin: number;          // As percentage
+  riskDiscountApplied: number;   // Total risk discount
+  marginBand: string;            // e.g. "8-12%" 
 }
 
 interface ValuationData {
@@ -43,7 +53,11 @@ interface ValuationData {
   avgDaysInStock: number | null;
   priceRange: { min: number; max: number } | null;
   confidenceReason: string;
+  wholesalePricing: WholesalePricing | null;
 }
+
+// Euro / known hard work makes
+const HARD_WORK_MAKES = ['bmw', 'mercedes', 'audi', 'volkswagen', 'volvo', 'porsche', 'jaguar', 'land rover', 'alfa romeo', 'peugeot', 'citroen', 'renault', 'fiat', 'mini', 'saab'];
 
 // Calculate recency weight (90 days = 1.0, older = decaying)
 function calculateRecencyWeight(saleDateStr: string): { weight: number; days: number } {
@@ -63,16 +77,90 @@ function calculateRecencyWeight(saleDateStr: string): { weight: number; days: nu
 
 // Calculate liquidity penalty based on days in stock
 function calculateLiquidityPenalty(daysInStock: number): number {
-  // Fast movers (< 14 days) = no penalty
-  if (daysInStock <= 14) return 1.0;
-  // Normal (14-30 days) = slight penalty
-  if (daysInStock <= 30) return 0.95;
-  // Slow (30-60 days) = moderate penalty
-  if (daysInStock <= 60) return 0.85;
-  // Very slow (60-90 days) = significant penalty
-  if (daysInStock <= 90) return 0.7;
-  // Problem stock (90+ days) = heavy penalty
-  return 0.5;
+  if (daysInStock <= 14) return 1.0;      // Fast movers = no penalty
+  if (daysInStock <= 30) return 0.95;     // Normal = slight penalty
+  if (daysInStock <= 60) return 0.85;     // Slow = moderate penalty
+  if (daysInStock <= 90) return 0.7;      // Very slow = significant penalty
+  return 0.5;                              // Problem stock = heavy penalty
+}
+
+// Calculate risk discount for days in stock
+function calculateDaysInStockRisk(avgDaysInStock: number): number {
+  // If average DIS is high, apply discount to buy price
+  if (avgDaysInStock <= 21) return 0;       // No risk
+  if (avgDaysInStock <= 35) return 0.02;    // 2% discount
+  if (avgDaysInStock <= 50) return 0.04;    // 4% discount
+  if (avgDaysInStock <= 70) return 0.06;    // 6% discount
+  return 0.08;                               // 8% discount for aged stock
+}
+
+// Calculate risk discount for hard work units (Euro, etc.)
+function calculateHardWorkRisk(make: string): number {
+  const makeLower = make.toLowerCase().trim();
+  if (HARD_WORK_MAKES.some(hw => makeLower.includes(hw) || hw.includes(makeLower))) {
+    return 0.05; // 5% discount for Euro/hard work
+  }
+  return 0;
+}
+
+// Get target margin band based on price
+function getTargetMarginBand(estimatedValue: number): { margin: number; band: string } {
+  if (estimatedValue < 30000) {
+    return { margin: 0.10, band: '8-12%' };   // Aim for 10% (8-12% range)
+  }
+  if (estimatedValue < 60000) {
+    return { margin: 0.07, band: '6-8%' };    // Aim for 7% (6-8% range)
+  }
+  return { margin: 0.055, band: '5-6%' };      // Aim for 5.5% (5-6% range)
+}
+
+// Calculate median from array
+function calculateMedian(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+  }
+  return sorted[mid];
+}
+
+// Calculate wholesale "own it" number
+function calculateWholesalePricing(
+  comps: WeightedComp[],
+  make: string,
+  avgDaysInStock: number
+): WholesalePricing | null {
+  const sellPrices = comps
+    .map(wc => parseFloat(String(wc.record.sell_price)) || 0)
+    .filter(p => p > 0);
+  
+  if (sellPrices.length === 0) return null;
+  
+  // Step 1: Calculate median sell price from comps
+  const medianSellPrice = calculateMedian(sellPrices);
+  
+  // Step 2: Determine target margin by price band
+  const { margin: targetMargin, band: marginBand } = getTargetMarginBand(medianSellPrice);
+  
+  // Step 3: Calculate risk discounts
+  const daysRisk = calculateDaysInStockRisk(avgDaysInStock);
+  const hardWorkRisk = calculateHardWorkRisk(make);
+  const totalRiskDiscount = daysRisk + hardWorkRisk;
+  
+  // Step 4: Calculate "own it" wholesale number
+  // Formula: medianSell * (1 - targetMargin) * (1 - riskDiscount)
+  const baseWholesale = medianSellPrice * (1 - targetMargin);
+  const ownItNumber = Math.round(baseWholesale * (1 - totalRiskDiscount));
+  
+  return {
+    ownItNumber,
+    retailContext: medianSellPrice,
+    medianSellPrice,
+    targetMargin,
+    riskDiscountApplied: totalRiskDiscount,
+    marginBand
+  };
 }
 
 // Query dealer sales history from Google Sheets
@@ -140,7 +228,7 @@ async function queryDealerSalesHistory(
 }
 
 // Calculate valuation from comparables
-function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number): ValuationData {
+function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number, make: string): ValuationData {
   if (comps.length === 0) {
     return {
       comps: [],
@@ -150,14 +238,19 @@ function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number):
       avgGrossProfit: null,
       avgDaysInStock: null,
       priceRange: null,
-      confidenceReason: 'No comparable sales data found'
+      confidenceReason: 'No comparable sales data found',
+      wholesalePricing: null
     };
   }
+  
+  // Calculate risk discount for this make
+  const makeRiskDiscount = calculateHardWorkRisk(make);
   
   // Weight each comp
   const weightedComps: WeightedComp[] = comps.map(record => {
     const { weight: recencyWeight, days: recencyDays } = calculateRecencyWeight(record.sale_date);
     const liquidityPenalty = calculateLiquidityPenalty(record.days_in_stock || 0);
+    const daysRisk = calculateDaysInStockRisk(record.days_in_stock || 0);
     
     // Combined weight
     const weight = recencyWeight * liquidityPenalty;
@@ -166,7 +259,8 @@ function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number):
       record,
       weight,
       recencyDays,
-      liquidityPenalty
+      liquidityPenalty,
+      riskDiscount: daysRisk + makeRiskDiscount
     };
   });
   
@@ -207,7 +301,8 @@ function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number):
       avgGrossProfit: null,
       avgDaysInStock: null,
       priceRange: null,
-      confidenceReason: 'No valid price data in comparables'
+      confidenceReason: 'No valid price data in comparables',
+      wholesalePricing: null
     };
   }
   
@@ -218,6 +313,9 @@ function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number):
   
   const minPrice = Math.min(...validBuyPrices);
   const maxPrice = Math.max(...validBuyPrices);
+  
+  // Calculate wholesale pricing
+  const wholesalePricing = calculateWholesalePricing(weightedComps, make, avgDaysInStock);
   
   // Determine confidence
   let confidence: 'HIGH' | 'MEDIUM' | 'LOW';
@@ -244,7 +342,8 @@ function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number):
     avgGrossProfit,
     avgDaysInStock,
     priceRange: { min: minPrice, max: maxPrice },
-    confidenceReason
+    confidenceReason,
+    wholesalePricing
   };
 }
 
@@ -256,6 +355,7 @@ function formatValuationContext(valuation: ValuationData, make: string, model: s
   
   const compsCount = valuation.comps.length;
   const recentComps = valuation.comps.filter(wc => wc.recencyDays <= 90).length;
+  const wp = valuation.wholesalePricing;
   
   let context = `\n\n[VALUATION DATA for ${year} ${make} ${model}]
 Confidence: ${valuation.confidence}
@@ -264,20 +364,29 @@ Sample size: ${compsCount} comparable sales
 
 `;
 
+  // PRIMARY OUTPUT: Own-it wholesale number
+  if (wp) {
+    context += `=== OWN-IT WHOLESALE NUMBER ===
+Wholesale BUY price: $${wp.ownItNumber.toLocaleString()}
+Target margin band: ${wp.marginBand}
+`;
+    if (wp.riskDiscountApplied > 0) {
+      context += `Risk discount applied: ${(wp.riskDiscountApplied * 100).toFixed(0)}%
+`;
+    }
+    context += `
+=== RETAIL CONTEXT (for reference only) ===
+Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
+`;
+  }
+
+  // Supporting data
   if (valuation.avgBuyPrice) {
-    context += `Average BUY price (weighted): $${valuation.avgBuyPrice.toLocaleString()}
+    context += `Historical avg BUY: $${valuation.avgBuyPrice.toLocaleString()}
 `;
   }
   if (valuation.priceRange) {
     context += `Buy price range: $${valuation.priceRange.min.toLocaleString()} - $${valuation.priceRange.max.toLocaleString()}
-`;
-  }
-  if (valuation.avgSellPrice) {
-    context += `Average SELL price: $${valuation.avgSellPrice.toLocaleString()}
-`;
-  }
-  if (valuation.avgGrossProfit) {
-    context += `Average gross profit: $${valuation.avgGrossProfit.toLocaleString()}
 `;
   }
   if (valuation.avgDaysInStock) {
@@ -297,12 +406,23 @@ Sample size: ${compsCount} comparable sales
   if (valuation.confidence === 'LOW' || compsCount < 2) {
     context += `\n[INSTRUCTION: Data is thin. Say "Mate, I'm light on data for this one. Give me two minutes, let me check with one of the boys." Ask for 4-5 photos to get a proper read.]\n`;
   } else if (valuation.confidence === 'MEDIUM') {
-    context += `\n[INSTRUCTION: Provide a buy range, but caveat with "based on what I'm seeing". Mention photos always help tighten up the number.]\n`;
+    context += `\n[INSTRUCTION: Provide the OWN-IT number as your buy range, but caveat with "based on what I'm seeing". Mention photos always help tighten up the number.]\n`;
   } else {
-    context += `\n[INSTRUCTION: Confident pricing. Give a firm wholesale buy range. Still welcome photos if they want a tighter read.]\n`;
+    context += `\n[INSTRUCTION: Confident pricing. Lead with the OWN-IT wholesale number. Still welcome photos if they want a tighter read.]\n`;
   }
   
   context += `\n[ALWAYS ACCEPT PHOTOS: If the user offers or sends photos, always say yes. Photos help with condition, spec verification, and tightening up the price.]\n`;
+  
+  // Risk warnings
+  if (wp && wp.riskDiscountApplied >= 0.05) {
+    const isEuro = HARD_WORK_MAKES.some(hw => make.toLowerCase().includes(hw));
+    if (isEuro) {
+      context += `\n[RISK WARNING: Euro unit - factor in parts/service complexity. Already discounted in OWN-IT price.]\n`;
+    }
+    if (valuation.avgDaysInStock && valuation.avgDaysInStock > 45) {
+      context += `\n[RISK WARNING: Slow mover - avg ${valuation.avgDaysInStock} days in stock. Be cautious.]\n`;
+    }
+  }
   
   return context;
 }
@@ -463,7 +583,7 @@ serve(async (req) => {
       );
       
       // Calculate valuation
-      const valuation = calculateValuation(comps, vehicleDetails.year);
+      const valuation = calculateValuation(comps, vehicleDetails.year, vehicleDetails.make);
       
       // Format context for Bob
       valuationContext = formatValuationContext(
