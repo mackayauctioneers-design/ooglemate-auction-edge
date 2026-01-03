@@ -566,17 +566,15 @@ Sample size: ${compsCount} comparable sales
     // HIT CAR: Special output for cost-anchor mode
     if (wp.isHitCar) {
       context += `=== ⚠️ HIT CAR - COST ANCHOR MODE ===
-This is a HIT car — price it off what we owed last time, not what we sold it for.
+"Price it off what we owed last time, not what we jagged."
 Reason: ${wp.hitCarReason}
 Last known OWE (anchor): $${wp.lastKnownOwe?.toLocaleString() || 'N/A'}
 Wholesale BUY price: $${wp.ownItNumber.toLocaleString()}
 
 HARD-WORK CAR RULES:
-- Anchor pricing to LAST KNOWN OWE, ignore retail outliers
-- Only minimal uplift if strong market evidence exists
-- Bob may NOT quote above historical owe unless:
-  * Photos confirm exceptional condition
-  * OR explicit dealer override is applied
+- Anchor pricing to LAST KNOWN OWE (cost), ignore lucky retail sell-outs
+- Only allow small uplift with evidence (photos confirming exceptional condition OR clear market change)
+- Bob may NOT quote above historical owe unless photos/evidence provided
 
 `;
     } else {
@@ -638,10 +636,10 @@ Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
   // HIT CAR INSTRUCTION
   if (wp && wp.isHitCar) {
     context += `\n[HIT CAR INSTRUCTION]:
-- This is a HIT car. Say explicitly: "This is a HIT car — price it off what we owed last time, not what we sold it for."
+- This is a HIT car. Say out loud: "Price it off what we owed last time, not what we jagged."
 - Anchor ALL pricing to the last known owe ($${wp.lastKnownOwe?.toLocaleString() || 'N/A'})
-- Ignore retail outliers completely
-- Only apply minimal uplift (max 2%) if photos confirm exceptional condition
+- Ignore lucky retail sell-outs completely
+- Only allow small uplift with evidence (photos showing exceptional condition or clear market movement)
 - You may NOT quote above $${wp.lastKnownOwe?.toLocaleString() || 'N/A'} without photos or dealer override
 `;
   }
