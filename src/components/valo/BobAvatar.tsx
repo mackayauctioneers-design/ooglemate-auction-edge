@@ -3,7 +3,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Loader2, X, Volume2, Mic, MicOff, Bug } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-
+import bobAvatarVideo from '@/assets/bob-avatar.mp4';
 // ============================================================================
 // BOB: Voice-first AI using OpenAI Realtime API (WebRTC)
 // Native conversational voice streams directly - no separate TTS needed
@@ -263,23 +263,30 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
 
   return (
     <>
-      {/* Floating Bob Avatar */}
+      {/* Floating Bob Avatar - Video */}
       <button
         onClick={handleOpenBob}
         disabled={isConnecting}
         className={cn(
           "fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-xl",
           "flex items-center justify-center transition-all duration-200",
-          "bg-gradient-to-br from-primary to-primary/80",
+          "overflow-hidden border-2 border-primary",
           "hover:scale-105 active:scale-95",
           isConnecting && "opacity-60"
         )}
         aria-label="Talk to Bob"
       >
         {isConnecting ? (
-          <Loader2 className="h-7 w-7 animate-spin text-primary-foreground" />
+          <Loader2 className="h-7 w-7 animate-spin text-primary" />
         ) : (
-          <span className="text-3xl">👨‍🔧</span>
+          <video
+            src={bobAvatarVideo}
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="w-full h-full object-cover"
+          />
         )}
       </button>
       <span className="fixed bottom-2 right-8 z-50 text-xs font-medium text-muted-foreground">
@@ -294,7 +301,16 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
         >
           {/* Header */}
           <div className="bg-gradient-to-br from-primary to-primary/80 p-6 text-center text-primary-foreground relative">
-            <div className="text-5xl mb-2">👨‍🔧</div>
+            <div className="w-20 h-20 mx-auto mb-2 rounded-full overflow-hidden border-2 border-primary-foreground/30">
+              <video
+                src={bobAvatarVideo}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="w-full h-full object-cover"
+              />
+            </div>
             <p className="font-semibold text-lg">Bob</p>
             
             {/* Audio status badge */}
