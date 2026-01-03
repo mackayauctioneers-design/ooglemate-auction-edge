@@ -896,138 +896,194 @@ function calculateValuation(comps: SalesHistoryRecord[], requestedYear: number, 
   };
 }
 
-// Format valuation data for Bob's context
-// BOB IS A NARRATOR, NOT A VALUER
-// All pricing is pre-computed. Bob only reads the script.
-function formatValuationContext(valuation: ValuationData, make: string, model: string, year: number): string {
+// ============================================================
+// VALO_PRICE_OBJECT - THE ONLY SOURCE OF TRUTH FOR BOB
+// ============================================================
+// Bob MUST read from this object. If allow_price = false, he refuses.
+// If ChatGPT outputs ANY number not in this object, it is a BLOCKING BUG.
+// ============================================================
+
+interface ValoPriceObject {
+  allow_price: boolean;                    // If false, Bob MUST refuse to price
+  vehicle: string;                         // e.g., "2015 Holden Cruze"
+  verdict: 'PRICED' | 'HIT' | 'NO_PRICE';  // What Bob says
+  demand_class: 'NORMAL' | 'LOW_DEMAND' | 'CLAMPED' | 'NO_DATA';
+  
+  // These are the ONLY numbers Bob can quote (null if allow_price = false)
+  buy_range_low: number | null;
+  buy_range_high: number | null;
+  own_it_number: number | null;
+  
+  // Context for Bob's script (not for pricing)
+  reason: string | null;
+  script_line: string;                     // The exact words Bob should say
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | null;
+  
+  // Audit trail
+  owe_comps_count: number;
+  sanity_ceiling: number | null;
+}
+
+// Build VALO_PRICE_OBJECT from valuation data
+// This is the ONLY function that determines what numbers Bob can quote
+function buildValoPriceObject(valuation: ValuationData, make: string, model: string, year: number): ValoPriceObject {
   const wp = valuation.wholesalePricing;
+  const vehicle = `${year} ${make} ${model}`;
+  const oweCompsCount = valuation.comps.filter(c => c.record.total_cost > 0).length;
   
   // ============================================================
-  // NO DATA = NO PRICE (RULE 3)
+  // NO DATA = NO PRICE
   // ============================================================
   if (valuation.comps.length === 0 || !wp) {
-    return `
-[BOB SCRIPT - NO DATA]
-verdict: NO_PRICE
-vehicle: ${year} ${make} ${model}
-
-Bob says EXACTLY:
-"Yeah mate, I'm thin on that one. Haven't got enough similar runners in our book to price it properly. Send me a few pics and I'll talk to the boys."
-
-RULES:
-- DO NOT calculate a price
-- DO NOT estimate from market data  
-- DO NOT suggest a number
-- ONLY ask for photos and escalate
-`;
+    return {
+      allow_price: false,
+      vehicle,
+      verdict: 'NO_PRICE',
+      demand_class: 'NO_DATA',
+      buy_range_low: null,
+      buy_range_high: null,
+      own_it_number: null,
+      reason: 'No comparable sales data found',
+      script_line: "Yeah mate, I'm thin on that one. Haven't got enough similar runners in our book to price it properly. Send me a few pics and I'll talk to the boys.",
+      confidence: null,
+      owe_comps_count: 0,
+      sanity_ceiling: null
+    };
   }
 
   // ============================================================
-  // ESCALATE - NO OWE DATA (RULE 3)
+  // ESCALATE - NO OWE DATA
   // ============================================================
   if (wp.anchorType === 'ESCALATE_NO_OWE') {
-    return `
-[BOB SCRIPT - NO OWE DATA]
-verdict: NO_PRICE
-vehicle: ${year} ${make} ${model}
-owe_comps_found: ${valuation.comps.filter(c => c.record.total_cost > 0).length}
-
-Bob says EXACTLY:
-"Yeah mate, I'm thin on that one. Haven't got enough similar runners in our book to price it properly. Send me a few pics and I'll talk to the boys."
-
-RULES:
-- DO NOT calculate a price
-- DO NOT use retail/sell data to estimate
-- DO NOT suggest a number "to work from"
-- ONLY ask for photos and escalate
-
-This is the ONLY valid response. No exceptions.
-`;
+    return {
+      allow_price: false,
+      vehicle,
+      verdict: 'NO_PRICE',
+      demand_class: 'NO_DATA',
+      buy_range_low: null,
+      buy_range_high: null,
+      own_it_number: null,
+      reason: `Insufficient OWE data (only ${oweCompsCount} records)`,
+      script_line: "Yeah mate, I'm thin on that one. Haven't got enough similar runners in our book to price it properly. Send me a few pics and I'll talk to the boys.",
+      confidence: null,
+      owe_comps_count: oweCompsCount,
+      sanity_ceiling: wp.sanityCeiling || null
+    };
   }
 
   // ============================================================
-  // LOW-VALUE VEHICLE MODE (RULE 2) - Cruze, Captiva, Euro, etc.
+  // LOW-VALUE VEHICLE MODE (HIT cars)
   // ============================================================
-  if (wp.isHardWorkCar) {
-    return `
-[BOB SCRIPT - LOW-VALUE VEHICLE]
-verdict: HIT
-vehicle: ${year} ${make} ${model}
-demand_class: LOW_DEMAND
-reason: ${wp.hardWorkReason}
-
-PRE-COMPUTED PRICING (Bob reads these numbers, does NOT calculate):
-- median_owe: $${wp.medianOwe?.toLocaleString() || 'N/A'}
-- buy_range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
-- own_it_number: $${wp.ownItNumber.toLocaleString()}
-
-Bob says:
-"These need to be hit. Price it off what we owed last time, not what we jagged. Retail was hard work — this is not a confident buy."
-"Looking at $${wp.buyRangeLow.toLocaleString()} to $${wp.buyRangeHigh.toLocaleString()} to own it."
-
-RULES:
-- Bob NARRATES the pre-computed buy range above
-- Bob does NOT calculate or adjust these numbers
-- Bob does NOT express confidence
-- Bob may NOT quote above $${wp.buyRangeHigh.toLocaleString()}
-- Photos always welcome to tighten up
-`;
+  if (wp.isHardWorkCar && wp.anchorType !== 'AI_SANITY_CLAMP') {
+    return {
+      allow_price: true,
+      vehicle,
+      verdict: 'HIT',
+      demand_class: 'LOW_DEMAND',
+      buy_range_low: wp.buyRangeLow,
+      buy_range_high: wp.buyRangeHigh,
+      own_it_number: wp.ownItNumber,
+      reason: wp.hardWorkReason || 'Known slow mover',
+      script_line: `These need to be hit. Price it off what we owed last time, not what we jagged. Looking at $${wp.buyRangeLow.toLocaleString()} to $${wp.buyRangeHigh.toLocaleString()} to own it. Retail was hard work.`,
+      confidence: null,  // No confidence for HIT cars
+      owe_comps_count: oweCompsCount,
+      sanity_ceiling: wp.sanityCeiling || null
+    };
   }
 
   // ============================================================
-  // SANITY CLAMP APPLIED (ceiling enforced)
+  // SANITY CLAMP APPLIED
   // ============================================================
   if (wp.sanityClamped || wp.anchorType === 'AI_SANITY_CLAMP') {
-    return `
-[BOB SCRIPT - SANITY CLAMP]
-verdict: HIT
-vehicle: ${year} ${make} ${model}
-demand_class: CLAMPED
-reason: ${wp.sanityReason}
-
-PRE-COMPUTED PRICING (Bob reads these numbers, does NOT calculate):
-- sanity_ceiling: $${wp.sanityCeiling?.toLocaleString()}
-- buy_range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
-- own_it_number: $${wp.ownItNumber.toLocaleString()}
-
-Bob says:
-"This needs to be hit — that's not real wholesale money."
-"I'd be looking at $${wp.buyRangeLow.toLocaleString()} to $${wp.buyRangeHigh.toLocaleString()} to own it."
-
-RULES:
-- Bob NARRATES the pre-computed buy range above
-- Bob does NOT calculate or adjust these numbers
-- Bob may NOT quote above $${wp.buyRangeHigh.toLocaleString()}
-`;
+    return {
+      allow_price: true,
+      vehicle,
+      verdict: 'HIT',
+      demand_class: 'CLAMPED',
+      buy_range_low: wp.buyRangeLow,
+      buy_range_high: wp.buyRangeHigh,
+      own_it_number: wp.ownItNumber,
+      reason: wp.sanityReason || 'Sanity ceiling applied',
+      script_line: `This needs to be hit — that's not real wholesale money. I'd be looking at $${wp.buyRangeLow.toLocaleString()} to $${wp.buyRangeHigh.toLocaleString()} to own it.`,
+      confidence: null,  // No confidence for clamped cars
+      owe_comps_count: oweCompsCount,
+      sanity_ceiling: wp.sanityCeiling || null
+    };
   }
 
   // ============================================================
-  // STANDARD OWE-ANCHOR PRICING (RULE 1)
+  // STANDARD OWE-ANCHOR PRICING
   // ============================================================
+  const confidenceText = valuation.confidence === 'HIGH' 
+    ? "Good fighter, I'm confident on that range."
+    : "Based on what I'm seeing. Photos always help tighten it up.";
+    
+  return {
+    allow_price: true,
+    vehicle,
+    verdict: 'PRICED',
+    demand_class: 'NORMAL',
+    buy_range_low: wp.buyRangeLow,
+    buy_range_high: wp.buyRangeHigh,
+    own_it_number: wp.ownItNumber,
+    reason: null,
+    script_line: `Looking at $${wp.buyRangeLow.toLocaleString()} to $${wp.buyRangeHigh.toLocaleString()} to own it. ${confidenceText}`,
+    confidence: valuation.confidence,
+    owe_comps_count: oweCompsCount,
+    sanity_ceiling: null
+  };
+}
+
+// Format VALO_PRICE_OBJECT for Bob's context
+// This is the ONLY data Bob receives. He is a narrator, not a valuer.
+function formatValuationContext(valuation: ValuationData, make: string, model: string, year: number): string {
+  const priceObj = buildValoPriceObject(valuation, make, model, year);
+  
+  console.log(`VALO_PRICE_OBJECT: allow_price=${priceObj.allow_price}, verdict=${priceObj.verdict}, buy_range=${priceObj.buy_range_low}-${priceObj.buy_range_high}`);
+  
+  // ============================================================
+  // BUILD BOB'S SCRIPT FROM VALO_PRICE_OBJECT
+  // Bob can ONLY say what's in this object
+  // ============================================================
+  
   return `
-[BOB SCRIPT - STANDARD PRICING]
-verdict: PRICED
-vehicle: ${year} ${make} ${model}
-demand_class: NORMAL
-confidence: ${valuation.confidence}
 
-PRE-COMPUTED PRICING (Bob reads these numbers, does NOT calculate):
-- median_owe: $${wp.medianOwe?.toLocaleString()}
-- buy_range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
-- own_it_number: $${wp.ownItNumber.toLocaleString()}
-- owe_range_observed: $${wp.observedOweRange?.min.toLocaleString()} - $${wp.observedOweRange?.max.toLocaleString()}
-${wp.riskDiscountApplied > 0 ? `- risk_discount: ${(wp.riskDiscountApplied * 100).toFixed(0)}%` : ''}
-${wp.liquidityWarning ? `- warning: ${wp.liquidityWarning}` : ''}
+=== VALO_PRICE_OBJECT (READ-ONLY) ===
 
-Bob says:
-"Looking at $${wp.buyRangeLow.toLocaleString()} to $${wp.buyRangeHigh.toLocaleString()} to own it."
-${valuation.confidence === 'HIGH' ? '"Good fighter, I\'m confident on that range."' : '"Based on what I\'m seeing. Photos always help tighten it up."'}
+allow_price: ${priceObj.allow_price}
+vehicle: ${priceObj.vehicle}
+verdict: ${priceObj.verdict}
+demand_class: ${priceObj.demand_class}
 
-RULES:
-- Bob NARRATES the pre-computed buy range above
-- Bob does NOT calculate or adjust these numbers
-- Bob may mention photos help tighten the number
-- Retail context ($${wp.medianSellPrice.toLocaleString()}) is expected exit only - NOT for pricing
+${priceObj.allow_price ? `APPROVED NUMBERS (Bob may ONLY quote these):
+- buy_range_low: $${priceObj.buy_range_low?.toLocaleString()}
+- buy_range_high: $${priceObj.buy_range_high?.toLocaleString()}
+- own_it_number: $${priceObj.own_it_number?.toLocaleString()}` : `NO APPROVED NUMBERS.
+Bob is FORBIDDEN from quoting any price.
+Bob MUST request photos and escalate.`}
+
+${priceObj.reason ? `reason: ${priceObj.reason}` : ''}
+${priceObj.confidence ? `confidence: ${priceObj.confidence}` : ''}
+
+=== BOB'S SCRIPT (SAY THIS) ===
+${priceObj.script_line}
+
+=== CRITICAL RULES ===
+${priceObj.allow_price ? `
+1. Bob may ONLY quote numbers from APPROVED NUMBERS above.
+2. Bob may NOT calculate, adjust, or infer any other numbers.
+3. If Bob outputs ANY number not in APPROVED NUMBERS, it is a BLOCKING BUG.
+4. Bob may NOT exceed $${priceObj.buy_range_high?.toLocaleString()} under any circumstances.
+5. Photos always welcome to tighten up.` : `
+1. allow_price = false. Bob MUST REFUSE to price.
+2. Bob is FORBIDDEN from quoting any number.
+3. Bob is FORBIDDEN from estimating, guessing, or "working from" a number.
+4. Bob MUST say EXACTLY: "${priceObj.script_line}"
+5. This is the ONLY valid response. No exceptions.`}
+
+=== AUDIT ===
+owe_comps_count: ${priceObj.owe_comps_count}
+sanity_ceiling: ${priceObj.sanity_ceiling ? `$${priceObj.sanity_ceiling.toLocaleString()}` : 'N/A'}
 `;
 }
 
