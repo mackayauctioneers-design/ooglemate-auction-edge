@@ -576,18 +576,33 @@ function calculateWholesalePricing(
     let buyRangeHigh: number;
     let upliftApplied = false;
     
+    // ============================================================
+    // RULE 1: OWE OVERRIDES EVERYTHING
+    // Bob is FORBIDDEN from exceeding historical OWE
+    // BUY range must anchor to OWE - never above observed OWE max
+    // ============================================================
+    
     if (isHardWork) {
-      console.log(`⚠️ HARD WORK VEHICLE: ${make} ${model} - applying tight caps`);
-      buyRangeLow = medianOwe + 600;   // Max +$600 for hard work
-      buyRangeHigh = medianOwe + 1200; // Max +$1200 for hard work
+      // LOW-VALUE VEHICLE MODE: Cruze, Captiva, Mondeo, Peugeot, etc.
+      // Bob must HIT the car - tight caps, no confidence
+      console.log(`⚠️ LOW-VALUE VEHICLE MODE: ${make} ${model} - HARD WORK - tight caps, no confidence`);
       
+      // For hard work cars: anchor BELOW median OWE (we need to HIT it)
+      buyRangeLow = Math.round(medianOwe * 0.92);   // 8% below median OWE
+      buyRangeHigh = Math.round(medianOwe * 0.98);  // 2% below median OWE
+      
+      // Apply risk discounts on top
       buyRangeLow = Math.round(buyRangeLow * (1 - totalRiskDiscount));
       buyRangeHigh = Math.round(buyRangeHigh * (1 - totalRiskDiscount));
       
-      buyRangeLow = Math.min(buyRangeLow, medianOwe + 600);
-      buyRangeHigh = Math.min(buyRangeHigh, medianOwe + 1200);
+      // FORBIDDEN: Never exceed observed OWE max for hard work
+      buyRangeHigh = Math.min(buyRangeHigh, observedOweMax);
+      buyRangeLow = Math.min(buyRangeLow, observedOweMax - 500);
+      
+      console.log(`HARD WORK CAPS: Low=$${buyRangeLow}, High=$${buyRangeHigh} (never above OWE max $${observedOweMax})`);
       
     } else {
+      // Standard vehicle: anchor to OWE with small buffer
       const { low: bufferLow, high: bufferHigh } = getOweBuffer(medianOwe);
       
       buyRangeLow = medianOwe + bufferLow;
@@ -596,10 +611,19 @@ function calculateWholesalePricing(
       buyRangeLow = Math.round(buyRangeLow * (1 - totalRiskDiscount));
       buyRangeHigh = Math.round(buyRangeHigh * (1 - totalRiskDiscount));
       
-      if (confidence === 'HIGH' && avgDaysInStock < 30 && totalRiskDiscount < 0.05) {
-        buyRangeHigh = Math.round(buyRangeHigh * 1.03);
+      // RULE 1: FORBIDDEN from exceeding historical OWE max + small buffer
+      const maxAllowedBuy = observedOweMax + getOweBuffer(observedOweMax).high;
+      if (buyRangeHigh > maxAllowedBuy) {
+        console.log(`⛔ CAPPING: Buy high $${buyRangeHigh} exceeds allowed $${maxAllowedBuy} (OWE max + buffer)`);
+        buyRangeHigh = maxAllowedBuy;
+        buyRangeLow = Math.min(buyRangeLow, buyRangeHigh - 500);
+      }
+      
+      // Only allow minor uplift for proven fast sellers
+      if (confidence === 'HIGH' && avgDaysInStock < 25 && totalRiskDiscount < 0.03) {
+        buyRangeHigh = Math.round(buyRangeHigh * 1.02); // Reduced to 2%
         upliftApplied = true;
-        console.log(`Fast seller with high confidence - allowing 3% uplift`);
+        console.log(`Fast seller with high confidence - allowing 2% uplift (conservative)`);
       }
     }
     
@@ -607,7 +631,7 @@ function calculateWholesalePricing(
     // PASS 2 CHECK: Apply AI Sanity Clamp if buy range exceeds ceiling
     // ============================================================
     let sanityClamped = false;
-    let verdict: 'PRICED' | 'NEED_PICS' | 'HIT' | 'HARD_WORK' = isHardWork ? 'HARD_WORK' : 'PRICED';
+    let verdict: 'PRICED' | 'NEED_PICS' | 'HIT' | 'HARD_WORK' = isHardWork ? 'HIT' : 'PRICED'; // HIT for hard work (downgraded)
     let anchorType: 'OWE_ANCHOR' | 'ESCALATE_NO_OWE' | 'AI_SANITY_CLAMP' = 'OWE_ANCHOR';
     
     if (buyRangeHigh > sanityCeiling.ceiling) {
@@ -995,31 +1019,36 @@ Median retail sell: $${wp.medianSellPrice.toLocaleString()}
     // HARD WORK VEHICLE (Cruze-class) - TIGHT CAPS
     // ============================================================
     } else if (wp.isHardWorkCar) {
-      context += `=== ⚠️ HARD WORK VEHICLE - TIGHT OWE CAPS ===
+      context += `=== ⚠️ LOW-VALUE VEHICLE MODE (HARD WORK) ===
+verdict: HIT
+anchor_type: OWE_ANCHOR  
+confidence: DOWNGRADED
+
 "These need to be hit.
 Price it off what we owed last time, not what we jagged.
-Retail was hard work."
+Retail was hard work — this is not a confident buy."
 
 PASS 1 - MYSALESDATA: Used (OWE anchor)
 
-Vehicle: ${make} ${model} (HARD WORK - tight caps applied)
+Vehicle: ${make} ${model} (LOW-VALUE MODE - must HIT)
 Reason: ${wp.hardWorkReason}
 Median OWE (anchor): $${wp.medianOwe?.toLocaleString() || 'N/A'}
-Buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
+Buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()} (BELOW OWE - hitting it)
 Own-it BUY price: $${wp.ownItNumber.toLocaleString()}
 Anchor type: ${wp.anchorType}
 Verdict: ${wp.verdict}
-Uplift applied: ${wp.upliftApplied ? 'Yes' : 'No'}
 
-HARD WORK RULES (Cruze-class):
-- BUY_HIGH capped at OWE_median + $1,200
-- BUY_LOW capped at OWE_median + $600
-- Sell prices are IGNORED for pricing (context only)
-- You may NOT quote above $${wp.buyRangeHigh.toLocaleString()} without photo evidence
+RULE 2 - LOW-VALUE VEHICLE MODE:
+- Bob has entered HARD-WORK mode
+- Bob has downgraded tone (no confidence)
+- Bob must HIT the car (price below OWE)
+- Bob must NOT express confidence
+- Bob is FORBIDDEN from quoting above $${wp.buyRangeHigh.toLocaleString()}
 
-[INSTRUCTION: Bob MUST say out loud:
-"These need to be hit. Price it off what we owed last time, not what we jagged. Retail was hard work."
-Then give the buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}]
+[INSTRUCTION: Bob MUST say:
+"These need to be hit. Price it off what we owed last time, not what we jagged.
+Retail was hard work — this is not a confident buy."
+Then give the hit buy range: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}]
 `;
       
       if (wp.observedOweRange) {
@@ -1098,23 +1127,33 @@ Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
     context += `- ${r.year} ${r.make} ${r.model} ${r.variant || ''}: OWED $${parseInt(String(r.total_cost)).toLocaleString()}, sold $${parseInt(String(r.sell_price)).toLocaleString()}, ${r.days_in_stock} days, ${wc.recencyDays} days ago\n`;
   }
   
-  // GLOBAL TWO-STAGE VALUATION LOGIC
-  context += `\n[GLOBAL RULE - TWO-STAGE VALUATION LOGIC]:
-=== PASS 1 - MYSALESDATA (PRIMARY) ===
-- If dealer_sales_history has >=2 OWE comps: Anchor BUY range to OWE (cost)
-- Ignore sell price - DONE
+  // CRITICAL FIX — WHOLESALE ANCHORING RULES
+  context += `\n[CRITICAL FIX — WHOLESALE ANCHORING RULES]:
 
-=== PASS 2 - AI SANITY CLAMP (WHEN DATA IS THIN OR CEILING EXCEEDED) ===
-- If OWE comps < 2: Apply conservative wholesale sanity check
-- If calculated BUY range exceeds AI ceiling: OVERRIDE and CLAMP
-- Bob must enforce LOW-VALUE CEILING for: old small cars, slow movers, discontinued/problem models
+=== RULE 1: OWE OVERRIDES EVERYTHING ===
+- If MySalesData contains ANY OWE (cost) records for same model (±2 years):
+  - Wholesale BUY range MUST anchor to OWE
+  - Bob is FORBIDDEN from exceeding historical OWE
+  - Sell price is IGNORED entirely for BUY decisions
 
-PRICING RULES:
-- Primary anchor = dealer_sales_history.total_cost (OWE)
-- SELL price is NOT used to set buy range - context only (expected exit)
-- BUY range is derived from: OWE anchor + buffer (per price band) ± risk
-- You may NOT exceed the buy range high without photo evidence
-- Bob prices to buy and own, not bounce
+=== RULE 2: LOW-VALUE VEHICLE MODE ===
+- For known low-demand vehicles (Cruze, Captiva, Mondeo, Peugeot, etc.):
+  - Bob MUST enter HARD-WORK mode
+  - Bob MUST downgrade tone (no confidence)
+  - Bob MUST HIT the car (price BELOW OWE median)
+  - Bob must NOT express confidence
+
+=== RULE 3: NO DATA = NO NUMBER ===
+- If OWE data is missing or thin (<2 comps):
+  - Bob must NOT quote a price
+  - Bob must request photos or escalation
+  - Bob may say "send me pics / let me talk to the boys"
+
+ENFORCE:
+- OWE anchoring > AI intuition
+- Conservative bias ALWAYS
+- NEVER quote optimistic wholesale values
+- SELL price is context only (expected exit) - NEVER use for buy pricing
 `;
 
   // AI SANITY CLAMP INSTRUCTION
@@ -1128,12 +1167,14 @@ Bob MUST say: "This needs to be hit — that's not real wholesale money."
 `;
   }
 
-  // HARD WORK VEHICLE INSTRUCTION
+  // LOW-VALUE VEHICLE MODE INSTRUCTION (RULE 2)
   if (wp?.isHardWorkCar && !wp?.sanityClamped) {
-    context += `\n[HARD WORK INSTRUCTION - Cruze-class]:
-- Say out loud: "These need to be hit. Price it off what we owed last time, not what we jagged. Retail was hard work."
-- Buy range is TIGHTLY CAPPED: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
-- You may NOT quote above $${wp.buyRangeHigh.toLocaleString()} without photo evidence
+    context += `\n[LOW-VALUE VEHICLE MODE - RULE 2]:
+- Say out loud: "These need to be hit. Price it off what we owed last time, not what we jagged. Retail was hard work — this is not a confident buy."
+- Bob has DOWNGRADED tone (no confidence)
+- Bob must HIT the car: $${wp.buyRangeLow.toLocaleString()} - $${wp.buyRangeHigh.toLocaleString()}
+- Bob is FORBIDDEN from quoting above $${wp.buyRangeHigh.toLocaleString()}
+- Bob must NOT express confidence
 `;
   }
   
