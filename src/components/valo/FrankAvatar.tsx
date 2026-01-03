@@ -1,19 +1,19 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Camera, Loader2, X, Check, Send } from 'lucide-react';
+import { Camera, Loader2, X, Check, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { ValoResult, ValoParsedVehicle } from '@/types';
 
 // ============================================================================
-// FRANK: Live conversation, not a feature
+// FRANK: Live phone call, not a chatbot
 // ============================================================================
 // - Tap Frank → opens listening immediately (like picking up a phone)
-// - No buttons, no instructions
-// - Stops after natural silence, auto-processes
-// - Frank asks clarifying questions if needed
-// - Feels like talking to a senior buyer
+// - Frank SPEAKS his responses (TTS) - no play button needed
+// - If user starts talking, Frank stops speaking and listens
+// - Text always visible for reference
+// - No toggles, no modes - Frank always speaks and listens
 // ============================================================================
 
 interface FrankAvatarProps {
@@ -36,6 +36,32 @@ const PHOTO_GUIDES = [
 
 const SILENCE_TIMEOUT_MS = 1800; // Slightly longer for natural speech
 
+// Get Australian male voice if available, otherwise neutral male
+function getFrankVoice(): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
+  
+  // Priority: Australian English male voices
+  const aussieMale = voices.find(v => 
+    v.lang.includes('en-AU') && v.name.toLowerCase().includes('male')
+  );
+  if (aussieMale) return aussieMale;
+  
+  // Fallback: Any Australian English voice
+  const aussieVoice = voices.find(v => v.lang.includes('en-AU'));
+  if (aussieVoice) return aussieVoice;
+  
+  // Fallback: UK/US male voices
+  const englishMale = voices.find(v => 
+    (v.lang.includes('en-GB') || v.lang.includes('en-US')) && 
+    (v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('daniel') || v.name.toLowerCase().includes('james'))
+  );
+  if (englishMale) return englishMale;
+  
+  // Fallback: Any English voice
+  const englishVoice = voices.find(v => v.lang.startsWith('en'));
+  return englishVoice || null;
+}
+
 export function FrankAvatar({ 
   onProcess, 
   isProcessing, 
@@ -51,6 +77,7 @@ export function FrankAvatar({
   const [isListening, setIsListening] = useState(false);
   const [currentTranscript, setCurrentTranscript] = useState('');
   const [isSupported, setIsSupported] = useState(true);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   
   // Photo capture state
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
@@ -63,6 +90,64 @@ export function FrankAvatar({
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const accumulatedTranscriptRef = useRef('');
+  const lastSpokenResponseRef = useRef<string | null>(null);
+
+  // Stop Frank speaking (when user interrupts)
+  const stopSpeaking = useCallback(() => {
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  }, []);
+
+  // Speak Frank's response
+  const speakResponse = useCallback((text: string) => {
+    if (!text || !window.speechSynthesis) return;
+    
+    // Don't speak the same response twice
+    if (lastSpokenResponseRef.current === text) return;
+    lastSpokenResponseRef.current = text;
+    
+    // Cancel any ongoing speech
+    stopSpeaking();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voice = getFrankVoice();
+    if (voice) {
+      utterance.voice = voice;
+    }
+    utterance.rate = 1.0;
+    utterance.pitch = 0.95; // Slightly lower for male voice
+    utterance.volume = 1.0;
+    
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    
+    // Small delay to ensure voices are loaded
+    setTimeout(() => {
+      window.speechSynthesis.speak(utterance);
+    }, 100);
+  }, [stopSpeaking]);
+
+  // Auto-speak Frank's response when it changes
+  useEffect(() => {
+    if (frankResponse && isOpen && !isProcessing && !isListening) {
+      speakResponse(frankResponse);
+    }
+  }, [frankResponse, isOpen, isProcessing, isListening, speakResponse]);
+
+  // Load voices on mount (some browsers load them async)
+  useEffect(() => {
+    const loadVoices = () => {
+      window.speechSynthesis?.getVoices();
+    };
+    loadVoices();
+    window.speechSynthesis?.addEventListener('voiceschanged', loadVoices);
+    return () => {
+      window.speechSynthesis?.removeEventListener('voiceschanged', loadVoices);
+    };
+  }, []);
 
   // Initialize speech recognition
   useEffect(() => {
@@ -78,6 +163,11 @@ export function FrankAvatar({
     recognition.lang = 'en-AU';
 
     recognition.onresult = (event: any) => {
+      // INTERRUPT: Stop Frank speaking if user starts talking
+      if (isSpeaking) {
+        stopSpeaking();
+      }
+      
       // Reset silence timer on any speech
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
@@ -131,8 +221,9 @@ export function FrankAvatar({
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
       }
+      stopSpeaking();
     };
-  }, []);
+  }, [isSpeaking, stopSpeaking]);
 
   // Auto-open photo capture when Frank needs photos
   useEffect(() => {
@@ -187,12 +278,17 @@ export function FrankAvatar({
   }, [isProcessing, startListening]);
 
   const handleClose = () => {
+    // Stop listening
     if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
     }
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
     }
+    // Stop speaking
+    stopSpeaking();
+    lastSpokenResponseRef.current = null; // Reset so response can be spoken again if reopened
+    
     setIsListening(false);
     setCurrentTranscript('');
     accumulatedTranscriptRef.current = '';
@@ -320,7 +416,13 @@ export function FrankAvatar({
           <div className="bg-gradient-to-br from-primary to-primary/80 p-6 text-center text-primary-foreground">
             <div className="text-5xl mb-2">👨‍🔧</div>
             <p className="font-semibold text-lg">Frank</p>
-            {isListening && (
+            {isSpeaking && (
+              <div className="flex items-center justify-center gap-1.5 mt-1">
+                <Volume2 className="h-4 w-4 animate-pulse" />
+                <p className="text-sm opacity-90">Speaking...</p>
+              </div>
+            )}
+            {isListening && !isSpeaking && (
               <p className="text-sm opacity-90 animate-pulse mt-1">Listening...</p>
             )}
             {isProcessing && (
