@@ -867,7 +867,7 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    const bobResponse = data.choices?.[0]?.message?.content;
+    let bobResponse = data.choices?.[0]?.message?.content;
 
     if (!bobResponse) {
       console.error("No response from AI:", data);
@@ -875,6 +875,53 @@ serve(async (req) => {
         JSON.stringify({ error: "Bob didn't respond" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // ============================================================
+    // HARD RUNTIME GATE: STRIP/BLOCK PRICES WHEN allow_price=false
+    // This is CODE enforcement, not prompt-only rules.
+    // ============================================================
+    if (oancaObject && !oancaObject.allow_price) {
+      // Check if Bob's response contains any price-like patterns
+      const pricePattern = /\$[\d,]+(?:\s*[-–to]+\s*\$?[\d,]+)?/gi;
+      const wholesalePriceWords = /\b(buy|own|pay|offer|worth|value|price|range)\b.*?\$[\d,]+/gi;
+      
+      const hasPrices = pricePattern.test(bobResponse) || wholesalePriceWords.test(bobResponse);
+      
+      if (hasPrices) {
+        console.warn("[OANCA GATE] BLOCKED: Bob tried to quote prices when allow_price=false");
+        console.warn("[OANCA GATE] Original response:", bobResponse);
+        
+        // FORCE REPLACE with approved NEED_PICS script
+        bobResponse = "Mate I'm thin on our book for that one. Send me a few pics and I'll check with the boys.";
+        
+        console.log("[OANCA GATE] Replaced with NEED_PICS script");
+      }
+    }
+    
+    // ============================================================
+    // SECOND GATE: If allow_price=true, verify prices match OANCA
+    // ============================================================
+    if (oancaObject && oancaObject.allow_price && oancaObject.buy_low && oancaObject.buy_high) {
+      const priceMatches = bobResponse.match(/\$[\d,]+/g) || [];
+      const approvedPrices = [
+        oancaObject.buy_low,
+        oancaObject.buy_high,
+        oancaObject.anchor_owe,
+        oancaObject.retail_context_low,
+        oancaObject.retail_context_high,
+      ].filter(Boolean).map(p => Math.round(p! / 100) * 100);  // Round to nearest 100
+      
+      for (const priceStr of priceMatches) {
+        const price = parseInt(priceStr.replace(/[$,]/g, ''));
+        // Check if price is close to any approved price (within $500 tolerance for formatting)
+        const isApproved = approvedPrices.some(ap => Math.abs(price - ap) <= 500);
+        
+        if (!isApproved && price > 1000) {  // Only flag significant prices
+          console.warn(`[OANCA GATE] WARNING: Bob quoted unapproved price $${price}. Approved: ${approvedPrices.join(', ')}`);
+          // Don't block, but log for audit - AI may have formatted slightly differently
+        }
+      }
     }
 
     // Log the request to database
