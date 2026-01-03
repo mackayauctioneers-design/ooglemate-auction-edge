@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { dataService } from '@/services/dataService';
 import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { SendPicsToFrank } from '@/components/valo/SendPicsToFrank';
 
 // ============================================================================
 // FRANK (VALO) Response Generator - LOCKED LOGIC
@@ -433,10 +434,6 @@ export default function ValoPage() {
     };
   };
 
-  const handleRequestBuyerReview = () => {
-    toast.info('Buyer Review feature coming soon – photos upload will be required');
-    // TODO: Implement photo upload and review request creation
-  };
 
   const getConfidenceBadge = (confidence: ValuationConfidence) => {
     switch (confidence) {
@@ -460,8 +457,6 @@ export default function ValoPage() {
     }
   };
 
-  // Determine if buyer review should be shown
-  const showBuyerReview = result && (result.confidence !== 'HIGH' || (parsed && !parsed.km));
 
   return (
     <AppLayout>
@@ -584,6 +579,21 @@ export default function ValoPage() {
                     {getTierBadge(result.tier)}
                     <Badge variant="secondary">n = {result.sample_size}</Badge>
                   </div>
+
+                  {/* Send Pics to Frank - always visible on responses */}
+                  {currentUser?.dealer_name && (
+                    <div className="pt-2">
+                      <SendPicsToFrank
+                        result={result}
+                        parsed={parsed}
+                        frankResponse={generateValoResponse(result, parsed)}
+                        dealerName={currentUser.dealer_name}
+                        onSubmitted={(requestId) => {
+                          toast.success("Photos sent! Frank's team will review and get back to you.");
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -744,25 +754,6 @@ export default function ValoPage() {
           </Card>
         )}
 
-        {/* Request Buyer Review button */}
-        {showBuyerReview && (
-          <Card className="border-dashed">
-            <CardContent className="pt-6">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                  <p className="font-medium">Need more certainty?</p>
-                  <p className="text-sm text-muted-foreground">
-                    Upload photos and get a reviewed valuation from our buyers
-                  </p>
-                </div>
-                <Button variant="outline" onClick={handleRequestBuyerReview} className="gap-2">
-                  <Camera className="h-4 w-4" />
-                  Request Buyer Review
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* No data message */}
         {result && result.sample_size === 0 && (

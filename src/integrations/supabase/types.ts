@@ -14,7 +14,116 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      valo_review_logs: {
+        Row: {
+          action: string
+          actor: string
+          created_at: string
+          id: string
+          new_values: Json | null
+          note: string | null
+          old_values: Json | null
+          request_id: string
+        }
+        Insert: {
+          action: string
+          actor: string
+          created_at?: string
+          id?: string
+          new_values?: Json | null
+          note?: string | null
+          old_values?: Json | null
+          request_id: string
+        }
+        Update: {
+          action?: string
+          actor?: string
+          created_at?: string
+          id?: string
+          new_values?: Json | null
+          note?: string | null
+          old_values?: Json | null
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "valo_review_logs_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "valo_review_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      valo_review_requests: {
+        Row: {
+          admin_buy_range_max: number | null
+          admin_buy_range_min: number | null
+          admin_note: string | null
+          admin_response: string | null
+          buy_range_max: number | null
+          buy_range_min: number | null
+          confidence: string
+          created_at: string
+          dealer_name: string
+          frank_response: string
+          id: string
+          parsed_vehicle: Json
+          photo_paths: string[]
+          reviewed_at: string | null
+          reviewed_by: string | null
+          sell_range_max: number | null
+          sell_range_min: number | null
+          status: string
+          tier: string
+          vehicle_summary: string
+        }
+        Insert: {
+          admin_buy_range_max?: number | null
+          admin_buy_range_min?: number | null
+          admin_note?: string | null
+          admin_response?: string | null
+          buy_range_max?: number | null
+          buy_range_min?: number | null
+          confidence: string
+          created_at?: string
+          dealer_name: string
+          frank_response: string
+          id?: string
+          parsed_vehicle: Json
+          photo_paths?: string[]
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          sell_range_max?: number | null
+          sell_range_min?: number | null
+          status?: string
+          tier: string
+          vehicle_summary: string
+        }
+        Update: {
+          admin_buy_range_max?: number | null
+          admin_buy_range_min?: number | null
+          admin_note?: string | null
+          admin_response?: string | null
+          buy_range_max?: number | null
+          buy_range_min?: number | null
+          confidence?: string
+          created_at?: string
+          dealer_name?: string
+          frank_response?: string
+          id?: string
+          parsed_vehicle?: Json
+          photo_paths?: string[]
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          sell_range_max?: number | null
+          sell_range_min?: number | null
+          status?: string
+          tier?: string
+          vehicle_summary?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

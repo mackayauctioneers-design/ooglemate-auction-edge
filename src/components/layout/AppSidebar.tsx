@@ -15,7 +15,8 @@ import {
   Bookmark,
   Wrench,
   DollarSign,
-  Sparkles
+  Sparkles,
+  Eye
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,6 +36,7 @@ const navItems = [
   { path: '/sales-review', label: 'Sales Review', icon: ClipboardList, adminOnly: true },
   { path: '/fingerprints', label: 'Sale Fingerprints', icon: Car, adminOnly: true },
   { path: '/saved-searches', label: 'Saved Searches', icon: Bookmark, adminOnly: true },
+  { path: '/buyer-review-queue', label: 'Buyer Review Queue', icon: Eye, adminOnly: true },
   { path: '/alerts', label: 'Alert Log', icon: Bell, adminOnly: true },
   { path: '/admin-tools', label: 'Admin Tools', icon: Wrench, adminOnly: true },
   { path: '/help', label: 'How to Use', icon: HelpCircle },
