@@ -62,6 +62,11 @@ export interface SaleFingerprint extends SheetRowMeta {
   // Do Not Buy protection
   do_not_buy?: 'Y' | 'N';
   do_not_buy_reason?: string;
+  // Manual fingerprint flag (not from sale record)
+  is_manual?: 'Y' | 'N';
+  // Buy price for profit analytics (only for sales-based)
+  buy_price?: number;
+  sell_price?: number;
 }
 
 export interface SaleLog extends SheetRowMeta {
@@ -140,6 +145,42 @@ export interface FingerprintSyncLog {
   rows_skipped: number;
   skip_reason_counts: string; // JSON: { "missing_dealer": 5, "not_activated": 10, ... }
   errors: string; // JSON array of error strings
+}
+
+// ========== NETWORK PROXY VALUATION ==========
+
+export type ValuationConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export interface NetworkValuationRequest {
+  make: string;
+  model: string;
+  variant_family?: string; // Optional: used for more precise matching
+  year: number;
+  year_tolerance?: number; // Default ±2
+  km?: number; // Optional: ignored if unavailable
+  requesting_dealer?: string; // Used to exclude own sales from network
+}
+
+export interface NetworkValuationResult {
+  // Aggregated metrics
+  avg_buy_price: number | null;
+  avg_sell_price: number | null;
+  buy_price_range: { min: number; max: number } | null;
+  sell_price_range: { min: number; max: number } | null;
+  avg_gross_profit: number | null;
+  avg_days_to_sell: number | null;
+  sample_size: number;
+  
+  // Confidence and source
+  confidence: ValuationConfidence;
+  confidence_reason: string;
+  data_source: 'internal' | 'network' | 'none';
+  
+  // Admin-only: contributing fingerprint IDs
+  contributing_fingerprint_ids?: string[];
+  
+  // Request echo for reference
+  request: NetworkValuationRequest;
 }
 
 // Saved Search - admin-managed search URLs for automated ingestion

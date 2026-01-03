@@ -12,6 +12,9 @@ import {
   SalesNormalised,
   FingerprintSyncLog,
   SavedSearch,
+  NetworkValuationRequest,
+  NetworkValuationResult,
+  ValuationConfidence,
   calculateConfidenceScore,
   determineAction,
   calculateLotConfidenceScore,
@@ -181,6 +184,9 @@ function parseFingerprint(row: any): SaleFingerprint {
     source_import_id: row.source_import_id || undefined,
     do_not_buy: row.do_not_buy || 'N',
     do_not_buy_reason: row.do_not_buy_reason || undefined,
+    is_manual: row.is_manual || 'N',
+    buy_price: row.buy_price ? parseFloat(row.buy_price) : undefined,
+    sell_price: row.sell_price ? parseFloat(row.sell_price) : undefined,
     _rowIndex: row._rowIndex,
   };
 }
@@ -2666,6 +2672,172 @@ export const googleSheetsService = {
     console.log(`[backfillSalesMakeModel] Complete: ${salesUpdated} updated, ${salesSkipped} skipped`);
     
     return { salesUpdated, salesSkipped, unresolved };
+  },
+
+  // ========== NETWORK PROXY VALUATION ==========
+
+  /**
+   * Get network proxy valuation for a vehicle.
+   * Uses anonymised sales data from the network when dealer has no internal sales.
+   */
+  getNetworkValuation: async (
+    request: NetworkValuationRequest,
+    isAdmin: boolean = false
+  ): Promise<NetworkValuationResult> => {
+    const MIN_SAMPLE_SIZE = 3; // Threshold for MEDIUM confidence
+    const yearTolerance = request.year_tolerance ?? 2;
+
+    // Step 1: Load all fingerprints with buy/sell prices
+    const allFingerprints = await googleSheetsService.getFingerprints();
+    
+    // Step 2: Load sales normalised for profit data
+    const allSales = await googleSheetsService.getSalesNormalised();
+    
+    // Create a map of fingerprint_id to sales data for enrichment
+    const salesByFingerprintId = new Map<string, SalesNormalised>();
+    for (const sale of allSales) {
+      if (sale.fingerprint_id) {
+        salesByFingerprintId.set(sale.fingerprint_id, sale);
+      }
+    }
+    
+    // Step 3: Filter fingerprints for matching criteria
+    const matchingFingerprints = allFingerprints.filter(fp => {
+      // Must be active
+      if (fp.is_active !== 'Y') return false;
+      
+      // Not marked do_not_buy
+      if (fp.do_not_buy === 'Y') return false;
+      
+      // Must match make/model (case-insensitive)
+      if (fp.make.toLowerCase() !== request.make.toLowerCase()) return false;
+      if (fp.model.toLowerCase() !== request.model.toLowerCase()) return false;
+      
+      // Year range check
+      if (Math.abs(fp.year - request.year) > yearTolerance) return false;
+      
+      // Variant family matching (if provided)
+      if (request.variant_family && fp.variant_family) {
+        if (fp.variant_family.toUpperCase() !== request.variant_family.toUpperCase()) {
+          return false;
+        }
+      }
+      
+      // Exclude manual fingerprints from profit analytics
+      if (fp.is_manual === 'Y') return false;
+      
+      return true;
+    });
+    
+    // Step 4: Split into internal vs network
+    const internalFingerprints = matchingFingerprints.filter(
+      fp => request.requesting_dealer && fp.dealer_name === request.requesting_dealer
+    );
+    
+    const networkFingerprints = matchingFingerprints.filter(
+      fp => !request.requesting_dealer || fp.dealer_name !== request.requesting_dealer
+    );
+    
+    // Step 5: Determine data source
+    // If dealer has internal comparables, use those (HIGH confidence)
+    // Otherwise, use network data (MEDIUM/LOW based on sample size)
+    const useInternal = internalFingerprints.length >= MIN_SAMPLE_SIZE;
+    const sourceFingerprints = useInternal ? internalFingerprints : networkFingerprints;
+    
+    // Step 6: Aggregate metrics from source fingerprints
+    const buyPrices: number[] = [];
+    const sellPrices: number[] = [];
+    const grossProfits: number[] = [];
+    const daysToSell: number[] = [];
+    const contributingIds: string[] = [];
+    
+    for (const fp of sourceFingerprints) {
+      contributingIds.push(fp.fingerprint_id);
+      
+      // Try to get sales data for this fingerprint
+      const sale = salesByFingerprintId.get(fp.fingerprint_id);
+      
+      if (sale) {
+        if (sale.sale_price !== undefined && sale.sale_price > 0) {
+          sellPrices.push(sale.sale_price);
+        }
+        if (sale.gross_profit !== undefined) {
+          grossProfits.push(sale.gross_profit);
+          // Infer buy price from sale_price - gross_profit
+          if (sale.sale_price !== undefined && sale.sale_price > 0) {
+            const inferredBuyPrice = sale.sale_price - sale.gross_profit;
+            if (inferredBuyPrice > 0) {
+              buyPrices.push(inferredBuyPrice);
+            }
+          }
+        }
+        if (sale.days_to_sell !== undefined && sale.days_to_sell > 0) {
+          daysToSell.push(sale.days_to_sell);
+        }
+      }
+      
+      // Also check fingerprint-level buy/sell prices (if stored there)
+      if (fp.buy_price && fp.buy_price > 0) {
+        if (!buyPrices.includes(fp.buy_price)) {
+          buyPrices.push(fp.buy_price);
+        }
+      }
+      if (fp.sell_price && fp.sell_price > 0) {
+        if (!sellPrices.includes(fp.sell_price)) {
+          sellPrices.push(fp.sell_price);
+        }
+      }
+    }
+    
+    // Step 7: Calculate aggregates
+    const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+    const range = (arr: number[]) => arr.length > 0 ? { min: Math.min(...arr), max: Math.max(...arr) } : null;
+    
+    const sampleSize = sourceFingerprints.length;
+    
+    // Determine confidence level
+    let confidence: ValuationConfidence;
+    let confidenceReason: string;
+    let dataSource: 'internal' | 'network' | 'none';
+    
+    if (sampleSize === 0) {
+      confidence = 'LOW';
+      confidenceReason = 'No comparable sales data available';
+      dataSource = 'none';
+    } else if (useInternal) {
+      confidence = 'HIGH';
+      confidenceReason = `Based on ${sampleSize} internal sales records`;
+      dataSource = 'internal';
+    } else if (sampleSize >= MIN_SAMPLE_SIZE) {
+      confidence = 'MEDIUM';
+      confidenceReason = `Based on anonymised network outcomes (n=${sampleSize})`;
+      dataSource = 'network';
+    } else {
+      confidence = 'LOW';
+      confidenceReason = `Insufficient network data (n=${sampleSize}, need ${MIN_SAMPLE_SIZE}+)`;
+      dataSource = 'network';
+    }
+    
+    const result: NetworkValuationResult = {
+      avg_buy_price: avg(buyPrices),
+      avg_sell_price: avg(sellPrices),
+      buy_price_range: range(buyPrices),
+      sell_price_range: range(sellPrices),
+      avg_gross_profit: avg(grossProfits),
+      avg_days_to_sell: avg(daysToSell),
+      sample_size: sampleSize,
+      confidence,
+      confidence_reason: confidenceReason,
+      data_source: dataSource,
+      request,
+    };
+    
+    // Admin only: include contributing fingerprint IDs
+    if (isAdmin) {
+      result.contributing_fingerprint_ids = contributingIds;
+    }
+    
+    return result;
   },
 };
 

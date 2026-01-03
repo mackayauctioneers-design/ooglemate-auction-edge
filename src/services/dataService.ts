@@ -3,7 +3,18 @@
 
 import { googleSheetsService } from './googleSheetsService';
 import { dataService as mockDataService } from './mockData';
-import { SaleFingerprint, Dealer, AlertLog, AuctionEvent, AuctionLot, SaleLog, SalesImportRaw, SalesNormalised } from '@/types';
+import { 
+  SaleFingerprint, 
+  Dealer, 
+  AlertLog, 
+  AuctionEvent, 
+  AuctionLot, 
+  SaleLog, 
+  SalesImportRaw, 
+  SalesNormalised,
+  NetworkValuationRequest,
+  NetworkValuationResult 
+} from '@/types';
 
 // Toggle this to switch between mock data and Google Sheets
 const USE_GOOGLE_SHEETS = true;
@@ -442,5 +453,17 @@ export const dataService = {
       return googleSheetsService.backfillSalesMakeModel();
     }
     throw new Error('Mock data does not support backfilling sales make/model');
+  },
+
+  // ========== NETWORK PROXY VALUATION ==========
+
+  getNetworkValuation: async (
+    request: NetworkValuationRequest,
+    isAdmin: boolean = false
+  ): Promise<NetworkValuationResult> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getNetworkValuation(request, isAdmin);
+    }
+    throw new Error('Mock data does not support network valuation');
   },
 };
