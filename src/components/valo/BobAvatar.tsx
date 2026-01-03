@@ -11,9 +11,11 @@ import bobAvatarVideo from '@/assets/bob-avatar.mp4';
 
 interface BobAvatarProps {
   dealerName?: string;
+  dealership?: string;
+  triggerBrief?: boolean; // Set true on login to auto-trigger daily brief
 }
 
-export function BobAvatar({ dealerName }: BobAvatarProps) {
+export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief = false }: BobAvatarProps) {
   // Connection state
   const [isOpen, setIsOpen] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -22,11 +24,21 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
   const [isListening, setIsListening] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [audioActive, setAudioActive] = useState(false);
+  const [briefMode, setBriefMode] = useState(false);
+  const [hasTriggeredBrief, setHasTriggeredBrief] = useState(false);
   
   // Transcripts
   const [userTranscript, setUserTranscript] = useState('');
   const [bobTranscript, setBobTranscript] = useState('');
-  const [conversationHistory, setConversationHistory] = useState<Array<{role: string, text: string}>>([]);
+  const [conversationHistory, setConversationHistory] = useState<Array<{role: string, text: string}>>();
+
+  // Auto-trigger brief on login
+  useEffect(() => {
+    if (triggerBrief && !hasTriggeredBrief && !isOpen) {
+      setHasTriggeredBrief(true);
+      handleOpenBob(true);
+    }
+  }, [triggerBrief, hasTriggeredBrief, isOpen]);
   
   // WebRTC refs
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -63,10 +75,35 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
     setAudioActive(false);
   }, []);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (withBrief = false) => {
     setIsConnecting(true);
+    setBriefMode(withBrief);
     
     try {
+      let briefContext = '';
+      
+      // If in brief mode, first fetch the brief context
+      if (withBrief) {
+        console.log("Fetching daily brief context...");
+        const briefResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bob-daily-brief`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            },
+            body: JSON.stringify({ dealerName, dealership }),
+          }
+        );
+        
+        if (briefResponse.ok) {
+          const briefData = await briefResponse.json();
+          briefContext = briefData.briefContext || '';
+          console.log("Brief context loaded, opportunities:", briefData.opportunityCount);
+        }
+      }
+
       // Get ephemeral token from edge function
       const tokenResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bob-realtime-token`,
@@ -76,6 +113,10 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
+          body: JSON.stringify({ 
+            briefMode: withBrief, 
+            briefContext 
+          }),
         }
       );
 
@@ -90,7 +131,7 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
       }
 
       const EPHEMERAL_KEY = data.client_secret.value;
-      console.log("Got ephemeral token, establishing WebRTC connection...");
+      console.log("Got ephemeral token, establishing WebRTC connection...", withBrief ? "(BRIEF MODE)" : "");
 
       // Create peer connection
       const pc = new RTCPeerConnection();
@@ -181,7 +222,7 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
       disconnect();
       setIsConnecting(false);
     }
-  }, [disconnect]);
+  }, [disconnect, dealerName, dealership]);
 
   const handleRealtimeEvent = useCallback((event: any) => {
     console.log("Realtime event:", event.type);
@@ -238,9 +279,9 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
     }
   }, [bobTranscript]);
 
-  const handleOpenBob = useCallback(async () => {
+  const handleOpenBob = useCallback(async (withBrief = false) => {
     setIsOpen(true);
-    setTimeout(() => connect(), 200);
+    setTimeout(() => connect(withBrief), 200);
   }, [connect]);
 
   const handleClose = useCallback(() => {
@@ -249,6 +290,7 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
     setBobTranscript('');
     setConversationHistory([]);
     setIsOpen(false);
+    setBriefMode(false);
   }, [disconnect]);
 
   // Unlock audio on any user interaction (for mobile)
@@ -265,7 +307,7 @@ export function BobAvatar({ dealerName }: BobAvatarProps) {
     <>
       {/* Floating Bob Avatar - Video */}
       <button
-        onClick={handleOpenBob}
+        onClick={() => handleOpenBob(false)}
         disabled={isConnecting}
         className={cn(
           "fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-xl",
