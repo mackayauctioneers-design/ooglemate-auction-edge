@@ -68,6 +68,40 @@ import { SendPicsToFrank } from '@/components/valo/SendPicsToFrank';
 // - When Frank gives a price, it is an ownable price he is comfortable holding
 // - If a car cannot be priced to own, Frank returns HARD WORK or HARD NO
 //
+// ============================================================================
+// FRANK VOICE CADENCE & DELIVERY RULES
+// ============================================================================
+// Cadence structure (always):
+// 1) Quick verdict line (1 sentence)
+// 2) Buy range (1 sentence, "I'd want to be… to buy it")
+// 3) One reason line (demand/margin/velocity)
+// 4) One caution line (condition/risk/"don't bounce it")
+// 5) Optional next action (pics)
+//
+// PHRASE BANK (use naturally):
+// - "Yeah mate…"
+// - "Good fighter / honest kid"
+// - "Sits straight and square"
+// - "Trim's tidy"
+// - "Hit it pretty hard"
+// - "That's hard work"
+// - "That's nowhere"
+// - "I'd rather keep my powder dry"
+// - "I don't bounce 'em"
+// - "I price it to buy it"
+// - "Send a few pics and I'll firm it up"
+//
+// CHARACTER REFERENCES (use sparingly, only on #1–#3):
+// - "That's the sort of thing I'd still be thinking about after a couple schooners."
+// - "Shaz would tell me not to overthink it."
+// - "I've watched plenty of these after the footy…"
+//
+// HARD LIMITS:
+// - No AI mentions ("model", "dataset", "probability", etc.)
+// - No comedy during HARD NO (#6) and NEED PICS (#4)
+// - No swearing
+// - Never hype. Never "easy money".
+//
 // This is a valuation assistant, not financial advice.
 // ============================================================================
 
@@ -106,74 +140,87 @@ function calculateFrankSignals(result: ValoResult): FrankSignals {
   };
 }
 
-// Light personality lines - ONLY for #1, #2, #3 responses
-const frankPersonalityLines = [
-  "I've seen a few of these come and go over the years.",
-  "Blokes get excited about these, but the money tells the truth.",
-  "If it stacks up, I'd back it.",
+// Character lines - ONLY for #1, #2, #3 responses (use sparingly)
+const frankCharacterLines = [
+  "That's the sort of thing I'd still be thinking about after a couple schooners.",
+  "Shaz would tell me not to overthink it.",
+  "I've watched plenty of these after the footy…",
 ];
 
-function getOptionalPersonality(): string {
-  // 30% chance to add a light personality line
-  if (Math.random() > 0.7) {
-    return " " + frankPersonalityLines[Math.floor(Math.random() * frankPersonalityLines.length)];
+function getOptionalCharacter(): string {
+  // 25% chance to add a light character line
+  if (Math.random() > 0.75) {
+    return " " + frankCharacterLines[Math.floor(Math.random() * frankCharacterLines.length)];
   }
   return "";
 }
 
+// ============================================================================
+// FRANK RESPONSES - Following voice cadence structure:
+// 1) Quick verdict line | 2) Buy range | 3) Reason line | 4) Caution line | 5) Next action
+// ============================================================================
+
 // FRANK RESPONSE #1: High confidence, good margins, quick turn
-// Light personality ALLOWED
+// Character references ALLOWED
 function frankResponse1(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number, n: number): string {
-  const personality = getOptionalPersonality();
-  return `Yeah mate, that's a good fighter. Based on what you've paid and got before, I'd want to be ${buyLow} to ${buyHigh} wholesale. Retail it ${sellLow} to ${sellHigh} and she'll be gone in about ${Math.round(days)} days. Got ${n} comps backing this up.${personality}`;
+  const character = getOptionalCharacter();
+  // 1) Verdict | 2) Buy range | 3) Reason (demand/velocity) | 4) Caution
+  return `Yeah mate, that's a good fighter. I'd want to be ${buyLow} to ${buyHigh} to buy it. Turns in about ${Math.round(days)} days – demand's there. Retail ask ${sellLow} to ${sellHigh}. Got ${n} comps backing this up.${character}`;
 }
 
 // FRANK RESPONSE #2: Medium confidence from network
-// Light personality ALLOWED
+// Character references ALLOWED
 function frankResponse2(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number | null, n: number): string {
-  const daysText = days ? ` Typically turning in ${Math.round(days)} days across the network.` : '';
-  const personality = getOptionalPersonality();
-  return `Alright, I'm pulling from network outcomes here – ${n} comps from other dealers. I'd want to be ${buyLow} to ${buyHigh} to buy it. Retail ask ${sellLow} to ${sellHigh}.${daysText} Not your direct history, so I'd want eyes on it.${personality}`;
+  const daysText = days ? `Turns in about ${Math.round(days)} days across the network.` : 'Velocity looks reasonable.';
+  const character = getOptionalCharacter();
+  // 1) Verdict | 2) Buy range | 3) Reason | 4) Caution (not your data)
+  return `Sits straight and square. I'd want to be ${buyLow} to ${buyHigh} to buy it. ${daysText} Retail ask ${sellLow} to ${sellHigh}. Not your direct history – ${n} network comps – so I'd want eyes on it.${character}`;
 }
 
 // FRANK RESPONSE #3: Low confidence / proxy only (NEEDS EYES)
-// Light personality ALLOWED
+// Character references ALLOWED (light)
 function frankResponse3(vehicleDesc: string, buyLow: string, buyHigh: string): string {
-  const personality = getOptionalPersonality();
-  return `Look mate, I'm working off limited data here – advisory only. Rough guide says ${buyLow} to ${buyHigh} to buy it, but don't hold me to that. Get me some photos and I'll have one of the boys give it a proper look.${personality}`;
+  const character = getOptionalCharacter();
+  // 1) Verdict | 2) Buy range | 3) Reason (limited data) | 4) Caution | 5) Next action
+  return `Look mate, I'm working off limited data here. I'd want to be ${buyLow} to ${buyHigh} to buy it – rough guide only. Don't hold me to that without more to go on. Send a few pics and I'll firm it up.${character}`;
 }
 
 // FRANK RESPONSE #4: NO DATA - needs human review
-// NO personality - serious tone only
+// NO character - serious tone only
 function frankResponse4NoData(vehicleDesc: string): string {
-  return `Mate, I haven't got enough runs on the board with ${vehicleDesc || 'this one'} to give you a solid number. Based on limited data – advisory only. I'd want eyes on it before saying anything. Get me some photos and I'll have one of the boys take a proper look.`;
+  // 1) Verdict | 4) Caution | 5) Next action
+  return `That's nowhere – I haven't got enough runs on the board with ${vehicleDesc || 'this one'}. I'd want eyes on it before putting a number down. Send a few pics and I'll have one of the boys take a proper look.`;
 }
 
 // FRANK RESPONSE #5: HARD WORK - marginal profit
-// Cautious but straightforward
+// NO character - cautious tone
 function frankResponse5(vehicleDesc: string, buyLow: string, buyHigh: string, avgGross: number, days: number | null): string {
   const daysText = days ? ` in ${Math.round(days)} days` : '';
-  return `This is honest bit of gear but it's hard work. Based on what you've paid and got before, your margin's typically around ${formatCurrency(avgGross)}${daysText}. I'd want to be ${buyLow} to ${buyHigh} – any sillier and the money disappears. I've been burnt on worse – that's why I'm cautious.`;
+  // 1) Verdict | 2) Buy range | 3) Reason (margin) | 4) Caution
+  return `That's hard work. I'd want to be ${buyLow} to ${buyHigh} to buy it. Margin's typically ${formatCurrency(avgGross)}${daysText} – any sillier and the money disappears. I don't bounce 'em, so hit it hard or walk.`;
 }
 
 // FRANK RESPONSE #6: HARD NO - repeat loser / negative history
-// NO personality, NO jokes - dead serious
+// NO character, NO jokes - dead serious
 function frankResponse6HardNo(vehicleDesc: string, avgGross: number, days: number | null, n: number): string {
   const daysText = days ? ` and sat for ${Math.round(days)} days` : '';
-  return `Mate, I've gotta be straight with you – your history shows you've lost money on these. Based on what you've paid and got before, average gross was ${formatCurrency(avgGross)}${daysText}. That's ${n} runs where money disappeared. I wouldn't be buying unless the seller's properly motivated and you've fixed what went wrong last time.`;
-}
-
-// FRANK RESPONSE #8: BOUNCE-ONLY - can't price to own
-// NO personality - this is a refusal to price
-function frankResponse8BounceOnly(vehicleDesc: string, avgGross: number, days: number): string {
-  return `I'm not going to give you a buy price on this one. The numbers say ${formatCurrency(avgGross)} gross over ${Math.round(days)} days – that's bounce territory. The only way to make money is timing and heat, and I don't price cars to flip. If you can't own it comfortably, I won't put a number on it. This one's a pass unless you know something I don't.`;
+  // 1) Verdict | 3) Reason (history) | 4) Caution
+  return `I'd rather keep my powder dry on this one. Your history shows ${formatCurrency(avgGross)} average gross${daysText} – that's ${n} runs where money disappeared. I price it to buy it, and I can't buy this one comfortably. Walk unless the seller's properly motivated.`;
 }
 
 // FRANK RESPONSE #7: SLOW TURNER - capital tied up
-// Serious but not a hard no
+// NO character - serious
 function frankResponse7Slow(vehicleDesc: string, buyLow: string, buyHigh: string, days: number, avgGross: number | null): string {
-  const grossText = avgGross ? `Gross is typically ${formatCurrency(avgGross)} but` : `But`;
-  return `These are slow. ${grossText} you're looking at ${Math.round(days)} days average to move them. Based on what you've paid and got before, I'd want to be ${buyLow} to ${buyHigh} to protect yourself. Factor in floorplan and the aggravation – money's tied up.`;
+  const grossText = avgGross ? `Gross is typically ${formatCurrency(avgGross)}, but` : `But`;
+  // 1) Verdict | 2) Buy range | 3) Reason (velocity) | 4) Caution (capital)
+  return `These are slow. I'd want to be ${buyLow} to ${buyHigh} to buy it. ${grossText} you're looking at ${Math.round(days)} days to move them. Factor in floorplan and the aggravation – money's tied up. Hit it pretty hard.`;
+}
+
+// FRANK RESPONSE #8: BOUNCE-ONLY - can't price to own
+// NO character - refusal to price
+function frankResponse8BounceOnly(vehicleDesc: string, avgGross: number, days: number): string {
+  // 1) Verdict | 3) Reason | 4) Caution (refusal)
+  return `I'm not putting a number on this one. ${formatCurrency(avgGross)} gross over ${Math.round(days)} days – that's bounce territory. I don't bounce 'em. The only way to make money is timing and heat. This one's a pass unless you know something I don't.`;
 }
 
 // Generate VALO's conversational response in Australian wholesale buyer tone
