@@ -46,7 +46,12 @@ interface WholesalePricing {
   liquidityWarning?: string | null;  // Warning for slow movers
   isHitCar?: boolean;            // HIT car flag (cost-anchor mode)
   hitCarReason?: string;         // Why it's a HIT car
-  lastKnownOwe?: number;         // Anchor price for HIT cars
+  lastKnownOwe?: number | null;         // Anchor price for HIT cars
+  // NEW: Internal log fields for COST-ANCHOR-ONLY
+  anchorType?: 'COST_ONLY' | 'BLENDED' | 'STANDARD';
+  oweUsed?: number;
+  upliftApplied?: boolean;
+  isCostAnchorOnly?: boolean;    // TRUE = completely ignore sell price
 }
 
 interface ValuationData {
@@ -88,10 +93,50 @@ const EURO_SEDANS: Record<string, string[]> = {
   'volvo': ['s60', 's90', 'v60', 'v90'],
 };
 
+// ============================================================
+// COST-ANCHOR-ONLY VEHICLES - CRITICAL OVERRIDE
+// These vehicles COMPLETELY IGNORE sell_price. Price off OWE ONLY.
+// This overrides ALL other valuation logic.
+// ============================================================
+const COST_ANCHOR_ONLY_VEHICLES: Record<string, string[]> = {
+  'holden': ['cruze', 'captiva'],  // All variants - known hard work
+  // Euro slow movers - retail is always hard work
+  'peugeot': ['208', '308', '3008', '2008', '508', '5008'],
+  'citroen': ['c3', 'c4', 'c5', 'ds3', 'ds4', 'ds5'],
+  'renault': ['megane', 'clio', 'captur', 'koleos', 'scenic'],
+  'fiat': ['500', 'punto', 'tipo', '500x'],
+  'alfa romeo': ['giulietta', 'mito', '159', 'giulia'],
+  // Euro hatches/sedans that sit
+  'volkswagen': ['golf', 'polo', 'jetta', 'beetle'],
+  'audi': ['a1', 'a3'],
+  'bmw': ['1 series', '118i', '120i', '125i', '3 series', '318i', '320i'],
+  'mercedes': ['a-class', 'a180', 'a200', 'a250', 'b-class', 'cla'],
+  'mini': ['cooper', 'one', 'countryman', 'clubman'],
+};
+
+// Check if vehicle is COST-ANCHOR-ONLY (completely ignore sell price)
+function isCostAnchorOnlyVehicle(make: string, model: string): boolean {
+  const makeLower = make.toLowerCase().trim();
+  const modelLower = model.toLowerCase().trim();
+  
+  for (const [costMake, models] of Object.entries(COST_ANCHOR_ONLY_VEHICLES)) {
+    if (makeLower.includes(costMake) || costMake.includes(makeLower)) {
+      for (const costModel of models) {
+        if (modelLower.includes(costModel) || costModel.includes(modelLower)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 // HIT car thresholds
 const HIT_CAR_THRESHOLDS = {
   HIGH_DAYS_IN_STOCK: 45,          // Avg days > 45 = slow mover
   LARGE_MARGIN_SPREAD: 0.25,       // Gross > 25% of cost = likely retail margin, not trade
+  COST_ANCHOR_UPLIFT_DAYS_LIMIT: 30, // Only allow uplift if avg days < 30
+  COST_ANCHOR_MAX_UPLIFT: 0.10,    // Max 10% uplift with evidence
 };
 
 // Calculate recency weight (90 days = 1.0, older = decaying)
@@ -272,8 +317,8 @@ function calculateMedian(values: number[]): number {
   return sorted[mid];
 }
 
-// Calculate wholesale "own it" number - GUARDRAIL: Must stay within observed range
-// HIT CAR RULE: If vehicle is a HIT car, anchor to LAST KNOWN OWE, not sell price
+// Calculate wholesale "own it" number
+// CRITICAL: COST-ANCHOR-ONLY vehicles COMPLETELY IGNORE sell_price
 function calculateWholesalePricing(
   comps: WeightedComp[],
   make: string,
@@ -281,20 +326,106 @@ function calculateWholesalePricing(
   avgDaysInStock: number,
   confidence: 'HIGH' | 'MEDIUM' | 'LOW'
 ): WholesalePricing | null {
+  // Get owe (cost) prices - this is ALWAYS needed
+  const owePrices = comps
+    .map(wc => parseFloat(String(wc.record.total_cost)) || 0)
+    .filter(p => p > 0);
+  
+  // ============================================================
+  // COST-ANCHOR-ONLY MODE - CRITICAL OVERRIDE
+  // This COMPLETELY ignores sell_price for designated vehicles
+  // ============================================================
+  const isCostOnly = isCostAnchorOnlyVehicle(make, model);
+  
+  if (isCostOnly) {
+    console.log(`⚠️ COST-ANCHOR-ONLY MODE for ${make} ${model} - ignoring sell prices completely`);
+    
+    // If no owe data, we CANNOT price - Bob must refuse
+    if (owePrices.length === 0) {
+      console.log(`COST-ANCHOR-ONLY: No owe data available - cannot price`);
+      return {
+        ownItNumber: 0,
+        retailContext: null,
+        medianSellPrice: 0,
+        targetMargin: 0,
+        riskDiscountApplied: 0,
+        marginBand: 'N/A',
+        observedBuyRange: undefined,
+        liquidityWarning: 'COST-ANCHOR-ONLY vehicle with no owe data',
+        isHitCar: true,
+        hitCarReason: 'COST-ANCHOR-ONLY vehicle - no owe history available',
+        lastKnownOwe: null,
+        anchorType: 'COST_ONLY',
+        oweUsed: undefined,
+        upliftApplied: false,
+        isCostAnchorOnly: true
+      };
+    }
+    
+    // Calculate median owe (cost) - this is our ANCHOR
+    const medianOwe = calculateMedian(owePrices);
+    const observedOweMin = Math.min(...owePrices);
+    const observedOweMax = Math.max(...owePrices);
+    
+    console.log(`COST-ANCHOR-ONLY: Median owe = $${medianOwe}, Range: $${observedOweMin} - $${observedOweMax}`);
+    
+    // Determine if uplift is allowed (ONLY with evidence)
+    // Allowed uplift = 0 to +10% ONLY if days_in_stock < 30 AND photos confirm exceptional condition
+    // Since we can't verify photos here, default to NO uplift. Photos would trigger admin override.
+    let upliftApplied = false;
+    let upliftAmount = 0;
+    
+    // Only allow minimal uplift if historically fast seller (< 30 days)
+    if (avgDaysInStock < HIT_CAR_THRESHOLDS.COST_ANCHOR_UPLIFT_DAYS_LIMIT && confidence === 'HIGH') {
+      // Even then, only allow small uplift - photos needed for more
+      upliftAmount = 0.03; // 3% max without photo evidence
+      upliftApplied = true;
+      console.log(`COST-ANCHOR-ONLY: Fast seller (${avgDaysInStock} days) - allowing 3% uplift`);
+    }
+    
+    // Calculate own-it number: base = owe, max = owe + minimal margin
+    const ownItNumber = Math.round(medianOwe * (1 + upliftAmount));
+    
+    // Get sell prices just for retail context (NOT used in pricing)
+    const sellPrices = comps
+      .map(wc => parseFloat(String(wc.record.sell_price)) || 0)
+      .filter(p => p > 0);
+    const medianSellPrice = sellPrices.length > 0 ? calculateMedian(sellPrices) : 0;
+    
+    console.log(`COST-ANCHOR-ONLY: Own-it = $${ownItNumber} (owe $${medianOwe} + ${(upliftAmount * 100).toFixed(0)}% uplift)`);
+    
+    return {
+      ownItNumber,
+      retailContext: medianSellPrice > 0 ? medianSellPrice : null,
+      medianSellPrice,
+      targetMargin: 0,
+      riskDiscountApplied: 0,
+      marginBand: 'COST-ANCHOR-ONLY',
+      observedBuyRange: { min: observedOweMin, max: observedOweMax },
+      liquidityWarning: `COST-ANCHOR-ONLY: ${make} ${model} - retail was hard work`,
+      isHitCar: true,
+      hitCarReason: `COST-ANCHOR-ONLY vehicle (${make} ${model})`,
+      lastKnownOwe: medianOwe,
+      anchorType: 'COST_ONLY',
+      oweUsed: medianOwe,
+      upliftApplied,
+      isCostAnchorOnly: true
+    };
+  }
+  
+  // ============================================================
+  // STANDARD / HIT CAR MODE (non COST-ANCHOR-ONLY vehicles)
+  // ============================================================
   const sellPrices = comps
     .map(wc => parseFloat(String(wc.record.sell_price)) || 0)
     .filter(p => p > 0);
   
-  const buyPrices = comps
-    .map(wc => parseFloat(String(wc.record.total_cost)) || 0)
-    .filter(p => p > 0);
-  
-  if (sellPrices.length === 0 || buyPrices.length === 0) return null;
+  if (sellPrices.length === 0 || owePrices.length === 0) return null;
   
   // GUARDRAIL: Get observed buy price range from our data
-  const observedBuyMin = Math.min(...buyPrices);
-  const observedBuyMax = Math.max(...buyPrices);
-  const medianBuyPrice = calculateMedian(buyPrices);
+  const observedBuyMin = Math.min(...owePrices);
+  const observedBuyMax = Math.max(...owePrices);
+  const medianBuyPrice = calculateMedian(owePrices);
   
   // Step 1: Calculate median sell price from comps
   const medianSellPrice = calculateMedian(sellPrices);
@@ -314,23 +445,27 @@ function calculateWholesalePricing(
   const totalRiskDiscount = Math.min(daysRisk + hardWorkRisk + liquidityDiscount, 0.20); // Cap at 20%
   
   let ownItNumber: number;
+  let anchorType: 'COST_ONLY' | 'BLENDED' | 'STANDARD' = 'STANDARD';
+  let upliftApplied = false;
   
   // HIT CAR RULE: Anchor to LAST KNOWN OWE, not sell price
   if (hitAnalysis.isHitCar && hitAnalysis.lastKnownOwe) {
     console.log(`HIT CAR MODE: Anchoring to last known owe $${hitAnalysis.lastKnownOwe} instead of sell price`);
+    anchorType = 'BLENDED';
     
     // For HIT cars, start from last known owe with only minimal uplift
     // Minimal uplift = only if we have very strong market evidence (confidence HIGH + low risk)
     const minimalUplift = (confidence === 'HIGH' && totalRiskDiscount < 0.05) ? 0.02 : 0; // Max 2% uplift
+    upliftApplied = minimalUplift > 0;
     
     // Apply minimal uplift (if any) but cap at last known owe
     ownItNumber = Math.round(hitAnalysis.lastKnownOwe * (1 + minimalUplift));
     
     // HIT cars: NEVER go above historical owe unless photos confirm exceptional condition
-    // This logic defaults to capping at lastKnownOwe; override happens via admin/photos
     if (ownItNumber > hitAnalysis.lastKnownOwe) {
       console.log(`HIT CAR: Capping at last known owe $${hitAnalysis.lastKnownOwe}`);
       ownItNumber = hitAnalysis.lastKnownOwe;
+      upliftApplied = false;
     }
     
   } else {
@@ -356,8 +491,12 @@ function calculateWholesalePricing(
     liquidityWarning: liquidityReason,
     isHitCar: hitAnalysis.isHitCar,
     hitCarReason: hitAnalysis.reasons.join(', '),
-    lastKnownOwe: hitAnalysis.lastKnownOwe
-  } as WholesalePricing;
+    lastKnownOwe: hitAnalysis.lastKnownOwe,
+    anchorType,
+    oweUsed: hitAnalysis.lastKnownOwe || undefined,
+    upliftApplied,
+    isCostAnchorOnly: false
+  };
 }
 
 // Query dealer sales history from Google Sheets
@@ -563,8 +702,57 @@ Sample size: ${compsCount} comparable sales
 
   // PRIMARY OUTPUT: Own-it wholesale number
   if (wp) {
-    // HIT CAR: Special output for cost-anchor mode
-    if (wp.isHitCar) {
+    // ============================================================
+    // COST-ANCHOR-ONLY VEHICLES - CRITICAL OVERRIDE OUTPUT
+    // ============================================================
+    if (wp.isCostAnchorOnly) {
+      // Check if we have owe data
+      if (!wp.lastKnownOwe || wp.ownItNumber === 0) {
+        context += `=== ⛔ CANNOT PRICE - NO OWE DATA ===
+This is a COST-ANCHOR-ONLY vehicle (${make} ${model}).
+I don't have a clean owe on these — I'd walk or need pics.
+
+[INSTRUCTION: Bob MUST say: "I don't have a clean owe on these — I'd walk or need pics."
+Do NOT attempt to price. Ask for photos or suggest walking away.]
+`;
+      } else {
+        context += `=== ⚠️ COST-ANCHOR-ONLY MODE ===
+"These need to be hit.
+Price it off what we owed last time, not what we jagged.
+Retail was hard work."
+
+Vehicle: ${make} ${model} (COST-ANCHOR-ONLY - sell prices IGNORED)
+Last known OWE (anchor): $${wp.lastKnownOwe.toLocaleString()}
+Wholesale BUY price: $${wp.ownItNumber.toLocaleString()}
+Anchor type: ${wp.anchorType}
+Uplift applied: ${wp.upliftApplied ? 'Yes (fast seller)' : 'No'}
+
+COST-ANCHOR-ONLY RULES (NON-NEGOTIABLE):
+- Sell price is COMPLETELY IGNORED for this vehicle
+- Anchor valuation ONLY to last_known_owe (cost): $${wp.lastKnownOwe.toLocaleString()}
+- Buy range: $${wp.lastKnownOwe.toLocaleString()} to $${Math.round(wp.lastKnownOwe * 1.10).toLocaleString()} MAX (with evidence)
+- Uplift (0-10%) ONLY allowed if:
+  * days_in_stock historically < 30 AND
+  * photos confirm exceptional condition
+- Otherwise: buy at owe or below
+
+[INSTRUCTION: Bob MUST say out loud:
+"These need to be hit. Price it off what we owed last time, not what we jagged. Retail was hard work."
+Then give the buy price anchored to $${wp.lastKnownOwe.toLocaleString()}.]
+`;
+      }
+      
+      // Show retail context as explicit "ignore this" section
+      if (wp.medianSellPrice > 0) {
+        context += `
+=== RETAIL CONTEXT (EXPLICITLY IGNORED) ===
+Median retail sell: $${wp.medianSellPrice.toLocaleString()}
+[⛔ DO NOT use this for pricing. This is a COST-ANCHOR-ONLY vehicle. Retail is ignored.]
+`;
+      }
+      
+    } else if (wp.isHitCar) {
+      // Standard HIT car mode (non COST-ANCHOR-ONLY)
       context += `=== ⚠️ HIT CAR - COST ANCHOR MODE ===
 "Price it off what we owed last time, not what we jagged."
 Reason: ${wp.hitCarReason}
@@ -577,30 +765,41 @@ HARD-WORK CAR RULES:
 - Bob may NOT quote above historical owe unless photos/evidence provided
 
 `;
-    } else {
-      context += `=== OWN-IT WHOLESALE NUMBER ===
-Wholesale BUY price: $${wp.ownItNumber.toLocaleString()}
-Target margin band: ${wp.marginBand}
+      
+      if (wp.observedBuyRange) {
+        context += `GUARDRAIL: Observed owe range: $${wp.observedBuyRange.min.toLocaleString()} - $${wp.observedBuyRange.max.toLocaleString()}
 `;
-    }
-    
-    if (wp.observedBuyRange) {
-      context += `GUARDRAIL: Observed buy range from YOUR data: $${wp.observedBuyRange.min.toLocaleString()} - $${wp.observedBuyRange.max.toLocaleString()}
-`;
-    }
-    if (wp.riskDiscountApplied > 0) {
-      context += `Risk discount applied: ${(wp.riskDiscountApplied * 100).toFixed(0)}%
-`;
-    }
-    if (wp.liquidityWarning) {
-      context += `⚠️ LIQUIDITY WARNING: ${wp.liquidityWarning} - mandatory 8% discount applied
-`;
-    }
-    context += `
+      }
+      context += `
 === RETAIL CONTEXT (for reference only) ===
 Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
 [NOTE: Retail context is informational only. Never use retail to justify buy price.]
 `;
+    } else {
+      // Standard pricing mode
+      context += `=== OWN-IT WHOLESALE NUMBER ===
+Wholesale BUY price: $${wp.ownItNumber.toLocaleString()}
+Target margin band: ${wp.marginBand}
+`;
+      
+      if (wp.observedBuyRange) {
+        context += `GUARDRAIL: Observed buy range from YOUR data: $${wp.observedBuyRange.min.toLocaleString()} - $${wp.observedBuyRange.max.toLocaleString()}
+`;
+      }
+      if (wp.riskDiscountApplied > 0) {
+        context += `Risk discount applied: ${(wp.riskDiscountApplied * 100).toFixed(0)}%
+`;
+      }
+      if (wp.liquidityWarning) {
+        context += `⚠️ LIQUIDITY WARNING: ${wp.liquidityWarning} - mandatory 8% discount applied
+`;
+      }
+      context += `
+=== RETAIL CONTEXT (for reference only) ===
+Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
+[NOTE: Retail context is informational only. Never use retail to justify buy price.]
+`;
+    }
   }
 
   // Supporting data
@@ -617,12 +816,17 @@ Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
 `;
   }
   
-  // Add top 3 recent comps as examples
+  // Add top 3 recent comps as examples (show owe, not sell for COST-ANCHOR-ONLY)
   context += `\nRecent sales examples:\n`;
   const topComps = valuation.comps.slice(0, 3);
   for (const wc of topComps) {
     const r = wc.record;
-    context += `- ${r.year} ${r.make} ${r.model} ${r.variant || ''}: Bought $${parseInt(String(r.total_cost)).toLocaleString()}, Sold $${parseInt(String(r.sell_price)).toLocaleString()}, ${r.days_in_stock} days, ${wc.recencyDays} days ago\n`;
+    if (wp?.isCostAnchorOnly) {
+      // For COST-ANCHOR-ONLY, emphasize owe
+      context += `- ${r.year} ${r.make} ${r.model} ${r.variant || ''}: OWED $${parseInt(String(r.total_cost)).toLocaleString()}, ${r.days_in_stock} days to sell, ${wc.recencyDays} days ago\n`;
+    } else {
+      context += `- ${r.year} ${r.make} ${r.model} ${r.variant || ''}: Bought $${parseInt(String(r.total_cost)).toLocaleString()}, Sold $${parseInt(String(r.sell_price)).toLocaleString()}, ${r.days_in_stock} days, ${wc.recencyDays} days ago\n`;
+    }
   }
   
   // GUARDRAIL INSTRUCTION
@@ -633,8 +837,26 @@ Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
 - Use retail context only to explain potential upside, never to justify buy price
 `;
 
-  // HIT CAR INSTRUCTION
-  if (wp && wp.isHitCar) {
+  // COST-ANCHOR-ONLY INSTRUCTION (overrides HIT car instruction)
+  if (wp?.isCostAnchorOnly) {
+    if (wp.lastKnownOwe && wp.ownItNumber > 0) {
+      context += `\n[COST-ANCHOR-ONLY INSTRUCTION - THIS OVERRIDES ALL OTHER LOGIC]:
+- Say out loud: "These need to be hit. Price it off what we owed last time, not what we jagged. Retail was hard work."
+- Anchor ALL pricing to the last known owe: $${wp.lastKnownOwe.toLocaleString()}
+- COMPLETELY IGNORE sell prices - they are not relevant for this vehicle
+- Buy range: $${wp.lastKnownOwe.toLocaleString()} to $${Math.round(wp.lastKnownOwe * 1.10).toLocaleString()} MAX
+- Uplift (up to 10%) ONLY with: days_in_stock < 30 AND photos showing exceptional condition
+- You may NOT quote above $${wp.lastKnownOwe.toLocaleString()} without photo evidence
+`;
+    } else {
+      context += `\n[COST-ANCHOR-ONLY INSTRUCTION - NO OWE DATA]:
+- Say: "I don't have a clean owe on these — I'd walk or need pics."
+- DO NOT provide a buy price
+- Ask for photos or suggest walking
+`;
+    }
+  } else if (wp?.isHitCar) {
+    // Standard HIT CAR INSTRUCTION
     context += `\n[HIT CAR INSTRUCTION]:
 - This is a HIT car. Say out loud: "Price it off what we owed last time, not what we jagged."
 - Anchor ALL pricing to the last known owe ($${wp.lastKnownOwe?.toLocaleString() || 'N/A'})
