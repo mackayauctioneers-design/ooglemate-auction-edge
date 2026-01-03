@@ -26,6 +26,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 // - NO personality in #4 (NEEDS EYES) or #6 (HARD NO)
 // - NEVER mention "AI", "assistant", or system internals
 // - Character exists to build trust, not entertainment
+//
+// NON-NEGOTIABLE: FRANK DOES NOT BOUNCE CARS
+// - Frank will not provide a buy price that only works as a quick flip
+// - If a deal relies on heat, timing, or someone else paying up, Frank refuses
+// - When Frank gives a price, it is an ownable price he is comfortable holding
+// - If a car cannot be priced to own, Frank returns HARD WORK or HARD NO
 // ============================================================================
 
 interface FrankSignals {
@@ -34,6 +40,7 @@ interface FrankSignals {
   isRepeatLoser: boolean; // Historical gross <= 0 - HARD NO
   isSlow: boolean; // Days to sell > 45
   isHardWork: boolean; // Marginal gross < $1500
+  isBounceOnly: boolean; // Can only make money on a quick flip - HARD NO
   priceband: 'low' | 'mid' | 'high'; // For margin protection
 }
 
@@ -46,12 +53,18 @@ function calculateFrankSignals(result: ValoResult): FrankSignals {
     ? (result.suggested_buy_range.min + result.suggested_buy_range.max) / 2 
     : 0;
 
+  // Bounce-only detection: thin margin AND slow turn = can't own it profitably
+  // This means the only way to make money is timing/heat/flipping
+  const isBounceOnly = avgGross !== null && avgDaysToSell !== null &&
+    avgGross < 2000 && avgDaysToSell > 30;
+
   return {
     avgGross,
     avgDaysToSell,
     isRepeatLoser: avgGross !== null && avgGross <= 0,
     isSlow: avgDaysToSell !== null && avgDaysToSell > 45,
     isHardWork: avgGross !== null && avgGross > 0 && avgGross < 1500,
+    isBounceOnly,
     priceband: avgBuy < 25000 ? 'low' : avgBuy < 50000 ? 'mid' : 'high',
   };
 }
@@ -113,6 +126,12 @@ function frankResponse6HardNo(vehicleDesc: string, avgGross: number, days: numbe
   return `Mate, I've gotta be straight with you – your history shows you've lost money on these. Based on what you've paid and got before, average gross was ${formatCurrency(avgGross)}${daysText}. That's ${n} runs where money disappeared. I wouldn't be buying unless the seller's properly motivated and you've fixed what went wrong last time.`;
 }
 
+// FRANK RESPONSE #8: BOUNCE-ONLY - can't price to own
+// NO personality - this is a refusal to price
+function frankResponse8BounceOnly(vehicleDesc: string, avgGross: number, days: number): string {
+  return `I'm not going to give you a buy price on this one. The numbers say ${formatCurrency(avgGross)} gross over ${Math.round(days)} days – that's bounce territory. The only way to make money is timing and heat, and I don't price cars to flip. If you can't own it comfortably, I won't put a number on it. This one's a pass unless you know something I don't.`;
+}
+
 // FRANK RESPONSE #7: SLOW TURNER - capital tied up
 // Serious but not a hard no
 function frankResponse7Slow(vehicleDesc: string, buyLow: string, buyHigh: string, days: number, avgGross: number | null): string {
@@ -151,6 +170,11 @@ function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): st
   // Check for REPEAT LOSER first (gross <= 0) - HARD NO #6
   if (signals.isRepeatLoser && signals.avgGross !== null) {
     lines.push(frankResponse6HardNo(vehicleDesc, signals.avgGross, result.typical_days_to_sell || null, sample_size));
+  }
+  // RULE: Frank does not bounce cars - if can only flip, refuse to price
+  // Check for BOUNCE-ONLY (thin margin + slow turn) - HARD NO #8
+  else if (signals.isBounceOnly && signals.avgGross !== null && result.typical_days_to_sell) {
+    lines.push(frankResponse8BounceOnly(vehicleDesc, signals.avgGross, result.typical_days_to_sell));
   }
   // Check for SLOW TURNER (days > 45) - #7
   else if (signals.isSlow && result.typical_days_to_sell) {
