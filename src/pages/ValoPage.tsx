@@ -15,9 +15,75 @@ import { dataService } from '@/services/dataService';
 import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
+// FRANK (VALO) Response Generator - LOCKED LOGIC
+// All responses tied to Sales Log data. Tone must not be softened.
+
+interface FrankSignals {
+  avgGross: number | null;
+  avgDaysToSell: number | null;
+  isRepeatLoser: boolean; // Historical gross <= 0
+  isSlow: boolean; // Days to sell > 45
+  isHardWork: boolean; // Marginal gross < $1500
+  priceband: 'low' | 'mid' | 'high'; // For margin protection
+}
+
+function calculateFrankSignals(result: ValoResult): FrankSignals {
+  const avgGross = result.expected_gross_band 
+    ? (result.expected_gross_band.min + result.expected_gross_band.max) / 2 
+    : null;
+  const avgDaysToSell = result.typical_days_to_sell;
+  const avgBuy = result.suggested_buy_range 
+    ? (result.suggested_buy_range.min + result.suggested_buy_range.max) / 2 
+    : 0;
+
+  return {
+    avgGross,
+    avgDaysToSell,
+    isRepeatLoser: avgGross !== null && avgGross <= 0,
+    isSlow: avgDaysToSell !== null && avgDaysToSell > 45,
+    isHardWork: avgGross !== null && avgGross > 0 && avgGross < 1500,
+    priceband: avgBuy < 25000 ? 'low' : avgBuy < 50000 ? 'mid' : 'high',
+  };
+}
+
+// FRANK RESPONSE #1: High confidence, good margins, quick turn
+function frankResponse1(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number, n: number): string {
+  return `Yeah mate, that's a good fighter. Based on what you've paid and got before, I'd want to be ${buyLow} to ${buyHigh} wholesale. Retail it ${sellLow} to ${sellHigh} and she'll be gone in about ${Math.round(days)} days. Got ${n} comps backing this up – solid gear.`;
+}
+
+// FRANK RESPONSE #2: Medium confidence from network
+function frankResponse2(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number | null, n: number): string {
+  const daysText = days ? `Typically turning in ${Math.round(days)} days across the network.` : '';
+  return `Alright, I'm pulling from network outcomes here – ${n} comps from other dealers. I'd want to be ${buyLow} to ${buyHigh} to buy it. Retail ask ${sellLow} to ${sellHigh}. ${daysText} Not your direct history, so I'd want eyes on it.`;
+}
+
+// FRANK RESPONSE #3: Low confidence / proxy only
+function frankResponse3(vehicleDesc: string, buyLow: string, buyHigh: string): string {
+  return `Look mate, I'm working off limited data here – advisory only. Rough guide says ${buyLow} to ${buyHigh} to buy it, but don't hold me to that. Get me some photos and I'll have one of the boys give it a proper look.`;
+}
+
+// FRANK RESPONSE #4: REPEAT LOSER - negative history
+function frankResponse4(vehicleDesc: string, avgGross: number, days: number | null, n: number): string {
+  const daysText = days ? ` and sat for ${Math.round(days)} days` : '';
+  return `Mate, I've gotta be straight with you – your history shows you've lost money on these. Average gross was ${formatCurrency(avgGross)}${daysText}. That's ${n} runs where money disappeared. I wouldn't be buying unless the seller's properly motivated and you've fixed what went wrong last time.`;
+}
+
+// FRANK RESPONSE #5: HARD WORK - marginal profit
+function frankResponse5(vehicleDesc: string, buyLow: string, buyHigh: string, avgGross: number, days: number | null): string {
+  const daysText = days ? ` in ${Math.round(days)} days` : '';
+  return `This is honest bit of gear but it's hard work. Your margin's typically around ${formatCurrency(avgGross)}${daysText}. I'd want to be ${buyLow} to ${buyHigh} – any sillier and the money disappears. Make sure there's no hidden grief.`;
+}
+
+// FRANK RESPONSE #6: SLOW TURNER - capital tied up
+function frankResponse6(vehicleDesc: string, buyLow: string, buyHigh: string, days: number, avgGross: number | null): string {
+  const grossText = avgGross ? `Gross is typically ${formatCurrency(avgGross)} but` : `But`;
+  return `These are slow. ${grossText} you're looking at ${Math.round(days)} days average to move them. I'd want to be ${buyLow} to ${buyHigh} to protect yourself. Factor in floorplan and the aggravation – money's tied up.`;
+}
+
 // Generate VALO's conversational response in Australian wholesale buyer tone
+// LOCKED LOGIC: All valuations reference Sales Log data sources
 function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): string {
-  const { confidence, sample_size, suggested_buy_range, suggested_sell_range, tier, typical_days_to_sell } = result;
+  const { confidence, sample_size, suggested_buy_range, suggested_sell_range, tier, tier_label } = result;
   
   // Build vehicle description
   const vehicleDesc = [
@@ -27,9 +93,9 @@ function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): st
     parsed.variant_family
   ].filter(Boolean).join(' ');
 
-  // No data case
+  // No data case - NEVER invent confidence
   if (sample_size === 0 || !suggested_buy_range) {
-    return `Mate, I haven't got enough runs on the board with ${vehicleDesc || 'this one'} to give you a solid number. I'd want eyes on it before saying anything. Get me some photos and I'll have one of the boys take a proper look.`;
+    return `Mate, I haven't got enough runs on the board with ${vehicleDesc || 'this one'} to give you a solid number. Based on limited data – advisory only. I'd want eyes on it before saying anything. Get me some photos and I'll have one of the boys take a proper look.`;
   }
 
   const buyLow = formatCurrency(suggested_buy_range.min);
@@ -37,56 +103,70 @@ function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): st
   const sellLow = suggested_sell_range ? formatCurrency(suggested_sell_range.min) : null;
   const sellHigh = suggested_sell_range ? formatCurrency(suggested_sell_range.max) : null;
 
+  // Calculate Frank signals from sales data
+  const signals = calculateFrankSignals(result);
   const lines: string[] = [];
 
-  // Opening line based on confidence
-  if (confidence === 'HIGH') {
-    const openers = [
-      `Yeah mate, that's a good fighter.`,
-      `Right, I know this one well.`,
-      `This is honest bit of gear.`,
-    ];
-    lines.push(openers[Math.floor(Math.random() * openers.length)]);
-  } else if (confidence === 'MEDIUM') {
-    lines.push(`Alright, I've got a feel for this one, but ${tier === 'network' ? "I'm pulling from the broader network here" : "the sample's a bit thin"}.`);
-  } else {
-    lines.push(`Look, I'm working off proxy data here so take this with a grain of salt.`);
+  // RULE: Never override negative sales history
+  // Check for REPEAT LOSER first (gross <= 0)
+  if (signals.isRepeatLoser && signals.avgGross !== null) {
+    lines.push(frankResponse4(vehicleDesc, signals.avgGross, result.typical_days_to_sell || null, sample_size));
   }
-
-  // Buy range advice
-  if (confidence === 'HIGH') {
-    lines.push(`I'd want to be ${buyLow} to ${buyHigh} to buy it. Money disappears if you get silly above that.`);
-  } else if (confidence === 'MEDIUM') {
-    lines.push(`I'd be thinking ${buyLow} to ${buyHigh} to get into it, but I'd want eyes on it first.`);
-  } else {
-    lines.push(`Rough guide, you're probably looking at ${buyLow} to ${buyHigh} range, but don't hold me to that.`);
+  // Check for SLOW TURNER (days > 45)
+  else if (signals.isSlow && result.typical_days_to_sell) {
+    lines.push(frankResponse6(vehicleDesc, buyLow, buyHigh, result.typical_days_to_sell, signals.avgGross));
   }
-
-  // Sell range and days
-  if (sellLow && sellHigh) {
-    if (typical_days_to_sell && typical_days_to_sell <= 30) {
-      lines.push(`Should move quick – these are turning in about ${Math.round(typical_days_to_sell)} days. Retail it around ${sellLow} to ${sellHigh}.`);
-    } else if (typical_days_to_sell) {
-      lines.push(`Expect to sit on it for ${Math.round(typical_days_to_sell)} days or so. Pitch it ${sellLow} to ${sellHigh} retail.`);
-    } else {
-      lines.push(`Retail it around ${sellLow} to ${sellHigh}.`);
+  // Check for HARD WORK (marginal profit < $1500)
+  else if (signals.isHardWork && signals.avgGross !== null) {
+    lines.push(frankResponse5(vehicleDesc, buyLow, buyHigh, signals.avgGross, result.typical_days_to_sell || null));
+  }
+  // HIGH confidence - dealer history (FRANK #1)
+  else if (confidence === 'HIGH' && tier === 'dealer' && sellLow && sellHigh && result.typical_days_to_sell) {
+    lines.push(frankResponse1(vehicleDesc, buyLow, buyHigh, sellLow, sellHigh, result.typical_days_to_sell, sample_size));
+  }
+  // MEDIUM confidence - network data (FRANK #2)
+  else if (confidence === 'MEDIUM' && tier === 'network' && sellLow && sellHigh) {
+    lines.push(frankResponse2(vehicleDesc, buyLow, buyHigh, sellLow, sellHigh, result.typical_days_to_sell || null, sample_size));
+  }
+  // LOW confidence - proxy only (FRANK #3)
+  else if (confidence === 'LOW') {
+    lines.push(frankResponse3(vehicleDesc, buyLow, buyHigh));
+  }
+  // Fallback - still need to provide value
+  else {
+    // Determine data source text
+    const sourceText = tier === 'dealer' 
+      ? 'Based on what you\'ve paid and got before'
+      : tier === 'network' 
+        ? 'Based on network outcomes'
+        : 'Based on limited data – advisory only';
+    
+    lines.push(`${sourceText}, I'd want to be ${buyLow} to ${buyHigh} to buy it.`);
+    
+    if (sellLow && sellHigh) {
+      // Separate wholesale buy from retail ask
+      lines.push(`Retail ask ${sellLow} to ${sellHigh}.`);
     }
+    
+    if (result.typical_days_to_sell) {
+      lines.push(`Typically turning in ${Math.round(result.typical_days_to_sell)} days.`);
+    }
+    
+    lines.push(`Got ${sample_size} comps to go on.`);
   }
 
-  // Sample size context
-  if (sample_size >= 5) {
-    lines.push(`Got ${sample_size} comps backing this up.`);
-  } else if (sample_size >= 2) {
-    lines.push(`Only ${sample_size} comps to go on, so keep that in mind.`);
+  // Margin protection warning based on priceband
+  if (signals.priceband === 'high' && !signals.isRepeatLoser) {
+    lines.push(`At this price point, every grand matters – don't get silly.`);
   }
 
-  // Missing fields / condition warning
+  // Missing fields / condition warning - ALWAYS flag uncertainty
   const conditionUncertain = !parsed.km || parsed.missing_fields.includes('km');
   if (conditionUncertain) {
     lines.push(`Can't see the kays on this one – that'll shift things either way.`);
   }
 
-  // Assumptions callout
+  // Assumptions callout - ALWAYS say assumptions out loud
   if (parsed.assumptions && parsed.assumptions.length > 0) {
     lines.push(`By the way, I'm assuming: ${parsed.assumptions.join('; ')}.`);
   }
