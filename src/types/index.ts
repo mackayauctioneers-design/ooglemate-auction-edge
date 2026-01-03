@@ -710,3 +710,88 @@ export function extractVariantFamily(variantText: string | undefined | null): st
   
   return undefined;
 }
+
+// ========== VALO AI VALUATION ==========
+
+export interface ValoRequest {
+  input_text: string;
+  dealer_name?: string;
+  location?: string;
+  source_link?: string;
+  // Optional prefilled fields (from lot click)
+  prefill?: {
+    make?: string;
+    model?: string;
+    variant_raw?: string;
+    variant_family?: string;
+    year?: number;
+    km?: number;
+    engine?: string;
+    transmission?: string;
+    drivetrain?: string;
+    body_style?: string;
+    lot_id?: string;
+  };
+}
+
+export interface ValoParsedVehicle {
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  body_style: string | null;
+  variant_raw: string | null;
+  variant_family: string | null;
+  engine: string | null;
+  transmission: string | null;
+  drivetrain: string | null;
+  km: number | null;
+  notes: string | null;
+  missing_fields: string[];
+}
+
+export type ValoTier = 'dealer' | 'network' | 'proxy';
+
+export interface ValoComparable {
+  // For dealer comps only
+  sale_date?: string;
+  sell_price?: number;
+  buy_price?: number;
+  days_to_sell?: number;
+  // Anonymised fields (network/proxy)
+  is_anonymised: boolean;
+}
+
+export interface ValoResult {
+  // Parsed vehicle
+  parsed: ValoParsedVehicle;
+  
+  // Valuation metrics
+  suggested_buy_range: { min: number; max: number } | null;
+  suggested_sell_range: { min: number; max: number } | null;
+  expected_gross_band: { min: number; max: number } | null;
+  typical_days_to_sell: number | null;
+  
+  // Confidence and tier
+  confidence: ValuationConfidence;
+  tier: ValoTier;
+  tier_label: string; // "Dealer history" | "Network outcomes" | "Proxy"
+  sample_size: number;
+  
+  // Top comparables (limited, anonymised for network/proxy)
+  top_comps: ValoComparable[];
+  
+  // Request echo
+  request_id: string;
+  timestamp: string;
+}
+
+export interface ValoRequestLog {
+  request_id: string;
+  dealer_name: string;
+  timestamp: string;
+  input_text: string;
+  parsed_json: string;
+  tier_used: ValoTier;
+  confidence: ValuationConfidence;
+  output_json: string;
+}

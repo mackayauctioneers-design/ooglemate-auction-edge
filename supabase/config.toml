@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.run-saved-search]
 verify_jwt = false
+
+[functions.valo-parse]
+verify_jwt = false

@@ -14,7 +14,8 @@ import {
   Crosshair,
   Bookmark,
   Wrench,
-  DollarSign
+  DollarSign,
+  Sparkles
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,6 +29,7 @@ const navItems = [
   { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
   { path: '/search-lots', label: 'Search Lots', icon: Search },
   { path: '/matches', label: 'Matches', icon: Crosshair },
+  { path: '/valo', label: 'VALO', icon: Sparkles, highlight: true },
   { path: '/valuation', label: 'Valuation', icon: DollarSign },
   { path: '/log-sale', label: 'Log Sale', icon: FileText },
   { path: '/sales-review', label: 'Sales Review', icon: ClipboardList, adminOnly: true },
@@ -75,16 +77,18 @@ export function AppSidebar() {
       <nav className="flex-1 p-3 space-y-1">
         {filteredNavItems.map(item => {
           const isActive = location.pathname === item.path;
+          const isHighlight = 'highlight' in item && item.highlight;
           return (
             <Link key={item.path} to={item.path}>
               <Button
                 variant={isActive ? "navActive" : "nav"}
                 className={cn(
                   "w-full",
-                  collapsed ? "justify-center px-2" : "justify-start"
+                  collapsed ? "justify-center px-2" : "justify-start",
+                  isHighlight && !isActive && "bg-primary/10 text-primary hover:bg-primary/20"
                 )}
               >
-                <item.icon className="h-4 w-4" />
+                <item.icon className={cn("h-4 w-4", isHighlight && !isActive && "text-primary")} />
                 {!collapsed && <span>{item.label}</span>}
               </Button>
             </Link>

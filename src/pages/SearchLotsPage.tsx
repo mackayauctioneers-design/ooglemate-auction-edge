@@ -20,6 +20,7 @@ import { LotEditor } from '@/components/lots/LotEditor';
 import { LotCsvImport } from '@/components/lots/LotCsvImport';
 import { PicklesCatalogueImport } from '@/components/lots/PicklesCatalogueImport';
 import { LifecycleTest } from '@/components/lots/LifecycleTest';
+import { ValoButton } from '@/components/valo/ValoButton';
 
 const AEST_TIMEZONE = 'Australia/Sydney';
 
@@ -595,6 +596,7 @@ export default function SearchLotsPage() {
                     <TableHead className="text-xs whitespace-nowrap text-right">Margin</TableHead>
                     <TableHead className="text-xs whitespace-nowrap text-center">Score</TableHead>
                     <TableHead className="text-xs whitespace-nowrap text-center">Action</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap text-center">VALO</TableHead>
                     <TableHead className="text-xs whitespace-nowrap"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -675,6 +677,13 @@ export default function SearchLotsPage() {
                             );
                           })()}
                         </TableCell>
+                        {/* VALO Button */}
+                        <TableCell className="text-center">
+                          {!isExcluded && (
+                            <ValoButton lot={lot} />
+                          )}
+                        </TableCell>
+                        {/* External Link */}
                         <TableCell>
                           {lot.listing_url && lot.invalid_source !== 'Y' && !isExcluded ? (
                             <Button
