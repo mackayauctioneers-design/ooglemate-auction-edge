@@ -1,121 +1,37 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, TrendingUp, DollarSign, Clock, BarChart3, AlertCircle, CheckCircle, Camera, MessageSquare, Mic, Info } from 'lucide-react';
+import { Loader2, Info, CheckCircle, DollarSign, TrendingUp, BarChart3, Clock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ValoParsedVehicle, ValoResult, ValoTier, ValuationConfidence, formatCurrency } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { dataService } from '@/services/dataService';
 import { toast } from 'sonner';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { SendPicsToFrank } from '@/components/valo/SendPicsToFrank';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MeetFrankModal } from '@/components/valo/MeetFrankModal';
-import { VoiceInput } from '@/components/valo/VoiceInput';
 import { FrankResponseLogger, determineFrankResponseType } from '@/components/valo/FrankResponseLogger';
+import { FrankAvatar } from '@/components/valo/FrankAvatar';
 
 // ============================================================================
 // SYSTEM: FRANK (VALO ENGINE)
 // ============================================================================
-// You are FRANK — an experienced Australian auction knocker with 20+ years on the floor.
-//
-// PERSONALITY:
-// - Straight shooter
-// - Aussie slang
-// - Loves the footy
-// - Married to Shaz
-// - Pub after work, couple of schooners
-// - Talks about cars as "fighters"
-// - Calm, confident, no hype
-//
-// CORE RULES:
-// - Frank prices cars to BUY them — not to bounce them
-// - Frank never inflates value
-// - Frank always protects margin
-// - Frank bases opinions on real historical sales data
-// - Frank considers:
-//   - what was paid
-//   - what it sold for
-//   - how long ago
-//   - days to sell
-//   - capital tied up
-// - Frank understands wholesale margins:
-//   - $5k car → $500–$1k margin
-//   - $100k car → $2k–$3k margin
-// - Frank may mention retail ask as context, but pricing is WHOLESALE FIRST
-//
-// OUTPUT FORMAT:
-// Frank responds in conversational Aussie tone. Frank gives:
-// 1. Verdict (BUY / HIT IT / HARD WORK / NEED PICS / WALK AWAY)
-// 2. Wholesale buy range
-// 3. Retail context (optional)
-// 4. Confidence level
-// 5. Optional next action (photos, buyer check)
-//
-// SPECIAL RULES:
-// - Frank NEVER overcommits without data
-// - Frank is allowed to say "I need pics"
-// - Frank is allowed to say "I'd walk"
-// - Frank never says "guaranteed", "easy money", or hype language
-//
-// Frank is a valuation assistant, not financial advice.
-//
-// NON-NEGOTIABLE: FRANK DOES NOT BOUNCE CARS
-// - Frank will not provide a buy price that only works as a quick flip
-// - If a deal relies on heat, timing, or someone else paying up, Frank refuses
-// - When Frank gives a price, it is an ownable price he is comfortable holding
-// - If a car cannot be priced to own, Frank returns HARD WORK or HARD NO
-//
-// ============================================================================
-// FRANK VOICE CADENCE & DELIVERY RULES
-// ============================================================================
-// Cadence structure (always):
-// 1) Quick verdict line (1 sentence)
-// 2) Buy range (1 sentence, "I'd want to be… to buy it")
-// 3) One reason line (demand/margin/velocity)
-// 4) One caution line (condition/risk/"don't bounce it")
-// 5) Optional next action (pics)
-//
-// PHRASE BANK (use naturally):
-// - "Yeah mate…"
-// - "Good fighter / honest kid"
-// - "Sits straight and square"
-// - "Trim's tidy"
-// - "Hit it pretty hard"
-// - "That's hard work"
-// - "That's nowhere"
-// - "I'd rather keep my powder dry"
-// - "I don't bounce 'em"
-// - "I price it to buy it"
-// - "Send a few pics and I'll firm it up"
-//
-// CHARACTER REFERENCES (use sparingly, only on #1–#3):
-// - "That's the sort of thing I'd still be thinking about after a couple schooners."
-// - "Shaz would tell me not to overthink it."
-// - "I've watched plenty of these after the footy…"
-//
-// HARD LIMITS:
-// - No AI mentions ("model", "dataset", "probability", etc.)
-// - No comedy during HARD NO (#6) and NEED PICS (#4)
-// - No swearing
-// - Never hype. Never "easy money".
-//
-// This is a valuation assistant, not financial advice.
+// Frank is the ONLY entry point - floating avatar bottom-right
+// - Tap Frank → auto voice recording
+// - Recording stops after 1.5s silence
+// - Editable transcript → auto-process
+// - Response bubble with optional voice
+// - Camera opens directly when Frank needs photos
 // ============================================================================
 
 interface FrankSignals {
   avgGross: number | null;
   avgDaysToSell: number | null;
-  isRepeatLoser: boolean; // Historical gross <= 0 - HARD NO
-  isSlow: boolean; // Days to sell > 45
-  isHardWork: boolean; // Marginal gross < $1500
-  isBounceOnly: boolean; // Can only make money on a quick flip - HARD NO
-  priceband: 'low' | 'mid' | 'high'; // For margin protection
+  isRepeatLoser: boolean;
+  isSlow: boolean;
+  isHardWork: boolean;
+  isBounceOnly: boolean;
+  priceband: 'low' | 'mid' | 'high';
 }
 
 function calculateFrankSignals(result: ValoResult): FrankSignals {
@@ -127,8 +43,6 @@ function calculateFrankSignals(result: ValoResult): FrankSignals {
     ? (result.suggested_buy_range.min + result.suggested_buy_range.max) / 2 
     : 0;
 
-  // Bounce-only detection: thin margin AND slow turn = can't own it profitably
-  // This means the only way to make money is timing/heat/flipping
   const isBounceOnly = avgGross !== null && avgDaysToSell !== null &&
     avgGross < 2000 && avgDaysToSell > 30;
 
@@ -143,7 +57,7 @@ function calculateFrankSignals(result: ValoResult): FrankSignals {
   };
 }
 
-// Character lines - ONLY for #1, #2, #3 responses (use sparingly)
+// Character lines - ONLY for #1, #2, #3 responses
 const frankCharacterLines = [
   "That's the sort of thing I'd still be thinking about after a couple schooners.",
   "Shaz would tell me not to overthink it.",
@@ -151,7 +65,6 @@ const frankCharacterLines = [
 ];
 
 function getOptionalCharacter(): string {
-  // 25% chance to add a light character line
   if (Math.random() > 0.75) {
     return " " + frankCharacterLines[Math.floor(Math.random() * frankCharacterLines.length)];
   }
@@ -159,98 +72,56 @@ function getOptionalCharacter(): string {
 }
 
 // ============================================================================
-// FRANK RESPONSES - Following voice cadence structure:
-// 1) Quick verdict line | 2) Buy range | 3) Reason line | 4) Caution line | 5) Next action
+// FRANK RESPONSES
 // ============================================================================
-
-// FRANK RESPONSE #1: High confidence, good margins, quick turn
-// Character references ALLOWED
-function frankResponse1(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number, n: number): string {
-  const character = getOptionalCharacter();
-  // 1) Verdict | 2) Buy range | 3) Reason (demand/velocity) | 4) Caution
-  return `Yeah mate, that's a good fighter. I'd want to be ${buyLow} to ${buyHigh} to buy it. Turns in about ${Math.round(days)} days – demand's there. Retail ask ${sellLow} to ${sellHigh}. Got ${n} comps backing this up.${character}`;
-}
-
-// FRANK RESPONSE #2: Medium confidence from network
-// Character references ALLOWED
-function frankResponse2(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number | null, n: number): string {
-  const daysText = days ? `Turns in about ${Math.round(days)} days across the network.` : 'Velocity looks reasonable.';
-  const character = getOptionalCharacter();
-  // 1) Verdict | 2) Buy range | 3) Reason | 4) Caution (not your data)
-  return `Sits straight and square. I'd want to be ${buyLow} to ${buyHigh} to buy it. ${daysText} Retail ask ${sellLow} to ${sellHigh}. Not your direct history – ${n} network comps – so I'd want eyes on it.${character}`;
-}
-
-// FRANK RESPONSE #3: Low confidence / proxy only (NEEDS EYES)
-// Character references ALLOWED (light)
-function frankResponse3(vehicleDesc: string, buyLow: string, buyHigh: string): string {
-  const character = getOptionalCharacter();
-  // 1) Verdict | 2) Buy range | 3) Reason (limited data) | HANDOFF | 5) Next action
-  return `Look mate, I'm working off limited data here. I'd want to be ${buyLow} to ${buyHigh} to buy it – rough guide only. Give me two minutes, let me check with one of the boys. Send a few pics and I'll firm it up.${character}`;
-}
-
-// FRANK HANDOFF LINE (MANDATORY OPTION)
-// "Give me two minutes, let me check with one of the boys."
-// Rules:
-// - Use when photos or second opinion materially improves the decision
-// - Replaces corporate disclaimers
-// - Must sound confident, not uncertain
-// - After this line, Frank prompts for photos or details
-// This is a trust-building handoff, not an apology.
 
 const FRANK_HANDOFF = "Give me two minutes, let me check with one of the boys.";
 
-// FRANK RESPONSE #4: NO DATA - needs human review
-// NO character - serious tone only
+function frankResponse1(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number, n: number): string {
+  const character = getOptionalCharacter();
+  return `Yeah mate, that's a good fighter. I'd want to be ${buyLow} to ${buyHigh} to buy it. Turns in about ${Math.round(days)} days – demand's there. Retail ask ${sellLow} to ${sellHigh}. Got ${n} comps backing this up.${character}`;
+}
+
+function frankResponse2(vehicleDesc: string, buyLow: string, buyHigh: string, sellLow: string, sellHigh: string, days: number | null, n: number): string {
+  const daysText = days ? `Turns in about ${Math.round(days)} days across the network.` : 'Velocity looks reasonable.';
+  const character = getOptionalCharacter();
+  return `Sits straight and square. I'd want to be ${buyLow} to ${buyHigh} to buy it. ${daysText} Retail ask ${sellLow} to ${sellHigh}. Not your direct history – ${n} network comps – so I'd want eyes on it.${character}`;
+}
+
+function frankResponse3(vehicleDesc: string, buyLow: string, buyHigh: string): string {
+  const character = getOptionalCharacter();
+  return `Look mate, I'm working off limited data here. I'd want to be ${buyLow} to ${buyHigh} to buy it – rough guide only. ${FRANK_HANDOFF} Send a few pics and I'll firm it up.${character}`;
+}
+
 function frankResponse4NoData(vehicleDesc: string): string {
-  // 1) Verdict | HANDOFF | 5) Next action (pics)
   return `That's nowhere – I haven't got enough runs on the board with ${vehicleDesc || 'this one'}. ${FRANK_HANDOFF} Send a few pics and I'll firm it up.`;
 }
 
-// FRANK RESPONSE #5: HARD WORK - marginal profit
-// NO character - cautious tone
 function frankResponse5(vehicleDesc: string, buyLow: string, buyHigh: string, avgGross: number, days: number | null): string {
   const daysText = days ? ` in ${Math.round(days)} days` : '';
-  // 1) Verdict | 2) Buy range | 3) Reason (margin) | 4) Caution
   return `That's hard work. I'd want to be ${buyLow} to ${buyHigh} to buy it. Margin's typically ${formatCurrency(avgGross)}${daysText} – any sillier and the money disappears. I don't bounce 'em, so hit it hard or walk.`;
 }
 
-// FRANK RESPONSE #6: HARD NO - repeat loser / negative history
-// NO character, NO jokes - dead serious
 function frankResponse6HardNo(vehicleDesc: string, avgGross: number, days: number | null, n: number): string {
   const daysText = days ? ` and sat for ${Math.round(days)} days` : '';
-  // 1) Verdict | 3) Reason (history) | 4) Caution
   return `I'd rather keep my powder dry on this one. Your history shows ${formatCurrency(avgGross)} average gross${daysText} – that's ${n} runs where money disappeared. I price it to buy it, and I can't buy this one comfortably. Walk unless the seller's properly motivated.`;
 }
 
-// FRANK RESPONSE #7: SLOW TURNER - capital tied up
-// NO character - serious
 function frankResponse7Slow(vehicleDesc: string, buyLow: string, buyHigh: string, days: number, avgGross: number | null): string {
   const grossText = avgGross ? `Gross is typically ${formatCurrency(avgGross)}, but` : `But`;
-  // 1) Verdict | 2) Buy range | 3) Reason (velocity) | 4) Caution (capital)
   return `These are slow. I'd want to be ${buyLow} to ${buyHigh} to buy it. ${grossText} you're looking at ${Math.round(days)} days to move them. Factor in floorplan and the aggravation – money's tied up. Hit it pretty hard.`;
 }
 
-// FRANK RESPONSE #8: BOUNCE-ONLY - can't price to own
-// NO character - refusal to price
 function frankResponse8BounceOnly(vehicleDesc: string, avgGross: number, days: number): string {
-  // 1) Verdict | 3) Reason | 4) Caution (refusal)
   return `I'm not putting a number on this one. ${formatCurrency(avgGross)} gross over ${Math.round(days)} days – that's bounce territory. I don't bounce 'em. The only way to make money is timing and heat. This one's a pass unless you know something I don't.`;
 }
 
-// Generate VALO's conversational response in Australian wholesale buyer tone
-// LOCKED LOGIC: All valuations reference Sales Log data sources
 function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): string {
-  const { confidence, sample_size, suggested_buy_range, suggested_sell_range, tier, tier_label } = result;
+  const { confidence, sample_size, suggested_buy_range, suggested_sell_range, tier } = result;
   
-  // Build vehicle description
-  const vehicleDesc = [
-    parsed.year,
-    parsed.make,
-    parsed.model,
-    parsed.variant_family
-  ].filter(Boolean).join(' ');
+  const vehicleDesc = [parsed.year, parsed.make, parsed.model, parsed.variant_family]
+    .filter(Boolean).join(' ');
 
-  // No data case - NEVER invent confidence (NEEDS EYES #4)
   if (sample_size === 0 || !suggested_buy_range) {
     return frankResponse4NoData(vehicleDesc);
   }
@@ -260,43 +131,24 @@ function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): st
   const sellLow = suggested_sell_range ? formatCurrency(suggested_sell_range.min) : null;
   const sellHigh = suggested_sell_range ? formatCurrency(suggested_sell_range.max) : null;
 
-  // Calculate Frank signals from sales data
   const signals = calculateFrankSignals(result);
   const lines: string[] = [];
 
-  // RULE: Never override negative sales history
-  // Check for REPEAT LOSER first (gross <= 0) - HARD NO #6
   if (signals.isRepeatLoser && signals.avgGross !== null) {
     lines.push(frankResponse6HardNo(vehicleDesc, signals.avgGross, result.typical_days_to_sell || null, sample_size));
-  }
-  // RULE: Frank does not bounce cars - if can only flip, refuse to price
-  // Check for BOUNCE-ONLY (thin margin + slow turn) - HARD NO #8
-  else if (signals.isBounceOnly && signals.avgGross !== null && result.typical_days_to_sell) {
+  } else if (signals.isBounceOnly && signals.avgGross !== null && result.typical_days_to_sell) {
     lines.push(frankResponse8BounceOnly(vehicleDesc, signals.avgGross, result.typical_days_to_sell));
-  }
-  // Check for SLOW TURNER (days > 45) - #7
-  else if (signals.isSlow && result.typical_days_to_sell) {
+  } else if (signals.isSlow && result.typical_days_to_sell) {
     lines.push(frankResponse7Slow(vehicleDesc, buyLow, buyHigh, result.typical_days_to_sell, signals.avgGross));
-  }
-  // Check for HARD WORK (marginal profit < $1500) - #5
-  else if (signals.isHardWork && signals.avgGross !== null) {
+  } else if (signals.isHardWork && signals.avgGross !== null) {
     lines.push(frankResponse5(vehicleDesc, buyLow, buyHigh, signals.avgGross, result.typical_days_to_sell || null));
-  }
-  // HIGH confidence - dealer history (FRANK #1)
-  else if (confidence === 'HIGH' && tier === 'dealer' && sellLow && sellHigh && result.typical_days_to_sell) {
+  } else if (confidence === 'HIGH' && tier === 'dealer' && sellLow && sellHigh && result.typical_days_to_sell) {
     lines.push(frankResponse1(vehicleDesc, buyLow, buyHigh, sellLow, sellHigh, result.typical_days_to_sell, sample_size));
-  }
-  // MEDIUM confidence - network data (FRANK #2)
-  else if (confidence === 'MEDIUM' && tier === 'network' && sellLow && sellHigh) {
+  } else if (confidence === 'MEDIUM' && tier === 'network' && sellLow && sellHigh) {
     lines.push(frankResponse2(vehicleDesc, buyLow, buyHigh, sellLow, sellHigh, result.typical_days_to_sell || null, sample_size));
-  }
-  // LOW confidence - proxy only (FRANK #3)
-  else if (confidence === 'LOW') {
+  } else if (confidence === 'LOW') {
     lines.push(frankResponse3(vehicleDesc, buyLow, buyHigh));
-  }
-  // Fallback - still need to provide value
-  else {
-    // Determine data source text
+  } else {
     const sourceText = tier === 'dealer' 
       ? 'Based on what you\'ve paid and got before'
       : tier === 'network' 
@@ -306,7 +158,6 @@ function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): st
     lines.push(`${sourceText}, I'd want to be ${buyLow} to ${buyHigh} to buy it.`);
     
     if (sellLow && sellHigh) {
-      // Separate wholesale buy from retail ask
       lines.push(`Retail ask ${sellLow} to ${sellHigh}.`);
     }
     
@@ -317,18 +168,15 @@ function generateValoResponse(result: ValoResult, parsed: ValoParsedVehicle): st
     lines.push(`Got ${sample_size} comps to go on.`);
   }
 
-  // Margin protection warning based on priceband
   if (signals.priceband === 'high' && !signals.isRepeatLoser) {
     lines.push(`At this price point, every grand matters – don't get silly.`);
   }
 
-  // Missing fields / condition warning - ALWAYS flag uncertainty
   const conditionUncertain = !parsed.km || parsed.missing_fields.includes('km');
   if (conditionUncertain) {
     lines.push(`Can't see the kays on this one – that'll shift things either way.`);
   }
 
-  // Assumptions callout - ALWAYS say assumptions out loud
   if (parsed.assumptions && parsed.assumptions.length > 0) {
     lines.push(`By the way, I'm assuming: ${parsed.assumptions.join('; ')}.`);
   }
@@ -340,46 +188,34 @@ export default function ValoPage() {
   const { currentUser, isAdmin } = useAuth();
   const [searchParams] = useSearchParams();
   
-  // Form state
-  const [inputText, setInputText] = useState('');
-  const [location, setLocation] = useState('');
-  const [sourceLink, setSourceLink] = useState('');
-  
-  // Processing state
-  const [isParsing, setIsParsing] = useState(false);
-  const [isValuating, setIsValuating] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [parsed, setParsed] = useState<ValoParsedVehicle | null>(null);
   const [result, setResult] = useState<ValoResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [frankResponse, setFrankResponse] = useState<string | null>(null);
 
-  // Prefill from URL params (when clicking VALO button on a lot)
+  // Prefill from URL (when clicking VALO button on a lot)
   useEffect(() => {
     const prefillText = searchParams.get('prefill');
-    const prefillLink = searchParams.get('link');
-    
     if (prefillText) {
-      setInputText(decodeURIComponent(prefillText));
-    }
-    if (prefillLink) {
-      setSourceLink(decodeURIComponent(prefillLink));
+      handleProcess(decodeURIComponent(prefillText));
     }
   }, [searchParams]);
 
   useEffect(() => {
-    document.title = 'VALO | OogleMate';
+    document.title = 'Ask Frank | OogleMate';
     return () => { document.title = 'OogleMate'; };
   }, []);
 
-  const handleRunValo = async () => {
+  const handleProcess = async (inputText: string) => {
     if (!inputText.trim()) {
       toast.error('Please describe the car');
       return;
     }
 
-    setError(null);
     setParsed(null);
     setResult(null);
-    setIsParsing(true);
+    setFrankResponse(null);
+    setIsProcessing(true);
 
     try {
       // Step 1: Parse the description with AI
@@ -391,43 +227,41 @@ export default function ValoPage() {
       if (parseData?.error) throw new Error(parseData.error);
 
       const parsedVehicle: ValoParsedVehicle = parseData.parsed;
-      // Ensure assumptions array exists
       if (!parsedVehicle.assumptions) {
         parsedVehicle.assumptions = [];
       }
       setParsed(parsedVehicle);
-      setIsParsing(false);
 
-      // Step 2: Run valuation if we have enough data
       if (!parsedVehicle.make || !parsedVehicle.model) {
-        setError('Could not determine make and model from description. Please be more specific.');
+        toast.error('Could not determine make and model. Please be more specific.');
+        setIsProcessing(false);
         return;
       }
 
-      setIsValuating(true);
-
-      // Get valuation using the 3-tier logic
+      // Step 2: Run valuation
       const valuation = await runValoValuation(parsedVehicle, currentUser?.dealer_name);
-      setResult({
+      const fullResult: ValoResult = {
         parsed: parsedVehicle,
         ...valuation,
         request_id: crypto.randomUUID(),
         timestamp: new Date().toISOString()
-      });
+      };
+      setResult(fullResult);
+      
+      // Generate Frank's response
+      const response = generateValoResponse(fullResult, parsedVehicle);
+      setFrankResponse(response);
 
-      toast.success('VALO complete');
+      toast.success('Frank\'s got an answer');
     } catch (err) {
       console.error('VALO error:', err);
       const msg = err instanceof Error ? err.message : 'Failed to run VALO';
-      setError(msg);
       toast.error(msg);
     } finally {
-      setIsParsing(false);
-      setIsValuating(false);
+      setIsProcessing(false);
     }
   };
 
-  // 3-tier valuation logic
   const runValoValuation = async (
     parsed: ValoParsedVehicle,
     dealerName?: string
@@ -438,18 +272,11 @@ export default function ValoPage() {
     const variantFamily = parsed.variant_family || undefined;
     const km = parsed.km || undefined;
 
-    // Tier 1: Dealer history comps (if we have a dealer)
     if (dealerName) {
       const dealerResult = await dataService.getNetworkValuation({
-        make,
-        model,
-        variant_family: variantFamily,
-        year,
-        km,
-        requesting_dealer: dealerName,
+        make, model, variant_family: variantFamily, year, km, requesting_dealer: dealerName,
       }, isAdmin);
 
-      // Check if we have internal data (Tier 1)
       if (dealerResult.data_source === 'internal' && dealerResult.sample_size >= 1) {
         const confidence: ValuationConfidence = dealerResult.sample_size >= 3 ? 'HIGH' : 'MEDIUM';
         return {
@@ -468,13 +295,8 @@ export default function ValoPage() {
       }
     }
 
-    // Tier 2: Network proxy comps (anonymised)
     const networkResult = await dataService.getNetworkValuation({
-      make,
-      model,
-      variant_family: variantFamily,
-      year,
-      year_tolerance: 2,
+      make, model, variant_family: variantFamily, year, year_tolerance: 2,
     }, isAdmin);
 
     if (networkResult.sample_size >= 5) {
@@ -493,12 +315,8 @@ export default function ValoPage() {
       };
     }
 
-    // Tier 3: Proxy-only (make + model only, broader)
     const proxyResult = await dataService.getNetworkValuation({
-      make,
-      model,
-      year,
-      year_tolerance: 3,
+      make, model, year, year_tolerance: 3,
     }, isAdmin);
 
     if (proxyResult.sample_size > 0) {
@@ -517,7 +335,6 @@ export default function ValoPage() {
       };
     }
 
-    // No data at all
     return {
       suggested_buy_range: null,
       suggested_sell_range: null,
@@ -530,7 +347,6 @@ export default function ValoPage() {
       top_comps: []
     };
   };
-
 
   const getConfidenceBadge = (confidence: ValuationConfidence) => {
     switch (confidence) {
@@ -554,213 +370,69 @@ export default function ValoPage() {
     }
   };
 
+  const vehicleDesc = parsed ? [parsed.year, parsed.make, parsed.model, parsed.variant_family]
+    .filter(Boolean).join(' ') : '';
 
-  // Handle voice input - append to existing text
-  const handleVoiceTranscript = useCallback((text: string) => {
-    setInputText(prev => prev ? `${prev} ${text}` : text);
-  }, []);
-
-  // Build vehicle description for logging
-  const vehicleDesc = parsed ? [
-    parsed.year,
-    parsed.make,
-    parsed.model,
-    parsed.variant_family
-  ].filter(Boolean).join(' ') : '';
+  // Determine if Frank needs photos (confidence not HIGH)
+  const needsPhotos = result ? result.confidence !== 'HIGH' : false;
 
   return (
     <AppLayout>
-      {/* Meet Frank onboarding modal */}
       <MeetFrankModal />
       
-      {/* Response logger for Phase 3 testing */}
       <FrankResponseLogger 
         result={result} 
         vehicleDesc={vehicleDesc} 
         isAdmin={isAdmin} 
       />
       
-      <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
+      <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto min-h-[70vh]">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground">
-              <Sparkles className="h-6 w-6" />
-            </div>
+            <div className="text-4xl">👨‍🔧</div>
             <div>
               <h1 className="text-2xl font-bold">Ask Frank</h1>
-              <p className="text-muted-foreground">Your blunt, no-BS valuation mate</p>
+              <p className="text-muted-foreground">Tap Frank to talk. He's all ears.</p>
             </div>
           </div>
           
-          {/* Admin badge */}
           {isAdmin && (
             <Badge variant="outline" className="gap-1">
               <Info className="h-3 w-3" />
-              Phase 3 Testing
+              Phase 3
             </Badge>
           )}
         </div>
 
-        {/* Input Form */}
-        <Card>
-          <CardHeader>
-            <CardTitle>What are you looking at?</CardTitle>
-            <CardDescription>
-              Describe the car however you like – VALO will figure it out
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="description">Vehicle Description *</Label>
-              <Textarea
-                id="description"
-                placeholder='e.g., "2025 Toyota Land Cruiser 10,000 km dual cab V8 manual nice car"'
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                rows={3}
-                className="resize-none"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="location">Location (optional)</Label>
-                <Input
-                  id="location"
-                  placeholder="e.g., Sydney"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="source">Source Link (optional)</Label>
-                <Input
-                  id="source"
-                  placeholder="e.g., auction or listing URL"
-                  value={sourceLink}
-                  onChange={(e) => setSourceLink(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 pt-2">
-              {/* Voice Input - Push to Talk */}
-              <VoiceInput 
-                onTranscript={handleVoiceTranscript}
-                disabled={isParsing || isValuating}
-              />
-              
-              <Button 
-                onClick={handleRunValo} 
-                disabled={isParsing || isValuating || !inputText.trim()}
-                className="gap-2"
-                size="lg"
-              >
-                {isParsing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Reading...
-                  </>
-                ) : isValuating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Frank's thinking...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    Ask Frank
-                  </>
-                )}
-              </Button>
-              
-              {currentUser && (
-                <span className="text-sm text-muted-foreground">
-                  {currentUser.dealer_name}
-                </span>
-              )}
-            </div>
-            
-            <p className="text-xs text-muted-foreground">
-              <Mic className="h-3 w-3 inline mr-1" />
-              Hold the mic button to speak, or just type
+        {/* Empty state */}
+        {!result && !isProcessing && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="text-6xl mb-4 animate-bounce">👇</div>
+            <p className="text-lg text-muted-foreground">
+              Tap Frank in the corner to describe a car
             </p>
-          </CardContent>
-        </Card>
-
-        {/* Error Display */}
-        {error && (
-          <Card className="border-destructive">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 text-destructive">
-                <AlertCircle className="h-5 w-5" />
-                <p>{error}</p>
-              </div>
-            </CardContent>
-          </Card>
+            <p className="text-sm text-muted-foreground mt-2">
+              Just talk naturally – he'll figure it out
+            </p>
+          </div>
         )}
 
-        {/* VALO Response - Conversational */}
-        {result && parsed && (
-          <Card className="border-primary bg-primary/5">
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-primary text-primary-foreground shrink-0">
-                  <MessageSquare className="h-5 w-5" />
-                </div>
-                <div className="space-y-4 flex-1">
-                  <p className="text-lg leading-relaxed">
-                    {generateValoResponse(result, parsed)}
-                  </p>
-                  
-                  {/* Badges row */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {getConfidenceBadge(result.confidence)}
-                    {getTierBadge(result.tier)}
-                    <Badge variant="secondary">n = {result.sample_size}</Badge>
-                    {/* Admin: Show response type for testing */}
-                    {isAdmin && (
-                      <Badge variant="outline" className="font-mono text-xs">
-                        {determineFrankResponseType(result)}
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Send Pics to Frank - show when confidence not HIGH */}
-                  {currentUser?.dealer_name && result.confidence !== 'HIGH' && (
-                    <div className="pt-2">
-                      <SendPicsToFrank
-                        result={result}
-                        parsed={parsed}
-                        frankResponse={generateValoResponse(result, parsed)}
-                        dealerName={currentUser.dealer_name}
-                        onSubmitted={(requestId) => {
-                          toast.success("Photos sent! Frank's team will review and get back to you.");
-                        }}
-                      />
-                    </div>
-                  )}
-                  
-                  {/* High confidence - no need for pics */}
-                  {result.confidence === 'HIGH' && (
-                    <p className="text-xs text-green-600 pt-2">
-                      ✓ High confidence – no photo review needed
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Processing state */}
+        {isProcessing && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+            <p className="text-lg text-muted-foreground">Frank's thinking...</p>
+          </div>
         )}
 
-        {/* Parsed Details (collapsible feel) */}
-        {parsed && (
+        {/* Parsed Details */}
+        {parsed && !isProcessing && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <CheckCircle className="h-4 w-4 text-green-500" />
-                What I'm working with
+                What Frank's working with
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -813,115 +485,93 @@ export default function ValoPage() {
         )}
 
         {/* Valuation Numbers Grid */}
-        {result && result.sample_size > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Buy Range */}
-            <Card className="p-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <DollarSign className="h-4 w-4" />
-                Buy Range
-              </div>
-              <div className="text-lg font-semibold">
-                {result.suggested_buy_range 
-                  ? `${formatCurrency(result.suggested_buy_range.min)} - ${formatCurrency(result.suggested_buy_range.max)}`
-                  : 'N/A'
-                }
-              </div>
-            </Card>
+        {result && result.sample_size > 0 && !isProcessing && (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              {getConfidenceBadge(result.confidence)}
+              {getTierBadge(result.tier)}
+              <Badge variant="secondary">n = {result.sample_size}</Badge>
+              {isAdmin && (
+                <Badge variant="outline" className="font-mono text-xs">
+                  {determineFrankResponseType(result)}
+                </Badge>
+              )}
+            </div>
 
-            {/* Sell Range */}
-            <Card className="p-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <TrendingUp className="h-4 w-4" />
-                Sell Range
-              </div>
-              <div className="text-lg font-semibold">
-                {result.suggested_sell_range 
-                  ? `${formatCurrency(result.suggested_sell_range.min)} - ${formatCurrency(result.suggested_sell_range.max)}`
-                  : 'N/A'
-                }
-              </div>
-            </Card>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="p-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                  <DollarSign className="h-4 w-4" />
+                  Buy Range
+                </div>
+                <div className="text-lg font-semibold">
+                  {result.suggested_buy_range 
+                    ? `${formatCurrency(result.suggested_buy_range.min)} - ${formatCurrency(result.suggested_buy_range.max)}`
+                    : 'N/A'
+                  }
+                </div>
+              </Card>
 
-            {/* Gross Band */}
-            <Card className="p-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <BarChart3 className="h-4 w-4" />
-                Gross Band
-              </div>
-              <div className={`text-lg font-semibold ${
-                result.expected_gross_band && result.expected_gross_band.min > 0 
-                  ? 'text-green-600' 
-                  : ''
-              }`}>
-                {result.expected_gross_band 
-                  ? `${formatCurrency(result.expected_gross_band.min)} - ${formatCurrency(result.expected_gross_band.max)}`
-                  : 'N/A'
-                }
-              </div>
-            </Card>
+              <Card className="p-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                  <TrendingUp className="h-4 w-4" />
+                  Sell Range
+                </div>
+                <div className="text-lg font-semibold">
+                  {result.suggested_sell_range 
+                    ? `${formatCurrency(result.suggested_sell_range.min)} - ${formatCurrency(result.suggested_sell_range.max)}`
+                    : 'N/A'
+                  }
+                </div>
+              </Card>
 
-            {/* Days to Sell */}
-            <Card className="p-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <Clock className="h-4 w-4" />
-                Days to Sell
-              </div>
-              <div className="text-lg font-semibold">
-                {result.typical_days_to_sell 
-                  ? `~${Math.round(result.typical_days_to_sell)} days`
-                  : 'N/A'
-                }
-              </div>
-            </Card>
-          </div>
-        )}
+              <Card className="p-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                  <BarChart3 className="h-4 w-4" />
+                  Gross Band
+                </div>
+                <div className={`text-lg font-semibold ${
+                  result.expected_gross_band && result.expected_gross_band.min > 0 
+                    ? 'text-green-600' 
+                    : ''
+                }`}>
+                  {result.expected_gross_band 
+                    ? `${formatCurrency(result.expected_gross_band.min)} - ${formatCurrency(result.expected_gross_band.max)}`
+                    : 'N/A'
+                  }
+                </div>
+              </Card>
 
-        {/* Comparables Table (for dealer tier) */}
-        {result && result.tier === 'dealer' && result.top_comps.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Top Comparables</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Sell Price</TableHead>
-                    <TableHead className="text-right">Days</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {result.top_comps.map((comp, i) => (
-                    <TableRow key={i}>
-                      <TableCell>{comp.sale_date || '-'}</TableCell>
-                      <TableCell className="text-right">
-                        {comp.sell_price ? formatCurrency(comp.sell_price) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right">{comp.days_to_sell || '-'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-
-        {/* No data message */}
-        {result && result.sample_size === 0 && (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center py-4 text-muted-foreground">
-                <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>No comparable sales found in the system.</p>
-                <p className="text-sm mt-1">Request a buyer review for a manual assessment.</p>
-              </div>
-            </CardContent>
-          </Card>
+              <Card className="p-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                  <Clock className="h-4 w-4" />
+                  Days to Sell
+                </div>
+                <div className="text-lg font-semibold">
+                  {result.typical_days_to_sell 
+                    ? `~${Math.round(result.typical_days_to_sell)} days`
+                    : 'N/A'
+                  }
+                </div>
+              </Card>
+            </div>
+          </>
         )}
       </div>
+
+      {/* Frank Avatar - ONLY entry point */}
+      <FrankAvatar
+        onProcess={handleProcess}
+        isProcessing={isProcessing}
+        frankResponse={frankResponse}
+        result={result}
+        parsed={parsed}
+        dealerName={currentUser?.dealer_name}
+        onPhotoSubmitted={(requestId) => {
+          toast.success("Photos sent! Frank's team will review.");
+        }}
+        needsPhotos={needsPhotos}
+      />
     </AppLayout>
   );
 }
