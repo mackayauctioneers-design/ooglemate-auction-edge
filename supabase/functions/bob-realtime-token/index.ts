@@ -6,8 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Frank's persona - grounded Aussie wholesale valuer
-const FRANK_SYSTEM_PROMPT = `You are Frank.
+// Bob's persona - grounded Aussie wholesale valuer
+const BOB_SYSTEM_PROMPT = `You are Bob.
 
 You are an Australian wholesale car valuer with 20+ years in auctions.
 You speak like a straight-shooting Aussie knocker.
@@ -65,9 +65,8 @@ serve(async (req) => {
       );
     }
 
-    console.log("Creating OpenAI Realtime session for Frank...");
+    console.log("Creating OpenAI Realtime session for Bob...");
 
-    // Request an ephemeral token from OpenAI
     const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
       method: "POST",
       headers: {
@@ -76,8 +75,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "gpt-4o-realtime-preview-2024-12-17",
-        voice: "echo", // Male voice - calm and professional
-        instructions: FRANK_SYSTEM_PROMPT,
+        voice: "echo",
+        instructions: BOB_SYSTEM_PROMPT,
         input_audio_transcription: {
           model: "whisper-1"
         },
