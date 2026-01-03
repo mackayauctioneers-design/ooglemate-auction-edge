@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database, Car } from 'lucide-react';
+import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database, Car, FileDown } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { LotCsvImport } from '@/components/lots/LotCsvImport';
 import { LifecycleTest } from '@/components/lots/LifecycleTest';
 import { dataService } from '@/services/dataService';
 import { parsePicklesCatalogue } from '@/utils/picklesCatalogueParser';
+import { ingestMackayTradersSales } from '@/utils/ingestMackayTradersSales';
 import { toast } from 'sonner';
 import { Navigate } from 'react-router-dom';
 
@@ -34,6 +35,8 @@ export default function AdminToolsPage() {
     salesSkipped: number; 
     unresolved: Array<{ saleId: string; make: string; model: string }>;
   } | null>(null);
+  const [isIngestingMackay, setIsIngestingMackay] = useState(false);
+  const [mackayStats, setMackayStats] = useState<{ parsed: number; stored: number } | null>(null);
 
   const handleImportCatalogue12931 = async () => {
     setIsImporting12931(true);
@@ -196,6 +199,23 @@ export default function AdminToolsPage() {
       toast.error('Failed to backfill make/model: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsBackfillingMakeModel(false);
+    }
+  };
+
+  const handleIngestMackayTraders = async () => {
+    setIsIngestingMackay(true);
+    try {
+      const result = await ingestMackayTradersSales();
+      if (result.errors.length > 0) {
+        toast.error('Ingestion failed: ' + result.errors.join(', '));
+      } else {
+        toast.success(`Ingested ${result.parsed} sales from Mackay Traders, stored ${result.stored} records`);
+        setMackayStats({ parsed: result.parsed, stored: result.stored });
+      }
+    } catch (error) {
+      toast.error('Failed to ingest: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsIngestingMackay(false);
     }
   };
 
@@ -459,6 +479,36 @@ export default function AdminToolsPage() {
                       )}
                     </div>
                   )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Ingest Mackay Traders Sales */}
+          <Card className="border-purple-500/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <FileDown className="h-5 w-5 text-purple-500" />
+                Ingest Mackay Traders
+              </CardTitle>
+              <CardDescription>
+                Parse and store sales from StockSoldReport PDF into Dealer_Sales_History
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button 
+                onClick={handleIngestMackayTraders}
+                className="w-full gap-2"
+                variant="outline"
+                disabled={isIngestingMackay}
+              >
+                {isIngestingMackay ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                {isIngestingMackay ? 'Ingesting...' : 'Ingest Mackay Traders PDF'}
+              </Button>
+              {mackayStats && (
+                <div className="text-xs text-muted-foreground border rounded p-2 bg-muted/50">
+                  <div>Sales parsed: <span className="font-medium text-purple-500">{mackayStats.parsed}</span></div>
+                  <div>Records stored: <span className="font-medium text-green-500">{mackayStats.stored}</span></div>
                 </div>
               )}
             </CardContent>

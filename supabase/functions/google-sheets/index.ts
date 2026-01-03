@@ -140,6 +140,12 @@ const SHEET_HEADERS: Record<string, string[]> = {
     'last_run_status', 'last_http_status', 'last_listings_found', 
     'last_listings_upserted', 'last_error_message'
   ],
+  // Dealer Sales History - parsed sales data from dealer reports (PDF/CSV)
+  'Dealer_Sales_History': [
+    'record_id', 'source', 'dealer_name', 'imported_at', 'stock_no', 'rego',
+    'make', 'model', 'year', 'variant', 'body_type', 'transmission', 'drivetrain', 'engine',
+    'sale_date', 'days_in_stock', 'sell_price', 'total_cost', 'gross_profit', 'description_raw'
+  ],
 };
 
 // Read data from a sheet (auto-creates if missing, adds headers if empty)

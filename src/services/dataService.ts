@@ -466,4 +466,47 @@ export const dataService = {
     }
     throw new Error('Mock data does not support network valuation');
   },
+
+  // ========== DEALER SALES HISTORY ==========
+
+  getDealerSalesHistory: async (filters?: {
+    dealerName?: string;
+    make?: string;
+    model?: string;
+    yearMin?: number;
+    yearMax?: number;
+  }) => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.getDealerSalesHistory(filters);
+    }
+    throw new Error('Mock data does not support dealer sales history');
+  },
+
+  appendDealerSalesHistory: async (records: Array<{
+    record_id: string;
+    source: string;
+    dealer_name: string;
+    imported_at: string;
+    stock_no: string;
+    rego: string;
+    make: string;
+    model: string;
+    year: number;
+    variant: string;
+    body_type: string;
+    transmission: string;
+    drivetrain: string;
+    engine: string;
+    sale_date: string;
+    days_in_stock: number;
+    sell_price: number;
+    total_cost: number;
+    gross_profit: number;
+    description_raw: string;
+  }>): Promise<number> => {
+    if (USE_GOOGLE_SHEETS) {
+      return googleSheetsService.appendDealerSalesHistory(records);
+    }
+    throw new Error('Mock data does not support dealer sales history');
+  },
 };

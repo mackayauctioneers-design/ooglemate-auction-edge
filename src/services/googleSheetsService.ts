@@ -15,6 +15,7 @@ import {
   NetworkValuationRequest,
   NetworkValuationResult,
   ValuationConfidence,
+  DealerSalesHistory,
   calculateConfidenceScore,
   determineAction,
   calculateLotConfidenceScore,
@@ -38,6 +39,7 @@ const SHEETS = {
   SALES_NORMALISED: 'Sales_Normalised',
   FINGERPRINT_SYNC_LOG: 'Fingerprint_Sync_Log',
   SAVED_SEARCHES: 'Saved_Searches',
+  DEALER_SALES_HISTORY: 'Dealer_Sales_History',
 };
 
 // Check if a listing URL is invalid (placeholder, example, or empty)
@@ -2839,6 +2841,46 @@ export const googleSheetsService = {
     
     return result;
   },
+  
+  // ========== DEALER SALES HISTORY ==========
+  
+  async getDealerSalesHistory(filters?: { 
+    dealerName?: string; 
+    make?: string; 
+    model?: string;
+    yearMin?: number;
+    yearMax?: number;
+  }): Promise<DealerSalesHistory[]> {
+    const response = await callSheetsApi('read', SHEETS.DEALER_SALES_HISTORY);
+    let records = response.data.map(parseDealerSalesHistory);
+    
+    // Apply filters
+    if (filters?.dealerName) {
+      records = records.filter(r => r.dealer_name === filters.dealerName);
+    }
+    if (filters?.make) {
+      records = records.filter(r => r.make.toLowerCase() === filters.make!.toLowerCase());
+    }
+    if (filters?.model) {
+      records = records.filter(r => r.model.toLowerCase().includes(filters.model!.toLowerCase()));
+    }
+    if (filters?.yearMin) {
+      records = records.filter(r => r.year >= filters.yearMin!);
+    }
+    if (filters?.yearMax) {
+      records = records.filter(r => r.year <= filters.yearMax!);
+    }
+    
+    return records;
+  },
+  
+  async appendDealerSalesHistory(records: Omit<DealerSalesHistory, '_rowIndex'>[]): Promise<number> {
+    if (records.length === 0) return 0;
+    
+    // Use batch_append for efficiency
+    await callSheetsApi('batch_append', SHEETS.DEALER_SALES_HISTORY, records);
+    return records.length;
+  },
 };
 
 // Parse saved search from sheet row
@@ -2860,6 +2902,33 @@ function parseSavedSearch(row: any): SavedSearch {
     last_listings_found: row.last_listings_found ? parseInt(row.last_listings_found) : undefined,
     last_listings_upserted: row.last_listings_upserted ? parseInt(row.last_listings_upserted) : undefined,
     last_error_message: row.last_error_message || undefined,
+    _rowIndex: row._rowIndex,
+  };
+}
+
+// Parse dealer sales history from sheet row
+function parseDealerSalesHistory(row: any): DealerSalesHistory {
+  return {
+    record_id: row.record_id || '',
+    source: row.source || '',
+    dealer_name: row.dealer_name || '',
+    imported_at: row.imported_at || '',
+    stock_no: row.stock_no || '',
+    rego: row.rego || '',
+    make: row.make || '',
+    model: row.model || '',
+    year: parseInt(row.year) || 0,
+    variant: row.variant || '',
+    body_type: row.body_type || '',
+    transmission: row.transmission || '',
+    drivetrain: row.drivetrain || '',
+    engine: row.engine || '',
+    sale_date: row.sale_date || '',
+    days_in_stock: parseInt(row.days_in_stock) || 0,
+    sell_price: parseFloat(row.sell_price) || 0,
+    total_cost: parseFloat(row.total_cost) || 0,
+    gross_profit: parseFloat(row.gross_profit) || 0,
+    description_raw: row.description_raw || '',
     _rowIndex: row._rowIndex,
   };
 }

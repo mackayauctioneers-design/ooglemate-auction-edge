@@ -252,6 +252,30 @@ export interface AppSettings extends SheetRowMeta {
   updated_at: string;
 }
 
+// Dealer Sales History - parsed from dealer stock reports (EasyCars PDF, etc.)
+export interface DealerSalesHistory extends SheetRowMeta {
+  record_id: string;
+  source: string; // e.g., 'EasyCars PDF', 'Manual CSV'
+  dealer_name: string;
+  imported_at: string;
+  stock_no: string;
+  rego: string;
+  make: string;
+  model: string;
+  year: number;
+  variant: string;
+  body_type: string;
+  transmission: string;
+  drivetrain: string;
+  engine: string;
+  sale_date: string;
+  days_in_stock: number;
+  sell_price: number;
+  total_cost: number;
+  gross_profit: number;
+  description_raw: string;
+}
+
 export interface AuctionEvent extends SheetRowMeta {
   event_id: string;
   event_title: string;
