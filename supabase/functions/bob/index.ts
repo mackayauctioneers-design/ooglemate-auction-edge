@@ -49,6 +49,7 @@ interface WholesalePricing {
   medianOwe: number | null;      // Median OWE (cost) - PRIMARY ANCHOR
   // Internal log fields
   anchorType: 'OWE_ANCHOR' | 'ESCALATE_NO_OWE';  // GLOBAL: Always OWE anchor
+  verdict: 'PRICED' | 'NEED_PICS';  // Output verdict
   oweUsed?: number;
   upliftApplied?: boolean;
   buyRangeLow: number;           // Final buy range low
@@ -399,6 +400,7 @@ function calculateWholesalePricing(
       hardWorkReason: undefined,
       medianOwe: null,
       anchorType: 'ESCALATE_NO_OWE',
+      verdict: 'NEED_PICS',
       oweUsed: undefined,
       upliftApplied: false,
       buyRangeLow: 0,
@@ -515,6 +517,7 @@ function calculateWholesalePricing(
     hardWorkReason: hardWorkReasons.length > 0 ? hardWorkReasons.join(', ') : undefined,
     medianOwe,
     anchorType: 'OWE_ANCHOR',
+    verdict: 'PRICED',
     oweUsed: medianOwe,
     upliftApplied,
     buyRangeLow,
@@ -728,23 +731,41 @@ Anchor type: ${wp?.anchorType || 'N/A'}
   // PRIMARY OUTPUT: OWE-ANCHOR PRICING
   if (wp) {
     // ============================================================
-    // ESCALATE - NO OWE DATA AVAILABLE
+    // NO-COMP ESCALATION RULE (MANDATORY)
+    // If < 2 comparable OWE records, Bob must NOT price.
+    // This overrides ALL other valuation logic.
     // ============================================================
     if (wp.anchorType === 'ESCALATE_NO_OWE') {
-      context += `=== ⛔ CANNOT PRICE - INSUFFICIENT OWE DATA ===
-This vehicle has insufficient owe (cost) data for pricing.
-I don't have a clean owe on these — I'd walk or need pics.
+      context += `=== ⛔ NO-COMP ESCALATION (MANDATORY) ===
+verdict: NEED_PICS
+anchor_type: ESCALATE_NO_OWE
+confidence: LOW
 
-[INSTRUCTION: Bob MUST say: "Mate, I'm light on data for this one. I don't have a clean owe on these — I'd walk or need pics."
-Do NOT attempt to give a firm buy number. Ask for 4-5 photos or suggest walking.]
+Bob CANNOT find at least 2 comparable OWE records.
+- Bob must NOT output a buy price or range.
+- Bob must NOT use sell prices or market data to guess.
+- Bob must respond with escalation ONLY.
+
+[INSTRUCTION - Bob MUST say EXACTLY this]:
+"Yeah mate, I'm thin on that one.
+Haven't got enough similar runners in our book to price it properly.
+Send me a few pics and I'll talk to the boys."
+
+[DO NOT]:
+- Do NOT provide any buy price or range
+- Do NOT estimate from sell prices
+- Do NOT guess from market data
+- Do NOT suggest a number "to work from"
+
+This rule overrides ALL other valuation logic.
 `;
       
-      // Show retail context if available (for reference only)
+      // Show retail context if available (EXPLICITLY cannot be used)
       if (wp.medianSellPrice > 0) {
         context += `
-=== RETAIL CONTEXT (for reference only - NOT for pricing) ===
+=== RETAIL DATA EXISTS BUT CANNOT BE USED ===
 Median retail sell: $${wp.medianSellPrice.toLocaleString()}
-[⛔ Cannot use for pricing without owe data. Ask for pics/Macca.]
+[⛔ CANNOT use retail/sell data to derive a buy price. NO OWE = NO PRICE.]
 `;
       }
       
@@ -866,12 +887,20 @@ Median retail sell price: $${wp.medianSellPrice.toLocaleString()}
 `;
   }
   
-  // ESCALATE INSTRUCTION
+  // NO-COMP ESCALATION INSTRUCTION (MANDATORY - OVERRIDES ALL)
   if (wp?.anchorType === 'ESCALATE_NO_OWE') {
-    context += `\n[ESCALATE INSTRUCTION - NO OWE DATA]:
-- Say: "Mate, I don't have a clean owe on these — I'd walk or need pics."
-- DO NOT provide a firm buy number
-- Ask for 4-5 photos or escalate to Macca
+    context += `\n[NO-COMP ESCALATION - MANDATORY - OVERRIDES ALL]:
+Bob MUST say EXACTLY: "Yeah mate, I'm thin on that one. Haven't got enough similar runners in our book to price it properly. Send me a few pics and I'll talk to the boys."
+
+- verdict = NEED_PICS
+- anchor_type = ESCALATE_NO_OWE  
+- confidence = LOW
+
+DO NOT:
+- Output any buy price or range
+- Use sell prices to estimate
+- Use market data to guess
+- Suggest a number "to work from"
 `;
   }
   
