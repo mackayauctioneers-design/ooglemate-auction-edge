@@ -5,6 +5,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// AEST timezone (UTC+10, or UTC+11 for AEDT)
+const AEST_OFFSET_HOURS = 10;
+const QUIET_HOURS_START = 19; // 7pm AEST
+const QUIET_HOURS_END = 7;    // 7am AEST
+
 interface Fingerprint {
   id: string;
   fingerprint_id: string;
@@ -37,30 +42,50 @@ interface Listing {
   auction_house: string;
 }
 
+interface PreviousState {
+  status: string;
+  highest_bid?: number;
+}
+
+// Check if current time is within quiet hours (outside 07:00-19:00 AEST)
+function isQuietHours(): boolean {
+  const now = new Date();
+  const aestHour = (now.getUTCHours() + AEST_OFFSET_HOURS) % 24;
+  return aestHour >= QUIET_HOURS_START || aestHour < QUIET_HOURS_END;
+}
+
+// Get next quiet hours window end (when we can send)
+function getNextWindowStart(): Date {
+  const now = new Date();
+  const aestHour = (now.getUTCHours() + AEST_OFFSET_HOURS) % 24;
+  
+  // If we're in quiet hours, calculate when 7am AEST occurs
+  const hoursUntilWindowStart = aestHour >= QUIET_HOURS_START 
+    ? (24 - aestHour + QUIET_HOURS_END)
+    : (QUIET_HOURS_END - aestHour);
+  
+  const nextStart = new Date(now.getTime() + hoursUntilWindowStart * 60 * 60 * 1000);
+  nextStart.setMinutes(0, 0, 0);
+  return nextStart;
+}
+
 // Tier 1 matching: exact make+model+variant_family, year ±2
 function matchesTier1(listing: Listing, fp: Fingerprint): boolean {
-  // Must match make (case-insensitive)
   if (listing.make.toLowerCase() !== fp.make.toLowerCase()) return false;
-  
-  // Must match model (case-insensitive)
   if (listing.model.toLowerCase() !== fp.model.toLowerCase()) return false;
   
-  // Must match variant_family if fingerprint has one
   if (fp.variant_family) {
     const listingFamily = (listing.variant_family || '').toUpperCase();
     const fpFamily = fp.variant_family.toUpperCase();
-    // Allow partial match (e.g., SR matches SR5)
     if (!listingFamily.includes(fpFamily) && !fpFamily.includes(listingFamily)) {
       return false;
     }
   }
   
-  // Year must be within fingerprint range ±2
   const yearMin = fp.year_min - 2;
   const yearMax = fp.year_max + 2;
   if (listing.year < yearMin || listing.year > yearMax) return false;
   
-  // KM constraint only for non-spec-only fingerprints
   if (!fp.is_spec_only && fp.min_km !== null && fp.max_km !== null && listing.km !== null) {
     if (listing.km < fp.min_km || listing.km > fp.max_km) return false;
   }
@@ -68,19 +93,16 @@ function matchesTier1(listing: Listing, fp: Fingerprint): boolean {
   return true;
 }
 
-// Generate dedup key for alerts
-function createDedupKey(dealerName: string, listingId: string, alertType: string, actionReason?: string): string {
-  const today = new Date().toISOString().split('T')[0];
-  const reasonPart = actionReason ? `:${actionReason}` : '';
-  return `${dealerName}:${listingId}:${alertType}${reasonPart}:${today}`;
-}
-
-// Format auction datetime for display
-function formatAuctionTime(datetime: string | null): string {
-  if (!datetime) return 'TBA';
+// Format auction datetime for display in AEST
+function formatAuctionTimeAEST(datetime: string | null): string {
+  if (!datetime) return 'Time TBC';
   try {
     const date = new Date(datetime);
+    if (isNaN(date.getTime())) return 'Time TBC';
+    
+    // Format in AEST
     return date.toLocaleString('en-AU', { 
+      timeZone: 'Australia/Sydney',
       weekday: 'short',
       day: 'numeric', 
       month: 'short',
@@ -89,8 +111,25 @@ function formatAuctionTime(datetime: string | null): string {
       hour12: true 
     });
   } catch {
-    return 'TBA';
+    return 'Time TBC';
   }
+}
+
+// Check if this is a valid ACTION alert state change
+function isValidStateChange(
+  currentStatus: string, 
+  previousStatus?: string
+): boolean {
+  if (!previousStatus) return false;
+  
+  // Valid state transitions that trigger ACTION alerts
+  const validTransitions: Record<string, string[]> = {
+    'passed_in': ['listed', 'catalogue'],
+    'relisted': ['passed_in', 'sold'],
+  };
+  
+  const allowedFrom = validTransitions[currentStatus];
+  return allowedFrom?.includes(previousStatus) ?? false;
 }
 
 // Send push notification via bob-push
@@ -99,10 +138,19 @@ async function sendPushNotification(
   supabaseKey: string,
   dealerName: string,
   listing: Listing,
-  alertType: string
-): Promise<void> {
+  alertType: string,
+  alertId: string
+): Promise<{ sent: boolean; queued: boolean; queuedUntil?: string }> {
   const variant = listing.variant_family || listing.variant_raw || '';
-  const message = `${listing.model} ${variant} coming up – ${listing.location || 'TBA'} ${formatAuctionTime(listing.auction_datetime)}`;
+  const timeDisplay = formatAuctionTimeAEST(listing.auction_datetime);
+  const message = `${listing.model} ${variant} coming up – ${listing.location || 'TBA'} ${timeDisplay}`;
+  
+  // Check quiet hours
+  if (isQuietHours()) {
+    const queuedUntil = getNextWindowStart();
+    console.log(`[pickles-alerts] Quiet hours - queuing push for ${dealerName} until ${queuedUntil.toISOString()}`);
+    return { sent: false, queued: true, queuedUntil: queuedUntil.toISOString() };
+  }
   
   try {
     const response = await fetch(`${supabaseUrl}/functions/v1/bob-push`, {
@@ -125,19 +173,25 @@ async function sendPushNotification(
           location: listing.location,
           auction_time: listing.auction_datetime,
           lot_id: listing.listing_id,
+          alert_id: alertId,
         },
         speak_context: message,
+        // Tell Bob to narrate facts only, no pricing
+        bob_mode: 'narrator',
       }),
     });
     
     if (!response.ok) {
       console.log(`[pickles-alerts] Push failed for ${dealerName}: ${response.status}`);
-    } else {
-      console.log(`[pickles-alerts] Push sent to ${dealerName}: ${message}`);
+      return { sent: false, queued: false };
     }
+    
+    console.log(`[pickles-alerts] Push sent to ${dealerName}: ${message}`);
+    return { sent: true, queued: false };
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
     console.error(`[pickles-alerts] Push error for ${dealerName}:`, errMsg);
+    return { sent: false, queued: false };
   }
 }
 
@@ -152,11 +206,19 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body = await req.json().catch(() => ({}));
-    const { alertType = 'UPCOMING', listingIds } = body;
+    const { 
+      alertType = 'UPCOMING', 
+      listingIds,
+      previousStates // Map of listing_id -> { status, highest_bid }
+    } = body as { 
+      alertType?: string; 
+      listingIds?: string[];
+      previousStates?: Record<string, PreviousState>;
+    };
 
     console.log(`[pickles-alerts] Processing ${alertType} alerts`);
 
-    // Get active fingerprints from database
+    // Get active Tier-1 fingerprints only
     const { data: fingerprints, error: fpError } = await supabase
       .from('dealer_fingerprints')
       .select('*')
@@ -169,7 +231,7 @@ Deno.serve(async (req) => {
 
     console.log(`[pickles-alerts] Found ${fingerprints?.length || 0} active fingerprints`);
 
-    // Get listings to process from database
+    // Get listings to process
     let listingsQuery = supabase
       .from('vehicle_listings')
       .select('*')
@@ -179,11 +241,9 @@ Deno.serve(async (req) => {
     if (listingIds && listingIds.length > 0) {
       listingsQuery = listingsQuery.in('listing_id', listingIds);
     } else if (alertType === 'UPCOMING') {
-      // For UPCOMING, get catalogue/listed lots
       listingsQuery = listingsQuery.in('status', ['catalogue', 'listed']);
     } else if (alertType === 'ACTION') {
-      // For ACTION, get passed_in lots
-      listingsQuery = listingsQuery.in('status', ['passed_in']);
+      listingsQuery = listingsQuery.in('status', ['passed_in', 'relisted']);
     }
 
     const { data: listings, error: listingsError } = await listingsQuery;
@@ -197,33 +257,31 @@ Deno.serve(async (req) => {
 
     let alertsCreated = 0;
     let alertsSkipped = 0;
-    const alertDetails: { dealer: string; listing: string; type: string; message: string }[] = [];
+    let pushSent = 0;
+    let pushQueued = 0;
+    const alertDetails: { dealer: string; listing: string; type: string; message: string; pushStatus: string }[] = [];
 
     for (const listing of listings || []) {
-      for (const fp of fingerprints || []) {
-        // Only process Tier 1 exact matches for alerts
-        if (!matchesTier1(listing, fp)) continue;
-
-        const actionReason = alertType === 'ACTION' ? listing.status : undefined;
-        const dedupKey = createDedupKey(fp.dealer_name, listing.listing_id, alertType, actionReason);
-
-        // Check for existing alert with same dedup key
-        const { data: existingAlert } = await supabase
-          .from('alert_logs')
-          .select('id')
-          .eq('dedup_key', dedupKey)
-          .maybeSingle();
-
-        if (existingAlert) {
-          alertsSkipped++;
+      // For ACTION alerts, verify state change
+      if (alertType === 'ACTION') {
+        const prevState = previousStates?.[listing.listing_id];
+        if (!isValidStateChange(listing.status, prevState?.status)) {
+          console.log(`[pickles-alerts] Skipping ${listing.listing_id} - no valid state change`);
           continue;
         }
+      }
 
-        // Create alert message
+      for (const fp of fingerprints || []) {
+        // Only Tier-1 matches
+        if (!matchesTier1(listing, fp)) continue;
+
+        // Create alert - using DB unique index for deduplication
+        const alertId = `alert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const variant = listing.variant_family || listing.variant_raw || '';
-        const locationTime = `${listing.location || 'TBA'} ${formatAuctionTime(listing.auction_datetime)}`;
+        const timeDisplay = formatAuctionTimeAEST(listing.auction_datetime);
+        const locationTime = `${listing.location || 'TBA'} ${timeDisplay}`;
+        
         let messageText: string;
-
         if (alertType === 'UPCOMING') {
           messageText = `${listing.model} ${variant} coming up – ${locationTime}`;
         } else {
@@ -231,8 +289,7 @@ Deno.serve(async (req) => {
           messageText = `${listing.model} ${variant} ${reason} – ${locationTime}`;
         }
 
-        // Insert alert
-        const alertId = `alert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        // Attempt insert - unique index will reject duplicates
         const { error: insertError } = await supabase
           .from('alert_logs')
           .insert({
@@ -241,10 +298,11 @@ Deno.serve(async (req) => {
             listing_id: listing.listing_id,
             fingerprint_id: fp.fingerprint_id,
             alert_type: alertType,
-            action_reason: actionReason,
+            action_reason: alertType === 'ACTION' ? listing.status : null,
+            previous_status: alertType === 'ACTION' ? previousStates?.[listing.listing_id]?.status : null,
             match_type: 'exact',
             message_text: messageText,
-            dedup_key: dedupKey,
+            dedup_key: `${fp.dealer_name}:${listing.listing_id}:${alertType}`,
             status: 'new',
             lot_make: listing.make,
             lot_model: listing.model,
@@ -257,32 +315,63 @@ Deno.serve(async (req) => {
           });
 
         if (insertError) {
+          // Check if it's a unique constraint violation (duplicate)
+          if (insertError.code === '23505') {
+            console.log(`[pickles-alerts] Duplicate alert skipped: ${fp.dealer_name}/${listing.listing_id}`);
+            alertsSkipped++;
+            continue;
+          }
           console.error(`[pickles-alerts] Failed to create alert for ${listing.listing_id}:`, insertError);
           continue;
         }
 
         alertsCreated++;
+        console.log(`[pickles-alerts] Created ${alertType} alert for ${fp.dealer_name}: ${messageText}`);
+
+        // Send push notification (only on new insert)
+        const pushResult = await sendPushNotification(
+          supabaseUrl, 
+          supabaseKey, 
+          fp.dealer_name, 
+          listing, 
+          alertType,
+          alertId
+        );
+
+        // Update alert with push status
+        if (pushResult.sent) {
+          pushSent++;
+          await supabase
+            .from('alert_logs')
+            .update({ push_sent_at: new Date().toISOString() })
+            .eq('alert_id', alertId);
+        } else if (pushResult.queued) {
+          pushQueued++;
+          await supabase
+            .from('alert_logs')
+            .update({ queued_until: pushResult.queuedUntil })
+            .eq('alert_id', alertId);
+        }
+
         alertDetails.push({
           dealer: fp.dealer_name,
           listing: listing.listing_id,
           type: alertType,
           message: messageText,
+          pushStatus: pushResult.sent ? 'sent' : pushResult.queued ? 'queued' : 'failed',
         });
-
-        console.log(`[pickles-alerts] Created ${alertType} alert for ${fp.dealer_name}: ${messageText}`);
-
-        // Send push notification
-        await sendPushNotification(supabaseUrl, supabaseKey, fp.dealer_name, listing, alertType);
       }
     }
 
-    console.log(`[pickles-alerts] Complete: ${alertsCreated} created, ${alertsSkipped} skipped (deduped)`);
+    console.log(`[pickles-alerts] Complete: ${alertsCreated} created, ${alertsSkipped} skipped, ${pushSent} push sent, ${pushQueued} push queued`);
 
     return new Response(
       JSON.stringify({
         success: true,
         alertsCreated,
         alertsSkipped,
+        pushSent,
+        pushQueued,
         alertDetails,
         fingerprintsChecked: fingerprints?.length || 0,
         listingsProcessed: listings?.length || 0,
