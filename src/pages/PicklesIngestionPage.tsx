@@ -38,7 +38,7 @@ export default function PicklesIngestionPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCrawling, setIsCrawling] = useState(false);
   const [crawlMaxPages, setCrawlMaxPages] = useState('3');
-  const [crawlYearMin, setCrawlYearMin] = useState('2020');
+  const [crawlYearMin, setCrawlYearMin] = useState('');
   const [resumePage, setResumePage] = useState(1);
   const [hasMorePages, setHasMorePages] = useState(true);
   const [crawlProgress, setCrawlProgress] = useState<{
@@ -128,7 +128,7 @@ export default function PicklesIngestionPage() {
     setCrawlProgress({ currentPage: startPage, lotsFound: 0, startTime: Date.now() });
     
     try {
-      const yearMin = parseInt(crawlYearMin) || undefined;
+      const yearMin = crawlYearMin ? parseInt(crawlYearMin) : undefined;
       const result = await runPicklesCrawl(undefined, maxPages + startPage - 1, startPage, yearMin);
       
       if (result.success) {
@@ -282,11 +282,11 @@ export default function PicklesIngestionPage() {
                     <Input
                       id="yearMin"
                       type="number"
-                      min="2000"
-                      max="2026"
+                      min="1980"
+                      max="2030"
                       value={crawlYearMin}
                       onChange={(e) => setCrawlYearMin(e.target.value)}
-                      placeholder="e.g. 2020"
+                      placeholder="All years"
                     />
                   </div>
                   <div className="space-y-2">
