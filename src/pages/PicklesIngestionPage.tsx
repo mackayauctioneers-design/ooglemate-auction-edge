@@ -36,7 +36,8 @@ export default function PicklesIngestionPage() {
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCrawling, setIsCrawling] = useState(false);
-  const [crawlMaxPages, setCrawlMaxPages] = useState('15');
+  const [crawlMaxPages, setCrawlMaxPages] = useState('10');
+  const [crawlYearMin, setCrawlYearMin] = useState('2020');
 
   useEffect(() => {
     loadData();
@@ -105,8 +106,9 @@ export default function PicklesIngestionPage() {
   async function handleCrawl() {
     setIsCrawling(true);
     try {
-      const maxPages = parseInt(crawlMaxPages) || 15;
-      const result = await runPicklesCrawl(undefined, maxPages);
+      const maxPages = parseInt(crawlMaxPages) || 10;
+      const yearMin = parseInt(crawlYearMin) || undefined;
+      const result = await runPicklesCrawl(undefined, maxPages, 1, yearMin);
       if (result.success) {
         toast.success(`Crawl complete: ${result.pagesProcessed} pages, ${result.totalListings} listings (${result.created} new, ${result.updated} updated)`);
         loadData();
@@ -188,20 +190,34 @@ export default function PicklesIngestionPage() {
                   </p>
                 </div>
                 
-                <div className="space-y-2">
-                  <Label htmlFor="maxPages">Max Pages (120 listings each)</Label>
-                  <Input
-                    id="maxPages"
-                    type="number"
-                    min="1"
-                    max="50"
-                    value={crawlMaxPages}
-                    onChange={(e) => setCrawlMaxPages(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    ~{parseInt(crawlMaxPages) * 120 || 0} listings max
-                  </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="yearMin">Year Min</Label>
+                    <Input
+                      id="yearMin"
+                      type="number"
+                      min="2000"
+                      max="2026"
+                      value={crawlYearMin}
+                      onChange={(e) => setCrawlYearMin(e.target.value)}
+                      placeholder="e.g. 2020"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="maxPages">Max Pages</Label>
+                    <Input
+                      id="maxPages"
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={crawlMaxPages}
+                      onChange={(e) => setCrawlMaxPages(e.target.value)}
+                    />
+                  </div>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  {crawlYearMin ? `${crawlYearMin}+ vehicles only` : 'All years'} • ~{parseInt(crawlMaxPages) * 120 || 0} listings max
+                </p>
 
                 <Button 
                   onClick={handleCrawl} 

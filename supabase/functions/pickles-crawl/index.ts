@@ -246,12 +246,17 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const maxPages = body.maxPages || 15;
     const startPage = body.startPage || 1;
+    const yearMin = body.yearMin || null;
     
     // Pickles cars search URL with 120 items per page
-    const baseUrl = 'https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars';
+    // Add year filter if specified (e.g., year-min=2020)
+    let baseUrl = 'https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars';
+    if (yearMin) {
+      baseUrl += `/year-min/${yearMin}`;
+    }
     
     console.log(`[pickles-crawl] Starting Firecrawl-based crawl`);
-    console.log(`[pickles-crawl] Max pages: ${maxPages}, Start page: ${startPage}`);
+    console.log(`[pickles-crawl] Max pages: ${maxPages}, Start page: ${startPage}, Year min: ${yearMin || 'any'}`);
     
     // Create ingestion run record
     const { data: runData, error: runError } = await supabase
