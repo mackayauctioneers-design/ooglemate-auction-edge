@@ -282,6 +282,17 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
   const makeLower = input.make.toLowerCase().trim();
   const modelLower = input.model.toLowerCase().trim();
   
+  // DEBUG: Log sample records to verify data structure
+  if (salesHistory.length > 0) {
+    const sample = salesHistory.slice(0, 3).map(r => ({
+      make: r.make,
+      model: r.model,
+      year: r.year,
+      total_cost: r.total_cost
+    }));
+    console.log(`[ENGINE] Sample records:`, JSON.stringify(sample));
+  }
+  
   const matchingRecords = salesHistory.filter(r => {
     const recordMake = (r.make || '').toLowerCase().trim();
     const recordModel = (r.model || '').toLowerCase().trim();
@@ -300,6 +311,8 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
     return makeMatch && modelMatch && yearMatch;
   });
   
+  console.log(`[ENGINE] Found ${matchingRecords.length} matching records (before OWE filter)`);
+  
   // Weight by recency
   const weightedComps: WeightedComp[] = matchingRecords.map(record => {
     const { weight, months } = calculateRecencyWeight(record.sale_date);
@@ -312,6 +325,17 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
   // Filter to those with OWE data
   const oweComps = weightedComps.filter(wc => wc.record.total_cost > 0);
   const nOweComps = oweComps.length;
+  
+  // Debug: if we have matching records but no OWE, log why
+  if (matchingRecords.length > 0 && nOweComps === 0) {
+    console.log(`[ENGINE] WARNING: ${matchingRecords.length} matches but 0 have OWE > 0`);
+    const sample = matchingRecords.slice(0, 3).map(r => ({
+      make: r.make,
+      model: r.model,
+      total_cost: r.total_cost
+    }));
+    console.log(`[ENGINE] Sample match costs:`, JSON.stringify(sample));
+  }
   
   console.log(`[ENGINE] Found ${nOweComps} comps with OWE data`);
   
@@ -468,7 +492,7 @@ function generateBobScript(decision: DecisionObject): string {
 }
 
 // ============================================================================
-// QUERY DEALER SALES HISTORY
+// QUERY SALES DATA FROM Sales_Normalised
 // ============================================================================
 
 async function queryDealerSalesHistory(): Promise<SalesHistoryRecord[]> {
@@ -481,7 +505,7 @@ async function queryDealerSalesHistory(): Promise<SalesHistoryRecord[]> {
   }
   
   try {
-    console.log(`[ENGINE] Querying dealer sales history...`);
+    console.log(`[ENGINE] Querying Sales_Normalised...`);
     
     const response = await fetch(`${SUPABASE_URL}/functions/v1/google-sheets`, {
       method: "POST",
@@ -491,7 +515,7 @@ async function queryDealerSalesHistory(): Promise<SalesHistoryRecord[]> {
       },
       body: JSON.stringify({
         action: "read",
-        sheet: "Dealer_Sales_History"
+        sheet: "Sales_Normalised"
       }),
     });
     
@@ -501,9 +525,39 @@ async function queryDealerSalesHistory(): Promise<SalesHistoryRecord[]> {
     }
     
     const data = await response.json();
-    const allRecords: SalesHistoryRecord[] = data.data || [];
+    const rawRecords = data.data || [];
     
-    console.log(`[ENGINE] Loaded ${allRecords.length} total sales records`);
+    // Transform Sales_Normalised to SalesHistoryRecord format
+    // OWE (total_cost) = sale_price - gross_profit
+    const allRecords: SalesHistoryRecord[] = rawRecords.map((r: any) => {
+      const salePrice = parseFloat(r.sale_price) || 0;
+      const grossProfit = parseFloat(r.gross_profit) || 0;
+      const totalCost = salePrice - grossProfit; // OWE = what we paid
+      
+      return {
+        record_id: r.sale_id || r._rowIndex?.toString() || '',
+        source: 'Sales_Normalised',
+        dealer_name: r.dealer_name || '',
+        imported_at: r.sale_date || '',
+        stock_no: '',
+        make: r.make || '',
+        model: r.model || '',
+        year: parseInt(r.year) || 0,
+        variant: r.variant_normalised || r.variant_raw || '',
+        variant_family: '',
+        body_type: '',
+        transmission: r.transmission || '',
+        drivetrain: r.drivetrain || '',
+        engine: r.engine || '',
+        sale_date: r.sale_date || '',
+        days_in_stock: parseInt(r.days_to_sell) || 30,
+        sell_price: salePrice,
+        total_cost: totalCost, // OWE anchor
+        gross_profit: grossProfit,
+      };
+    });
+    
+    console.log(`[ENGINE] Loaded ${allRecords.length} sales records from Sales_Normalised`);
     return allRecords;
     
   } catch (error) {
