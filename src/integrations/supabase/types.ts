@@ -14,6 +14,174 @@ export type Database = {
   }
   public: {
     Tables: {
+      alert_logs: {
+        Row: {
+          acknowledged_at: string | null
+          action_reason: string | null
+          alert_id: string
+          alert_type: string
+          auction_datetime: string | null
+          auction_house: string | null
+          created_at: string
+          dealer_name: string
+          dedup_key: string
+          fingerprint_id: string
+          id: string
+          listing_id: string
+          listing_url: string | null
+          location: string | null
+          lot_make: string | null
+          lot_model: string | null
+          lot_variant: string | null
+          lot_year: number | null
+          match_type: string
+          message_text: string
+          read_at: string | null
+          status: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          action_reason?: string | null
+          alert_id: string
+          alert_type: string
+          auction_datetime?: string | null
+          auction_house?: string | null
+          created_at?: string
+          dealer_name: string
+          dedup_key: string
+          fingerprint_id: string
+          id?: string
+          listing_id: string
+          listing_url?: string | null
+          location?: string | null
+          lot_make?: string | null
+          lot_model?: string | null
+          lot_variant?: string | null
+          lot_year?: number | null
+          match_type?: string
+          message_text: string
+          read_at?: string | null
+          status?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          action_reason?: string | null
+          alert_id?: string
+          alert_type?: string
+          auction_datetime?: string | null
+          auction_house?: string | null
+          created_at?: string
+          dealer_name?: string
+          dedup_key?: string
+          fingerprint_id?: string
+          id?: string
+          listing_id?: string
+          listing_url?: string | null
+          location?: string | null
+          lot_make?: string | null
+          lot_model?: string | null
+          lot_variant?: string | null
+          lot_year?: number | null
+          match_type?: string
+          message_text?: string
+          read_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      dealer_fingerprints: {
+        Row: {
+          created_at: string
+          dealer_name: string
+          expires_at: string | null
+          fingerprint_id: string
+          id: string
+          is_active: boolean
+          is_spec_only: boolean
+          make: string
+          max_km: number | null
+          min_km: number | null
+          model: string
+          updated_at: string
+          variant_family: string | null
+          year_max: number
+          year_min: number
+        }
+        Insert: {
+          created_at?: string
+          dealer_name: string
+          expires_at?: string | null
+          fingerprint_id: string
+          id?: string
+          is_active?: boolean
+          is_spec_only?: boolean
+          make: string
+          max_km?: number | null
+          min_km?: number | null
+          model: string
+          updated_at?: string
+          variant_family?: string | null
+          year_max: number
+          year_min: number
+        }
+        Update: {
+          created_at?: string
+          dealer_name?: string
+          expires_at?: string | null
+          fingerprint_id?: string
+          id?: string
+          is_active?: boolean
+          is_spec_only?: boolean
+          make?: string
+          max_km?: number | null
+          min_km?: number | null
+          model?: string
+          updated_at?: string
+          variant_family?: string | null
+          year_max?: number
+          year_min?: number
+        }
+        Relationships: []
+      }
+      ingestion_runs: {
+        Row: {
+          completed_at: string | null
+          errors: Json | null
+          id: string
+          lots_created: number | null
+          lots_found: number | null
+          lots_updated: number | null
+          metadata: Json | null
+          source: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          errors?: Json | null
+          id?: string
+          lots_created?: number | null
+          lots_found?: number | null
+          lots_updated?: number | null
+          metadata?: Json | null
+          source: string
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          errors?: Json | null
+          id?: string
+          lots_created?: number | null
+          lots_found?: number | null
+          lots_updated?: number | null
+          metadata?: Json | null
+          source?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       valo_requests: {
         Row: {
           allow_price: boolean
@@ -202,6 +370,108 @@ export type Database = {
           status?: string
           tier?: string
           vehicle_summary?: string
+        }
+        Relationships: []
+      }
+      vehicle_listings: {
+        Row: {
+          auction_datetime: string | null
+          auction_history: Json | null
+          auction_house: string
+          drivetrain: string | null
+          event_id: string | null
+          excluded_keyword: string | null
+          excluded_reason: string | null
+          first_seen_at: string
+          fuel: string | null
+          highest_bid: number | null
+          id: string
+          km: number | null
+          last_auction_date: string | null
+          last_seen_at: string
+          listing_id: string
+          listing_url: string | null
+          location: string | null
+          lot_id: string
+          make: string
+          model: string
+          pass_count: number
+          relist_count: number
+          reserve: number | null
+          source: string
+          status: string
+          transmission: string | null
+          updated_at: string
+          variant_family: string | null
+          variant_raw: string | null
+          visible_to_dealers: boolean
+          year: number
+        }
+        Insert: {
+          auction_datetime?: string | null
+          auction_history?: Json | null
+          auction_house?: string
+          drivetrain?: string | null
+          event_id?: string | null
+          excluded_keyword?: string | null
+          excluded_reason?: string | null
+          first_seen_at?: string
+          fuel?: string | null
+          highest_bid?: number | null
+          id?: string
+          km?: number | null
+          last_auction_date?: string | null
+          last_seen_at?: string
+          listing_id: string
+          listing_url?: string | null
+          location?: string | null
+          lot_id: string
+          make: string
+          model: string
+          pass_count?: number
+          relist_count?: number
+          reserve?: number | null
+          source?: string
+          status?: string
+          transmission?: string | null
+          updated_at?: string
+          variant_family?: string | null
+          variant_raw?: string | null
+          visible_to_dealers?: boolean
+          year: number
+        }
+        Update: {
+          auction_datetime?: string | null
+          auction_history?: Json | null
+          auction_house?: string
+          drivetrain?: string | null
+          event_id?: string | null
+          excluded_keyword?: string | null
+          excluded_reason?: string | null
+          first_seen_at?: string
+          fuel?: string | null
+          highest_bid?: number | null
+          id?: string
+          km?: number | null
+          last_auction_date?: string | null
+          last_seen_at?: string
+          listing_id?: string
+          listing_url?: string | null
+          location?: string | null
+          lot_id?: string
+          make?: string
+          model?: string
+          pass_count?: number
+          relist_count?: number
+          reserve?: number | null
+          source?: string
+          status?: string
+          transmission?: string | null
+          updated_at?: string
+          variant_family?: string | null
+          variant_raw?: string | null
+          visible_to_dealers?: boolean
+          year?: number
         }
         Relationships: []
       }
