@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database, Car, FileDown } from 'lucide-react';
+import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database, Car, FileDown, Globe } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,7 @@ import { dataService } from '@/services/dataService';
 import { parsePicklesCatalogue } from '@/utils/picklesCatalogueParser';
 import { ingestMackayTradersSales } from '@/utils/ingestMackayTradersSales';
 import { toast } from 'sonner';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 
 export default function AdminToolsPage() {
   const { isAdmin } = useAuth();
@@ -511,6 +511,27 @@ export default function AdminToolsPage() {
                   <div>Records stored: <span className="font-medium text-green-500">{mackayStats.stored}</span></div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Pickles Ingestion Page Link */}
+          <Card className="border-cyan-500/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Globe className="h-5 w-5 text-cyan-500" />
+                Pickles Pagination Crawl
+              </CardTitle>
+              <CardDescription>
+                Full crawler with run history, HTML snapshots, and status monitoring
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link to="/pickles-ingest">
+                <Button className="w-full gap-2" variant="outline">
+                  <Globe className="h-4 w-4" />
+                  Open Pickles Ingestion
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         </div>
