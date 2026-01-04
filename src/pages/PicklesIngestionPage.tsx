@@ -8,10 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Loader2, Play, RefreshCw, Bell, FileText, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { Loader2, Play, RefreshCw, Bell, FileText, CheckCircle, XCircle, AlertTriangle, Globe } from 'lucide-react';
 import { 
   runPicklesIngestion, 
   runPicklesAlerts, 
+  runPicklesCrawl,
   getIngestionRuns, 
   getVehicleListings,
   getFingerprints,
@@ -34,6 +35,8 @@ export default function PicklesIngestionPage() {
   const [fingerprints, setFingerprints] = useState<DealerFingerprint[]>([]);
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCrawling, setIsCrawling] = useState(false);
+  const [crawlMaxPages, setCrawlMaxPages] = useState('15');
 
   useEffect(() => {
     loadData();
@@ -99,6 +102,24 @@ export default function PicklesIngestionPage() {
     }
   }
 
+  async function handleCrawl() {
+    setIsCrawling(true);
+    try {
+      const maxPages = parseInt(crawlMaxPages) || 15;
+      const result = await runPicklesCrawl(undefined, maxPages);
+      if (result.success) {
+        toast.success(`Crawl complete: ${result.pagesProcessed} pages, ${result.totalListings} listings (${result.created} new, ${result.updated} updated)`);
+        loadData();
+      } else {
+        toast.error(result.error || 'Crawl failed');
+      }
+    } catch (e) {
+      toast.error('Crawl failed');
+    } finally {
+      setIsCrawling(false);
+    }
+  }
+
   function formatDate(dateStr: string | null) {
     if (!dateStr) return '-';
     return new Date(dateStr).toLocaleString('en-AU', {
@@ -147,7 +168,55 @@ export default function PicklesIngestionPage() {
         </TabsList>
 
         <TabsContent value="ingest" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Crawl Card - Primary method */}
+            <Card className="border-primary/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Globe className="h-5 w-5" />
+                  Pagination Crawl
+                </CardTitle>
+                <CardDescription>
+                  Crawl all Pickles listings (120 per page, ~1699 total)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 bg-muted rounded-lg space-y-2">
+                  <p className="text-sm font-medium">Automatic Pagination</p>
+                  <p className="text-sm text-muted-foreground">
+                    Fetches page=1..N until empty. Saves HTML snapshots for debugging.
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="maxPages">Max Pages (120 listings each)</Label>
+                  <Input
+                    id="maxPages"
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={crawlMaxPages}
+                    onChange={(e) => setCrawlMaxPages(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    ~{parseInt(crawlMaxPages) * 120 || 0} listings max
+                  </p>
+                </div>
+
+                <Button 
+                  onClick={handleCrawl} 
+                  disabled={isCrawling}
+                  className="w-full"
+                >
+                  {isCrawling ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Crawling...</>
+                  ) : (
+                    <><Globe className="h-4 w-4 mr-2" />Start Crawl</>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -184,7 +253,7 @@ export default function PicklesIngestionPage() {
                   <Textarea
                     id="catalogue"
                     placeholder="Paste the catalogue markdown/text here..."
-                    className="min-h-[200px] font-mono text-sm"
+                    className="min-h-[150px] font-mono text-sm"
                     value={catalogueText}
                     onChange={(e) => setCatalogueText(e.target.value)}
                   />
@@ -193,6 +262,7 @@ export default function PicklesIngestionPage() {
                   onClick={handleIngest} 
                   disabled={isIngesting || !catalogueText || !eventId || !auctionDate}
                   className="w-full"
+                  variant="secondary"
                 >
                   {isIngesting ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Ingesting...</>
@@ -223,17 +293,16 @@ export default function PicklesIngestionPage() {
                 
                 <div className="space-y-2">
                   <h4 className="text-sm font-medium">Active Fingerprints for Dave:</h4>
-                  {fingerprints.filter(f => f.dealer_name === 'Dave').map(fp => (
-                    <div key={fp.id} className="p-3 border rounded-lg text-sm">
+                  {fingerprints.filter(f => f.dealer_name === 'Dave').slice(0, 2).map(fp => (
+                    <div key={fp.id} className="p-2 border rounded-lg text-sm">
                       <div className="font-medium">{fp.make} {fp.model}</div>
-                      <div className="text-muted-foreground">
-                        Variant: {fp.variant_family || 'Any'} | Years: {fp.year_min}-{fp.year_max}
-                        {fp.is_spec_only && <Badge variant="outline" className="ml-2">Spec-Only</Badge>}
+                      <div className="text-muted-foreground text-xs">
+                        {fp.variant_family || 'Any'} | {fp.year_min}-{fp.year_max}
                       </div>
                     </div>
                   ))}
                   {fingerprints.filter(f => f.dealer_name === 'Dave').length === 0 && (
-                    <p className="text-sm text-muted-foreground">No active fingerprints for Dave</p>
+                    <p className="text-sm text-muted-foreground">No active fingerprints</p>
                   )}
                 </div>
 
@@ -246,7 +315,7 @@ export default function PicklesIngestionPage() {
                   {isProcessingAlerts ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Processing...</>
                   ) : (
-                    <><Bell className="h-4 w-4 mr-2" />Process UPCOMING Alerts</>
+                    <><Bell className="h-4 w-4 mr-2" />Process Alerts</>
                   )}
                 </Button>
               </CardContent>
