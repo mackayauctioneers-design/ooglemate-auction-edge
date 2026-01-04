@@ -41,6 +41,11 @@ export default function PicklesIngestionPage() {
   const [crawlYearMin, setCrawlYearMin] = useState('2020');
   const [resumePage, setResumePage] = useState(1);
   const [hasMorePages, setHasMorePages] = useState(true);
+  const [crawlProgress, setCrawlProgress] = useState<{
+    currentPage: number;
+    lotsFound: number;
+    startTime: number;
+  } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -118,11 +123,30 @@ export default function PicklesIngestionPage() {
 
   async function handleCrawl() {
     setIsCrawling(true);
+    const maxPages = parseInt(crawlMaxPages) || 3;
+    const startPage = resumePage;
+    setCrawlProgress({ currentPage: startPage, lotsFound: 0, startTime: Date.now() });
+    
+    // Poll for progress updates
+    const pollInterval = setInterval(async () => {
+      try {
+        const latestRuns = await getIngestionRuns(1);
+        const runningRun = latestRuns.find(r => r.status === 'running');
+        if (runningRun) {
+          const metadata = runningRun.metadata as { lastCompletedPage?: number } | null;
+          setCrawlProgress(prev => prev ? {
+            ...prev,
+            currentPage: (metadata?.lastCompletedPage || startPage) + 1,
+            lotsFound: runningRun.lots_found || 0
+          } : null);
+        }
+      } catch (e) {
+        console.error('Poll failed:', e);
+      }
+    }, 3000);
+    
     try {
-      const maxPages = parseInt(crawlMaxPages) || 3;
       const yearMin = parseInt(crawlYearMin) || undefined;
-      // Auto-resume from last completed page
-      const startPage = resumePage;
       const result = await runPicklesCrawl(undefined, maxPages + startPage - 1, startPage, yearMin);
       if (result.success) {
         toast.success(`Crawl complete: ${result.pagesProcessed} pages, ${result.totalListings} listings (${result.created} new, ${result.updated} updated)`);
@@ -133,7 +157,9 @@ export default function PicklesIngestionPage() {
     } catch (e) {
       toast.error('Crawl failed');
     } finally {
+      clearInterval(pollInterval);
       setIsCrawling(false);
+      setCrawlProgress(null);
     }
   }
 
@@ -251,6 +277,32 @@ export default function PicklesIngestionPage() {
                 <p className="text-xs text-muted-foreground">
                   {crawlYearMin ? `${crawlYearMin}+ vehicles only` : 'All years'} • Pages {resumePage}–{resumePage + (parseInt(crawlMaxPages) || 3) - 1} (~{(parseInt(crawlMaxPages) || 3) * 120} listings)
                 </p>
+
+                {/* Live progress during crawl */}
+                {isCrawling && crawlProgress && (
+                  <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      <span className="font-medium">Crawling in progress...</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2 bg-background rounded">
+                        <div className="text-lg font-bold text-primary">{crawlProgress.currentPage}</div>
+                        <div className="text-xs text-muted-foreground">Current Page</div>
+                      </div>
+                      <div className="p-2 bg-background rounded">
+                        <div className="text-lg font-bold text-primary">{crawlProgress.lotsFound}</div>
+                        <div className="text-xs text-muted-foreground">Lots Found</div>
+                      </div>
+                      <div className="p-2 bg-background rounded">
+                        <div className="text-lg font-bold text-primary">
+                          {Math.floor((Date.now() - crawlProgress.startTime) / 1000)}s
+                        </div>
+                        <div className="text-xs text-muted-foreground">Elapsed</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex gap-2">
                   <Button 
