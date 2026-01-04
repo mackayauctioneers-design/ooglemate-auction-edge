@@ -87,6 +87,39 @@ export interface AlertLog {
   location: string | null;
 }
 
+export interface CrawlResult {
+  success: boolean;
+  runId?: string;
+  pagesProcessed?: number;
+  totalListings?: number;
+  created?: number;
+  updated?: number;
+  errors?: string[];
+  error?: string;
+}
+
+// Run Pickles pagination crawl
+export async function runPicklesCrawl(
+  baseUrl?: string,
+  maxPages: number = 20,
+  startPage: number = 1
+): Promise<CrawlResult> {
+  try {
+    const { data, error } = await supabase.functions.invoke('pickles-crawl', {
+      body: { baseUrl, maxPages, startPage }
+    });
+
+    if (error) throw error;
+    return data as CrawlResult;
+  } catch (e) {
+    console.error('[picklesIngestionService] Crawl error:', e);
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : 'Unknown error'
+    };
+  }
+}
+
 // Run Pickles catalogue ingestion
 export async function runPicklesIngestion(
   catalogueText: string,
