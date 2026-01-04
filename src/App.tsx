@@ -19,6 +19,7 @@ import AdminToolsPage from "./pages/AdminToolsPage";
 import ValuationPage from "./pages/ValuationPage";
 import ValoPage from "./pages/ValoPage";
 import BuyerReviewQueuePage from "./pages/BuyerReviewQueuePage";
+import PicklesIngestionPage from "./pages/PicklesIngestionPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -74,6 +75,9 @@ const App = () => (
             } />
             <Route path="/buyer-review-queue" element={
               <AdminGuard><BuyerReviewQueuePage /></AdminGuard>
+            } />
+            <Route path="/pickles-ingestion" element={
+              <AdminGuard><PicklesIngestionPage /></AdminGuard>
             } />
             
             <Route path="*" element={<NotFound />} />

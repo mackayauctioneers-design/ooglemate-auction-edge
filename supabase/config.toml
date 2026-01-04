@@ -30,6 +30,9 @@ verify_jwt = false
 [functions.pickles-alerts]
 verify_jwt = false
 
+[functions.pickles-ingest]
+verify_jwt = false
+
 [functions.push-subscribe]
 verify_jwt = false
 
