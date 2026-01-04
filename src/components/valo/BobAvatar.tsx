@@ -239,12 +239,66 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
     }
   }, [disconnect, dealerName, dealership]);
 
-  const handleRealtimeEvent = useCallback((event: any) => {
+  // Handle OANCA tool call - call the bob edge function for pricing
+  const handleOancaToolCall = useCallback(async (callId: string, args: any) => {
+    console.log("[OANCA TOOL] Calling bob edge function with:", args);
+    
+    try {
+      // Build transcript from args
+      const vehicleDesc = `${args.year || ''} ${args.make || ''} ${args.model || ''} ${args.variant || ''} ${args.km ? args.km + 'km' : ''}`.trim();
+      
+      // Call the bob edge function which has OANCA engine + firewall
+      const { data, error } = await supabase.functions.invoke('bob', {
+        body: { 
+          transcript: vehicleDesc,
+          dealerName: dealerName,
+          includeDebug: true
+        }
+      });
+      
+      if (error) {
+        console.error("[OANCA TOOL] Error:", error);
+        return {
+          allow_price: false,
+          error: error.message,
+          script: "Mate, I'm having trouble checking the book. Give me two minutes."
+        };
+      }
+      
+      const oanca = data.oanca_debug;
+      console.log("[OANCA TOOL] Result:", oanca);
+      
+      // Return the OANCA result for Bob to narrate
+      return {
+        allow_price: oanca?.allow_price || false,
+        buy_low: oanca?.buy_low,
+        buy_high: oanca?.buy_high,
+        anchor_owe: oanca?.anchor_owe,
+        demand_class: oanca?.demand_class,
+        confidence: oanca?.confidence,
+        n_comps: oanca?.n_comps || 0,
+        verdict: oanca?.verdict,
+        notes: oanca?.notes || [],
+        script: data.response,  // Bob's pre-written response from OANCA
+        market: 'AU',
+        currency: 'AUD'
+      };
+    } catch (err) {
+      console.error("[OANCA TOOL] Exception:", err);
+      return {
+        allow_price: false,
+        error: 'Failed to get pricing',
+        script: "Mate, I'm having trouble checking the book. Send me a few pics and I'll sort it out."
+      };
+    }
+  }, [dealerName]);
+
+  const handleRealtimeEvent = useCallback(async (event: any) => {
     console.log("Realtime event:", event.type);
 
     switch (event.type) {
       case 'session.created':
-        console.log("Session created - Bob is online");
+        console.log("Session created - Bob is online with OANCA tool");
         break;
 
       case 'input_audio_buffer.speech_started':
@@ -272,7 +326,6 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
       case 'response.audio_transcript.done':
         const bobText = event.transcript || bobTranscript;
         if (bobText.trim()) {
-          // Add to conversation history (audio plays natively via WebRTC)
           setConversationHistory(prev => [...prev, { role: 'assistant', text: bobText }]);
         }
         setBobTranscript('');
@@ -287,12 +340,50 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
         setIsSpeaking(false);
         break;
 
+      // ============================================================
+      // OANCA TOOL CALL HANDLING - CRITICAL FOR UNIFIED PRICING
+      // ============================================================
+      case 'response.function_call_arguments.done':
+        console.log("[OANCA TOOL] Function call received:", event);
+        
+        if (event.name === 'get_oanca_price') {
+          try {
+            const args = JSON.parse(event.arguments);
+            console.log("[OANCA TOOL] Parsed args:", args);
+            
+            // Call OANCA via bob edge function
+            const result = await handleOancaToolCall(event.call_id, args);
+            
+            // Send tool result back to Realtime API
+            if (dcRef.current?.readyState === 'open') {
+              // Create conversation item with tool result
+              const toolResultEvent = {
+                type: 'conversation.item.create',
+                item: {
+                  type: 'function_call_output',
+                  call_id: event.call_id,
+                  output: JSON.stringify(result)
+                }
+              };
+              
+              dcRef.current.send(JSON.stringify(toolResultEvent));
+              console.log("[OANCA TOOL] Sent tool result to Realtime API");
+              
+              // Trigger response generation with the tool result
+              dcRef.current.send(JSON.stringify({ type: 'response.create' }));
+            }
+          } catch (parseError) {
+            console.error("[OANCA TOOL] Failed to parse arguments:", parseError);
+          }
+        }
+        break;
+
       case 'error':
         console.error("Realtime error:", event.error);
         toast.error("Bob had an issue");
         break;
     }
-  }, [bobTranscript]);
+  }, [bobTranscript, handleOancaToolCall]);
 
   const handleOpenBob = useCallback(async (withBrief = false) => {
     setIsOpen(true);
