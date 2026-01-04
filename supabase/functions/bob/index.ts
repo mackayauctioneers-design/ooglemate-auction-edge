@@ -291,13 +291,13 @@ function getOweBuffer(oweMedian: number): { low: number; high: number } {
 
 const KNOWN_HARD_WORK_VEHICLES: Record<string, string[]> = {
   'holden': ['cruze', 'captiva', 'barina', 'trax', 'astra'],
-  'peugeot': ['208', '308', '3008', '2008', '508'],
-  'citroen': ['c3', 'c4', 'c5', 'ds3', 'ds4'],
-  'renault': ['megane', 'clio', 'captur', 'koleos'],
-  'fiat': ['500', 'punto', 'tipo'],
-  'alfa romeo': ['giulietta', 'mito', '159'],
-  'volkswagen': ['golf', 'polo', 'jetta', 'beetle'],
-  'mini': ['cooper', 'one', 'countryman'],
+  'peugeot': ['206', '207', '208', '306', '307', '308', '3008', '2008', '508', '5008', '406', '407'],
+  'citroen': ['c3', 'c4', 'c5', 'ds3', 'ds4', 'ds5'],
+  'renault': ['megane', 'clio', 'captur', 'koleos', 'laguna', 'scenic'],
+  'fiat': ['500', 'punto', 'tipo', 'panda'],
+  'alfa romeo': ['giulietta', 'mito', '159', '147', '156'],
+  'volkswagen': ['golf', 'polo', 'jetta', 'beetle', 'up'],
+  'mini': ['cooper', 'one', 'countryman', 'paceman', 'clubman'],
 };
 
 function isKnownHardWork(make: string, model: string): boolean {
@@ -1081,49 +1081,89 @@ serve(async (req) => {
     }
 
     // ============================================================
-    // HARD RUNTIME GATE: STRIP/BLOCK PRICES WHEN allow_price=false
-    // This is CODE enforcement, not prompt-only rules.
+    // HARD RUNTIME GATE 1: BLOCK ALL PRICES WHEN allow_price=false
+    // This is CODE enforcement - NOT prompt rules. Non-negotiable.
     // ============================================================
     if (oancaObject && !oancaObject.allow_price) {
-      // Check if Bob's response contains any price-like patterns
-      const pricePattern = /\$[\d,]+(?:\s*[-–to]+\s*\$?[\d,]+)?/gi;
-      const wholesalePriceWords = /\b(buy|own|pay|offer|worth|value|price|range)\b.*?\$[\d,]+/gi;
+      // Detect ANY dollar amount in Bob's response
+      const pricePattern = /\$\s*[\d,]+(?:\s*k)?/gi;
+      const numberWithContext = /\b(buy|own|pay|offer|worth|value|price|range|around|about|looking\s+at)\b[^.]*?\$?\s*[\d,]+/gi;
+      const standalonePrice = /(?:^|[^a-z])(\d{4,6})(?:\s*(?:to|-|–)\s*\d{4,6})?(?:[^a-z]|$)/gi;
       
-      const hasPrices = pricePattern.test(bobResponse) || wholesalePriceWords.test(bobResponse);
+      const hasDollarPrices = pricePattern.test(bobResponse);
+      const hasContextPrices = numberWithContext.test(bobResponse);
+      const hasStandalonePrices = standalonePrice.test(bobResponse);
       
-      if (hasPrices) {
-        console.warn("[OANCA GATE] BLOCKED: Bob tried to quote prices when allow_price=false");
-        console.warn("[OANCA GATE] Original response:", bobResponse);
+      if (hasDollarPrices || hasContextPrices || hasStandalonePrices) {
+        console.error("[OANCA GATE] ❌ HARD BLOCK: Bob attempted to output prices when allow_price=false");
+        console.error("[OANCA GATE] Blocked response:", bobResponse);
         
-        // FORCE REPLACE with approved NEED_PICS script
-        bobResponse = "Mate I'm thin on our book for that one. Send me a few pics and I'll check with the boys.";
+        // FORCE REPLACE with approved script based on verdict
+        if (oancaObject.verdict === 'ESCALATE') {
+          bobResponse = "Give me two minutes mate, I'll check with the boys. Need you to send me the state it's in, a link to the ad (Carsales or Pickles), or a few photos so I can firm up a number. All figures AUD (Australia).";
+        } else {
+          bobResponse = "Mate I'm thin on our book for that one. Send me a few pics and I'll talk to the boys. All figures AUD (Australia).";
+        }
         
-        console.log("[OANCA GATE] Replaced with NEED_PICS script");
+        console.log("[OANCA GATE] ✓ Replaced with approved NEED_PICS/ESCALATE script");
       }
     }
     
     // ============================================================
-    // SECOND GATE: If allow_price=true, verify prices match OANCA
+    // HARD RUNTIME GATE 2: VALIDATE PRICES WHEN allow_price=true
+    // Bob may ONLY quote prices that appear in OANCA_PRICE_OBJECT
     // ============================================================
     if (oancaObject && oancaObject.allow_price && oancaObject.buy_low && oancaObject.buy_high) {
-      const priceMatches = bobResponse.match(/\$[\d,]+/g) || [];
+      const priceMatches = bobResponse.match(/\$\s*[\d,]+/g) || [];
+      
+      // Build list of approved prices (rounded to nearest 100 for matching)
       const approvedPrices = [
         oancaObject.buy_low,
         oancaObject.buy_high,
         oancaObject.anchor_owe,
         oancaObject.retail_context_low,
         oancaObject.retail_context_high,
-      ].filter(Boolean).map(p => Math.round(p! / 100) * 100);  // Round to nearest 100
+      ].filter(Boolean).map(p => Math.round(p! / 100) * 100);
+      
+      let hasUnapprovedPrice = false;
+      const unapprovedPrices: number[] = [];
       
       for (const priceStr of priceMatches) {
-        const price = parseInt(priceStr.replace(/[$,]/g, ''));
-        // Check if price is close to any approved price (within $500 tolerance for formatting)
+        const price = parseInt(priceStr.replace(/[$,\s]/g, ''));
+        // Check if price is close to any approved price (within $500 tolerance)
         const isApproved = approvedPrices.some(ap => Math.abs(price - ap) <= 500);
         
-        if (!isApproved && price > 1000) {  // Only flag significant prices
-          console.warn(`[OANCA GATE] WARNING: Bob quoted unapproved price $${price}. Approved: ${approvedPrices.join(', ')}`);
-          // Don't block, but log for audit - AI may have formatted slightly differently
+        if (!isApproved && price >= 1000) {  // Flag significant prices
+          hasUnapprovedPrice = true;
+          unapprovedPrices.push(price);
         }
+      }
+      
+      if (hasUnapprovedPrice) {
+        console.error(`[OANCA GATE] ❌ HARD BLOCK: Bob quoted unapproved price(s): ${unapprovedPrices.join(', ')}`);
+        console.error(`[OANCA GATE] Approved prices: ${approvedPrices.join(', ')}`);
+        console.error(`[OANCA GATE] Blocked response:`, bobResponse);
+        
+        // FORCE REPLACE with correct OANCA numbers
+        const buyLow = oancaObject.buy_low.toLocaleString();
+        const buyHigh = oancaObject.buy_high.toLocaleString();
+        
+        // Generate corrected response based on verdict
+        switch (oancaObject.verdict) {
+          case 'HIT_IT':
+            bobResponse = `These need to be hit. Price it off what we owed last time, not what we jagged. Looking at $${buyLow} to $${buyHigh} to own it. All figures AUD (Australia).`;
+            break;
+          case 'HARD_WORK':
+            bobResponse = `That's hard work mate. I'd be looking at $${buyLow} to $${buyHigh} to own it. Don't get silly. All figures AUD (Australia).`;
+            break;
+          case 'WALK':
+            bobResponse = `I'd rather keep my powder dry on this one. If you must, don't pay more than $${buyLow}. All figures AUD (Australia).`;
+            break;
+          default:
+            bobResponse = `I'd be looking at $${buyLow} to $${buyHigh} to own it. All figures AUD (Australia).`;
+        }
+        
+        console.log("[OANCA GATE] ✓ Replaced with corrected OANCA prices");
       }
     }
 
