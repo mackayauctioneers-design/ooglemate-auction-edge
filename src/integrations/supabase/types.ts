@@ -36,6 +36,9 @@ export type Database = {
           lot_year: number | null
           match_type: string
           message_text: string
+          previous_status: string | null
+          push_sent_at: string | null
+          queued_until: string | null
           read_at: string | null
           status: string
         }
@@ -60,6 +63,9 @@ export type Database = {
           lot_year?: number | null
           match_type?: string
           message_text: string
+          previous_status?: string | null
+          push_sent_at?: string | null
+          queued_until?: string | null
           read_at?: string | null
           status?: string
         }
@@ -84,6 +90,9 @@ export type Database = {
           lot_year?: number | null
           match_type?: string
           message_text?: string
+          previous_status?: string | null
+          push_sent_at?: string | null
+          queued_until?: string | null
           read_at?: string | null
           status?: string
         }
