@@ -127,37 +127,64 @@ export default function PicklesIngestionPage() {
     const startPage = resumePage;
     setCrawlProgress({ currentPage: startPage, lotsFound: 0, startTime: Date.now() });
     
-    // Poll for progress updates
-    const pollInterval = setInterval(async () => {
-      try {
-        const latestRuns = await getIngestionRuns(1);
-        const runningRun = latestRuns.find(r => r.status === 'running');
-        if (runningRun) {
-          const metadata = runningRun.metadata as { lastCompletedPage?: number } | null;
-          setCrawlProgress(prev => prev ? {
-            ...prev,
-            currentPage: (metadata?.lastCompletedPage || startPage) + 1,
-            lotsFound: runningRun.lots_found || 0
-          } : null);
-        }
-      } catch (e) {
-        console.error('Poll failed:', e);
-      }
-    }, 3000);
-    
     try {
       const yearMin = parseInt(crawlYearMin) || undefined;
       const result = await runPicklesCrawl(undefined, maxPages + startPage - 1, startPage, yearMin);
+      
       if (result.success) {
-        toast.success(`Crawl complete: ${result.pagesProcessed} pages, ${result.totalListings} listings (${result.created} new, ${result.updated} updated)`);
-        loadData();
+        // Crawl started in background - poll for completion
+        toast.success('Crawl started! Monitoring progress...');
+        
+        const pollInterval = setInterval(async () => {
+          try {
+            const latestRuns = await getIngestionRuns(1);
+            const currentRun = latestRuns.find(r => r.id === result.runId);
+            
+            if (currentRun) {
+              const metadata = currentRun.metadata as { lastCompletedPage?: number } | null;
+              setCrawlProgress(prev => prev ? {
+                ...prev,
+                currentPage: (metadata?.lastCompletedPage || startPage) + 1,
+                lotsFound: currentRun.lots_found || 0
+              } : null);
+              
+              // Check if complete
+              if (currentRun.status !== 'running') {
+                clearInterval(pollInterval);
+                setIsCrawling(false);
+                setCrawlProgress(null);
+                
+                if (currentRun.status === 'success' || currentRun.status === 'completed_with_errors') {
+                  toast.success(`Crawl complete: ${currentRun.lots_found} listings found`);
+                } else {
+                  toast.error('Crawl failed - check Run History for details');
+                }
+                loadData();
+              }
+            }
+          } catch (e) {
+            console.error('Poll failed:', e);
+          }
+        }, 3000);
+        
+        // Safety timeout after 5 minutes
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          if (isCrawling) {
+            setIsCrawling(false);
+            setCrawlProgress(null);
+            toast.info('Crawl is still running in background. Refresh to see results.');
+            loadData();
+          }
+        }, 300000);
+        
       } else {
-        toast.error(result.error || 'Crawl failed');
+        toast.error(result.error || 'Failed to start crawl');
+        setIsCrawling(false);
+        setCrawlProgress(null);
       }
     } catch (e) {
       toast.error('Crawl failed');
-    } finally {
-      clearInterval(pollInterval);
       setIsCrawling(false);
       setCrawlProgress(null);
     }

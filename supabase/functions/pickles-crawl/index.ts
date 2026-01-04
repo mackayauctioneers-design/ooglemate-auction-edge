@@ -1,5 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+declare const EdgeRuntime: {
+  waitUntil(promise: Promise<unknown>): void;
+};
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -221,68 +225,28 @@ function parseVehicleCards(html: string): ParsedListing[] {
 // Sleep helper
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
+// Background crawl processor
+async function processCrawl(
+  supabaseUrl: string,
+  supabaseKey: string,
+  firecrawlKey: string,
+  runId: string,
+  maxPages: number,
+  startPage: number,
+  yearMin: number | null
+) {
   const supabase = createClient(supabaseUrl, supabaseKey);
-
-  if (!firecrawlKey) {
-    console.error('[pickles-crawl] FIRECRAWL_API_KEY not configured');
-    return new Response(JSON.stringify({
-      success: false,
-      error: 'Firecrawl connector not configured. Please enable the Firecrawl connector in Settings.',
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-
+  const baseUrl = 'https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars';
+  const yearFilter = yearMin ? `&year-min=${yearMin}` : '';
+  
+  let currentPage = startPage;
+  let totalListings = 0;
+  let created = 0;
+  let updated = 0;
+  const errors: string[] = [];
+  let consecutiveEmptyPages = 0;
+  
   try {
-    const body = await req.json().catch(() => ({}));
-    const maxPages = body.maxPages || 15;
-    const startPage = body.startPage || 1;
-    const yearMin = body.yearMin || null;
-    
-    // Pickles cars search URL with 120 items per page
-    const baseUrl = 'https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars';
-    
-    // Build query params - year filter is a query param, not a path segment
-    const yearFilter = yearMin ? `&year-min=${yearMin}` : '';
-    
-    console.log(`[pickles-crawl] Starting Firecrawl-based crawl`);
-    console.log(`[pickles-crawl] Max pages: ${maxPages}, Start page: ${startPage}, Year min: ${yearMin || 'any'}`);
-    
-    // Create ingestion run record
-    const { data: runData, error: runError } = await supabase
-      .from('ingestion_runs')
-      .insert({
-        source: 'pickles_crawl',
-        status: 'running',
-        metadata: { baseUrl, maxPages, startPage, engine: 'firecrawl' }
-      })
-      .select()
-      .single();
-    
-    if (runError) {
-      console.error('[pickles-crawl] Failed to create run record:', runError);
-      throw runError;
-    }
-    
-    const runId = runData.id;
-    console.log(`[pickles-crawl] Created run: ${runId}`);
-    
-    let currentPage = startPage;
-    let totalListings = 0;
-    let created = 0;
-    let updated = 0;
-    const errors: string[] = [];
-    let consecutiveEmptyPages = 0;
-    
     // Crawl pages using Firecrawl for JS rendering
     while (currentPage <= maxPages && consecutiveEmptyPages < 3) {
       const pageUrl = `${baseUrl}?contentkey=all-cars&limit=120${yearFilter}&page=${currentPage}`;
@@ -329,39 +293,29 @@ Deno.serve(async (req) => {
           });
         
         if (uploadError) {
-          console.error(`[pickles-crawl] Failed to save snapshot:`, uploadError);
+          console.error(`[pickles-crawl] Failed to upload snapshot:`, uploadError.message);
         } else {
           console.log(`[pickles-crawl] Saved snapshot: ${snapshotPath}`);
         }
         
-        // Parse listings from rendered HTML
+        // Parse vehicle cards from the HTML
         const listings = parseVehicleCards(html);
         console.log(`[pickles-crawl] Page ${currentPage}: Found ${listings.length} listings`);
         
         if (listings.length === 0) {
           consecutiveEmptyPages++;
-          console.log(`[pickles-crawl] Empty page, consecutive count: ${consecutiveEmptyPages}`);
+          console.log(`[pickles-crawl] Empty page ${currentPage}, consecutive empty: ${consecutiveEmptyPages}`);
         } else {
           consecutiveEmptyPages = 0;
-        }
-        
-        totalListings += listings.length;
-        
-        // Upsert each listing
-        for (const listing of listings) {
-          const { data: existing } = await supabase
-            .from('vehicle_listings')
-            .select('id, first_seen_at, pass_count, relist_count')
-            .eq('listing_id', listing.listing_id)
-            .single();
           
-          const now = new Date().toISOString();
-          
-          if (existing) {
-            // Update existing
-            const { error: updateError } = await supabase
+          // Upsert listings into database
+          for (const listing of listings) {
+            const { error: upsertError } = await supabase
               .from('vehicle_listings')
-              .update({
+              .upsert({
+                listing_id: listing.listing_id,
+                lot_id: listing.lot_id,
+                listing_url: listing.listing_url,
                 make: listing.make,
                 model: listing.model,
                 year: listing.year,
@@ -370,57 +324,32 @@ Deno.serve(async (req) => {
                 variant_family: listing.variant_family,
                 transmission: listing.transmission,
                 location: listing.location,
-                listing_url: listing.listing_url,
                 auction_datetime: listing.auction_datetime,
-                last_seen_at: now,
-                updated_at: now,
-              })
-              .eq('id', existing.id);
+                source: 'pickles_crawl',
+                auction_house: 'Pickles',
+                status: 'catalogue',
+                last_seen_at: new Date().toISOString(),
+              }, {
+                onConflict: 'listing_id',
+                ignoreDuplicates: false
+              });
             
-            if (updateError) {
-              errors.push(`Update ${listing.listing_id}: ${updateError.message}`);
+            if (upsertError) {
+              console.error(`[pickles-crawl] Failed to upsert ${listing.listing_id}:`, upsertError.message);
+              errors.push(`Upsert ${listing.listing_id}: ${upsertError.message}`);
             } else {
               updated++;
             }
-          } else {
-            // Insert new
-            const { error: insertError } = await supabase
-              .from('vehicle_listings')
-              .insert({
-                listing_id: listing.listing_id,
-                lot_id: listing.lot_id,
-                source: 'pickles_crawl',
-                auction_house: 'Pickles',
-                make: listing.make,
-                model: listing.model,
-                year: listing.year,
-                km: listing.km,
-                variant_raw: listing.variant_raw,
-                variant_family: listing.variant_family,
-                transmission: listing.transmission,
-                location: listing.location,
-                listing_url: listing.listing_url,
-                auction_datetime: listing.auction_datetime,
-                status: 'catalogue',
-                first_seen_at: now,
-                last_seen_at: now,
-              });
-            
-            if (insertError) {
-              errors.push(`Insert ${listing.listing_id}: ${insertError.message}`);
-            } else {
-              created++;
-            }
           }
+          
+          totalListings += listings.length;
         }
         
-        // Update run record progressively after each page (in case of timeout)
-        // Track lastCompletedPage for auto-resume
+        // Update run progress after each page
         await supabase
           .from('ingestion_runs')
           .update({
             lots_found: totalListings,
-            lots_created: created,
             lots_updated: updated,
             metadata: {
               baseUrl,
@@ -452,14 +381,14 @@ Deno.serve(async (req) => {
       currentPage++;
     }
     
-    // Update run record with results
+    // Update run record with final results
     const finalStatus = errors.length > totalListings / 2 ? 'failed' : 
                        errors.length > 0 ? 'completed_with_errors' : 'success';
     
     // Mark if there are more pages to crawl
     const hasMorePages = currentPage <= maxPages && consecutiveEmptyPages < 3;
     
-    const { error: updateRunError } = await supabase
+    await supabase
       .from('ingestion_runs')
       .update({
         status: finalStatus,
@@ -481,20 +410,85 @@ Deno.serve(async (req) => {
       })
       .eq('id', runId);
     
-    if (updateRunError) {
-      console.error('[pickles-crawl] Failed to update run:', updateRunError);
-    }
-    
     console.log(`[pickles-crawl] Complete. Pages: ${currentPage - startPage}, Listings: ${totalListings}, Created: ${created}, Updated: ${updated}`);
     
+  } catch (error) {
+    console.error('[pickles-crawl] Background crawl error:', error);
+    await supabase
+      .from('ingestion_runs')
+      .update({
+        status: 'failed',
+        completed_at: new Date().toISOString(),
+        errors: [error instanceof Error ? error.message : 'Unknown error']
+      })
+      .eq('id', runId);
+  }
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  if (!firecrawlKey) {
+    console.error('[pickles-crawl] FIRECRAWL_API_KEY not configured');
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'Firecrawl connector not configured. Please enable the Firecrawl connector in Settings.',
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    const maxPages = body.maxPages || 15;
+    const startPage = body.startPage || 1;
+    const yearMin = body.yearMin || null;
+    
+    // Pickles cars search URL with 120 items per page
+    const baseUrl = 'https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars';
+    
+    console.log(`[pickles-crawl] Starting Firecrawl-based crawl`);
+    console.log(`[pickles-crawl] Max pages: ${maxPages}, Start page: ${startPage}, Year min: ${yearMin || 'any'}`);
+    
+    // Create ingestion run record
+    const { data: runData, error: runError } = await supabase
+      .from('ingestion_runs')
+      .insert({
+        source: 'pickles_crawl',
+        status: 'running',
+        metadata: { baseUrl, maxPages, startPage, engine: 'firecrawl', yearMin }
+      })
+      .select()
+      .single();
+    
+    if (runError) {
+      console.error('[pickles-crawl] Failed to create run record:', runError);
+      throw runError;
+    }
+    
+    const runId = runData.id;
+    console.log(`[pickles-crawl] Created run: ${runId}`);
+    
+    // Start background processing using EdgeRuntime.waitUntil
+    // This allows us to return immediately while crawl continues
+    EdgeRuntime.waitUntil(
+      processCrawl(supabaseUrl, supabaseKey, firecrawlKey, runId, maxPages, startPage, yearMin)
+    );
+    
+    // Return immediately with run ID - client can poll for progress
     return new Response(JSON.stringify({
       success: true,
       runId,
-      pagesProcessed: currentPage - startPage,
-      totalListings,
-      created,
-      updated,
-      errors: errors.slice(0, 10),
+      message: 'Crawl started. Check Run History for progress.',
+      status: 'running'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -509,4 +503,9 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
+});
+
+// Handle shutdown gracefully
+addEventListener('beforeunload', (ev) => {
+  console.log('[pickles-crawl] Function shutdown:', (ev as any).detail?.reason);
 });
