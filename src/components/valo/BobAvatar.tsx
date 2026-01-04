@@ -53,6 +53,9 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
   const [hasTriggeredBrief, setHasTriggeredBrief] = useState(false);
   const [pushContext, setPushContext] = useState<BobPushContext | null>(null);
   
+  // OANCA state - tracks if pricing is allowed
+  const lastOancaAllowPriceRef = useRef<boolean>(false);
+  
   // Transcripts
   const [userTranscript, setUserTranscript] = useState('');
   const [bobTranscript, setBobTranscript] = useState('');
@@ -268,23 +271,42 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
       const oanca = data.oanca_debug;
       console.log("[OANCA TOOL] Result:", oanca);
       
+      // ============================================================
+      // CRITICAL: Track allow_price state for firewall enforcement
+      // ============================================================
+      const allowPrice = oanca?.allow_price || false;
+      lastOancaAllowPriceRef.current = allowPrice;
+      console.log("[OANCA TOOL] allow_price set to:", allowPrice);
+      
+      // If pricing NOT allowed, strip any numbers from script as extra safety
+      let safeScript = data.response;
+      if (!allowPrice) {
+        // Remove any accidental price leaks from the script
+        safeScript = safeScript
+          .replace(/\$[\d,]+/g, '[PRICE REDACTED]')
+          .replace(/\b\d{4,}\b/g, '[REDACTED]')
+          .replace(/\b\d+k\b/gi, '[REDACTED]');
+        console.log("[OANCA TOOL] Script sanitized (allow_price=false)");
+      }
+      
       // Return the OANCA result for Bob to narrate
       return {
-        allow_price: oanca?.allow_price || false,
-        buy_low: oanca?.buy_low,
-        buy_high: oanca?.buy_high,
-        anchor_owe: oanca?.anchor_owe,
+        allow_price: allowPrice,
+        buy_low: allowPrice ? oanca?.buy_low : null,
+        buy_high: allowPrice ? oanca?.buy_high : null,
+        anchor_owe: allowPrice ? oanca?.anchor_owe : null,
         demand_class: oanca?.demand_class,
         confidence: oanca?.confidence,
         n_comps: oanca?.n_comps || 0,
         verdict: oanca?.verdict,
-        notes: oanca?.notes || [],
-        script: data.response,  // Bob's pre-written response from OANCA
+        notes: allowPrice ? (oanca?.notes || []) : [],
+        script: safeScript,  // Bob's pre-written response from OANCA (sanitized if needed)
         market: 'AU',
         currency: 'AUD'
       };
     } catch (err) {
       console.error("[OANCA TOOL] Exception:", err);
+      lastOancaAllowPriceRef.current = false;
       return {
         allow_price: false,
         error: 'Failed to get pricing',
@@ -325,6 +347,28 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
 
       case 'response.audio_transcript.done':
         const bobText = event.transcript || bobTranscript;
+        
+        // ============================================================
+        // NUMERIC LEAK FIREWALL - Block prices if OANCA didn't approve
+        // ============================================================
+        const responseContainsNumber = (text: string): boolean => {
+          // Match: $X, Xk, X,XXX, XXXX+, X-X ranges, "X to X"
+          const pricePatterns = [
+            /\$[\d,]+/,           // $15,000
+            /\d{4,}/,             // 15000 (4+ digits)
+            /\d+k\b/i,            // 15k
+            /\d+\s*(to|-)\s*\d+/, // 14 to 16, 14-16
+          ];
+          return pricePatterns.some(p => p.test(text));
+        };
+        
+        // Check last OANCA result from tool call
+        if (responseContainsNumber(bobText)) {
+          console.warn("[FIREWALL] Voice response contains numbers - verify OANCA approved");
+          // Note: By this point audio already played. This is logging for debugging.
+          // The real enforcement is in the tool result where allow_price controls the script.
+        }
+        
         if (bobText.trim()) {
           setConversationHistory(prev => [...prev, { role: 'assistant', text: bobText }]);
         }
