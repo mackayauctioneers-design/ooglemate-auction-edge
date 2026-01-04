@@ -415,6 +415,7 @@ Deno.serve(async (req) => {
         }
         
         // Update run record progressively after each page (in case of timeout)
+        // Track lastCompletedPage for auto-resume
         await supabase
           .from('ingestion_runs')
           .update({
@@ -425,7 +426,9 @@ Deno.serve(async (req) => {
               baseUrl,
               maxPages,
               startPage,
+              yearMin,
               pagesProcessed: currentPage - startPage + 1,
+              lastCompletedPage: currentPage,
               engine: 'firecrawl',
             }
           })
@@ -453,6 +456,9 @@ Deno.serve(async (req) => {
     const finalStatus = errors.length > totalListings / 2 ? 'failed' : 
                        errors.length > 0 ? 'completed_with_errors' : 'success';
     
+    // Mark if there are more pages to crawl
+    const hasMorePages = currentPage <= maxPages && consecutiveEmptyPages < 3;
+    
     const { error: updateRunError } = await supabase
       .from('ingestion_runs')
       .update({
@@ -466,7 +472,10 @@ Deno.serve(async (req) => {
           baseUrl,
           maxPages,
           startPage,
+          yearMin,
           pagesProcessed: currentPage - startPage,
+          lastCompletedPage: currentPage - 1,
+          hasMorePages,
           engine: 'firecrawl',
         }
       })

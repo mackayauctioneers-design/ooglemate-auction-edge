@@ -180,6 +180,38 @@ export async function getIngestionRuns(limit = 10): Promise<IngestionRun[]> {
   return data as IngestionRun[];
 }
 
+// Get the resume page from the most recent crawl run
+export async function getCrawlResumeInfo(): Promise<{
+  resumePage: number;
+  hasMorePages: boolean;
+  lastRunId: string | null;
+  yearMin: number | null;
+} | null> {
+  const { data, error } = await supabase
+    .from('ingestion_runs')
+    .select('id, metadata')
+    .eq('source', 'pickles_crawl')
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  const metadata = data.metadata as Record<string, unknown>;
+  const lastCompletedPage = (metadata?.lastCompletedPage as number) || 0;
+  const hasMorePages = (metadata?.hasMorePages as boolean) ?? true;
+  const yearMin = (metadata?.yearMin as number) || null;
+
+  return {
+    resumePage: lastCompletedPage + 1,
+    hasMorePages,
+    lastRunId: data.id,
+    yearMin,
+  };
+}
+
 // Get vehicle listings
 export async function getVehicleListings(filters?: {
   source?: string;

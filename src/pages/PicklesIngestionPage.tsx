@@ -17,6 +17,7 @@ import {
   getVehicleListings,
   getFingerprints,
   getAlerts,
+  getCrawlResumeInfo,
   type IngestionRun,
   type VehicleListing,
   type DealerFingerprint,
@@ -36,8 +37,10 @@ export default function PicklesIngestionPage() {
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCrawling, setIsCrawling] = useState(false);
-  const [crawlMaxPages, setCrawlMaxPages] = useState('10');
+  const [crawlMaxPages, setCrawlMaxPages] = useState('3');
   const [crawlYearMin, setCrawlYearMin] = useState('2020');
+  const [resumePage, setResumePage] = useState(1);
+  const [hasMorePages, setHasMorePages] = useState(true);
 
   useEffect(() => {
     loadData();
@@ -46,16 +49,26 @@ export default function PicklesIngestionPage() {
   async function loadData() {
     setIsLoading(true);
     try {
-      const [runsData, listingsData, fpData, alertsData] = await Promise.all([
+      const [runsData, listingsData, fpData, alertsData, resumeInfo] = await Promise.all([
         getIngestionRuns(10),
         getVehicleListings({ source: 'pickles' }),
         getFingerprints(),
-        getAlerts('Dave')
+        getAlerts('Dave'),
+        getCrawlResumeInfo()
       ]);
       setRuns(runsData);
       setListings(listingsData);
       setFingerprints(fpData);
       setAlerts(alertsData);
+      
+      // Set resume info
+      if (resumeInfo) {
+        setResumePage(resumeInfo.resumePage);
+        setHasMorePages(resumeInfo.hasMorePages);
+        if (resumeInfo.yearMin) {
+          setCrawlYearMin(String(resumeInfo.yearMin));
+        }
+      }
     } catch (e) {
       console.error('Failed to load data:', e);
       toast.error('Failed to load data');
@@ -106,9 +119,11 @@ export default function PicklesIngestionPage() {
   async function handleCrawl() {
     setIsCrawling(true);
     try {
-      const maxPages = parseInt(crawlMaxPages) || 10;
+      const maxPages = parseInt(crawlMaxPages) || 3;
       const yearMin = parseInt(crawlYearMin) || undefined;
-      const result = await runPicklesCrawl(undefined, maxPages, 1, yearMin);
+      // Auto-resume from last completed page
+      const startPage = resumePage;
+      const result = await runPicklesCrawl(undefined, maxPages + startPage - 1, startPage, yearMin);
       if (result.success) {
         toast.success(`Crawl complete: ${result.pagesProcessed} pages, ${result.totalListings} listings (${result.created} new, ${result.updated} updated)`);
         loadData();
@@ -120,6 +135,12 @@ export default function PicklesIngestionPage() {
     } finally {
       setIsCrawling(false);
     }
+  }
+
+  function handleResetCrawl() {
+    setResumePage(1);
+    setHasMorePages(true);
+    toast.success('Crawl reset to page 1');
   }
 
   function formatDate(dateStr: string | null) {
@@ -183,11 +204,23 @@ export default function PicklesIngestionPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="p-4 bg-muted rounded-lg space-y-2">
-                  <p className="text-sm font-medium">Automatic Pagination</p>
-                  <p className="text-sm text-muted-foreground">
-                    Fetches page=1..N until empty. Saves HTML snapshots for debugging.
-                  </p>
+                {/* Resume status indicator */}
+                <div className={`p-4 rounded-lg space-y-2 ${resumePage > 1 ? 'bg-primary/10 border border-primary/30' : 'bg-muted'}`}>
+                  {resumePage > 1 ? (
+                    <>
+                      <p className="text-sm font-medium text-primary">Resume from page {resumePage}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {hasMorePages ? 'More pages available' : 'All pages crawled'}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium">Fresh crawl</p>
+                      <p className="text-sm text-muted-foreground">
+                        Starting from page 1
+                      </p>
+                    </>
+                  )}
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
@@ -204,32 +237,48 @@ export default function PicklesIngestionPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="maxPages">Max Pages</Label>
+                    <Label htmlFor="maxPages">Pages per run</Label>
                     <Input
                       id="maxPages"
                       type="number"
                       min="1"
-                      max="50"
+                      max="10"
                       value={crawlMaxPages}
                       onChange={(e) => setCrawlMaxPages(e.target.value)}
                     />
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {crawlYearMin ? `${crawlYearMin}+ vehicles only` : 'All years'} • ~{parseInt(crawlMaxPages) * 120 || 0} listings max
+                  {crawlYearMin ? `${crawlYearMin}+ vehicles only` : 'All years'} • Pages {resumePage}–{resumePage + (parseInt(crawlMaxPages) || 3) - 1} (~{(parseInt(crawlMaxPages) || 3) * 120} listings)
                 </p>
 
-                <Button 
-                  onClick={handleCrawl} 
-                  disabled={isCrawling}
-                  className="w-full"
-                >
-                  {isCrawling ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Crawling...</>
-                  ) : (
-                    <><Globe className="h-4 w-4 mr-2" />Start Crawl</>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={handleCrawl} 
+                    disabled={isCrawling || !hasMorePages}
+                    className="flex-1"
+                  >
+                    {isCrawling ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Crawling...</>
+                    ) : resumePage > 1 ? (
+                      <><Globe className="h-4 w-4 mr-2" />Continue Crawl</>
+                    ) : (
+                      <><Globe className="h-4 w-4 mr-2" />Start Crawl</>
+                    )}
+                  </Button>
+                  {resumePage > 1 && (
+                    <Button 
+                      onClick={handleResetCrawl}
+                      variant="outline"
+                      disabled={isCrawling}
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
                   )}
-                </Button>
+                </div>
+                {!hasMorePages && (
+                  <p className="text-xs text-green-600 text-center">✓ All available pages have been crawled</p>
+                )}
               </CardContent>
             </Card>
 
