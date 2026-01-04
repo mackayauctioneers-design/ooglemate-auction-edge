@@ -52,16 +52,15 @@ function parseYear(text: string): number | null {
   return null;
 }
 
-// Parse km from text
+// Parse km from text - handles formats like "165,668 km", "45785km", "165,668 km\\"
 function parseKm(text: string): number | null {
-  const kmMatch = text.match(/(\d{1,3}(?:,\d{3})*|\d+)\s*(?:km|kms|kilometres)/i);
+  // Remove backslashes that appear in markdown
+  const cleaned = text.replace(/\\/g, '');
+  
+  // Pattern for km values with optional comma separators
+  const kmMatch = cleaned.match(/(\d{1,3}(?:,\d{3})*|\d+)\s*(?:km|kms|kilometres)/i);
   if (kmMatch) {
     return parseInt(kmMatch[1].replace(/,/g, ''));
-  }
-  // Also try just numbers followed by km pattern in the surrounding text
-  const altMatch = text.match(/(\d{1,3}(?:,\d{3})*)\s*(?:km|kms|KM)/i);
-  if (altMatch) {
-    return parseInt(altMatch[1].replace(/,/g, ''));
   }
   return null;
 }
@@ -146,10 +145,10 @@ function parseVehicleCards(html: string): ParsedListing[] {
     let model = '';
     let variant: string | null = null;
     
-    // First part should be year
+    // First part should be year (support 1980-2030 for classic cars)
     if (slugParts.length >= 3) {
       const potentialYear = parseInt(slugParts[0]);
-      if (potentialYear >= 1990 && potentialYear <= 2030) {
+      if (potentialYear >= 1980 && potentialYear <= 2030) {
         year = potentialYear;
         make = slugParts[1].charAt(0).toUpperCase() + slugParts[1].slice(1);
         model = slugParts[2].charAt(0).toUpperCase() + slugParts[2].slice(1);
@@ -161,14 +160,17 @@ function parseVehicleCards(html: string): ParsedListing[] {
       }
     }
     
+    // Clean context of backslashes for better parsing
+    const cleanedContext = context.replace(/\\/g, ' ');
+    
     // Skip if we couldn't parse essential fields
     if (!year || !make || !model) {
       console.log(`[pickles-crawl] Skipping stock ${item.stockId} - couldn't parse: year=${year}, make=${make}, model=${model}, slug=${item.slug}`);
       continue;
     }
     
-    // Extract km from context - look for patterns like "165,668 km" or "45785km"
-    const km = parseKm(context);
+    // Extract km from cleaned context
+    const km = parseKm(cleanedContext);
     
     // Extract location from context
     const locationPatterns = [
@@ -177,7 +179,7 @@ function parseVehicleCards(html: string): ParsedListing[] {
     ];
     let location: string | null = null;
     for (const lp of locationPatterns) {
-      const lm = context.match(lp);
+      const lm = cleanedContext.match(lp);
       if (lm) {
         location = lm[1].trim();
         break;
@@ -185,11 +187,11 @@ function parseVehicleCards(html: string): ParsedListing[] {
     }
     
     // Extract buy method
-    const buyMethodMatch = context.match(/(Pickles Online|Live Auction|Buy Now|Make Offer|Timed Auction)/i);
+    const buyMethodMatch = cleanedContext.match(/(Pickles Online|Live Auction|Buy Now|Make Offer|Timed Auction)/i);
     const buyMethod = buyMethodMatch ? buyMethodMatch[1] : null;
     
     // Extract auction time
-    const auctionTime = parseAuctionDateTime(context);
+    const auctionTime = parseAuctionDateTime(cleanedContext);
     
     // Extract transmission
     const transMatch = context.match(/\b(Automatic|Manual|Auto|CVT|DCT)\b/i);
