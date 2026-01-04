@@ -121,19 +121,22 @@ export default function PicklesIngestionPage() {
     }
   }
 
-  async function handleCrawl() {
+  async function handleCrawl(autoContinue = false) {
     setIsCrawling(true);
     const maxPages = parseInt(crawlMaxPages) || 3;
     const startPage = resumePage;
-    setCrawlProgress({ currentPage: startPage, lotsFound: 0, startTime: Date.now() });
+    if (!autoContinue) {
+      setCrawlProgress({ currentPage: startPage, lotsFound: 0, startTime: Date.now() });
+    }
     
     try {
       const yearMin = crawlYearMin ? parseInt(crawlYearMin) : undefined;
       const result = await runPicklesCrawl(undefined, maxPages + startPage - 1, startPage, yearMin);
       
       if (result.success) {
-        // Crawl started in background - poll for completion
-        toast.success('Crawl started! Monitoring progress...');
+        if (!autoContinue) {
+          toast.success('Crawl started! Auto-continuing until complete...');
+        }
         
         const pollInterval = setInterval(async () => {
           try {
@@ -141,25 +144,43 @@ export default function PicklesIngestionPage() {
             const currentRun = latestRuns.find(r => r.id === result.runId);
             
             if (currentRun) {
-              const metadata = currentRun.metadata as { lastCompletedPage?: number } | null;
+              const metadata = currentRun.metadata as { lastCompletedPage?: number; hasMorePages?: boolean } | null;
               setCrawlProgress(prev => prev ? {
                 ...prev,
                 currentPage: (metadata?.lastCompletedPage || startPage) + 1,
-                lotsFound: currentRun.lots_found || 0
+                lotsFound: prev.lotsFound + (currentRun.lots_found || 0)
               } : null);
               
-              // Check if complete
+              // Check if batch complete
               if (currentRun.status !== 'running') {
                 clearInterval(pollInterval);
-                setIsCrawling(false);
-                setCrawlProgress(null);
                 
-                if (currentRun.status === 'success' || currentRun.status === 'completed_with_errors') {
-                  toast.success(`Crawl complete: ${currentRun.lots_found} listings found`);
+                // Check if more pages and should auto-continue
+                const morePages = metadata?.hasMorePages !== false;
+                const nextPage = (metadata?.lastCompletedPage || startPage) + 1;
+                
+                if (morePages && (currentRun.status === 'success' || currentRun.status === 'stopped')) {
+                  // Update resume page and auto-continue
+                  setResumePage(nextPage);
+                  setHasMorePages(true);
+                  toast.info(`Batch complete (page ${metadata?.lastCompletedPage}). Auto-continuing...`);
+                  
+                  // Small delay before next batch
+                  setTimeout(() => handleCrawl(true), 2000);
                 } else {
-                  toast.error('Crawl failed - check Run History for details');
+                  // Done or failed
+                  setIsCrawling(false);
+                  setCrawlProgress(null);
+                  setHasMorePages(morePages);
+                  setResumePage(nextPage);
+                  
+                  if (!morePages) {
+                    toast.success('🎉 Full crawl complete! All pages processed.');
+                  } else if (currentRun.status === 'failed') {
+                    toast.error('Crawl failed - check Run History for details');
+                  }
+                  loadData();
                 }
-                loadData();
               }
             }
           } catch (e) {
@@ -167,15 +188,22 @@ export default function PicklesIngestionPage() {
           }
         }, 3000);
         
-        // Safety timeout after 2 minutes - edge functions have ~60s wall clock limit
+        // Safety timeout after 90 seconds per batch
         setTimeout(async () => {
           clearInterval(pollInterval);
-          setIsCrawling(false);
-          setCrawlProgress(null);
-          // Check final status
-          await loadData();
-          toast.info('Crawl batch complete. Click "Continue Crawl" for more pages.');
-        }, 120000);
+          // Reload and check status
+          const resumeInfo = await getCrawlResumeInfo();
+          if (resumeInfo && resumeInfo.hasMorePages) {
+            setResumePage(resumeInfo.resumePage);
+            setHasMorePages(true);
+            toast.info('Batch timeout - auto-continuing...');
+            setTimeout(() => handleCrawl(true), 2000);
+          } else {
+            setIsCrawling(false);
+            setCrawlProgress(null);
+            await loadData();
+          }
+        }, 90000);
         
       } else {
         toast.error(result.error || 'Failed to start crawl');
@@ -332,7 +360,7 @@ export default function PicklesIngestionPage() {
 
                 <div className="flex gap-2">
                   <Button 
-                    onClick={handleCrawl} 
+                    onClick={() => handleCrawl()} 
                     disabled={isCrawling || !hasMorePages}
                     className="flex-1"
                   >
