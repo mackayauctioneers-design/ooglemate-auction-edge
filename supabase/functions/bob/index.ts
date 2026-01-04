@@ -7,11 +7,11 @@ const corsHeaders = {
 };
 
 // ============================================================================
-// OOGLEMATE PRICING ENGINE v3
+// OOGLEMATE PRICING ENGINE v4 - COMPARABLE ADJUSTMENT ENGINE
 // ============================================================================
 // Bob is NOT a valuer. Bob is a voice narrator.
 // All pricing logic lives HERE. Bob receives a DECISION OBJECT only.
-// If Bob cannot retrieve a final price decision object, he must not price.
+// Adjustments for km, year, trim are computed HERE, not by Bob/LLM.
 // ============================================================================
 
 // Types for sales history
@@ -35,47 +35,62 @@ interface SalesHistoryRecord {
   sell_price: number;
   total_cost: number;  // OWE - THE PRIMARY ANCHOR
   gross_profit: number;
+  km?: number;
 }
 
 interface WeightedComp {
   record: SalesHistoryRecord;
   weight: number;
   recencyMonths: number;
+  tier: 'A' | 'B' | 'C';  // A=variant_family, B=model, C=platform
 }
 
 // ============================================================================
 // DECISION OBJECT - THE ONLY THING BOB RECEIVES
 // ============================================================================
 
-// DECISION STATES:
-// 1. PRICE_AVAILABLE = firm price (strong data, >= 2 comps for common vehicles)
-// 2. SOFT_OWN = guarded price (thin data or hard_work with comps, pics optional)
-// 3. NEED_PICS = no pricing (zero comps or hard_work with <2 comps)
-// 4. DNR = do not retail (poison vehicles)
 type BobDecision = 'PRICE_AVAILABLE' | 'SOFT_OWN' | 'NEED_PICS' | 'DNR';
 type VehicleClass = 'FAST_MOVER' | 'AVERAGE' | 'HARD_WORK' | 'POISON';
 type DataSource = 'OWN_SALES';
 type Confidence = 'HIGH' | 'MED' | 'LOW';
 
+// Adjustment record for narration
+interface AdjustmentApplied {
+  type: 'km' | 'year' | 'trim' | 'demand';
+  description: string;
+  amount: number;
+}
+
 interface DecisionObject {
   decision: BobDecision;
-  buy_price: number | null;        // SINGLE price, not range
+  buy_price: number | null;        // SINGLE rounded price (31, 32 not 31800)
+  buy_low?: number | null;         // For soft_own range
+  buy_high?: number | null;        // For soft_own range
   vehicle_class: VehicleClass | null;
   data_source: DataSource | null;
   confidence: Confidence | null;
-  reason?: string;                 // Only for NEED_PICS: 'NO_COMPS' | 'THIN_DATA'
-  instruction?: string;            // Only for NEED_PICS: 'REQUEST_PHOTOS'
+  reason?: string;
+  instruction?: string;
+  adjustments_applied?: AdjustmentApplied[];  // For Bob narration
 }
 
 // Internal engine state (never sent to Bob)
 interface EngineState {
   n_comps: number;
+  comp_tier: 'A' | 'B' | 'C' | null;
   anchor_owe: number | null;
+  owe_base: number | null;
   avg_days: number;
   avg_gross: number;
   notes: string[];
   comps_used: string[];
   processing_time_ms?: number;
+  adjustments: {
+    km_adj: number;
+    year_adj: number;
+    trim_adj: number;
+    demand_adj: number;
+  };
 }
 
 interface OancaInput {
@@ -90,8 +105,54 @@ interface OancaInput {
 }
 
 // ============================================================================
+// ADJUSTMENT CONSTANTS (BOUNDED)
+// ============================================================================
+
+const ADJUSTMENT_CONFIG = {
+  // KM adjustment: slope per 1000km
+  km_slope_per_1000: -80,  // -$80 per 1000km over median
+  km_cap: 2500,            // Max ±$2500
+  
+  // Year adjustment: step per year difference
+  year_step: 1200,         // $1200 per year newer
+  year_cap: 6000,          // Max ±$6000
+  
+  // Trim adjustment: ladder step
+  trim_step: 1000,         // $1000 per trim level
+  trim_cap: 3500,          // Max ±$3500
+  
+  // Demand adjustment
+  hard_work_penalty: -1500,
+  fast_mover_bonus: 800,
+};
+
+// ============================================================================
+// PLATFORM FAMILIES (for Tier C matching)
+// ============================================================================
+
+const PLATFORM_FAMILIES: Record<string, string[]> = {
+  'dual_cab_ute': ['hilux', 'ranger', 'd-max', 'dmax', 'triton', 'bt-50', 'bt50', 'navara', 'colorado', 'amarok'],
+  'full_size_suv': ['landcruiser', 'patrol', 'prado', 'pajero', 'fortuner', 'everest', 'mu-x', 'mux'],
+  'mid_suv': ['rav4', 'cx-5', 'cx5', 'tucson', 'sportage', 'forester', 'x-trail', 'xtrail', 'outlander', 'kluger'],
+  'compact_suv': ['cx-3', 'cx3', 'kona', 'seltos', 'venue', 'asx', 'juke', 'qashqai'],
+  'small_hatch': ['corolla', 'mazda3', 'i30', 'cerato', 'golf', 'cruze', 'astra', 'focus'],
+  'mid_sedan': ['camry', 'mazda6', 'accord', 'passat', 'commodore'],
+};
+
+function getPlatformFamily(model: string): string | null {
+  const modelLower = model.toLowerCase().trim();
+  for (const [family, models] of Object.entries(PLATFORM_FAMILIES)) {
+    for (const m of models) {
+      if (modelLower.includes(m) || m.includes(modelLower)) {
+        return family;
+      }
+    }
+  }
+  return null;
+}
+
+// ============================================================================
 // STRONG MARKET VEHICLES (OK to price with 1 comp)
-// These sell fast and hold value - benefit of the doubt
 // ============================================================================
 
 const STRONG_MARKET_VEHICLES: Record<string, string[]> = {
@@ -172,6 +233,214 @@ function calculateRecencyWeight(saleDateStr: string): { weight: number; months: 
 }
 
 // ============================================================================
+// TIERED COMP SELECTION
+// Tier A: make + model + variant_family (±4 years)
+// Tier B: make + model (±4 years)
+// Tier C: platform family (±6 years)
+// ============================================================================
+
+function selectComps(
+  input: OancaInput, 
+  salesHistory: SalesHistoryRecord[]
+): { comps: WeightedComp[]; tier: 'A' | 'B' | 'C' | null } {
+  const makeLower = input.make.toLowerCase().trim();
+  const modelLower = input.model.toLowerCase().trim();
+  const variantFamily = input.variant_family?.toLowerCase().trim() || '';
+  const subjectYear = input.year;
+  const subjectPlatform = getPlatformFamily(input.model);
+  
+  // Tier A: make + model + variant_family (±4 years)
+  const tierAComps: WeightedComp[] = [];
+  if (variantFamily) {
+    for (const r of salesHistory) {
+      const rMake = (r.make || '').toLowerCase().trim();
+      const rModel = (r.model || '').toLowerCase().trim();
+      const rVariant = (r.variant_family || r.variant || '').toLowerCase().trim();
+      const rYear = parseInt(String(r.year)) || 0;
+      
+      const makeMatch = rMake === makeLower || rMake.includes(makeLower) || makeLower.includes(rMake);
+      const modelMatch = rModel === modelLower || rModel.includes(modelLower) || modelLower.includes(rModel);
+      const variantMatch = rVariant.includes(variantFamily) || variantFamily.includes(rVariant);
+      const yearMatch = Math.abs(rYear - subjectYear) <= 4;
+      
+      if (makeMatch && modelMatch && variantMatch && yearMatch && r.total_cost > 0) {
+        const { weight, months } = calculateRecencyWeight(r.sale_date);
+        tierAComps.push({ record: r, weight, recencyMonths: months, tier: 'A' });
+      }
+    }
+  }
+  
+  if (tierAComps.length >= 2) {
+    console.log(`[ENGINE] Tier A match: ${tierAComps.length} comps (variant_family)`);
+    return { comps: tierAComps.sort((a, b) => b.weight - a.weight), tier: 'A' };
+  }
+  
+  // Tier B: make + model (±4 years)
+  const tierBComps: WeightedComp[] = [];
+  for (const r of salesHistory) {
+    const rMake = (r.make || '').toLowerCase().trim();
+    const rModel = (r.model || '').toLowerCase().trim();
+    const rYear = parseInt(String(r.year)) || 0;
+    
+    const makeMatch = rMake === makeLower || rMake.includes(makeLower) || makeLower.includes(rMake);
+    const modelMatch = rModel === modelLower || rModel.includes(modelLower) || modelLower.includes(rModel);
+    const yearMatch = Math.abs(rYear - subjectYear) <= 4;
+    
+    if (makeMatch && modelMatch && yearMatch && r.total_cost > 0) {
+      const { weight, months } = calculateRecencyWeight(r.sale_date);
+      tierBComps.push({ record: r, weight, recencyMonths: months, tier: 'B' });
+    }
+  }
+  
+  if (tierBComps.length >= 1) {
+    console.log(`[ENGINE] Tier B match: ${tierBComps.length} comps (make+model)`);
+    return { comps: tierBComps.sort((a, b) => b.weight - a.weight), tier: 'B' };
+  }
+  
+  // Tier C: platform family (±6 years)
+  if (subjectPlatform) {
+    const tierCComps: WeightedComp[] = [];
+    for (const r of salesHistory) {
+      const rPlatform = getPlatformFamily(r.model || '');
+      const rYear = parseInt(String(r.year)) || 0;
+      
+      const platformMatch = rPlatform === subjectPlatform;
+      const yearMatch = Math.abs(rYear - subjectYear) <= 6;
+      
+      if (platformMatch && yearMatch && r.total_cost > 0) {
+        const { weight, months } = calculateRecencyWeight(r.sale_date);
+        tierCComps.push({ record: r, weight, recencyMonths: months, tier: 'C' });
+      }
+    }
+    
+    if (tierCComps.length >= 2) {
+      console.log(`[ENGINE] Tier C match: ${tierCComps.length} comps (platform: ${subjectPlatform})`);
+      return { comps: tierCComps.sort((a, b) => b.weight - a.weight), tier: 'C' };
+    }
+  }
+  
+  console.log(`[ENGINE] No tier matched, returning best available`);
+  // Return Tier A if has 1, else Tier B if has any, else empty
+  if (tierAComps.length > 0) return { comps: tierAComps, tier: 'A' };
+  if (tierBComps.length > 0) return { comps: tierBComps, tier: 'B' };
+  return { comps: [], tier: null };
+}
+
+// ============================================================================
+// RECENCY-WEIGHTED MEDIAN OWE (Baseline)
+// ============================================================================
+
+function calculateWeightedMedianOwe(comps: WeightedComp[]): number | null {
+  const oweData = comps
+    .filter(wc => wc.record.total_cost > 0)
+    .map(wc => ({ owe: wc.record.total_cost, weight: wc.weight }));
+  
+  if (oweData.length === 0) return null;
+  
+  // Sort by OWE
+  oweData.sort((a, b) => a.owe - b.owe);
+  
+  const totalWeight = oweData.reduce((sum, d) => sum + d.weight, 0);
+  let cumWeight = 0;
+  
+  for (const d of oweData) {
+    cumWeight += d.weight;
+    if (cumWeight >= totalWeight / 2) {
+      return d.owe;
+    }
+  }
+  
+  return oweData[0].owe;
+}
+
+// ============================================================================
+// ADJUSTMENT CALCULATIONS (BOUNDED)
+// ============================================================================
+
+function calculateAdjustments(
+  input: OancaInput,
+  comps: WeightedComp[],
+  vehicleClass: VehicleClass
+): { adjustments: EngineState['adjustments']; applied: AdjustmentApplied[] } {
+  const applied: AdjustmentApplied[] = [];
+  
+  // Calculate comp medians
+  const compKms = comps
+    .map(wc => wc.record.km || 0)
+    .filter(km => km > 0);
+  const medianKm = compKms.length > 0 
+    ? compKms.sort((a, b) => a - b)[Math.floor(compKms.length / 2)] 
+    : 0;
+  
+  const compYears = comps.map(wc => parseInt(String(wc.record.year)) || 0);
+  const medianYear = compYears.length > 0 
+    ? compYears.sort((a, b) => a - b)[Math.floor(compYears.length / 2)] 
+    : input.year;
+  
+  // 1. KM Adjustment
+  let km_adj = 0;
+  if (input.km && medianKm > 0) {
+    const kmDiff = input.km - medianKm;
+    km_adj = Math.round((kmDiff / 1000) * ADJUSTMENT_CONFIG.km_slope_per_1000);
+    // Cap
+    km_adj = Math.max(-ADJUSTMENT_CONFIG.km_cap, Math.min(ADJUSTMENT_CONFIG.km_cap, km_adj));
+    
+    if (km_adj !== 0) {
+      const direction = km_adj > 0 ? 'lower km' : 'higher km';
+      applied.push({
+        type: 'km',
+        description: `${direction} than book`,
+        amount: km_adj
+      });
+    }
+  }
+  
+  // 2. Year Adjustment
+  let year_adj = 0;
+  const yearDiff = input.year - medianYear;
+  if (yearDiff !== 0) {
+    year_adj = yearDiff * ADJUSTMENT_CONFIG.year_step;
+    // Cap
+    year_adj = Math.max(-ADJUSTMENT_CONFIG.year_cap, Math.min(ADJUSTMENT_CONFIG.year_cap, year_adj));
+    
+    if (year_adj !== 0) {
+      const direction = year_adj > 0 ? 'newer' : 'older';
+      applied.push({
+        type: 'year',
+        description: `${Math.abs(yearDiff)} year ${direction}`,
+        amount: year_adj
+      });
+    }
+  }
+  
+  // 3. Trim Adjustment (placeholder - would need variant ladder data)
+  const trim_adj = 0;
+  
+  // 4. Demand Adjustment
+  let demand_adj = 0;
+  if (vehicleClass === 'HARD_WORK') {
+    demand_adj = ADJUSTMENT_CONFIG.hard_work_penalty;
+    applied.push({
+      type: 'demand',
+      description: 'slow seller',
+      amount: demand_adj
+    });
+  } else if (vehicleClass === 'FAST_MOVER') {
+    demand_adj = ADJUSTMENT_CONFIG.fast_mover_bonus;
+    applied.push({
+      type: 'demand',
+      description: 'strong seller',
+      amount: demand_adj
+    });
+  }
+  
+  return {
+    adjustments: { km_adj, year_adj, trim_adj, demand_adj },
+    applied
+  };
+}
+
+// ============================================================================
 // DEMAND CLASS CALCULATION
 // ============================================================================
 
@@ -228,77 +497,13 @@ function calculateVehicleClass(comps: WeightedComp[], make: string, model: strin
 }
 
 // ============================================================================
-// OWE ANCHOR CALCULATION
-// Rule 1: Anchor to last OWE price. Ignore retail sold price.
-// Rule 4: > 24 months = degrade
+// ROUND TO CLEAN FIGURE ($500 increments for "31" or "32" style)
 // ============================================================================
 
-function calculateOweAnchor(comps: WeightedComp[]): number | null {
-  const oweData = comps
-    .filter(wc => wc.record.total_cost > 0)
-    .map(wc => ({ owe: wc.record.total_cost, weight: wc.weight }));
-  
-  if (oweData.length === 0) return null;
-  
-  // Weighted median OWE
-  const totalWeight = oweData.reduce((sum, d) => sum + d.weight, 0);
-  let cumWeight = 0;
-  
-  oweData.sort((a, b) => a.owe - b.owe);
-  for (const d of oweData) {
-    cumWeight += d.weight;
-    if (cumWeight >= totalWeight / 2) {
-      return d.owe;
-    }
-  }
-  
-  return oweData[0].owe;
-}
-
-// ============================================================================
-// BUY PRICE CALCULATION (SINGLE PRICE, NOT RANGE)
-// ============================================================================
-
-function calculateBuyPrice(
-  anchorOwe: number,
-  vehicleClass: VehicleClass,
-  avgDays: number
-): number {
-  let buyPrice: number;
-  
-  switch (vehicleClass) {
-    case 'POISON':
-      // DNR territory - severely discounted
-      buyPrice = Math.round(anchorOwe * 0.82);
-      break;
-      
-    case 'HARD_WORK':
-      // Hit it hard - conservative
-      buyPrice = Math.round(anchorOwe * 0.92);
-      // Additional discount for very slow movers
-      if (avgDays > 60) {
-        buyPrice = Math.round(buyPrice * 0.97);
-      }
-      break;
-      
-    case 'AVERAGE':
-      // Standard wholesale
-      buyPrice = anchorOwe;
-      break;
-      
-    case 'FAST_MOVER':
-      // Small uplift for proven fast sellers
-      buyPrice = Math.round(anchorOwe + (anchorOwe < 20000 ? 500 : 800));
-      break;
-      
-    default:
-      buyPrice = anchorOwe;
-  }
-  
-  // Round to nearest $100
-  buyPrice = Math.round(buyPrice / 100) * 100;
-  
-  return buyPrice;
+function roundToCleanFigure(price: number): number {
+  // Round to nearest $500 for clean narration
+  // e.g., 31800 -> 32000, 31200 -> 31000
+  return Math.round(price / 500) * 500;
 }
 
 // ============================================================================
@@ -313,72 +518,16 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
   const notes: string[] = [];
   const compsUsed: string[] = [];
   
-  console.log(`[ENGINE] Processing: ${input.year} ${input.make} ${input.model}`);
+  console.log(`[ENGINE] Processing: ${input.year} ${input.make} ${input.model}${input.km ? ` @ ${input.km}km` : ''}`);
   
-  // STEP 1: Find comps
-  const makeLower = input.make.toLowerCase().trim();
-  const modelLower = input.model.toLowerCase().trim();
+  // STEP 1: Select comps using tiered matching
+  const { comps, tier } = selectComps(input, salesHistory);
   
-  // DEBUG: Log sample records to verify data structure
-  if (salesHistory.length > 0) {
-    const sample = salesHistory.slice(0, 3).map(r => ({
-      make: r.make,
-      model: r.model,
-      year: r.year,
-      total_cost: r.total_cost
-    }));
-    console.log(`[ENGINE] Sample records:`, JSON.stringify(sample));
-  }
+  // Collect comp IDs
+  comps.forEach(wc => compsUsed.push(wc.record.record_id));
   
-  const matchingRecords = salesHistory.filter(r => {
-    const recordMake = (r.make || '').toLowerCase().trim();
-    const recordModel = (r.model || '').toLowerCase().trim();
-    const recordYear = parseInt(String(r.year)) || 0;
-    
-    const makeMatch = recordMake === makeLower || 
-                      recordMake.includes(makeLower) || 
-                      makeLower.includes(recordMake);
-    
-    const modelMatch = recordModel === modelLower || 
-                       recordModel.includes(modelLower) || 
-                       modelLower.includes(recordModel);
-    
-    const yearMatch = Math.abs(recordYear - input.year) <= 4;
-    
-    return makeMatch && modelMatch && yearMatch;
-  });
-  
-  console.log(`[ENGINE] Found ${matchingRecords.length} matching records (before OWE filter)`);
-  
-  // Weight by recency
-  const weightedComps: WeightedComp[] = matchingRecords.map(record => {
-    const { weight, months } = calculateRecencyWeight(record.sale_date);
-    compsUsed.push(record.record_id);
-    return { record, weight, recencyMonths: months };
-  });
-  
-  weightedComps.sort((a, b) => b.weight - a.weight);
-  
-  // Filter to those with OWE data
-  const oweComps = weightedComps.filter(wc => wc.record.total_cost > 0);
-  const nOweComps = oweComps.length;
-  
-  // Debug: if we have matching records but no OWE, log why
-  if (matchingRecords.length > 0 && nOweComps === 0) {
-    console.log(`[ENGINE] WARNING: ${matchingRecords.length} matches but 0 have OWE > 0`);
-    const sample = matchingRecords.slice(0, 3).map(r => ({
-      make: r.make,
-      model: r.model,
-      total_cost: r.total_cost
-    }));
-    console.log(`[ENGINE] Sample match costs:`, JSON.stringify(sample));
-  }
-  
-  console.log(`[ENGINE] Found ${nOweComps} comps with OWE data`);
-  
-  // ================================================================
-  // DECISION LOGIC: SOFT_OWN vs PRICE_AVAILABLE vs NEED_PICS
-  // ================================================================
+  const nOweComps = comps.length;
+  console.log(`[ENGINE] Found ${nOweComps} comps (tier: ${tier || 'none'})`);
   
   // Classify the vehicle
   const isHardWork = isKnownHardWork(input.make, input.model);
@@ -386,7 +535,9 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
   
   console.log(`[ENGINE] Vehicle classification: isStrong=${isStrong}, isHardWork=${isHardWork}`);
   
+  // ================================================================
   // ZERO COMPS = Always NEED_PICS
+  // ================================================================
   if (nOweComps === 0) {
     notes.push(`Zero comps: NEED_PICS`);
     
@@ -401,18 +552,23 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
         instruction: 'REQUEST_PHOTOS',
       },
       engineState: {
-        n_comps: nOweComps,
+        n_comps: 0,
+        comp_tier: null,
         anchor_owe: null,
+        owe_base: null,
         avg_days: 0,
         avg_gross: 0,
         notes,
-        comps_used: compsUsed.slice(0, 10),
+        comps_used: [],
         processing_time_ms: Date.now() - startTime,
+        adjustments: { km_adj: 0, year_adj: 0, trim_adj: 0, demand_adj: 0 },
       }
     };
   }
   
+  // ================================================================
   // HARD_WORK vehicles with < 2 comps = NEED_PICS (too risky)
+  // ================================================================
   if (isHardWork && nOweComps < 2) {
     notes.push(`Hard work vehicle with only ${nOweComps} comp(s): NEED_PICS`);
     
@@ -428,21 +584,24 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
       },
       engineState: {
         n_comps: nOweComps,
+        comp_tier: tier,
         anchor_owe: null,
+        owe_base: null,
         avg_days: 0,
         avg_gross: 0,
         notes,
         comps_used: compsUsed.slice(0, 10),
         processing_time_ms: Date.now() - startTime,
+        adjustments: { km_adj: 0, year_adj: 0, trim_adj: 0, demand_adj: 0 },
       }
     };
   }
   
-  // STEP 2: Calculate OWE anchor
-  const anchorOwe = calculateOweAnchor(oweComps);
+  // STEP 2: Calculate OWE baseline (weighted median)
+  const oweBase = calculateWeightedMedianOwe(comps);
   
-  if (!anchorOwe) {
-    notes.push('Failed to calculate OWE anchor');
+  if (!oweBase) {
+    notes.push('Failed to calculate OWE baseline');
     return {
       decision: {
         decision: 'NEED_PICS',
@@ -455,24 +614,27 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
       },
       engineState: {
         n_comps: nOweComps,
+        comp_tier: tier,
         anchor_owe: null,
+        owe_base: null,
         avg_days: 0,
         avg_gross: 0,
         notes,
         comps_used: compsUsed.slice(0, 10),
         processing_time_ms: Date.now() - startTime,
+        adjustments: { km_adj: 0, year_adj: 0, trim_adj: 0, demand_adj: 0 },
       }
     };
   }
   
   // STEP 3: Determine vehicle class
-  const { vehicleClass, avgDays, avgGross } = calculateVehicleClass(oweComps, input.make, input.model);
+  const { vehicleClass, avgDays, avgGross } = calculateVehicleClass(comps, input.make, input.model);
   
-  console.log(`[ENGINE] Vehicle class: ${vehicleClass}, anchor OWE: $${anchorOwe}`);
-  notes.push(`Class: ${vehicleClass}, OWE: $${anchorOwe}`);
+  console.log(`[ENGINE] Vehicle class: ${vehicleClass}, OWE base: $${oweBase}`);
+  notes.push(`Class: ${vehicleClass}, OWE base: $${oweBase}`);
   
   // ================================================================
-  // DNR CHECK - History shows repeat losses
+  // DNR CHECK - POISON vehicles
   // ================================================================
   if (vehicleClass === 'POISON') {
     notes.push('POISON: Repeat loser, recommending DNR');
@@ -487,50 +649,52 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
       },
       engineState: {
         n_comps: nOweComps,
-        anchor_owe: anchorOwe,
+        comp_tier: tier,
+        anchor_owe: oweBase,
+        owe_base: oweBase,
         avg_days: avgDays,
         avg_gross: avgGross,
         notes,
         comps_used: compsUsed.slice(0, 10),
         processing_time_ms: Date.now() - startTime,
+        adjustments: { km_adj: 0, year_adj: 0, trim_adj: 0, demand_adj: 0 },
       }
     };
   }
   
-  // STEP 4: Calculate buy price
-  const buyPrice = calculateBuyPrice(anchorOwe, vehicleClass, avgDays);
+  // STEP 4: Calculate adjustments
+  const { adjustments, applied } = calculateAdjustments(input, comps, vehicleClass);
   
-  // ================================================================
-  // PRICE SANITY CHECKS (NON-NEGOTIABLE)
-  // ================================================================
+  const totalAdjustment = adjustments.km_adj + adjustments.year_adj + adjustments.trim_adj + adjustments.demand_adj;
   
-  // Get max OWE from comps for sanity check
-  const maxOwe = Math.max(...oweComps.map(wc => wc.record.total_cost));
-  const minOwe = Math.min(...oweComps.map(wc => wc.record.total_cost));
-  const oweSpread = maxOwe - minOwe;
+  // STEP 5: Calculate buy price
+  let buyPrice = oweBase + totalAdjustment;
   
-  // Check 1: If price deviates >20% from OWE anchor → force SOFT_OWN
-  const deviation = Math.abs(buyPrice - anchorOwe) / anchorOwe;
-  let priceBlocked = false;
+  // Sanity checks
+  const maxOwe = Math.max(...comps.map(wc => wc.record.total_cost));
+  const minOwe = Math.min(...comps.map(wc => wc.record.total_cost));
   
-  // Check 2: If low demand AND price > last OWE → cap it
-  let cappedPrice = buyPrice;
+  // Cap HARD_WORK vehicles at max OWE
   if (vehicleClass === 'HARD_WORK' && buyPrice > maxOwe) {
-    cappedPrice = maxOwe;
     notes.push(`SANITY: Capped at max OWE $${maxOwe} (was $${buyPrice})`);
-    priceBlocked = true;
+    buyPrice = maxOwe;
   }
   
-  // Check 3: If deviation > 20%, force SOFT_OWN for caution
-  const forceSoftOwn = deviation > 0.2 && !isStrong;
-  if (forceSoftOwn) {
-    notes.push(`SANITY: >20% deviation from OWE anchor, forcing SOFT_OWN`);
+  // Don't go below min OWE for any vehicle (floor protection)
+  if (buyPrice < minOwe * 0.85) {
+    notes.push(`SANITY: Floor at 85% min OWE $${Math.round(minOwe * 0.85)}`);
+    buyPrice = Math.round(minOwe * 0.85);
   }
   
-  const finalBuyPrice = cappedPrice;
+  // Round to clean figure ($500 increments)
+  buyPrice = roundToCleanFigure(buyPrice);
   
-  // STEP 5: Determine confidence
-  const recentComps = oweComps.filter(wc => wc.recencyMonths <= 12);
+  console.log(`[ENGINE] Adjustments: km=${adjustments.km_adj}, year=${adjustments.year_adj}, demand=${adjustments.demand_adj}`);
+  console.log(`[ENGINE] Buy price: $${buyPrice} (base: $${oweBase}, adj: $${totalAdjustment})`);
+  notes.push(`Buy: $${buyPrice} (base: $${oweBase} + adj: $${totalAdjustment})`);
+  
+  // STEP 6: Determine confidence
+  const recentComps = comps.filter(wc => wc.recencyMonths <= 12);
   let confidence: Confidence;
   
   if (nOweComps >= 5 && recentComps.length >= 3) {
@@ -541,44 +705,28 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
     confidence = 'LOW';
   }
   
-  console.log(`[ENGINE] Buy price: $${finalBuyPrice}, confidence: ${confidence}`);
-  notes.push(`Buy: $${finalBuyPrice}, confidence: ${confidence}`);
-  
-  // ================================================================
-  // DECISION: PRICE_AVAILABLE vs SOFT_OWN
-  // ================================================================
-  // 
-  // STRONG_MARKET (Hilux, Ranger, LC, D-MAX, etc.):
-  //   >= 1 comp = PRICE_AVAILABLE (trusted sellers, benefit of doubt)
-  //
-  // STANDARD vehicles:
-  //   >= 2 comps = PRICE_AVAILABLE
-  //   == 1 comp = SOFT_OWN (guarded pricing)
-  //
-  // HARD_WORK vehicles:
-  //   >= 2 comps = SOFT_OWN (never firm on these)
-  //   < 2 comps = already caught above as NEED_PICS
-  //
-  // DEFAULT FALLBACK: SOFT_OWN (momentum > perfection)
-  
+  // STEP 7: Determine decision
   let finalDecision: BobDecision;
   
-  if (forceSoftOwn || priceBlocked) {
-    // Sanity check forced SOFT_OWN
+  // Check for price anomaly (>20% deviation from base)
+  const deviation = Math.abs(buyPrice - oweBase) / oweBase;
+  const forceSoftOwn = deviation > 0.2 && !isStrong;
+  
+  if (forceSoftOwn) {
     finalDecision = 'SOFT_OWN';
-    notes.push('SANITY: Forced SOFT_OWN due to price anomaly');
+    notes.push('SANITY: >20% deviation, forcing SOFT_OWN');
   } else if (isStrong) {
     // Strong market vehicles - give firm price with even 1 comp
     finalDecision = 'PRICE_AVAILABLE';
-    notes.push('STRONG_MARKET: Firm price allowed');
+    notes.push('STRONG_MARKET: Firm price');
   } else if (vehicleClass === 'HARD_WORK') {
-    // Hard work with >= 2 comps = SOFT_OWN (tight cap, guarded)
+    // Hard work with >= 2 comps = SOFT_OWN
     finalDecision = 'SOFT_OWN';
-    notes.push('HARD_WORK: Using SOFT_OWN with tight cap');
+    notes.push('HARD_WORK: SOFT_OWN with tight cap');
   } else if (nOweComps === 1) {
     // Single comp on standard vehicle = SOFT_OWN
     finalDecision = 'SOFT_OWN';
-    notes.push('Thin data (1 comp): Using SOFT_OWN');
+    notes.push('Thin data (1 comp): SOFT_OWN');
   } else {
     // >= 2 comps on standard vehicle = PRICE_AVAILABLE
     finalDecision = 'PRICE_AVAILABLE';
@@ -587,19 +735,23 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
   return {
     decision: {
       decision: finalDecision,
-      buy_price: finalBuyPrice,
+      buy_price: buyPrice,
       vehicle_class: vehicleClass,
       data_source: 'OWN_SALES',
       confidence: confidence,
+      adjustments_applied: applied.length > 0 ? applied : undefined,
     },
     engineState: {
       n_comps: nOweComps,
-      anchor_owe: anchorOwe,
+      comp_tier: tier,
+      anchor_owe: oweBase,
+      owe_base: oweBase,
       avg_days: avgDays,
       avg_gross: avgGross,
       notes,
       comps_used: compsUsed.slice(0, 10),
       processing_time_ms: Date.now() - startTime,
+      adjustments,
     }
   };
 }
@@ -608,21 +760,36 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
 // BOB'S LOCKED PHRASES - THE ONLY THINGS BOB CAN SAY
 // ============================================================================
 
+function formatPriceForSpeech(price: number): string {
+  // Convert to "31" or "32" style for speech
+  // $31,500 -> "31 and a half", $32,000 -> "32"
+  const thousands = price / 1000;
+  const whole = Math.floor(thousands);
+  const remainder = thousands - whole;
+  
+  if (remainder >= 0.4 && remainder <= 0.6) {
+    return `${whole} and a half`;
+  }
+  return whole.toString();
+}
+
 function generateBobScript(decision: DecisionObject): string {
+  const priceStr = decision.buy_price ? formatPriceForSpeech(decision.buy_price) : '';
+  
   switch (decision.decision) {
     case 'PRICE_AVAILABLE':
       // Firm buy - confident language
       if (decision.vehicle_class === 'FAST_MOVER') {
-        return `Yeah mate, this one's an honest little fighter. Based on our book, I'd be about ${decision.buy_price?.toLocaleString()} buy, and I'd be happy to own it there.`;
+        return `Yeah mate, this one's an honest little fighter. Based on our book, I'd be about ${priceStr} buy, and I'd be happy to own it there.`;
       }
-      return `Yeah mate, I'd be about ${decision.buy_price?.toLocaleString()} buy. Honest unit, happy to own it there.`;
+      return `Yeah mate, I'd be about ${priceStr} buy. Honest unit, happy to own it there.`;
       
     case 'SOFT_OWN':
       // Guarded buy - gives number but with caution, pics optional
       if (decision.vehicle_class === 'HARD_WORK') {
-        return `Bit thin on our book for that one, mate. I'd be around ${decision.buy_price?.toLocaleString()} buy, and I wouldn't be stretching past it. If you want it nailed, flick a couple of pics.`;
+        return `Bit thin on our book for that one, mate. I'd be around ${priceStr} buy, and I wouldn't be stretching past it. If you want it nailed, flick a couple of pics.`;
       }
-      return `Bit thin on our book, mate, but I can give you a steer. I'd be around ${decision.buy_price?.toLocaleString()} buy, and I wouldn't be stretching past it. If you want it nailed, flick a couple of pics.`;
+      return `Bit thin on our book, mate, but I can give you a steer. I'd be around ${priceStr} buy, and I wouldn't be stretching past it. If you want it nailed, flick a couple of pics.`;
       
     case 'NEED_PICS':
       // No price - escalate to photos
@@ -634,7 +801,6 @@ function generateBobScript(decision: DecisionObject): string {
       
     default:
       // Default fallback = SOFT_OWN behaviour (momentum > perfection)
-      // But if no price, fallback to photos
       return "Bit of an oddball that one. Flick me a few pics and I'll have a proper look.";
   }
 }
@@ -692,7 +858,7 @@ async function queryDealerSalesHistory(): Promise<SalesHistoryRecord[]> {
         model: r.model || '',
         year: parseInt(r.year) || 0,
         variant: r.variant_normalised || r.variant_raw || '',
-        variant_family: '',
+        variant_family: r.variant_family || '',
         body_type: '',
         transmission: r.transmission || '',
         drivetrain: r.drivetrain || '',
@@ -702,6 +868,7 @@ async function queryDealerSalesHistory(): Promise<SalesHistoryRecord[]> {
         sell_price: salePrice,
         total_cost: totalCost, // OWE anchor
         gross_profit: grossProfit,
+        km: parseInt(r.km) || undefined,
       };
     });
     
@@ -755,8 +922,8 @@ async function logValoRequest(
       confidence: decision.confidence,
       n_comps: engineState.n_comps,
       anchor_owe: engineState.anchor_owe,
-      buy_low: decision.buy_price,  // Single price now
-      buy_high: decision.buy_price, // Same as buy_low
+      buy_low: decision.buy_price,
+      buy_high: decision.buy_price,
       comps_used: engineState.comps_used,
       bob_response: bobResponse,
       processing_time_ms: engineState.processing_time_ms,
@@ -891,24 +1058,6 @@ function runNumbersFirewall(
     }
   }
   
-  // GATE 2: VALIDATE PRICE WHEN ALLOWED
-  if (priceAllowed && decision.buy_price) {
-    const priceMatches = bobResponse.match(/\$\s*[\d,]+/g) || [];
-    
-    for (const priceStr of priceMatches) {
-      const price = parseInt(priceStr.replace(/[$,\s]/g, ''));
-      // Check if price is close to approved price (within $500 tolerance)
-      if (Math.abs(price - decision.buy_price) > 500 && price >= 1000) {
-        console.error(`[FIREWALL] BLOCKED: Unapproved price $${price}, approved: $${decision.buy_price}`);
-        
-        return {
-          blocked: true,
-          correctedResponse: generateBobScript(decision),
-        };
-      }
-    }
-  }
-  
   return { blocked: false, correctedResponse: bobResponse };
 }
 
@@ -938,7 +1087,7 @@ serve(async (req) => {
     let bobScript = '';
     
     if (vehicleInput) {
-      console.log(`[BOB] Detected vehicle: ${vehicleInput.year} ${vehicleInput.make} ${vehicleInput.model}`);
+      console.log(`[BOB] Detected vehicle: ${vehicleInput.year} ${vehicleInput.make} ${vehicleInput.model}${vehicleInput.km ? ` @ ${vehicleInput.km}km` : ''}`);
       
       // Load sales history
       const salesHistory = await queryDealerSalesHistory();
@@ -951,7 +1100,7 @@ serve(async (req) => {
       // Generate Bob's locked phrase
       bobScript = generateBobScript(decision);
       
-      console.log(`[BOB] Decision: ${decision.decision}, buy_price: ${decision.buy_price}`);
+      console.log(`[BOB] Decision: ${decision.decision}, buy_price: ${decision.buy_price}, tier: ${engineState.comp_tier}`);
     } else {
       // No vehicle detected - just chat
       bobScript = "Yeah mate, what've you got for me?";
