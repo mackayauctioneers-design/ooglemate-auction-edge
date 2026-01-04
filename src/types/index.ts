@@ -220,6 +220,10 @@ export interface Dealer extends SheetRowMeta {
   enabled: 'Y' | 'N';
 }
 
+// Alert types for Pickles fingerprint matching
+export type PicklesAlertType = 'UPCOMING' | 'ACTION';
+export type PicklesActionReason = 'passed_in' | 'relisted' | 'reserve_softened' | 'price_drop';
+
 export interface AlertLog extends SheetRowMeta {
   alert_id: string;
   created_at: string;
@@ -228,13 +232,17 @@ export interface AlertLog extends SheetRowMeta {
   channel: 'in_app';
   lot_id: string;
   fingerprint_id: string;
-  action_change: string;
+  action_change: string; // 'Watch→Buy' | 'UPCOMING' | 'ACTION:passed_in' | 'ACTION:relisted' etc.
   message_text: string;
   link?: string;
   status: 'new' | 'read' | 'acknowledged';
   read_at?: string;
   acknowledged_at?: string;
-  dedup_key: string; // dealer_name + lot_id + action_change + YYYY-MM-DD
+  dedup_key: string; // dealer_name + lot_id + alert_type + action_reason + YYYY-MM-DD
+  // Alert classification
+  alert_type?: PicklesAlertType; // 'UPCOMING' | 'ACTION'
+  action_reason?: PicklesActionReason; // 'passed_in' | 'relisted' | 'reserve_softened' | 'price_drop'
+  match_type?: 'exact' | 'probable'; // Tier 1 = exact (alerts), Tier 2 = probable (no alerts)
   // Lot details for display
   lot_make?: string;
   lot_model?: string;
