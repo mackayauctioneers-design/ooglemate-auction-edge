@@ -9,6 +9,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Global state for shutdown handler
+interface CrawlState {
+  supabaseUrl: string;
+  supabaseKey: string;
+  runId: string;
+  lastCompletedPage: number;
+  totalListings: number;
+  hasMorePages: boolean;
+}
+let currentCrawlState: CrawlState | null = null;
+
 interface ParsedListing {
   listing_id: string;
   lot_id: string;
@@ -246,6 +257,16 @@ async function processCrawl(
   const errors: string[] = [];
   let consecutiveEmptyPages = 0;
   
+  // Initialize global state for shutdown handler
+  currentCrawlState = {
+    supabaseUrl,
+    supabaseKey,
+    runId,
+    lastCompletedPage: startPage - 1,
+    totalListings: 0,
+    hasMorePages: true,
+  };
+  
   try {
     // Crawl pages using Firecrawl for JS rendering
     while (currentPage <= maxPages && consecutiveEmptyPages < 3) {
@@ -364,6 +385,16 @@ async function processCrawl(
           .eq('id', runId);
         
         console.log(`[pickles-crawl] Updated run: found=${totalListings}, created=${created}, updated=${updated}`);
+        
+        // Update global state for shutdown handler
+        currentCrawlState = {
+          supabaseUrl,
+          supabaseKey,
+          runId,
+          lastCompletedPage: currentPage,
+          totalListings,
+          hasMorePages: currentPage < maxPages,
+        };
         
         // Throttle between pages (3 seconds)
         if (currentPage < maxPages) {
@@ -505,7 +536,32 @@ Deno.serve(async (req) => {
   }
 });
 
-// Handle shutdown gracefully
-addEventListener('beforeunload', (ev) => {
-  console.log('[pickles-crawl] Function shutdown:', (ev as any).detail?.reason);
+// Handle shutdown gracefully - update status so crawl can resume
+addEventListener('beforeunload', async (ev) => {
+  const reason = (ev as any).detail?.reason;
+  console.log('[pickles-crawl] Function shutdown:', reason);
+  
+  if (currentCrawlState && reason === 'wall_clock') {
+    const { supabaseUrl, supabaseKey, runId, lastCompletedPage, hasMorePages } = currentCrawlState;
+    console.log('[pickles-crawl] Wall clock limit hit, marking as stopped for resume');
+    try {
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      await supabase
+        .from('ingestion_runs')
+        .update({
+          status: 'stopped',
+          completed_at: new Date().toISOString(),
+          metadata: {
+            engine: 'firecrawl',
+            lastCompletedPage,
+            hasMorePages,
+            stoppedReason: 'wall_clock_limit'
+          }
+        })
+        .eq('id', runId);
+      console.log('[pickles-crawl] Updated run status to stopped');
+    } catch (err) {
+      console.error('[pickles-crawl] Failed to update status on shutdown:', err);
+    }
+  }
 });
