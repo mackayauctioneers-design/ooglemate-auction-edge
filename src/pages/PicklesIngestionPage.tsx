@@ -167,16 +167,15 @@ export default function PicklesIngestionPage() {
           }
         }, 3000);
         
-        // Safety timeout after 5 minutes
-        setTimeout(() => {
+        // Safety timeout after 2 minutes - edge functions have ~60s wall clock limit
+        setTimeout(async () => {
           clearInterval(pollInterval);
-          if (isCrawling) {
-            setIsCrawling(false);
-            setCrawlProgress(null);
-            toast.info('Crawl is still running in background. Refresh to see results.');
-            loadData();
-          }
-        }, 300000);
+          setIsCrawling(false);
+          setCrawlProgress(null);
+          // Check final status
+          await loadData();
+          toast.info('Crawl batch complete. Click "Continue Crawl" for more pages.');
+        }, 120000);
         
       } else {
         toast.error(result.error || 'Failed to start crawl');
