@@ -14,6 +14,9 @@ import { BobResponseLogger, determineBobResponseType } from '@/components/valo/B
 import { BobAvatar } from '@/components/valo/BobAvatar';
 import { useBobTTS } from '@/hooks/useBobTTS';
 
+// Build time constant injected by Vite
+declare const __BUILD_TIME__: string;
+
 // ============================================================================
 // SYSTEM: BOB (VALO ENGINE)
 // ============================================================================
@@ -477,6 +480,10 @@ export default function ValoPage() {
             <div className="text-4xl">👨‍🔧</div>
             <div>
               <h1 className="text-2xl font-bold">Bob</h1>
+              {/* Build version stamp - visible for debugging */}
+              <p className="text-xs text-muted-foreground font-mono">
+                {import.meta.env.MODE} | Build: {__BUILD_TIME__}
+              </p>
             </div>
           </div>
           
