@@ -410,6 +410,25 @@ Deno.serve(async (req) => {
           }
         }
         
+        // Update run record progressively after each page (in case of timeout)
+        await supabase
+          .from('ingestion_runs')
+          .update({
+            lots_found: totalListings,
+            lots_created: created,
+            lots_updated: updated,
+            metadata: {
+              baseUrl,
+              maxPages,
+              startPage,
+              pagesProcessed: currentPage - startPage + 1,
+              engine: 'firecrawl',
+            }
+          })
+          .eq('id', runId);
+        
+        console.log(`[pickles-crawl] Updated run: found=${totalListings}, created=${created}, updated=${updated}`);
+        
         // Throttle between pages (3 seconds)
         if (currentPage < maxPages) {
           console.log(`[pickles-crawl] Waiting 3s before next page...`);
