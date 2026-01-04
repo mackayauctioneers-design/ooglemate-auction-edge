@@ -90,6 +90,38 @@ interface OancaInput {
 }
 
 // ============================================================================
+// STRONG MARKET VEHICLES (OK to price with 1 comp)
+// These sell fast and hold value - benefit of the doubt
+// ============================================================================
+
+const STRONG_MARKET_VEHICLES: Record<string, string[]> = {
+  'toyota': ['hilux', 'landcruiser', 'prado', 'lc70', 'lc79', 'lc200', 'lc300', '70 series', '79 series', '200 series', '300 series', 'rav4', 'fortuner', 'kluger'],
+  'ford': ['ranger', 'everest', 'raptor', 'f150', 'f-150', 'f250', 'f-250'],
+  'isuzu': ['d-max', 'dmax', 'mu-x', 'mux'],
+  'nissan': ['navara', 'patrol', 'y61', 'y62'],
+  'mazda': ['bt-50', 'bt50', 'cx-5', 'cx5', 'cx-9', 'cx9'],
+  'mitsubishi': ['triton', 'pajero', 'pajero sport'],
+  'ram': ['1500', '2500', '3500'],
+  'chevrolet': ['silverado'],
+};
+
+function isStrongMarket(make: string, model: string): boolean {
+  const makeLower = make.toLowerCase().trim();
+  const modelLower = model.toLowerCase().trim();
+  
+  for (const [smMake, models] of Object.entries(STRONG_MARKET_VEHICLES)) {
+    if (makeLower.includes(smMake) || smMake.includes(makeLower)) {
+      for (const smModel of models) {
+        if (modelLower.includes(smModel) || smModel.includes(modelLower)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// ============================================================================
 // KNOWN PROBLEM VEHICLES (DNR or HARD_WORK)
 // ============================================================================
 
@@ -348,8 +380,11 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
   // DECISION LOGIC: SOFT_OWN vs PRICE_AVAILABLE vs NEED_PICS
   // ================================================================
   
-  // Check if this is a hard_work vehicle FIRST (before comp check)
+  // Classify the vehicle
   const isHardWork = isKnownHardWork(input.make, input.model);
+  const isStrong = isStrongMarket(input.make, input.model);
+  
+  console.log(`[ENGINE] Vehicle classification: isStrong=${isStrong}, isHardWork=${isHardWork}`);
   
   // ZERO COMPS = Always NEED_PICS
   if (nOweComps === 0) {
@@ -483,17 +518,25 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
   // ================================================================
   // DECISION: PRICE_AVAILABLE vs SOFT_OWN
   // ================================================================
-  
-  // Strong vehicles (not hard_work):
+  // 
+  // STRONG_MARKET (Hilux, Ranger, LC, D-MAX, etc.):
+  //   >= 1 comp = PRICE_AVAILABLE (trusted sellers, benefit of doubt)
+  //
+  // STANDARD vehicles:
   //   >= 2 comps = PRICE_AVAILABLE
   //   == 1 comp = SOFT_OWN (guarded pricing)
-  // Hard_work vehicles:
+  //
+  // HARD_WORK vehicles:
   //   >= 2 comps = SOFT_OWN (never firm on these)
   //   < 2 comps = already caught above as NEED_PICS
   
   let finalDecision: BobDecision;
   
-  if (vehicleClass === 'HARD_WORK') {
+  if (isStrong) {
+    // Strong market vehicles - give firm price with even 1 comp
+    finalDecision = 'PRICE_AVAILABLE';
+    notes.push('STRONG_MARKET: Firm price allowed');
+  } else if (vehicleClass === 'HARD_WORK') {
     // Hard work with >= 2 comps = SOFT_OWN (tight cap, guarded)
     finalDecision = 'SOFT_OWN';
     notes.push('HARD_WORK: Using SOFT_OWN with tight cap');
