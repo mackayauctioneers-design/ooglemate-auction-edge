@@ -66,21 +66,39 @@ function parseKm(text: string): number | null {
   return null;
 }
 
-// Parse auction datetime from card text
+// Parse auction datetime from card text and convert to ISO format
 function parseAuctionDateTime(text: string): string | null {
-  // Look for patterns like "Wed 15 Jan 10:00 AM AEDT"
-  const patterns = [
-    /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?:\s+(\d{4}))?\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i,
-    /(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/,
-    /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})\s+(\d{1,2}):(\d{2})/i,
-  ];
+  const months: Record<string, number> = {
+    'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'may': 4, 'jun': 5,
+    'jul': 6, 'aug': 7, 'sep': 8, 'oct': 9, 'nov': 10, 'dec': 11
+  };
   
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) {
-      return match[0];
-    }
+  // Pattern 1: "Wed 15 Jan 10:00 AM AEDT" or "Tue 20/01/2026 11:00AM"
+  const pattern1 = /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i;
+  const match1 = text.match(pattern1);
+  if (match1) {
+    const [, day, month, year, hour, min, ampm] = match1;
+    let h = parseInt(hour);
+    if (ampm?.toUpperCase() === 'PM' && h < 12) h += 12;
+    if (ampm?.toUpperCase() === 'AM' && h === 12) h = 0;
+    const d = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), h, parseInt(min));
+    if (!isNaN(d.getTime())) return d.toISOString();
   }
+  
+  // Pattern 2: "15 Jan 2026 10:00" or "Mon 15 Jan 10:00 AM"
+  const pattern2 = /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)?\s*(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?:\s+(\d{4}))?\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i;
+  const match2 = text.match(pattern2);
+  if (match2) {
+    const [, day, monthStr, year, hour, min, ampm] = match2;
+    const monthNum = months[monthStr.toLowerCase()];
+    const yearNum = year ? parseInt(year) : new Date().getFullYear();
+    let h = parseInt(hour);
+    if (ampm?.toUpperCase() === 'PM' && h < 12) h += 12;
+    if (ampm?.toUpperCase() === 'AM' && h === 12) h = 0;
+    const d = new Date(yearNum, monthNum, parseInt(day), h, parseInt(min));
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+  
   return null;
 }
 
