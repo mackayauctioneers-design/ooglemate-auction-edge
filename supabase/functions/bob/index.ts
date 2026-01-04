@@ -43,13 +43,20 @@ interface WeightedComp {
 }
 
 // ============================================================================
+// LOCALE & CURRENCY LOCK - AUSTRALIA / AUD ONLY (unless explicit override)
+// ============================================================================
+
+const DEFAULT_MARKET = 'AU';
+const DEFAULT_CURRENCY = 'AUD';
+
+// ============================================================================
 // OANCA_PRICE_OBJECT - THE ONLY SOURCE OF TRUTH FOR BOB
 // ============================================================================
 // Bob MUST read from this object. If allow_price = false, he refuses.
 // If ChatGPT outputs ANY number not in this object, it is a BLOCKING BUG.
 // ============================================================================
 
-type OancaVerdict = 'BUY' | 'HIT_IT' | 'HARD_WORK' | 'NEED_PICS' | 'WALK';
+type OancaVerdict = 'BUY' | 'HIT_IT' | 'HARD_WORK' | 'NEED_PICS' | 'WALK' | 'ESCALATE';
 type DemandClass = 'fast' | 'average' | 'hard_work' | 'poison';
 type OancaConfidence = 'HIGH' | 'MED' | 'LOW';
 
@@ -66,6 +73,12 @@ interface OancaPriceObject {
   retail_context_low: number | null;  // Optional, clearly labelled context only
   retail_context_high: number | null; // Optional, clearly labelled context only
   
+  // Locale/currency lock
+  market: string;
+  currency: string;
+  floor_applied: boolean;
+  escalation_reason: string | null;
+  
   // Audit fields
   comps_used: string[];  // record_ids
   processing_time_ms?: number;
@@ -80,6 +93,90 @@ interface OancaInput {
   transmission?: string;
   engine?: string;
   location?: string;
+}
+
+// ============================================================================
+// HIGH-VALUE AMERICAN TRUCKS - REQUIRE ESCALATION IF NO STRONG COMPS
+// ============================================================================
+
+const HIGH_VALUE_AMERICAN_TRUCKS: Record<string, string[]> = {
+  'chevrolet': ['silverado', 'silverado 1500', 'silverado 2500', 'silverado 3500', 'colorado'],
+  'ram': ['1500', '2500', '3500', 'ram 1500', 'ram 2500', 'ram 3500'],
+  'ford': ['f150', 'f-150', 'f250', 'f-250', 'f350', 'f-350', 'super duty'],
+  'gmc': ['sierra', 'sierra 1500', 'sierra 2500', 'sierra 3500'],
+  'dodge': ['ram', 'ram 1500', 'ram 2500', 'ram 3500'],
+};
+
+// Minimum wholesale floor for heavy-duty American trucks (AUD)
+// These are FLOOR prices - if OANCA produces something lower, escalate
+const HEAVY_DUTY_TRUCK_FLOORS_AUD: Record<string, number> = {
+  'silverado_2500': 55000,
+  'silverado_3500': 60000,
+  'ram_2500': 55000,
+  'ram_3500': 60000,
+  'f250': 50000,
+  'f350': 55000,
+  'sierra_2500': 55000,
+  'sierra_3500': 60000,
+};
+
+function isHighValueAmericanTruck(make: string, model: string): boolean {
+  const makeLower = make.toLowerCase().trim();
+  const modelLower = model.toLowerCase().trim();
+  
+  for (const [truckMake, models] of Object.entries(HIGH_VALUE_AMERICAN_TRUCKS)) {
+    if (makeLower.includes(truckMake) || truckMake.includes(makeLower)) {
+      for (const truckModel of models) {
+        if (modelLower.includes(truckModel) || truckModel.includes(modelLower)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function getHeavyDutyFloor(make: string, model: string): number | null {
+  const modelLower = model.toLowerCase().trim();
+  
+  // Check for 2500/3500 class trucks
+  if (modelLower.includes('2500') || modelLower.includes('3500') ||
+      modelLower.includes('f-250') || modelLower.includes('f250') ||
+      modelLower.includes('f-350') || modelLower.includes('f350')) {
+    
+    const makeLower = make.toLowerCase().trim();
+    
+    if (makeLower.includes('chevrolet') || makeLower.includes('chevy')) {
+      return modelLower.includes('3500') ? HEAVY_DUTY_TRUCK_FLOORS_AUD['silverado_3500'] : HEAVY_DUTY_TRUCK_FLOORS_AUD['silverado_2500'];
+    }
+    if (makeLower.includes('ram') || makeLower.includes('dodge')) {
+      return modelLower.includes('3500') ? HEAVY_DUTY_TRUCK_FLOORS_AUD['ram_3500'] : HEAVY_DUTY_TRUCK_FLOORS_AUD['ram_2500'];
+    }
+    if (makeLower.includes('ford')) {
+      return modelLower.includes('350') ? HEAVY_DUTY_TRUCK_FLOORS_AUD['f350'] : HEAVY_DUTY_TRUCK_FLOORS_AUD['f250'];
+    }
+    if (makeLower.includes('gmc')) {
+      return modelLower.includes('3500') ? HEAVY_DUTY_TRUCK_FLOORS_AUD['sierra_3500'] : HEAVY_DUTY_TRUCK_FLOORS_AUD['sierra_2500'];
+    }
+  }
+  
+  return null;
+}
+
+function shouldForceEscalation(input: OancaInput, nComps: number): { escalate: boolean; reason: string | null } {
+  const isAmericanTruck = isHighValueAmericanTruck(input.make, input.model);
+  const isHighValue = input.year >= 2018;
+  const hasWeakData = nComps < 3;
+  
+  // Force escalation for high-value American trucks with weak data
+  if (isAmericanTruck && isHighValue && hasWeakData) {
+    return {
+      escalate: true,
+      reason: `High-value American truck (${input.year} ${input.make} ${input.model}) with insufficient AU comps (n=${nComps}). Requires: location, link (Carsales/Pickles), or photos.`
+    };
+  }
+  
+  return { escalate: false, reason: null };
 }
 
 // ============================================================================
@@ -281,9 +378,12 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
     notes.push(`Insufficient OWE data: only ${nOweComps} records`);
     console.log(`[OANCA] VERDICT: NEED_PICS (insufficient data)`);
     
+    // Check if this is a high-value American truck (force escalation)
+    const { escalate, reason: escalationReason } = shouldForceEscalation(input, nOweComps);
+    
     return {
       allow_price: false,
-      verdict: 'NEED_PICS',
+      verdict: escalate ? 'ESCALATE' : 'NEED_PICS',
       buy_low: null,
       buy_high: null,
       anchor_owe: null,
@@ -293,6 +393,10 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
       notes,
       retail_context_low: null,
       retail_context_high: null,
+      market: DEFAULT_MARKET,
+      currency: DEFAULT_CURRENCY,
+      floor_applied: false,
+      escalation_reason: escalationReason,
       comps_used: compsUsed,
       processing_time_ms: Date.now() - startTime,
     };
@@ -317,6 +421,10 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
       notes,
       retail_context_low: null,
       retail_context_high: null,
+      market: DEFAULT_MARKET,
+      currency: DEFAULT_CURRENCY,
+      floor_applied: false,
+      escalation_reason: null,
       comps_used: compsUsed,
       processing_time_ms: Date.now() - startTime,
     };
@@ -429,6 +537,68 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
     notes.push('VERDICT: HARD_WORK - proceed with caution');
   }
   
+  // ============================================================
+  // SANITY CLAMP: Heavy-duty American trucks floor check
+  // ============================================================
+  let floorApplied = false;
+  let escalationReason: string | null = null;
+  
+  const heavyDutyFloor = getHeavyDutyFloor(input.make, input.model);
+  if (heavyDutyFloor && input.year >= 2018) {
+    if (buyHigh < heavyDutyFloor) {
+      // Price is below floor - this looks like US price leakage, force escalation
+      notes.push(`SANITY CLAMP: buy_high ($${buyHigh}) below floor ($${heavyDutyFloor}) for ${input.year} ${input.make} ${input.model}`);
+      console.log(`[OANCA] SANITY CLAMP TRIGGERED: Forcing escalation`);
+      
+      return {
+        allow_price: false,
+        verdict: 'ESCALATE',
+        buy_low: null,
+        buy_high: null,
+        anchor_owe: anchorOwe,
+        demand_class: demandClass,
+        confidence,
+        n_comps: nOweComps,
+        notes,
+        retail_context_low: retailContextLow,
+        retail_context_high: retailContextHigh,
+        market: DEFAULT_MARKET,
+        currency: DEFAULT_CURRENCY,
+        floor_applied: true,
+        escalation_reason: `Heavy-duty truck floor violated. Computed $${buyHigh} < floor $${heavyDutyFloor}. Requires: location (state), link, or photos.`,
+        comps_used: compsUsed,
+        processing_time_ms: Date.now() - startTime,
+      };
+    }
+  }
+  
+  // Check for forced escalation (high-value American truck with weak data)
+  const escalationCheck = shouldForceEscalation(input, nOweComps);
+  if (escalationCheck.escalate) {
+    notes.push(`FORCED ESCALATION: ${escalationCheck.reason}`);
+    console.log(`[OANCA] FORCED ESCALATION: ${escalationCheck.reason}`);
+    
+    return {
+      allow_price: false,
+      verdict: 'ESCALATE',
+      buy_low: null,
+      buy_high: null,
+      anchor_owe: anchorOwe,
+      demand_class: demandClass,
+      confidence,
+      n_comps: nOweComps,
+      notes,
+      retail_context_low: retailContextLow,
+      retail_context_high: retailContextHigh,
+      market: DEFAULT_MARKET,
+      currency: DEFAULT_CURRENCY,
+      floor_applied: false,
+      escalation_reason: escalationCheck.reason,
+      comps_used: compsUsed,
+      processing_time_ms: Date.now() - startTime,
+    };
+  }
+  
   console.log(`[OANCA] VERDICT: ${verdict}, Confidence: ${confidence}`);
   
   return {
@@ -443,6 +613,10 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
     notes,
     retail_context_low: retailContextLow,
     retail_context_high: retailContextHigh,
+    market: DEFAULT_MARKET,
+    currency: DEFAULT_CURRENCY,
+    floor_applied: floorApplied,
+    escalation_reason: null,
     comps_used: compsUsed,
     processing_time_ms: Date.now() - startTime,
   };
@@ -564,8 +738,14 @@ function formatOancaForBob(oanca: OancaPriceObject, vehicle: string): string {
   let bobScript: string;
   
   if (!oanca.allow_price) {
-    // NO COMPS - Bob must say this exact script
-    bobScript = "Mate I'm thin on our book. Send pics and I'll check with the boys.";
+    // Determine script based on verdict
+    if (oanca.verdict === 'ESCALATE') {
+      // ESCALATE - High value vehicle needs more info
+      bobScript = "Give me two minutes mate, I'll check with the boys. Need you to send me the state it's in, a link to the ad (Carsales or Pickles), or a few photos so I can firm up a number.";
+    } else {
+      // NO COMPS - Bob must say this exact script
+      bobScript = "Mate I'm thin on our book. Send pics and I'll check with the boys.";
+    }
     
     // Add retail context if available (as "asks", not wholesale)
     if (oanca.retail_context_low && oanca.retail_context_high) {
@@ -603,6 +783,9 @@ function formatOancaForBob(oanca: OancaPriceObject, vehicle: string): string {
     }
   }
   
+  // Always append locale/currency confirmation
+  bobScript += " All figures AUD (Australia).";
+  
   // ============================================================
   // BUILD CONTEXT FOR AI (BOB CAN ONLY USE THESE NUMBERS)
   // ============================================================
@@ -612,22 +795,27 @@ function formatOancaForBob(oanca: OancaPriceObject, vehicle: string): string {
 === OANCA_PRICE_OBJECT (READ-ONLY - THE ONLY SOURCE OF TRUTH) ===
 
 Vehicle: ${vehicle}
+Market: ${oanca.market} (LOCKED)
+Currency: ${oanca.currency} (LOCKED)
 allow_price: ${oanca.allow_price}
 verdict: ${oanca.verdict}
 demand_class: ${oanca.demand_class || 'N/A'}
 confidence: ${oanca.confidence || 'N/A'}
 n_comps: ${oanca.n_comps}
+floor_applied: ${oanca.floor_applied}
+${oanca.escalation_reason ? `escalation_reason: ${oanca.escalation_reason}` : ''}
 
 ${oanca.allow_price ? `=== APPROVED NUMBERS (Bob may ONLY quote these) ===
-buy_low: $${oanca.buy_low?.toLocaleString()}
-buy_high: $${oanca.buy_high?.toLocaleString()}
-anchor_owe: $${oanca.anchor_owe?.toLocaleString()}` : `=== NO APPROVED NUMBERS ===
+buy_low: $${oanca.buy_low?.toLocaleString()} AUD
+buy_high: $${oanca.buy_high?.toLocaleString()} AUD
+anchor_owe: $${oanca.anchor_owe?.toLocaleString()} AUD` : `=== NO APPROVED NUMBERS ===
 Bob is FORBIDDEN from quoting any wholesale price.
-Bob MUST request photos and escalate.`}
+Bob MUST request: location (state), link (Carsales/Pickles), or photos.
+Bob MUST escalate: "Give me two minutes, I'll check with the boys."`}
 
 ${oanca.retail_context_low ? `=== RETAIL CONTEXT (ASK prices only - NOT for pricing) ===
-retail_context_low: $${oanca.retail_context_low?.toLocaleString()}
-retail_context_high: $${oanca.retail_context_high?.toLocaleString()}
+retail_context_low: $${oanca.retail_context_low?.toLocaleString()} AUD
+retail_context_high: $${oanca.retail_context_high?.toLocaleString()} AUD
 (These are RETAIL ASKS, not wholesale. Context only.)` : ''}
 
 === NOTES ===
@@ -644,8 +832,13 @@ ${bobScript}
 5. Bob may NOT calculate, adjust, infer, or ballpark any numbers.
 6. Bob speaks in Bob voice (Aussie knocker), but numbers MUST come from OANCA.
 7. Photos always welcome - they help tighten the range.
+8. ALL PRICES ARE AUD (AUSTRALIA). Bob must always confirm "All figures AUD (Australia)".
+9. If unsure about market/currency, Bob must ask for clarification. Do NOT use US/USD priors.
 
 === AUDIT ===
+Market: ${oanca.market}
+Currency: ${oanca.currency}
+Floor applied: ${oanca.floor_applied}
 Processing time: ${oanca.processing_time_ms}ms
 Comps used: ${oanca.comps_used.length} records
 `;
@@ -661,19 +854,25 @@ function extractVehicleFromMessage(message: string): OancaInput | null {
   const makes = ['toyota', 'ford', 'holden', 'nissan', 'mazda', 'hyundai', 'kia', 'mitsubishi', 
                  'subaru', 'volkswagen', 'bmw', 'mercedes', 'audi', 'isuzu', 'land rover', 'jeep',
                  'honda', 'suzuki', 'lexus', 'porsche', 'volvo', 'ram', 'ldv', 'gwm', 'haval', 'mg',
-                 'peugeot', 'citroen', 'renault', 'fiat', 'alfa romeo', 'mini', 'great wall', 'chery'];
+                 'peugeot', 'citroen', 'renault', 'fiat', 'alfa romeo', 'mini', 'great wall', 'chery',
+                 'chevrolet', 'chevy', 'gmc', 'dodge', 'cadillac'];
   
   let foundMake = '';
   for (const make of makes) {
     if (text.includes(make)) {
-      foundMake = make.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      // Normalize Chevy to Chevrolet
+      if (make === 'chevy') {
+        foundMake = 'Chevrolet';
+      } else {
+        foundMake = make.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      }
       break;
     }
   }
   
   const modelPatterns: Record<string, string[]> = {
     'Toyota': ['hilux', 'landcruiser', 'prado', 'rav4', 'corolla', 'camry', 'kluger', 'fortuner', 'hiace', '86', 'supra', 'chr', 'c-hr', 'yaris'],
-    'Ford': ['ranger', 'everest', 'mustang', 'falcon', 'territory', 'focus', 'fiesta', 'escape', 'bronco', 'f150', 'f-150', 'raptor'],
+    'Ford': ['ranger', 'everest', 'mustang', 'falcon', 'territory', 'focus', 'fiesta', 'escape', 'bronco', 'f150', 'f-150', 'f250', 'f-250', 'f350', 'f-350', 'raptor', 'super duty'],
     'Nissan': ['navara', 'patrol', 'pathfinder', 'x-trail', 'xtrail', 'qashqai', 'juke', 'pulsar', 'dualis', '370z', 'gtr'],
     'Mazda': ['bt-50', 'bt50', 'cx-5', 'cx5', 'cx-9', 'cx9', 'cx-3', 'cx3', 'mazda3', 'mazda6', 'mx-5', 'mx5'],
     'Holden': ['colorado', 'commodore', 'captiva', 'cruze', 'trax', 'astra', 'barina', 'ute', 'calais'],
@@ -686,6 +885,10 @@ function extractVehicleFromMessage(message: string): OancaInput | null {
     'Peugeot': ['208', '308', '3008', '2008', '508', '5008'],
     'Renault': ['megane', 'clio', 'captur', 'koleos'],
     'Fiat': ['500', 'punto', 'tipo'],
+    'Chevrolet': ['silverado', 'silverado 1500', 'silverado 2500', 'silverado 3500', 'colorado', 'camaro', 'corvette', 'tahoe', 'suburban'],
+    'Ram': ['1500', '2500', '3500', 'ram 1500', 'ram 2500', 'ram 3500'],
+    'Gmc': ['sierra', 'sierra 1500', 'sierra 2500', 'sierra 3500', 'yukon', 'canyon'],
+    'Dodge': ['ram', 'challenger', 'charger', 'durango'],
   };
   
   let foundModel = '';
