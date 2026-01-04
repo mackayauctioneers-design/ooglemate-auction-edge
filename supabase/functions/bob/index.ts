@@ -55,7 +55,7 @@ const DEFAULT_CURRENCY = 'AUD';
 // OANCA_PRICE_OBJECT - THE ONLY SOURCE OF TRUTH FOR BOB
 // ============================================================================
 
-type OancaVerdict = 'BUY' | 'HIT_IT' | 'HARD_WORK' | 'NEED_PICS' | 'WALK' | 'ESCALATE';
+type OancaVerdict = 'BUY' | 'HIT_IT' | 'HARD_WORK' | 'SOFT_OWN' | 'NEED_PICS' | 'WALK' | 'ESCALATE';
 type DemandClass = 'fast' | 'average' | 'hard_work' | 'poison';
 type OancaConfidence = 'HIGH' | 'MED' | 'LOW';
 
@@ -637,7 +637,8 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
     confidence = 'LOW';
   }
   
-  // Verdict based on demand class
+  // Verdict based on demand class and confidence
+  // NEW: SOFT_OWN for guarded pricing (2-3 comps, LOW confidence)
   switch (demandClass) {
     case 'poison':
       verdict = 'WALK';
@@ -648,16 +649,26 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
       notes.push('VERDICT: HIT_IT - price off OWE, not retail');
       break;
     case 'fast':
-      verdict = confidence === 'HIGH' ? 'BUY' : 'HARD_WORK';
+      if (confidence === 'HIGH') {
+        verdict = 'BUY';
+      } else if (confidence === 'LOW') {
+        verdict = 'SOFT_OWN';  // Guarded price, not escalation
+      } else {
+        verdict = 'BUY';
+      }
       notes.push(`VERDICT: ${verdict} - ${confidence} confidence`);
       break;
     case 'average':
-      verdict = confidence === 'LOW' ? 'HARD_WORK' : 'BUY';
+      if (confidence === 'LOW') {
+        verdict = 'SOFT_OWN';  // Guarded price, not escalation
+      } else {
+        verdict = 'BUY';
+      }
       notes.push(`VERDICT: ${verdict} - ${confidence} confidence`);
       break;
     default:
-      verdict = 'HARD_WORK';
-      notes.push('VERDICT: HARD_WORK - proceed with caution');
+      verdict = confidence === 'LOW' ? 'SOFT_OWN' : 'HARD_WORK';
+      notes.push(`VERDICT: ${verdict} - proceed with caution`);
   }
   
   // ============================================================
@@ -862,87 +873,77 @@ async function logValoRequest(
 function formatOancaForBob(oanca: OancaPriceObject, vehicle: string): string {
   let bobScript: string;
   
+  // ============================================================
+  // NO PRICING ALLOWED - Human escalation language
+  // Never explain WHY. Just don't price.
+  // ============================================================
   if (!oanca.allow_price) {
-    if (oanca.verdict === 'ESCALATE') {
-      bobScript = "Give me two minutes mate, I'll check with the boys. Need you to send me the state it's in, a link to the ad (Carsales or Pickles), or a few photos so I can firm up a number.";
-    } else {
-      bobScript = "Mate I'm thin on our book for this one. Send me a few pics and I'll check with the boys.";
-    }
-    
-    if (oanca.retail_context_low && oanca.retail_context_high) {
-      bobScript += ` Seeing asks around $${oanca.retail_context_low.toLocaleString()} to $${oanca.retail_context_high.toLocaleString()} in market, but that's retail. Can't give you wholesale without more data.`;
-    }
+    // Rotate through natural escalation phrases
+    const escalationPhrases = [
+      "Send me a few pics and I'll get you a number.",
+      "Let me check with the boys on this one. Flick me some photos.",
+      "I want a closer look at this one. Send me through the pics.",
+      "Get me some photos and I'll sort you out.",
+    ];
+    bobScript = escalationPhrases[Math.floor(Math.random() * escalationPhrases.length)];
   } else {
+    // ============================================================
+    // PRICING ALLOWED - Dealer language only
+    // No system terms: OANCA, engine, confidence, data thin
+    // ============================================================
     const buyLow = oanca.buy_low!.toLocaleString();
     const buyHigh = oanca.buy_high!.toLocaleString();
     
     switch (oanca.verdict) {
       case 'BUY':
-        bobScript = `Yeah mate, that's a good fighter. I'd be looking at $${buyLow} to $${buyHigh} to own it. ${oanca.confidence === 'HIGH' ? 'Confident on that range.' : 'Photos always help tighten it up.'}`;
+        bobScript = `Yeah mate, I'd be looking at $${buyLow} to $${buyHigh} to own it. Good little fighter.`;
+        break;
+        
+      case 'SOFT_OWN':
+        // Guarded pricing - not scared, just realistic
+        bobScript = `I'd be around $${buyLow} to $${buyHigh} to own it. Photos would help me tighten that up.`;
         break;
         
       case 'HIT_IT':
-        bobScript = `These need to be hit. Price it off what we owed last time, not what we jagged. Looking at $${buyLow} to $${buyHigh} to own it.`;
+        bobScript = `These need to be hit. Price it off what we owed last time, not what we jagged. I'd be at $${buyLow} to $${buyHigh}.`;
         break;
         
       case 'HARD_WORK':
-        bobScript = `That's hard work mate. I'd be looking at $${buyLow} to $${buyHigh} to own it – any sillier and the money disappears. Don't get silly.`;
+        bobScript = `That's hard work mate. I'd be at $${buyLow} to $${buyHigh} – any sillier and the money disappears.`;
         break;
         
       case 'WALK':
-        bobScript = `I'd rather keep my powder dry on this one. History shows money disappears on these. If you must, don't pay more than $${buyLow} – and that's stretching it.`;
+        bobScript = `I'd keep my powder dry on this one. History says the money disappears. If you must, don't pay more than $${buyLow}.`;
         break;
         
       default:
-        bobScript = `Looking at $${buyLow} to $${buyHigh} to own it.`;
-    }
-    
-    if (oanca.retail_context_low && oanca.retail_context_high) {
-      bobScript += ` Retail asks around $${oanca.retail_context_low.toLocaleString()} to $${oanca.retail_context_high.toLocaleString()}.`;
+        bobScript = `I'd be looking at $${buyLow} to $${buyHigh} to own it.`;
     }
   }
   
-  bobScript += " All figures AUD (Australia).";
+  bobScript += " All figures AUD.";
   
+  // ============================================================
+  // INTERNAL CONTEXT FOR BOB (not spoken, for tool result)
+  // ============================================================
   return `
-
-=== OANCA_PRICE_OBJECT (READ-ONLY - THE ONLY SOURCE OF TRUTH) ===
-
-Vehicle: ${vehicle}
-Market: ${oanca.market} (LOCKED)
-Currency: ${oanca.currency} (LOCKED)
-allow_price: ${oanca.allow_price}
-verdict: ${oanca.verdict}
-demand_class: ${oanca.demand_class || 'N/A'}
-confidence: ${oanca.confidence || 'N/A'}
-n_comps: ${oanca.n_comps}
-cap_applied: ${oanca.cap_applied}
-floor_applied: ${oanca.floor_applied}
-${oanca.escalation_reason ? `escalation_reason: ${oanca.escalation_reason}` : ''}
-
-${oanca.allow_price ? `=== APPROVED NUMBERS (Bob may ONLY quote these) ===
-buy_low: $${oanca.buy_low?.toLocaleString()} AUD
-buy_high: $${oanca.buy_high?.toLocaleString()} AUD
-anchor_owe: $${oanca.anchor_owe?.toLocaleString()} AUD` : `=== NO APPROVED NUMBERS ===
-Bob is FORBIDDEN from quoting any wholesale price.
-Bob MUST request: location (state), link (Carsales/Pickles), or photos.
-Bob MUST say: "Give me two minutes, I'll check with the boys."`}
-
-${oanca.retail_context_low ? `=== RETAIL CONTEXT (ASK prices only - NOT for pricing) ===
-retail_context_low: $${oanca.retail_context_low?.toLocaleString()} AUD
-retail_context_high: $${oanca.retail_context_high?.toLocaleString()} AUD
-(These are RETAIL ASKS, not wholesale. Context only.)` : ''}
-
-=== BOB'S SCRIPT (SAY THIS) ===
+=== BOB'S SCRIPT (READ THIS VERBATIM) ===
 ${bobScript}
 
-=== CRITICAL RULES FOR BOB ===
-1. Bob is a NARRATOR, not a VALUER. OANCA is the SOLE VALUER.
-2. Bob may ONLY quote numbers from APPROVED NUMBERS above.
-3. If allow_price = false, Bob is FORBIDDEN from quoting ANY dollar amount.
-4. If Bob outputs any dollar value not in OANCA_PRICE_OBJECT, the runtime gate will BLOCK it.
-5. Bob may NOT calculate, adjust, infer, or ballpark any numbers.
-6. ALL PRICES ARE AUD (AUSTRALIA).
+=== INTERNAL CONTEXT (DO NOT SPEAK) ===
+Vehicle: ${vehicle}
+Market: AU | Currency: AUD
+allow_price: ${oanca.allow_price}
+verdict: ${oanca.verdict}
+n_comps: ${oanca.n_comps}
+${oanca.allow_price ? `buy_low: $${oanca.buy_low?.toLocaleString()}
+buy_high: $${oanca.buy_high?.toLocaleString()}` : 'NO PRICING APPROVED'}
+
+=== RULES ===
+1. Read the script above VERBATIM
+2. Do NOT mention: OANCA, engine, confidence, data, comps, model
+3. Do NOT explain why you can or cannot price
+4. All prices are AUD (Australia)
 `;
 }
 
