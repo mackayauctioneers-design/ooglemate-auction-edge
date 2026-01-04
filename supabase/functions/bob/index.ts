@@ -1089,21 +1089,26 @@ function runNumbersFirewall(
   oancaObject: OancaPriceObject
 ): FirewallResult {
   // ============================================================
-  // GATE 1: BLOCK ALL PRICES WHEN allow_price=false
+  // GATE 1: ABSOLUTE BLOCK - NO DIGITS WHEN allow_price=false
+  // This is CODE-LEVEL enforcement. Non-negotiable.
   // ============================================================
   if (!oancaObject.allow_price) {
-    // Detect ANY dollar amount or price-like numbers
-    const pricePattern = /\$\s*[\d,]+(?:\s*k)?/gi;
-    const numberWithContext = /\b(buy|own|pay|offer|worth|value|price|range|around|about|looking\s+at)\b[^.]*?\$?\s*[\d,]+/gi;
-    const standalonePrice = /(?:^|[^a-z\d])(\d{4,6})(?:\s*(?:to|-|–)\s*\d{4,6})?(?:[^a-z\d]|$)/gi;
+    // STRICT: Block ANY digits that could be interpreted as prices
+    // Match: $X, Xk, X,XXX, X-X, X to X, any 4+ digit number
+    const anyDigitPattern = /\d{4,}/g;  // Any 4+ digit number
+    const dollarPattern = /\$\s*[\d,]+/gi;  // $X,XXX
+    const kPattern = /\d+\s*k\b/gi;  // Xk (e.g., "8k")
+    const rangePattern = /\d+\s*(?:to|-|–)\s*\d+/gi;  // X to X, X-X
     
-    const hasDollarPrices = pricePattern.test(bobResponse);
-    const hasContextPrices = numberWithContext.test(bobResponse);
-    const hasStandalonePrices = standalonePrice.test(bobResponse);
+    const hasLongDigits = anyDigitPattern.test(bobResponse);
+    const hasDollar = dollarPattern.test(bobResponse);
+    const hasK = kPattern.test(bobResponse);
+    const hasRange = rangePattern.test(bobResponse);
     
-    if (hasDollarPrices || hasContextPrices || hasStandalonePrices) {
-      console.error("[FIREWALL] ❌ BLOCKED: Bob attempted to output prices when allow_price=false");
+    if (hasLongDigits || hasDollar || hasK || hasRange) {
+      console.error("[FIREWALL] ❌ HARD BLOCK: allow_price=false but response contains digits");
       console.error("[FIREWALL] Blocked response:", bobResponse);
+      console.error("[FIREWALL] Detected: longDigits=" + hasLongDigits + ", dollar=" + hasDollar + ", k=" + hasK + ", range=" + hasRange);
       
       let corrected: string;
       if (oancaObject.verdict === 'ESCALATE') {
@@ -1116,7 +1121,7 @@ function runNumbersFirewall(
       
       return {
         triggered: true,
-        reason: "allow_price=false but response contained price-like numbers",
+        reason: `allow_price=false but response contained digits (longDigits=${hasLongDigits}, dollar=${hasDollar}, k=${hasK}, range=${hasRange})`,
         correctedResponse: corrected,
       };
     }
