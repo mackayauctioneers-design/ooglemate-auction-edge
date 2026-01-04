@@ -659,16 +659,21 @@ export default function ValoPage() {
           <Card className="border-yellow-500/50 bg-yellow-500/5">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-mono flex items-center gap-2">
-                🔧 OANCA_PRICE_OBJECT
+                🔧 OANCA_PRICE_OBJECT v2
                 <Badge variant="outline" className="text-xs">
                   {oancaDebug.allow_price ? 'PRICED' : 'NO PRICE'}
                 </Badge>
                 <Badge 
-                  variant={oancaDebug.verdict === 'BUY' ? 'default' : 'secondary'}
+                  variant={oancaDebug.verdict === 'BUY' ? 'default' : oancaDebug.verdict === 'HIT_IT' ? 'destructive' : 'secondary'}
                   className="text-xs"
                 >
                   {oancaDebug.verdict}
                 </Badge>
+                {oancaDebug.firewall_triggered && (
+                  <Badge variant="destructive" className="text-xs">
+                    🚨 FIREWALL
+                  </Badge>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="font-mono text-xs space-y-2">
@@ -685,7 +690,9 @@ export default function ValoPage() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">demand_class:</span>{' '}
-                  {oancaDebug.demand_class || 'N/A'}
+                  <span className={oancaDebug.demand_class === 'hard_work' ? 'text-orange-500' : oancaDebug.demand_class === 'poison' ? 'text-red-500' : ''}>
+                    {oancaDebug.demand_class || 'N/A'}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">confidence:</span>{' '}
@@ -693,28 +700,49 @@ export default function ValoPage() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">n_comps:</span>{' '}
-                  {oancaDebug.n_comps}
+                  <span className={oancaDebug.n_comps < 2 ? 'text-red-500' : 'text-green-500'}>
+                    {oancaDebug.n_comps}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">anchor_owe:</span>{' '}
                   {oancaDebug.anchor_owe ? `$${oancaDebug.anchor_owe.toLocaleString()}` : 'N/A'}
                 </div>
+                <div>
+                  <span className="text-muted-foreground">cap_applied:</span>{' '}
+                  <span className={oancaDebug.cap_applied ? 'text-orange-500' : ''}>
+                    {String(oancaDebug.cap_applied || false)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">floor_applied:</span>{' '}
+                  <span className={oancaDebug.floor_applied ? 'text-orange-500' : ''}>
+                    {String(oancaDebug.floor_applied || false)}
+                  </span>
+                </div>
               </div>
               
               {oancaDebug.allow_price && (
                 <div className="pt-2 border-t border-yellow-500/20">
-                  <p className="text-muted-foreground mb-1">Approved Numbers:</p>
+                  <p className="text-muted-foreground mb-1">Approved Numbers (ONLY these may be quoted):</p>
                   <div className="flex gap-4">
-                    <span>buy_low: <strong>${oancaDebug.buy_low?.toLocaleString()}</strong></span>
-                    <span>buy_high: <strong>${oancaDebug.buy_high?.toLocaleString()}</strong></span>
+                    <span>buy_low: <strong className="text-green-500">${oancaDebug.buy_low?.toLocaleString()}</strong></span>
+                    <span>buy_high: <strong className="text-green-500">${oancaDebug.buy_high?.toLocaleString()}</strong></span>
                   </div>
+                </div>
+              )}
+              
+              {oancaDebug.escalation_reason && (
+                <div className="pt-2 border-t border-red-500/20 text-red-400">
+                  <p className="text-muted-foreground mb-1">Escalation Reason:</p>
+                  <p>{oancaDebug.escalation_reason}</p>
                 </div>
               )}
               
               {oancaDebug.notes && oancaDebug.notes.length > 0 && (
                 <div className="pt-2 border-t border-yellow-500/20">
-                  <p className="text-muted-foreground mb-1">Notes:</p>
-                  <ul className="list-disc list-inside text-xs opacity-80">
+                  <p className="text-muted-foreground mb-1">OANCA Notes:</p>
+                  <ul className="list-disc list-inside text-xs opacity-80 max-h-32 overflow-y-auto">
                     {oancaDebug.notes.map((note: string, i: number) => (
                       <li key={i}>{note}</li>
                     ))}
@@ -722,8 +750,10 @@ export default function ValoPage() {
                 </div>
               )}
               
-              <div className="pt-2 border-t border-yellow-500/20 text-muted-foreground">
-                Processing: {oancaDebug.processing_time_ms}ms | Comps: {oancaDebug.comps_used?.length || 0}
+              <div className="pt-2 border-t border-yellow-500/20 text-muted-foreground flex justify-between">
+                <span>Processing: {oancaDebug.processing_time_ms}ms</span>
+                <span>Comps: {oancaDebug.comps_used?.length || 0}</span>
+                <span>Market: {oancaDebug.market}/{oancaDebug.currency}</span>
               </div>
             </CardContent>
           </Card>
