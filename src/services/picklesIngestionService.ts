@@ -102,11 +102,12 @@ export interface CrawlResult {
 export async function runPicklesCrawl(
   baseUrl?: string,
   maxPages: number = 20,
-  startPage: number = 1
+  startPage: number = 1,
+  yearMin?: number
 ): Promise<CrawlResult> {
   try {
     const { data, error } = await supabase.functions.invoke('pickles-crawl', {
-      body: { baseUrl, maxPages, startPage }
+      body: { baseUrl, maxPages, startPage, yearMin }
     });
 
     if (error) throw error;
