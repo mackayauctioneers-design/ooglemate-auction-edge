@@ -16,6 +16,8 @@ import {
   NetworkValuationResult,
   ValuationConfidence,
   DealerSalesHistory,
+  SourceType,
+  ListingStatus,
   calculateConfidenceScore,
   determineAction,
   calculateLotConfidenceScore,
@@ -796,31 +798,95 @@ export const googleSheetsService = {
 
   // ========== AUCTION LOTS ==========
 
-  // Get all lots (create sheet if needed)
+  // Get all lots from vehicle_listings database table
   getLots: async (isAdmin: boolean): Promise<AuctionLot[]> => {
     try {
-      const response = await callSheetsApi('read', SHEETS.LOTS);
-      const lots = response.data.map(parseAuctionLot);
+      let query = supabase
+        .from('vehicle_listings')
+        .select('*')
+        .order('auction_datetime', { ascending: true, nullsFirst: false });
       
       // Filter by visibility for dealers
       if (!isAdmin) {
-        return lots.filter((lot: AuctionLot) => lot.visible_to_dealers === 'Y');
+        query = query.eq('visible_to_dealers', true);
       }
-      return lots;
+      
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error('Error fetching vehicle listings:', error);
+        return [];
+      }
+      
+      // Map database rows to AuctionLot format
+      return (data || []).map((row): AuctionLot => {
+        const listing: AuctionLot = {
+          listing_id: row.listing_id,
+          lot_id: row.lot_id,
+          lot_key: `${row.auction_house}:${row.lot_id}`,
+          listing_key: `${row.auction_house}:${row.listing_id}`,
+          source: (row.source || 'auction') as SourceType,
+          source_site: row.auction_house,
+          source_type: (row.source || 'auction') as SourceType,
+          source_name: row.auction_house,
+          event_id: row.event_id || '',
+          auction_house: row.auction_house,
+          location: row.location || '',
+          auction_datetime: row.auction_datetime || '',
+          listing_url: row.listing_url || '',
+          make: row.make,
+          model: row.model,
+          variant_raw: row.variant_raw || '',
+          variant_normalised: row.variant_family || row.variant_raw || '',
+          variant_family: row.variant_family || undefined,
+          year: row.year,
+          km: row.km || 0,
+          fuel: row.fuel || '',
+          drivetrain: row.drivetrain || '',
+          transmission: row.transmission || '',
+          reserve: row.reserve || 0,
+          highest_bid: row.highest_bid || 0,
+          first_seen_price: row.reserve || 0,
+          last_seen_price: row.reserve || 0,
+          price_current: row.reserve || 0,
+          price_prev: 0,
+          price_change_pct: 0,
+          status: (row.status || 'catalogue') as ListingStatus,
+          pass_count: row.pass_count || 0,
+          price_drop_count: 0,
+          relist_count: row.relist_count || 0,
+          first_seen_at: row.first_seen_at || '',
+          last_seen_at: row.last_seen_at || '',
+          last_auction_date: row.last_auction_date || '',
+          days_listed: 0,
+          description_score: 0,
+          estimated_get_out: 0,
+          estimated_margin: 0,
+          confidence_score: 0,
+          action: 'Watch',
+          visible_to_dealers: row.visible_to_dealers ? 'Y' : 'N',
+          updated_at: row.updated_at || '',
+          last_status: '',
+          relist_group_id: '',
+          override_enabled: 'N',
+          invalid_source: 'N',
+          excluded_reason: row.excluded_reason || undefined,
+          excluded_keyword: row.excluded_keyword || undefined,
+        };
+        
+        // Calculate confidence and action
+        listing.confidence_score = calculateLotConfidenceScore(listing);
+        listing.action = determineLotAction(listing.confidence_score, listing);
+        
+        return listing;
+      });
     } catch (error) {
-      // Sheet might not exist, try to create it
-      console.log('Lots sheet may not exist, attempting to create...');
-      try {
-        await callSheetsApi('create', SHEETS.LOTS, { headers: LOT_HEADERS });
-        return [];
-      } catch (createError) {
-        console.error('Failed to create lots sheet:', createError);
-        return [];
-      }
+      console.error('Error fetching vehicle listings:', error);
+      return [];
     }
   },
 
-  // Get lot filter options - extended for multi-source
+  // Get lot filter options from database
   getLotFilterOptions: async (): Promise<{ 
     auction_houses: string[]; 
     locations: string[]; 
@@ -829,15 +895,22 @@ export const googleSheetsService = {
     source_names: string[];
   }> => {
     try {
-      const response = await callSheetsApi('read', SHEETS.LOTS);
-      const lots = response.data.map(parseAuctionLot);
+      const { data, error } = await supabase
+        .from('vehicle_listings')
+        .select('auction_house, location, make, source');
       
+      if (error) {
+        console.error('Error fetching filter options:', error);
+        return { auction_houses: [], locations: [], makes: [], source_types: [], source_names: [] };
+      }
+      
+      const rows = data || [];
       return {
-        auction_houses: [...new Set(lots.map((l: AuctionLot) => l.auction_house))].filter(Boolean) as string[],
-        locations: [...new Set(lots.map((l: AuctionLot) => l.location))].filter(Boolean) as string[],
-        makes: [...new Set(lots.map((l: AuctionLot) => l.make))].filter(Boolean) as string[],
-        source_types: [...new Set(lots.map((l: AuctionLot) => l.source_type))].filter(Boolean) as string[],
-        source_names: [...new Set(lots.map((l: AuctionLot) => l.source_name))].filter(Boolean) as string[],
+        auction_houses: [...new Set(rows.map(r => r.auction_house))].filter(Boolean).sort(),
+        locations: [...new Set(rows.map(r => r.location))].filter(Boolean).sort(),
+        makes: [...new Set(rows.map(r => r.make))].filter(Boolean).sort(),
+        source_types: [...new Set(rows.map(r => r.source))].filter(Boolean).sort(),
+        source_names: [...new Set(rows.map(r => r.auction_house))].filter(Boolean).sort(),
       };
     } catch {
       return { auction_houses: [], locations: [], makes: [], source_types: [], source_names: [] };
