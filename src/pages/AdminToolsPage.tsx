@@ -526,7 +526,7 @@ export default function AdminToolsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Link to="/pickles-ingest">
+              <Link to="/pickles-ingestion">
                 <Button className="w-full gap-2" variant="outline">
                   <Globe className="h-4 w-4" />
                   Open Pickles Ingestion
