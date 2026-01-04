@@ -1,483 +1,300 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Types
-interface SaleFingerprint {
+interface Fingerprint {
+  id: string;
   fingerprint_id: string;
   dealer_name: string;
-  dealer_whatsapp?: string;
-  expires_at: string;
   make: string;
   model: string;
-  variant_normalised: string;
-  variant_family?: string;
-  year: number;
-  sale_km: number;
-  min_km?: number;
-  max_km?: number;
-  is_active: string;
-  fingerprint_type?: string;
-  do_not_buy?: string;
+  variant_family: string | null;
+  year_min: number;
+  year_max: number;
+  min_km: number | null;
+  max_km: number | null;
+  is_spec_only: boolean;
+  is_active: boolean;
 }
 
 interface Listing {
+  id: string;
+  listing_id: string;
   lot_id: string;
-  lot_key?: string;
-  listing_url?: string;
-  auction_house?: string;
-  location?: string;
-  auction_datetime?: string;
   make: string;
   model: string;
-  variant_raw?: string;
-  variant_normalised?: string;
-  variant_family?: string;
+  variant_raw: string | null;
+  variant_family: string | null;
   year: number;
-  km?: number;
-  status?: string;
-  pass_count?: number;
-  relist_count?: number;
-  reserve?: number;
-  price_change_pct?: number;
-  estimated_margin?: number;
+  km: number | null;
+  location: string | null;
+  auction_datetime: string | null;
+  listing_url: string | null;
+  status: string;
+  auction_house: string;
 }
 
-type PicklesAlertType = 'UPCOMING' | 'ACTION';
-type PicklesActionReason = 'passed_in' | 'relisted' | 'reserve_softened' | 'price_drop';
-
-interface ProcessAlertsRequest {
-  lots: Listing[];
-  alertType: PicklesAlertType;
-  previousStates?: Record<string, { status: string; price: number }>;
-}
-
-// Variant family extraction (simplified version)
-const VARIANT_FAMILY_TOKENS = [
-  'SR5', 'GXL', 'GX', 'GL', 'SR', 'RUGGED', 'RUGGED X', 'ROGUE', 'WORKMATE', 'SAHARA', 'VX', 'KAKADU', 'GR',
-  'XLT', 'WILDTRAK', 'FX4', 'SPORT', 'RAPTOR', 'XL', 'XLS', 'TREND', 'ST',
-  'LT', 'LTZ', 'Z71', 'ZR2', 'LS', 'SS', 'SSV', 'SV6', 'REDLINE', 'RS',
-  'LS-M', 'LS-U', 'LS-T', 'SX', 'X-TERRAIN',
-  'GLX', 'GLS', 'GSR', 'EXCEED', 'TOBY PRICE',
-  'ST-X', 'PRO-4X', 'SL', 'N-TREK', 'WARRIOR',
-  'GT', 'XTR', 'GSX', 'TOURING', 'BOSS',
-  'SPORTLINE', 'CORE', 'STYLE', 'LIFE', 'CANYON',
-  'LIMITED', 'PREMIUM', 'PLATINUM', 'TITANIUM', 'ULTIMATE',
-];
-
-function extractVariantFamily(variantText?: string): string | undefined {
-  if (!variantText) return undefined;
-  const normalized = variantText.toUpperCase();
-  const sortedTokens = [...VARIANT_FAMILY_TOKENS].sort((a, b) => b.length - a.length);
-  for (const token of sortedTokens) {
-    const pattern = new RegExp(`\\b${token.replace(/-/g, '[\\s-]?')}\\b`, 'i');
-    if (pattern.test(normalized)) {
-      return token.toUpperCase();
+// Tier 1 matching: exact make+model+variant_family, year ±2
+function matchesTier1(listing: Listing, fp: Fingerprint): boolean {
+  // Must match make (case-insensitive)
+  if (listing.make.toLowerCase() !== fp.make.toLowerCase()) return false;
+  
+  // Must match model (case-insensitive)
+  if (listing.model.toLowerCase() !== fp.model.toLowerCase()) return false;
+  
+  // Must match variant_family if fingerprint has one
+  if (fp.variant_family) {
+    const listingFamily = (listing.variant_family || '').toUpperCase();
+    const fpFamily = fp.variant_family.toUpperCase();
+    // Allow partial match (e.g., SR matches SR5)
+    if (!listingFamily.includes(fpFamily) && !fpFamily.includes(listingFamily)) {
+      return false;
     }
   }
-  return undefined;
-}
-
-// Tier 1 matching
-function isTier1Match(lot: Listing, fp: SaleFingerprint): boolean {
-  if (fp.is_active !== 'Y') return false;
   
-  const today = new Date();
-  const expiresAt = new Date(fp.expires_at);
-  if (today > expiresAt) return false;
+  // Year must be within fingerprint range ±2
+  const yearMin = fp.year_min - 2;
+  const yearMax = fp.year_max + 2;
+  if (listing.year < yearMin || listing.year > yearMax) return false;
   
-  if (fp.do_not_buy === 'Y') return false;
-  
-  if (lot.make.toLowerCase() !== fp.make.toLowerCase()) return false;
-  if (lot.model.toLowerCase() !== fp.model.toLowerCase()) return false;
-  
-  const lotVariantFamily = lot.variant_family || extractVariantFamily(lot.variant_raw || lot.variant_normalised);
-  const fpVariantFamily = fp.variant_family || extractVariantFamily(fp.variant_normalised);
-  
-  if (!lotVariantFamily || !fpVariantFamily) {
-    const lotVariant = (lot.variant_normalised || lot.variant_raw || '').toLowerCase().trim();
-    const fpVariant = (fp.variant_normalised || '').toLowerCase().trim();
-    if (lotVariant !== fpVariant) return false;
-  } else if (lotVariantFamily.toUpperCase() !== fpVariantFamily.toUpperCase()) {
-    return false;
-  }
-  
-  if (Math.abs(lot.year - fp.year) > 2) return false;
-  
-  if (fp.fingerprint_type !== 'spec_only' && fp.sale_km && fp.sale_km > 0) {
-    const minKm = fp.min_km ?? Math.max(0, fp.sale_km - 15000);
-    const maxKm = fp.max_km ?? fp.sale_km + 15000;
-    if (lot.km && lot.km > 0) {
-      if (lot.km < minKm || lot.km > maxKm) return false;
-    }
+  // KM constraint only for non-spec-only fingerprints
+  if (!fp.is_spec_only && fp.min_km !== null && fp.max_km !== null && listing.km !== null) {
+    if (listing.km < fp.min_km || listing.km > fp.max_km) return false;
   }
   
   return true;
 }
 
-// Determine action reason
-function determineActionReason(
-  lot: Listing,
-  previousState?: { status: string; price: number }
-): PicklesActionReason | undefined {
-  if (lot.status === 'passed_in' && previousState?.status !== 'passed_in') {
-    return 'passed_in';
-  }
-  
-  if ((lot.pass_count || 0) >= 2 && (lot.relist_count || 0) > 0) {
-    return 'relisted';
-  }
-  
-  if (previousState?.price && lot.reserve && lot.reserve < previousState.price) {
-    const dropPct = ((previousState.price - lot.reserve) / previousState.price) * 100;
-    if (dropPct >= 5) return 'reserve_softened';
-  }
-  
-  if (lot.price_change_pct && lot.price_change_pct <= -5) {
-    return 'price_drop';
-  }
-  
-  return undefined;
-}
-
-// Generate alert message
-function generateAlertMessage(
-  lot: Listing,
-  alertType: PicklesAlertType,
-  actionReason?: PicklesActionReason
-): string {
-  const vehicle = `${lot.year} ${lot.make} ${lot.model} ${lot.variant_normalised || lot.variant_raw || ''}`.trim();
-  
-  if (alertType === 'UPCOMING') {
-    return `${vehicle} coming up – ${lot.auction_house || 'Pickles'} ${lot.location || ''}`.trim();
-  }
-  
-  switch (actionReason) {
-    case 'passed_in':
-      return `${vehicle} passed in – ready for negotiation`;
-    case 'relisted':
-      return `${vehicle} relisted (pass #${lot.pass_count || 2}) – seller getting motivated`;
-    case 'reserve_softened':
-      return `${vehicle} reserve dropped – worth another look`;
-    case 'price_drop':
-      return `${vehicle} price dropped – check the numbers`;
-    default:
-      return `${vehicle} – action opportunity`;
-  }
-}
-
-// Generate dedup key
-function generateDedupKey(
-  dealerName: string,
-  lotId: string,
-  alertType: PicklesAlertType,
-  actionReason?: PicklesActionReason
-): string {
+// Generate dedup key for alerts
+function createDedupKey(dealerName: string, listingId: string, alertType: string, actionReason?: string): string {
   const today = new Date().toISOString().split('T')[0];
-  return `${dealerName}|${lotId}|${alertType}|${actionReason || 'new'}|${today}`;
+  const reasonPart = actionReason ? `:${actionReason}` : '';
+  return `${dealerName}:${listingId}:${alertType}${reasonPart}:${today}`;
 }
 
-// Google Sheets API helpers
-async function getAccessToken(serviceAccountKey: any): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: 'RS256', typ: 'JWT' };
-  const payload = {
-    iss: serviceAccountKey.client_email,
-    scope: 'https://www.googleapis.com/auth/spreadsheets',
-    aud: 'https://oauth2.googleapis.com/token',
-    exp: now + 3600,
-    iat: now,
-  };
-
-  const encoder = new TextEncoder();
-  const headerB64 = btoa(JSON.stringify(header)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  const payloadB64 = btoa(JSON.stringify(payload)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  const unsignedToken = `${headerB64}.${payloadB64}`;
-
-  const keyData = serviceAccountKey.private_key
-    .replace('-----BEGIN PRIVATE KEY-----', '')
-    .replace('-----END PRIVATE KEY-----', '')
-    .replace(/\n/g, '');
-  const binaryKey = Uint8Array.from(atob(keyData), c => c.charCodeAt(0));
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8',
-    binaryKey,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-
-  const signature = await crypto.subtle.sign(
-    'RSASSA-PKCS1-v1_5',
-    cryptoKey,
-    encoder.encode(unsignedToken)
-  );
-
-  const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
-    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-
-  const jwt = `${unsignedToken}.${signatureB64}`;
-
-  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
-  });
-
-  const tokenData = await tokenResponse.json();
-  return tokenData.access_token;
-}
-
-async function readSheet(accessToken: string, spreadsheetId: string, sheet: string): Promise<any[]> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheet)}!A:ZZ`;
-  const response = await fetch(url, {
-    headers: { 'Authorization': `Bearer ${accessToken}` },
-  });
-  
-  if (!response.ok) {
-    console.log(`Sheet ${sheet} not found or empty`);
-    return [];
-  }
-  
-  const data = await response.json();
-  const rows = data.values || [];
-  if (rows.length < 2) return [];
-  
-  const headers = rows[0].map((h: string) => h.toLowerCase().trim());
-  return rows.slice(1).map((row: string[], index: number) => {
-    const obj: any = { _rowIndex: index + 2 };
-    headers.forEach((header: string, i: number) => {
-      obj[header] = row[i] || '';
+// Format auction datetime for display
+function formatAuctionTime(datetime: string | null): string {
+  if (!datetime) return 'TBA';
+  try {
+    const date = new Date(datetime);
+    return date.toLocaleString('en-AU', { 
+      weekday: 'short',
+      day: 'numeric', 
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true 
     });
-    return obj;
-  });
-}
-
-async function appendSheet(accessToken: string, spreadsheetId: string, sheet: string, data: Record<string, any>): Promise<void> {
-  // First get headers
-  const headersUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheet)}!1:1`;
-  const headersResponse = await fetch(headersUrl, {
-    headers: { 'Authorization': `Bearer ${accessToken}` },
-  });
-  
-  let headers: string[] = [];
-  if (headersResponse.ok) {
-    const headersData = await headersResponse.json();
-    headers = headersData.values?.[0] || [];
+  } catch {
+    return 'TBA';
   }
-  
-  // Map data to row
-  const row = headers.map((h: string) => {
-    const key = h.toLowerCase().trim();
-    const value = data[key];
-    if (value === undefined || value === null) return '';
-    if (Array.isArray(value)) return JSON.stringify(value);
-    return String(value);
-  });
-  
-  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheet)}!A:ZZ:append?valueInputOption=USER_ENTERED`;
-  await fetch(appendUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ values: [row] }),
-  });
 }
 
-// Send Bob push notification
-async function sendBobPush(
+// Send push notification via bob-push
+async function sendPushNotification(
+  supabaseUrl: string,
+  supabaseKey: string,
   dealerName: string,
-  lot: Listing,
-  alertType: PicklesAlertType,
-  actionReason?: PicklesActionReason
+  listing: Listing,
+  alertType: string
 ): Promise<void> {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY');
-  
-  if (!supabaseUrl || !supabaseKey) {
-    console.log('Missing Supabase config for push');
-    return;
-  }
-  
-  const pushAlertType = alertType === 'UPCOMING' ? 'upcoming_watched' : 
-    (actionReason === 'passed_in' ? 'passed_in' : 
-    (actionReason === 'reserve_softened' || actionReason === 'price_drop' ? 'price_drop' : 'buy_signal'));
-  
-  const payload = {
-    dealer_name: dealerName,
-    alert_type: pushAlertType,
-    vehicle: {
-      year: lot.year,
-      make: lot.make,
-      model: lot.model,
-      variant: lot.variant_family || lot.variant_normalised || lot.variant_raw,
-    },
-    context: {
-      auction_house: lot.auction_house || 'Pickles',
-      location: lot.location,
-      auction_time: lot.auction_datetime,
-      lot_id: lot.lot_key || lot.lot_id,
-      estimated_margin: lot.estimated_margin,
-    },
-    speak_context: generateAlertMessage(lot, alertType, actionReason),
-  };
+  const variant = listing.variant_family || listing.variant_raw || '';
+  const message = `${listing.model} ${variant} coming up – ${listing.location || 'TBA'} ${formatAuctionTime(listing.auction_datetime)}`;
   
   try {
-    await fetch(`${supabaseUrl}/functions/v1/bob-push`, {
+    const response = await fetch(`${supabaseUrl}/functions/v1/bob-push`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${supabaseKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        dealer_name: dealerName,
+        alert_type: alertType === 'UPCOMING' ? 'upcoming_watched' : 'buy_signal',
+        vehicle: {
+          year: listing.year,
+          make: listing.make,
+          model: listing.model,
+          variant: variant,
+        },
+        context: {
+          auction_house: listing.auction_house,
+          location: listing.location,
+          auction_time: listing.auction_datetime,
+          lot_id: listing.listing_id,
+        },
+        speak_context: message,
+      }),
     });
-    console.log(`Push sent to ${dealerName} for ${lot.lot_id}`);
-  } catch (err) {
-    console.error(`Push failed for ${dealerName}:`, err);
+    
+    if (!response.ok) {
+      console.log(`[pickles-alerts] Push failed for ${dealerName}: ${response.status}`);
+    } else {
+      console.log(`[pickles-alerts] Push sent to ${dealerName}: ${message}`);
+    }
+  } catch (e: unknown) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    console.error(`[pickles-alerts] Push error for ${dealerName}:`, errMsg);
   }
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { lots, alertType, previousStates = {} }: ProcessAlertsRequest = await req.json();
-    
-    console.log(`Processing ${lots.length} lots for ${alertType} alerts`);
-    
-    const serviceAccountKeyJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY');
-    const spreadsheetId = Deno.env.get('GOOGLE_SPREADSHEET_ID');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    if (!serviceAccountKeyJson || !spreadsheetId) {
-      throw new Error('Missing Google Sheets configuration');
+    const body = await req.json().catch(() => ({}));
+    const { alertType = 'UPCOMING', listingIds } = body;
+
+    console.log(`[pickles-alerts] Processing ${alertType} alerts`);
+
+    // Get active fingerprints from database
+    const { data: fingerprints, error: fpError } = await supabase
+      .from('dealer_fingerprints')
+      .select('*')
+      .eq('is_active', true);
+
+    if (fpError) {
+      console.error('[pickles-alerts] Error fetching fingerprints:', fpError);
+      throw fpError;
     }
 
-    const serviceAccountKey = JSON.parse(serviceAccountKeyJson);
-    const accessToken = await getAccessToken(serviceAccountKey);
+    console.log(`[pickles-alerts] Found ${fingerprints?.length || 0} active fingerprints`);
 
-    // Read fingerprints
-    const fingerprintsRaw = await readSheet(accessToken, spreadsheetId, 'Sale_Fingerprints');
-    const fingerprints: SaleFingerprint[] = fingerprintsRaw.map(row => ({
-      fingerprint_id: row.fingerprint_id || '',
-      dealer_name: row.dealer_name || '',
-      dealer_whatsapp: row.dealer_whatsapp || '',
-      expires_at: row.expires_at || '',
-      make: row.make || '',
-      model: row.model || '',
-      variant_normalised: row.variant_normalised || '',
-      variant_family: row.variant_family || undefined,
-      year: parseInt(row.year) || 0,
-      sale_km: parseInt(row.sale_km) || 0,
-      min_km: row.min_km ? parseInt(row.min_km) : undefined,
-      max_km: row.max_km ? parseInt(row.max_km) : undefined,
-      is_active: row.is_active || 'N',
-      fingerprint_type: row.fingerprint_type || 'full',
-      do_not_buy: row.do_not_buy || 'N',
-    }));
-    
-    console.log(`Loaded ${fingerprints.length} fingerprints`);
-    
-    // Read existing alerts for deduplication
-    const existingAlerts = await readSheet(accessToken, spreadsheetId, 'Alert_Log');
-    const existingDedupKeys = new Set(existingAlerts.map(a => a.dedup_key));
-    
+    // Get listings to process from database
+    let listingsQuery = supabase
+      .from('vehicle_listings')
+      .select('*')
+      .eq('source', 'pickles')
+      .eq('visible_to_dealers', true);
+
+    if (listingIds && listingIds.length > 0) {
+      listingsQuery = listingsQuery.in('listing_id', listingIds);
+    } else if (alertType === 'UPCOMING') {
+      // For UPCOMING, get catalogue/listed lots
+      listingsQuery = listingsQuery.in('status', ['catalogue', 'listed']);
+    } else if (alertType === 'ACTION') {
+      // For ACTION, get passed_in lots
+      listingsQuery = listingsQuery.in('status', ['passed_in']);
+    }
+
+    const { data: listings, error: listingsError } = await listingsQuery;
+
+    if (listingsError) {
+      console.error('[pickles-alerts] Error fetching listings:', listingsError);
+      throw listingsError;
+    }
+
+    console.log(`[pickles-alerts] Processing ${listings?.length || 0} listings`);
+
     let alertsCreated = 0;
-    let matchesFound = 0;
-    let duplicatesSkipped = 0;
-    
-    for (const lot of lots) {
-      // Find matching fingerprints
-      const matches = fingerprints.filter(fp => isTier1Match(lot, fp));
-      
-      if (matches.length === 0) continue;
-      matchesFound += matches.length;
-      
-      // Determine action reason for ACTION alerts
-      let actionReason: PicklesActionReason | undefined;
-      if (alertType === 'ACTION') {
-        const prevState = previousStates[lot.lot_id];
-        actionReason = determineActionReason(lot, prevState);
-        
-        // Skip if no actionable change detected
-        if (!actionReason) continue;
-      }
-      
-      // Create alerts for each matching fingerprint
-      for (const fp of matches) {
-        const dedupKey = generateDedupKey(
-          fp.dealer_name,
-          lot.lot_key || lot.lot_id,
-          alertType,
-          actionReason
-        );
-        
-        // Check deduplication
-        if (existingDedupKeys.has(dedupKey)) {
-          duplicatesSkipped++;
-          console.log(`Skipped duplicate: ${dedupKey}`);
+    let alertsSkipped = 0;
+    const alertDetails: { dealer: string; listing: string; type: string; message: string }[] = [];
+
+    for (const listing of listings || []) {
+      for (const fp of fingerprints || []) {
+        // Only process Tier 1 exact matches for alerts
+        if (!matchesTier1(listing, fp)) continue;
+
+        const actionReason = alertType === 'ACTION' ? listing.status : undefined;
+        const dedupKey = createDedupKey(fp.dealer_name, listing.listing_id, alertType, actionReason);
+
+        // Check for existing alert with same dedup key
+        const { data: existingAlert } = await supabase
+          .from('alert_logs')
+          .select('id')
+          .eq('dedup_key', dedupKey)
+          .maybeSingle();
+
+        if (existingAlert) {
+          alertsSkipped++;
           continue;
         }
-        
-        // Create alert entry
-        const alert = {
-          alert_id: `ALT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          created_at: new Date().toISOString(),
-          dealer_name: fp.dealer_name,
-          recipient_whatsapp: fp.dealer_whatsapp || '',
-          channel: 'in_app',
-          lot_id: lot.lot_key || lot.lot_id,
-          fingerprint_id: fp.fingerprint_id,
-          action_change: alertType === 'UPCOMING' ? 'UPCOMING' : `ACTION:${actionReason}`,
-          message_text: generateAlertMessage(lot, alertType, actionReason),
-          link: lot.listing_url || '',
-          status: 'new',
-          dedup_key: dedupKey,
-          lot_make: lot.make,
-          lot_model: lot.model,
-          lot_variant: lot.variant_normalised || lot.variant_raw || '',
-          lot_year: lot.year,
-          auction_house: lot.auction_house || 'Pickles',
-          auction_datetime: lot.auction_datetime || '',
-          estimated_margin: lot.estimated_margin || 0,
-          why_flagged: alertType === 'ACTION' ? (actionReason?.toUpperCase().replace('_', ' ') || '') : '',
-        };
-        
-        await appendSheet(accessToken, spreadsheetId, 'Alert_Log', alert);
-        existingDedupKeys.add(dedupKey); // Prevent duplicates within same batch
+
+        // Create alert message
+        const variant = listing.variant_family || listing.variant_raw || '';
+        const locationTime = `${listing.location || 'TBA'} ${formatAuctionTime(listing.auction_datetime)}`;
+        let messageText: string;
+
+        if (alertType === 'UPCOMING') {
+          messageText = `${listing.model} ${variant} coming up – ${locationTime}`;
+        } else {
+          const reason = listing.status === 'passed_in' ? 'passed in' : listing.status;
+          messageText = `${listing.model} ${variant} ${reason} – ${locationTime}`;
+        }
+
+        // Insert alert
+        const alertId = `alert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const { error: insertError } = await supabase
+          .from('alert_logs')
+          .insert({
+            alert_id: alertId,
+            dealer_name: fp.dealer_name,
+            listing_id: listing.listing_id,
+            fingerprint_id: fp.fingerprint_id,
+            alert_type: alertType,
+            action_reason: actionReason,
+            match_type: 'exact',
+            message_text: messageText,
+            dedup_key: dedupKey,
+            status: 'new',
+            lot_make: listing.make,
+            lot_model: listing.model,
+            lot_variant: variant,
+            lot_year: listing.year,
+            auction_house: listing.auction_house,
+            auction_datetime: listing.auction_datetime,
+            location: listing.location,
+            listing_url: listing.listing_url,
+          });
+
+        if (insertError) {
+          console.error(`[pickles-alerts] Failed to create alert for ${listing.listing_id}:`, insertError);
+          continue;
+        }
+
         alertsCreated++;
-        
-        console.log(`Created alert for ${fp.dealer_name}: ${lot.lot_id} (${alertType}${actionReason ? ':' + actionReason : ''})`);
-        
+        alertDetails.push({
+          dealer: fp.dealer_name,
+          listing: listing.listing_id,
+          type: alertType,
+          message: messageText,
+        });
+
+        console.log(`[pickles-alerts] Created ${alertType} alert for ${fp.dealer_name}: ${messageText}`);
+
         // Send push notification
-        await sendBobPush(fp.dealer_name, lot, alertType, actionReason);
+        await sendPushNotification(supabaseUrl, supabaseKey, fp.dealer_name, listing, alertType);
       }
     }
-    
-    console.log(`Alerts summary: ${alertsCreated} created, ${matchesFound} matches, ${duplicatesSkipped} duplicates skipped`);
-    
+
+    console.log(`[pickles-alerts] Complete: ${alertsCreated} created, ${alertsSkipped} skipped (deduped)`);
+
     return new Response(
       JSON.stringify({
         success: true,
         alertsCreated,
-        matchesFound,
-        duplicatesSkipped,
-        lotsProcessed: lots.length,
+        alertsSkipped,
+        alertDetails,
+        fingerprintsChecked: fingerprints?.length || 0,
+        listingsProcessed: listings?.length || 0,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Pickles alerts error:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[pickles-alerts] Error:', error);
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: errorMsg }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
