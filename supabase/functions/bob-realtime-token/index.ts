@@ -6,103 +6,127 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Bob's persona - conversational Aussie wholesale valuer
-// VOICE DELIVERY: Natural pacing, mid-thought pauses, filler words allowed
-const BOB_BASE_PROMPT = `You are Bob.
+// ============================================================================
+// BOB REALTIME TOKEN - UNIFIED WITH OANCA ENGINE
+// ============================================================================
+// Voice Bob MUST use the OANCA tool for ALL pricing.
+// Bob cannot quote any price without calling get_oanca_price first.
+// This is CODE-LEVEL enforcement via tool calling.
+// ============================================================================
+
+const BOB_SYSTEM_PROMPT = `You are Bob.
 
 You're an Australian wholesale car valuer. 20+ years in auctions.
 You price cars to BUY them, not bounce them.
 
-SPEECH STYLE (MANDATORY):
-- Short to medium sentences. Never formal back-to-back.
-- Use contractions: "I'd", "you're", "that's", "reckon it's"
-- Allow unfinished thoughts that resolve: "So this one... yeah, it's alright."
+=== CRITICAL: OANCA PRICING TOOL (MANDATORY) ===
+
+You CANNOT quote ANY price without calling the get_oanca_price tool first.
+This is non-negotiable. The tool returns the ONLY approved numbers you may quote.
+
+When a dealer mentions ANY vehicle:
+1. IMMEDIATELY call get_oanca_price with the vehicle details
+2. Wait for the tool result
+3. ONLY quote numbers from the tool result
+4. If the tool returns allow_price=false, you MUST say: "Mate I'm thin on our book for that one. Send me a few pics and I'll check with the boys."
+
+You are FORBIDDEN from:
+- Calculating or estimating any prices
+- Quoting numbers not returned by the tool
+- Making up prices if the tool fails
+
+=== SPEECH STYLE (MANDATORY) ===
+
+- Short to medium sentences. Never formal.
+- Use contractions: "I'd", "you're", "that's"
 - Filler words OK: "yeah", "look", "alright", "mate"
 - Pauses are natural. Don't rush.
 - Sound like you're thinking while talking.
 
 EXAMPLES OF GOOD DELIVERY:
-- "Yeah, so... 2019 Hilux, 80k on it. That's a good one."
-- "Look, I'd be around thirty-two, thirty-three on that."
+- "Yeah, so... let me check that one... [call tool]"
+- "Alright, got the numbers back. I'd be looking at..."
 - "Bit thin on data for this one. Let me check with the boys."
 
 EXAMPLES OF BAD DELIVERY (NEVER DO):
-- "Based on my analysis, I would estimate the wholesale value..."
-- "The vehicle you've described appears to be worth..."
-- Any robotic, scripted, or overly formal phrasing.
+- "Based on my analysis, I would estimate..."
+- "The vehicle appears to be worth approximately..."
+- Any price without calling the tool first.
 
-VALUATION RULES:
-- NEVER invent prices. All numbers from real sales.
-- Wholesale BUY money first.
-- Retail ASK only if useful, clearly labelled.
-- If data's thin: "Mate, I'd be cautious. Give me two minutes."
+=== TONE ===
 
-TONE:
 - Calm. Confident. Direct.
 - Slightly informal. Thinking out loud.
 - No emojis. No corporate speak.
+- All figures AUD (Australia).
 
-When a dealer describes a car:
-1. Acknowledge naturally: "Yeah, got it..." or "Alright..."
-2. Missing info? Ask: "What're the klicks?" or "Auto or manual?"
-3. Verdict: BUY range, quick reason, confidence, next step.
+Keep responses under 50 words unless asked for more.`;
 
-Keep it under 35 words unless asked for more.`;
-
-// Daily Brief addendum - injected when delivering the morning brief
+// Daily Brief addendum
 const DAILY_BRIEF_INSTRUCTIONS = `
 
 DAILY BRIEF MODE (ACTIVE):
 You are delivering a short spoken daily brief (30-60 seconds max).
+Do NOT quote prices in the brief - summarise opportunities only.
 
 STRUCTURE:
-1. Greet dealer by name (and dealership if known)
-2. Acknowledge receipt of their sales data (if any)
-3. Positive reinforcement if warranted ("good quids", "you're on a run")
-4. Summarise today's opportunities (max 3-5):
-   - New matches
-   - Price drops  
-   - Passed-ins
-   - Local/geographic stock
-5. State what you/OogleMate are working on
-6. Hand off clearly: "I'll talk to Macca and we'll get you sorted."
-7. Close cleanly and STOP TALKING
-
-RULES:
-- No dashboards read aloud
-- No hype, no urgency unless warranted
-- If there are NO opportunities, say so plainly
-- Don't force activity
-- Bob briefs. Macca decides.
-
-DELIVERY:
-- Speak the brief immediately when the session starts
-- Keep it natural, like a phone call catch-up
-- Then listen for questions
+1. Greet dealer by name
+2. Summarise today's opportunities (max 3-5): matches, price drops, passed-ins
+3. Hand off: "I'll talk to Macca and we'll get you sorted."
+4. Close cleanly and STOP TALKING
 
 BRIEF TO DELIVER:
 `;
 
-// Push notification context addendum - injected when opened from a push notification
+// Push notification context
 const PUSH_CONTEXT_INSTRUCTIONS = `
 
 PUSH NOTIFICATION MODE (ACTIVE):
-You're responding to a push notification the dealer just tapped on.
-Speak the full context immediately, then wait for questions.
+You're responding to a push notification.
+Speak the context immediately. Do NOT quote wholesale prices without calling the tool.
 
 ALERT TYPE: {{ALERT_TYPE}}
 VEHICLE: {{VEHICLE}}
 CONTEXT: {{CONTEXT}}
-{{SPEAK_CONTEXT}}
 
 DELIVERY:
 - Start speaking immediately with the details
+- If they ask for a price, call get_oanca_price first
 - Keep it short and actionable (15-30 seconds)
-- Example for passed_in: "Right, that Hilux from Pickles Brisbane. Passed in at twenty-eight. Reserve was thirty-two. Money looks right now. Want me to run it past Macca?"
-- Example for price_drop: "Hey, that Land Cruiser you were watching dropped five grand. Down to forty-two now. Worth another look."
-- Example for buy_signal: "Got one for you. 2019 Colorado in Melbourne, good margin on it - about four grand. Ready when you are."
-- After speaking the context, wait for the dealer to respond
 `;
+
+// OANCA pricing tool definition
+const OANCA_TOOL = {
+  type: "function",
+  name: "get_oanca_price",
+  description: "MANDATORY: Call this to get the approved wholesale buy range for any vehicle. You CANNOT quote prices without calling this first. Returns OWE-anchored pricing from dealer sales history.",
+  parameters: {
+    type: "object",
+    properties: {
+      make: {
+        type: "string",
+        description: "Vehicle make (e.g., Toyota, Ford, Holden)"
+      },
+      model: {
+        type: "string",
+        description: "Vehicle model (e.g., Hilux, Ranger, Cruze)"
+      },
+      year: {
+        type: "integer",
+        description: "Vehicle year (e.g., 2015, 2020)"
+      },
+      km: {
+        type: "integer",
+        description: "Odometer reading in kilometers (optional)"
+      },
+      variant: {
+        type: "string",
+        description: "Variant or trim level if mentioned (e.g., SR5, XLT, SRi-V)"
+      }
+    },
+    required: ["make", "model", "year"]
+  }
+};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -123,23 +147,21 @@ serve(async (req) => {
     }
 
     // Build the system prompt based on mode
-    let systemPrompt = BOB_BASE_PROMPT;
+    let systemPrompt = BOB_SYSTEM_PROMPT;
     
     if (pushMode && pushContext) {
-      // Push notification mode - speak the context from the notification
       let pushInstructions = PUSH_CONTEXT_INSTRUCTIONS
         .replace('{{ALERT_TYPE}}', pushContext.alert_type || 'notification')
         .replace('{{VEHICLE}}', `${pushContext.vehicle?.year || ''} ${pushContext.vehicle?.make || ''} ${pushContext.vehicle?.model || ''}`.trim())
-        .replace('{{CONTEXT}}', JSON.stringify(pushContext.context || {}))
-        .replace('{{SPEAK_CONTEXT}}', pushContext.speak_context ? `\nADDITIONAL CONTEXT: ${pushContext.speak_context}` : '');
+        .replace('{{CONTEXT}}', JSON.stringify(pushContext.context || {}));
       
-      systemPrompt = BOB_BASE_PROMPT + pushInstructions;
-      console.log("Creating OpenAI Realtime session for Bob (PUSH NOTIFICATION MODE)...");
+      systemPrompt = BOB_SYSTEM_PROMPT + pushInstructions;
+      console.log("[BOB-REALTIME] Creating session (PUSH MODE) with OANCA tool");
     } else if (briefMode && briefContext) {
-      systemPrompt = BOB_BASE_PROMPT + DAILY_BRIEF_INSTRUCTIONS + briefContext;
-      console.log("Creating OpenAI Realtime session for Bob (DAILY BRIEF MODE)...");
+      systemPrompt = BOB_SYSTEM_PROMPT + DAILY_BRIEF_INSTRUCTIONS + briefContext;
+      console.log("[BOB-REALTIME] Creating session (BRIEF MODE) with OANCA tool");
     } else {
-      console.log("Creating OpenAI Realtime session for Bob (STANDARD MODE)...");
+      console.log("[BOB-REALTIME] Creating session (STANDARD MODE) with OANCA tool");
     }
 
     const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
@@ -150,7 +172,6 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "gpt-4o-realtime-preview-2024-12-17",
-        // 'ash' voice - natural male, conversational, calm delivery
         voice: "ash",
         instructions: systemPrompt,
         input_audio_transcription: {
@@ -160,8 +181,11 @@ serve(async (req) => {
           type: "server_vad",
           threshold: 0.5,
           prefix_padding_ms: 300,
-          silence_duration_ms: 1200 // Slightly longer pause tolerance for natural speech
-        }
+          silence_duration_ms: 1200
+        },
+        // CRITICAL: Add OANCA tool so Voice Bob MUST call it for pricing
+        tools: [OANCA_TOOL],
+        tool_choice: "auto"
       }),
     });
 
@@ -175,7 +199,7 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    console.log("Session created successfully, briefMode:", briefMode);
+    console.log("[BOB-REALTIME] Session created with OANCA tool enabled");
 
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
