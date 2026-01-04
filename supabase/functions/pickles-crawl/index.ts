@@ -249,11 +249,10 @@ Deno.serve(async (req) => {
     const yearMin = body.yearMin || null;
     
     // Pickles cars search URL with 120 items per page
-    // Add year filter if specified (e.g., year-min=2020)
-    let baseUrl = 'https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars';
-    if (yearMin) {
-      baseUrl += `/year-min/${yearMin}`;
-    }
+    const baseUrl = 'https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars';
+    
+    // Build query params - year filter is a query param, not a path segment
+    const yearFilter = yearMin ? `&year-min=${yearMin}` : '';
     
     console.log(`[pickles-crawl] Starting Firecrawl-based crawl`);
     console.log(`[pickles-crawl] Max pages: ${maxPages}, Start page: ${startPage}, Year min: ${yearMin || 'any'}`);
@@ -286,7 +285,7 @@ Deno.serve(async (req) => {
     
     // Crawl pages using Firecrawl for JS rendering
     while (currentPage <= maxPages && consecutiveEmptyPages < 3) {
-      const pageUrl = `${baseUrl}?contentkey=all-cars&limit=120&page=${currentPage}`;
+      const pageUrl = `${baseUrl}?contentkey=all-cars&limit=120${yearFilter}&page=${currentPage}`;
       console.log(`[pickles-crawl] Scraping page ${currentPage}: ${pageUrl}`);
       
       try {
