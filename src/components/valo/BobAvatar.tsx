@@ -324,11 +324,13 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
         break;
 
       case 'input_audio_buffer.speech_started':
-        setIsListening(true);
+        // User started speaking - Bob stops listening and prepares to process
+        setIsListening(false);
         setIsSpeaking(false);
         break;
 
       case 'input_audio_buffer.speech_stopped':
+        // User stopped speaking - still waiting for Bob's response
         setIsListening(false);
         break;
 
@@ -340,8 +342,15 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
         }
         break;
 
+      case 'response.audio.delta':
+        // Bob's audio is streaming - he IS speaking
+        setIsSpeaking(true);
+        setIsListening(false);
+        break;
+
       case 'response.audio_transcript.delta':
         setIsSpeaking(true);
+        setIsListening(false);
         setBobTranscript(prev => prev + (event.delta || ''));
         break;
 
