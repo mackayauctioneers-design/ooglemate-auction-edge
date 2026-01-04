@@ -47,7 +47,12 @@ interface WeightedComp {
 // DECISION OBJECT - THE ONLY THING BOB RECEIVES
 // ============================================================================
 
-type BobDecision = 'PRICE_AVAILABLE' | 'NO_PRICE' | 'DNR';
+// DECISION STATES:
+// 1. PRICE_AVAILABLE = firm price (strong data, >= 2 comps for common vehicles)
+// 2. SOFT_OWN = guarded price (thin data or hard_work with comps, pics optional)
+// 3. NEED_PICS = no pricing (zero comps or hard_work with <2 comps)
+// 4. DNR = do not retail (poison vehicles)
+type BobDecision = 'PRICE_AVAILABLE' | 'SOFT_OWN' | 'NEED_PICS' | 'DNR';
 type VehicleClass = 'FAST_MOVER' | 'AVERAGE' | 'HARD_WORK' | 'POISON';
 type DataSource = 'OWN_SALES';
 type Confidence = 'HIGH' | 'MED' | 'LOW';
@@ -58,8 +63,8 @@ interface DecisionObject {
   vehicle_class: VehicleClass | null;
   data_source: DataSource | null;
   confidence: Confidence | null;
-  reason?: string;                 // Only for NO_PRICE: 'NO_COMPS'
-  instruction?: string;            // Only for NO_PRICE: 'REQUEST_PHOTOS'
+  reason?: string;                 // Only for NEED_PICS: 'NO_COMPS' | 'THIN_DATA'
+  instruction?: string;            // Only for NEED_PICS: 'REQUEST_PHOTOS'
 }
 
 // Internal engine state (never sent to Bob)
@@ -340,19 +345,50 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
   console.log(`[ENGINE] Found ${nOweComps} comps with OWE data`);
   
   // ================================================================
-  // RULE 3: NO DATA = NO PRICE
+  // DECISION LOGIC: SOFT_OWN vs PRICE_AVAILABLE vs NEED_PICS
   // ================================================================
-  if (nOweComps < 2) {
-    notes.push(`Insufficient comps: ${nOweComps} (min 2 required)`);
+  
+  // Check if this is a hard_work vehicle FIRST (before comp check)
+  const isHardWork = isKnownHardWork(input.make, input.model);
+  
+  // ZERO COMPS = Always NEED_PICS
+  if (nOweComps === 0) {
+    notes.push(`Zero comps: NEED_PICS`);
     
     return {
       decision: {
-        decision: 'NO_PRICE',
+        decision: 'NEED_PICS',
         buy_price: null,
         vehicle_class: null,
         data_source: null,
         confidence: null,
         reason: 'NO_COMPS',
+        instruction: 'REQUEST_PHOTOS',
+      },
+      engineState: {
+        n_comps: nOweComps,
+        anchor_owe: null,
+        avg_days: 0,
+        avg_gross: 0,
+        notes,
+        comps_used: compsUsed.slice(0, 10),
+        processing_time_ms: Date.now() - startTime,
+      }
+    };
+  }
+  
+  // HARD_WORK vehicles with < 2 comps = NEED_PICS (too risky)
+  if (isHardWork && nOweComps < 2) {
+    notes.push(`Hard work vehicle with only ${nOweComps} comp(s): NEED_PICS`);
+    
+    return {
+      decision: {
+        decision: 'NEED_PICS',
+        buy_price: null,
+        vehicle_class: 'HARD_WORK',
+        data_source: null,
+        confidence: null,
+        reason: 'THIN_DATA',
         instruction: 'REQUEST_PHOTOS',
       },
       engineState: {
@@ -374,7 +410,7 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
     notes.push('Failed to calculate OWE anchor');
     return {
       decision: {
-        decision: 'NO_PRICE',
+        decision: 'NEED_PICS',
         buy_price: null,
         vehicle_class: null,
         data_source: null,
@@ -444,9 +480,35 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
   console.log(`[ENGINE] Buy price: $${buyPrice}, confidence: ${confidence}`);
   notes.push(`Buy: $${buyPrice}, confidence: ${confidence}`);
   
+  // ================================================================
+  // DECISION: PRICE_AVAILABLE vs SOFT_OWN
+  // ================================================================
+  
+  // Strong vehicles (not hard_work):
+  //   >= 2 comps = PRICE_AVAILABLE
+  //   == 1 comp = SOFT_OWN (guarded pricing)
+  // Hard_work vehicles:
+  //   >= 2 comps = SOFT_OWN (never firm on these)
+  //   < 2 comps = already caught above as NEED_PICS
+  
+  let finalDecision: BobDecision;
+  
+  if (vehicleClass === 'HARD_WORK') {
+    // Hard work with >= 2 comps = SOFT_OWN (tight cap, guarded)
+    finalDecision = 'SOFT_OWN';
+    notes.push('HARD_WORK: Using SOFT_OWN with tight cap');
+  } else if (nOweComps === 1) {
+    // Single comp on standard vehicle = SOFT_OWN
+    finalDecision = 'SOFT_OWN';
+    notes.push('Thin data (1 comp): Using SOFT_OWN');
+  } else {
+    // >= 2 comps on standard vehicle = PRICE_AVAILABLE
+    finalDecision = 'PRICE_AVAILABLE';
+  }
+  
   return {
     decision: {
-      decision: 'PRICE_AVAILABLE',
+      decision: finalDecision,
       buy_price: buyPrice,
       vehicle_class: vehicleClass,
       data_source: 'OWN_SALES',
@@ -471,20 +533,23 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
 function generateBobScript(decision: DecisionObject): string {
   switch (decision.decision) {
     case 'PRICE_AVAILABLE':
-      if (decision.vehicle_class === 'HARD_WORK') {
-        // LOW DEMAND phrase
-        return `That thing's hard yakka, shagger. You'd wanna hit it pretty hard or let it go. I'd be about ${decision.buy_price?.toLocaleString()}.`;
+      if (decision.vehicle_class === 'FAST_MOVER') {
+        return `Yeah mate, I'd be about ${decision.buy_price?.toLocaleString()}. Good little fighter.`;
       }
-      // Standard PRICE_AVAILABLE phrase
-      return `Yeah mate, I'd be about ${decision.buy_price?.toLocaleString()}. ${decision.vehicle_class === 'FAST_MOVER' ? "Good little fighter." : "She's a bit of hard work, so I wouldn't be stretching past that."}`;
+      return `Yeah mate, I'd be about ${decision.buy_price?.toLocaleString()}.`;
       
-    case 'NO_PRICE':
-      // NO DATA phrase
+    case 'SOFT_OWN':
+      // Guarded pricing - thin on our book, pics optional
+      if (decision.vehicle_class === 'HARD_WORK') {
+        return `Look, we're a bit thin on that one, but based on what we've got I'd be around ${decision.buy_price?.toLocaleString()}. Hit it tight though — could send through a pic if you want a second look.`;
+      }
+      return `We're a bit thin on our book for that one. I'd be around ${decision.buy_price?.toLocaleString()}, but flick us a pic if you want me to double check.`;
+      
+    case 'NEED_PICS':
       return "Nah mate, I'm blind on that one. Flick me a couple of pics and I'll check with the boys.";
       
     case 'DNR':
-      // DNR phrase
-      return "Wouldn't touch that, shagger. That's one you let someone else own.";
+      return "Wouldn't touch that, mate. That's one you let someone else own.";
       
     default:
       return "Nah mate, I'm blind on that one. Flick me a couple of pics and I'll check with the boys.";
@@ -601,7 +666,7 @@ async function logValoRequest(
       location: input.location || null,
       raw_transcript: rawTranscript,
       oanca_object: { decision, engineState },
-      allow_price: decision.decision === 'PRICE_AVAILABLE',
+      allow_price: decision.decision === 'PRICE_AVAILABLE' || decision.decision === 'SOFT_OWN',
       verdict: decision.decision,
       demand_class: decision.vehicle_class,
       confidence: decision.confidence,
@@ -717,8 +782,11 @@ function runNumbersFirewall(
   bobResponse: string,
   decision: DecisionObject
 ): { blocked: boolean; correctedResponse: string } {
+  // PRICE ALLOWED: PRICE_AVAILABLE or SOFT_OWN
+  const priceAllowed = decision.decision === 'PRICE_AVAILABLE' || decision.decision === 'SOFT_OWN';
+  
   // GATE 1: NO DIGITS WHEN NO PRICE
-  if (decision.decision !== 'PRICE_AVAILABLE') {
+  if (!priceAllowed) {
     const dollarPattern = /\$\s*[\d,]+/gi;
     const kPattern = /\d+\s*k\b/gi;
     const anyDigitPattern = /\d{4,}/g;
@@ -729,7 +797,7 @@ function runNumbersFirewall(
       if (decision.decision === 'DNR') {
         return {
           blocked: true,
-          correctedResponse: "Wouldn't touch that, shagger. That's one you let someone else own.",
+          correctedResponse: "Wouldn't touch that, mate. That's one you let someone else own.",
         };
       }
       
@@ -741,7 +809,7 @@ function runNumbersFirewall(
   }
   
   // GATE 2: VALIDATE PRICE WHEN ALLOWED
-  if (decision.decision === 'PRICE_AVAILABLE' && decision.buy_price) {
+  if (priceAllowed && decision.buy_price) {
     const priceMatches = bobResponse.match(/\$\s*[\d,]+/g) || [];
     
     for (const priceStr of priceMatches) {
