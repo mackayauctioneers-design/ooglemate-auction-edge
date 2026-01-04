@@ -500,6 +500,35 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
   // STEP 4: Calculate buy price
   const buyPrice = calculateBuyPrice(anchorOwe, vehicleClass, avgDays);
   
+  // ================================================================
+  // PRICE SANITY CHECKS (NON-NEGOTIABLE)
+  // ================================================================
+  
+  // Get max OWE from comps for sanity check
+  const maxOwe = Math.max(...oweComps.map(wc => wc.record.total_cost));
+  const minOwe = Math.min(...oweComps.map(wc => wc.record.total_cost));
+  const oweSpread = maxOwe - minOwe;
+  
+  // Check 1: If price deviates >20% from OWE anchor → force SOFT_OWN
+  const deviation = Math.abs(buyPrice - anchorOwe) / anchorOwe;
+  let priceBlocked = false;
+  
+  // Check 2: If low demand AND price > last OWE → cap it
+  let cappedPrice = buyPrice;
+  if (vehicleClass === 'HARD_WORK' && buyPrice > maxOwe) {
+    cappedPrice = maxOwe;
+    notes.push(`SANITY: Capped at max OWE $${maxOwe} (was $${buyPrice})`);
+    priceBlocked = true;
+  }
+  
+  // Check 3: If deviation > 20%, force SOFT_OWN for caution
+  const forceSoftOwn = deviation > 0.2 && !isStrong;
+  if (forceSoftOwn) {
+    notes.push(`SANITY: >20% deviation from OWE anchor, forcing SOFT_OWN`);
+  }
+  
+  const finalBuyPrice = cappedPrice;
+  
   // STEP 5: Determine confidence
   const recentComps = oweComps.filter(wc => wc.recencyMonths <= 12);
   let confidence: Confidence;
@@ -512,8 +541,8 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
     confidence = 'LOW';
   }
   
-  console.log(`[ENGINE] Buy price: $${buyPrice}, confidence: ${confidence}`);
-  notes.push(`Buy: $${buyPrice}, confidence: ${confidence}`);
+  console.log(`[ENGINE] Buy price: $${finalBuyPrice}, confidence: ${confidence}`);
+  notes.push(`Buy: $${finalBuyPrice}, confidence: ${confidence}`);
   
   // ================================================================
   // DECISION: PRICE_AVAILABLE vs SOFT_OWN
@@ -529,10 +558,16 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
   // HARD_WORK vehicles:
   //   >= 2 comps = SOFT_OWN (never firm on these)
   //   < 2 comps = already caught above as NEED_PICS
+  //
+  // DEFAULT FALLBACK: SOFT_OWN (momentum > perfection)
   
   let finalDecision: BobDecision;
   
-  if (isStrong) {
+  if (forceSoftOwn || priceBlocked) {
+    // Sanity check forced SOFT_OWN
+    finalDecision = 'SOFT_OWN';
+    notes.push('SANITY: Forced SOFT_OWN due to price anomaly');
+  } else if (isStrong) {
     // Strong market vehicles - give firm price with even 1 comp
     finalDecision = 'PRICE_AVAILABLE';
     notes.push('STRONG_MARKET: Firm price allowed');
@@ -552,7 +587,7 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
   return {
     decision: {
       decision: finalDecision,
-      buy_price: buyPrice,
+      buy_price: finalBuyPrice,
       vehicle_class: vehicleClass,
       data_source: 'OWN_SALES',
       confidence: confidence,
@@ -576,26 +611,31 @@ function runPricingEngine(input: OancaInput, salesHistory: SalesHistoryRecord[])
 function generateBobScript(decision: DecisionObject): string {
   switch (decision.decision) {
     case 'PRICE_AVAILABLE':
+      // Firm buy - confident language
       if (decision.vehicle_class === 'FAST_MOVER') {
-        return `Yeah mate, I'd be about ${decision.buy_price?.toLocaleString()}. Good little fighter.`;
+        return `Yeah mate, this one's an honest little fighter. Based on our book, I'd be about ${decision.buy_price?.toLocaleString()} buy, and I'd be happy to own it there.`;
       }
-      return `Yeah mate, I'd be about ${decision.buy_price?.toLocaleString()}.`;
+      return `Yeah mate, I'd be about ${decision.buy_price?.toLocaleString()} buy. Honest unit, happy to own it there.`;
       
     case 'SOFT_OWN':
-      // Guarded pricing - thin on our book, pics optional
+      // Guarded buy - gives number but with caution, pics optional
       if (decision.vehicle_class === 'HARD_WORK') {
-        return `Look, we're a bit thin on that one, but based on what we've got I'd be around ${decision.buy_price?.toLocaleString()}. Hit it tight though — could send through a pic if you want a second look.`;
+        return `Bit thin on our book for that one, mate. I'd be around ${decision.buy_price?.toLocaleString()} buy, and I wouldn't be stretching past it. If you want it nailed, flick a couple of pics.`;
       }
-      return `We're a bit thin on our book for that one. I'd be around ${decision.buy_price?.toLocaleString()}, but flick us a pic if you want me to double check.`;
+      return `Bit thin on our book, mate, but I can give you a steer. I'd be around ${decision.buy_price?.toLocaleString()} buy, and I wouldn't be stretching past it. If you want it nailed, flick a couple of pics.`;
       
     case 'NEED_PICS':
-      return "Nah mate, I'm blind on that one. Flick me a couple of pics and I'll check with the boys.";
+      // No price - escalate to photos
+      return "Yeah nah, that one's hard work, shagger. I don't want to guess on it — flick me a few pics and I'll check with the boys.";
       
     case 'DNR':
-      return "Wouldn't touch that, mate. That's one you let someone else own.";
+      // Do not retail
+      return "Wouldn't touch that one, mate. That's hard work you let someone else own.";
       
     default:
-      return "Nah mate, I'm blind on that one. Flick me a couple of pics and I'll check with the boys.";
+      // Default fallback = SOFT_OWN behaviour (momentum > perfection)
+      // But if no price, fallback to photos
+      return "Bit of an oddball that one. Flick me a few pics and I'll have a proper look.";
   }
 }
 
