@@ -7,10 +7,12 @@ const corsHeaders = {
 };
 
 // ============================================================================
-// OANCA ENGINE - THE SOLE VALUER
+// OANCA ENGINE v2 - DETERMINISTIC PRICING
 // ============================================================================
-// Bob/ChatGPT is a NARRATOR only. OANCA is the VALUER.
-// If Bob outputs any dollar value not in OANCA_PRICE_OBJECT → blocking bug.
+// Bob/ChatGPT is a NARRATOR only. OANCA is the SOLE VALUER.
+// RULE: SELL prices NEVER set BUY prices.
+// RULE: OWE (total_cost) is the ONLY anchor.
+// RULE: n_comps >= 2 required to price. Otherwise REQUEST_PICS.
 // ============================================================================
 
 // Types for sales history
@@ -43,7 +45,7 @@ interface WeightedComp {
 }
 
 // ============================================================================
-// LOCALE & CURRENCY LOCK - AUSTRALIA / AUD ONLY (unless explicit override)
+// LOCALE & CURRENCY LOCK - AUSTRALIA / AUD ONLY
 // ============================================================================
 
 const DEFAULT_MARKET = 'AU';
@@ -51,9 +53,6 @@ const DEFAULT_CURRENCY = 'AUD';
 
 // ============================================================================
 // OANCA_PRICE_OBJECT - THE ONLY SOURCE OF TRUTH FOR BOB
-// ============================================================================
-// Bob MUST read from this object. If allow_price = false, he refuses.
-// If ChatGPT outputs ANY number not in this object, it is a BLOCKING BUG.
 // ============================================================================
 
 type OancaVerdict = 'BUY' | 'HIT_IT' | 'HARD_WORK' | 'NEED_PICS' | 'WALK' | 'ESCALATE';
@@ -66,21 +65,20 @@ interface OancaPriceObject {
   buy_low: number | null;
   buy_high: number | null;
   anchor_owe: number | null;
+  anchor_owe_p75: number | null;  // 75th percentile for cap enforcement
   demand_class: DemandClass | null;
   confidence: OancaConfidence | null;
   n_comps: number;
   notes: string[];
-  retail_context_low: number | null;  // Optional, clearly labelled context only
-  retail_context_high: number | null; // Optional, clearly labelled context only
-  
-  // Locale/currency lock
+  retail_context_low: number | null;
+  retail_context_high: number | null;
   market: string;
   currency: string;
   floor_applied: boolean;
+  cap_applied: boolean;  // Track when hard_work cap enforced
   escalation_reason: string | null;
-  
-  // Audit fields
-  comps_used: string[];  // record_ids
+  firewall_triggered: boolean;  // Log firewall activations
+  comps_used: string[];
   processing_time_ms?: number;
 }
 
@@ -107,8 +105,6 @@ const HIGH_VALUE_AMERICAN_TRUCKS: Record<string, string[]> = {
   'dodge': ['ram', 'ram 1500', 'ram 2500', 'ram 3500'],
 };
 
-// Minimum wholesale floor for heavy-duty American trucks (AUD)
-// These are FLOOR prices - if OANCA produces something lower, escalate
 const HEAVY_DUTY_TRUCK_FLOORS_AUD: Record<string, number> = {
   'silverado_2500': 55000,
   'silverado_3500': 60000,
@@ -139,7 +135,6 @@ function isHighValueAmericanTruck(make: string, model: string): boolean {
 function getHeavyDutyFloor(make: string, model: string): number | null {
   const modelLower = model.toLowerCase().trim();
   
-  // Check for 2500/3500 class trucks
   if (modelLower.includes('2500') || modelLower.includes('3500') ||
       modelLower.includes('f-250') || modelLower.includes('f250') ||
       modelLower.includes('f-350') || modelLower.includes('f350')) {
@@ -168,7 +163,6 @@ function shouldForceEscalation(input: OancaInput, nComps: number): { escalate: b
   const isHighValue = input.year >= 2018;
   const hasWeakData = nComps < 3;
   
-  // Force escalation for high-value American trucks with weak data
   if (isAmericanTruck && isHighValue && hasWeakData) {
     return {
       escalate: true,
@@ -180,7 +174,7 @@ function shouldForceEscalation(input: OancaInput, nComps: number): { escalate: b
 }
 
 // ============================================================================
-// RECENCY WEIGHTS (as specified)
+// RECENCY WEIGHTS
 // 0–6m: 1.0 | 6–12m: 0.85 | 12–24m: 0.65 | 24–36m: 0.4 | 36m+: 0.2
 // ============================================================================
 
@@ -199,94 +193,8 @@ function calculateRecencyWeight(saleDateStr: string): { weight: number; months: 
 }
 
 // ============================================================================
-// DEMAND CLASS LOGIC
-// Based on days_in_stock + repeat loss patterns
-// ============================================================================
-
-function calculateDemandClass(comps: WeightedComp[]): { demandClass: DemandClass; reason: string } {
-  if (comps.length === 0) {
-    return { demandClass: 'hard_work', reason: 'No data' };
-  }
-  
-  const daysValues = comps
-    .map(wc => parseInt(String(wc.record.days_in_stock)) || 0)
-    .filter(d => d > 0);
-  
-  const grossValues = comps
-    .map(wc => parseFloat(String(wc.record.gross_profit)) || 0);
-  
-  const avgDays = daysValues.length > 0 
-    ? daysValues.reduce((a, b) => a + b, 0) / daysValues.length 
-    : 45;
-    
-  const avgGross = grossValues.length > 0 
-    ? grossValues.reduce((a, b) => a + b, 0) / grossValues.length 
-    : 0;
-  
-  // Check for repeat losses (poison)
-  const lossCount = grossValues.filter(g => g <= 0).length;
-  const lossRatio = grossValues.length > 0 ? lossCount / grossValues.length : 0;
-  
-  if (lossRatio >= 0.5 || avgGross < -500) {
-    return { demandClass: 'poison', reason: `Repeat loser (${lossCount}/${grossValues.length} losses, avg gross $${avgGross.toFixed(0)})` };
-  }
-  
-  if (avgDays <= 21 && avgGross >= 2000) {
-    return { demandClass: 'fast', reason: `Fast seller (avg ${avgDays.toFixed(0)} days, $${avgGross.toFixed(0)} gross)` };
-  }
-  
-  if (avgDays <= 35 && avgGross >= 1000) {
-    return { demandClass: 'average', reason: `Average demand (${avgDays.toFixed(0)} days)` };
-  }
-  
-  if (avgDays > 45 || avgGross < 1500) {
-    return { demandClass: 'hard_work', reason: `Slow mover (avg ${avgDays.toFixed(0)} days, $${avgGross.toFixed(0)} gross)` };
-  }
-  
-  return { demandClass: 'average', reason: `Standard demand` };
-}
-
-// ============================================================================
-// WEIGHTED MEDIAN OWE CALCULATION
-// ============================================================================
-
-function calculateWeightedMedianOwe(comps: WeightedComp[]): number | null {
-  const oweData = comps
-    .filter(wc => wc.record.total_cost > 0)
-    .map(wc => ({ owe: wc.record.total_cost, weight: wc.weight }));
-  
-  if (oweData.length === 0) return null;
-  
-  // Sort by OWE
-  oweData.sort((a, b) => a.owe - b.owe);
-  
-  // Calculate weighted median
-  const totalWeight = oweData.reduce((sum, d) => sum + d.weight, 0);
-  let cumWeight = 0;
-  
-  for (const d of oweData) {
-    cumWeight += d.weight;
-    if (cumWeight >= totalWeight / 2) {
-      return d.owe;
-    }
-  }
-  
-  return oweData[Math.floor(oweData.length / 2)].owe;
-}
-
-// ============================================================================
-// BUFFER BANDS - Small wholesale buffer based on price
-// ============================================================================
-
-function getOweBuffer(oweMedian: number): { low: number; high: number } {
-  if (oweMedian < 15000) return { low: 400, high: 800 };
-  if (oweMedian < 30000) return { low: 500, high: 1000 };
-  if (oweMedian < 60000) return { low: 600, high: 1200 };
-  return { low: 800, high: 1500 };
-}
-
-// ============================================================================
-// KNOWN PROBLEM VEHICLES (for demand class override)
+// KNOWN PROBLEM VEHICLES (HARD WORK OVERRIDES)
+// These vehicles are KNOWN slow movers. Override to hard_work regardless of data.
 // ============================================================================
 
 const KNOWN_HARD_WORK_VEHICLES: Record<string, string[]> = {
@@ -317,6 +225,217 @@ function isKnownHardWork(make: string, model: string): boolean {
 }
 
 // ============================================================================
+// DEMAND CLASS CALCULATION
+// Based on days_in_stock + gross profit patterns from history
+// ============================================================================
+
+function calculateDemandClass(comps: WeightedComp[]): { demandClass: DemandClass; reason: string; avgDays: number; avgGross: number } {
+  if (comps.length === 0) {
+    return { demandClass: 'hard_work', reason: 'No data', avgDays: 45, avgGross: 0 };
+  }
+  
+  const daysValues = comps
+    .map(wc => parseInt(String(wc.record.days_in_stock)) || 0)
+    .filter(d => d > 0);
+  
+  const grossValues = comps
+    .map(wc => parseFloat(String(wc.record.gross_profit)) || 0);
+  
+  const avgDays = daysValues.length > 0 
+    ? daysValues.reduce((a, b) => a + b, 0) / daysValues.length 
+    : 45;
+    
+  const avgGross = grossValues.length > 0 
+    ? grossValues.reduce((a, b) => a + b, 0) / grossValues.length 
+    : 0;
+  
+  // Check for repeat losses (poison)
+  const lossCount = grossValues.filter(g => g <= 0).length;
+  const lossRatio = grossValues.length > 0 ? lossCount / grossValues.length : 0;
+  
+  if (lossRatio >= 0.5 || avgGross < -500) {
+    return { 
+      demandClass: 'poison', 
+      reason: `Repeat loser (${lossCount}/${grossValues.length} losses, avg gross $${avgGross.toFixed(0)})`,
+      avgDays,
+      avgGross
+    };
+  }
+  
+  if (avgDays <= 21 && avgGross >= 2000) {
+    return { 
+      demandClass: 'fast', 
+      reason: `Fast seller (avg ${avgDays.toFixed(0)} days, $${avgGross.toFixed(0)} gross)`,
+      avgDays,
+      avgGross
+    };
+  }
+  
+  if (avgDays <= 35 && avgGross >= 1000) {
+    return { 
+      demandClass: 'average', 
+      reason: `Average demand (${avgDays.toFixed(0)} days)`,
+      avgDays,
+      avgGross
+    };
+  }
+  
+  // Slow mover or thin margin = hard_work
+  if (avgDays > 45 || avgGross < 1500) {
+    return { 
+      demandClass: 'hard_work', 
+      reason: `Slow mover (avg ${avgDays.toFixed(0)} days, $${avgGross.toFixed(0)} gross)`,
+      avgDays,
+      avgGross
+    };
+  }
+  
+  return { demandClass: 'average', reason: `Standard demand`, avgDays, avgGross };
+}
+
+// ============================================================================
+// OWE STATISTICS CALCULATION
+// Returns median, p75, max for OWE anchor computation
+// ============================================================================
+
+function calculateOweStats(comps: WeightedComp[]): { 
+  median: number | null; 
+  p75: number | null;
+  max: number | null;
+  weightedMedian: number | null;
+} {
+  const oweData = comps
+    .filter(wc => wc.record.total_cost > 0)
+    .map(wc => ({ owe: wc.record.total_cost, weight: wc.weight }));
+  
+  if (oweData.length === 0) return { median: null, p75: null, max: null, weightedMedian: null };
+  
+  // Sort by OWE for percentile calculations
+  const sortedOwe = oweData.map(d => d.owe).sort((a, b) => a - b);
+  
+  // Simple median
+  const median = sortedOwe[Math.floor(sortedOwe.length / 2)];
+  
+  // 75th percentile
+  const p75Index = Math.floor(sortedOwe.length * 0.75);
+  const p75 = sortedOwe[p75Index] || sortedOwe[sortedOwe.length - 1];
+  
+  // Max
+  const max = sortedOwe[sortedOwe.length - 1];
+  
+  // Weighted median
+  const totalWeight = oweData.reduce((sum, d) => sum + d.weight, 0);
+  let cumWeight = 0;
+  let weightedMedian = median;
+  
+  oweData.sort((a, b) => a.owe - b.owe);
+  for (const d of oweData) {
+    cumWeight += d.weight;
+    if (cumWeight >= totalWeight / 2) {
+      weightedMedian = d.owe;
+      break;
+    }
+  }
+  
+  return { median, p75, max, weightedMedian };
+}
+
+// ============================================================================
+// BUY RANGE CALCULATION
+// CRITICAL: OWE is the ONLY anchor. SELL never sets BUY.
+// For hard_work: buy_high <= p75 + 500
+// For poison: buy_high <= median
+// ============================================================================
+
+function calculateBuyRange(
+  oweStats: { median: number | null; p75: number | null; max: number | null; weightedMedian: number | null },
+  demandClass: DemandClass,
+  avgDays: number,
+  avgGross: number
+): { buyLow: number; buyHigh: number; capApplied: boolean; notes: string[] } {
+  const notes: string[] = [];
+  let capApplied = false;
+  
+  const anchorOwe = oweStats.weightedMedian || oweStats.median!;
+  const p75 = oweStats.p75 || anchorOwe;
+  
+  let buyLow: number;
+  let buyHigh: number;
+  
+  switch (demandClass) {
+    case 'poison':
+      // WALK territory - severely discounted, cap at median
+      buyLow = Math.round(anchorOwe * 0.80);
+      buyHigh = Math.round(anchorOwe * 0.88);
+      // Enforce cap: buy_high <= median
+      if (buyHigh > anchorOwe) {
+        buyHigh = anchorOwe;
+        capApplied = true;
+        notes.push(`POISON CAP: Capped at median OWE $${anchorOwe.toLocaleString()}`);
+      }
+      notes.push('POISON: Severely discounted due to repeat losses');
+      break;
+      
+    case 'hard_work':
+      // HIT_IT territory - conservative, cap at p75 + $500
+      buyLow = Math.round(anchorOwe * 0.90);
+      buyHigh = Math.round(anchorOwe * 0.97);
+      
+      // CRITICAL RULE: For hard_work, buy_high <= p75 + $500
+      // This prevents retail outliers from inflating the range
+      const hardWorkCap = p75 + 500;
+      if (buyHigh > hardWorkCap) {
+        buyHigh = hardWorkCap;
+        capApplied = true;
+        notes.push(`HARD_WORK CAP: Capped at p75+500 = $${hardWorkCap.toLocaleString()}`);
+      }
+      
+      // Apply additional risk discounts
+      if (avgDays > 60) {
+        const discount = Math.round(anchorOwe * 0.03);  // 3% for very slow
+        buyLow -= discount;
+        buyHigh -= discount;
+        notes.push(`VELOCITY DISCOUNT: -$${discount.toLocaleString()} for ${Math.round(avgDays)} day avg`);
+      }
+      
+      notes.push('HARD_WORK: Discounted for slow velocity');
+      break;
+      
+    case 'average':
+      // Standard wholesale buffer
+      buyLow = anchorOwe;
+      buyHigh = Math.round(anchorOwe + (anchorOwe < 20000 ? 800 : anchorOwe < 40000 ? 1000 : 1200));
+      notes.push('AVERAGE: Standard wholesale buffer applied');
+      break;
+      
+    case 'fast':
+      // Allow small uplift for proven fast sellers
+      buyLow = anchorOwe;
+      buyHigh = Math.round(anchorOwe + (anchorOwe < 20000 ? 1000 : anchorOwe < 40000 ? 1200 : 1500));
+      notes.push('FAST: Small uplift for proven velocity');
+      break;
+  }
+  
+  // Round to nearest $100
+  buyLow = Math.round(buyLow / 100) * 100;
+  buyHigh = Math.round(buyHigh / 100) * 100;
+  
+  // Ensure sensible range (min $500 spread)
+  if (buyHigh <= buyLow) {
+    buyHigh = buyLow + 500;
+  }
+  
+  // CRITICAL: MySalesData First - never exceed historical max OWE
+  if (oweStats.max && buyHigh > oweStats.max) {
+    buyHigh = oweStats.max;
+    capApplied = true;
+    notes.push(`MAX OWE CAP: Capped at historical max $${oweStats.max.toLocaleString()}`);
+  }
+  
+  return { buyLow, buyHigh, capApplied, notes };
+}
+
+// ============================================================================
 // OANCA ENGINE - CORE LOGIC
 // ============================================================================
 
@@ -326,6 +445,7 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
   const compsUsed: string[] = [];
   
   console.log(`[OANCA] Processing: ${input.year} ${input.make} ${input.model}`);
+  notes.push(`Query: ${input.year} ${input.make} ${input.model}`);
   
   // ============================================================
   // STEP 1: Find comps by make+model; year ±4; variant_family if present
@@ -338,11 +458,20 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
     const recordModel = (r.model || '').toLowerCase().trim();
     const recordYear = parseInt(String(r.year)) || 0;
     
-    const makeMatch = recordMake === makeLower || recordMake.includes(makeLower) || makeLower.includes(recordMake);
-    const modelMatch = recordModel === modelLower || recordModel.includes(modelLower) || modelLower.includes(recordModel);
-    const yearMatch = Math.abs(recordYear - input.year) <= 4;  // Year ±4 as specified
+    // Flexible make matching
+    const makeMatch = recordMake === makeLower || 
+                      recordMake.includes(makeLower) || 
+                      makeLower.includes(recordMake);
     
-    // Optional: variant_family matching
+    // Flexible model matching
+    const modelMatch = recordModel === modelLower || 
+                       recordModel.includes(modelLower) || 
+                       modelLower.includes(recordModel);
+    
+    // Year ±4 as specified
+    const yearMatch = Math.abs(recordYear - input.year) <= 4;
+    
+    // Optional: variant_family matching (if provided)
     let variantMatch = true;
     if (input.variant_family && r.variant_family) {
       const inputVF = input.variant_family.toLowerCase().trim();
@@ -354,6 +483,7 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
   });
   
   console.log(`[OANCA] Found ${matchingRecords.length} matching records`);
+  notes.push(`Found ${matchingRecords.length} raw matches`);
   
   // Weight each comp by recency
   const weightedComps: WeightedComp[] = matchingRecords.map(record => {
@@ -371,14 +501,17 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
   const oweComps = weightedComps.filter(wc => wc.record.total_cost > 0);
   const nOweComps = oweComps.length;
   
-  console.log(`[OANCA] OWE comps: ${nOweComps}`);
+  console.log(`[OANCA] OWE comps (with total_cost > 0): ${nOweComps}`);
+  notes.push(`OWE comps: ${nOweComps}`);
   
+  // ============================================================
+  // INSUFFICIENT DATA - allow_price=false
+  // ============================================================
   if (nOweComps < 2) {
-    // NO COMPS - allow_price=false, verdict=NEED_PICS
-    notes.push(`Insufficient OWE data: only ${nOweComps} records`);
+    notes.push(`INSUFFICIENT DATA: Only ${nOweComps} OWE records. Minimum 2 required.`);
     console.log(`[OANCA] VERDICT: NEED_PICS (insufficient data)`);
     
-    // Check if this is a high-value American truck (force escalation)
+    // Check for forced escalation (high-value American truck)
     const { escalate, reason: escalationReason } = shouldForceEscalation(input, nOweComps);
     
     return {
@@ -387,6 +520,7 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
       buy_low: null,
       buy_high: null,
       anchor_owe: null,
+      anchor_owe_p75: null,
       demand_class: null,
       confidence: null,
       n_comps: nOweComps,
@@ -396,25 +530,28 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
       market: DEFAULT_MARKET,
       currency: DEFAULT_CURRENCY,
       floor_applied: false,
+      cap_applied: false,
       escalation_reason: escalationReason,
-      comps_used: compsUsed,
+      firewall_triggered: false,
+      comps_used: compsUsed.slice(0, 10),  // Limit for logging
       processing_time_ms: Date.now() - startTime,
     };
   }
   
   // ============================================================
-  // STEP 3: Anchor = weighted median OWE
+  // STEP 3: Calculate OWE statistics (anchor)
   // ============================================================
-  const anchorOwe = calculateWeightedMedianOwe(oweComps);
+  const oweStats = calculateOweStats(oweComps);
   
-  if (!anchorOwe) {
-    notes.push('Failed to calculate OWE anchor');
+  if (!oweStats.median) {
+    notes.push('Failed to calculate OWE statistics');
     return {
       allow_price: false,
       verdict: 'NEED_PICS',
       buy_low: null,
       buy_high: null,
       anchor_owe: null,
+      anchor_owe_p75: null,
       demand_class: null,
       confidence: null,
       n_comps: nOweComps,
@@ -424,25 +561,31 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
       market: DEFAULT_MARKET,
       currency: DEFAULT_CURRENCY,
       floor_applied: false,
+      cap_applied: false,
       escalation_reason: null,
-      comps_used: compsUsed,
+      firewall_triggered: false,
+      comps_used: compsUsed.slice(0, 10),
       processing_time_ms: Date.now() - startTime,
     };
   }
   
-  console.log(`[OANCA] Anchor OWE: $${anchorOwe}`);
-  notes.push(`Anchor OWE: $${anchorOwe.toLocaleString()} (weighted median of ${nOweComps} comps)`);
+  const anchorOwe = oweStats.weightedMedian || oweStats.median;
+  console.log(`[OANCA] Anchor OWE: $${anchorOwe} (median: $${oweStats.median}, p75: $${oweStats.p75})`);
+  notes.push(`Anchor OWE: $${anchorOwe?.toLocaleString()} (weighted median)`);
+  notes.push(`OWE stats: median=$${oweStats.median?.toLocaleString()}, p75=$${oweStats.p75?.toLocaleString()}, max=$${oweStats.max?.toLocaleString()}`);
   
   // ============================================================
-  // STEP 4: Demand class from history
+  // STEP 4: Calculate demand class from history
   // ============================================================
-  let { demandClass, reason: demandReason } = calculateDemandClass(oweComps);
+  let { demandClass, reason: demandReason, avgDays, avgGross } = calculateDemandClass(oweComps);
   
-  // Override for known hard work vehicles
-  if (isKnownHardWork(input.make, input.model)) {
+  // Override for KNOWN hard work vehicles
+  const isKnownHardWorkVehicle = isKnownHardWork(input.make, input.model);
+  if (isKnownHardWorkVehicle) {
     if (demandClass === 'fast' || demandClass === 'average') {
       demandClass = 'hard_work';
-      demandReason = `Known slow mover (${input.make} ${input.model})`;
+      demandReason = `KNOWN HARD WORK: ${input.make} ${input.model} (overriding ${demandClass})`;
+      notes.push(`⚠️ KNOWN HARD WORK OVERRIDE: ${input.make} ${input.model}`);
     }
   }
   
@@ -450,44 +593,19 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
   notes.push(`Demand: ${demandClass} - ${demandReason}`);
   
   // ============================================================
-  // STEP 5: BUY range derived from OWE anchor + small buffer
-  // Never from retail asks
+  // STEP 5: Calculate BUY range from OWE anchor
+  // CRITICAL: SELL never sets BUY. OWE is the only anchor.
   // ============================================================
-  const buffer = getOweBuffer(anchorOwe);
-  let buyLow = anchorOwe + buffer.low;
-  let buyHigh = anchorOwe + buffer.high;
+  const buyRangeResult = calculateBuyRange(oweStats, demandClass, avgDays, avgGross);
+  let { buyLow, buyHigh, capApplied } = buyRangeResult;
+  notes.push(...buyRangeResult.notes);
   
-  // Apply demand class adjustments
-  if (demandClass === 'poison') {
-    // WALK territory - but we still provide a number (very conservative)
-    buyLow = Math.round(anchorOwe * 0.85);
-    buyHigh = Math.round(anchorOwe * 0.92);
-    notes.push('POISON: Severely discounted due to repeat losses');
-  } else if (demandClass === 'hard_work') {
-    // HIT_IT territory - conservative
-    buyLow = Math.round(anchorOwe * 0.92);
-    buyHigh = Math.round(anchorOwe * 0.98);
-    notes.push('HARD_WORK: Discounted for slow velocity');
-  } else if (demandClass === 'fast') {
-    // Allow small uplift for proven fast sellers
-    buyLow = anchorOwe + buffer.low;
-    buyHigh = anchorOwe + Math.round(buffer.high * 1.1);  // 10% more buffer room
-    notes.push('FAST: Small uplift for proven velocity');
-  }
-  
-  // Round to nearest $100
-  buyLow = Math.round(buyLow / 100) * 100;
-  buyHigh = Math.round(buyHigh / 100) * 100;
-  
-  // Ensure sensible range
-  if (buyHigh <= buyLow) {
-    buyHigh = buyLow + 500;
-  }
-  
-  console.log(`[OANCA] Buy range: $${buyLow} - $${buyHigh}`);
+  console.log(`[OANCA] Buy range: $${buyLow} - $${buyHigh} (cap applied: ${capApplied})`);
+  notes.push(`Buy range: $${buyLow.toLocaleString()} - $${buyHigh.toLocaleString()}`);
   
   // ============================================================
-  // STEP 6: SELL/retail is context only (optional)
+  // STEP 6: RETAIL CONTEXT (optional, clearly labelled)
+  // NEVER used for pricing. Context only.
   // ============================================================
   const sellPrices = oweComps
     .map(wc => wc.record.sell_price)
@@ -500,11 +618,11 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
     sellPrices.sort((a, b) => a - b);
     retailContextLow = sellPrices[Math.floor(sellPrices.length * 0.25)] || sellPrices[0];
     retailContextHigh = sellPrices[Math.floor(sellPrices.length * 0.75)] || sellPrices[sellPrices.length - 1];
-    notes.push(`Retail context (ASK only): $${retailContextLow?.toLocaleString()} - $${retailContextHigh?.toLocaleString()}`);
+    notes.push(`Retail context (ASK only, NOT for pricing): $${retailContextLow?.toLocaleString()} - $${retailContextHigh?.toLocaleString()}`);
   }
   
   // ============================================================
-  // DETERMINE VERDICT AND CONFIDENCE
+  // STEP 7: Determine VERDICT and CONFIDENCE
   // ============================================================
   let verdict: OancaVerdict;
   let confidence: OancaConfidence;
@@ -519,26 +637,31 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
     confidence = 'LOW';
   }
   
-  // Verdict based on demand class and confidence
-  if (demandClass === 'poison') {
-    verdict = 'WALK';
-    notes.push('VERDICT: WALK - history shows repeat losses');
-  } else if (demandClass === 'hard_work') {
-    verdict = 'HIT_IT';
-    notes.push('VERDICT: HIT_IT - needs aggressive pricing');
-  } else if (demandClass === 'fast' && confidence === 'HIGH') {
-    verdict = 'BUY';
-    notes.push('VERDICT: BUY - good fighter, proven velocity');
-  } else if (demandClass === 'average' || demandClass === 'fast') {
-    verdict = confidence === 'LOW' ? 'HARD_WORK' : 'BUY';
-    notes.push(`VERDICT: ${verdict} - ${confidence} confidence`);
-  } else {
-    verdict = 'HARD_WORK';
-    notes.push('VERDICT: HARD_WORK - proceed with caution');
+  // Verdict based on demand class
+  switch (demandClass) {
+    case 'poison':
+      verdict = 'WALK';
+      notes.push('VERDICT: WALK - history shows repeat losses');
+      break;
+    case 'hard_work':
+      verdict = 'HIT_IT';
+      notes.push('VERDICT: HIT_IT - price off OWE, not retail');
+      break;
+    case 'fast':
+      verdict = confidence === 'HIGH' ? 'BUY' : 'HARD_WORK';
+      notes.push(`VERDICT: ${verdict} - ${confidence} confidence`);
+      break;
+    case 'average':
+      verdict = confidence === 'LOW' ? 'HARD_WORK' : 'BUY';
+      notes.push(`VERDICT: ${verdict} - ${confidence} confidence`);
+      break;
+    default:
+      verdict = 'HARD_WORK';
+      notes.push('VERDICT: HARD_WORK - proceed with caution');
   }
   
   // ============================================================
-  // SANITY CLAMP: Heavy-duty American trucks floor check
+  // STEP 8: SANITY CLAMP - Heavy-duty American trucks floor check
   // ============================================================
   let floorApplied = false;
   let escalationReason: string | null = null;
@@ -546,7 +669,6 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
   const heavyDutyFloor = getHeavyDutyFloor(input.make, input.model);
   if (heavyDutyFloor && input.year >= 2018) {
     if (buyHigh < heavyDutyFloor) {
-      // Price is below floor - this looks like US price leakage, force escalation
       notes.push(`SANITY CLAMP: buy_high ($${buyHigh}) below floor ($${heavyDutyFloor}) for ${input.year} ${input.make} ${input.model}`);
       console.log(`[OANCA] SANITY CLAMP TRIGGERED: Forcing escalation`);
       
@@ -556,6 +678,7 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
         buy_low: null,
         buy_high: null,
         anchor_owe: anchorOwe,
+        anchor_owe_p75: oweStats.p75,
         demand_class: demandClass,
         confidence,
         n_comps: nOweComps,
@@ -565,8 +688,10 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
         market: DEFAULT_MARKET,
         currency: DEFAULT_CURRENCY,
         floor_applied: true,
+        cap_applied: capApplied,
         escalation_reason: `Heavy-duty truck floor violated. Computed $${buyHigh} < floor $${heavyDutyFloor}. Requires: location (state), link, or photos.`,
-        comps_used: compsUsed,
+        firewall_triggered: false,
+        comps_used: compsUsed.slice(0, 10),
         processing_time_ms: Date.now() - startTime,
       };
     }
@@ -584,6 +709,7 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
       buy_low: null,
       buy_high: null,
       anchor_owe: anchorOwe,
+      anchor_owe_p75: oweStats.p75,
       demand_class: demandClass,
       confidence,
       n_comps: nOweComps,
@@ -593,8 +719,10 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
       market: DEFAULT_MARKET,
       currency: DEFAULT_CURRENCY,
       floor_applied: false,
+      cap_applied: capApplied,
       escalation_reason: escalationCheck.reason,
-      comps_used: compsUsed,
+      firewall_triggered: false,
+      comps_used: compsUsed.slice(0, 10),
       processing_time_ms: Date.now() - startTime,
     };
   }
@@ -607,6 +735,7 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
     buy_low: buyLow,
     buy_high: buyHigh,
     anchor_owe: anchorOwe,
+    anchor_owe_p75: oweStats.p75,
     demand_class: demandClass,
     confidence,
     n_comps: nOweComps,
@@ -616,8 +745,10 @@ function runOancaEngine(input: OancaInput, salesHistory: SalesHistoryRecord[]): 
     market: DEFAULT_MARKET,
     currency: DEFAULT_CURRENCY,
     floor_applied: floorApplied,
+    cap_applied: capApplied,
     escalation_reason: null,
-    comps_used: compsUsed,
+    firewall_triggered: false,
+    comps_used: compsUsed.slice(0, 10),
     processing_time_ms: Date.now() - startTime,
   };
 }
@@ -636,7 +767,7 @@ async function queryDealerSalesHistory(): Promise<SalesHistoryRecord[]> {
   }
   
   try {
-    console.log(`Querying dealer sales history...`);
+    console.log(`[OANCA] Querying dealer sales history...`);
     
     const response = await fetch(`${SUPABASE_URL}/functions/v1/google-sheets`, {
       method: "POST",
@@ -658,7 +789,7 @@ async function queryDealerSalesHistory(): Promise<SalesHistoryRecord[]> {
     const data = await response.json();
     const allRecords: SalesHistoryRecord[] = data.data || [];
     
-    console.log(`Loaded ${allRecords.length} total sales records`);
+    console.log(`[OANCA] Loaded ${allRecords.length} total sales records`);
     return allRecords;
     
   } catch (error) {
@@ -729,30 +860,19 @@ async function logValoRequest(
 // ============================================================================
 
 function formatOancaForBob(oanca: OancaPriceObject, vehicle: string): string {
-  // ============================================================
-  // Bob reads OANCA_PRICE_OBJECT only.
-  // Bob cannot invent/ballpark.
-  // Bob must speak in Bob voice, but numbers must come from OANCA.
-  // ============================================================
-  
   let bobScript: string;
   
   if (!oanca.allow_price) {
-    // Determine script based on verdict
     if (oanca.verdict === 'ESCALATE') {
-      // ESCALATE - High value vehicle needs more info
       bobScript = "Give me two minutes mate, I'll check with the boys. Need you to send me the state it's in, a link to the ad (Carsales or Pickles), or a few photos so I can firm up a number.";
     } else {
-      // NO COMPS - Bob must say this exact script
-      bobScript = "Mate I'm thin on our book. Send pics and I'll check with the boys.";
+      bobScript = "Mate I'm thin on our book for this one. Send me a few pics and I'll check with the boys.";
     }
     
-    // Add retail context if available (as "asks", not wholesale)
     if (oanca.retail_context_low && oanca.retail_context_high) {
       bobScript += ` Seeing asks around $${oanca.retail_context_low.toLocaleString()} to $${oanca.retail_context_high.toLocaleString()} in market, but that's retail. Can't give you wholesale without more data.`;
     }
   } else {
-    // PRICED - Bob narrates the OANCA numbers
     const buyLow = oanca.buy_low!.toLocaleString();
     const buyHigh = oanca.buy_high!.toLocaleString();
     
@@ -777,18 +897,12 @@ function formatOancaForBob(oanca: OancaPriceObject, vehicle: string): string {
         bobScript = `Looking at $${buyLow} to $${buyHigh} to own it.`;
     }
     
-    // Add retail context if available
     if (oanca.retail_context_low && oanca.retail_context_high) {
       bobScript += ` Retail asks around $${oanca.retail_context_low.toLocaleString()} to $${oanca.retail_context_high.toLocaleString()}.`;
     }
   }
   
-  // Always append locale/currency confirmation
   bobScript += " All figures AUD (Australia).";
-  
-  // ============================================================
-  // BUILD CONTEXT FOR AI (BOB CAN ONLY USE THESE NUMBERS)
-  // ============================================================
   
   return `
 
@@ -802,6 +916,7 @@ verdict: ${oanca.verdict}
 demand_class: ${oanca.demand_class || 'N/A'}
 confidence: ${oanca.confidence || 'N/A'}
 n_comps: ${oanca.n_comps}
+cap_applied: ${oanca.cap_applied}
 floor_applied: ${oanca.floor_applied}
 ${oanca.escalation_reason ? `escalation_reason: ${oanca.escalation_reason}` : ''}
 
@@ -811,36 +926,23 @@ buy_high: $${oanca.buy_high?.toLocaleString()} AUD
 anchor_owe: $${oanca.anchor_owe?.toLocaleString()} AUD` : `=== NO APPROVED NUMBERS ===
 Bob is FORBIDDEN from quoting any wholesale price.
 Bob MUST request: location (state), link (Carsales/Pickles), or photos.
-Bob MUST escalate: "Give me two minutes, I'll check with the boys."`}
+Bob MUST say: "Give me two minutes, I'll check with the boys."`}
 
 ${oanca.retail_context_low ? `=== RETAIL CONTEXT (ASK prices only - NOT for pricing) ===
 retail_context_low: $${oanca.retail_context_low?.toLocaleString()} AUD
 retail_context_high: $${oanca.retail_context_high?.toLocaleString()} AUD
 (These are RETAIL ASKS, not wholesale. Context only.)` : ''}
 
-=== NOTES ===
-${oanca.notes.map(n => `- ${n}`).join('\n')}
-
 === BOB'S SCRIPT (SAY THIS) ===
 ${bobScript}
 
 === CRITICAL RULES FOR BOB ===
-1. Bob is a NARRATOR, not a VALUER. OANCA is the VALUER.
-2. Bob may ONLY quote numbers that appear in APPROVED NUMBERS above.
-3. If allow_price = false, Bob is FORBIDDEN from quoting ANY dollar amount for wholesale.
-4. If Bob outputs any dollar value not in OANCA_PRICE_OBJECT, it is a BLOCKING BUG.
+1. Bob is a NARRATOR, not a VALUER. OANCA is the SOLE VALUER.
+2. Bob may ONLY quote numbers from APPROVED NUMBERS above.
+3. If allow_price = false, Bob is FORBIDDEN from quoting ANY dollar amount.
+4. If Bob outputs any dollar value not in OANCA_PRICE_OBJECT, the runtime gate will BLOCK it.
 5. Bob may NOT calculate, adjust, infer, or ballpark any numbers.
-6. Bob speaks in Bob voice (Aussie knocker), but numbers MUST come from OANCA.
-7. Photos always welcome - they help tighten the range.
-8. ALL PRICES ARE AUD (AUSTRALIA). Bob must always confirm "All figures AUD (Australia)".
-9. If unsure about market/currency, Bob must ask for clarification. Do NOT use US/USD priors.
-
-=== AUDIT ===
-Market: ${oanca.market}
-Currency: ${oanca.currency}
-Floor applied: ${oanca.floor_applied}
-Processing time: ${oanca.processing_time_ms}ms
-Comps used: ${oanca.comps_used.length} records
+6. ALL PRICES ARE AUD (AUSTRALIA).
 `;
 }
 
@@ -860,7 +962,6 @@ function extractVehicleFromMessage(message: string): OancaInput | null {
   let foundMake = '';
   for (const make of makes) {
     if (text.includes(make)) {
-      // Normalize Chevy to Chevrolet
       if (make === 'chevy') {
         foundMake = 'Chevrolet';
       } else {
@@ -882,7 +983,7 @@ function extractVehicleFromMessage(message: string): OancaInput | null {
     'Kia': ['sportage', 'sorento', 'cerato', 'seltos', 'carnival', 'stonic', 'rio', 'picanto'],
     'Volkswagen': ['amarok', 'tiguan', 'golf', 'polo', 'passat', 'transporter', 'crafter', 't-roc'],
     'Subaru': ['outback', 'forester', 'xv', 'wrx', 'brz', 'impreza', 'liberty', 'levorg'],
-    'Peugeot': ['208', '308', '3008', '2008', '508', '5008'],
+    'Peugeot': ['206', '207', '208', '306', '307', '308', '3008', '2008', '508', '5008'],
     'Renault': ['megane', 'clio', 'captur', 'koleos'],
     'Fiat': ['500', 'punto', 'tipo'],
     'Chevrolet': ['silverado', 'silverado 1500', 'silverado 2500', 'silverado 3500', 'colorado', 'camaro', 'corvette', 'tahoe', 'suburban'],
@@ -906,14 +1007,23 @@ function extractVehicleFromMessage(message: string): OancaInput | null {
   const yearMatch = text.match(/\b(20[0-2]\d|199\d)\b/);
   const foundYear = yearMatch ? parseInt(yearMatch[1]) : 0;
   
+  // Extract km if mentioned
+  let km: number | undefined;
+  const kmMatch = text.match(/(\d{2,3})[,\s]?(\d{3})?\s*(?:k|km|kms|kays)/i);
+  if (kmMatch) {
+    const kmStr = kmMatch[1] + (kmMatch[2] || '');
+    km = parseInt(kmStr);
+    if (km < 1000) km = km * 1000;  // Handle "100k" format
+  }
+  
   if (foundMake && foundModel && foundYear) {
-    return { make: foundMake, model: foundModel, year: foundYear };
+    return { make: foundMake, model: foundModel, year: foundYear, km };
   }
   
   if (foundModel && foundYear) {
     for (const [make, models] of Object.entries(modelPatterns)) {
       if (models.some(m => foundModel.toLowerCase().includes(m))) {
-        return { make, model: foundModel, year: foundYear };
+        return { make, model: foundModel, year: foundYear, km };
       }
     }
   }
@@ -938,6 +1048,7 @@ OANCA is the valuer. You are the narrator.
 You read the OANCA_PRICE_OBJECT and speak it in Bob voice.
 You CANNOT calculate, adjust, or infer any numbers.
 If you output ANY dollar value not in OANCA_PRICE_OBJECT, it is a BLOCKING BUG.
+There is a HARD RUNTIME GATE that will block and replace your response if you quote unauthorized prices.
 
 === TONE RULES ===
 
@@ -952,7 +1063,7 @@ BANTER RULES:
 - Read OANCA_PRICE_OBJECT and speak the numbers
 - Add Bob character/voice to the delivery
 - Welcome photos (they always help)
-- Say "give me two minutes, I'll talk to the boys" when data is thin
+- Say "give me two minutes, I'll check with the boys" when data is thin
 
 === WHAT YOU CANNOT DO ===
 - Calculate or derive any price
@@ -962,6 +1073,117 @@ BANTER RULES:
 
 Style: Calm, confident, short sentences, Aussie phrasing, no emojis, no corporate language.
 Keep responses under 80 words. Sound like a phone call, not a chatbot.`;
+
+// ============================================================================
+// NUMBERS FIREWALL - RUNTIME GATE
+// ============================================================================
+
+interface FirewallResult {
+  triggered: boolean;
+  reason: string | null;
+  correctedResponse: string | null;
+}
+
+function runNumbersFirewall(
+  bobResponse: string,
+  oancaObject: OancaPriceObject
+): FirewallResult {
+  // ============================================================
+  // GATE 1: BLOCK ALL PRICES WHEN allow_price=false
+  // ============================================================
+  if (!oancaObject.allow_price) {
+    // Detect ANY dollar amount or price-like numbers
+    const pricePattern = /\$\s*[\d,]+(?:\s*k)?/gi;
+    const numberWithContext = /\b(buy|own|pay|offer|worth|value|price|range|around|about|looking\s+at)\b[^.]*?\$?\s*[\d,]+/gi;
+    const standalonePrice = /(?:^|[^a-z\d])(\d{4,6})(?:\s*(?:to|-|–)\s*\d{4,6})?(?:[^a-z\d]|$)/gi;
+    
+    const hasDollarPrices = pricePattern.test(bobResponse);
+    const hasContextPrices = numberWithContext.test(bobResponse);
+    const hasStandalonePrices = standalonePrice.test(bobResponse);
+    
+    if (hasDollarPrices || hasContextPrices || hasStandalonePrices) {
+      console.error("[FIREWALL] ❌ BLOCKED: Bob attempted to output prices when allow_price=false");
+      console.error("[FIREWALL] Blocked response:", bobResponse);
+      
+      let corrected: string;
+      if (oancaObject.verdict === 'ESCALATE') {
+        corrected = "Give me two minutes mate, I'll check with the boys. Need you to send me the state it's in, a link to the ad (Carsales or Pickles), or a few photos so I can firm up a number. All figures AUD (Australia).";
+      } else {
+        corrected = "Mate I'm thin on our book for that one. Send me a few pics and I'll check with the boys. All figures AUD (Australia).";
+      }
+      
+      console.log("[FIREWALL] ✓ Replaced with approved script");
+      
+      return {
+        triggered: true,
+        reason: "allow_price=false but response contained price-like numbers",
+        correctedResponse: corrected,
+      };
+    }
+  }
+  
+  // ============================================================
+  // GATE 2: VALIDATE PRICES WHEN allow_price=true
+  // ============================================================
+  if (oancaObject.allow_price && oancaObject.buy_low && oancaObject.buy_high) {
+    const priceMatches = bobResponse.match(/\$\s*[\d,]+/g) || [];
+    
+    // Build list of approved prices
+    const approvedPrices = [
+      oancaObject.buy_low,
+      oancaObject.buy_high,
+      oancaObject.anchor_owe,
+      oancaObject.retail_context_low,
+      oancaObject.retail_context_high,
+    ].filter(Boolean).map(p => Math.round(p! / 100) * 100);
+    
+    const unapprovedPrices: number[] = [];
+    
+    for (const priceStr of priceMatches) {
+      const price = parseInt(priceStr.replace(/[$,\s]/g, ''));
+      // Check if price is close to any approved price (within $500 tolerance)
+      const isApproved = approvedPrices.some(ap => Math.abs(price - ap) <= 500);
+      
+      if (!isApproved && price >= 1000) {
+        unapprovedPrices.push(price);
+      }
+    }
+    
+    if (unapprovedPrices.length > 0) {
+      console.error(`[FIREWALL] ❌ BLOCKED: Bob quoted unapproved price(s): ${unapprovedPrices.join(', ')}`);
+      console.error(`[FIREWALL] Approved prices: ${approvedPrices.join(', ')}`);
+      console.error(`[FIREWALL] Blocked response:`, bobResponse);
+      
+      const buyLow = oancaObject.buy_low.toLocaleString();
+      const buyHigh = oancaObject.buy_high.toLocaleString();
+      
+      let corrected: string;
+      switch (oancaObject.verdict) {
+        case 'HIT_IT':
+          corrected = `These need to be hit. Price it off what we owed last time, not what we jagged. Looking at $${buyLow} to $${buyHigh} to own it. All figures AUD (Australia).`;
+          break;
+        case 'HARD_WORK':
+          corrected = `That's hard work mate. I'd be looking at $${buyLow} to $${buyHigh} to own it. Don't get silly. All figures AUD (Australia).`;
+          break;
+        case 'WALK':
+          corrected = `I'd rather keep my powder dry on this one. If you must, don't pay more than $${buyLow}. All figures AUD (Australia).`;
+          break;
+        default:
+          corrected = `I'd be looking at $${buyLow} to $${buyHigh} to own it. All figures AUD (Australia).`;
+      }
+      
+      console.log("[FIREWALL] ✓ Replaced with corrected OANCA prices");
+      
+      return {
+        triggered: true,
+        reason: `Unapproved prices detected: ${unapprovedPrices.join(', ')}`,
+        correctedResponse: corrected,
+      };
+    }
+  }
+  
+  return { triggered: false, reason: null, correctedResponse: null };
+}
 
 // ============================================================================
 // MAIN HANDLER
@@ -1009,7 +1231,7 @@ serve(async (req) => {
       const vehicle = `${vehicleInput.year} ${vehicleInput.make} ${vehicleInput.model}`;
       oancaContext = formatOancaForBob(oancaObject, vehicle);
       
-      console.log(`[BOB] OANCA verdict: ${oancaObject.verdict}, allow_price: ${oancaObject.allow_price}`);
+      console.log(`[BOB] OANCA verdict: ${oancaObject.verdict}, allow_price: ${oancaObject.allow_price}, n_comps: ${oancaObject.n_comps}`);
     }
 
     // Build messages for AI
@@ -1042,7 +1264,7 @@ serve(async (req) => {
         model: "google/gemini-2.5-flash",
         messages,
         max_tokens: 250,
-        temperature: 0.7,  // Slightly lower for more consistent narration
+        temperature: 0.5,  // Lower for more consistent narration
       }),
     });
 
@@ -1081,89 +1303,19 @@ serve(async (req) => {
     }
 
     // ============================================================
-    // HARD RUNTIME GATE 1: BLOCK ALL PRICES WHEN allow_price=false
-    // This is CODE enforcement - NOT prompt rules. Non-negotiable.
+    // RUN NUMBERS FIREWALL
     // ============================================================
-    if (oancaObject && !oancaObject.allow_price) {
-      // Detect ANY dollar amount in Bob's response
-      const pricePattern = /\$\s*[\d,]+(?:\s*k)?/gi;
-      const numberWithContext = /\b(buy|own|pay|offer|worth|value|price|range|around|about|looking\s+at)\b[^.]*?\$?\s*[\d,]+/gi;
-      const standalonePrice = /(?:^|[^a-z])(\d{4,6})(?:\s*(?:to|-|–)\s*\d{4,6})?(?:[^a-z]|$)/gi;
+    let firewallTriggered = false;
+    if (oancaObject) {
+      const firewallResult = runNumbersFirewall(bobResponse, oancaObject);
       
-      const hasDollarPrices = pricePattern.test(bobResponse);
-      const hasContextPrices = numberWithContext.test(bobResponse);
-      const hasStandalonePrices = standalonePrice.test(bobResponse);
-      
-      if (hasDollarPrices || hasContextPrices || hasStandalonePrices) {
-        console.error("[OANCA GATE] ❌ HARD BLOCK: Bob attempted to output prices when allow_price=false");
-        console.error("[OANCA GATE] Blocked response:", bobResponse);
+      if (firewallResult.triggered) {
+        console.log(`[FIREWALL] Triggered: ${firewallResult.reason}`);
+        bobResponse = firewallResult.correctedResponse!;
+        firewallTriggered = true;
         
-        // FORCE REPLACE with approved script based on verdict
-        if (oancaObject.verdict === 'ESCALATE') {
-          bobResponse = "Give me two minutes mate, I'll check with the boys. Need you to send me the state it's in, a link to the ad (Carsales or Pickles), or a few photos so I can firm up a number. All figures AUD (Australia).";
-        } else {
-          bobResponse = "Mate I'm thin on our book for that one. Send me a few pics and I'll talk to the boys. All figures AUD (Australia).";
-        }
-        
-        console.log("[OANCA GATE] ✓ Replaced with approved NEED_PICS/ESCALATE script");
-      }
-    }
-    
-    // ============================================================
-    // HARD RUNTIME GATE 2: VALIDATE PRICES WHEN allow_price=true
-    // Bob may ONLY quote prices that appear in OANCA_PRICE_OBJECT
-    // ============================================================
-    if (oancaObject && oancaObject.allow_price && oancaObject.buy_low && oancaObject.buy_high) {
-      const priceMatches = bobResponse.match(/\$\s*[\d,]+/g) || [];
-      
-      // Build list of approved prices (rounded to nearest 100 for matching)
-      const approvedPrices = [
-        oancaObject.buy_low,
-        oancaObject.buy_high,
-        oancaObject.anchor_owe,
-        oancaObject.retail_context_low,
-        oancaObject.retail_context_high,
-      ].filter(Boolean).map(p => Math.round(p! / 100) * 100);
-      
-      let hasUnapprovedPrice = false;
-      const unapprovedPrices: number[] = [];
-      
-      for (const priceStr of priceMatches) {
-        const price = parseInt(priceStr.replace(/[$,\s]/g, ''));
-        // Check if price is close to any approved price (within $500 tolerance)
-        const isApproved = approvedPrices.some(ap => Math.abs(price - ap) <= 500);
-        
-        if (!isApproved && price >= 1000) {  // Flag significant prices
-          hasUnapprovedPrice = true;
-          unapprovedPrices.push(price);
-        }
-      }
-      
-      if (hasUnapprovedPrice) {
-        console.error(`[OANCA GATE] ❌ HARD BLOCK: Bob quoted unapproved price(s): ${unapprovedPrices.join(', ')}`);
-        console.error(`[OANCA GATE] Approved prices: ${approvedPrices.join(', ')}`);
-        console.error(`[OANCA GATE] Blocked response:`, bobResponse);
-        
-        // FORCE REPLACE with correct OANCA numbers
-        const buyLow = oancaObject.buy_low.toLocaleString();
-        const buyHigh = oancaObject.buy_high.toLocaleString();
-        
-        // Generate corrected response based on verdict
-        switch (oancaObject.verdict) {
-          case 'HIT_IT':
-            bobResponse = `These need to be hit. Price it off what we owed last time, not what we jagged. Looking at $${buyLow} to $${buyHigh} to own it. All figures AUD (Australia).`;
-            break;
-          case 'HARD_WORK':
-            bobResponse = `That's hard work mate. I'd be looking at $${buyLow} to $${buyHigh} to own it. Don't get silly. All figures AUD (Australia).`;
-            break;
-          case 'WALK':
-            bobResponse = `I'd rather keep my powder dry on this one. If you must, don't pay more than $${buyLow}. All figures AUD (Australia).`;
-            break;
-          default:
-            bobResponse = `I'd be looking at $${buyLow} to $${buyHigh} to own it. All figures AUD (Australia).`;
-        }
-        
-        console.log("[OANCA GATE] ✓ Replaced with corrected OANCA prices");
+        // Update OANCA object to record firewall activation
+        oancaObject.firewall_triggered = true;
       }
     }
 
@@ -1178,6 +1330,7 @@ serve(async (req) => {
     // Include OANCA debug object if requested (admin only)
     if (includeDebug && oancaObject) {
       responseBody.oanca_debug = oancaObject;
+      responseBody.firewall_triggered = firewallTriggered;
     }
 
     console.log("[BOB] Response sent");
