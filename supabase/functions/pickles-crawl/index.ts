@@ -91,93 +91,71 @@ function parseVehicleCards(html: string): ParsedListing[] {
   
   console.log(`[pickles-crawl] Parsing HTML, length: ${html.length}`);
   
-  // Look for vehicle card patterns in the rendered HTML
-  // Pattern 1: Find all links to /used/item/... pages
-  const itemLinkPattern = /href=["'](\/used\/item\/([^"']+)-(\d+))["']/gi;
-  const matches: Array<{url: string, slug: string, lotId: string, index: number}> = [];
+  // URL pattern: /used/details/cars/YEAR-MAKE-MODEL/STOCK_ID
+  // Example: /used/details/cars/2017-ford-ranger/62141440
+  const detailsLinkPattern = /href=["']?(https:\/\/www\.pickles\.com\.au)?\/used\/details\/cars\/([^"'\s]+)\/(\d+)["']?/gi;
+  const matches: Array<{url: string, slug: string, stockId: string, index: number}> = [];
   
   let match;
-  while ((match = itemLinkPattern.exec(html)) !== null) {
+  while ((match = detailsLinkPattern.exec(html)) !== null) {
     matches.push({
-      url: match[1],
+      url: `/used/details/cars/${match[2]}/${match[3]}`,
       slug: match[2],
-      lotId: match[3],
+      stockId: match[3],
       index: match.index
     });
   }
   
-  console.log(`[pickles-crawl] Found ${matches.length} item links`);
+  console.log(`[pickles-crawl] Found ${matches.length} detail links`);
   
-  // Dedupe by lot ID and process each unique listing
+  // Dedupe by stock ID and process each unique listing
   for (const item of matches) {
-    if (seenLotIds.has(item.lotId)) continue;
-    seenLotIds.add(item.lotId);
+    if (seenLotIds.has(item.stockId)) continue;
+    seenLotIds.add(item.stockId);
     
     // Extract a context window around this link to find vehicle details
-    const contextStart = Math.max(0, item.index - 3000);
-    const contextEnd = Math.min(html.length, item.index + 3000);
+    const contextStart = Math.max(0, item.index - 2000);
+    const contextEnd = Math.min(html.length, item.index + 2000);
     const context = html.substring(contextStart, contextEnd);
     
-    // Parse the slug for make/model/variant hints
-    // Format: make-model-variant-year-lotId or similar
+    // Parse the slug for year, make, model
+    // Format: YEAR-MAKE-MODEL or YEAR-MAKE-MODEL-VARIANT
+    // Examples: 2017-ford-ranger, 2022-toyota-hilux-sr5
     const slugParts = item.slug.toLowerCase().split('-');
-    
-    // Try to extract year, make, model from context
-    // Look for title patterns like "2023 Toyota Hilux SR5"
-    const titlePattern = /(20\d{2}|19\d{2})\s+([A-Z][a-zA-Z]+)\s+([A-Z][a-zA-Z0-9]+)(?:\s+([A-Z][a-zA-Z0-9\s]+))?/;
-    const titleMatch = context.match(titlePattern);
     
     let year: number | null = null;
     let make = '';
     let model = '';
     let variant: string | null = null;
     
-    if (titleMatch) {
-      year = parseInt(titleMatch[1]);
-      make = titleMatch[2];
-      model = titleMatch[3];
-      variant = titleMatch[4]?.trim() || null;
-    } else {
-      // Fallback: Try to parse from slug
-      // Expected patterns: toyota-hilux-sr5-auto-2023
-      for (const part of slugParts) {
-        const y = parseYear(part);
-        if (y) {
-          year = y;
-          break;
+    // First part should be year
+    if (slugParts.length >= 3) {
+      const potentialYear = parseInt(slugParts[0]);
+      if (potentialYear >= 1990 && potentialYear <= 2030) {
+        year = potentialYear;
+        make = slugParts[1].charAt(0).toUpperCase() + slugParts[1].slice(1);
+        model = slugParts[2].charAt(0).toUpperCase() + slugParts[2].slice(1);
+        
+        // Remaining parts are variant
+        if (slugParts.length > 3) {
+          variant = slugParts.slice(3).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
         }
-      }
-      
-      // Common makes list for matching
-      const makes = ['toyota', 'ford', 'holden', 'mazda', 'nissan', 'hyundai', 'kia', 'mitsubishi', 'subaru', 'volkswagen', 'honda', 'suzuki', 'isuzu', 'jeep', 'land rover', 'bmw', 'mercedes', 'audi', 'lexus', 'porsche', 'tesla', 'ram', 'chevrolet', 'great wall', 'ldv', 'mahindra', 'ssangyong', 'haval', 'mg'];
-      
-      for (const part of slugParts) {
-        if (makes.includes(part)) {
-          make = part.charAt(0).toUpperCase() + part.slice(1);
-          break;
-        }
-      }
-      
-      // Model is usually after make in slug
-      const makeIdx = slugParts.indexOf(make.toLowerCase());
-      if (makeIdx >= 0 && makeIdx < slugParts.length - 1) {
-        model = slugParts[makeIdx + 1].charAt(0).toUpperCase() + slugParts[makeIdx + 1].slice(1);
       }
     }
     
     // Skip if we couldn't parse essential fields
     if (!year || !make || !model) {
-      console.log(`[pickles-crawl] Skipping lot ${item.lotId} - couldn't parse: year=${year}, make=${make}, model=${model}`);
+      console.log(`[pickles-crawl] Skipping stock ${item.stockId} - couldn't parse: year=${year}, make=${make}, model=${model}, slug=${item.slug}`);
       continue;
     }
     
-    // Extract km
+    // Extract km from context - look for patterns like "165,668 km" or "45785km"
     const km = parseKm(context);
     
-    // Extract location
+    // Extract location from context
     const locationPatterns = [
-      /(?:Location|Branch|Yard):\s*([A-Za-z\s]+)/i,
-      /(Brisbane|Sydney|Melbourne|Perth|Adelaide|Canberra|Darwin|Hobart|Newcastle|Wollongong|Gold Coast|Cairns|Townsville|Rockhampton|Mackay|Toowoomba|Geelong|Ballarat|Bendigo|Launceston)/i,
+      /(Moonah|Brisbane|Sydney|Melbourne|Perth|Adelaide|Canberra|Darwin|Hobart|Newcastle|Wollongong|Gold Coast|Cairns|Townsville|Rockhampton|Mackay|Toowoomba|Geelong|Ballarat|Bendigo|Launceston|Dubbo|Salisbury Plain|Winnellie|Yatala|Eagle Farm|Altona|Dandenong)[,\s]/i,
+      /(?:Location|Branch|Yard)[:\s]+([A-Za-z\s]+)/i,
     ];
     let location: string | null = null;
     for (const lp of locationPatterns) {
@@ -200,8 +178,8 @@ function parseVehicleCards(html: string): ParsedListing[] {
     const transmission = transMatch ? transMatch[1] : null;
     
     listings.push({
-      listing_id: `pickles-${item.lotId}`,
-      lot_id: item.lotId,
+      listing_id: `pickles-${item.stockId}`,
+      lot_id: item.stockId,
       listing_url: `https://www.pickles.com.au${item.url}`,
       make,
       model,
