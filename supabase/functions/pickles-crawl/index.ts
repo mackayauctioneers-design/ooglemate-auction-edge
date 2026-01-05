@@ -36,27 +36,135 @@ interface ParsedListing {
   buy_method: string | null;
 }
 
-// Variant family whitelist for normalization
-const VARIANT_FAMILIES: Record<string, string[]> = {
-  'SR5': ['SR5'],
-  'Rogue': ['Rogue'],
-  'Rugged': ['Rugged', 'Rugged X'],
-  'GXL': ['GXL'],
-  'GX': ['GX'],
-  'Workmate': ['Workmate'],
-  'SR': ['SR'],
+// ========== COMPREHENSIVE VARIANT FAMILY EXTRACTION ==========
+// Uses deterministic regex patterns and model-specific ladders, NOT AI
+
+// Variant family definitions by make/model (AU market focus)
+const MODEL_VARIANT_FAMILIES: Record<string, Record<string, string[]>> = {
+  // Toyota
+  'toyota': {
+    'landcruiser': ['GX', 'GXL', 'VX', 'SAHARA', 'KAKADU'],
+    'prado': ['GX', 'GXL', 'VX', 'KAKADU', 'ALTITUDE'],
+    'hilux': ['WORKMATE', 'SR', 'SR5', 'ROGUE', 'RUGGED', 'RUGGED X'],
+    'corolla': ['ASCENT', 'ASCENT SPORT', 'SX', 'ZR', 'HYBRID', 'GR', 'CROSS'],
+    'camry': ['ASCENT', 'ASCENT SPORT', 'SX', 'SL', 'HYBRID'],
+    'rav4': ['GX', 'GXL', 'CRUISER', 'EDGE', 'HYBRID'],
+    'kluger': ['GX', 'GXL', 'GRANDE', 'HYBRID'],
+    'fortuner': ['GX', 'GXL', 'CRUSADE'],
+  },
+  // Ford
+  'ford': {
+    'ranger': ['XL', 'XLS', 'XLT', 'WILDTRAK', 'RAPTOR', 'SPORT', 'FX4'],
+    'everest': ['AMBIENTE', 'TREND', 'SPORT', 'TITANIUM', 'PLATINUM', 'WILDTRAK'],
+    'mustang': ['GT', 'ECOBOOST', 'MACH 1'],
+  },
+  // Isuzu
+  'isuzu': {
+    'd-max': ['SX', 'LS-M', 'LS-U', 'X-TERRAIN', 'LS'],
+    'mu-x': ['LS-M', 'LS-U', 'LS-T', 'LS'],
+  },
+  // Mitsubishi
+  'mitsubishi': {
+    'triton': ['GLX', 'GLX+', 'GLS', 'GSR', 'EXCEED', 'BLACKLINE'],
+    'pajero': ['GLX', 'GLS', 'EXCEED', 'SPORT'],
+    'outlander': ['ES', 'LS', 'EXCEED', 'ASPIRE', 'GSR'],
+  },
+  // Mazda
+  'mazda': {
+    'bt-50': ['XT', 'XTR', 'GT', 'SP', 'THUNDER'],
+    'cx-5': ['MAXX', 'MAXX SPORT', 'TOURING', 'GT', 'AKERA'],
+  },
+  // Nissan
+  'nissan': {
+    'navara': ['SL', 'ST', 'ST-X', 'PRO-4X', 'N-TREK', 'WARRIOR'],
+    'patrol': ['TI', 'TI-L', 'WARRIOR'],
+    'x-trail': ['ST', 'ST-L', 'TI', 'TI-L'],
+  },
+  // Volkswagen
+  'volkswagen': {
+    'amarok': ['CORE', 'LIFE', 'STYLE', 'PANAMERICANA', 'AVENTURA', 'HIGHLINE', 'V6'],
+  },
+  // Holden
+  'holden': {
+    'colorado': ['LS', 'LT', 'LTZ', 'Z71', 'STORM'],
+    'commodore': ['EVOKE', 'SV6', 'SS', 'SSV', 'VXR', 'CALAIS'],
+    'trailblazer': ['LT', 'LTZ', 'Z71', 'STORM'],
+  },
+  // Hyundai
+  'hyundai': {
+    'tucson': ['ACTIVE', 'ELITE', 'HIGHLANDER', 'N-LINE'],
+    'santa fe': ['ACTIVE', 'ELITE', 'HIGHLANDER'],
+    'i30': ['ACTIVE', 'ELITE', 'N-LINE', 'N'],
+  },
+  // Kia
+  'kia': {
+    'sportage': ['S', 'SX', 'GT-LINE', 'GT'],
+    'sorento': ['S', 'SI', 'SLI', 'GT-LINE', 'GT'],
+    'cerato': ['S', 'SPORT', 'SPORT+', 'GT'],
+  },
 };
 
-function deriveVariantFamily(variantRaw: string | null): string | null {
-  if (!variantRaw) return null;
-  const upper = variantRaw.toUpperCase();
-  for (const [family, patterns] of Object.entries(VARIANT_FAMILIES)) {
-    for (const pattern of patterns) {
-      if (upper.includes(pattern.toUpperCase())) {
-        return family;
+// Generic variant families for fallback matching
+const GENERIC_FAMILIES = [
+  'ASCENT SPORT', 'RUGGED X', 'RUGGED-X', 'X-TERRAIN', 'GT-LINE', 'N-LINE',
+  'ST-X', 'PRO-4X', 'N-TREK', 'LS-U', 'LS-M', 'LS-T', 'TI-L', 'ST-L',
+  'SR5', 'GXL', 'GX', 'VX', 'SAHARA', 'KAKADU', 'ROGUE', 'RUGGED', 'WORKMATE',
+  'WILDTRAK', 'RAPTOR', 'XLT', 'XLS', 'XL', 'TITANIUM', 'PLATINUM', 'AMBIENTE', 'TREND',
+  'LTZ', 'LT', 'Z71', 'ZR2', 'STORM', 'WARRIOR',
+  'HIGHLANDER', 'ELITE', 'ACTIVE',
+  'GT', 'GR', 'RS', 'SS', 'SSV', 'SV6', 'XR6', 'XR8',
+  'SPORT', 'PREMIUM', 'EXCEED', 'CRUSADE',
+];
+
+/**
+ * Extract variant family using model-specific patterns + generic fallback
+ * Uses word boundary matching to prevent false positives
+ */
+function deriveVariantFamily(make: string | null, model: string | null, variantRaw: string | null, contextText?: string): string | null {
+  // Combine all text sources
+  const textSources = [variantRaw, contextText].filter(Boolean).join(' ');
+  if (!textSources.trim()) return null;
+  
+  const upper = textSources.toUpperCase();
+  const makeLower = (make || '').toLowerCase().trim();
+  const modelLower = (model || '').toLowerCase().trim();
+  
+  // Try model-specific families first
+  const makeData = MODEL_VARIANT_FAMILIES[makeLower];
+  if (makeData) {
+    // Try exact model match
+    let families = makeData[modelLower];
+    
+    // Try partial model match (e.g., "ranger" in "ranger-xlt")
+    if (!families) {
+      for (const [modelKey, modelFamilies] of Object.entries(makeData)) {
+        if (modelLower.includes(modelKey) || modelKey.includes(modelLower)) {
+          families = modelFamilies;
+          break;
+        }
+      }
+    }
+    
+    if (families) {
+      // Sort by length descending to match longer patterns first
+      const sorted = [...families].sort((a, b) => b.length - a.length);
+      for (const family of sorted) {
+        const pattern = new RegExp(`\\b${family.replace(/[+-]/g, '[+-]?')}\\b`, 'i');
+        if (pattern.test(upper)) {
+          return family.toUpperCase();
+        }
       }
     }
   }
+  
+  // Fallback to generic families
+  for (const family of GENERIC_FAMILIES) {
+    const pattern = new RegExp(`\\b${family.replace(/[+-]/g, '[+-]?')}\\b`, 'i');
+    if (pattern.test(upper)) {
+      return family.toUpperCase();
+    }
+  }
+  
   return null;
 }
 
@@ -212,6 +320,9 @@ function parseVehicleCards(html: string): ParsedListing[] {
     const transMatch = context.match(/\b(Automatic|Manual|Auto|CVT|DCT)\b/i);
     const transmission = transMatch ? transMatch[1] : null;
     
+    // Extract variant family using comprehensive extraction (make, model, variant, context)
+    const variantFamily = deriveVariantFamily(make, model, variant, cleanedContext);
+    
     listings.push({
       listing_id: `pickles-${item.stockId}`,
       lot_id: item.stockId,
@@ -219,9 +330,9 @@ function parseVehicleCards(html: string): ParsedListing[] {
       make,
       model,
       year,
-      km,
+      km, // KM is OPTIONAL for Pickles - null is valid
       variant_raw: variant,
-      variant_family: deriveVariantFamily(variant),
+      variant_family: variantFamily,
       transmission,
       location,
       auction_datetime: auctionTime,

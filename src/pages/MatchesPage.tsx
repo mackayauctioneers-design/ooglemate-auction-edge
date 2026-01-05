@@ -14,6 +14,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
+import { isPicklesSource as checkPicklesSource } from '@/utils/variantFamilyExtractor';
 
 // Match tiers: Tier 1 (Exact) = Precision, Tier 2 (Variant Family) = Probable
 type MatchTier = 'tier1' | 'tier2';
@@ -76,6 +77,20 @@ function isSpecOnlyFingerprint(fp: SaleFingerprint): boolean {
   return false;
 }
 
+// ========== PICKLES MATCHING RULES ==========
+// 1. KM is OPTIONAL for Pickles - missing KM never blocks matching
+// 2. Tier-2 works even without variant_family (make + model + year is enough)
+// 3. Pickles defaults to Spec-Only matching until KM is confirmed
+
+function isPicklesLot(lot: AuctionLot): boolean {
+  return checkPicklesSource(lot.source_name, lot.auction_house);
+}
+
+// Check if lot has confirmed KM (valid, non-placeholder)
+function hasConfirmedKm(lot: AuctionLot): boolean {
+  return lot.km != null && lot.km > 0 && lot.km < 900000;
+}
+
 // Match a lot against a fingerprint using the matching rules
 // Returns Match with tier information for sorting
 function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | null {
@@ -93,31 +108,46 @@ function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | nu
   const expiresAt = new Date(fp.expires_at);
   if (today > expiresAt) return null;
   
-  // Year tolerance: ±1
-  if (Math.abs((lot.year || 0) - (fp.year || 0)) > 1) return null;
-  
   // Check make/model - must always match
   if (
     lot.make?.toLowerCase().trim() !== fp.make?.toLowerCase().trim() ||
     lot.model?.toLowerCase().trim() !== fp.model?.toLowerCase().trim()
   ) return null;
   
+  // ========== PICKLES-SPECIFIC MATCHING ==========
+  const isPikles = isPicklesLot(lot);
+  const lotHasKm = hasConfirmedKm(lot);
+  
+  // Year tolerance: ±1 for standard, ±4 for Pickles catalogue (messy data)
+  const yearTolerance = isPikles ? 4 : 1;
+  if (Math.abs((lot.year || 0) - (fp.year || 0)) > yearTolerance) return null;
+  
   // Determine if this is a spec-only fingerprint
   const isSpecOnly = isSpecOnlyFingerprint(fp);
   
   // ========== SPEC-ONLY FINGERPRINTS: Tier-2 only, visibility-only ==========
-  // Spec-only fingerprints can only create Tier-2 Probable matches
-  // They must never auto-promote to BUY and never trigger alerts
   if (isSpecOnly) {
+    // For Pickles without KM, always match as spec-only Tier-2
+    if (isPikles) {
+      return {
+        fingerprint: fp,
+        lot,
+        matchType: 'spec_only',
+        lane: 'Probable',
+        tier: 'tier2',
+        matchConfidence: 'probable',
+      };
+    }
+    
     // Exact variant match - still Tier-2 Probable for spec-only
     if (lot.variant_normalised?.toLowerCase().trim() === fp.variant_normalised?.toLowerCase().trim()) {
       return {
         fingerprint: fp,
         lot,
         matchType: 'spec_only',
-        lane: 'Probable', // Forced to Probable for spec-only
-        tier: 'tier2', // Forced to Tier-2 for spec-only
-        matchConfidence: 'probable', // Never 'exact' - prevents BUY promotion
+        lane: 'Probable',
+        tier: 'tier2',
+        matchConfidence: 'probable',
       };
     }
     
@@ -136,8 +166,10 @@ function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | nu
       };
     }
     
-    return null; // No match for spec-only fingerprint
+    return null;
   }
+  
+  // ========== FULL FINGERPRINTS ==========
   
   // ========== TIER 1: Exact variant match (FULL fingerprints only) ==========
   if (lot.variant_normalised?.toLowerCase().trim() === fp.variant_normalised?.toLowerCase().trim()) {
@@ -151,41 +183,70 @@ function matchLotToFingerprint(lot: AuctionLot, fp: SaleFingerprint): Match | nu
       // Fall through to tier 2
     } else {
       // KM range check: ONLY for full fingerprints with valid min/max km
+      // BUT: For Pickles, KM check is OPTIONAL - if lot has no KM, still match as Tier-2
       const minKm = fp.min_km!;
       const maxKm = fp.max_km!;
       
-      if (lot.km >= minKm && lot.km <= maxKm) {
+      if (lotHasKm) {
+        // Lot has confirmed KM - check range
+        if (lot.km >= minKm && lot.km <= maxKm) {
+          return {
+            fingerprint: fp,
+            lot,
+            matchType: 'km_bounded',
+            lane: 'Precision',
+            tier: 'tier1',
+            matchConfidence: 'exact',
+          };
+        }
+        // KM out of range - no Tier-1 match
+      } else if (isPikles) {
+        // Pickles lot WITHOUT confirmed KM - match as Tier-2 spec-only
         return {
           fingerprint: fp,
           lot,
-          matchType: 'km_bounded',
-          lane: 'Precision',
-          tier: 'tier1',
-          matchConfidence: 'exact',
+          matchType: 'spec_only',
+          lane: 'Probable',
+          tier: 'tier2',
+          matchConfidence: 'probable',
         };
       }
     }
   }
   
-  // ========== TIER 2: Variant family match (FULL fingerprints only) ==========
-  // Use ONLY stored variant_family values - no on-the-fly derivation
+  // ========== TIER 2: Variant family OR make+model+year (for Pickles) ==========
   const lotFamily = getVariantFamily(lot.variant_family);
   const fpFamily = getVariantFamily(fp.variant_family);
   
   // If both have a family and they match
   if (lotFamily && fpFamily && lotFamily === fpFamily) {
-    // KM check for full fingerprints
-    const minKm = fp.min_km!;
-    const maxKm = fp.max_km!;
-    
-    if (lot.km < minKm || lot.km > maxKm) {
-      return null; // KM out of range for full fingerprint
+    // KM check for full fingerprints - BUT optional for Pickles
+    if (!isPikles && lotHasKm) {
+      const minKm = fp.min_km!;
+      const maxKm = fp.max_km!;
+      
+      if (lot.km < minKm || lot.km > maxKm) {
+        return null; // KM out of range for non-Pickles full fingerprint
+      }
     }
     
     return {
       fingerprint: fp,
       lot,
       matchType: 'variant_family',
+      lane: 'Probable',
+      tier: 'tier2',
+      matchConfidence: 'probable',
+    };
+  }
+  
+  // ========== TIER 2 FALLBACK: Pickles make+model+year match (NO variant required) ==========
+  // For Pickles, allow Tier-2 matching on just make+model+year when variant_family is missing
+  if (isPikles) {
+    return {
+      fingerprint: fp,
+      lot,
+      matchType: 'spec_only', // Mark as spec-only since no variant match
       lane: 'Probable',
       tier: 'tier2',
       matchConfidence: 'probable',
@@ -494,8 +555,16 @@ export default function MatchesPage() {
     const fullFingerprints = fingerprints.filter(fp => !isSpecOnlyFingerprint(fp)).length;
     const specOnlyFingerprints = fingerprints.filter(fp => isSpecOnlyFingerprint(fp)).length;
     
+    // ========== PICKLES-SPECIFIC DIAGNOSTICS ==========
+    const picklesLots = lots.filter(l => isPicklesLot(l));
+    const picklesTotal = picklesLots.length;
+    const picklesWithVariantFamily = picklesLots.filter(l => l.variant_family).length;
+    const picklesMissingKm = picklesLots.filter(l => !hasConfirmedKm(l)).length;
+    const picklesInVisibility = visibilityScopeLots.filter(l => isPicklesLot(l)).length;
+    const picklesMatches = allMatches.filter(m => isPicklesLot(m.lot)).length;
+    
     // ========== VISIBILITY SCOPE DEBUG ==========
-    // Analyze the 56 lots with family to understand why they might be excluded
+    // Analyze the lots with family to understand why they might be excluded
     const lotsWithFamilyList = lots.filter(l => l.variant_family);
     
     // Count by source values (top 10)
@@ -594,6 +663,14 @@ export default function MatchesPage() {
       lotsWithFamily,
       fullFingerprints,
       specOnlyFingerprints,
+      // Pickles-specific
+      pickles: {
+        total: picklesTotal,
+        withVariantFamily: picklesWithVariantFamily,
+        missingKm: picklesMissingKm,
+        inVisibility: picklesInVisibility,
+        matches: picklesMatches,
+      },
       // Visibility debug
       visibilityDebug: {
         totalLotsWithFamily: lotsWithFamilyList.length,
@@ -682,17 +759,23 @@ export default function MatchesPage() {
                 </Tooltip>
               </TooltipProvider>
             )}
-            {/* SPEC-ONLY badge for spec-only fingerprint matches */}
+            {/* SPEC-ONLY / KM UNKNOWN badge */}
             {matchType === 'spec_only' && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Badge variant="outline" className="text-xs border-orange-500/50 text-orange-400">
-                      SPEC-ONLY (km ignored)
+                      {isPicklesLot(lot) && !hasConfirmedKm(lot) 
+                        ? 'KM unknown (Pickles)' 
+                        : 'SPEC-ONLY (km ignored)'}
                     </Badge>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <span>Visibility-only match. Cannot auto-promote to BUY or trigger alerts.</span>
+                    <span>
+                      {isPicklesLot(lot) && !hasConfirmedKm(lot) 
+                        ? 'KM not available from catalogue. Spec-Only matching applied.' 
+                        : 'Visibility-only match. Cannot auto-promote to BUY or trigger alerts.'}
+                    </span>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -859,7 +942,7 @@ export default function MatchesPage() {
               <Info className="h-4 w-4 text-muted-foreground" />
               Match Evaluation Diagnostics
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
               <div className="space-y-1">
                 <div className="text-muted-foreground">Active Fingerprints</div>
                 <div className="text-xl font-semibold text-foreground">{diagnostics.activeFingerprints}</div>
@@ -873,25 +956,25 @@ export default function MatchesPage() {
                 <div className="text-xl font-semibold text-amber-500">{diagnostics.specOnlyFingerprints}</div>
               </div>
               <div className="space-y-1">
-                <div className="text-muted-foreground">Lots in Scope (Execution)</div>
+                <div className="text-muted-foreground">Execution Scope</div>
                 <div className="text-xl font-semibold text-foreground">{diagnostics.executionLotsInScope}</div>
                 <div className="text-xs text-muted-foreground">Tier-1 / BUY eligible</div>
               </div>
               <div className="space-y-1">
-                <div className="text-muted-foreground">Lots in Scope (Visibility)</div>
+                <div className="text-muted-foreground">Visibility Scope</div>
                 <div className="text-xl font-semibold text-blue-500">{diagnostics.visibilityLotsInScope}</div>
                 <div className="text-xs text-muted-foreground">Tier-2 / Probable only</div>
               </div>
               <div className="space-y-1">
-                <div className="text-muted-foreground">Strict Matches (Tier 1)</div>
+                <div className="text-muted-foreground">Tier-1 Matches</div>
                 <div className="text-xl font-semibold text-emerald-500">{diagnostics.strictMatches}</div>
               </div>
               <div className="space-y-1">
-                <div className="text-muted-foreground">Probable Matches (Tier 2)</div>
+                <div className="text-muted-foreground">Tier-2 Matches</div>
                 <div className="text-xl font-semibold text-blue-500">{diagnostics.probableMatchCount}</div>
               </div>
               <div className="space-y-1">
-                <div className="text-muted-foreground">Fingerprints w/ Family</div>
+                <div className="text-muted-foreground">FP w/ Family</div>
                 <div className="text-xl font-semibold text-foreground">{diagnostics.fingerprintsWithFamily}</div>
               </div>
               <div className="space-y-1">
@@ -899,6 +982,39 @@ export default function MatchesPage() {
                 <div className="text-xl font-semibold text-foreground">{diagnostics.lotsWithFamily}</div>
               </div>
             </div>
+            
+            {/* Pickles-specific diagnostics */}
+            {diagnostics.pickles.total > 0 && (
+              <div className="mt-3 pt-3 border-t border-border">
+                <h4 className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  🥒 Pickles Listings
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-sm">
+                  <div className="space-y-1">
+                    <div className="text-muted-foreground">Total</div>
+                    <div className="text-lg font-semibold text-foreground">{diagnostics.pickles.total}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-muted-foreground">With Variant Family</div>
+                    <div className="text-lg font-semibold text-emerald-500">{diagnostics.pickles.withVariantFamily}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-muted-foreground">KM Unknown (Pickles)</div>
+                    <div className="text-lg font-semibold text-amber-500">{diagnostics.pickles.missingKm}</div>
+                    <div className="text-xs text-muted-foreground">Spec-Only matching</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-muted-foreground">In Visibility Scope</div>
+                    <div className="text-lg font-semibold text-blue-500">{diagnostics.pickles.inVisibility}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-muted-foreground">Matches Found</div>
+                    <div className="text-lg font-semibold text-purple-500">{diagnostics.pickles.matches}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             {diagnostics.visibilityLotsInScope > 0 && (
               <div className="text-xs text-blue-500 mt-2">
                 ℹ️ Visibility scope includes {diagnostics.visibilityLotsInScope} future catalogue lots (Probable matching only – never triggers BUY)
