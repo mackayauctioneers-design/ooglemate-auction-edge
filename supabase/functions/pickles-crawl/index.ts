@@ -367,6 +367,7 @@ async function processCrawl(
   let updated = 0;
   const errors: string[] = [];
   let consecutiveEmptyPages = 0;
+  let lastPageListingCount = 0; // Track if last page was full (120 items = more pages exist)
   
   // Initialize global state for shutdown handler
   currentCrawlState = {
@@ -433,6 +434,8 @@ async function processCrawl(
         // Parse vehicle cards from the HTML
         const listings = parseVehicleCards(html);
         console.log(`[pickles-crawl] Page ${currentPage}: Found ${listings.length} listings`);
+        
+        lastPageListingCount = listings.length;
         
         if (listings.length === 0) {
           consecutiveEmptyPages++;
@@ -528,7 +531,14 @@ async function processCrawl(
                        errors.length > 0 ? 'completed_with_errors' : 'success';
     
     // Mark if there are more pages to crawl
-    const hasMorePages = currentPage <= maxPages && consecutiveEmptyPages < 3;
+    // hasMorePages is TRUE if:
+    // 1. We hit our batch limit (currentPage > maxPages) AND last page had listings (not depleted)
+    // 2. OR the last page was full (120 items), indicating more pages likely exist
+    const hitBatchLimit = currentPage > maxPages;
+    const lastPageWasFull = lastPageListingCount >= 100; // Allow some variance (100+)
+    const hasMorePages = (hitBatchLimit && lastPageListingCount > 0) || lastPageWasFull;
+    
+    console.log(`[pickles-crawl] Pagination check: hitBatchLimit=${hitBatchLimit}, lastPageCount=${lastPageListingCount}, hasMorePages=${hasMorePages}`);
     
     await supabase
       .from('ingestion_runs')
