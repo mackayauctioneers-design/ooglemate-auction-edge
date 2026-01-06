@@ -801,22 +801,41 @@ export const googleSheetsService = {
   // Get all lots from vehicle_listings database table
   getLots: async (isAdmin: boolean): Promise<AuctionLot[]> => {
     try {
-      let query = supabase
-        .from('vehicle_listings')
-        .select('*')
-        .order('auction_datetime', { ascending: true, nullsFirst: false });
+      // Fetch all listings using pagination to bypass Supabase's 1000 row default limit
+      const allData: any[] = [];
+      const PAGE_SIZE = 1000;
+      let from = 0;
+      let hasMore = true;
       
-      // Filter by visibility for dealers
-      if (!isAdmin) {
-        query = query.eq('visible_to_dealers', true);
+      while (hasMore) {
+        let query = supabase
+          .from('vehicle_listings')
+          .select('*')
+          .order('auction_datetime', { ascending: true, nullsFirst: false })
+          .range(from, from + PAGE_SIZE - 1);
+        
+        // Filter by visibility for dealers
+        if (!isAdmin) {
+          query = query.eq('visible_to_dealers', true);
+        }
+        
+        const { data, error } = await query;
+        
+        if (error) {
+          console.error('Error fetching vehicle listings:', error);
+          break;
+        }
+        
+        if (data && data.length > 0) {
+          allData.push(...data);
+          from += PAGE_SIZE;
+          hasMore = data.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
       }
       
-      const { data, error } = await query;
-      
-      if (error) {
-        console.error('Error fetching vehicle listings:', error);
-        return [];
-      }
+      const data = allData;
       
       // Map database rows to AuctionLot format
       return (data || []).map((row): AuctionLot => {
