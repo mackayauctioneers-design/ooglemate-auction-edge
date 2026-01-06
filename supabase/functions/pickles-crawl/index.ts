@@ -295,17 +295,51 @@ function parseVehicleCards(html: string): ParsedListing[] {
     // Extract km from cleaned context
     const km = parseKm(cleanedContext);
     
-    // Extract location from context
-    const locationPatterns = [
-      /(Moonah|Brisbane|Sydney|Melbourne|Perth|Adelaide|Canberra|Darwin|Hobart|Newcastle|Wollongong|Gold Coast|Cairns|Townsville|Rockhampton|Mackay|Toowoomba|Geelong|Ballarat|Bendigo|Launceston|Dubbo|Salisbury Plain|Winnellie|Yatala|Eagle Farm|Altona|Dandenong)[,\s]/i,
-      /(?:Location|Branch|Yard)[:\s]+([A-Za-z\s]+)/i,
-    ];
+    // Extract location from context - comprehensive AU location matching
     let location: string | null = null;
-    for (const lp of locationPatterns) {
-      const lm = cleanedContext.match(lp);
-      if (lm) {
-        location = lm[1].trim();
-        break;
+    
+    // Pattern 1: Known Pickles yards and major AU locations
+    const knownLocations = [
+      // Pickles yards
+      'Yatala', 'Eagle Farm', 'Altona', 'Dandenong', 'Salisbury Plain', 'Winnellie',
+      'Moonah', 'Welshpool', 'Belmont', 'Hazelmere', 'Canning Vale',
+      // Major cities
+      'Brisbane', 'Sydney', 'Melbourne', 'Perth', 'Adelaide', 'Canberra', 'Darwin', 'Hobart',
+      // Regional NSW
+      'Newcastle', 'Wollongong', 'Albury', 'Wagga Wagga', 'Tamworth', 'Dubbo', 'Orange', 'Bathurst', 'Nowra', 'Coffs Harbour', 'Port Macquarie', 'Lismore', 'Armidale', 'Broken Hill',
+      // Regional VIC
+      'Geelong', 'Ballarat', 'Bendigo', 'Shepparton', 'Mildura', 'Warrnambool', 'Wodonga', 'Traralgon', 'Horsham',
+      // Regional QLD
+      'Gold Coast', 'Cairns', 'Townsville', 'Rockhampton', 'Mackay', 'Toowoomba', 'Bundaberg', 'Gladstone', 'Mount Isa', 'Ipswich', 'Logan',
+      // Regional SA
+      'Mount Gambier', 'Whyalla', 'Port Augusta', 'Port Lincoln', 'Murray Bridge',
+      // Regional WA
+      'Bunbury', 'Geraldton', 'Kalgoorlie', 'Karratha', 'Broome', 'Port Hedland', 'Albany',
+      // Regional TAS
+      'Launceston', 'Devonport', 'Burnie',
+      // Regional NT
+      'Alice Springs', 'Katherine',
+    ];
+    const locationPattern = new RegExp(`\\b(${knownLocations.join('|')})\\b`, 'i');
+    const locMatch = cleanedContext.match(locationPattern);
+    if (locMatch) {
+      location = locMatch[1].trim();
+    }
+    
+    // Pattern 2: Fallback - "Location: X" or "Yard: X" or "Branch: X"
+    if (!location) {
+      const labelPattern = /(?:Location|Branch|Yard|Site)[:\s]+([A-Za-z][A-Za-z\s]{2,20})/i;
+      const labelMatch = cleanedContext.match(labelPattern);
+      if (labelMatch) {
+        location = labelMatch[1].trim();
+      }
+    }
+    
+    // Pattern 3: State abbreviations near the listing (e.g., "NSW", "QLD")
+    if (!location) {
+      const stateMatch = cleanedContext.match(/\b(NSW|VIC|QLD|WA|SA|TAS|NT|ACT)\b/);
+      if (stateMatch) {
+        location = stateMatch[1];
       }
     }
     

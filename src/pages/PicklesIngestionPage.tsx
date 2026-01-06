@@ -121,13 +121,26 @@ export default function PicklesIngestionPage() {
     }
   }
 
-  async function handleCrawl(autoContinue = false) {
+  async function handleCrawl(autoContinue = false, accumulatedLots = 0) {
     setIsCrawling(true);
     const maxPages = parseInt(crawlMaxPages) || 3;
     const startPage = resumePage;
-    if (!autoContinue) {
-      setCrawlProgress({ currentPage: startPage, lotsFound: 0, startTime: Date.now() });
-    }
+    
+    // Initialize progress - preserve accumulated lots on auto-continue
+    setCrawlProgress({ 
+      currentPage: startPage, 
+      lotsFound: accumulatedLots, 
+      startTime: autoContinue ? (crawlProgress?.startTime || Date.now()) : Date.now() 
+    });
+    
+    let pollIntervalId: NodeJS.Timeout | null = null;
+    let timeoutId: NodeJS.Timeout | null = null;
+    let lastKnownLotsFound = 0;
+    
+    const cleanup = () => {
+      if (pollIntervalId) clearInterval(pollIntervalId);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
     
     try {
       const yearMin = crawlYearMin ? parseInt(crawlYearMin) : undefined;
@@ -138,35 +151,44 @@ export default function PicklesIngestionPage() {
           toast.success('Crawl started! Auto-continuing until complete...');
         }
         
-        const pollInterval = setInterval(async () => {
+        pollIntervalId = setInterval(async () => {
           try {
             const latestRuns = await getIngestionRuns(1);
             const currentRun = latestRuns.find(r => r.id === result.runId);
             
             if (currentRun) {
               const metadata = currentRun.metadata as { lastCompletedPage?: number; hasMorePages?: boolean } | null;
+              
+              // Track lots found in this batch (not cumulative across batches)
+              lastKnownLotsFound = currentRun.lots_found || 0;
+              
               setCrawlProgress(prev => prev ? {
                 ...prev,
-                currentPage: (metadata?.lastCompletedPage || startPage) + 1,
-                lotsFound: prev.lotsFound + (currentRun.lots_found || 0)
+                currentPage: (metadata?.lastCompletedPage || startPage),
+                // Accumulate lots across batches correctly
+                lotsFound: accumulatedLots + lastKnownLotsFound
               } : null);
               
               // Check if batch complete
               if (currentRun.status !== 'running') {
-                clearInterval(pollInterval);
+                cleanup();
                 
                 // Check if more pages and should auto-continue
-                const morePages = metadata?.hasMorePages !== false;
+                const morePages = metadata?.hasMorePages === true;
                 const nextPage = (metadata?.lastCompletedPage || startPage) + 1;
                 
-                if (morePages && (currentRun.status === 'success' || currentRun.status === 'stopped')) {
+                console.log(`[Crawl] Batch complete: status=${currentRun.status}, lastPage=${metadata?.lastCompletedPage}, morePages=${morePages}, nextPage=${nextPage}`);
+                
+                if (morePages && (currentRun.status === 'success' || currentRun.status === 'stopped' || currentRun.status === 'completed_with_errors')) {
                   // Update resume page and auto-continue
                   setResumePage(nextPage);
                   setHasMorePages(true);
-                  toast.info(`Batch complete (page ${metadata?.lastCompletedPage}). Auto-continuing...`);
                   
-                  // Small delay before next batch
-                  setTimeout(() => handleCrawl(true), 2000);
+                  const totalLotsSoFar = accumulatedLots + lastKnownLotsFound;
+                  toast.info(`Page ${metadata?.lastCompletedPage} done (${totalLotsSoFar} lots). Continuing...`);
+                  
+                  // Auto-continue with accumulated lots
+                  setTimeout(() => handleCrawl(true, totalLotsSoFar), 2000);
                 } else {
                   // Done or failed
                   setIsCrawling(false);
@@ -175,7 +197,8 @@ export default function PicklesIngestionPage() {
                   setResumePage(nextPage);
                   
                   if (!morePages) {
-                    toast.success('🎉 Full crawl complete! All pages processed.');
+                    const totalLots = accumulatedLots + lastKnownLotsFound;
+                    toast.success(`🎉 Crawl complete! ${totalLots} lots processed.`);
                   } else if (currentRun.status === 'failed') {
                     toast.error('Crawl failed - check Run History for details');
                   }
@@ -189,15 +212,23 @@ export default function PicklesIngestionPage() {
         }, 3000);
         
         // Safety timeout after 90 seconds per batch
-        setTimeout(async () => {
-          clearInterval(pollInterval);
+        timeoutId = setTimeout(async () => {
+          cleanup();
+          console.log('[Crawl] Batch timeout - checking for resume...');
+          
           // Reload and check status
           const resumeInfo = await getCrawlResumeInfo();
           if (resumeInfo && resumeInfo.hasMorePages) {
             setResumePage(resumeInfo.resumePage);
             setHasMorePages(true);
-            toast.info('Batch timeout - auto-continuing...');
-            setTimeout(() => handleCrawl(true), 2000);
+            
+            // Get the latest lots count
+            const latestRuns = await getIngestionRuns(1);
+            const batchLots = latestRuns[0]?.lots_found || 0;
+            const totalLotsSoFar = accumulatedLots + batchLots;
+            
+            toast.info(`Timeout at page ${resumeInfo.resumePage - 1}. Continuing... (${totalLotsSoFar} lots)`);
+            setTimeout(() => handleCrawl(true, totalLotsSoFar), 2000);
           } else {
             setIsCrawling(false);
             setCrawlProgress(null);
@@ -211,6 +242,7 @@ export default function PicklesIngestionPage() {
         setCrawlProgress(null);
       }
     } catch (e) {
+      cleanup();
       toast.error('Crawl failed');
       setIsCrawling(false);
       setCrawlProgress(null);
