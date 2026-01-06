@@ -98,6 +98,41 @@ export type Database = {
         }
         Relationships: []
       }
+      clearance_events: {
+        Row: {
+          clearance_type: string
+          cleared_at: string
+          created_at: string
+          days_to_clear: number
+          id: number
+          listing_id: string
+        }
+        Insert: {
+          clearance_type: string
+          cleared_at: string
+          created_at?: string
+          days_to_clear: number
+          id?: number
+          listing_id: string
+        }
+        Update: {
+          clearance_type?: string
+          cleared_at?: string
+          created_at?: string
+          days_to_clear?: number
+          id?: number
+          listing_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clearance_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_fingerprints: {
         Row: {
           created_at: string
@@ -149,6 +184,138 @@ export type Database = {
           variant_family?: string | null
           year_max?: number
           year_min?: number
+        }
+        Relationships: []
+      }
+      geo_heat_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          alert_id: string
+          asof_date: string
+          audience: string
+          confidence: string | null
+          created_at: string
+          dealer_share_short: number | null
+          expired_at: string | null
+          feature_key: string
+          id: string
+          make: string
+          metric_type: string
+          model: string
+          pct_change: number | null
+          region_id: string
+          region_label: string | null
+          relist_rate_short: number | null
+          sample_short: number | null
+          status: string
+          subtitle: string | null
+          tagline: string | null
+          tier: string
+          title: string | null
+          value_long: number | null
+          value_short: number | null
+          variant_bucket: string
+          year_min: number | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          alert_id: string
+          asof_date: string
+          audience?: string
+          confidence?: string | null
+          created_at?: string
+          dealer_share_short?: number | null
+          expired_at?: string | null
+          feature_key?: string
+          id?: string
+          make: string
+          metric_type?: string
+          model: string
+          pct_change?: number | null
+          region_id: string
+          region_label?: string | null
+          relist_rate_short?: number | null
+          sample_short?: number | null
+          status?: string
+          subtitle?: string | null
+          tagline?: string | null
+          tier: string
+          title?: string | null
+          value_long?: number | null
+          value_short?: number | null
+          variant_bucket?: string
+          year_min?: number | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          alert_id?: string
+          asof_date?: string
+          audience?: string
+          confidence?: string | null
+          created_at?: string
+          dealer_share_short?: number | null
+          expired_at?: string | null
+          feature_key?: string
+          id?: string
+          make?: string
+          metric_type?: string
+          model?: string
+          pct_change?: number | null
+          region_id?: string
+          region_label?: string | null
+          relist_rate_short?: number | null
+          sample_short?: number | null
+          status?: string
+          subtitle?: string | null
+          tagline?: string | null
+          tier?: string
+          title?: string | null
+          value_long?: number | null
+          value_short?: number | null
+          variant_bucket?: string
+          year_min?: number | null
+        }
+        Relationships: []
+      }
+      geo_model_metrics_daily: {
+        Row: {
+          created_at: string
+          make: string
+          metric_date: string
+          model: string
+          region_id: string
+          variant_bucket: string
+          w_avg_days_to_clear: number | null
+          w_clear_count: number | null
+          w_dealer_share: number | null
+          w_listing_count: number | null
+          w_relist_rate: number | null
+        }
+        Insert: {
+          created_at?: string
+          make: string
+          metric_date: string
+          model: string
+          region_id: string
+          variant_bucket?: string
+          w_avg_days_to_clear?: number | null
+          w_clear_count?: number | null
+          w_dealer_share?: number | null
+          w_listing_count?: number | null
+          w_relist_rate?: number | null
+        }
+        Update: {
+          created_at?: string
+          make?: string
+          metric_date?: string
+          model?: string
+          region_id?: string
+          variant_bucket?: string
+          w_avg_days_to_clear?: number | null
+          w_clear_count?: number | null
+          w_dealer_share?: number | null
+          w_listing_count?: number | null
+          w_relist_rate?: number | null
         }
         Relationships: []
       }
@@ -407,6 +574,7 @@ export type Database = {
           pass_count: number
           relist_count: number
           reserve: number | null
+          seller_type: string
           source: string
           status: string
           transmission: string | null
@@ -440,6 +608,7 @@ export type Database = {
           pass_count?: number
           relist_count?: number
           reserve?: number | null
+          seller_type?: string
           source?: string
           status?: string
           transmission?: string | null
@@ -473,6 +642,7 @@ export type Database = {
           pass_count?: number
           relist_count?: number
           reserve?: number | null
+          seller_type?: string
           source?: string
           status?: string
           transmission?: string | null
@@ -489,7 +659,54 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      derive_clearance_events: {
+        Args: { p_stale_hours?: number }
+        Returns: {
+          events_created: number
+          listings_processed: number
+        }[]
+      }
+      detect_geo_heat_alerts: {
+        Args: {
+          p_asof?: string
+          p_drop_threshold?: number
+          p_min_sample_7d?: number
+        }
+        Returns: {
+          alert_tier: string
+          confidence: string
+          dealer_share_7d: number
+          make: string
+          metric_type: string
+          model: string
+          pct_change: number
+          region_id: string
+          sample_7d: number
+          value_28d: number
+          value_7d: number
+          variant_bucket: string
+        }[]
+      }
+      generate_geo_heat_alerts: {
+        Args: {
+          p_asof?: string
+          p_drop_threshold?: number
+          p_min_sample_7d?: number
+        }
+        Returns: {
+          alerts_created: number
+          alerts_updated: number
+        }[]
+      }
+      location_to_region: { Args: { p_location: string }; Returns: string }
+      rollup_geo_model_metrics_daily: {
+        Args: { p_day?: string }
+        Returns: {
+          records_upserted: number
+          regions_updated: number
+        }[]
+      }
+      seller_weight: { Args: { p_seller_type: string }; Returns: number }
     }
     Enums: {
       [_ in never]: never
