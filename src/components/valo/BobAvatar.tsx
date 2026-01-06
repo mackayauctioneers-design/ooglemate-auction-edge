@@ -346,6 +346,12 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
         // Bob's audio is streaming - he IS speaking
         setIsSpeaking(true);
         setIsListening(false);
+        // Ensure audio element is playing (fix for voice dropping after 1st query)
+        if (audioElRef.current && audioElRef.current.paused) {
+          audioElRef.current.play().catch(err => {
+            console.warn("Audio resume failed:", err);
+          });
+        }
         break;
 
       case 'response.audio_transcript.delta':
