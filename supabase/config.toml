@@ -52,3 +52,8 @@ verify_jwt = false
 verify_jwt = false
 # Daily cron at 7am AEST (21:00 UTC previous day)
 schedule = "0 21 * * *"
+
+[functions.fingerprint-materialize]
+verify_jwt = false
+# Daily cron at 8am AEST (22:00 UTC) - runs after dealer-site-crawl
+schedule = "0 22 * * *"
