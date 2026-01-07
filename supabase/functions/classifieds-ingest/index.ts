@@ -12,7 +12,6 @@ const corsHeaders = {
 interface ClassifiedsListing {
   // Required fields
   source_listing_id: string;  // Unique ID from the source (e.g., Gumtree listing ID)
-  source: string;             // Source identifier (e.g., 'gumtree', 'carsales', 'facebook_marketplace')
   make: string;
   model: string;
   year: number;
@@ -35,7 +34,7 @@ interface ClassifiedsListing {
   
   // Listing metadata
   listing_url?: string;
-  listed_date?: string;
+  listed_date_raw?: string;  // Raw date string from source (not trusted for analytics)
   
   // Seller classification hints (from source scraper)
   seller_hints?: SellerHints;
@@ -55,8 +54,7 @@ interface SellerHints {
   active_listings_count?: number;                   // How many other active listings this seller has
   seller_account_age_days?: number;                 // How old is the seller's account
   
-  // Content indicators
-  has_professional_photos?: boolean;                // Professional vs phone photos
+  // Content indicators (only use if deterministically detectable)
   description_length?: number;                      // Word count of description
   has_finance_mention?: boolean;                    // Mentions financing options
   has_warranty_mention?: boolean;                   // Mentions warranty
@@ -89,37 +87,9 @@ const DEALER_NAME_PATTERNS = [
 ];
 
 /**
- * Dealer description keywords
- */
-const DEALER_KEYWORDS = [
-  'finance available', 'financing available', 'easy finance',
-  'warranty included', 'warranty available', 'extended warranty',
-  'trade-ins welcome', 'trade in welcome', 'tradein',
-  'rego included', 'roadworthy included', 'rwc included',
-  'lmct', 'licensed motor car trader',
-  'open 7 days', 'open saturday', 'open sunday',
-  'visit our showroom', 'visit our yard',
-  'family owned', 'family business',
-  'over 100 vehicles', 'large selection',
-];
-
-/**
- * Private seller indicators in description
- */
-const PRIVATE_KEYWORDS = [
-  'genuine sale', 'genuine reason for selling',
-  'moving overseas', 'moving interstate',
-  'upgrading', 'downsizing',
-  'no longer needed', 'rarely used',
-  'reluctant sale', 'sad to see it go',
-  'private sale', 'private seller',
-  'one owner', 'single owner',
-  'my loss your gain',
-];
-
-/**
  * Deterministic seller type classifier
  * Uses a scoring system with weighted indicators
+ * DOES NOT coerce unknown to private - stores actual classification
  */
 function classifySellerType(hints: SellerHints | undefined): ClassificationResult {
   const reasons: string[] = [];
@@ -171,12 +141,7 @@ function classifySellerType(hints: SellerHints | undefined): ClassificationResul
     }
   }
   
-  // === TIER 4: Content indicators (lower weight) ===
-  if (hints.has_professional_photos === true) {
-    dealerScore += 15;
-    reasons.push('Professional photos detected');
-  }
-  
+  // === TIER 4: Content indicators (lower weight, deterministic only) ===
   if (hints.has_finance_mention === true) {
     dealerScore += 20;
     reasons.push('Finance mentioned in listing');
@@ -227,24 +192,6 @@ function classifySellerType(hints: SellerHints | undefined): ClassificationResul
   }
   
   return { seller_type, confidence, reasons };
-}
-
-/**
- * Helper to detect dealer keywords in text
- */
-function detectDealerKeywords(text: string): boolean {
-  if (!text) return false;
-  const lower = text.toLowerCase();
-  return DEALER_KEYWORDS.some(kw => lower.includes(kw));
-}
-
-/**
- * Helper to detect private seller keywords in text
- */
-function detectPrivateKeywords(text: string): boolean {
-  if (!text) return false;
-  const lower = text.toLowerCase();
-  return PRIVATE_KEYWORDS.some(kw => lower.includes(kw));
 }
 
 // =============================================================================
@@ -343,6 +290,7 @@ Deno.serve(async (req) => {
 
     let created = 0;
     let updated = 0;
+    let snapshotsCreated = 0;
     const errors: string[] = [];
     const classificationStats = {
       dealer: 0,
@@ -354,11 +302,11 @@ Deno.serve(async (req) => {
     };
 
     for (const listing of listings) {
-      // Generate listing_id from source
-      const listingId = `${listing.source}:${listing.source_listing_id}`;
+      // CANONICAL identity: source_name (from request) + source_listing_id
+      const listingId = `${source_name}:${listing.source_listing_id}`;
       
       try {
-        // Classify seller type
+        // Classify seller type - store EXACTLY as classified (no coercion)
         const classification = classifySellerType(listing.seller_hints);
         classificationStats[classification.seller_type]++;
         classificationStats[`${classification.confidence}_confidence`]++;
@@ -372,10 +320,11 @@ Deno.serve(async (req) => {
         // Check if listing exists
         const { data: existing } = await supabase
           .from('vehicle_listings')
-          .select('id, status, pass_count')
+          .select('id, status, pass_count, asking_price, location, km')
           .eq('listing_id', listingId)
-          .single();
+          .maybeSingle();
 
+        // Classifieds-specific data (NO auction fields)
         const listingData = {
           make: listing.make,
           model: listing.model,
@@ -389,9 +338,23 @@ Deno.serve(async (req) => {
           location: location || null,
           listing_url: listing.listing_url || null,
           last_seen_at: new Date().toISOString(),
-          seller_type: classification.seller_type === 'unknown' ? 'private' : classification.seller_type,
-          reserve: listing.price ?? null,
+          // Store EXACT seller classification (no unknown→private coercion)
+          seller_type: classification.seller_type,
+          seller_confidence: classification.confidence,
+          seller_reasons: classification.reasons,
+          // Classifieds use asking_price, NOT reserve
+          asking_price: listing.price ?? null,
+          // Store raw listed date separately (NOT trusted for analytics)
+          listed_date_raw: listing.listed_date_raw || null,
+          // Auction-specific fields are NULL for classifieds
+          lot_id: null,
+          auction_house: null,
+          reserve: null,
+          auction_datetime: null,
+          event_id: null,
         };
+
+        let vehicleListingId: string;
 
         if (existing) {
           // Update existing listing
@@ -404,21 +367,45 @@ Deno.serve(async (req) => {
             })
             .eq('id', existing.id);
           updated++;
+          vehicleListingId = existing.id;
         } else {
           // Insert new listing
-          await supabase
+          // first_seen_at = NOW (ingestion time), not site-reported date
+          const { data: inserted, error: insertError } = await supabase
             .from('vehicle_listings')
             .insert({
               ...listingData,
               listing_id: listingId,
-              lot_id: listing.source_listing_id,
-              source: listing.source,
-              auction_house: source_name,
+              source: source_name,
               status: 'listed',
               visible_to_dealers: true,
-              first_seen_at: listing.listed_date || new Date().toISOString(),
-            });
+              first_seen_at: new Date().toISOString(),  // ALWAYS ingestion time
+            })
+            .select('id')
+            .single();
+          
+          if (insertError) throw insertError;
           created++;
+          vehicleListingId = inserted.id;
+        }
+        
+        // === SNAPSHOT: Always create on every ingestion ===
+        const { error: snapshotError } = await supabase
+          .from('listing_snapshots')
+          .insert({
+            listing_id: vehicleListingId,
+            seen_at: new Date().toISOString(),
+            status: 'listed',
+            asking_price: listing.price ?? null,
+            reserve: null,  // Classifieds don't have reserve
+            location: location || null,
+            km: listing.km ?? null,
+          });
+        
+        if (snapshotError) {
+          console.error(`[classifieds-ingest] Snapshot error for ${listingId}:`, snapshotError);
+        } else {
+          snapshotsCreated++;
         }
         
         console.log(`[classifieds-ingest] ${existing ? 'Updated' : 'Created'} ${listingId} as ${classification.seller_type} (${classification.confidence})`);
@@ -444,12 +431,13 @@ Deno.serve(async (req) => {
         metadata: {
           source_name,
           listing_count: listings.length,
+          snapshots_created: snapshotsCreated,
           classification_stats: classificationStats,
         }
       })
       .eq('id', run.id);
 
-    console.log(`[classifieds-ingest] Complete: ${created} created, ${updated} updated, ${errors.length} errors`);
+    console.log(`[classifieds-ingest] Complete: ${created} created, ${updated} updated, ${snapshotsCreated} snapshots, ${errors.length} errors`);
     console.log(`[classifieds-ingest] Classification stats:`, classificationStats);
 
     return new Response(
@@ -459,6 +447,7 @@ Deno.serve(async (req) => {
         listingsProcessed: listings.length,
         created,
         updated,
+        snapshotsCreated,
         errors,
         classificationStats,
       }),
@@ -481,11 +470,7 @@ Deno.serve(async (req) => {
 
 export { 
   classifySellerType, 
-  detectDealerKeywords, 
-  detectPrivateKeywords,
   deriveVariantFamily,
   DEALER_NAME_PATTERNS,
-  DEALER_KEYWORDS,
-  PRIVATE_KEYWORDS,
 };
 export type { ClassifiedsListing, SellerHints, ClassificationResult };
