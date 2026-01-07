@@ -65,7 +65,7 @@ const navItems = [
 
 export function AppSidebar() {
   const location = useLocation();
-  const { currentUser, isAdmin, logout, login } = useAuth();
+  const { currentUser, isAdmin, logout, user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
 
   const filteredNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
@@ -130,22 +130,12 @@ export function AppSidebar() {
           </div>
         )}
         
-        {/* DEV: User Switcher for testing role split */}
-        {!collapsed && (
+        {/* User info */}
+        {!collapsed && user && (
           <div className="px-1">
-            <select 
-              value={currentUser?.dealer_name || ''}
-              onChange={(e) => {
-                if (e.target.value) {
-                  login(e.target.value);
-                }
-              }}
-              className="w-full text-xs p-1 rounded border border-border bg-background text-foreground"
-            >
-              <option value="Dave">Dave (Admin)</option>
-              <option value="John Smith Motors">John Smith (Dealer)</option>
-              <option value="City Auto Traders">City Auto (Dealer)</option>
-            </select>
+            <p className="text-xs text-muted-foreground truncate" title={currentUser?.email}>
+              {currentUser?.dealer_name || currentUser?.email || 'Not linked'}
+            </p>
           </div>
         )}
         

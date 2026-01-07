@@ -80,7 +80,7 @@ export function ManualFingerprintForm({ onSuccess }: ManualFingerprintFormProps)
       
       await dataService.addFingerprint({
         dealer_name: currentUser!.dealer_name,
-        dealer_whatsapp: currentUser!.whatsapp || '',
+        dealer_whatsapp: '',
         sale_date: new Date().toISOString().split('T')[0],
         make,
         model,

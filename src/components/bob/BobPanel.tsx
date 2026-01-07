@@ -5,9 +5,9 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { 
-  MessageCircle, Send, Loader2, X, 
+  MessageCircle, Send, Loader2, 
   TrendingUp, TrendingDown, Minus, Clock, 
-  Search, HelpCircle, ChevronRight
+  HelpCircle, ChevronRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -106,7 +106,7 @@ const HELP_TOPICS: Record<string, {
 };
 
 export function BobPanel() {
-  const { isAdmin, currentUser } = useAuth();
+  const { isAdmin, dealerProfile, user } = useAuth();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -116,17 +116,23 @@ export function BobPanel() {
   const [showBrief, setShowBrief] = useState(true);
   const [accountNotLinked, setAccountNotLinked] = useState(false);
 
-  const dealerName = currentUser?.dealer_name || 'mate';
+  const dealerName = dealerProfile?.dealer_name || 'mate';
 
-  // Fetch daily brief from edge function
+  // Fetch daily brief from edge function (JWT is auto-included by supabase client)
   const fetchDailyBrief = useCallback(async () => {
+    if (!user) {
+      setAccountNotLinked(true);
+      return;
+    }
+    
     setIsLoading(true);
     setAccountNotLinked(false);
     try {
+      // Body params are for fallback/debug only - server derives from JWT
       const { data, error } = await supabase.functions.invoke('bob-daily-brief', {
         body: { 
-          dealerName, 
-          region: 'CENTRAL_COAST_NSW',
+          // These are ignored server-side for dealers (derived from JWT)
+          // Only used as fallback for internal debugging
           isAdmin 
         }
       });
@@ -145,7 +151,7 @@ export function BobPanel() {
     } finally {
       setIsLoading(false);
     }
-  }, [dealerName, isAdmin]);
+  }, [user, isAdmin]);
 
   // Handle panel open
   const handleOpen = useCallback(async () => {
@@ -277,7 +283,19 @@ export function BobPanel() {
 
         {/* Content */}
         <ScrollArea className="flex-1 p-4">
-          {isLoading ? (
+          {!user ? (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+              <p className="text-sm text-amber-800 dark:text-amber-200">
+                Please <a href="/auth" className="underline font-medium">log in</a> to access your daily brief.
+              </p>
+            </div>
+          ) : accountNotLinked ? (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+              <p className="text-sm text-amber-800 dark:text-amber-200">
+                Your account isn't linked to a dealership yet. Please contact admin to complete setup.
+              </p>
+            </div>
+          ) : isLoading ? (
             <div className="flex items-center justify-center h-32">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
@@ -426,8 +444,9 @@ export function BobPanel() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             className="flex-1"
+            disabled={!user}
           />
-          <Button onClick={handleSend} size="icon" disabled={!input.trim()}>
+          <Button onClick={handleSend} size="icon" disabled={!input.trim() || !user}>
             <Send className="h-4 w-4" />
           </Button>
         </div>
