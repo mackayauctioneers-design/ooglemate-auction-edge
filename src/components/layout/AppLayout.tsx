@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AppSidebar } from './AppSidebar';
 import { BobAvatar } from '@/components/valo/BobAvatar';
+import { BobPanel } from '@/components/bob/BobPanel';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface AppLayoutProps {
@@ -22,8 +23,11 @@ export function AppLayout({ children }: AppLayoutProps) {
         {children}
       </main>
       
-      {/* Bob Avatar - available on all pages except ValoPage */}
+      {/* Bob Avatar - Voice assistant (all pages except ValoPage) */}
       {!isValoPage && <BobAvatar dealerName={currentUser?.dealer_name} />}
+      
+      {/* Bob Panel - Text chat + Daily Brief + Help (all pages) */}
+      <BobPanel />
     </div>
   );
 }
