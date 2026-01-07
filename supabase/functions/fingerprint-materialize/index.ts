@@ -36,13 +36,17 @@ Deno.serve(async (req) => {
       // No body - use default (today)
     }
     
-    console.log(`[fingerprint-materialize] Starting materialization for ${asofDate || 'today'}`);
+    const effectiveDate = asofDate || new Date().toISOString().split('T')[0];
+    console.log(`[fingerprint-materialize] Starting materialization for ${effectiveDate}`);
     const startTime = Date.now();
     
-    // Call the materialization function
-    const { data, error } = await supabase.rpc('materialize_fingerprint_outcomes', {
-      p_asof: asofDate,
-    });
+    // Call the materialization function - only pass p_asof if specified
+    const rpcParams = asofDate ? { p_asof: asofDate } : {};
+    console.log(`[fingerprint-materialize] RPC params:`, JSON.stringify(rpcParams));
+    
+    const { data, error } = await supabase.rpc('materialize_fingerprint_outcomes', rpcParams);
+    
+    console.log(`[fingerprint-materialize] RPC response - data:`, JSON.stringify(data), `error:`, error);
     
     if (error) {
       console.error('[fingerprint-materialize] Error:', error);
@@ -52,7 +56,10 @@ Deno.serve(async (req) => {
       );
     }
     
-    const result = data?.[0] || { records_upserted: 0, regions_processed: 0 };
+    // Function returns TABLE so data is an array
+    const result = Array.isArray(data) && data.length > 0 
+      ? data[0] 
+      : { records_upserted: 0, regions_processed: 0 };
     const durationMs = Date.now() - startTime;
     
     console.log(`[fingerprint-materialize] Complete: ${result.records_upserted} records, ${result.regions_processed} regions, ${durationMs}ms`);

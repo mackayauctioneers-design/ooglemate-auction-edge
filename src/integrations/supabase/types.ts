@@ -240,27 +240,26 @@ export type Database = {
           asof_date: string
           avg_days_to_clear: number | null
           avg_price: number | null
-          clearance_count: number
+          cleared_total: number
           created_at: string
+          example_listing_id: string | null
           fuel: string | null
           id: string
           km_band_max: number | null
           km_band_min: number | null
-          listing_count: number
+          listing_total: number
           make: string
           max_days_to_clear: number | null
           max_price: number | null
           min_days_to_clear: number | null
           min_price: number | null
           model: string
-          passed_in_count: number
+          passed_in_total: number
           region_id: string
-          sample_listing_ids: string[] | null
-          sold_count: number
+          relisted_total: number
           transmission: string | null
           updated_at: string
           variant_family: string | null
-          withdrawn_count: number
           year_max: number
           year_min: number
         }
@@ -268,27 +267,26 @@ export type Database = {
           asof_date: string
           avg_days_to_clear?: number | null
           avg_price?: number | null
-          clearance_count?: number
+          cleared_total?: number
           created_at?: string
+          example_listing_id?: string | null
           fuel?: string | null
           id?: string
           km_band_max?: number | null
           km_band_min?: number | null
-          listing_count?: number
+          listing_total?: number
           make: string
           max_days_to_clear?: number | null
           max_price?: number | null
           min_days_to_clear?: number | null
           min_price?: number | null
           model: string
-          passed_in_count?: number
+          passed_in_total?: number
           region_id: string
-          sample_listing_ids?: string[] | null
-          sold_count?: number
+          relisted_total?: number
           transmission?: string | null
           updated_at?: string
           variant_family?: string | null
-          withdrawn_count?: number
           year_max: number
           year_min: number
         }
@@ -296,27 +294,26 @@ export type Database = {
           asof_date?: string
           avg_days_to_clear?: number | null
           avg_price?: number | null
-          clearance_count?: number
+          cleared_total?: number
           created_at?: string
+          example_listing_id?: string | null
           fuel?: string | null
           id?: string
           km_band_max?: number | null
           km_band_min?: number | null
-          listing_count?: number
+          listing_total?: number
           make?: string
           max_days_to_clear?: number | null
           max_price?: number | null
           min_days_to_clear?: number | null
           min_price?: number | null
           model?: string
-          passed_in_count?: number
+          passed_in_total?: number
           region_id?: string
-          sample_listing_ids?: string[] | null
-          sold_count?: number
+          relisted_total?: number
           transmission?: string | null
           updated_at?: string
           variant_family?: string | null
-          withdrawn_count?: number
           year_max?: number
           year_min?: number
         }
