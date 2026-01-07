@@ -45,6 +45,7 @@ const navItems = [
   { path: '/search-lots', label: 'Search Lots', icon: Search },
   { path: '/matches', label: 'Matches', icon: Crosshair },
   { path: '/valuation', label: 'Valuation', icon: DollarSign },
+  { path: '/dealer-dashboard', label: 'My Dashboard', icon: MapPin },
   
   // === ADMIN ONLY: Sales management ===
   { path: '/log-sale', label: 'Log Sale', icon: FileText, adminOnly: true },
