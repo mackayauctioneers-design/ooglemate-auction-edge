@@ -9,8 +9,10 @@ const corsHeaders = {
 // ============================================================================
 // BOB DAILY BRIEF - Market pulse + Stock comparison + Suggested focus
 // ============================================================================
+// SECURITY: Role determined server-side, never trust isAdmin from request
 // Dealer-safe: No raw metrics, no percentages, no sample sizes, no other dealers
-// Internal: Full detail available when isAdmin=true
+// Internal tiers (EARLY_PRIVATE_LED, CONFIRMED_DEALER_VALIDATED) mapped to 
+// dealer-safe labels (hot/stable/cooling) only
 // ============================================================================
 
 interface MarketPulse {
@@ -34,6 +36,19 @@ interface DailyBrief {
   opportunityCount: number;
 }
 
+// Map internal tier to dealer-safe status (never expose internal tier names)
+function tierToDealerSafeStatus(tier: string): 'hot' | 'stable' | 'cooling' {
+  switch (tier) {
+    case 'EARLY_PRIVATE_LED':
+    case 'CONFIRMED_DEALER_VALIDATED':
+      return 'hot';
+    case 'COOLING':
+      return 'cooling';
+    default:
+      return 'stable';
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -41,65 +56,113 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    
+    // Service client for data queries
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json().catch(() => ({}));
     const { 
       dealerName = 'mate', 
-      region = 'CENTRAL_COAST_NSW',
-      isAdmin = false 
+      region = 'CENTRAL_COAST_NSW'
     } = body;
+
+    // =========================================================================
+    // SECURITY: Determine role server-side from JWT, NOT from request body
+    // =========================================================================
+    let isAdmin = false;
+    const authHeader = req.headers.get('Authorization');
+    
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+          global: { headers: { Authorization: authHeader } }
+        });
+        const token = authHeader.replace('Bearer ', '');
+        const { data: claims } = await userClient.auth.getClaims(token);
+        
+        // Check for admin role in JWT claims or app_metadata
+        if (claims?.claims) {
+          const role = claims.claims.role || claims.claims.app_metadata?.role;
+          isAdmin = role === 'admin';
+        }
+      } catch (e) {
+        console.log('[bob-daily-brief] No valid JWT, treating as dealer');
+      }
+    }
 
     console.log(`[bob-daily-brief] Generating brief for ${dealerName}, region: ${region}, admin: ${isAdmin}`);
 
+    // =========================================================================
     // Fetch geo_heat_alerts for market pulse
+    // =========================================================================
     const { data: heatAlerts } = await supabase
       .from('geo_heat_alerts')
-      .select('*')
+      .select('make, model, tier')
       .eq('region_id', region)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(10);
 
+    // =========================================================================
     // Fetch fingerprint_outcomes for stock comparison (most recent date)
+    // Using correct column names: cleared_total, listing_total, relisted_total
+    // =========================================================================
     const { data: outcomes } = await supabase
       .from('fingerprint_outcomes')
-      .select('*')
+      .select('make, model, cleared_total, listing_total, relisted_total, passed_in_total')
       .eq('region_id', region)
       .order('asof_date', { ascending: false })
       .limit(50);
 
+    // =========================================================================
     // Fetch opportunities count (matched lots)
+    // =========================================================================
     const { count: opportunityCount } = await supabase
       .from('alert_logs')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'new')
       .eq('match_type', 'exact');
 
-    // Fetch slow movers (fatigue listings)
+    // =========================================================================
+    // FIX #1: Slow movers = AGED listings (21+ days old), not recent ones
+    // Must be: first_seen_at <= now - 21 days, active/listed, dealer_grade
+    // =========================================================================
+    const twentyOneDaysAgo = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString();
+    
     const { count: slowMoverCount } = await supabase
       .from('vehicle_listings')
       .select('*', { count: 'exact', head: true })
       .eq('is_dealer_grade', true)
-      .gte('first_seen_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
-      .eq('status', 'listed');
+      .lte('first_seen_at', twentyOneDaysAgo)
+      .in('status', ['active', 'listed', 'catalogue']);
 
-    // Build market pulse from heat alerts (dealer-safe language)
+    console.log(`[bob-daily-brief] Slow movers query: first_seen_at <= ${twentyOneDaysAgo}, found: ${slowMoverCount}`);
+
+    // =========================================================================
+    // FIX #2: Build market pulse - map internal tiers to dealer-safe labels only
+    // Never expose EARLY_PRIVATE_LED or CONFIRMED_DEALER_VALIDATED to dealers
+    // =========================================================================
     const marketPulse: MarketPulse[] = [];
     
-    // Group alerts by tier
-    const hotAlerts = (heatAlerts || []).filter(a => 
-      a.tier === 'EARLY_PRIVATE_LED' || a.tier === 'CONFIRMED_DEALER_VALIDATED'
-    );
-    const coolingAlerts = (heatAlerts || []).filter(a => a.tier === 'COOLING');
+    // Group alerts by dealer-safe status
+    const statusGroups: Record<'hot' | 'cooling' | 'stable', string[]> = {
+      hot: [],
+      cooling: [],
+      stable: []
+    };
 
-    // Summarize by category (make-model groups)
-    const hotCategories = new Set(hotAlerts.map(a => `${a.make} ${a.model}`));
-    const coolingCategories = new Set(coolingAlerts.map(a => `${a.make} ${a.model}`));
+    for (const alert of (heatAlerts || [])) {
+      const safeStatus = tierToDealerSafeStatus(alert.tier);
+      const category = `${alert.make} ${alert.model}`;
+      if (!statusGroups[safeStatus].includes(category)) {
+        statusGroups[safeStatus].push(category);
+      }
+    }
 
-    // Add hot categories
-    for (const cat of Array.from(hotCategories).slice(0, 2)) {
+    // Add hot categories (max 2)
+    for (const cat of statusGroups.hot.slice(0, 2)) {
       marketPulse.push({
         category: cat,
         status: 'hot',
@@ -107,8 +170,8 @@ serve(async (req) => {
       });
     }
 
-    // Add cooling categories
-    for (const cat of Array.from(coolingCategories).slice(0, 2)) {
+    // Add cooling categories (max 2)
+    for (const cat of statusGroups.cooling.slice(0, 2)) {
       marketPulse.push({
         category: cat,
         status: 'cooling',
@@ -125,11 +188,14 @@ serve(async (req) => {
       });
     }
 
-    // Build stock vs market comparison from fingerprint outcomes
+    // =========================================================================
+    // FIX #3: Build stock vs market from fingerprint_outcomes
+    // Using correct columns: cleared_total, listing_total (not undefined)
+    // =========================================================================
     const stockVsMarket: StockComparison[] = [];
     
     // Group outcomes by make for comparison
-    const outcomessByMake: Record<string, NonNullable<typeof outcomes>> = {};
+    const outcomessByMake: Record<string, typeof outcomes> = {};
     for (const o of (outcomes || [])) {
       if (!outcomessByMake[o.make]) {
         outcomessByMake[o.make] = [];
@@ -143,11 +209,18 @@ serve(async (req) => {
       const makeOutcomes = outcomessByMake[make] || [];
       if (makeOutcomes.length === 0) continue;
       
-      const avgCleared = makeOutcomes.reduce((sum, o) => sum + (o.cleared_total || 0), 0) / makeOutcomes.length;
-      const avgListed = makeOutcomes.reduce((sum, o) => sum + (o.listing_total || 0), 0) / makeOutcomes.length;
+      // Sum totals across all fingerprints for this make
+      const totalCleared = makeOutcomes.reduce((sum, o) => sum + (o.cleared_total ?? 0), 0);
+      const totalListed = makeOutcomes.reduce((sum, o) => sum + (o.listing_total ?? 0), 0);
       
-      // Calculate clearance rate (dealer-safe, no raw numbers)
-      const clearanceRate = avgListed > 0 ? avgCleared / avgListed : 0;
+      // Skip if no data (don't show undefined or zero defaults silently)
+      if (totalListed === 0) {
+        console.log(`[bob-daily-brief] Skipping ${make}: no listing data`);
+        continue;
+      }
+      
+      // Calculate clearance rate (dealer-safe, no raw numbers exposed)
+      const clearanceRate = totalCleared / totalListed;
       
       let status: 'faster' | 'inline' | 'slower' = 'inline';
       let description = 'On track';
@@ -171,15 +244,19 @@ serve(async (req) => {
       });
     }
 
+    // =========================================================================
     // Build suggested focus (gentle prompts only, no judgment)
+    // =========================================================================
     const suggestedFocus: string[] = [];
     
     if ((slowMoverCount || 0) > 3) {
       suggestedFocus.push('A few cars have been sitting - worth a look');
     }
     
-    if (hotAlerts.length > 0) {
-      suggestedFocus.push(`${hotAlerts[0].make} ${hotAlerts[0].model} is moving well in your area`);
+    // Get first hot category for focus suggestion
+    const hotCategories = statusGroups.hot;
+    if (hotCategories.length > 0) {
+      suggestedFocus.push(`${hotCategories[0]} is moving well in your area`);
     }
     
     if ((opportunityCount || 0) > 0) {
@@ -209,7 +286,7 @@ serve(async (req) => {
     // Also build legacy briefContext for voice Bob
     const briefContext = buildVoiceBriefContext(brief);
 
-    console.log(`[bob-daily-brief] Brief generated: ${marketPulse.length} pulse items, ${stockVsMarket.length} stock items`);
+    console.log(`[bob-daily-brief] Brief generated: ${marketPulse.length} pulse items, ${stockVsMarket.length} stock items, ${slowMoverCount} slow movers`);
 
     return new Response(
       JSON.stringify({ 
@@ -236,7 +313,7 @@ function buildVoiceBriefContext(brief: DailyBrief): string {
 
   parts.push(brief.greeting);
 
-  // Market pulse
+  // Market pulse (dealer-safe labels only: hot/stable/cooling)
   if (brief.marketPulse.length > 0) {
     parts.push("Market pulse:");
     for (const item of brief.marketPulse) {
@@ -249,18 +326,29 @@ function buildVoiceBriefContext(brief: DailyBrief): string {
   if (brief.stockVsMarket.length > 0) {
     parts.push("Your stock:");
     for (const item of brief.stockVsMarket) {
-      const statusWord = item.status === 'faster' ? 'moving well' : item.status === 'slower' ? 'taking its time' : 'on track';
-      parts.push(`${item.category} is ${statusWord}.`);
+      const statusWord = item.status === 'faster' ? 'moving faster than market' : 
+                         item.status === 'slower' ? 'taking a bit longer' : 'tracking with market';
+      parts.push(`${item.category}: ${statusWord}.`);
     }
   }
 
-  // Focus
-  if (brief.suggestedFocus.length > 0) {
-    parts.push("Quick focus: " + brief.suggestedFocus[0]);
+  // Slow movers
+  if (brief.slowMoverCount > 0) {
+    parts.push(`You have ${brief.slowMoverCount} cars that have been listed for a while.`);
   }
 
-  // Closing
-  parts.push("That's the rundown. Ask me anything.");
+  // Opportunities
+  if (brief.opportunityCount > 0) {
+    parts.push(`${brief.opportunityCount} new opportunities waiting.`);
+  }
+
+  // Suggested focus
+  if (brief.suggestedFocus.length > 0) {
+    parts.push("Today's focus:");
+    for (const focus of brief.suggestedFocus) {
+      parts.push(focus);
+    }
+  }
 
   return parts.join(' ');
 }
