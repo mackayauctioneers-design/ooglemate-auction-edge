@@ -22,60 +22,33 @@ interface DealerConfig {
   };
 }
 
-// NSW Central Coast dealers - start with a focused set
+// NSW Central Coast dealers - verified working URLs
 const DEALERS: DealerConfig[] = [
   {
-    name: "Central Coast Toyota",
-    slug: "central-coast-toyota",
-    inventory_url: "https://www.centralcoasttoyota.com.au/used-vehicles",
+    name: "Brian Hilton Toyota",
+    slug: "brian-hilton-toyota",
+    inventory_url: "https://brianhiltontoyota.com.au/used-cars/",
+    suburb: "North Gosford",
+    state: "NSW",
+    postcode: "2250",
+    scrape_config: { pagination: true, max_pages: 5 }
+  },
+  {
+    name: "Central Coast Adventure Cars",
+    slug: "central-coast-adventure-cars",
+    inventory_url: "https://www.centralcoastadventurecars.com.au/stock/",
+    suburb: "Wyoming",
+    state: "NSW",
+    postcode: "2250",
+    scrape_config: { pagination: true, max_pages: 5 }
+  },
+  {
+    name: "Central Coast Hyundai",
+    slug: "central-coast-hyundai",
+    inventory_url: "https://www.centralcoasthyundai.com.au/used-vehicles/",
     suburb: "West Gosford",
     state: "NSW",
     postcode: "2250",
-    scrape_config: { pagination: true, max_pages: 5 }
-  },
-  {
-    name: "Gosford Holden/GM",
-    slug: "gosford-holden",
-    inventory_url: "https://www.gosfordholden.com.au/used-cars",
-    suburb: "West Gosford",
-    state: "NSW",
-    postcode: "2250",
-    scrape_config: { pagination: true, max_pages: 5 }
-  },
-  {
-    name: "Central Coast Mazda",
-    slug: "central-coast-mazda",
-    inventory_url: "https://www.centralcoastmazda.com.au/used-vehicles",
-    suburb: "West Gosford",
-    state: "NSW",
-    postcode: "2250",
-    scrape_config: { pagination: true, max_pages: 5 }
-  },
-  {
-    name: "Wyong Motor Group",
-    slug: "wyong-motor-group",
-    inventory_url: "https://www.wyongmotorgroup.com.au/used-vehicles",
-    suburb: "Wyong",
-    state: "NSW",
-    postcode: "2259",
-    scrape_config: { pagination: true, max_pages: 5 }
-  },
-  {
-    name: "Erina Toyota",
-    slug: "erina-toyota",
-    inventory_url: "https://www.erinatoyota.com.au/used-vehicles",
-    suburb: "Erina",
-    state: "NSW",
-    postcode: "2250",
-    scrape_config: { pagination: true, max_pages: 5 }
-  },
-  {
-    name: "Tuggerah Motor Group",
-    slug: "tuggerah-motor-group",
-    inventory_url: "https://www.tuggerahmotorgroup.com.au/used-vehicles",
-    suburb: "Tuggerah",
-    state: "NSW",
-    postcode: "2259",
     scrape_config: { pagination: true, max_pages: 5 }
   },
 ];
@@ -120,15 +93,77 @@ function stableHash(str: string): string {
 }
 
 /**
- * Parse vehicle data from Firecrawl markdown output
- * NOTE: Markdown parsing is a fallback - prefer JSON-LD structured data
- * This is limited because we can't get stable IDs or detail URLs from markdown
+ * Parse vehicles from HTML using data attributes (DigitalDealer platform pattern)
+ * These sites use data-stocknumber, data-stockid, etc. on stock items
+ * This is a reliable fallback when JSON-LD isn't available
  */
-function parseVehiclesFromMarkdown(_markdown: string, _dealer: DealerConfig, _baseUrl: string): ScrapedVehicle[] {
-  // Markdown parsing disabled - cannot get stable source_listing_id or detail URLs
-  // All vehicles must come from JSON-LD structured data with proper identifiers
-  console.log(`[dealer-site-crawl] Markdown parsing skipped - no stable IDs available`);
-  return [];
+function parseVehiclesFromHtmlDataAttributes(html: string, dealer: DealerConfig): ScrapedVehicle[] {
+  const vehicles: ScrapedVehicle[] = [];
+  
+  // Pattern to match stock item divs with data attributes
+  // DigitalDealer sites use: data-stocknumber, data-stockid, data-stockprice, etc.
+  const stockItemPattern = /<div[^>]+class="[^"]*stockListItemView[^"]*"[^>]+data-stocknumber="([^"]+)"[^>]+data-stockid="([^"]+)"[^>]*data-stockprice="([^"]*)"[^>]*data-stockyear="([^"]+)"[^>]*data-stockmake="([^"]+)"[^>]*data-stockmodel="([^"]+)"[^>]*/gi;
+  
+  // Pattern to find detail page URLs
+  const detailUrlPattern = /<a[^>]+href="([^"]+)"[^>]+class="[^"]*si-rpmt-cta-vdp[^"]*"/gi;
+  
+  let match;
+  const processedStockNumbers = new Set<string>();
+  
+  while ((match = stockItemPattern.exec(html)) !== null) {
+    const stockNumber = match[1]; // e.g., "U002398"
+    const stockId = match[2];     // e.g., "1731084"  
+    const priceStr = match[3];
+    const yearStr = match[4];
+    const make = match[5];
+    const model = match[6];
+    
+    // Skip duplicates
+    if (processedStockNumbers.has(stockNumber)) continue;
+    processedStockNumbers.add(stockNumber);
+    
+    const year = parseInt(yearStr);
+    const price = priceStr ? parseInt(priceStr) : undefined;
+    
+    if (!make || !model || !year || year < 1990 || year > 2030) continue;
+    
+    // Find detail URL - look for pattern like /u002398-1731084-make-model-year/
+    const urlPattern = new RegExp(`href="([^"]+${stockNumber.toLowerCase()}-${stockId}[^"]+)"`, 'i');
+    const urlMatch = urlPattern.exec(html);
+    
+    if (!urlMatch) {
+      console.log(`[dealer-site-crawl] Skipping ${stockNumber}: no detail URL found`);
+      continue;
+    }
+    
+    let detailUrl = urlMatch[1];
+    // Make absolute URL if relative
+    if (detailUrl.startsWith('/')) {
+      const baseUrl = new URL(dealer.inventory_url);
+      detailUrl = `${baseUrl.origin}${detailUrl}`;
+    }
+    
+    vehicles.push({
+      source_listing_id: stockNumber, // Stable stock number
+      make,
+      model,
+      year,
+      price,
+      listing_url: detailUrl,
+      suburb: dealer.suburb,
+      state: dealer.state,
+      postcode: dealer.postcode,
+      seller_hints: {
+        seller_badge: 'dealer',
+        seller_name: dealer.name,
+        has_abn: true,
+        has_dealer_keywords: true,
+      }
+    });
+  }
+  
+  console.log(`[dealer-site-crawl] Parsed ${vehicles.length} vehicles from HTML data attributes`);
+  return vehicles;
 }
 
 /**
@@ -393,10 +428,10 @@ Deno.serve(async (req) => {
           console.log(`[dealer-site-crawl] ${dealer.name}: Found ${vehicles.length} vehicles from structured data`);
         }
         
-        // Fall back to or supplement with markdown parsing
-        if (vehicles.length === 0 && scrapeResult.data.markdown) {
-          vehicles = parseVehiclesFromMarkdown(scrapeResult.data.markdown, dealer, url);
-          console.log(`[dealer-site-crawl] ${dealer.name}: Found ${vehicles.length} vehicles from markdown`);
+        // Fall back to HTML data attributes parsing (DigitalDealer platform)
+        if (vehicles.length === 0 && scrapeResult.data.html) {
+          vehicles = parseVehiclesFromHtmlDataAttributes(scrapeResult.data.html, dealer);
+          console.log(`[dealer-site-crawl] ${dealer.name}: Found ${vehicles.length} vehicles from HTML data attributes`);
         }
         
         if (vehicles.length === 0) {
