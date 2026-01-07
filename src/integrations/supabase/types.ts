@@ -625,6 +625,7 @@ export type Database = {
           seller_reasons: string[] | null
           seller_type: string
           source: string
+          source_class: string
           status: string
           transmission: string | null
           updated_at: string
@@ -664,6 +665,7 @@ export type Database = {
           seller_reasons?: string[] | null
           seller_type?: string
           source?: string
+          source_class?: string
           status?: string
           transmission?: string | null
           updated_at?: string
@@ -703,6 +705,7 @@ export type Database = {
           seller_reasons?: string[] | null
           seller_type?: string
           source?: string
+          source_class?: string
           status?: string
           transmission?: string | null
           updated_at?: string
@@ -718,16 +721,29 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      compute_dealer_grade: {
-        Args: {
-          p_asking_price: number
-          p_excluded_keyword: string
-          p_excluded_reason: string
-          p_reserve: number
-          p_year: number
-        }
-        Returns: boolean
-      }
+      compute_dealer_grade:
+        | {
+            Args: {
+              p_asking_price: number
+              p_excluded_keyword: string
+              p_excluded_reason: string
+              p_reserve: number
+              p_year: number
+            }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              p_asking_price: number
+              p_excluded_keyword: string
+              p_excluded_reason: string
+              p_price_max?: number
+              p_price_min?: number
+              p_reserve: number
+              p_year: number
+            }
+            Returns: boolean
+          }
       derive_clearance_events: {
         Args: { p_stale_hours?: number }
         Returns: {
