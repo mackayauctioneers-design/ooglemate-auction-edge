@@ -850,7 +850,8 @@ function parseVehiclesFromAdTorque(html: string, dealer: DealerConfig): ScrapedV
   for (const m of matches) {
     const stockNumber = m.stockNumber;
     const startIdx = m.index;
-    const itemHtml = html.slice(startIdx, startIdx + 4000);
+    // Increase window to 8000 chars to capture price section which is further down
+    const itemHtml = html.slice(startIdx, startIdx + 8000);
     
     // Try to find data-vin within the opening tag
     const vinMatch = /data-vin="([^"]+)"/.exec(itemHtml.slice(0, 300));
@@ -873,50 +874,58 @@ function parseVehiclesFromAdTorque(html: string, dealer: DealerConfig): ScrapedV
  * Extract vehicle data from a single AdTorque item HTML window
  */
 function parseAdTorqueItem(itemHtml: string, sourceId: string, dealer: DealerConfig): ScrapedVehicle | null {
-  // Simple patterns - actual HTML is: <span class="year">2022</span>
-  const yearMatch = /<span class="year">(\d{4})<\/span>/i.exec(itemHtml);
-  const makeMatch = /<span class="make">([^<]+)<\/span>/i.exec(itemHtml);
-  const modelMatch = /<span class="model">([^<]+)<\/span>/i.exec(itemHtml);
-  const badgeMatch = /<span class="badge">([^<]+)<\/span>/i.exec(itemHtml);
+  // Try multiple extraction strategies
+  let year: number | undefined;
+  let make: string | undefined;
+  let model: string | undefined;
+  let variant: string | undefined;
   
-  if (!yearMatch || !makeMatch || !modelMatch) {
-    return null;
+  // Strategy 1: Extract from si-title link's title attribute
+  // HTML: <a class="si-title" href="..." title="2022 Jeep Wrangler Rubicon Auto 4x4 MY22">
+  const titleAttrMatch = /class="si-title"[^>]+title="(\d{4})\s+(\w+)\s+(\S+)([^"]*)"/.exec(itemHtml);
+  if (titleAttrMatch) {
+    year = parseInt(titleAttrMatch[1]);
+    make = titleAttrMatch[2].trim();
+    model = titleAttrMatch[3].trim();
+    variant = titleAttrMatch[4].trim() || undefined;
   }
   
-  const year = parseInt(yearMatch[1]);
-  const make = makeMatch[1].trim();
-  const model = modelMatch[1].trim();
-  const variant = badgeMatch ? badgeMatch[1].trim() : undefined;
-  
-  // Fallback: parse from combined title string (e.g., "2021 Mazda CX-5 Touring")
+  // Strategy 2: Try individual span patterns (flexible whitespace)
   if (!year || !make || !model) {
-    const titlePattern = /<(?:h[1-6]|a|div)[^>]+class="[^"]*(?:si-title|vehicle-title|title)[^"]*"[^>]*>([^<]+)<|>(\d{4})\s+(\w+)\s+(\S+)/i;
-    const titleMatch = titlePattern.exec(itemHtml);
-    if (titleMatch) {
-      const titleText = titleMatch[1] || `${titleMatch[2]} ${titleMatch[3]} ${titleMatch[4]}`;
-      const parts = titleText.trim().split(/\s+/);
-      if (parts.length >= 3) {
-        const maybeYear = parseInt(parts[0]);
-        if (maybeYear >= 1990 && maybeYear <= 2030) {
-          if (!year) year = maybeYear;
-          if (!make) make = parts[1];
-          if (!model) model = parts[2];
-        }
-      }
+    const yearMatch = /<span\s+class="year"\s*>(\d{4})<\/span>/i.exec(itemHtml);
+    const makeMatch = /<span\s+class="make"\s*>([^<]+)<\/span>/i.exec(itemHtml);
+    const modelMatch = /<span\s+class="model"\s*>([^<]+)<\/span>/i.exec(itemHtml);
+    const badgeMatch = /<span\s+class="badge"\s*>([^<]+)<\/span>/i.exec(itemHtml);
+    
+    if (yearMatch) year = parseInt(yearMatch[1]);
+    if (makeMatch) make = makeMatch[1].trim();
+    if (modelMatch) model = modelMatch[1].trim();
+    if (badgeMatch) variant = badgeMatch[1].trim();
+  }
+  
+  // Strategy 3: Parse from image alt text
+  // HTML: <img ... alt="2022 Jeep Wrangler Rubicon Auto 4x4 MY22" ...>
+  if (!year || !make || !model) {
+    const altMatch = /alt="(\d{4})\s+(\w+)\s+(\S+)([^"]*)"/.exec(itemHtml);
+    if (altMatch) {
+      if (!year) year = parseInt(altMatch[1]);
+      if (!make) make = altMatch[2].trim();
+      if (!model) model = altMatch[3].trim();
+      if (!variant) variant = altMatch[4].trim() || undefined;
     }
   }
   
   if (!year || !make || !model || year < 1990 || year > 2030) {
+    console.log(`[dealer-site-crawl] ${sourceId}: parse failed year=${year} make=${make} model=${model}`);
     return null;
   }
   
-  // Extract price - multiple patterns
+  // Extract price - multiple patterns for flexibility
   let price: number | undefined;
   const pricePatterns = [
-    /<span[^>]+class="[^"]*price-value[^"]*"[^>]*>\s*\$?([\d,]+)/i,
-    /class="[^"]*price[^"]*"[^>]*>\s*\$?([\d,]+)/i,
-    /data-price="(\d+)"/i,
-    /\$\s*([\d,]+)\s*(?:drive away|driveaway)?/i,
+    /<span\s+class="price-value"\s*>\s*\$?([\d,]+)/i,
+    /class="price-value"[^>]*>\s*\$?([\d,]+)/i,
+    /\$\s*([\d,]{5,})/,  // Any $ followed by 5+ digit/comma chars (e.g. $58,990)
   ];
   for (const pattern of pricePatterns) {
     const m = pattern.exec(itemHtml);
@@ -926,12 +935,12 @@ function parseAdTorqueItem(itemHtml: string, sourceId: string, dealer: DealerCon
     }
   }
   
-  // Extract odometer
+  // Extract odometer - multiple patterns
   let km: number | undefined;
   const kmPatterns = [
-    /<span[^>]+class="[^"]*odometer[^"]*"[^>]*>([\d,]+)\s*km/i,
-    /class="[^"]*(?:km|kms|odometer)[^"]*"[^>]*>([\d,]+)/i,
-    /([\d,]+)\s*km/i,
+    /<span\s+class="odometer"\s*>([\d,]+)\s*km/i,
+    /class="odometer"[^>]*>([\d,]+)/i,
+    /([\d,]+)\s*km\s*</i,
   ];
   for (const pattern of kmPatterns) {
     const m = pattern.exec(itemHtml);
@@ -941,27 +950,9 @@ function parseAdTorqueItem(itemHtml: string, sourceId: string, dealer: DealerCon
     }
   }
   
-  // Extract transmission
-  let transmission: string | undefined;
-  const transPatterns = [
-    /<span[^>]+class="[^"]*transmission[^"]*"[^>]*>([^<]+)<\/span>/i,
-    /\b(automatic|manual|auto|cvt)\b/i,
-  ];
-  for (const pattern of transPatterns) {
-    const m = pattern.exec(itemHtml);
-    if (m) { transmission = m[1].trim(); break; }
-  }
-  
-  // Extract fuel
-  let fuel: string | undefined;
-  const fuelPatterns = [
-    /<span[^>]+class="[^"]*fuel[^"]*"[^>]*>([^<]+)<\/span>/i,
-    /\b(petrol|diesel|hybrid|electric|ev)\b/i,
-  ];
-  for (const pattern of fuelPatterns) {
-    const m = pattern.exec(itemHtml);
-    if (m) { fuel = m[1].trim(); break; }
-  }
+  // Extract fuel - actual HTML: <span class="fuel">3.6L Petrol</span>
+  const fuelMatch = /<span class="fuel">([^<]+)<\/span>/i.exec(itemHtml);
+  const fuel = fuelMatch ? fuelMatch[1].trim() : undefined;
   
   // Extract detail URL
   let detailUrl: string | undefined;
@@ -1001,7 +992,6 @@ function parseAdTorqueItem(itemHtml: string, sourceId: string, dealer: DealerCon
     variant_raw: variant,
     km,
     price,
-    transmission,
     fuel,
     listing_url: detailUrl,
     suburb: dealer.suburb,
