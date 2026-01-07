@@ -352,6 +352,8 @@ Deno.serve(async (req) => {
           reserve: null,
           auction_datetime: null,
           event_id: null,
+          // Source class: classifieds (not auction)
+          source_class: 'classifieds',
         };
 
         let vehicleListingId: string;
