@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.geo-liquidity-pipeline]
 verify_jwt = false
+
+[functions.classifieds-ingest]
+verify_jwt = false
