@@ -873,58 +873,151 @@ function parseVehiclesFromAdTorque(html: string, dealer: DealerConfig): ScrapedV
 /**
  * Extract vehicle data from a single AdTorque item HTML window
  */
+/**
+ * Sanity checks for parsed vehicle data
+ */
+function isValidYear(year: number): boolean {
+  return year >= 2016 && year <= 2030;
+}
+
+function isValidMake(make: string): boolean {
+  if (!make || make.length < 2) return false;
+  // Must be mostly alphabetic (allow spaces, hyphens for e.g. "Land Rover")
+  return /^[a-zA-Z][a-zA-Z\s\-]*$/.test(make);
+}
+
+function isValidModel(model: string): boolean {
+  // Model can have numbers (e.g. CX-5, 3 Series, 86)
+  return !!model && model.length >= 1 && model.length <= 50;
+}
+
+function makeNotEqualsModel(make: string, model: string): boolean {
+  return make.toLowerCase() !== model.toLowerCase();
+}
+
+/**
+ * Extract vehicle data from a single AdTorque item HTML window
+ * Uses ORDERED span extraction from title container
+ * 
+ * Expected AdTorque HTML structure:
+ * <div class="si-title">
+ *   <span class="year">2021</span>
+ *   <span class="make">Mazda</span>
+ *   <span class="model">CX-5</span>
+ *   <span class="badge">Touring</span>  <!-- optional -->
+ * </div>
+ */
 function parseAdTorqueItem(itemHtml: string, sourceId: string, dealer: DealerConfig): ScrapedVehicle | null {
-  // Try multiple extraction strategies
   let year: number | undefined;
   let make: string | undefined;
   let model: string | undefined;
   let variant: string | undefined;
   
-  // Strategy 1: Extract from si-title link's title attribute
-  // HTML: <a class="si-title" href="..." title="2022 Jeep Wrangler Rubicon Auto 4x4 MY22">
-  const titleAttrMatch = /class="si-title"[^>]+title="(\d{4})\s+(\w+)\s+(\S+)([^"]*)"/.exec(itemHtml);
-  if (titleAttrMatch) {
-    year = parseInt(titleAttrMatch[1]);
-    make = titleAttrMatch[2].trim();
-    model = titleAttrMatch[3].trim();
-    variant = titleAttrMatch[4].trim() || undefined;
-  }
+  // =========================================================================
+  // STRATEGY 1: Find si-title container and extract ORDERED spans by class
+  // =========================================================================
+  // Look for the title container (si-title, vehicle-title, stock-title)
+  const titleContainerPatterns = [
+    /<(?:div|a)[^>]*class="[^"]*si-title[^"]*"[^>]*>([\s\S]*?)<\/(?:div|a)>/i,
+    /<(?:div|a)[^>]*class="[^"]*vehicle-title[^"]*"[^>]*>([\s\S]*?)<\/(?:div|a)>/i,
+    /<(?:div|a)[^>]*class="[^"]*stock-title[^"]*"[^>]*>([\s\S]*?)<\/(?:div|a)>/i,
+  ];
   
-  // Strategy 2: Try individual span patterns (flexible whitespace)
-  if (!year || !make || !model) {
-    const yearMatch = /<span\s+class="year"\s*>(\d{4})<\/span>/i.exec(itemHtml);
-    const makeMatch = /<span\s+class="make"\s*>([^<]+)<\/span>/i.exec(itemHtml);
-    const modelMatch = /<span\s+class="model"\s*>([^<]+)<\/span>/i.exec(itemHtml);
-    const badgeMatch = /<span\s+class="badge"\s*>([^<]+)<\/span>/i.exec(itemHtml);
-    
-    if (yearMatch) year = parseInt(yearMatch[1]);
-    if (makeMatch) make = makeMatch[1].trim();
-    if (modelMatch) model = modelMatch[1].trim();
-    if (badgeMatch) variant = badgeMatch[1].trim();
-  }
-  
-  // Strategy 3: Parse from image alt text
-  // HTML: <img ... alt="2022 Jeep Wrangler Rubicon Auto 4x4 MY22" ...>
-  if (!year || !make || !model) {
-    const altMatch = /alt="(\d{4})\s+(\w+)\s+(\S+)([^"]*)"/.exec(itemHtml);
-    if (altMatch) {
-      if (!year) year = parseInt(altMatch[1]);
-      if (!make) make = altMatch[2].trim();
-      if (!model) model = altMatch[3].trim();
-      if (!variant) variant = altMatch[4].trim() || undefined;
+  for (const pattern of titleContainerPatterns) {
+    const containerMatch = pattern.exec(itemHtml);
+    if (containerMatch) {
+      const containerHtml = containerMatch[1];
+      
+      // Extract spans by their specific classes (NOT generic matching)
+      const yearMatch = /<span[^>]*class="[^"]*year[^"]*"[^>]*>(\d{4})<\/span>/i.exec(containerHtml);
+      const makeMatch = /<span[^>]*class="[^"]*make[^"]*"[^>]*>([^<]+)<\/span>/i.exec(containerHtml);
+      const modelMatch = /<span[^>]*class="[^"]*model[^"]*"[^>]*>([^<]+)<\/span>/i.exec(containerHtml);
+      const badgeMatch = /<span[^>]*class="[^"]*badge[^"]*"[^>]*>([^<]+)<\/span>/i.exec(containerHtml);
+      
+      if (yearMatch) year = parseInt(yearMatch[1]);
+      if (makeMatch) make = makeMatch[1].trim();
+      if (modelMatch) model = modelMatch[1].trim();
+      if (badgeMatch) variant = badgeMatch[1].trim();
+      
+      // If we got year, make, and model from the container, stop looking
+      if (year && make && model) break;
     }
   }
   
-  if (!year || !make || !model || year < 1990 || year > 2030) {
-    console.log(`[dealer-site-crawl] ${sourceId}: parse failed year=${year} make=${make} model=${model}`);
+  // =========================================================================
+  // STRATEGY 2: Extract from si-title link's title attribute
+  // HTML: <a class="si-title" href="..." title="2022 Jeep Wrangler Rubicon Auto 4x4 MY22">
+  // =========================================================================
+  if (!year || !make || !model) {
+    const titleAttrMatch = /class="[^"]*si-title[^"]*"[^>]+title="(\d{4})\s+([A-Za-z][A-Za-z\-\s]*)\s+(\S+)([^"]*)"/i.exec(itemHtml);
+    if (titleAttrMatch) {
+      const parsedYear = parseInt(titleAttrMatch[1]);
+      const parsedMake = titleAttrMatch[2].trim();
+      const parsedModel = titleAttrMatch[3].trim();
+      const parsedVariant = titleAttrMatch[4]?.trim() || undefined;
+      
+      // Apply sanity checks before accepting
+      if (!year && isValidYear(parsedYear)) year = parsedYear;
+      if (!make && isValidMake(parsedMake)) make = parsedMake;
+      if (!model && isValidModel(parsedModel)) model = parsedModel;
+      if (!variant && parsedVariant) variant = parsedVariant;
+    }
+  }
+  
+  // =========================================================================
+  // STRATEGY 3: Parse from image alt text
+  // HTML: <img ... alt="2022 Jeep Wrangler Rubicon Auto 4x4 MY22" ...>
+  // =========================================================================
+  if (!year || !make || !model) {
+    const altMatch = /alt="(\d{4})\s+([A-Za-z][A-Za-z\-\s]*)\s+(\S+)([^"]*)"/i.exec(itemHtml);
+    if (altMatch) {
+      const parsedYear = parseInt(altMatch[1]);
+      const parsedMake = altMatch[2].trim();
+      const parsedModel = altMatch[3].trim();
+      const parsedVariant = altMatch[4]?.trim() || undefined;
+      
+      if (!year && isValidYear(parsedYear)) year = parsedYear;
+      if (!make && isValidMake(parsedMake)) make = parsedMake;
+      if (!model && isValidModel(parsedModel)) model = parsedModel;
+      if (!variant && parsedVariant) variant = parsedVariant;
+    }
+  }
+  
+  // =========================================================================
+  // SANITY CHECKS - reject if invalid
+  // =========================================================================
+  if (!year || !make || !model) {
+    console.log(`[dealer-site-crawl] ${sourceId}: parse failed - missing required fields year=${year} make=${make} model=${model}`);
     return null;
   }
   
-  // Extract price - multiple patterns for flexibility
+  if (!isValidYear(year)) {
+    console.log(`[dealer-site-crawl] ${sourceId}: parse failed - year ${year} out of range 2016-2030`);
+    return null;
+  }
+  
+  if (!isValidMake(make)) {
+    console.log(`[dealer-site-crawl] ${sourceId}: parse failed - make '${make}' not alphabetic`);
+    return null;
+  }
+  
+  if (!isValidModel(model)) {
+    console.log(`[dealer-site-crawl] ${sourceId}: parse failed - model '${model}' invalid`);
+    return null;
+  }
+  
+  if (!makeNotEqualsModel(make, model)) {
+    console.log(`[dealer-site-crawl] ${sourceId}: parse failed - make '${make}' equals model`);
+    return null;
+  }
+  
+  // =========================================================================
+  // EXTRACT PRICE - multiple patterns for flexibility
+  // =========================================================================
   let price: number | undefined;
   const pricePatterns = [
-    /<span\s+class="price-value"\s*>\s*\$?([\d,]+)/i,
-    /class="price-value"[^>]*>\s*\$?([\d,]+)/i,
+    /<span[^>]*class="[^"]*price-value[^"]*"[^>]*>\s*\$?([\d,]+)/i,
+    /class="[^"]*price[^"]*"[^>]*>\s*\$?([\d,]+)/i,
     /\$\s*([\d,]{5,})/,  // Any $ followed by 5+ digit/comma chars (e.g. $58,990)
   ];
   for (const pattern of pricePatterns) {
@@ -935,11 +1028,13 @@ function parseAdTorqueItem(itemHtml: string, sourceId: string, dealer: DealerCon
     }
   }
   
-  // Extract odometer - multiple patterns
+  // =========================================================================
+  // EXTRACT ODOMETER
+  // =========================================================================
   let km: number | undefined;
   const kmPatterns = [
-    /<span\s+class="odometer"\s*>([\d,]+)\s*km/i,
-    /class="odometer"[^>]*>([\d,]+)/i,
+    /<span[^>]*class="[^"]*odometer[^"]*"[^>]*>([\d,]+)\s*km/i,
+    /class="[^"]*odometer[^"]*"[^>]*>([\d,]+)/i,
     /([\d,]+)\s*km\s*</i,
   ];
   for (const pattern of kmPatterns) {
@@ -950,11 +1045,15 @@ function parseAdTorqueItem(itemHtml: string, sourceId: string, dealer: DealerCon
     }
   }
   
-  // Extract fuel - actual HTML: <span class="fuel">3.6L Petrol</span>
-  const fuelMatch = /<span class="fuel">([^<]+)<\/span>/i.exec(itemHtml);
+  // =========================================================================
+  // EXTRACT FUEL TYPE
+  // =========================================================================
+  const fuelMatch = /<span[^>]*class="[^"]*fuel[^"]*"[^>]*>([^<]+)<\/span>/i.exec(itemHtml);
   const fuel = fuelMatch ? fuelMatch[1].trim() : undefined;
   
-  // Extract detail URL
+  // =========================================================================
+  // EXTRACT DETAIL URL
+  // =========================================================================
   let detailUrl: string | undefined;
   const urlPatterns = [
     /href="([^"]+\/stock\/details\/[^"]+)"/i,
@@ -983,6 +1082,8 @@ function parseAdTorqueItem(itemHtml: string, sourceId: string, dealer: DealerCon
       return null;
     }
   }
+  
+  console.log(`[dealer-site-crawl] ${sourceId}: parsed ${year} ${make} ${model} @ $${price || 'N/A'}`);
   
   return {
     source_listing_id: sourceId,
