@@ -355,6 +355,9 @@ export type Database = {
       dealer_rooftops: {
         Row: {
           anchor_dealer: boolean
+          auto_disabled_at: string | null
+          auto_disabled_reason: string | null
+          consecutive_failures: number
           created_at: string
           dealer_name: string
           dealer_slug: string
@@ -378,6 +381,9 @@ export type Database = {
         }
         Insert: {
           anchor_dealer?: boolean
+          auto_disabled_at?: string | null
+          auto_disabled_reason?: string | null
+          consecutive_failures?: number
           created_at?: string
           dealer_name: string
           dealer_slug: string
@@ -401,6 +407,9 @@ export type Database = {
         }
         Update: {
           anchor_dealer?: boolean
+          auto_disabled_at?: string | null
+          auto_disabled_reason?: string | null
+          consecutive_failures?: number
           created_at?: string
           dealer_name?: string
           dealer_slug?: string
