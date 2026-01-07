@@ -14,6 +14,7 @@ interface Fingerprint {
   id: string;
   fingerprint_id: string;
   dealer_name: string;
+  dealer_profile_id: string | null;
   make: string;
   model: string;
   variant_family: string | null;
@@ -289,12 +290,14 @@ Deno.serve(async (req) => {
           messageText = `${listing.model} ${variant} ${reason} – ${locationTime}`;
         }
 
-        // Attempt insert - unique index will reject duplicates
+        // DEALER ISOLATION: Always set dealer_profile_id from fingerprint
+        // This ensures alerts are scoped to the specific dealer, not just by name
         const { error: insertError } = await supabase
           .from('alert_logs')
           .insert({
             alert_id: alertId,
             dealer_name: fp.dealer_name,
+            dealer_profile_id: fp.dealer_profile_id, // Critical for dealer isolation
             listing_id: listing.listing_id,
             fingerprint_id: fp.fingerprint_id,
             alert_type: alertType,
