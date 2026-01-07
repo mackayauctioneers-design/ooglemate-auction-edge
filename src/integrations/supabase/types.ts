@@ -235,6 +235,93 @@ export type Database = {
         }
         Relationships: []
       }
+      fingerprint_outcomes: {
+        Row: {
+          asof_date: string
+          avg_days_to_clear: number | null
+          avg_price: number | null
+          clearance_count: number
+          created_at: string
+          fuel: string | null
+          id: string
+          km_band_max: number | null
+          km_band_min: number | null
+          listing_count: number
+          make: string
+          max_days_to_clear: number | null
+          max_price: number | null
+          min_days_to_clear: number | null
+          min_price: number | null
+          model: string
+          passed_in_count: number
+          region_id: string
+          sample_listing_ids: string[] | null
+          sold_count: number
+          transmission: string | null
+          updated_at: string
+          variant_family: string | null
+          withdrawn_count: number
+          year_max: number
+          year_min: number
+        }
+        Insert: {
+          asof_date: string
+          avg_days_to_clear?: number | null
+          avg_price?: number | null
+          clearance_count?: number
+          created_at?: string
+          fuel?: string | null
+          id?: string
+          km_band_max?: number | null
+          km_band_min?: number | null
+          listing_count?: number
+          make: string
+          max_days_to_clear?: number | null
+          max_price?: number | null
+          min_days_to_clear?: number | null
+          min_price?: number | null
+          model: string
+          passed_in_count?: number
+          region_id: string
+          sample_listing_ids?: string[] | null
+          sold_count?: number
+          transmission?: string | null
+          updated_at?: string
+          variant_family?: string | null
+          withdrawn_count?: number
+          year_max: number
+          year_min: number
+        }
+        Update: {
+          asof_date?: string
+          avg_days_to_clear?: number | null
+          avg_price?: number | null
+          clearance_count?: number
+          created_at?: string
+          fuel?: string | null
+          id?: string
+          km_band_max?: number | null
+          km_band_min?: number | null
+          listing_count?: number
+          make?: string
+          max_days_to_clear?: number | null
+          max_price?: number | null
+          min_days_to_clear?: number | null
+          min_price?: number | null
+          model?: string
+          passed_in_count?: number
+          region_id?: string
+          sample_listing_ids?: string[] | null
+          sold_count?: number
+          transmission?: string | null
+          updated_at?: string
+          variant_family?: string | null
+          withdrawn_count?: number
+          year_max?: number
+          year_min?: number
+        }
+        Relationships: []
+      }
       geo_heat_alerts: {
         Row: {
           acknowledged_at: string | null
@@ -844,7 +931,21 @@ export type Database = {
           alerts_updated: number
         }[]
       }
+      km_to_band: {
+        Args: { p_km: number }
+        Returns: {
+          km_band_max: number
+          km_band_min: number
+        }[]
+      }
       location_to_region: { Args: { p_location: string }; Returns: string }
+      materialize_fingerprint_outcomes: {
+        Args: { p_asof?: string }
+        Returns: {
+          records_upserted: number
+          regions_processed: number
+        }[]
+      }
       rollup_geo_model_metrics_daily: {
         Args: { p_day?: string }
         Returns: {
@@ -853,6 +954,13 @@ export type Database = {
         }[]
       }
       seller_weight: { Args: { p_seller_type: string }; Returns: number }
+      year_to_band: {
+        Args: { p_year: number }
+        Returns: {
+          year_max: number
+          year_min: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
