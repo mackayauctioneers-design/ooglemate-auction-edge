@@ -133,6 +133,54 @@ export type Database = {
           },
         ]
       }
+      dealer_crawl_runs: {
+        Row: {
+          created_at: string
+          dealer_name: string
+          dealer_slug: string
+          drop_reasons: Json | null
+          error: string | null
+          id: string
+          parser_mode: string
+          run_completed_at: string | null
+          run_date: string
+          run_started_at: string
+          vehicles_dropped: number
+          vehicles_found: number
+          vehicles_ingested: number
+        }
+        Insert: {
+          created_at?: string
+          dealer_name: string
+          dealer_slug: string
+          drop_reasons?: Json | null
+          error?: string | null
+          id?: string
+          parser_mode: string
+          run_completed_at?: string | null
+          run_date?: string
+          run_started_at?: string
+          vehicles_dropped?: number
+          vehicles_found?: number
+          vehicles_ingested?: number
+        }
+        Update: {
+          created_at?: string
+          dealer_name?: string
+          dealer_slug?: string
+          drop_reasons?: Json | null
+          error?: string | null
+          id?: string
+          parser_mode?: string
+          run_completed_at?: string | null
+          run_date?: string
+          run_started_at?: string
+          vehicles_dropped?: number
+          vehicles_found?: number
+          vehicles_ingested?: number
+        }
+        Relationships: []
+      }
       dealer_fingerprints: {
         Row: {
           created_at: string
