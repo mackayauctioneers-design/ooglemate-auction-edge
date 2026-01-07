@@ -74,6 +74,7 @@ serve(async (req) => {
     let userRole: 'admin' | 'dealer' | 'internal' = 'dealer';
     let dealerName = 'mate';
     let orgId: string | null = null;
+    let dealerProfileId: string | null = null;
     let region = 'CENTRAL_COAST_NSW';
     let profileLinked = false;
     
@@ -101,20 +102,22 @@ serve(async (req) => {
             userRole = roleData as 'admin' | 'dealer' | 'internal';
           }
           
-          // Query dealer_profiles for dealer-specific data
-          const { data: profileData } = await supabase.rpc('get_dealer_profile', { 
-            _user_id: userId 
-          });
+          // Query dealer_profiles for dealer-specific data (includes id for scoping)
+          const { data: profileData } = await supabase
+            .from('dealer_profiles')
+            .select('id, dealer_name, org_id, region_id')
+            .eq('user_id', userId)
+            .single();
           
-          if (profileData && profileData.length > 0) {
-            const profile = profileData[0];
-            dealerName = profile.dealer_name || dealerName;
-            orgId = profile.org_id;
-            region = profile.region_id || region;
+          if (profileData) {
+            dealerProfileId = profileData.id;
+            dealerName = profileData.dealer_name || dealerName;
+            orgId = profileData.org_id;
+            region = profileData.region_id || region;
             profileLinked = true;
           }
           
-          console.log(`[bob-daily-brief] Authenticated user ${userId}, role: ${userRole}, region: ${region}, linked: ${profileLinked}`);
+          console.log(`[bob-daily-brief] Auth user ${userId}, role: ${userRole}, dealerProfileId: ${dealerProfileId}, region: ${region}`);
         }
       } catch (e) {
         console.log('[bob-daily-brief] Auth error, treating as unauthenticated dealer:', e);
@@ -217,9 +220,12 @@ serve(async (req) => {
       .eq('status', 'new')
       .eq('match_type', 'exact');
 
-    // Scope to dealer's org if not admin
-    if (!isAdmin && dealerName) {
-      opportunityQuery = opportunityQuery.eq('dealer_name', dealerName);
+    // DEALER ISOLATION: Scope by dealer_profile_id, NOT dealer_name (prevents spoofing)
+    if (!isAdmin && dealerProfileId) {
+      opportunityQuery = opportunityQuery.eq('dealer_profile_id', dealerProfileId);
+    } else if (!isAdmin) {
+      // No profile linked = no opportunities visible
+      opportunityQuery = opportunityQuery.eq('dealer_profile_id', '00000000-0000-0000-0000-000000000000');
     }
 
     const { count: opportunityCount } = await opportunityQuery;
@@ -395,6 +401,7 @@ serve(async (req) => {
         _debug: isAdmin ? { 
           userId, 
           userRole, 
+          dealerProfileId,
           region, 
           orgId,
           latestAsofDate 
