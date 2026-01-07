@@ -141,7 +141,7 @@ const DEALERS: DealerConfig[] = [
   },
 
   // ==========================================================================
-  // CENTRAL COAST MOTOR GROUP (ccmg.com.au - 7 dealers)
+  // CENTRAL COAST MOTOR GROUP (ccmg.com.au - 7 dealers) - AdTorque platform
   // ==========================================================================
   {
     name: "Central Coast Motor Group",
@@ -151,7 +151,7 @@ const DEALERS: DealerConfig[] = [
     state: "NSW",
     postcode: "2250",
     region: "CENTRAL_COAST_NSW",
-    parser_mode: 'digitaldealer',
+    parser_mode: 'adtorque',
     enabled: true,
     anchor_dealer: false,
     priority: 'normal',
@@ -164,7 +164,7 @@ const DEALERS: DealerConfig[] = [
     state: "NSW",
     postcode: "2250",
     region: "CENTRAL_COAST_NSW",
-    parser_mode: 'digitaldealer',
+    parser_mode: 'adtorque',
     enabled: true,
     anchor_dealer: false,
     priority: 'normal',
@@ -177,7 +177,7 @@ const DEALERS: DealerConfig[] = [
     state: "NSW",
     postcode: "2250",
     region: "CENTRAL_COAST_NSW",
-    parser_mode: 'digitaldealer',
+    parser_mode: 'adtorque',
     enabled: true,
     anchor_dealer: false,
     priority: 'normal',
@@ -190,7 +190,7 @@ const DEALERS: DealerConfig[] = [
     state: "NSW",
     postcode: "2250",
     region: "CENTRAL_COAST_NSW",
-    parser_mode: 'digitaldealer',
+    parser_mode: 'adtorque',
     enabled: true,
     anchor_dealer: false,
     priority: 'normal',
@@ -203,7 +203,7 @@ const DEALERS: DealerConfig[] = [
     state: "NSW",
     postcode: "2250",
     region: "CENTRAL_COAST_NSW",
-    parser_mode: 'digitaldealer',
+    parser_mode: 'adtorque',
     enabled: true,
     anchor_dealer: false,
     priority: 'normal',
@@ -216,7 +216,7 @@ const DEALERS: DealerConfig[] = [
     state: "NSW",
     postcode: "2250",
     region: "CENTRAL_COAST_NSW",
-    parser_mode: 'digitaldealer',
+    parser_mode: 'adtorque',
     enabled: true,
     anchor_dealer: false,
     priority: 'normal',
@@ -229,7 +229,7 @@ const DEALERS: DealerConfig[] = [
     state: "NSW",
     postcode: "2250",
     region: "CENTRAL_COAST_NSW",
-    parser_mode: 'digitaldealer',
+    parser_mode: 'adtorque',
     enabled: true,
     anchor_dealer: false,
     priority: 'normal',
@@ -789,97 +789,231 @@ function parseVehiclesFromDigitalDealer(html: string, dealer: DealerConfig): Scr
 /**
  * Parse vehicles from AdTorque Edge platform HTML
  * Used by CCMG dealers (Gosford Mazda, Central Coast Subaru, etc.)
+ * 
+ * AdTorque HTML structure:
+ * <div class="stock-item" data-stockno="68046" data-vin="...">
+ *   <a href="/stock/details/...">
+ *     <div class="si-title">
+ *       <span class="year">2021</span>
+ *       <span class="make">Mazda</span>
+ *       <span class="model">CX-5</span>
+ *       <span class="badge">Touring</span>
+ *     </div>
+ *     <div class="si-details">
+ *       <span class="odometer">47,016 km</span>
+ *       <span class="transmission">Automatic</span>
+ *       <span class="fuel">2.5L Petrol</span>
+ *     </div>
+ *     <span class="price-value">$58,990</span>
+ *   </a>
+ * </div>
  */
 function parseVehiclesFromAdTorque(html: string, dealer: DealerConfig): ScrapedVehicle[] {
   const vehicles: ScrapedVehicle[] = [];
+  const processedIds = new Set<string>();
   
-  // AdTorque uses: <div class="stock-item" data-stockno="68046" data-vin="...">
-  const stockItemPattern = /<div[^>]+class="[^"]*stock-item[^"]*"[^>]+data-stockno="([^"]+)"[^>]*data-vin="([^"]*)"[^>]*>/gi;
+  // Debug: Check if we have stock-item at all
+  const hasStockItem = html.includes('stock-item');
+  const hasDataStockno = html.includes('data-stockno');
+  console.log(`[dealer-site-crawl] AdTorque debug: hasStockItem=${hasStockItem}, hasDataStockno=${hasDataStockno}, htmlLen=${html.length}`);
   
+  // Pattern: Match stock-item div with data-stockno
+  // The class might come before or after other attributes
+  // Try multiple patterns
+  let matches: Array<{stockNumber: string, index: number}> = [];
+  
+  // Pattern 1: class before data-stockno
+  const pattern1 = /<div[^>]+class="[^"]*stock-item[^"]*"[^>]*data-stockno="([^"]+)"[^>]*>/gi;
   let match;
-  const processedStockNumbers = new Set<string>();
+  while ((match = pattern1.exec(html)) !== null) {
+    matches.push({ stockNumber: match[1], index: match.index });
+  }
   
-  while ((match = stockItemPattern.exec(html)) !== null) {
-    const stockNumber = match[1];
-    const vin = match[2];
-    
-    if (processedStockNumbers.has(stockNumber)) continue;
-    processedStockNumbers.add(stockNumber);
-    
-    // Find the section for this stock item
-    const startIdx = match.index;
-    const endIdx = html.indexOf('</div>', startIdx + 500) + 6;
-    const itemHtml = html.slice(startIdx, Math.min(startIdx + 3000, endIdx > startIdx ? endIdx : html.length));
-    
-    // Parse year/make/model from si-title spans
-    const yearMatch = /<span class="year">(\d{4})<\/span>/i.exec(itemHtml);
-    const makeMatch = /<span class="make">([^<]+)<\/span>/i.exec(itemHtml);
-    const modelMatch = /<span class="model">([^<]+)<\/span>/i.exec(itemHtml);
-    const badgeMatch = /<span class="badge">([^<]+)<\/span>/i.exec(itemHtml);
-    
-    if (!yearMatch || !makeMatch || !modelMatch) continue;
-    
-    const year = parseInt(yearMatch[1]);
-    const make = makeMatch[1].trim();
-    const model = modelMatch[1].trim();
-    const variant = badgeMatch ? badgeMatch[1].trim() : undefined;
-    
-    if (!make || !model || year < 1990 || year > 2030) continue;
-    
-    // Parse price: <span class="price-value">$58,990</span>
-    const priceMatch = /<span class="price-value">\s*\$?([\d,]+)/i.exec(itemHtml);
-    const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, '')) : undefined;
-    
-    // Parse km: <span class="odometer">47,016 km</span>
-    const kmMatch = /<span class="odometer">([\d,]+)\s*km/i.exec(itemHtml);
-    const km = kmMatch ? parseInt(kmMatch[1].replace(/,/g, '')) : undefined;
-    
-    // Parse fuel: <span class="fuel">3.6L Petrol</span>
-    const fuelMatch = /<span class="fuel">([^<]+)<\/span>/i.exec(itemHtml);
-    const fuel = fuelMatch ? fuelMatch[1].trim() : undefined;
-    
-    // Find detail URL - AdTorque uses href with stock ID
-    const urlPattern = new RegExp(`href="([^"]+/stock/details/[^"]+)"`, 'i');
-    const urlMatch = urlPattern.exec(itemHtml);
-    
-    if (!urlMatch) {
-      console.log(`[dealer-site-crawl] Skipping ${stockNumber}: no detail URL found`);
-      continue;
+  // Pattern 2: data-stockno before class (some sites order differently)
+  if (matches.length === 0) {
+    const pattern2 = /<div[^>]+data-stockno="([^"]+)"[^>]*class="[^"]*stock-item[^"]*"[^>]*>/gi;
+    while ((match = pattern2.exec(html)) !== null) {
+      matches.push({ stockNumber: match[1], index: match.index });
     }
-    
-    let detailUrl = urlMatch[1];
-    if (detailUrl.startsWith('/')) {
-      const baseUrl = new URL(dealer.inventory_url);
-      detailUrl = `${baseUrl.origin}${detailUrl}`;
+  }
+  
+  // Pattern 3: Just look for data-stockno on any div
+  if (matches.length === 0) {
+    const pattern3 = /<div[^>]+data-stockno="([^"]+)"[^>]*>/gi;
+    while ((match = pattern3.exec(html)) !== null) {
+      matches.push({ stockNumber: match[1], index: match.index });
     }
+  }
+  
+  console.log(`[dealer-site-crawl] AdTorque found ${matches.length} stock items`);
+  
+  for (const m of matches) {
+    const stockNumber = m.stockNumber;
+    const startIdx = m.index;
+    const itemHtml = html.slice(startIdx, startIdx + 4000);
     
-    // Use VIN as source_listing_id if available, otherwise stockno
-    const sourceId = vin && vin.length > 8 ? vin : stockNumber;
+    // Try to find data-vin within the opening tag
+    const vinMatch = /data-vin="([^"]+)"/.exec(itemHtml.slice(0, 300));
+    const vin = vinMatch ? vinMatch[1] : '';
     
-    vehicles.push({
-      source_listing_id: sourceId,
-      make,
-      model,
-      year,
-      variant_raw: variant,
-      km,
-      price,
-      fuel,
-      listing_url: detailUrl,
-      suburb: dealer.suburb,
-      state: dealer.state,
-      postcode: dealer.postcode,
-      seller_hints: {
-        seller_badge: 'dealer',
-        seller_name: dealer.name,
-        has_abn: true,
-        has_dealer_keywords: true,
-      }
-    });
+    // Use VIN if long enough, otherwise stockno
+    const sourceId = vin && vin.length > 10 ? vin : stockNumber;
+    if (processedIds.has(sourceId)) continue;
+    processedIds.add(sourceId);
+    
+    const vehicle = parseAdTorqueItem(itemHtml, sourceId, dealer);
+    if (vehicle) vehicles.push(vehicle);
   }
   
   console.log(`[dealer-site-crawl] Parsed ${vehicles.length} vehicles from AdTorque HTML`);
   return vehicles;
+}
+
+/**
+ * Extract vehicle data from a single AdTorque item HTML window
+ */
+function parseAdTorqueItem(itemHtml: string, sourceId: string, dealer: DealerConfig): ScrapedVehicle | null {
+  // Simple patterns - actual HTML is: <span class="year">2022</span>
+  const yearMatch = /<span class="year">(\d{4})<\/span>/i.exec(itemHtml);
+  const makeMatch = /<span class="make">([^<]+)<\/span>/i.exec(itemHtml);
+  const modelMatch = /<span class="model">([^<]+)<\/span>/i.exec(itemHtml);
+  const badgeMatch = /<span class="badge">([^<]+)<\/span>/i.exec(itemHtml);
+  
+  if (!yearMatch || !makeMatch || !modelMatch) {
+    return null;
+  }
+  
+  const year = parseInt(yearMatch[1]);
+  const make = makeMatch[1].trim();
+  const model = modelMatch[1].trim();
+  const variant = badgeMatch ? badgeMatch[1].trim() : undefined;
+  
+  // Fallback: parse from combined title string (e.g., "2021 Mazda CX-5 Touring")
+  if (!year || !make || !model) {
+    const titlePattern = /<(?:h[1-6]|a|div)[^>]+class="[^"]*(?:si-title|vehicle-title|title)[^"]*"[^>]*>([^<]+)<|>(\d{4})\s+(\w+)\s+(\S+)/i;
+    const titleMatch = titlePattern.exec(itemHtml);
+    if (titleMatch) {
+      const titleText = titleMatch[1] || `${titleMatch[2]} ${titleMatch[3]} ${titleMatch[4]}`;
+      const parts = titleText.trim().split(/\s+/);
+      if (parts.length >= 3) {
+        const maybeYear = parseInt(parts[0]);
+        if (maybeYear >= 1990 && maybeYear <= 2030) {
+          if (!year) year = maybeYear;
+          if (!make) make = parts[1];
+          if (!model) model = parts[2];
+        }
+      }
+    }
+  }
+  
+  if (!year || !make || !model || year < 1990 || year > 2030) {
+    return null;
+  }
+  
+  // Extract price - multiple patterns
+  let price: number | undefined;
+  const pricePatterns = [
+    /<span[^>]+class="[^"]*price-value[^"]*"[^>]*>\s*\$?([\d,]+)/i,
+    /class="[^"]*price[^"]*"[^>]*>\s*\$?([\d,]+)/i,
+    /data-price="(\d+)"/i,
+    /\$\s*([\d,]+)\s*(?:drive away|driveaway)?/i,
+  ];
+  for (const pattern of pricePatterns) {
+    const m = pattern.exec(itemHtml);
+    if (m) {
+      price = parseInt(m[1].replace(/,/g, ''));
+      if (price > 0) break;
+    }
+  }
+  
+  // Extract odometer
+  let km: number | undefined;
+  const kmPatterns = [
+    /<span[^>]+class="[^"]*odometer[^"]*"[^>]*>([\d,]+)\s*km/i,
+    /class="[^"]*(?:km|kms|odometer)[^"]*"[^>]*>([\d,]+)/i,
+    /([\d,]+)\s*km/i,
+  ];
+  for (const pattern of kmPatterns) {
+    const m = pattern.exec(itemHtml);
+    if (m) {
+      km = parseInt(m[1].replace(/,/g, ''));
+      if (km > 0 && km < 1000000) break;
+    }
+  }
+  
+  // Extract transmission
+  let transmission: string | undefined;
+  const transPatterns = [
+    /<span[^>]+class="[^"]*transmission[^"]*"[^>]*>([^<]+)<\/span>/i,
+    /\b(automatic|manual|auto|cvt)\b/i,
+  ];
+  for (const pattern of transPatterns) {
+    const m = pattern.exec(itemHtml);
+    if (m) { transmission = m[1].trim(); break; }
+  }
+  
+  // Extract fuel
+  let fuel: string | undefined;
+  const fuelPatterns = [
+    /<span[^>]+class="[^"]*fuel[^"]*"[^>]*>([^<]+)<\/span>/i,
+    /\b(petrol|diesel|hybrid|electric|ev)\b/i,
+  ];
+  for (const pattern of fuelPatterns) {
+    const m = pattern.exec(itemHtml);
+    if (m) { fuel = m[1].trim(); break; }
+  }
+  
+  // Extract detail URL
+  let detailUrl: string | undefined;
+  const urlPatterns = [
+    /href="([^"]+\/stock\/details\/[^"]+)"/i,
+    /href="([^"]+\/vehicle\/[^"]+)"/i,
+    /href="([^"]+\/used(?:-cars)?\/[^"]+)"/i,
+  ];
+  for (const pattern of urlPatterns) {
+    const m = pattern.exec(itemHtml);
+    if (m) {
+      detailUrl = m[1];
+      break;
+    }
+  }
+  
+  if (!detailUrl) {
+    console.log(`[dealer-site-crawl] Skipping ${sourceId}: no detail URL found`);
+    return null;
+  }
+  
+  // Normalize URL
+  if (detailUrl.startsWith('/')) {
+    try {
+      const baseUrl = new URL(dealer.inventory_url);
+      detailUrl = `${baseUrl.origin}${detailUrl}`;
+    } catch {
+      return null;
+    }
+  }
+  
+  return {
+    source_listing_id: sourceId,
+    make,
+    model,
+    year,
+    variant_raw: variant,
+    km,
+    price,
+    transmission,
+    fuel,
+    listing_url: detailUrl,
+    suburb: dealer.suburb,
+    state: dealer.state,
+    postcode: dealer.postcode,
+    seller_hints: {
+      seller_badge: 'dealer',
+      seller_name: dealer.name,
+      has_abn: true,
+      has_dealer_keywords: true,
+    }
+  };
 }
 
 /**
