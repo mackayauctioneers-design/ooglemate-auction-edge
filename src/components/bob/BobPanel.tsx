@@ -114,12 +114,14 @@ export function BobPanel() {
   const [input, setInput] = useState('');
   const [dailyBrief, setDailyBrief] = useState<DailyBrief | null>(null);
   const [showBrief, setShowBrief] = useState(true);
+  const [accountNotLinked, setAccountNotLinked] = useState(false);
 
   const dealerName = currentUser?.dealer_name || 'mate';
 
   // Fetch daily brief from edge function
   const fetchDailyBrief = useCallback(async () => {
     setIsLoading(true);
+    setAccountNotLinked(false);
     try {
       const { data, error } = await supabase.functions.invoke('bob-daily-brief', {
         body: { 
@@ -130,6 +132,10 @@ export function BobPanel() {
       });
 
       if (error) throw error;
+
+      if (data?.accountNotLinked) {
+        setAccountNotLinked(true);
+      }
 
       if (data?.brief) {
         setDailyBrief(data.brief);
