@@ -358,6 +358,50 @@ export type Database = {
         }
         Relationships: []
       }
+      listing_snapshots: {
+        Row: {
+          asking_price: number | null
+          created_at: string
+          id: number
+          km: number | null
+          listing_id: string
+          location: string | null
+          reserve: number | null
+          seen_at: string
+          status: string | null
+        }
+        Insert: {
+          asking_price?: number | null
+          created_at?: string
+          id?: never
+          km?: number | null
+          listing_id: string
+          location?: string | null
+          reserve?: number | null
+          seen_at?: string
+          status?: string | null
+        }
+        Update: {
+          asking_price?: number | null
+          created_at?: string
+          id?: never
+          km?: number | null
+          listing_id?: string
+          location?: string | null
+          reserve?: number | null
+          seen_at?: string
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_snapshots_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       valo_requests: {
         Row: {
           allow_price: boolean
@@ -551,9 +595,10 @@ export type Database = {
       }
       vehicle_listings: {
         Row: {
+          asking_price: number | null
           auction_datetime: string | null
           auction_history: Json | null
-          auction_house: string
+          auction_house: string | null
           drivetrain: string | null
           event_id: string | null
           excluded_keyword: string | null
@@ -565,15 +610,18 @@ export type Database = {
           km: number | null
           last_auction_date: string | null
           last_seen_at: string
+          listed_date_raw: string | null
           listing_id: string
           listing_url: string | null
           location: string | null
-          lot_id: string
+          lot_id: string | null
           make: string
           model: string
           pass_count: number
           relist_count: number
           reserve: number | null
+          seller_confidence: string | null
+          seller_reasons: string[] | null
           seller_type: string
           source: string
           status: string
@@ -585,9 +633,10 @@ export type Database = {
           year: number
         }
         Insert: {
+          asking_price?: number | null
           auction_datetime?: string | null
           auction_history?: Json | null
-          auction_house?: string
+          auction_house?: string | null
           drivetrain?: string | null
           event_id?: string | null
           excluded_keyword?: string | null
@@ -599,15 +648,18 @@ export type Database = {
           km?: number | null
           last_auction_date?: string | null
           last_seen_at?: string
+          listed_date_raw?: string | null
           listing_id: string
           listing_url?: string | null
           location?: string | null
-          lot_id: string
+          lot_id?: string | null
           make: string
           model: string
           pass_count?: number
           relist_count?: number
           reserve?: number | null
+          seller_confidence?: string | null
+          seller_reasons?: string[] | null
           seller_type?: string
           source?: string
           status?: string
@@ -619,9 +671,10 @@ export type Database = {
           year: number
         }
         Update: {
+          asking_price?: number | null
           auction_datetime?: string | null
           auction_history?: Json | null
-          auction_house?: string
+          auction_house?: string | null
           drivetrain?: string | null
           event_id?: string | null
           excluded_keyword?: string | null
@@ -633,15 +686,18 @@ export type Database = {
           km?: number | null
           last_auction_date?: string | null
           last_seen_at?: string
+          listed_date_raw?: string | null
           listing_id?: string
           listing_url?: string | null
           location?: string | null
-          lot_id?: string
+          lot_id?: string | null
           make?: string
           model?: string
           pass_count?: number
           relist_count?: number
           reserve?: number | null
+          seller_confidence?: string | null
+          seller_reasons?: string[] | null
           seller_type?: string
           source?: string
           status?: string
