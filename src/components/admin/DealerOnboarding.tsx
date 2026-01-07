@@ -97,7 +97,6 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
         .from('dealer_profiles')
         .insert({
           id: profileId,
-          user_id: crypto.randomUUID(), // Legacy field - not used for auth
           dealer_name: dealerName.trim(),
           org_id: orgId.trim() || null,
           region_id: regionId,
@@ -163,15 +162,15 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
         throw linkError;
       }
 
-      // Step 2: Create user role (FK enforced to auth.users)
+      // Step 2: Upsert user role (idempotent, FK enforced to auth.users)
       const { error: roleError } = await supabase
         .from('user_roles')
-        .insert({
-          user_id: authUserId.trim(),
-          role: role,
-        });
+        .upsert(
+          { user_id: authUserId.trim(), role: role },
+          { onConflict: 'user_id' }
+        );
 
-      if (roleError && roleError.code !== '23505') {
+      if (roleError) {
         throw roleError;
       }
 
@@ -199,7 +198,6 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
         .from('dealer_profiles')
         .insert({
           id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-          user_id: crypto.randomUUID(),
           dealer_name: 'Brian Hilton Toyota',
           org_id: 'brian-hilton-group',
           region_id: 'CENTRAL_COAST_NSW',
