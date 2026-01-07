@@ -392,7 +392,11 @@ async function processCrawl(
   yearMin: number | null
 ) {
   const supabase = createClient(supabaseUrl, supabaseKey);
+  
+  // Base URL with Pickles Online + Pickles Live buy method filters
+  // This captures all live auction opportunities (Online bidding + Live simulcast)
   const baseUrl = 'https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars';
+  const buyMethodFilter = 'filter=and%5B0%5D%5Bor%5D%5B0%5D%5BbuyMethod%5D%3DPickles%20Online%26and%5B0%5D%5Bor%5D%5B1%5D%5BbuyMethod%5D%3DPickles%20Live';
   const yearFilter = yearMin ? `&year-min=${yearMin}` : '';
   
   let currentPage = startPage;
@@ -416,7 +420,7 @@ async function processCrawl(
   try {
     // Crawl pages using Firecrawl for JS rendering
     while (currentPage <= maxPages && consecutiveEmptyPages < 3) {
-      const pageUrl = `${baseUrl}?contentkey=all-cars&limit=120${yearFilter}&page=${currentPage}`;
+      const pageUrl = `${baseUrl}?contentkey=all-cars&${buyMethodFilter}&limit=120${yearFilter}&page=${currentPage}&sort=productLocation%2Fsuburb+desc`;
       console.log(`[pickles-crawl] Scraping page ${currentPage}: ${pageUrl}`);
       
       try {
