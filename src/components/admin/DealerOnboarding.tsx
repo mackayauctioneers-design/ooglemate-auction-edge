@@ -80,43 +80,57 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
     }
   };
 
-  // Create dealer profile and role
+  // Create dealer profile and link to user
   const handleCreateProfile = async () => {
     if (!dealerName.trim()) {
       toast.error('Dealer name is required');
       return;
     }
 
-    // For testing without a real user, we'll create a placeholder
-    // In production, this would require a valid user_id from auth.users
-    const testUserId = foundUser?.id || crypto.randomUUID();
-
     setIsLoading(true);
 
     try {
-      // Create dealer profile
+      // Step 1: Create dealer profile (seedable, no FK to auth.users)
+      // Note: user_id is legacy field, we use link table now but types still require it
+      const profileId = crypto.randomUUID();
       const { error: profileError } = await supabase
         .from('dealer_profiles')
-        .upsert({
-          user_id: testUserId,
+        .insert({
+          id: profileId,
+          user_id: crypto.randomUUID(), // Legacy field, not used for auth - link table handles this
           dealer_name: dealerName.trim(),
           org_id: orgId.trim() || null,
           region_id: regionId,
-        }, { onConflict: 'user_id' });
+        });
 
       if (profileError) throw profileError;
 
-      // Create user role
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .upsert({
-          user_id: testUserId,
-          role: role,
-        }, { onConflict: 'user_id,role' });
+      // Step 2: If we have a real user_id (from search), create the link
+      if (foundUser?.id) {
+        const { error: linkError } = await supabase
+          .from('dealer_profile_user_links')
+          .upsert({
+            dealer_profile_id: profileId,
+            user_id: foundUser.id,
+            linked_by: 'admin',
+          }, { onConflict: 'user_id' });
 
-      if (roleError) throw roleError;
+        if (linkError) throw linkError;
 
-      toast.success(`Created profile for ${dealerName} with role ${role}`);
+        // Step 3: Create user role (requires valid auth.users FK)
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .upsert({
+            user_id: foundUser.id,
+            role: role,
+          }, { onConflict: 'user_id,role' });
+
+        if (roleError) throw roleError;
+
+        toast.success(`Linked ${dealerName} to user with role ${role}`);
+      } else {
+        toast.success(`Created dealer profile: ${dealerName} (not linked to user yet)`);
+      }
       
       // Reset form
       setUserEmail('');
@@ -135,37 +149,26 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
     }
   };
 
-  // Seed Brian Hilton test data
+  // Seed Brian Hilton test data (profile only, no user link)
   const handleSeedBrianHilton = async () => {
     setIsLoading(true);
 
     try {
-      // Create a test user_id for Brian Hilton
-      const testUserId = '00000000-0000-0000-0000-000000000001';
-
-      // Create dealer profile
+      // Create dealer profile (seedable without auth user)
+      // Note: user_id is legacy field, we use link table now
       const { error: profileError } = await supabase
         .from('dealer_profiles')
-        .upsert({
-          user_id: testUserId,
+        .insert({
+          id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+          user_id: crypto.randomUUID(), // Legacy field, not used for auth
           dealer_name: 'Brian Hilton Toyota',
           org_id: 'brian-hilton-group',
           region_id: 'CENTRAL_COAST_NSW',
-        }, { onConflict: 'user_id' });
+        });
 
       if (profileError) throw profileError;
 
-      // Create user role as dealer
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .upsert({
-          user_id: testUserId,
-          role: 'dealer',
-        }, { onConflict: 'user_id,role' });
-
-      if (roleError) throw roleError;
-
-      toast.success('Seeded Brian Hilton Toyota test profile');
+      toast.success('Seeded Brian Hilton Toyota profile (ready for user linking)');
       onComplete?.();
 
     } catch (error) {
