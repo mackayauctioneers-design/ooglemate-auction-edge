@@ -744,6 +744,19 @@ export type Database = {
             }
             Returns: boolean
           }
+        | {
+            Args: {
+              p_asking_price: number
+              p_excluded_keyword: string
+              p_excluded_reason: string
+              p_price_max?: number
+              p_price_min?: number
+              p_reserve: number
+              p_source_class?: string
+              p_year: number
+            }
+            Returns: boolean
+          }
       derive_clearance_events: {
         Args: { p_stale_hours?: number }
         Returns: {
