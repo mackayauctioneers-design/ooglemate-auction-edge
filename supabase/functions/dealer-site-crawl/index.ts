@@ -1569,12 +1569,30 @@ Deno.serve(async (req) => {
       error?: string;
     }> = [];
     
+    // Supported platforms for NSW ramp (platform policy)
+    const SUPPORTED_PARSERS = ['digitaldealer', 'adtorque'];
+    
     for (const dealer of targetDealers) {
       const runStartedAt = new Date().toISOString();
       
-      // Skip unknown parser mode
-      if (dealer.parser_mode === 'unknown') {
-        console.log(`[dealer-site-crawl] Skipping ${dealer.name}: parser_mode=unknown`);
+      // PLATFORM POLICY: Only support digitaldealer + adtorque for NSW ramp
+      if (!SUPPORTED_PARSERS.includes(dealer.parser_mode)) {
+        console.log(`[dealer-site-crawl] Skipping ${dealer.name}: parser_mode=${dealer.parser_mode} not supported (only ${SUPPORTED_PARSERS.join(', ')})`);
+        
+        // Log as unsupported but don't count as error
+        await supabase.from('dealer_crawl_runs').upsert({
+          run_date: runDate,
+          dealer_slug: dealer.slug,
+          dealer_name: dealer.name,
+          parser_mode: dealer.parser_mode,
+          vehicles_found: 0,
+          vehicles_ingested: 0,
+          vehicles_dropped: 0,
+          error: `Unsupported parser_mode: ${dealer.parser_mode}`,
+          run_started_at: runStartedAt,
+          run_completed_at: new Date().toISOString(),
+        }, { onConflict: 'run_date,dealer_slug' });
+        
         results.push({
           dealer: dealer.name,
           slug: dealer.slug,
@@ -1584,7 +1602,7 @@ Deno.serve(async (req) => {
           vehiclesDropped: 0,
           dropReasons: {},
           healthAlert: false,
-          error: 'Parser mode unknown - skipped',
+          error: `Unsupported parser: ${dealer.parser_mode}`,
         });
         continue;
       }
