@@ -18,8 +18,10 @@ interface DealerConfig {
   suburb: string;            // Dealer suburb
   state: string;             // Dealer state
   postcode: string;          // Dealer postcode
+  region: string;            // Geo-liquidity region bucket
   parser_mode: ParserMode;   // REQUIRED: which parser to use
   enabled: boolean;          // Whether to include in cron runs
+  anchor_dealer: boolean;    // Primary dealer for this region
 }
 
 // Max 10 dealers for initial scale
@@ -31,8 +33,10 @@ const DEALERS: DealerConfig[] = [
     suburb: "North Gosford",
     state: "NSW",
     postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
     parser_mode: 'digitaldealer',
     enabled: true,
+    anchor_dealer: true,  // Primary anchor dealer for Central Coast NSW
   },
   {
     name: "Central Coast Adventure Cars",
@@ -41,8 +45,10 @@ const DEALERS: DealerConfig[] = [
     suburb: "Wyoming",
     state: "NSW",
     postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
     parser_mode: 'unknown',  // Parser not verified yet
     enabled: false,
+    anchor_dealer: false,
   },
   {
     name: "Central Coast Hyundai",
@@ -51,8 +57,10 @@ const DEALERS: DealerConfig[] = [
     suburb: "West Gosford",
     state: "NSW",
     postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
     parser_mode: 'unknown',  // Parser not verified yet
     enabled: false,
+    anchor_dealer: false,
   },
 ];
 

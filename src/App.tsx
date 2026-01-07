@@ -20,6 +20,7 @@ import ValuationPage from "./pages/ValuationPage";
 import ValoPage from "./pages/ValoPage";
 import BuyerReviewQueuePage from "./pages/BuyerReviewQueuePage";
 import PicklesIngestionPage from "./pages/PicklesIngestionPage";
+import RegionalDashboardPage from "./pages/RegionalDashboardPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -78,6 +79,9 @@ const App = () => (
             } />
             <Route path="/pickles-ingestion" element={
               <AdminGuard><PicklesIngestionPage /></AdminGuard>
+            } />
+            <Route path="/regional-dashboard" element={
+              <AdminGuard><RegionalDashboardPage /></AdminGuard>
             } />
             
             <Route path="*" element={<NotFound />} />
