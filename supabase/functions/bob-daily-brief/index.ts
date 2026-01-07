@@ -75,6 +75,7 @@ serve(async (req) => {
     let dealerName = 'mate';
     let orgId: string | null = null;
     let region = 'CENTRAL_COAST_NSW';
+    let profileLinked = false;
     
     const authHeader = req.headers.get('Authorization');
     
@@ -110,15 +111,46 @@ serve(async (req) => {
             dealerName = profile.dealer_name || dealerName;
             orgId = profile.org_id;
             region = profile.region_id || region;
+            profileLinked = true;
           }
           
-          console.log(`[bob-daily-brief] Authenticated user ${userId}, role: ${userRole}, region: ${region}`);
+          console.log(`[bob-daily-brief] Authenticated user ${userId}, role: ${userRole}, region: ${region}, linked: ${profileLinked}`);
         }
       } catch (e) {
         console.log('[bob-daily-brief] Auth error, treating as unauthenticated dealer:', e);
       }
     } else {
       console.log('[bob-daily-brief] No auth header, using defaults');
+    }
+
+    // =========================================================================
+    // FRIENDLY FALLBACK: If authenticated but no dealer profile linked
+    // =========================================================================
+    if (userId && !profileLinked && userRole === 'dealer') {
+      console.log(`[bob-daily-brief] User ${userId} has no linked dealer profile`);
+      
+      const friendlyBrief: DailyBrief = {
+        greeting: "G'day! Looks like your account isn't linked to a dealership yet.",
+        marketPulse: [],
+        stockVsMarket: [],
+        suggestedFocus: [
+          "Ask your admin to link your account to your dealership",
+          "Once linked, you'll see market insights for your area"
+        ],
+        slowMoverCount: 0,
+        opportunityCount: 0
+      };
+
+      return new Response(
+        JSON.stringify({ 
+          brief: friendlyBrief,
+          briefContext: friendlyBrief.greeting + " " + friendlyBrief.suggestedFocus.join(" "),
+          hasOpportunities: false,
+          opportunityCount: 0,
+          accountNotLinked: true
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // =========================================================================

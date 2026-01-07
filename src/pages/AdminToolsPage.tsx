@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database, Car, FileDown, Globe } from 'lucide-react';
+import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database, Car, FileDown, Globe, UserPlus } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +13,7 @@ import { parsePicklesCatalogue } from '@/utils/picklesCatalogueParser';
 import { ingestMackayTradersSales } from '@/utils/ingestMackayTradersSales';
 import { toast } from 'sonner';
 import { Navigate, Link } from 'react-router-dom';
+import { DealerOnboarding } from '@/components/admin/DealerOnboarding';
 
 export default function AdminToolsPage() {
   const { isAdmin } = useAuth();
@@ -235,6 +236,8 @@ export default function AdminToolsPage() {
 
         {/* Tool Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {/* Dealer Onboarding - First card */}
+          <DealerOnboarding />
           {/* Pickles Catalogue Import */}
           <Card>
             <CardHeader>
