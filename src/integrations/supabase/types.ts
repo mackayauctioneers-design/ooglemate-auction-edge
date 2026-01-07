@@ -257,6 +257,38 @@ export type Database = {
           },
         ]
       }
+      dealer_profile_user_links: {
+        Row: {
+          dealer_profile_id: string
+          id: string
+          linked_at: string
+          linked_by: string | null
+          user_id: string
+        }
+        Insert: {
+          dealer_profile_id: string
+          id?: string
+          linked_at?: string
+          linked_by?: string | null
+          user_id: string
+        }
+        Update: {
+          dealer_profile_id?: string
+          id?: string
+          linked_at?: string
+          linked_by?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_profile_user_links_dealer_profile_id_fkey"
+            columns: ["dealer_profile_id"]
+            isOneToOne: true
+            referencedRelation: "dealer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_profiles: {
         Row: {
           created_at: string
@@ -1005,6 +1037,15 @@ export type Database = {
         Args: { _user_id: string }
         Returns: {
           dealer_name: string
+          org_id: string
+          region_id: string
+        }[]
+      }
+      get_dealer_profile_by_user: {
+        Args: { _user_id: string }
+        Returns: {
+          dealer_name: string
+          dealer_profile_id: string
           org_id: string
           region_id: string
         }[]

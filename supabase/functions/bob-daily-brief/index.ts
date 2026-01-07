@@ -102,18 +102,17 @@ serve(async (req) => {
             userRole = roleData as 'admin' | 'dealer' | 'internal';
           }
           
-          // Query dealer_profiles for dealer-specific data (includes id for scoping)
-          const { data: profileData } = await supabase
-            .from('dealer_profiles')
-            .select('id, dealer_name, org_id, region_id')
-            .eq('user_id', userId)
-            .single();
+          // Query dealer profile via link table (enforces FK integrity)
+          const { data: profileData } = await supabase.rpc('get_dealer_profile_by_user', { 
+            _user_id: userId 
+          });
           
-          if (profileData) {
-            dealerProfileId = profileData.id;
-            dealerName = profileData.dealer_name || dealerName;
-            orgId = profileData.org_id;
-            region = profileData.region_id || region;
+          if (profileData && profileData.length > 0) {
+            const profile = profileData[0];
+            dealerProfileId = profile.dealer_profile_id;
+            dealerName = profile.dealer_name || dealerName;
+            orgId = profile.org_id;
+            region = profile.region_id || region;
             profileLinked = true;
           }
           
