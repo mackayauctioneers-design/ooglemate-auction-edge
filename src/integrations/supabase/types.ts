@@ -24,6 +24,7 @@ export type Database = {
           auction_house: string | null
           created_at: string
           dealer_name: string
+          dealer_profile_id: string | null
           dedup_key: string
           fingerprint_id: string
           id: string
@@ -51,6 +52,7 @@ export type Database = {
           auction_house?: string | null
           created_at?: string
           dealer_name: string
+          dealer_profile_id?: string | null
           dedup_key: string
           fingerprint_id: string
           id?: string
@@ -78,6 +80,7 @@ export type Database = {
           auction_house?: string | null
           created_at?: string
           dealer_name?: string
+          dealer_profile_id?: string | null
           dedup_key?: string
           fingerprint_id?: string
           id?: string
@@ -96,7 +99,15 @@ export type Database = {
           read_at?: string | null
           status?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "alert_logs_dealer_profile_id_fkey"
+            columns: ["dealer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       clearance_events: {
         Row: {
