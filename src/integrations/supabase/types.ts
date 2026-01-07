@@ -257,6 +257,39 @@ export type Database = {
           },
         ]
       }
+      dealer_groups: {
+        Row: {
+          created_at: string
+          discovery_url: string | null
+          group_name: string
+          id: string
+          notes: string | null
+          platform_type: string
+          region_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          discovery_url?: string | null
+          group_name: string
+          id?: string
+          notes?: string | null
+          platform_type?: string
+          region_id?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          discovery_url?: string | null
+          group_name?: string
+          id?: string
+          notes?: string | null
+          platform_type?: string
+          region_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       dealer_profile_user_links: {
         Row: {
           dealer_profile_id: string
@@ -318,6 +351,86 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      dealer_rooftops: {
+        Row: {
+          anchor_dealer: boolean
+          created_at: string
+          dealer_name: string
+          dealer_slug: string
+          enabled: boolean
+          group_id: string | null
+          id: string
+          inventory_url: string
+          last_crawl_at: string | null
+          last_validated_at: string | null
+          last_vehicles_found: number | null
+          parser_mode: string
+          postcode: string | null
+          priority: string
+          region_id: string
+          state: string | null
+          suburb: string | null
+          updated_at: string
+          validation_notes: string | null
+          validation_runs: number
+          validation_status: string
+        }
+        Insert: {
+          anchor_dealer?: boolean
+          created_at?: string
+          dealer_name: string
+          dealer_slug: string
+          enabled?: boolean
+          group_id?: string | null
+          id?: string
+          inventory_url: string
+          last_crawl_at?: string | null
+          last_validated_at?: string | null
+          last_vehicles_found?: number | null
+          parser_mode: string
+          postcode?: string | null
+          priority?: string
+          region_id?: string
+          state?: string | null
+          suburb?: string | null
+          updated_at?: string
+          validation_notes?: string | null
+          validation_runs?: number
+          validation_status?: string
+        }
+        Update: {
+          anchor_dealer?: boolean
+          created_at?: string
+          dealer_name?: string
+          dealer_slug?: string
+          enabled?: boolean
+          group_id?: string | null
+          id?: string
+          inventory_url?: string
+          last_crawl_at?: string | null
+          last_validated_at?: string | null
+          last_vehicles_found?: number | null
+          parser_mode?: string
+          postcode?: string | null
+          priority?: string
+          region_id?: string
+          state?: string | null
+          suburb?: string | null
+          updated_at?: string
+          validation_notes?: string | null
+          validation_runs?: number
+          validation_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_rooftops_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_groups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       fingerprint_outcomes: {
         Row: {

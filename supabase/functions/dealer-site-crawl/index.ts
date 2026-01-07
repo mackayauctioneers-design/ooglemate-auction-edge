@@ -1323,6 +1323,141 @@ async function checkHealthAndAlert(
 }
 
 // =============================================================================
+// DATABASE-DRIVEN ROOFTOP LOADING
+// =============================================================================
+
+interface DbRooftop {
+  id: string;
+  dealer_slug: string;
+  dealer_name: string;
+  inventory_url: string;
+  suburb: string | null;
+  state: string | null;
+  postcode: string | null;
+  region_id: string;
+  parser_mode: string;
+  enabled: boolean;
+  priority: string;
+  anchor_dealer: boolean;
+  validation_status: string;
+  validation_runs: number;
+}
+
+function dbRooftopToDealerConfig(r: DbRooftop): DealerConfig {
+  return {
+    name: r.dealer_name,
+    slug: r.dealer_slug,
+    inventory_url: r.inventory_url,
+    suburb: r.suburb || '',
+    state: r.state || 'NSW',
+    postcode: r.postcode || '',
+    region: r.region_id,
+    parser_mode: (r.parser_mode as ParserMode) || 'unknown',
+    enabled: r.enabled,
+    anchor_dealer: r.anchor_dealer,
+    priority: (r.priority as DealerPriority) || 'normal',
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+async function loadRooftopsFromDb(supabase: any, options: {
+  slugs?: string[];
+  enabledOnly?: boolean;
+  validatedOnly?: boolean;
+  limit?: number;
+}): Promise<DbRooftop[]> {
+  let query = supabase
+    .from('dealer_rooftops')
+    .select('*');
+  
+  if (options.slugs && options.slugs.length > 0) {
+    query = query.in('dealer_slug', options.slugs);
+  }
+  
+  if (options.enabledOnly) {
+    query = query.eq('enabled', true);
+  }
+  
+  if (options.validatedOnly) {
+    query = query.eq('validation_status', 'passed');
+  }
+  
+  if (options.limit) {
+    query = query.limit(options.limit);
+  }
+  
+  // Order: anchor dealers first, then by priority
+  query = query.order('anchor_dealer', { ascending: false })
+               .order('priority', { ascending: true });
+  
+  const { data, error } = await query;
+  
+  if (error) {
+    console.error('[dealer-site-crawl] Error loading rooftops:', error);
+    return [];
+  }
+  
+  return (data || []) as DbRooftop[];
+}
+
+// deno-lint-ignore no-explicit-any
+async function updateRooftopValidation(
+  supabase: any,
+  slug: string,
+  vehiclesFound: number,
+  hasError: boolean
+): Promise<void> {
+  // Get current rooftop
+  const { data: rooftop } = await supabase
+    .from('dealer_rooftops')
+    .select('validation_status, validation_runs')
+    .eq('dealer_slug', slug)
+    .single();
+  
+  if (!rooftop) return;
+  
+  // Type assertion for the rooftop data
+  const r = rooftop as { validation_status: string; validation_runs: number };
+  const currentRuns = r.validation_runs || 0;
+  const newRuns = currentRuns + 1;
+  
+  let newStatus = r.validation_status;
+  let shouldEnable = false;
+  
+  if (hasError || vehiclesFound === 0) {
+    // Failed validation
+    newStatus = 'failed';
+  } else if (newRuns >= 2 && r.validation_status !== 'passed') {
+    // 2 successful runs = passed
+    newStatus = 'passed';
+    shouldEnable = true;
+  } else if (newRuns === 1) {
+    // First run passed, needs second run
+    newStatus = 'pending';
+  }
+  
+  const updateData: Record<string, unknown> = {
+    validation_status: newStatus,
+    validation_runs: newRuns,
+    last_validated_at: new Date().toISOString(),
+    last_crawl_at: new Date().toISOString(),
+    last_vehicles_found: vehiclesFound,
+  };
+  
+  if (shouldEnable) {
+    updateData.enabled = true;
+    updateData.validation_notes = `Auto-enabled after ${newRuns} successful validation runs`;
+  }
+  
+  await supabase
+    .from('dealer_rooftops')
+    .update(updateData)
+    .eq('dealer_slug', slug);
+  
+  console.log(`[dealer-site-crawl] Updated ${slug}: status=${newStatus}, runs=${newRuns}, enabled=${shouldEnable}`);
+}
+
+// =============================================================================
 // MAIN HANDLER
 // =============================================================================
 
@@ -1346,25 +1481,78 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
     
     // Parse request body
-    let targetDealers = DEALERS.filter(d => d.enabled);
-    let isCronRun = false;
+    let mode: 'cron' | 'validate' | 'manual' = 'manual';
+    let targetSlugs: string[] = [];
+    let batchLimit = 10;
     
     try {
       const body = await req.json();
-      if (body.dealer_slugs && Array.isArray(body.dealer_slugs)) {
-        // Manual run with specific dealers
-        targetDealers = DEALERS.filter(d => body.dealer_slugs.includes(d.slug));
-      }
+      
       if (body.cron === true) {
-        isCronRun = true;
-        // Cron only runs enabled dealers (max 10)
-        targetDealers = DEALERS.filter(d => d.enabled).slice(0, 10);
+        mode = 'cron';
+        batchLimit = body.batch_limit || 10;
+      } else if (body.validate === true) {
+        mode = 'validate';
+        targetSlugs = body.dealer_slugs || [];
+        batchLimit = body.batch_limit || 10;
+      } else if (body.dealer_slugs && Array.isArray(body.dealer_slugs)) {
+        mode = 'manual';
+        targetSlugs = body.dealer_slugs;
       }
     } catch {
-      // No body - use enabled dealers
+      // No body - use default (enabled dealers)
     }
     
-    console.log(`[dealer-site-crawl] Starting crawl of ${targetDealers.length} dealers (cron: ${isCronRun})`);
+    // Load dealers based on mode
+    let dbRooftops: DbRooftop[] = [];
+    
+    if (mode === 'cron') {
+      // Cron: only enabled + validated rooftops
+      dbRooftops = await loadRooftopsFromDb(supabase, {
+        enabledOnly: true,
+        validatedOnly: true,
+        limit: batchLimit,
+      });
+    } else if (mode === 'validate') {
+      // Validate: pending rooftops that need validation runs
+      if (targetSlugs.length > 0) {
+        dbRooftops = await loadRooftopsFromDb(supabase, { slugs: targetSlugs });
+      } else {
+        // Get pending rooftops
+        const { data } = await supabase
+          .from('dealer_rooftops')
+          .select('*')
+          .in('validation_status', ['pending', 'failed'])
+          .lt('validation_runs', 2)
+          .limit(batchLimit);
+        dbRooftops = (data || []) as DbRooftop[];
+      }
+    } else {
+      // Manual: specific slugs or fallback to hardcoded DEALERS
+      if (targetSlugs.length > 0) {
+        dbRooftops = await loadRooftopsFromDb(supabase, { slugs: targetSlugs });
+      }
+    }
+    
+    // Convert to DealerConfig or use hardcoded fallback
+    let targetDealers: DealerConfig[] = [];
+    
+    if (dbRooftops.length > 0) {
+      targetDealers = dbRooftops.map(dbRooftopToDealerConfig);
+    } else if (targetSlugs.length > 0) {
+      // Fallback to hardcoded DEALERS for specific slugs
+      targetDealers = DEALERS.filter(d => targetSlugs.includes(d.slug));
+    } else if (mode === 'cron') {
+      // Fallback for cron if no DB rooftops
+      targetDealers = DEALERS.filter(d => d.enabled).slice(0, batchLimit);
+    } else {
+      targetDealers = DEALERS.filter(d => d.enabled);
+    }
+    
+    const isCronRun = mode === 'cron';
+    const isValidationRun = mode === 'validate';
+    
+    console.log(`[dealer-site-crawl] Starting ${mode} crawl of ${targetDealers.length} dealers`);
     
     const runDate = new Date().toISOString().split('T')[0];
     const results: Array<{
@@ -1377,6 +1565,7 @@ Deno.serve(async (req) => {
       dropReasons: Record<string, number>;
       healthAlert: boolean;
       healthAlertType?: string;
+      validationStatus?: string;
       error?: string;
     }> = [];
     
@@ -1423,6 +1612,11 @@ Deno.serve(async (req) => {
             run_completed_at: new Date().toISOString(),
           }, { onConflict: 'run_date,dealer_slug' });
           
+          // Update validation status
+          if (isValidationRun || dbRooftops.length > 0) {
+            await updateRooftopValidation(supabase, dealer.slug, 0, true);
+          }
+          
           results.push({
             dealer: dealer.name,
             slug: dealer.slug,
@@ -1432,6 +1626,7 @@ Deno.serve(async (req) => {
             vehiclesDropped: 0,
             dropReasons: {},
             healthAlert: false,
+            validationStatus: 'failed',
             error,
           });
           continue;
@@ -1457,7 +1652,7 @@ Deno.serve(async (req) => {
         }
         
         // Check health metrics (track errors for anchor dealers)
-        let errorCount = 0; // Will be updated if ingest fails
+        let errorCount = 0;
         const healthCheck = await checkHealthAndAlert(supabaseUrl, supabaseKey, dealer, passed.length, errorCount);
         
         let vehiclesIngested = 0;
@@ -1521,6 +1716,19 @@ Deno.serve(async (req) => {
           run_completed_at: new Date().toISOString(),
         }, { onConflict: 'run_date,dealer_slug' });
         
+        // Update validation status
+        let validationStatus: string | undefined;
+        if (isValidationRun || dbRooftops.length > 0) {
+          await updateRooftopValidation(supabase, dealer.slug, passed.length, false);
+          // Get updated status
+          const { data: updated } = await supabase
+            .from('dealer_rooftops')
+            .select('validation_status')
+            .eq('dealer_slug', dealer.slug)
+            .single();
+          validationStatus = updated?.validation_status;
+        }
+        
         results.push({
           dealer: dealer.name,
           slug: dealer.slug,
@@ -1531,6 +1739,7 @@ Deno.serve(async (req) => {
           dropReasons,
           healthAlert: healthCheck.alert,
           healthAlertType: healthCheck.alertType,
+          validationStatus,
         });
         
         if (healthCheck.alert && healthCheck.message) {
@@ -1554,6 +1763,11 @@ Deno.serve(async (req) => {
           run_completed_at: new Date().toISOString(),
         }, { onConflict: 'run_date,dealer_slug' });
         
+        // Update validation status
+        if (isValidationRun || dbRooftops.length > 0) {
+          await updateRooftopValidation(supabase, dealer.slug, 0, true);
+        }
+        
         results.push({
           dealer: dealer.name,
           slug: dealer.slug,
@@ -1563,6 +1777,7 @@ Deno.serve(async (req) => {
           vehiclesDropped: 0,
           dropReasons: {},
           healthAlert: false,
+          validationStatus: 'failed',
           error: errorMsg,
         });
       }
@@ -1577,13 +1792,16 @@ Deno.serve(async (req) => {
     const totalDropped = results.reduce((sum, r) => sum + r.vehiclesDropped, 0);
     const dealersWithErrors = results.filter(r => r.error).length;
     const dealersWithHealthAlerts = results.filter(r => r.healthAlert).length;
+    const dealersValidated = results.filter(r => r.validationStatus === 'passed').length;
     
-    console.log(`[dealer-site-crawl] Complete: ${totalFound} found, ${totalIngested} ingested, ${totalDropped} dropped, ${dealersWithErrors} errors, ${dealersWithHealthAlerts} health alerts`);
+    console.log(`[dealer-site-crawl] Complete: ${totalFound} found, ${totalIngested} ingested, ${totalDropped} dropped, ${dealersWithErrors} errors, ${dealersWithHealthAlerts} health alerts, ${dealersValidated} validated`);
     
     return new Response(
       JSON.stringify({
         success: true,
+        mode,
         isCronRun,
+        isValidationRun,
         summary: {
           dealersProcessed: results.length,
           totalVehiclesFound: totalFound,
@@ -1591,6 +1809,7 @@ Deno.serve(async (req) => {
           totalVehiclesDropped: totalDropped,
           dealersWithErrors,
           dealersWithHealthAlerts,
+          dealersValidated,
         },
         results,
       }),
