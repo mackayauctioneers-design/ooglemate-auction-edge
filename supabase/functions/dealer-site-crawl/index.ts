@@ -9,7 +9,7 @@ const corsHeaders = {
 // DEALER CONFIGURATION - HARDENED WITH PARSER MODES
 // =============================================================================
 
-type ParserMode = 'digitaldealer' | 'jsonld_detail' | 'unknown';
+type ParserMode = 'digitaldealer' | 'adtorque' | 'jsonld_detail' | 'unknown';
 type DealerPriority = 'high' | 'normal' | 'low';
 
 interface DealerConfig {
@@ -26,9 +26,11 @@ interface DealerConfig {
   priority: DealerPriority;  // Crawl priority (high = always first, stricter monitoring)
 }
 
-// Central Coast NSW dealers - Data Density Phase
+// Central Coast NSW dealers - Data Density Phase (40+ dealers)
 const DEALERS: DealerConfig[] = [
-  // === ANCHOR DEALER ===
+  // ==========================================================================
+  // ANCHOR DEALER (High Priority)
+  // ==========================================================================
   {
     name: "Brian Hilton Toyota",
     slug: "brian-hilton-toyota",
@@ -42,7 +44,10 @@ const DEALERS: DealerConfig[] = [
     anchor_dealer: true,
     priority: 'high',
   },
-  // === BRIAN HILTON GROUP (same platform) ===
+
+  // ==========================================================================
+  // BRIAN HILTON GROUP (same platform - 7 dealers)
+  // ==========================================================================
   {
     name: "Brian Hilton Kia",
     slug: "brian-hilton-kia",
@@ -121,7 +126,23 @@ const DEALERS: DealerConfig[] = [
     anchor_dealer: false,
     priority: 'normal',
   },
-  // === CENTRAL COAST MOTOR GROUP (ccmg.com.au uses same platform) ===
+  {
+    name: "Brian Hilton LDV",
+    slug: "brian-hilton-ldv",
+    inventory_url: "https://brianhiltonldv.com.au/used-cars/",
+    suburb: "North Gosford",
+    state: "NSW",
+    postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+
+  // ==========================================================================
+  // CENTRAL COAST MOTOR GROUP (ccmg.com.au - 7 dealers)
+  // ==========================================================================
   {
     name: "Central Coast Motor Group",
     slug: "ccmg",
@@ -135,7 +156,161 @@ const DEALERS: DealerConfig[] = [
     anchor_dealer: false,
     priority: 'normal',
   },
-  // === CENTRAL COAST AUTOMOTIVE GROUP ===
+  {
+    name: "Gosford Mazda",
+    slug: "gosford-mazda",
+    inventory_url: "https://gosfordmazda.com.au/stock?condition=Used",
+    suburb: "Gosford",
+    state: "NSW",
+    postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Central Coast Subaru",
+    slug: "central-coast-subaru",
+    inventory_url: "https://www.ccsubaru.com.au/stock?condition=Used",
+    suburb: "Gosford",
+    state: "NSW",
+    postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Central Coast Volkswagen",
+    slug: "central-coast-vw",
+    inventory_url: "https://www.ccvolkswagen.com.au/stock?condition=Used",
+    suburb: "West Gosford",
+    state: "NSW",
+    postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Central Coast Isuzu UTE",
+    slug: "central-coast-isuzu",
+    inventory_url: "https://www.ccisuzuute.com.au/stock?condition=Used",
+    suburb: "Gosford",
+    state: "NSW",
+    postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Chery Gosford",
+    slug: "chery-gosford",
+    inventory_url: "https://www.cherygosford.com.au/stock?condition=Used",
+    suburb: "Gosford",
+    state: "NSW",
+    postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Mercedes-Benz Gosford",
+    slug: "mercedes-gosford",
+    inventory_url: "https://www.mbgosford.com.au/vehicles/used/",
+    suburb: "Gosford",
+    state: "NSW",
+    postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+
+  // ==========================================================================
+  // CENTRAL AUTO GROUP (5 dealers)
+  // ==========================================================================
+  {
+    name: "Central Auto Mazda",
+    slug: "central-auto-mazda",
+    inventory_url: "https://www.centralautogroup.com.au/our-stock/",
+    suburb: "Gosford",
+    state: "NSW",
+    postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Central Auto Hyundai",
+    slug: "central-auto-hyundai",
+    inventory_url: "https://www.centralcoasthyundai.com.au/our-stock/",
+    suburb: "North Gosford",
+    state: "NSW",
+    postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Central Auto Mitsubishi",
+    slug: "central-auto-mitsubishi",
+    inventory_url: "https://www.centralcoastmitsubishi.com.au/our-stock/",
+    suburb: "West Gosford",
+    state: "NSW",
+    postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Central Auto Ford",
+    slug: "central-auto-ford",
+    inventory_url: "https://www.centralcoastford.com.au/stock/",
+    suburb: "North Gosford",
+    state: "NSW",
+    postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+
+  // ==========================================================================
+  // COAST FORD GROUP
+  // ==========================================================================
+  {
+    name: "Coast Ford",
+    slug: "coast-ford",
+    inventory_url: "https://www.coastford.com.au/stock/",
+    suburb: "West Gosford",
+    state: "NSW",
+    postcode: "2250",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+
+  // ==========================================================================
+  // CENTRAL COAST AUTOMOTIVE GROUP
+  // ==========================================================================
   {
     name: "Central Coast Hyundai",
     slug: "central-coast-hyundai",
@@ -162,34 +337,53 @@ const DEALERS: DealerConfig[] = [
     anchor_dealer: false,
     priority: 'normal',
   },
+
+  // ==========================================================================
+  // TUGGERAH AUTO GROUP (4 dealers)
+  // ==========================================================================
   {
-    name: "Central Coast Volkswagen",
-    slug: "central-coast-vw",
-    inventory_url: "https://www.ccvolkswagen.com.au/stock",
-    suburb: "West Gosford",
+    name: "Tuggerah Hyundai",
+    slug: "tuggerah-hyundai",
+    inventory_url: "https://www.tuggerahhyundai.com.au/our-stock/",
+    suburb: "Tuggerah",
     state: "NSW",
-    postcode: "2250",
+    postcode: "2259",
     region: "CENTRAL_COAST_NSW",
     parser_mode: 'digitaldealer',
     enabled: true,
     anchor_dealer: false,
     priority: 'normal',
   },
-  // === CENTRAL AUTO GROUP ===
   {
-    name: "Central Auto Mazda",
-    slug: "central-auto-mazda",
-    inventory_url: "https://www.centralautogroup.com.au/our-stock/",
-    suburb: "Gosford",
+    name: "Tuggerah Mitsubishi",
+    slug: "tuggerah-mitsubishi",
+    inventory_url: "https://www.tuggerahmitsubishi.com.au/our-stock/",
+    suburb: "Tuggerah",
     state: "NSW",
-    postcode: "2250",
+    postcode: "2259",
     region: "CENTRAL_COAST_NSW",
     parser_mode: 'digitaldealer',
     enabled: true,
     anchor_dealer: false,
     priority: 'normal',
   },
-  // === TUGGERAH DEALERS ===
+  {
+    name: "Tuggerah Auto Group",
+    slug: "tuggerah-auto-group",
+    inventory_url: "https://www.tuggerahautogroup.com.au/our-stock/used-cars-for-sale-in-tuggerah/",
+    suburb: "Tuggerah",
+    state: "NSW",
+    postcode: "2259",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+
+  // ==========================================================================
+  // TUGGERAH INDEPENDENTS
+  // ==========================================================================
   {
     name: "Coastwide Cars",
     slug: "coastwide-cars",
@@ -216,7 +410,23 @@ const DEALERS: DealerConfig[] = [
     anchor_dealer: false,
     priority: 'normal',
   },
-  // === WYONG DEALERS ===
+  {
+    name: "Surfside Motors",
+    slug: "surfside-motors",
+    inventory_url: "https://www.surfsidemotors.com.au/our-stock/",
+    suburb: "Tuggerah",
+    state: "NSW",
+    postcode: "2258",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+
+  // ==========================================================================
+  // WYONG DEALERS
+  // ==========================================================================
   {
     name: "Wyong Motor Group",
     slug: "wyong-motor-group",
@@ -230,7 +440,10 @@ const DEALERS: DealerConfig[] = [
     anchor_dealer: false,
     priority: 'normal',
   },
-  // === ERINA DEALERS ===
+
+  // ==========================================================================
+  // ERINA / WOY WOY DEALERS
+  // ==========================================================================
   {
     name: "Phil Gilbert Toyota Erina",
     slug: "phil-gilbert-toyota-erina",
@@ -244,19 +457,156 @@ const DEALERS: DealerConfig[] = [
     anchor_dealer: false,
     priority: 'normal',
   },
-  // === DISABLED - Parser not verified ===
   {
-    name: "Central Coast Adventure Cars",
-    slug: "central-coast-adventure-cars",
-    inventory_url: "https://www.centralcoastadventurecars.com.au/stock/",
-    suburb: "Wyoming",
+    name: "Carrs Cars Erina",
+    slug: "carrs-cars-erina",
+    inventory_url: "https://www.carrscars.com.au/stock-all/",
+    suburb: "Erina",
     state: "NSW",
     postcode: "2250",
     region: "CENTRAL_COAST_NSW",
-    parser_mode: 'unknown',
-    enabled: false,
+    parser_mode: 'digitaldealer',
+    enabled: true,
     anchor_dealer: false,
     priority: 'normal',
+  },
+
+  // ==========================================================================
+  // CARDIFF/CHARLESTOWN (Hunter adjacent but services CC)
+  // ==========================================================================
+  {
+    name: "Cardiff Motor Group",
+    slug: "cardiff-motor-group",
+    inventory_url: "https://cardiffmotorgroup.com.au/all-stock/",
+    suburb: "Cardiff",
+    state: "NSW",
+    postcode: "2285",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Cardiff Ford",
+    slug: "cardiff-ford",
+    inventory_url: "https://www.cardiffford.com.au/stock/",
+    suburb: "Cardiff",
+    state: "NSW",
+    postcode: "2285",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Cardiff Hyundai",
+    slug: "cardiff-hyundai",
+    inventory_url: "https://www.cardiffhyundai.com.au/our-stock/",
+    suburb: "Cardiff",
+    state: "NSW",
+    postcode: "2285",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Cardiff Nissan",
+    slug: "cardiff-nissan",
+    inventory_url: "https://www.cardiffnissan.com.au/our-stock/",
+    suburb: "Cardiff",
+    state: "NSW",
+    postcode: "2285",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Cardiff Honda",
+    slug: "cardiff-honda",
+    inventory_url: "https://www.cardiffhonda.com.au/our-stock/",
+    suburb: "Cardiff",
+    state: "NSW",
+    postcode: "2285",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+
+  // ==========================================================================
+  // ADDITIONAL CENTRAL COAST DEALERS
+  // ==========================================================================
+  {
+    name: "Brian Hilton Woy Woy",
+    slug: "brian-hilton-woy-woy",
+    inventory_url: "https://brianhiltonwoywoy.com.au/used-cars/",
+    suburb: "Woy Woy",
+    state: "NSW",
+    postcode: "2256",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'normal',
+  },
+  {
+    name: "Newcastle Toyota",
+    slug: "newcastle-toyota",
+    inventory_url: "https://www.newcastletoyota.com.au/used-cars/",
+    suburb: "Hamilton",
+    state: "NSW",
+    postcode: "2303",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'low',
+  },
+  {
+    name: "Hunter Honda",
+    slug: "hunter-honda",
+    inventory_url: "https://www.hunterhonda.com.au/used-cars/",
+    suburb: "Lambton",
+    state: "NSW",
+    postcode: "2299",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'low',
+  },
+  {
+    name: "Hunter Mazda",
+    slug: "hunter-mazda",
+    inventory_url: "https://www.huntermazda.com.au/stock?condition=Used",
+    suburb: "Lambton",
+    state: "NSW",
+    postcode: "2299",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'low',
+  },
+  {
+    name: "Kloster Ford",
+    slug: "kloster-ford",
+    inventory_url: "https://www.klosterford.com.au/stock/",
+    suburb: "Hamilton",
+    state: "NSW",
+    postcode: "2303",
+    region: "CENTRAL_COAST_NSW",
+    parser_mode: 'digitaldealer',
+    enabled: true,
+    anchor_dealer: false,
+    priority: 'low',
   },
 ];
 
@@ -433,6 +783,102 @@ function parseVehiclesFromDigitalDealer(html: string, dealer: DealerConfig): Scr
   }
   
   console.log(`[dealer-site-crawl] Parsed ${vehicles.length} vehicles from DigitalDealer HTML`);
+  return vehicles;
+}
+
+/**
+ * Parse vehicles from AdTorque Edge platform HTML
+ * Used by CCMG dealers (Gosford Mazda, Central Coast Subaru, etc.)
+ */
+function parseVehiclesFromAdTorque(html: string, dealer: DealerConfig): ScrapedVehicle[] {
+  const vehicles: ScrapedVehicle[] = [];
+  
+  // AdTorque uses: <div class="stock-item" data-stockno="68046" data-vin="...">
+  const stockItemPattern = /<div[^>]+class="[^"]*stock-item[^"]*"[^>]+data-stockno="([^"]+)"[^>]*data-vin="([^"]*)"[^>]*>/gi;
+  
+  let match;
+  const processedStockNumbers = new Set<string>();
+  
+  while ((match = stockItemPattern.exec(html)) !== null) {
+    const stockNumber = match[1];
+    const vin = match[2];
+    
+    if (processedStockNumbers.has(stockNumber)) continue;
+    processedStockNumbers.add(stockNumber);
+    
+    // Find the section for this stock item
+    const startIdx = match.index;
+    const endIdx = html.indexOf('</div>', startIdx + 500) + 6;
+    const itemHtml = html.slice(startIdx, Math.min(startIdx + 3000, endIdx > startIdx ? endIdx : html.length));
+    
+    // Parse year/make/model from si-title spans
+    const yearMatch = /<span class="year">(\d{4})<\/span>/i.exec(itemHtml);
+    const makeMatch = /<span class="make">([^<]+)<\/span>/i.exec(itemHtml);
+    const modelMatch = /<span class="model">([^<]+)<\/span>/i.exec(itemHtml);
+    const badgeMatch = /<span class="badge">([^<]+)<\/span>/i.exec(itemHtml);
+    
+    if (!yearMatch || !makeMatch || !modelMatch) continue;
+    
+    const year = parseInt(yearMatch[1]);
+    const make = makeMatch[1].trim();
+    const model = modelMatch[1].trim();
+    const variant = badgeMatch ? badgeMatch[1].trim() : undefined;
+    
+    if (!make || !model || year < 1990 || year > 2030) continue;
+    
+    // Parse price: <span class="price-value">$58,990</span>
+    const priceMatch = /<span class="price-value">\s*\$?([\d,]+)/i.exec(itemHtml);
+    const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, '')) : undefined;
+    
+    // Parse km: <span class="odometer">47,016 km</span>
+    const kmMatch = /<span class="odometer">([\d,]+)\s*km/i.exec(itemHtml);
+    const km = kmMatch ? parseInt(kmMatch[1].replace(/,/g, '')) : undefined;
+    
+    // Parse fuel: <span class="fuel">3.6L Petrol</span>
+    const fuelMatch = /<span class="fuel">([^<]+)<\/span>/i.exec(itemHtml);
+    const fuel = fuelMatch ? fuelMatch[1].trim() : undefined;
+    
+    // Find detail URL - AdTorque uses href with stock ID
+    const urlPattern = new RegExp(`href="([^"]+/stock/details/[^"]+)"`, 'i');
+    const urlMatch = urlPattern.exec(itemHtml);
+    
+    if (!urlMatch) {
+      console.log(`[dealer-site-crawl] Skipping ${stockNumber}: no detail URL found`);
+      continue;
+    }
+    
+    let detailUrl = urlMatch[1];
+    if (detailUrl.startsWith('/')) {
+      const baseUrl = new URL(dealer.inventory_url);
+      detailUrl = `${baseUrl.origin}${detailUrl}`;
+    }
+    
+    // Use VIN as source_listing_id if available, otherwise stockno
+    const sourceId = vin && vin.length > 8 ? vin : stockNumber;
+    
+    vehicles.push({
+      source_listing_id: sourceId,
+      make,
+      model,
+      year,
+      variant_raw: variant,
+      km,
+      price,
+      fuel,
+      listing_url: detailUrl,
+      suburb: dealer.suburb,
+      state: dealer.state,
+      postcode: dealer.postcode,
+      seller_hints: {
+        seller_badge: 'dealer',
+        seller_name: dealer.name,
+        has_abn: true,
+        has_dealer_keywords: true,
+      }
+    });
+  }
+  
+  console.log(`[dealer-site-crawl] Parsed ${vehicles.length} vehicles from AdTorque HTML`);
   return vehicles;
 }
 
@@ -770,6 +1216,8 @@ Deno.serve(async (req) => {
         let rawVehicles: ScrapedVehicle[] = [];
         if (dealer.parser_mode === 'digitaldealer') {
           rawVehicles = parseVehiclesFromDigitalDealer(scrapeResult.data.html, dealer);
+        } else if (dealer.parser_mode === 'adtorque') {
+          rawVehicles = parseVehiclesFromAdTorque(scrapeResult.data.html, dealer);
         } else if (dealer.parser_mode === 'jsonld_detail') {
           rawVehicles = parseVehiclesFromJsonLd(scrapeResult.data.html, dealer);
         }

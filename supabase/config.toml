@@ -44,6 +44,8 @@ verify_jwt = false
 
 [functions.geo-liquidity-pipeline]
 verify_jwt = false
+# Daily cron at 9am AEST (23:00 UTC) - runs after fingerprint-materialize
+schedule = "0 23 * * *"
 
 [functions.classifieds-ingest]
 verify_jwt = false
