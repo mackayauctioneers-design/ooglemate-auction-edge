@@ -664,7 +664,24 @@ function stableHash(str: string): string {
 }
 
 /**
- * Pre-ingest quality gate - enforces strict requirements
+ * Check if source_listing_id looks like a VIN or stable stock number
+ * VINs are 17 chars, stock numbers are typically 4-10 chars alphanumeric
+ */
+function isStableId(id: string): boolean {
+  if (!id || id.length < 4) return false;
+  // VIN (17 chars, alphanumeric, no I/O/Q)
+  if (/^[A-HJ-NPR-Z0-9]{17}$/i.test(id)) return true;
+  // Stock number (alphanumeric, 4-12 chars)
+  if (/^[A-Z0-9]{4,12}$/i.test(id)) return true;
+  // VIN-based ID (vin-XXXXXXXX)
+  if (/^vin-[A-HJ-NPR-Z0-9]{6,}$/i.test(id)) return true;
+  // Numeric stock number
+  if (/^\d{4,8}$/.test(id)) return true;
+  return false;
+}
+
+/**
+ * Pre-ingest quality gate - enforces STRICT requirements for NSW_SYDNEY_METRO ramp
  */
 function applyQualityGate(vehicles: ScrapedVehicle[]): QualityGateResult {
   const passed: ScrapedVehicle[] = [];
@@ -681,33 +698,45 @@ function applyQualityGate(vehicles: ScrapedVehicle[]): QualityGateResult {
       continue;
     }
     
-    // GATE 2: Must have listing_url (detail page)
+    // GATE 2: Require VIN or stable stock number (stricter for Sydney ramp)
+    if (!isStableId(v.source_listing_id)) {
+      addDropReason('unstable_source_id');
+      continue;
+    }
+    
+    // GATE 3: Must have listing_url (detail page)
     if (!v.listing_url || v.listing_url.trim() === '') {
       addDropReason('missing_listing_url');
       continue;
     }
     
-    // GATE 3: Classifieds REQUIRE price
+    // GATE 4: Classifieds REQUIRE price
     if (v.price === undefined || v.price === null || v.price <= 0) {
       addDropReason('missing_price');
       continue;
     }
     
-    // GATE 4: Price must be in range
+    // GATE 5: Price must be in range ($3k-$150k)
     if (v.price < MIN_PRICE || v.price > MAX_PRICE) {
       addDropReason('price_out_of_range');
       continue;
     }
     
-    // GATE 5: Year must be 2016+ for dealer-grade focus
+    // GATE 6: Year must be 2016+ for dealer-grade focus
     if (v.year < MIN_YEAR) {
       addDropReason('year_below_2016');
       continue;
     }
     
-    // GATE 6: Basic make/model validation
+    // GATE 7: Basic make/model validation
     if (!v.make || !v.model || v.make.length < 2 || v.model.length < 1) {
       addDropReason('invalid_make_model');
+      continue;
+    }
+    
+    // GATE 8: Model must NOT equal make (strict validation)
+    if (v.make.toLowerCase() === v.model.toLowerCase()) {
+      addDropReason('model_equals_make');
       continue;
     }
     
@@ -1341,6 +1370,7 @@ interface DbRooftop {
   anchor_dealer: boolean;
   validation_status: string;
   validation_runs: number;
+  consecutive_failures: number;
 }
 
 function dbRooftopToDealerConfig(r: DbRooftop): DealerConfig {
@@ -1400,6 +1430,9 @@ async function loadRooftopsFromDb(supabase: any, options: {
   return (data || []) as DbRooftop[];
 }
 
+// Auto-disable threshold: 3 consecutive failures
+const MAX_CONSECUTIVE_FAILURES = 3;
+
 // deno-lint-ignore no-explicit-any
 async function updateRooftopValidation(
   supabase: any,
@@ -1410,35 +1443,58 @@ async function updateRooftopValidation(
   // Get current rooftop
   const { data: rooftop } = await supabase
     .from('dealer_rooftops')
-    .select('validation_status, validation_runs')
+    .select('validation_status, validation_runs, consecutive_failures, enabled')
     .eq('dealer_slug', slug)
     .single();
   
   if (!rooftop) return;
   
   // Type assertion for the rooftop data
-  const r = rooftop as { validation_status: string; validation_runs: number };
+  const r = rooftop as { 
+    validation_status: string; 
+    validation_runs: number; 
+    consecutive_failures: number;
+    enabled: boolean;
+  };
   const currentRuns = r.validation_runs || 0;
   const newRuns = currentRuns + 1;
+  const currentFailures = r.consecutive_failures || 0;
   
   let newStatus = r.validation_status;
   let shouldEnable = false;
+  let shouldDisable = false;
+  let newFailures = currentFailures;
+  let disableReason: string | null = null;
   
   if (hasError || vehiclesFound === 0) {
-    // Failed validation
+    // Failed run - increment consecutive failures
     newStatus = 'failed';
-  } else if (newRuns >= 2 && r.validation_status !== 'passed') {
-    // 2 successful runs = passed
-    newStatus = 'passed';
-    shouldEnable = true;
-  } else if (newRuns === 1) {
-    // First run passed, needs second run
-    newStatus = 'pending';
+    newFailures = currentFailures + 1;
+    
+    // AUTO-DISABLE: 3+ consecutive failures
+    if (newFailures >= MAX_CONSECUTIVE_FAILURES && r.enabled) {
+      shouldDisable = true;
+      disableReason = `Auto-disabled after ${newFailures} consecutive failures`;
+      console.log(`[dealer-site-crawl] AUTO-DISABLE: ${slug} - ${disableReason}`);
+    }
+  } else {
+    // Successful run - reset failure count
+    newFailures = 0;
+    
+    if (newRuns >= 2 && r.validation_status !== 'passed') {
+      // 2 successful runs = passed
+      newStatus = 'passed';
+      shouldEnable = true;
+    } else if (newRuns === 1) {
+      // First run passed, needs second run
+      newStatus = 'pending';
+    }
   }
   
   const updateData: Record<string, unknown> = {
     validation_status: newStatus,
     validation_runs: newRuns,
+    consecutive_failures: newFailures,
     last_validated_at: new Date().toISOString(),
     last_crawl_at: new Date().toISOString(),
     last_vehicles_found: vehiclesFound,
@@ -1449,12 +1505,19 @@ async function updateRooftopValidation(
     updateData.validation_notes = `Auto-enabled after ${newRuns} successful validation runs`;
   }
   
+  if (shouldDisable) {
+    updateData.enabled = false;
+    updateData.auto_disabled_at = new Date().toISOString();
+    updateData.auto_disabled_reason = disableReason;
+    updateData.validation_notes = disableReason;
+  }
+  
   await supabase
     .from('dealer_rooftops')
     .update(updateData)
     .eq('dealer_slug', slug);
   
-  console.log(`[dealer-site-crawl] Updated ${slug}: status=${newStatus}, runs=${newRuns}, enabled=${shouldEnable}`);
+  console.log(`[dealer-site-crawl] Updated ${slug}: status=${newStatus}, runs=${newRuns}, failures=${newFailures}, enabled=${shouldEnable}, disabled=${shouldDisable}`);
 }
 
 // =============================================================================
