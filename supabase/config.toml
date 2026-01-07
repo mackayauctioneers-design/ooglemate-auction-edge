@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.classifieds-ingest]
 verify_jwt = false
+
+[functions.dealer-site-crawl]
+verify_jwt = false
