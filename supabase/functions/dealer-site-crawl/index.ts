@@ -12,11 +12,11 @@ const corsHeaders = {
 interface DealerConfig {
   name: string;
   slug: string;              // Used for source_name: "dealer_site:{slug}"
-  sitemap_url?: string;      // Sitemap URL if available
-  inventory_url?: string;    // Direct inventory page URL
-  json_endpoint?: string;    // JSON API endpoint if available
+  inventory_url: string;     // Direct inventory page URL
+  suburb: string;            // Dealer suburb
+  state: string;             // Dealer state
+  postcode: string;          // Dealer postcode
   scrape_config?: {
-    selector?: string;       // CSS selector for vehicle cards
     pagination?: boolean;    // Whether to follow pagination
     max_pages?: number;      // Max pages to crawl
   };
@@ -28,36 +28,54 @@ const DEALERS: DealerConfig[] = [
     name: "Central Coast Toyota",
     slug: "central-coast-toyota",
     inventory_url: "https://www.centralcoasttoyota.com.au/used-vehicles",
+    suburb: "West Gosford",
+    state: "NSW",
+    postcode: "2250",
     scrape_config: { pagination: true, max_pages: 5 }
   },
   {
     name: "Gosford Holden/GM",
     slug: "gosford-holden",
     inventory_url: "https://www.gosfordholden.com.au/used-cars",
+    suburb: "West Gosford",
+    state: "NSW",
+    postcode: "2250",
     scrape_config: { pagination: true, max_pages: 5 }
   },
   {
     name: "Central Coast Mazda",
     slug: "central-coast-mazda",
     inventory_url: "https://www.centralcoastmazda.com.au/used-vehicles",
+    suburb: "West Gosford",
+    state: "NSW",
+    postcode: "2250",
     scrape_config: { pagination: true, max_pages: 5 }
   },
   {
     name: "Wyong Motor Group",
     slug: "wyong-motor-group",
     inventory_url: "https://www.wyongmotorgroup.com.au/used-vehicles",
+    suburb: "Wyong",
+    state: "NSW",
+    postcode: "2259",
     scrape_config: { pagination: true, max_pages: 5 }
   },
   {
     name: "Erina Toyota",
     slug: "erina-toyota",
     inventory_url: "https://www.erinatoyota.com.au/used-vehicles",
+    suburb: "Erina",
+    state: "NSW",
+    postcode: "2250",
     scrape_config: { pagination: true, max_pages: 5 }
   },
   {
     name: "Tuggerah Motor Group",
     slug: "tuggerah-motor-group",
     inventory_url: "https://www.tuggerahmotorgroup.com.au/used-vehicles",
+    suburb: "Tuggerah",
+    state: "NSW",
+    postcode: "2259",
     scrape_config: { pagination: true, max_pages: 5 }
   },
 ];
@@ -67,7 +85,7 @@ const DEALERS: DealerConfig[] = [
 // =============================================================================
 
 interface ScrapedVehicle {
-  source_listing_id: string;
+  source_listing_id: string;  // Stable ID: sku, productID, stock number, or URL hash
   make: string;
   model: string;
   year: number;
@@ -76,8 +94,10 @@ interface ScrapedVehicle {
   price?: number;
   transmission?: string;
   fuel?: string;
-  listing_url?: string;
-  location: string;
+  listing_url: string;        // Vehicle detail page URL (NOT inventory page)
+  suburb: string;
+  state: string;
+  postcode: string;
   seller_hints: {
     seller_badge: 'dealer';
     seller_name: string;
@@ -87,109 +107,48 @@ interface ScrapedVehicle {
 }
 
 /**
- * Parse vehicle data from Firecrawl markdown output
- * Attempts to extract structured data from dealer page content
+ * Generate a stable hash from a string (for URL-based IDs)
  */
-function parseVehiclesFromMarkdown(markdown: string, dealer: DealerConfig, baseUrl: string): ScrapedVehicle[] {
-  const vehicles: ScrapedVehicle[] = [];
-  
-  // Common patterns for vehicle listings in markdown
-  // Most dealer sites have structured formats with year make model variant
-  const vehiclePatterns = [
-    // Pattern: "2023 Toyota HiLux SR5" with price and details
-    /(\d{4})\s+(Toyota|Ford|Mazda|Holden|Chevrolet|Nissan|Mitsubishi|Hyundai|Kia|Volkswagen|BMW|Mercedes|Audi|Subaru|Honda|Isuzu|LDV|RAM|Jeep|GWM|MG)\s+([A-Za-z0-9\-\s]+?)(?:\n|\s{2,}|$)/gi,
-  ];
-  
-  // Price patterns
-  const pricePattern = /\$\s*([\d,]+)/g;
-  
-  // KM patterns
-  const kmPattern = /(\d{1,3}(?:,\d{3})*)\s*(?:km|kms|kilometres)/gi;
-  
-  // Split content into potential vehicle blocks
-  const blocks = markdown.split(/\n(?=\d{4}\s+)/);
-  
-  for (const block of blocks) {
-    for (const pattern of vehiclePatterns) {
-      pattern.lastIndex = 0;
-      const match = pattern.exec(block);
-      
-      if (match) {
-        const year = parseInt(match[1]);
-        const make = match[2];
-        const modelVariant = match[3].trim();
-        
-        // Skip if year is unreasonable
-        if (year < 2010 || year > new Date().getFullYear() + 1) continue;
-        
-        // Extract price from the same block
-        pricePattern.lastIndex = 0;
-        const priceMatch = pricePattern.exec(block);
-        const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, '')) : undefined;
-        
-        // Extract KM from the same block
-        kmPattern.lastIndex = 0;
-        const kmMatch = kmPattern.exec(block);
-        const km = kmMatch ? parseInt(kmMatch[1].replace(/,/g, '')) : undefined;
-        
-        // Generate a deterministic ID from the vehicle details
-        const sourceId = `${year}-${make}-${modelVariant}-${price || 0}`.toLowerCase().replace(/\s+/g, '-');
-        
-        // Detect transmission
-        const transmission = /\b(auto|automatic)\b/i.test(block) ? 'Automatic' :
-                            /\b(manual)\b/i.test(block) ? 'Manual' : undefined;
-        
-        // Detect fuel
-        const fuel = /\b(diesel)\b/i.test(block) ? 'Diesel' :
-                    /\b(petrol|unleaded)\b/i.test(block) ? 'Petrol' :
-                    /\b(hybrid)\b/i.test(block) ? 'Hybrid' :
-                    /\b(electric|ev)\b/i.test(block) ? 'Electric' : undefined;
-        
-        vehicles.push({
-          source_listing_id: sourceId,
-          make: make,
-          model: modelVariant.split(' ')[0], // First word is usually model
-          year: year,
-          variant_raw: modelVariant,
-          km: km,
-          price: price,
-          transmission: transmission,
-          fuel: fuel,
-          listing_url: baseUrl,
-          location: "Central Coast, NSW",
-          seller_hints: {
-            seller_badge: 'dealer',
-            seller_name: dealer.name,
-            has_abn: true,
-            has_dealer_keywords: true,
-          }
-        });
-      }
-    }
+function stableHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
   }
-  
-  // Deduplicate by source_listing_id
-  const seen = new Set<string>();
-  return vehicles.filter(v => {
-    if (seen.has(v.source_listing_id)) return false;
-    seen.add(v.source_listing_id);
-    return true;
-  });
+  return Math.abs(hash).toString(36);
 }
 
 /**
- * Parse vehicles from JSON-LD or structured data if available
+ * Parse vehicle data from Firecrawl markdown output
+ * NOTE: Markdown parsing is a fallback - prefer JSON-LD structured data
+ * This is limited because we can't get stable IDs or detail URLs from markdown
+ */
+function parseVehiclesFromMarkdown(_markdown: string, _dealer: DealerConfig, _baseUrl: string): ScrapedVehicle[] {
+  // Markdown parsing disabled - cannot get stable source_listing_id or detail URLs
+  // All vehicles must come from JSON-LD structured data with proper identifiers
+  console.log(`[dealer-site-crawl] Markdown parsing skipped - no stable IDs available`);
+  return [];
+}
+
+/**
+ * Parse vehicles from JSON-LD structured data
+ * ONLY parses <script type="application/ld+json"> blocks
  */
 function parseVehiclesFromStructuredData(html: string, dealer: DealerConfig): ScrapedVehicle[] {
   const vehicles: ScrapedVehicle[] = [];
   
-  // Look for JSON-LD schema.org/Vehicle or schema.org/Car data
-  const jsonLdPattern = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi;
+  // STRICT: Only match <script type="application/ld+json"> blocks
+  // Use non-greedy match and handle whitespace variations
+  const jsonLdPattern = /<script\s+type\s*=\s*["']application\/ld\+json["']\s*>([\s\S]*?)<\/script>/gi;
   
   let match;
   while ((match = jsonLdPattern.exec(html)) !== null) {
     try {
-      const data = JSON.parse(match[1]);
+      const jsonContent = match[1].trim();
+      if (!jsonContent) continue;
+      
+      const data = JSON.parse(jsonContent);
       
       // Handle both single objects and arrays
       const items = Array.isArray(data) ? data : [data];
@@ -207,19 +166,33 @@ function parseVehiclesFromStructuredData(html: string, dealer: DealerConfig): Sc
             if (vehicle) vehicles.push(vehicle);
           }
         }
+        
+        // Check for @graph containing vehicles
+        if (item['@graph'] && Array.isArray(item['@graph'])) {
+          for (const graphItem of item['@graph']) {
+            if (graphItem['@type'] === 'Vehicle' || graphItem['@type'] === 'Car' || graphItem['@type'] === 'Product') {
+              const vehicle = parseSchemaOrgVehicle(graphItem, dealer);
+              if (vehicle) vehicles.push(vehicle);
+            }
+          }
+        }
       }
-    } catch {
+    } catch (e) {
       // JSON parsing failed, skip this block
+      console.log(`[dealer-site-crawl] JSON-LD parse error: ${e}`);
     }
   }
   
   return vehicles;
 }
 
+/**
+ * Parse a schema.org Vehicle/Car/Product into our format
+ * Requires stable ID (sku/productID/mpn) or detail URL
+ */
 function parseSchemaOrgVehicle(data: Record<string, unknown>, dealer: DealerConfig): ScrapedVehicle | null {
   try {
     const name = String(data.name || '');
-    const description = String(data.description || '');
     
     // Try to extract year, make, model from name
     const nameMatch = name.match(/(\d{4})\s+(\w+)\s+(.+)/);
@@ -228,6 +201,40 @@ function parseSchemaOrgVehicle(data: Record<string, unknown>, dealer: DealerConf
     const year = parseInt(nameMatch[1]);
     const make = nameMatch[2];
     const modelVariant = nameMatch[3];
+    
+    // CRITICAL: Get detail URL - this is required for stable ID and proper listing_url
+    const detailUrl = String(data.url || data.mainEntityOfPage || '');
+    
+    // CRITICAL: Get stable source_listing_id
+    // Priority: sku > productID > mpn > vehicleIdentificationNumber > hash of detail URL
+    let sourceId: string | null = null;
+    
+    if (data.sku && String(data.sku).trim()) {
+      sourceId = String(data.sku).trim();
+    } else if (data.productID && String(data.productID).trim()) {
+      sourceId = String(data.productID).trim();
+    } else if (data.mpn && String(data.mpn).trim()) {
+      sourceId = String(data.mpn).trim();
+    } else if (data.vehicleIdentificationNumber && String(data.vehicleIdentificationNumber).trim()) {
+      // VIN is stable but might be sensitive - use last 8 chars
+      const vin = String(data.vehicleIdentificationNumber).trim();
+      sourceId = `vin-${vin.slice(-8)}`;
+    } else if (detailUrl) {
+      // Hash the detail URL for stability
+      sourceId = `url-${stableHash(detailUrl)}`;
+    }
+    
+    // REJECT if no stable ID available
+    if (!sourceId) {
+      console.log(`[dealer-site-crawl] Skipping vehicle without stable ID: ${name}`);
+      return null;
+    }
+    
+    // REJECT if no detail URL (we need this for listing_url)
+    if (!detailUrl) {
+      console.log(`[dealer-site-crawl] Skipping vehicle without detail URL: ${name}`);
+      return null;
+    }
     
     // Extract price from offers
     let price: number | undefined;
@@ -243,7 +250,15 @@ function parseSchemaOrgVehicle(data: Record<string, unknown>, dealer: DealerConf
       km = parseInt(String(mileage.value).replace(/[^\d]/g, ''));
     }
     
-    const sourceId = String(data.sku || data.productID || `${year}-${make}-${modelVariant}`).toLowerCase().replace(/\s+/g, '-');
+    // Transmission
+    const transmission = data.vehicleTransmission 
+      ? String(data.vehicleTransmission) 
+      : undefined;
+    
+    // Fuel type
+    const fuel = data.fuelType 
+      ? String(data.fuelType) 
+      : undefined;
     
     return {
       source_listing_id: sourceId,
@@ -253,10 +268,12 @@ function parseSchemaOrgVehicle(data: Record<string, unknown>, dealer: DealerConf
       variant_raw: modelVariant,
       km: km,
       price: price,
-      transmission: String(data.vehicleTransmission || ''),
-      fuel: String(data.fuelType || ''),
-      listing_url: String(data.url || ''),
-      location: "Central Coast, NSW",
+      transmission: transmission,
+      fuel: fuel,
+      listing_url: detailUrl,  // Vehicle detail page, NOT inventory page
+      suburb: dealer.suburb,
+      state: dealer.state,
+      postcode: dealer.postcode,
       seller_hints: {
         seller_badge: 'dealer',
         seller_name: dealer.name,
@@ -350,7 +367,7 @@ Deno.serve(async (req) => {
     }> = [];
     
     for (const dealer of targetDealers) {
-      const url = dealer.inventory_url || dealer.sitemap_url;
+      const url = dealer.inventory_url;
       if (!url) {
         results.push({ dealer: dealer.name, vehiclesFound: 0, vehiclesIngested: 0, error: 'No URL configured' });
         continue;
@@ -403,9 +420,9 @@ Deno.serve(async (req) => {
             transmission: v.transmission,
             fuel: v.fuel,
             listing_url: v.listing_url,
-            location: v.location,
-            state: 'NSW',
-            suburb: 'Central Coast',
+            suburb: v.suburb,
+            state: v.state,
+            postcode: v.postcode,
             seller_hints: v.seller_hints,
           })),
         };
