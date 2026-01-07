@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -6,14 +6,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, UserPlus, Search } from 'lucide-react';
+import { Loader2, UserPlus, Link2, Building2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // ============================================================================
-// DEALER ONBOARDING - Admin tool to link users to dealer profiles
+// DEALER ONBOARDING - Admin tool to:
+// 1. Seed dealer profiles (no auth user required)
+// 2. Link existing dealer profiles to auth users
 // ============================================================================
 
 interface DealerOnboardingProps {
   onComplete?: () => void;
+}
+
+interface DealerProfile {
+  id: string;
+  dealer_name: string;
+  org_id: string | null;
+  region_id: string;
 }
 
 const REGIONS = [
@@ -42,46 +52,38 @@ const ROLES = [
 
 export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
-  const [userEmail, setUserEmail] = useState('');
-  const [foundUser, setFoundUser] = useState<{ id: string; email: string } | null>(null);
+  const [dealerProfiles, setDealerProfiles] = useState<DealerProfile[]>([]);
+  
+  // Seed new profile form
   const [dealerName, setDealerName] = useState('');
   const [orgId, setOrgId] = useState('');
   const [regionId, setRegionId] = useState('CENTRAL_COAST_NSW');
+  
+  // Link user form
+  const [selectedProfileId, setSelectedProfileId] = useState('');
+  const [authUserId, setAuthUserId] = useState('');
   const [role, setRole] = useState<'dealer' | 'admin' | 'internal'>('dealer');
 
-  // Search for user by email
-  const handleSearchUser = async () => {
-    if (!userEmail.trim()) {
-      toast.error('Please enter an email address');
-      return;
-    }
+  // Load existing dealer profiles
+  useEffect(() => {
+    loadDealerProfiles();
+  }, []);
 
-    setIsSearching(true);
-    setFoundUser(null);
-
-    try {
-      // Note: This requires admin access to auth.users
-      // For now, we'll check if a profile already exists
-      const { data: existingProfile, error: profileError } = await supabase
-        .from('dealer_profiles')
-        .select('user_id, dealer_name')
-        .limit(1);
-
-      // Since we can't directly query auth.users from client, 
-      // we'll need the user to provide their user_id or use an edge function
-      // For demo purposes, show a message
-      toast.info('Enter the user ID directly (from Supabase Auth) or ask the user to sign up first');
-      
-    } catch (error) {
-      toast.error('Failed to search: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    } finally {
-      setIsSearching(false);
+  const loadDealerProfiles = async () => {
+    const { data, error } = await supabase
+      .from('dealer_profiles')
+      .select('id, dealer_name, org_id, region_id')
+      .order('dealer_name');
+    
+    if (!error && data) {
+      setDealerProfiles(data);
     }
   };
 
-  // Create dealer profile and link to user
-  const handleCreateProfile = async () => {
+  // =========================================================================
+  // TAB 1: Seed a new dealer profile (no auth user required)
+  // =========================================================================
+  const handleSeedProfile = async () => {
     if (!dealerName.trim()) {
       toast.error('Dealer name is required');
       return;
@@ -90,89 +92,125 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
     setIsLoading(true);
 
     try {
-      // Step 1: Create dealer profile (seedable, no FK to auth.users)
-      // Note: user_id is legacy field, we use link table now but types still require it
       const profileId = crypto.randomUUID();
-      const { error: profileError } = await supabase
+      const { error } = await supabase
         .from('dealer_profiles')
         .insert({
           id: profileId,
-          user_id: crypto.randomUUID(), // Legacy field, not used for auth - link table handles this
+          user_id: crypto.randomUUID(), // Legacy field - not used for auth
           dealer_name: dealerName.trim(),
           org_id: orgId.trim() || null,
           region_id: regionId,
         });
 
-      if (profileError) throw profileError;
+      if (error) throw error;
 
-      // Step 2: If we have a real user_id (from search), create the link
-      if (foundUser?.id) {
-        const { error: linkError } = await supabase
-          .from('dealer_profile_user_links')
-          .upsert({
-            dealer_profile_id: profileId,
-            user_id: foundUser.id,
-            linked_by: 'admin',
-          }, { onConflict: 'user_id' });
-
-        if (linkError) throw linkError;
-
-        // Step 3: Create user role (requires valid auth.users FK)
-        const { error: roleError } = await supabase
-          .from('user_roles')
-          .upsert({
-            user_id: foundUser.id,
-            role: role,
-          }, { onConflict: 'user_id,role' });
-
-        if (roleError) throw roleError;
-
-        toast.success(`Linked ${dealerName} to user with role ${role}`);
-      } else {
-        toast.success(`Created dealer profile: ${dealerName} (not linked to user yet)`);
-      }
+      toast.success(`Created dealer profile: ${dealerName}`);
       
-      // Reset form
-      setUserEmail('');
-      setFoundUser(null);
+      // Reset and reload
       setDealerName('');
       setOrgId('');
       setRegionId('CENTRAL_COAST_NSW');
-      setRole('dealer');
-      
+      loadDealerProfiles();
       onComplete?.();
 
     } catch (error) {
-      toast.error('Failed to create profile: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      toast.error('Failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Seed Brian Hilton test data (profile only, no user link)
-  const handleSeedBrianHilton = async () => {
+  // =========================================================================
+  // TAB 2: Link an existing dealer profile to an auth user
+  // =========================================================================
+  const handleLinkUser = async () => {
+    if (!selectedProfileId) {
+      toast.error('Please select a dealer profile');
+      return;
+    }
+    if (!authUserId.trim()) {
+      toast.error('Please enter the auth user ID');
+      return;
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(authUserId.trim())) {
+      toast.error('Invalid user ID format (must be UUID)');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      // Create dealer profile (seedable without auth user)
-      // Note: user_id is legacy field, we use link table now
-      const { error: profileError } = await supabase
+      // Step 1: Create the link (FK enforced to both tables)
+      const { error: linkError } = await supabase
+        .from('dealer_profile_user_links')
+        .insert({
+          dealer_profile_id: selectedProfileId,
+          user_id: authUserId.trim(),
+          linked_by: 'admin',
+        });
+
+      if (linkError) {
+        if (linkError.code === '23503') {
+          throw new Error('User ID not found in auth.users - user must sign up first');
+        }
+        if (linkError.code === '23505') {
+          throw new Error('This user or profile is already linked');
+        }
+        throw linkError;
+      }
+
+      // Step 2: Create user role (FK enforced to auth.users)
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({
+          user_id: authUserId.trim(),
+          role: role,
+        });
+
+      if (roleError && roleError.code !== '23505') {
+        throw roleError;
+      }
+
+      const profile = dealerProfiles.find(p => p.id === selectedProfileId);
+      toast.success(`Linked ${profile?.dealer_name || 'dealer'} to user with role ${role}`);
+      
+      // Reset
+      setSelectedProfileId('');
+      setAuthUserId('');
+      setRole('dealer');
+      onComplete?.();
+
+    } catch (error) {
+      toast.error('Failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Quick seed for Brian Hilton Toyota
+  const handleQuickSeed = async () => {
+    setIsLoading(true);
+    try {
+      const { error } = await supabase
         .from('dealer_profiles')
         .insert({
           id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-          user_id: crypto.randomUUID(), // Legacy field, not used for auth
+          user_id: crypto.randomUUID(),
           dealer_name: 'Brian Hilton Toyota',
           org_id: 'brian-hilton-group',
           region_id: 'CENTRAL_COAST_NSW',
         });
 
-      if (profileError) throw profileError;
+      if (error && error.code !== '23505') throw error;
 
-      toast.success('Seeded Brian Hilton Toyota profile (ready for user linking)');
-      onComplete?.();
-
+      toast.success('Seeded Brian Hilton Toyota (ready for linking)');
+      loadDealerProfiles();
     } catch (error) {
-      toast.error('Failed to seed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      toast.error('Failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsLoading(false);
     }
@@ -186,111 +224,155 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
           Dealer Onboarding
         </CardTitle>
         <CardDescription>
-          Link user accounts to dealer profiles and set permissions
+          Seed dealer profiles and link them to auth users
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Quick seed button */}
-        <Button 
-          onClick={handleSeedBrianHilton}
-          variant="outline"
-          className="w-full gap-2 border-primary/50"
-          disabled={isLoading}
-        >
-          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-          Seed Brian Hilton Toyota (Test)
-        </Button>
+      <CardContent>
+        <Tabs defaultValue="seed" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="seed" className="gap-2">
+              <Building2 className="h-4 w-4" />
+              Seed Profile
+            </TabsTrigger>
+            <TabsTrigger value="link" className="gap-2">
+              <Link2 className="h-4 w-4" />
+              Link User
+            </TabsTrigger>
+          </TabsList>
 
-        <div className="border-t pt-4 space-y-4">
-          <p className="text-sm text-muted-foreground">Or create a new dealer profile:</p>
-
-          {/* User search (placeholder for now) */}
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <Label htmlFor="userEmail" className="sr-only">User Email</Label>
-              <Input
-                id="userEmail"
-                placeholder="User email or ID..."
-                value={userEmail}
-                onChange={(e) => setUserEmail(e.target.value)}
-              />
-            </div>
+          {/* TAB 1: Seed new dealer profile */}
+          <TabsContent value="seed" className="space-y-4">
             <Button 
-              variant="outline" 
-              size="icon"
-              onClick={handleSearchUser}
-              disabled={isSearching}
+              onClick={handleQuickSeed}
+              variant="outline"
+              className="w-full gap-2 border-primary/50"
+              disabled={isLoading}
             >
-              {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Building2 className="h-4 w-4" />}
+              Quick Seed: Brian Hilton Toyota
             </Button>
-          </div>
 
-          {/* Dealer name */}
-          <div>
-            <Label htmlFor="dealerName">Dealer Name *</Label>
-            <Input
-              id="dealerName"
-              placeholder="e.g. Brian Hilton Toyota"
-              value={dealerName}
-              onChange={(e) => setDealerName(e.target.value)}
-            />
-          </div>
+            <div className="border-t pt-4 space-y-4">
+              <p className="text-sm text-muted-foreground">Or create a new dealer profile:</p>
 
-          {/* Org ID */}
-          <div>
-            <Label htmlFor="orgId">Org ID (optional)</Label>
-            <Input
-              id="orgId"
-              placeholder="e.g. brian-hilton-group"
-              value={orgId}
-              onChange={(e) => setOrgId(e.target.value)}
-            />
-          </div>
+              <div>
+                <Label htmlFor="dealerName">Dealer Name *</Label>
+                <Input
+                  id="dealerName"
+                  placeholder="e.g. Central Coast Motors"
+                  value={dealerName}
+                  onChange={(e) => setDealerName(e.target.value)}
+                />
+              </div>
 
-          {/* Region */}
-          <div>
-            <Label htmlFor="region">Region</Label>
-            <Select value={regionId} onValueChange={setRegionId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select region" />
-              </SelectTrigger>
-              <SelectContent>
-                {REGIONS.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {r.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <div>
+                <Label htmlFor="orgId">Org ID (optional)</Label>
+                <Input
+                  id="orgId"
+                  placeholder="e.g. cc-motors-group"
+                  value={orgId}
+                  onChange={(e) => setOrgId(e.target.value)}
+                />
+              </div>
 
-          {/* Role */}
-          <div>
-            <Label htmlFor="role">Role</Label>
-            <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select role" />
-              </SelectTrigger>
-              <SelectContent>
-                {ROLES.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {r.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <div>
+                <Label htmlFor="region">Region</Label>
+                <Select value={regionId} onValueChange={setRegionId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select region" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REGIONS.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Create button */}
-          <Button 
-            onClick={handleCreateProfile}
-            className="w-full gap-2"
-            disabled={isLoading || !dealerName.trim()}
-          >
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-            Create Dealer Profile
-          </Button>
-        </div>
+              <Button 
+                onClick={handleSeedProfile}
+                className="w-full gap-2"
+                disabled={isLoading || !dealerName.trim()}
+              >
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Building2 className="h-4 w-4" />}
+                Create Dealer Profile
+              </Button>
+            </div>
+          </TabsContent>
+
+          {/* TAB 2: Link existing profile to auth user */}
+          <TabsContent value="link" className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Link an existing dealer profile to an authenticated user.
+              The user must have signed up first.
+            </p>
+
+            <div>
+              <Label htmlFor="selectProfile">Dealer Profile *</Label>
+              <Select value={selectedProfileId} onValueChange={setSelectedProfileId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select dealer..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {dealerProfiles.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.dealer_name} ({p.region_id})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="authUserId">Auth User ID *</Label>
+              <Input
+                id="authUserId"
+                placeholder="e.g. 12345678-1234-1234-1234-123456789012"
+                value={authUserId}
+                onChange={(e) => setAuthUserId(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Get this from the user's profile or auth logs
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="role">Role</Label>
+              <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Button 
+              onClick={handleLinkUser}
+              className="w-full gap-2"
+              disabled={isLoading || !selectedProfileId || !authUserId.trim()}
+            >
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+              Link User to Profile
+            </Button>
+          </TabsContent>
+        </Tabs>
+
+        {/* Show existing profiles */}
+        {dealerProfiles.length > 0 && (
+          <div className="mt-6 pt-4 border-t">
+            <p className="text-xs text-muted-foreground mb-2">
+              Existing profiles: {dealerProfiles.map(p => p.dealer_name).join(', ')}
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
