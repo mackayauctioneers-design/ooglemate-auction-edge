@@ -21,6 +21,7 @@ import ValoPage from "./pages/ValoPage";
 import BuyerReviewQueuePage from "./pages/BuyerReviewQueuePage";
 import PicklesIngestionPage from "./pages/PicklesIngestionPage";
 import RegionalDashboardPage from "./pages/RegionalDashboardPage";
+import DealerDashboardPage from "./pages/DealerDashboardPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -83,6 +84,7 @@ const App = () => (
             <Route path="/regional-dashboard" element={
               <AdminGuard><RegionalDashboardPage /></AdminGuard>
             } />
+            <Route path="/dealer-dashboard" element={<DealerDashboardPage />} />
             
             <Route path="*" element={<NotFound />} />
           </Routes>

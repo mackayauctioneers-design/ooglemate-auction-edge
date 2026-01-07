@@ -10,6 +10,7 @@ const corsHeaders = {
 // =============================================================================
 
 type ParserMode = 'digitaldealer' | 'jsonld_detail' | 'unknown';
+type DealerPriority = 'high' | 'normal' | 'low';
 
 interface DealerConfig {
   name: string;
@@ -22,6 +23,7 @@ interface DealerConfig {
   parser_mode: ParserMode;   // REQUIRED: which parser to use
   enabled: boolean;          // Whether to include in cron runs
   anchor_dealer: boolean;    // Primary dealer for this region
+  priority: DealerPriority;  // Crawl priority (high = always first, stricter monitoring)
 }
 
 // Max 10 dealers for initial scale
@@ -36,7 +38,8 @@ const DEALERS: DealerConfig[] = [
     region: "CENTRAL_COAST_NSW",
     parser_mode: 'digitaldealer',
     enabled: true,
-    anchor_dealer: true,  // Primary anchor dealer for Central Coast NSW
+    anchor_dealer: true,      // Primary anchor dealer for Central Coast NSW
+    priority: 'high',         // High priority = stricter health monitoring
   },
   {
     name: "Central Coast Adventure Cars",
@@ -46,9 +49,10 @@ const DEALERS: DealerConfig[] = [
     state: "NSW",
     postcode: "2250",
     region: "CENTRAL_COAST_NSW",
-    parser_mode: 'unknown',  // Parser not verified yet
+    parser_mode: 'unknown',   // Parser not verified yet
     enabled: false,
     anchor_dealer: false,
+    priority: 'normal',
   },
   {
     name: "Central Coast Hyundai",
@@ -58,9 +62,10 @@ const DEALERS: DealerConfig[] = [
     state: "NSW",
     postcode: "2250",
     region: "CENTRAL_COAST_NSW",
-    parser_mode: 'unknown',  // Parser not verified yet
+    parser_mode: 'unknown',   // Parser not verified yet
     enabled: false,
     anchor_dealer: false,
+    priority: 'normal',
   },
 ];
 
@@ -391,44 +396,68 @@ async function scrapeWithFirecrawl(url: string, apiKey: string): Promise<Firecra
 }
 
 // =============================================================================
-// HEALTH METRICS - 7-day average comparison
+// HEALTH METRICS - Enhanced for anchor dealers
 // =============================================================================
+
+interface HealthCheckResult {
+  alert: boolean;
+  alertType: 'none' | 'zero_found' | 'drop_50pct' | 'errors';
+  avgLast7Days: number | null;
+  message: string | null;
+}
 
 async function checkHealthAndAlert(
   supabaseUrl: string,
   supabaseKey: string,
-  dealerSlug: string,
-  currentFound: number
-): Promise<{ alert: boolean; avgLast7Days: number | null }> {
+  dealer: DealerConfig,
+  currentFound: number,
+  errorCount: number
+): Promise<HealthCheckResult> {
   const supabase = createClient(supabaseUrl, supabaseKey);
+  const isAnchor = dealer.anchor_dealer;
+  const isHighPriority = dealer.priority === 'high';
   
-  // Get last 7 days of runs for this dealer
+  // ALERT 1: Errors > 0 (for anchor/high priority dealers)
+  if ((isAnchor || isHighPriority) && errorCount > 0) {
+    const msg = `[ANCHOR ALERT] ${dealer.name}: ${errorCount} errors during crawl`;
+    console.error(msg);
+    return { alert: true, alertType: 'errors', avgLast7Days: null, message: msg };
+  }
+  
+  // ALERT 2: Zero vehicles found (critical for anchor dealers)
+  if (isAnchor && currentFound === 0) {
+    const msg = `[ANCHOR ALERT] ${dealer.name}: 0 vehicles found - possible site change or scrape failure`;
+    console.error(msg);
+    return { alert: true, alertType: 'zero_found', avgLast7Days: null, message: msg };
+  }
+  
+  // ALERT 3: >50% drop vs 7-day average
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const { data: recentRuns } = await supabase
     .from('dealer_crawl_runs')
     .select('vehicles_found')
-    .eq('dealer_slug', dealerSlug)
+    .eq('dealer_slug', dealer.slug)
     .gte('run_date', sevenDaysAgo)
     .order('run_date', { ascending: false })
     .limit(7);
   
   if (!recentRuns || recentRuns.length < 3) {
-    // Not enough history to compare
-    return { alert: false, avgLast7Days: null };
+    return { alert: false, alertType: 'none', avgLast7Days: null, message: null };
   }
   
   const runs = recentRuns as { vehicles_found: number }[];
   const avgLast7Days = runs.reduce((sum, r) => sum + r.vehicles_found, 0) / runs.length;
   
-  // Alert if current run is >50% below 7-day average
   const dropThreshold = 0.5;
-  const alert = avgLast7Days > 0 && currentFound < avgLast7Days * (1 - dropThreshold);
+  const hasDropped = avgLast7Days > 0 && currentFound < avgLast7Days * (1 - dropThreshold);
   
-  if (alert) {
-    console.error(`[dealer-site-crawl] HEALTH ALERT: ${dealerSlug} found ${currentFound} vehicles, 7-day avg is ${avgLast7Days.toFixed(1)} (>50% drop)`);
+  if (hasDropped) {
+    const msg = `[${isAnchor ? 'ANCHOR ALERT' : 'HEALTH ALERT'}] ${dealer.name}: found ${currentFound} vehicles, 7-day avg is ${avgLast7Days.toFixed(1)} (>50% drop)`;
+    console.error(msg);
+    return { alert: true, alertType: 'drop_50pct', avgLast7Days, message: msg };
   }
   
-  return { alert, avgLast7Days };
+  return { alert: false, alertType: 'none', avgLast7Days, message: null };
 }
 
 // =============================================================================
@@ -485,6 +514,7 @@ Deno.serve(async (req) => {
       vehiclesDropped: number;
       dropReasons: Record<string, number>;
       healthAlert: boolean;
+      healthAlertType?: string;
       error?: string;
     }> = [];
     
@@ -562,8 +592,9 @@ Deno.serve(async (req) => {
           console.log(`[dealer-site-crawl] ${dealer.name}: Drop reasons:`, dropReasons);
         }
         
-        // Check health metrics
-        const { alert: healthAlert, avgLast7Days } = await checkHealthAndAlert(supabaseUrl, supabaseKey, dealer.slug, passed.length);
+        // Check health metrics (track errors for anchor dealers)
+        let errorCount = 0; // Will be updated if ingest fails
+        const healthCheck = await checkHealthAndAlert(supabaseUrl, supabaseKey, dealer, passed.length, errorCount);
         
         let vehiclesIngested = 0;
         
@@ -634,11 +665,12 @@ Deno.serve(async (req) => {
           vehiclesIngested,
           vehiclesDropped: dropped,
           dropReasons,
-          healthAlert,
+          healthAlert: healthCheck.alert,
+          healthAlertType: healthCheck.alertType,
         });
         
-        if (healthAlert && avgLast7Days !== null) {
-          console.error(`[dealer-site-crawl] ALERT: ${dealer.slug} vehicles dropped >50% (found: ${passed.length}, 7d avg: ${avgLast7Days.toFixed(1)})`);
+        if (healthCheck.alert && healthCheck.message) {
+          console.error(`[dealer-site-crawl] ${healthCheck.message}`);
         }
         
       } catch (e) {
