@@ -196,6 +196,7 @@ export type Database = {
         Row: {
           created_at: string
           dealer_name: string
+          dealer_profile_id: string | null
           expires_at: string | null
           fingerprint_id: string
           id: string
@@ -213,6 +214,7 @@ export type Database = {
         Insert: {
           created_at?: string
           dealer_name: string
+          dealer_profile_id?: string | null
           expires_at?: string | null
           fingerprint_id: string
           id?: string
@@ -230,6 +232,7 @@ export type Database = {
         Update: {
           created_at?: string
           dealer_name?: string
+          dealer_profile_id?: string | null
           expires_at?: string | null
           fingerprint_id?: string
           id?: string
@@ -244,7 +247,15 @@ export type Database = {
           year_max?: number
           year_min?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "dealer_fingerprints_dealer_profile_id_fkey"
+            columns: ["dealer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dealer_profiles: {
         Row: {
