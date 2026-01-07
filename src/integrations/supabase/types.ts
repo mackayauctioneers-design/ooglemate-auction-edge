@@ -235,6 +235,36 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_profiles: {
+        Row: {
+          created_at: string
+          dealer_name: string
+          id: string
+          org_id: string | null
+          region_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_name: string
+          id?: string
+          org_id?: string | null
+          region_id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          dealer_name?: string
+          id?: string
+          org_id?: string | null
+          region_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       fingerprint_outcomes: {
         Row: {
           asof_date: string
@@ -533,6 +563,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
       }
       valo_requests: {
         Row: {
@@ -928,6 +979,25 @@ export type Database = {
           alerts_updated: number
         }[]
       }
+      get_dealer_profile: {
+        Args: { _user_id: string }
+        Returns: {
+          dealer_name: string
+          org_id: string
+          region_id: string
+        }[]
+      }
+      get_user_role: {
+        Args: { _user_id: string }
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
       km_to_band: {
         Args: { p_km: number }
         Returns: {
@@ -960,7 +1030,7 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "dealer" | "internal"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1087,6 +1157,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "dealer", "internal"],
+    },
   },
 } as const

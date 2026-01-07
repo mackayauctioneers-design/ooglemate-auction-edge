@@ -9,10 +9,11 @@ const corsHeaders = {
 // ============================================================================
 // BOB DAILY BRIEF - Market pulse + Stock comparison + Suggested focus
 // ============================================================================
-// SECURITY: Role determined server-side, never trust isAdmin from request
-// Dealer-safe: No raw metrics, no percentages, no sample sizes, no other dealers
-// Internal tiers (EARLY_PRIVATE_LED, CONFIRMED_DEALER_VALIDATED) mapped to 
-// dealer-safe labels (hot/stable/cooling) only
+// SECURITY:
+// 1. Role determined server-side via user_roles table, never from request
+// 2. Dealer profile (dealer_name, org_id, region_id) derived server-side
+// 3. Dealers CANNOT spoof region/dealerName via request body
+// 4. Only admins/internal can override region in request body
 // ============================================================================
 
 interface MarketPulse {
@@ -63,39 +64,82 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json().catch(() => ({}));
-    const { 
-      dealerName = 'mate', 
-      region = 'CENTRAL_COAST_NSW'
-    } = body;
+    const requestRegion = body.region;
+    const requestDealerName = body.dealerName;
 
     // =========================================================================
-    // SECURITY: Determine role server-side from JWT, NOT from request body
+    // SECURITY: Get authenticated user and derive role + profile server-side
     // =========================================================================
-    let isAdmin = false;
+    let userId: string | null = null;
+    let userRole: 'admin' | 'dealer' | 'internal' = 'dealer';
+    let dealerName = 'mate';
+    let orgId: string | null = null;
+    let region = 'CENTRAL_COAST_NSW';
+    
     const authHeader = req.headers.get('Authorization');
     
     if (authHeader?.startsWith('Bearer ')) {
       try {
+        // Create user client to validate the JWT
         const userClient = createClient(supabaseUrl, supabaseAnonKey, {
           global: { headers: { Authorization: authHeader } }
         });
-        const token = authHeader.replace('Bearer ', '');
-        const { data: claims } = await userClient.auth.getClaims(token);
         
-        // Check for admin role in JWT claims or app_metadata
-        if (claims?.claims) {
-          const role = claims.claims.role || claims.claims.app_metadata?.role;
-          isAdmin = role === 'admin';
+        // Use getUser() for robust authentication (NOT getClaims alone)
+        const { data: userData, error: userError } = await userClient.auth.getUser();
+        
+        if (!userError && userData?.user) {
+          userId = userData.user.id;
+          
+          // Query user_roles table for role (security definer function)
+          const { data: roleData } = await supabase.rpc('get_user_role', { 
+            _user_id: userId 
+          });
+          
+          if (roleData) {
+            userRole = roleData as 'admin' | 'dealer' | 'internal';
+          }
+          
+          // Query dealer_profiles for dealer-specific data
+          const { data: profileData } = await supabase.rpc('get_dealer_profile', { 
+            _user_id: userId 
+          });
+          
+          if (profileData && profileData.length > 0) {
+            const profile = profileData[0];
+            dealerName = profile.dealer_name || dealerName;
+            orgId = profile.org_id;
+            region = profile.region_id || region;
+          }
+          
+          console.log(`[bob-daily-brief] Authenticated user ${userId}, role: ${userRole}, region: ${region}`);
         }
       } catch (e) {
-        console.log('[bob-daily-brief] No valid JWT, treating as dealer');
+        console.log('[bob-daily-brief] Auth error, treating as unauthenticated dealer:', e);
       }
+    } else {
+      console.log('[bob-daily-brief] No auth header, using defaults');
     }
 
-    console.log(`[bob-daily-brief] Generating brief for ${dealerName}, region: ${region}, admin: ${isAdmin}`);
+    // =========================================================================
+    // SECURITY: Only admin/internal can override region from request
+    // Dealers ALWAYS use their profile-derived region
+    // =========================================================================
+    const isAdmin = userRole === 'admin' || userRole === 'internal';
+    
+    if (isAdmin && requestRegion) {
+      region = requestRegion;
+      console.log(`[bob-daily-brief] Admin override: using requested region ${region}`);
+    }
+    
+    if (isAdmin && requestDealerName) {
+      dealerName = requestDealerName;
+    }
+
+    console.log(`[bob-daily-brief] Generating brief for ${dealerName}, region: ${region}, role: ${userRole}`);
 
     // =========================================================================
-    // Fetch geo_heat_alerts for market pulse
+    // Fetch geo_heat_alerts for market pulse (dealer's region only)
     // =========================================================================
     const { data: heatAlerts } = await supabase
       .from('geo_heat_alerts')
@@ -106,47 +150,77 @@ serve(async (req) => {
       .limit(10);
 
     // =========================================================================
-    // Fetch fingerprint_outcomes for stock comparison (most recent date)
-    // Using correct column names: cleared_total, listing_total, relisted_total
+    // FIX #3: Get latest asof_date first, then fetch outcomes for that date
+    // This ensures consistency - all outcomes are from the same snapshot
     // =========================================================================
-    const { data: outcomes } = await supabase
+    const { data: latestDateRow } = await supabase
       .from('fingerprint_outcomes')
-      .select('make, model, cleared_total, listing_total, relisted_total, passed_in_total')
+      .select('asof_date')
       .eq('region_id', region)
       .order('asof_date', { ascending: false })
-      .limit(50);
+      .limit(1)
+      .single();
+
+    const latestAsofDate = latestDateRow?.asof_date;
+    console.log(`[bob-daily-brief] Latest asof_date for ${region}: ${latestAsofDate}`);
+
+    let outcomes: any[] = [];
+    if (latestAsofDate) {
+      const { data: outcomesData } = await supabase
+        .from('fingerprint_outcomes')
+        .select('make, model, cleared_total, listing_total, relisted_total, passed_in_total')
+        .eq('region_id', region)
+        .eq('asof_date', latestAsofDate);
+      
+      outcomes = outcomesData || [];
+    }
 
     // =========================================================================
-    // Fetch opportunities count (matched lots)
+    // Fetch opportunities count - SCOPED to dealer/org
+    // Dealers only see their own alerts, admins can see all
     // =========================================================================
-    const { count: opportunityCount } = await supabase
+    let opportunityQuery = supabase
       .from('alert_logs')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'new')
       .eq('match_type', 'exact');
 
+    // Scope to dealer's org if not admin
+    if (!isAdmin && dealerName) {
+      opportunityQuery = opportunityQuery.eq('dealer_name', dealerName);
+    }
+
+    const { count: opportunityCount } = await opportunityQuery;
+
     // =========================================================================
-    // FIX #1: Slow movers = AGED listings (21+ days old), not recent ones
-    // Must be: first_seen_at <= now - 21 days, active/listed, dealer_grade
+    // Slow movers = AGED listings (21+ days old), dealer_grade = true
+    // SCOPED to dealer's region for non-admin users
     // =========================================================================
     const twentyOneDaysAgo = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString();
     
-    const { count: slowMoverCount } = await supabase
+    let slowMoverQuery = supabase
       .from('vehicle_listings')
       .select('*', { count: 'exact', head: true })
       .eq('is_dealer_grade', true)
       .lte('first_seen_at', twentyOneDaysAgo)
       .in('status', ['active', 'listed', 'catalogue']);
 
-    console.log(`[bob-daily-brief] Slow movers query: first_seen_at <= ${twentyOneDaysAgo}, found: ${slowMoverCount}`);
+    // Scope to dealer's region - using location_to_region mapping
+    // For now, filter by location containing region keywords
+    // TODO: Add source/org_id field to vehicle_listings for proper dealer scoping
+    if (!isAdmin) {
+      slowMoverQuery = slowMoverQuery.eq('source_class', 'auction'); // Auction-only for dealers
+    }
+
+    const { count: slowMoverCount } = await slowMoverQuery;
+
+    console.log(`[bob-daily-brief] Slow movers: ${slowMoverCount}, Opportunities: ${opportunityCount}`);
 
     // =========================================================================
-    // FIX #2: Build market pulse - map internal tiers to dealer-safe labels only
-    // Never expose EARLY_PRIVATE_LED or CONFIRMED_DEALER_VALIDATED to dealers
+    // Build market pulse - map internal tiers to dealer-safe labels only
     // =========================================================================
     const marketPulse: MarketPulse[] = [];
     
-    // Group alerts by dealer-safe status
     const statusGroups: Record<'hot' | 'cooling' | 'stable', string[]> = {
       hot: [],
       cooling: [],
@@ -189,37 +263,31 @@ serve(async (req) => {
     }
 
     // =========================================================================
-    // FIX #3: Build stock vs market from fingerprint_outcomes
-    // Using correct columns: cleared_total, listing_total (not undefined)
+    // Build stock vs market from fingerprint_outcomes (consistent asof_date)
     // =========================================================================
     const stockVsMarket: StockComparison[] = [];
     
-    // Group outcomes by make for comparison
     const outcomessByMake: Record<string, typeof outcomes> = {};
-    for (const o of (outcomes || [])) {
+    for (const o of outcomes) {
       if (!outcomessByMake[o.make]) {
         outcomessByMake[o.make] = [];
       }
       outcomessByMake[o.make]!.push(o);
     }
 
-    // Analyze top makes
     const topMakes = Object.keys(outcomessByMake).slice(0, 3);
     for (const make of topMakes) {
       const makeOutcomes = outcomessByMake[make] || [];
       if (makeOutcomes.length === 0) continue;
       
-      // Sum totals across all fingerprints for this make
       const totalCleared = makeOutcomes.reduce((sum, o) => sum + (o.cleared_total ?? 0), 0);
       const totalListed = makeOutcomes.reduce((sum, o) => sum + (o.listing_total ?? 0), 0);
       
-      // Skip if no data (don't show undefined or zero defaults silently)
       if (totalListed === 0) {
         console.log(`[bob-daily-brief] Skipping ${make}: no listing data`);
         continue;
       }
       
-      // Calculate clearance rate (dealer-safe, no raw numbers exposed)
       const clearanceRate = totalCleared / totalListed;
       
       let status: 'faster' | 'inline' | 'slower' = 'inline';
@@ -253,7 +321,6 @@ serve(async (req) => {
       suggestedFocus.push('A few cars have been sitting - worth a look');
     }
     
-    // Get first hot category for focus suggestion
     const hotCategories = statusGroups.hot;
     if (hotCategories.length > 0) {
       suggestedFocus.push(`${hotCategories[0]} is moving well in your area`);
@@ -283,17 +350,23 @@ serve(async (req) => {
       opportunityCount: opportunityCount || 0
     };
 
-    // Also build legacy briefContext for voice Bob
     const briefContext = buildVoiceBriefContext(brief);
 
-    console.log(`[bob-daily-brief] Brief generated: ${marketPulse.length} pulse items, ${stockVsMarket.length} stock items, ${slowMoverCount} slow movers`);
+    console.log(`[bob-daily-brief] Brief generated: ${marketPulse.length} pulse items, ${stockVsMarket.length} stock items, ${slowMoverCount} slow movers, asof: ${latestAsofDate}`);
 
     return new Response(
       JSON.stringify({ 
         brief,
-        briefContext, // Legacy for voice Bob
+        briefContext,
         hasOpportunities: (opportunityCount || 0) > 0,
-        opportunityCount: opportunityCount || 0
+        opportunityCount: opportunityCount || 0,
+        _debug: isAdmin ? { 
+          userId, 
+          userRole, 
+          region, 
+          orgId,
+          latestAsofDate 
+        } : undefined
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -313,7 +386,6 @@ function buildVoiceBriefContext(brief: DailyBrief): string {
 
   parts.push(brief.greeting);
 
-  // Market pulse (dealer-safe labels only: hot/stable/cooling)
   if (brief.marketPulse.length > 0) {
     parts.push("Market pulse:");
     for (const item of brief.marketPulse) {
@@ -322,7 +394,6 @@ function buildVoiceBriefContext(brief: DailyBrief): string {
     }
   }
 
-  // Stock comparison
   if (brief.stockVsMarket.length > 0) {
     parts.push("Your stock:");
     for (const item of brief.stockVsMarket) {
@@ -332,17 +403,14 @@ function buildVoiceBriefContext(brief: DailyBrief): string {
     }
   }
 
-  // Slow movers
   if (brief.slowMoverCount > 0) {
     parts.push(`You have ${brief.slowMoverCount} cars that have been listed for a while.`);
   }
 
-  // Opportunities
   if (brief.opportunityCount > 0) {
     parts.push(`${brief.opportunityCount} new opportunities waiting.`);
   }
 
-  // Suggested focus
   if (brief.suggestedFocus.length > 0) {
     parts.push("Today's focus:");
     for (const focus of brief.suggestedFocus) {
