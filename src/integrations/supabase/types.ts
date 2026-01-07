@@ -607,6 +607,7 @@ export type Database = {
           fuel: string | null
           highest_bid: number | null
           id: string
+          is_dealer_grade: boolean | null
           km: number | null
           last_auction_date: string | null
           last_seen_at: string
@@ -645,6 +646,7 @@ export type Database = {
           fuel?: string | null
           highest_bid?: number | null
           id?: string
+          is_dealer_grade?: boolean | null
           km?: number | null
           last_auction_date?: string | null
           last_seen_at?: string
@@ -683,6 +685,7 @@ export type Database = {
           fuel?: string | null
           highest_bid?: number | null
           id?: string
+          is_dealer_grade?: boolean | null
           km?: number | null
           last_auction_date?: string | null
           last_seen_at?: string
@@ -715,6 +718,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      compute_dealer_grade: {
+        Args: {
+          p_asking_price: number
+          p_excluded_keyword: string
+          p_excluded_reason: string
+          p_reserve: number
+          p_year: number
+        }
+        Returns: boolean
+      }
       derive_clearance_events: {
         Args: { p_stale_hours?: number }
         Returns: {
