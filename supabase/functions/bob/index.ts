@@ -183,6 +183,37 @@ function isStrongMarket(make: string, model: string): boolean {
 }
 
 // ============================================================================
+// EUROPEAN CAR HARD RULE - NON-NEGOTIABLE REFUSAL
+// ============================================================================
+
+const EUROPEAN_MAKES_REFUSE = [
+  'bmw', 'mercedes', 'mercedes-benz', 'audi', 'volkswagen', 'vw', 
+  'porsche', 'volvo', 'jaguar', 'land rover', 'landrover',
+  'alfa romeo', 'alfa', 'peugeot', 'renault'
+];
+
+// Rotating refusal phrases for European cars
+const EURO_REFUSAL_PHRASES = [
+  "Mate, to be honest, I'd rather drive a rusty nail through my cock than price that.",
+  "Yeah nah. That's someone else's problem.",
+  "That's a brave way to lose money.",
+  "I'll talk to Macka and get back to you.",
+];
+
+let euroRefusalIndex = 0;
+
+function isEuropeanCarRefusal(make: string, km?: number): boolean {
+  const makeLower = make.toLowerCase().trim();
+  return EUROPEAN_MAKES_REFUSE.some(m => makeLower.includes(m) || makeLower === m);
+}
+
+function getEuropeanRefusalPhrase(): string {
+  const phrase = EURO_REFUSAL_PHRASES[euroRefusalIndex];
+  euroRefusalIndex = (euroRefusalIndex + 1) % EURO_REFUSAL_PHRASES.length;
+  return phrase;
+}
+
+// ============================================================================
 // KNOWN PROBLEM VEHICLES (DNR or HARD_WORK)
 // ============================================================================
 
@@ -797,12 +828,72 @@ function generateBobScript(decision: DecisionObject): string {
       
     case 'DNR':
       // Do not retail
-      return "Wouldn't touch that one, mate. That's hard work you let someone else own.";
+      return "Wouldn't touch that, mate. That's hard work you let someone else own.";
       
     default:
       // Default fallback = SOFT_OWN behaviour (momentum > perfection)
-      return "Bit of an oddball that one. Flick me a few pics and I'll have a proper look.";
+      return "Bit of an oddball that one. Flick me a few pics and I'll have a proper squiz.";
   }
+}
+
+// ============================================================================
+// NAME LOCK - Replace "Marker" with "Macka" globally
+// ============================================================================
+
+function applyNameLock(text: string): string {
+  return text.replace(/\bMarker\b/gi, 'Macka');
+}
+
+// ============================================================================
+// ACCENT GUARDRAIL - Prevent American tone drift
+// ============================================================================
+
+function applyAccentGuardrail(text: string): string {
+  // Replace American phrases with Australian equivalents
+  const replacements: [RegExp, string][] = [
+    [/\bawesome\b/gi, "yeah right"],
+    [/\bthat's awesome\b/gi, "yeah not bad"],
+    [/\bgreat opportunity\b/gi, "if you're feeling lucky"],
+    [/\blet's take a look\b/gi, "we can have a squiz"],
+    [/\blet me take a look\b/gi, "I'll have a squiz"],
+    [/\bhave a look\b/gi, "have a squiz"],
+    [/\btake a look\b/gi, "have a squiz"],
+    [/\bsounds great\b/gi, "sounds alright"],
+    [/\bthat's great\b/gi, "yeah not bad"],
+    [/\bno problem\b/gi, "no worries"],
+    [/\bno worries at all\b/gi, "no dramas"],
+    [/\blet's go\b/gi, "let's crack on"],
+    [/\bI'd be happy to\b/gi, "yeah I can"],
+    [/\bI would be happy to\b/gi, "yeah I can"],
+    [/\bwonderful\b/gi, "not bad"],
+    [/\bfantastic\b/gi, "not bad"],
+    [/\bexcellent\b/gi, "solid"],
+    [/\bperfect\b/gi, "sweet"],
+    [/\babsolutely\b/gi, "yeah mate"],
+    [/\bcertainly\b/gi, "yeah"],
+    [/\bdefinitely\b/gi, "for sure"],
+    [/\bI appreciate\b/gi, "cheers for"],
+    [/\bthank you so much\b/gi, "cheers"],
+    [/\bthank you\b/gi, "cheers"],
+  ];
+  
+  let result = text;
+  for (const [pattern, replacement] of replacements) {
+    result = result.replace(pattern, replacement);
+  }
+  
+  return result;
+}
+
+// ============================================================================
+// POST-PROCESSING PIPELINE - Apply all persona rules
+// ============================================================================
+
+function postProcessBobResponse(text: string): string {
+  let result = text;
+  result = applyNameLock(result);
+  result = applyAccentGuardrail(result);
+  return result;
 }
 
 // ============================================================================
@@ -983,6 +1074,15 @@ function extractVehicleFromMessage(message: string): OancaInput | null {
     'Ram': ['1500', '2500', '3500', 'ram 1500', 'ram 2500', 'ram 3500'],
     'Gmc': ['sierra', 'sierra 1500', 'sierra 2500', 'sierra 3500', 'yukon', 'canyon'],
     'Dodge': ['ram', 'challenger', 'charger', 'durango'],
+    // European makes (add models so extraction works for Euro refusal)
+    'Bmw': ['x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', '1 series', '2 series', '3 series', '4 series', '5 series', '6 series', '7 series', '8 series', 'm3', 'm4', 'm5', 'z4', 'i3', 'i4', 'i8', 'ix'],
+    'Mercedes': ['a-class', 'a class', 'b-class', 'c-class', 'c class', 'e-class', 'e class', 's-class', 's class', 'cla', 'cls', 'gla', 'glb', 'glc', 'gle', 'gls', 'amg', 'sprinter', 'vito'],
+    'Audi': ['a1', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'q2', 'q3', 'q5', 'q7', 'q8', 'tt', 'r8', 'rs3', 'rs4', 'rs5', 'rs6', 's3', 's4', 's5', 'e-tron', 'etron'],
+    'Porsche': ['cayenne', 'macan', 'panamera', '911', 'carrera', 'boxster', 'cayman', 'taycan'],
+    'Volvo': ['xc40', 'xc60', 'xc90', 's60', 's90', 'v40', 'v60', 'v90', 'c40'],
+    'Land Rover': ['discovery', 'defender', 'range rover', 'evoque', 'velar', 'sport', 'freelander'],
+    'Jaguar': ['f-pace', 'e-pace', 'i-pace', 'f-type', 'xe', 'xf', 'xj', 'x-type', 's-type'],
+    'Alfa Romeo': ['giulia', 'stelvio', 'giulietta', 'mito', '159', '147', '156'],
   };
   
   let foundModel = '';
@@ -1011,6 +1111,12 @@ function extractVehicleFromMessage(message: string): OancaInput | null {
   
   if (foundMake && foundModel && foundYear) {
     return { make: foundMake, model: foundModel, year: foundYear, km };
+  }
+  
+  // If we have make + year but no model, use "Unknown" model
+  // (Important: This allows Euro refusal to trigger even without specific model)
+  if (foundMake && foundYear && !foundModel) {
+    return { make: foundMake, model: 'Unknown', year: foundYear, km };
   }
   
   if (foundModel && foundYear) {
@@ -1089,18 +1195,50 @@ serve(async (req) => {
     if (vehicleInput) {
       console.log(`[BOB] Detected vehicle: ${vehicleInput.year} ${vehicleInput.make} ${vehicleInput.model}${vehicleInput.km ? ` @ ${vehicleInput.km}km` : ''}`);
       
-      // Load sales history
-      const salesHistory = await queryDealerSalesHistory();
-      
-      // Run pricing engine
-      const result = runPricingEngine(vehicleInput, salesHistory);
-      decision = result.decision;
-      engineState = result.engineState;
-      
-      // Generate Bob's locked phrase
-      bobScript = generateBobScript(decision);
-      
-      console.log(`[BOB] Decision: ${decision.decision}, buy_price: ${decision.buy_price}, tier: ${engineState.comp_tier}`);
+      // ================================================================
+      // EUROPEAN CAR HARD RULE - Check BEFORE pricing engine
+      // Any European make requesting valuation = automatic refusal
+      // ================================================================
+      if (isEuropeanCarRefusal(vehicleInput.make, vehicleInput.km)) {
+        console.log(`[BOB] EURO REFUSAL: ${vehicleInput.make} - automatic refusal`);
+        
+        bobScript = getEuropeanRefusalPhrase();
+        
+        // Create a mock decision for logging
+        decision = {
+          decision: 'DNR',
+          buy_price: null,
+          vehicle_class: 'POISON',
+          data_source: null,
+          confidence: null,
+          reason: 'EURO_REFUSAL',
+        };
+        engineState = {
+          n_comps: 0,
+          comp_tier: null,
+          anchor_owe: null,
+          owe_base: null,
+          avg_days: 0,
+          avg_gross: 0,
+          notes: ['EURO_REFUSAL: Automatic refusal for European make'],
+          comps_used: [],
+          processing_time_ms: 0,
+          adjustments: { km_adj: 0, year_adj: 0, trim_adj: 0, demand_adj: 0 },
+        };
+      } else {
+        // Load sales history
+        const salesHistory = await queryDealerSalesHistory();
+        
+        // Run pricing engine
+        const result = runPricingEngine(vehicleInput, salesHistory);
+        decision = result.decision;
+        engineState = result.engineState;
+        
+        // Generate Bob's locked phrase
+        bobScript = generateBobScript(decision);
+        
+        console.log(`[BOB] Decision: ${decision.decision}, buy_price: ${decision.buy_price}, tier: ${engineState.comp_tier}`);
+      }
     } else {
       // No vehicle detected - just chat
       bobScript = "Yeah mate, what've you got for me?";
@@ -1115,6 +1253,11 @@ serve(async (req) => {
         finalResponse = firewallResult.correctedResponse;
       }
     }
+    
+    // ================================================================
+    // POST-PROCESSING PIPELINE - Apply persona rules
+    // ================================================================
+    finalResponse = postProcessBobResponse(finalResponse);
 
     // Log the request
     if (vehicleInput && decision && engineState) {
