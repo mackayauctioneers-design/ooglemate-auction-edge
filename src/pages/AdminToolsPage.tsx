@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database, Car, FileDown, Globe, UserPlus } from 'lucide-react';
+import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database, Car, FileDown, Globe, UserPlus, BarChart3 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,8 @@ import { ingestMackayTradersSales } from '@/utils/ingestMackayTradersSales';
 import { toast } from 'sonner';
 import { Navigate, Link } from 'react-router-dom';
 import { DealerOnboarding } from '@/components/admin/DealerOnboarding';
+import { supabase } from '@/integrations/supabase/client';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function AdminToolsPage() {
   const { isAdmin } = useAuth();
@@ -38,6 +40,37 @@ export default function AdminToolsPage() {
   } | null>(null);
   const [isIngestingMackay, setIsIngestingMackay] = useState(false);
   const [mackayStats, setMackayStats] = useState<{ parsed: number; stored: number } | null>(null);
+  const [latestReport, setLatestReport] = useState<{ report_date: string; report_json: Record<string, unknown> } | null>(null);
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
+  const [showReportJson, setShowReportJson] = useState(false);
+
+  // Fetch latest feeding mode report
+  const fetchLatestReport = async () => {
+    setIsLoadingReport(true);
+    try {
+      const { data, error } = await supabase
+        .from('feeding_mode_reports')
+        .select('report_date, report_json')
+        .order('report_date', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      if (data) {
+        setLatestReport(data as { report_date: string; report_json: Record<string, unknown> });
+      }
+    } catch (error) {
+      console.error('Failed to fetch report:', error);
+    } finally {
+      setIsLoadingReport(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin) {
+      fetchLatestReport();
+    }
+  }, [isAdmin]);
 
   const handleImportCatalogue12931 = async () => {
     setIsImporting12931(true);
@@ -535,6 +568,81 @@ export default function AdminToolsPage() {
                   Open Pickles Ingestion
                 </Button>
               </Link>
+            </CardContent>
+          </Card>
+
+          {/* Feeding Mode Report Viewer */}
+          <Card className="border-indigo-500/50 md:col-span-2 lg:col-span-3">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <BarChart3 className="h-5 w-5 text-indigo-500" />
+                Feeding Mode Report
+              </CardTitle>
+              <CardDescription>
+                Daily 14-day summary of market activity (scheduled 10:45am AEST)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex gap-2">
+                <Button 
+                  onClick={fetchLatestReport}
+                  variant="outline"
+                  disabled={isLoadingReport}
+                  className="gap-2"
+                >
+                  {isLoadingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  Refresh
+                </Button>
+                {latestReport && (
+                  <Button 
+                    onClick={() => setShowReportJson(!showReportJson)}
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    {showReportJson ? 'Hide JSON' : 'Show JSON'}
+                  </Button>
+                )}
+              </div>
+              
+              {latestReport ? (
+                <div className="space-y-2">
+                  <div className="text-sm text-muted-foreground">
+                    Latest report: <span className="font-medium text-foreground">{latestReport.report_date}</span>
+                  </div>
+                  
+                  {/* Quick stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div className="p-2 bg-muted rounded">
+                      <div className="text-muted-foreground">Top Fingerprints</div>
+                      <div className="font-medium text-lg">{(latestReport.report_json?.top_fingerprints as unknown[])?.length || 0}</div>
+                    </div>
+                    <div className="p-2 bg-muted rounded">
+                      <div className="text-muted-foreground">Clearances</div>
+                      <div className="font-medium text-lg">{(latestReport.report_json?.health_summary as Record<string, number>)?.clearances_recorded || 0}</div>
+                    </div>
+                    <div className="p-2 bg-muted rounded">
+                      <div className="text-muted-foreground">Snapshots</div>
+                      <div className="font-medium text-lg">{(latestReport.report_json?.health_summary as Record<string, number>)?.snapshots_created || 0}</div>
+                    </div>
+                    <div className="p-2 bg-muted rounded">
+                      <div className="text-muted-foreground">Ingestion Rate</div>
+                      <div className="font-medium text-lg">{(latestReport.report_json?.health_summary as Record<string, number>)?.ingestion_rate || 0}%</div>
+                    </div>
+                  </div>
+                  
+                  {showReportJson && (
+                    <ScrollArea className="h-[400px] border rounded p-2 bg-muted/30">
+                      <pre className="text-xs whitespace-pre-wrap break-all">
+                        {JSON.stringify(latestReport.report_json, null, 2)}
+                      </pre>
+                    </ScrollArea>
+                  )}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  {isLoadingReport ? 'Loading...' : 'No report found. First report will be stored at 10:45am AEST.'}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
