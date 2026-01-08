@@ -23,7 +23,10 @@ Deno.serve(async (req) => {
       .rpc('claim_next_job');
 
     if (claimError) {
-      throw claimError;
+      const errMsg = typeof claimError === 'object' && claimError !== null && 'message' in claimError 
+        ? (claimError as { message: string }).message 
+        : JSON.stringify(claimError);
+      throw new Error(`RPC claim_next_job failed: ${errMsg}`);
     }
 
     if (!claimedJobs || claimedJobs.length === 0) {
@@ -124,17 +127,23 @@ Deno.serve(async (req) => {
       // attempts is already incremented by the RPC claim
       const isFinalFailure = attempts >= maxAttempts;
 
-      // Fix failure state fields:
+      // Build update payload conditionally to avoid undefined
       // - Retry: status='pending', started_at=null, finished_at=null, keep error
-      // - Final failure: status='failed', finished_at=now(), keep started_at
+      // - Final failure: status='failed', finished_at=now(), preserve started_at (omit from payload)
+      const updatePayload: Record<string, unknown> = {
+        status: isFinalFailure ? 'failed' : 'pending',
+        finished_at: isFinalFailure ? new Date().toISOString() : null,
+        error: crawlMessage,
+      };
+      
+      // Only set started_at to null on retry (omit for final failure to preserve)
+      if (!isFinalFailure) {
+        updatePayload.started_at = null;
+      }
+
       await supabase
         .from('dealer_crawl_jobs')
-        .update({
-          status: isFinalFailure ? 'failed' : 'pending',
-          started_at: isFinalFailure ? undefined : null,  // Keep for failed, reset for retry
-          finished_at: isFinalFailure ? new Date().toISOString() : null,
-          error: crawlMessage,
-        })
+        .update(updatePayload)
         .eq('id', jobId);
 
       return new Response(
