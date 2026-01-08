@@ -124,12 +124,15 @@ Deno.serve(async (req) => {
       // attempts is already incremented by the RPC claim
       const isFinalFailure = attempts >= maxAttempts;
 
+      // Fix failure state fields:
+      // - Retry: status='pending', started_at=null, finished_at=null, keep error
+      // - Final failure: status='failed', finished_at=now(), keep started_at
       await supabase
         .from('dealer_crawl_jobs')
         .update({
           status: isFinalFailure ? 'failed' : 'pending',
+          started_at: isFinalFailure ? undefined : null,  // Keep for failed, reset for retry
           finished_at: isFinalFailure ? new Date().toISOString() : null,
-          started_at: isFinalFailure ? null : null, // Reset for retry
           error: crawlMessage,
         })
         .eq('id', jobId);
