@@ -1355,6 +1355,9 @@ async function checkHealthAndAlert(
 // DATABASE-DRIVEN ROOFTOP LOADING
 // =============================================================================
 
+// Sydney Metro batch limit - smaller to avoid timeouts
+const SYDNEY_METRO_BATCH_LIMIT = 2;
+
 interface DbRooftop {
   id: string;
   dealer_slug: string;
@@ -1390,12 +1393,32 @@ function dbRooftopToDealerConfig(r: DbRooftop): DealerConfig {
   };
 }
 
+// Reset validation counters for rooftops when re-assigning to new batch
+// deno-lint-ignore no-explicit-any
+async function resetRooftopValidation(supabase: any, slugs: string[]): Promise<void> {
+  if (slugs.length === 0) return;
+  
+  await supabase
+    .from('dealer_rooftops')
+    .update({
+      successful_validation_runs: 0,
+      consecutive_failures: 0,
+      validation_runs: 0,
+      validation_status: 'pending',
+      validation_notes: 'Reset for new validation batch',
+    })
+    .in('dealer_slug', slugs);
+  
+  console.log(`[dealer-site-crawl] Reset validation counters for ${slugs.length} rooftops`);
+}
+
 // deno-lint-ignore no-explicit-any
 async function loadRooftopsFromDb(supabase: any, options: {
   slugs?: string[];
   enabledOnly?: boolean;
   validatedOnly?: boolean;
   limit?: number;
+  regionId?: string;
 }): Promise<DbRooftop[]> {
   let query = supabase
     .from('dealer_rooftops')
@@ -1413,8 +1436,18 @@ async function loadRooftopsFromDb(supabase: any, options: {
     query = query.eq('validation_status', 'passed');
   }
   
-  if (options.limit) {
-    query = query.limit(options.limit);
+  if (options.regionId) {
+    query = query.eq('region_id', options.regionId);
+  }
+  
+  // Apply region-specific batch limits
+  let effectiveLimit = options.limit || 10;
+  if (options.regionId === 'NSW_SYDNEY_METRO') {
+    effectiveLimit = Math.min(effectiveLimit, SYDNEY_METRO_BATCH_LIMIT);
+  }
+  
+  if (effectiveLimit) {
+    query = query.limit(effectiveLimit);
   }
   
   // Order: anchor dealers first, then by priority
