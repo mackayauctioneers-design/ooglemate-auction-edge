@@ -59,3 +59,11 @@ schedule = "0 21 * * *"
 verify_jwt = false
 # Daily cron at 8am AEST (22:00 UTC) - runs after dealer-site-crawl
 schedule = "0 22 * * *"
+
+[functions.enqueue-dealer-crawl]
+verify_jwt = false
+
+[functions.process-dealer-crawl-jobs]
+verify_jwt = false
+# Process job queue every 5 minutes
+schedule = "*/5 * * * *"
