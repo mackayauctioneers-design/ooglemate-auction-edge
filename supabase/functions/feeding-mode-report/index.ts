@@ -183,8 +183,11 @@ serve(async (req) => {
       }
     });
 
+    // Relist rates with clear labeling:
+    // - auction_relist_rate: True relist detection via pass_count/relist_count from auction events
+    // - trap_relist_proxy_rate: PROXY based on disappear/reappear pattern, NOT true relist detection
     const relistRatesBySource = {
-      auction: {
+      auction_relist_rate: {
         total: relistBySource.auction.total,
         relisted: relistBySource.auction.relisted,
         rate_pct: relistBySource.auction.total > 0
@@ -192,13 +195,14 @@ serve(async (req) => {
           : 0,
         sources: ["pickles", "manheim"],
       },
-      traps: {
+      trap_relist_proxy_rate: {
         total: relistBySource.traps.total,
         relisted: relistBySource.traps.relisted,
         rate_pct: relistBySource.traps.total > 0
           ? Math.round((relistBySource.traps.relisted / relistBySource.traps.total) * 100)
           : 0,
         sources: ["dealer_traps"],
+        note: "PROXY: Based on disappear/reappear pattern in crawls, not true relist detection",
       },
     };
 
