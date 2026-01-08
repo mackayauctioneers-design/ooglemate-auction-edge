@@ -20,38 +20,57 @@ serve(async (req) => {
     startDate.setDate(startDate.getDate() - 14);
     const startDateStr = startDate.toISOString().split("T")[0];
 
-    // 1. Top 50 fingerprints with >=10 outcomes
+    // 1. Top 50 fingerprints with >=10 cleared outcomes
     const { data: topFingerprints, error: fpError } = await supabase
       .from("fingerprint_outcomes")
       .select("*")
-      .gte("listing_total", 10)
-      .gte("asof_date", startDateStr)
-      .order("listing_total", { ascending: false })
-      .limit(50);
+      .gte("cleared_total", 10)
+      .gte("asof_date", startDateStr);
 
     if (fpError) throw fpError;
 
-    const fingerprintReport = (topFingerprints || []).map((fp) => ({
-      make: fp.make,
-      model: fp.model,
-      variant_family: fp.variant_family,
-      year_range: `${fp.year_min}-${fp.year_max}`,
-      region_id: fp.region_id,
-      sample_size: fp.listing_total,
-      cleared: fp.cleared_total,
-      clearance_rate: fp.listing_total > 0 
-        ? Math.round((fp.cleared_total / fp.listing_total) * 100) 
-        : 0,
-      avg_days_to_clear: fp.avg_days_to_clear ? Math.round(fp.avg_days_to_clear * 10) / 10 : null,
-      relist_rate: fp.listing_total > 0 
-        ? Math.round((fp.relisted_total / fp.listing_total) * 100) 
-        : 0,
-      passed_in_rate: fp.listing_total > 0 
-        ? Math.round((fp.passed_in_total / fp.listing_total) * 100) 
-        : 0,
-    }));
+    // Compute clearance_rate and sort: clearance_rate desc, avg_days_to_clear asc, sample_size desc
+    const fingerprintReport = (topFingerprints || [])
+      .map((fp) => {
+        const clearanceRate = fp.listing_total > 0 
+          ? (fp.cleared_total / fp.listing_total) * 100 
+          : 0;
+        return {
+          make: fp.make,
+          model: fp.model,
+          variant_family: fp.variant_family,
+          year_range: `${fp.year_min}-${fp.year_max}`,
+          region_id: fp.region_id,
+          sample_size: fp.listing_total,
+          cleared: fp.cleared_total,
+          clearance_rate: Math.round(clearanceRate),
+          avg_days_to_clear: fp.avg_days_to_clear ? Math.round(fp.avg_days_to_clear * 10) / 10 : null,
+          relist_rate: fp.listing_total > 0 
+            ? Math.round((fp.relisted_total / fp.listing_total) * 100) 
+            : 0,
+          passed_in_rate: fp.listing_total > 0 
+            ? Math.round((fp.passed_in_total / fp.listing_total) * 100) 
+            : 0,
+          _clearanceRateRaw: clearanceRate,
+          _avgDaysRaw: fp.avg_days_to_clear ?? 999,
+        };
+      })
+      .sort((a, b) => {
+        // clearance_rate desc
+        if (b._clearanceRateRaw !== a._clearanceRateRaw) {
+          return b._clearanceRateRaw - a._clearanceRateRaw;
+        }
+        // avg_days_to_clear asc (nulls last = 999)
+        if (a._avgDaysRaw !== b._avgDaysRaw) {
+          return a._avgDaysRaw - b._avgDaysRaw;
+        }
+        // sample_size desc
+        return b.sample_size - a.sample_size;
+      })
+      .slice(0, 50)
+      .map(({ _clearanceRateRaw, _avgDaysRaw, ...rest }) => rest);
 
-    // 2. Agreement counters by source
+    // 2. Source mix (14d) - renamed from agreement_counters
     const { data: sourceStats, error: sourceError } = await supabase
       .from("vehicle_listings")
       .select("source")
@@ -65,7 +84,7 @@ serve(async (req) => {
       sourceCounts[src] = (sourceCounts[src] || 0) + 1;
     });
 
-    const agreementCounters = {
+    const sourceMix14d = {
       pickles: sourceCounts["pickles"] || 0,
       manheim: sourceCounts["manheim"] || 0,
       dealer_traps: Object.entries(sourceCounts)
@@ -121,11 +140,11 @@ serve(async (req) => {
       .slice(0, 10)
       .map(([reason, count]) => ({ reason, count }));
 
-    // 6. Ingestion runs summary
+    // 6. Ingestion runs summary - use completed_at (falls back gracefully)
     const { data: ingestionRuns, error: ingestionError } = await supabase
       .from("ingestion_runs")
-      .select("source, lots_found, lots_created, lots_updated, status")
-      .gte("started_at", startDateStr);
+      .select("source, lots_found, lots_created, lots_updated, status, completed_at")
+      .gte("completed_at", startDateStr);
 
     if (ingestionError) throw ingestionError;
 
@@ -149,7 +168,7 @@ serve(async (req) => {
         days: 14,
       },
       top_fingerprints: fingerprintReport,
-      agreement_counters: agreementCounters,
+      source_mix_14d: sourceMix14d,
       health_summary: {
         total_vehicles_found: totalFound,
         total_vehicles_ingested: totalIngested,
