@@ -67,3 +67,11 @@ verify_jwt = false
 verify_jwt = false
 # Process job queue every 5 minutes
 schedule = "*/5 * * * *"
+
+[functions.manheim-crawl]
+verify_jwt = false
+# Daily cron at 10am AEST (00:00 UTC) - runs after geo-pipeline
+schedule = "0 0 * * *"
+
+[functions.manheim-ingest]
+verify_jwt = false
