@@ -366,6 +366,9 @@ export type Database = {
           id: string
           inventory_url: string
           last_crawl_at: string | null
+          last_fail_at: string | null
+          last_fail_reason: string | null
+          last_preflight_markers: Json | null
           last_validated_at: string | null
           last_vehicles_found: number | null
           parser_confidence: string | null
@@ -394,6 +397,9 @@ export type Database = {
           id?: string
           inventory_url: string
           last_crawl_at?: string | null
+          last_fail_at?: string | null
+          last_fail_reason?: string | null
+          last_preflight_markers?: Json | null
           last_validated_at?: string | null
           last_vehicles_found?: number | null
           parser_confidence?: string | null
@@ -422,6 +428,9 @@ export type Database = {
           id?: string
           inventory_url?: string
           last_crawl_at?: string | null
+          last_fail_at?: string | null
+          last_fail_reason?: string | null
+          last_preflight_markers?: Json | null
           last_validated_at?: string | null
           last_vehicles_found?: number | null
           parser_confidence?: string | null
