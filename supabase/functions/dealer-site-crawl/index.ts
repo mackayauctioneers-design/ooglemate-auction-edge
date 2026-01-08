@@ -665,18 +665,18 @@ function stableHash(str: string): string {
 
 /**
  * Check if source_listing_id looks like a VIN or stable stock number
- * VINs are 17 chars, stock numbers are typically 4-10 chars alphanumeric
+ * VINs are 17 chars, stock numbers are typically 4-24 chars alphanumeric with hyphens
  */
 function isStableId(id: string): boolean {
   if (!id || id.length < 4) return false;
   // VIN (17 chars, alphanumeric, no I/O/Q)
   if (/^[A-HJ-NPR-Z0-9]{17}$/i.test(id)) return true;
-  // Stock number (alphanumeric, 4-12 chars)
-  if (/^[A-Z0-9]{4,12}$/i.test(id)) return true;
   // VIN-based ID (vin-XXXXXXXX)
   if (/^vin-[A-HJ-NPR-Z0-9]{6,}$/i.test(id)) return true;
+  // Stock number with hyphens (e.g., U002398-1731084) - 4-24 chars alphanumeric with hyphens
+  if (/^[A-Z0-9][A-Z0-9\-]{3,23}$/i.test(id)) return true;
   // Numeric stock number
-  if (/^\d{4,8}$/.test(id)) return true;
+  if (/^\d{4,10}$/.test(id)) return true;
   return false;
 }
 
@@ -1371,6 +1371,7 @@ interface DbRooftop {
   validation_status: string;
   validation_runs: number;
   consecutive_failures: number;
+  successful_validation_runs: number;
 }
 
 function dbRooftopToDealerConfig(r: DbRooftop): DealerConfig {
@@ -1443,7 +1444,7 @@ async function updateRooftopValidation(
   // Get current rooftop
   const { data: rooftop } = await supabase
     .from('dealer_rooftops')
-    .select('validation_status, validation_runs, consecutive_failures, enabled')
+    .select('validation_status, validation_runs, consecutive_failures, successful_validation_runs, enabled')
     .eq('dealer_slug', slug)
     .single();
   
@@ -1454,22 +1455,27 @@ async function updateRooftopValidation(
     validation_status: string; 
     validation_runs: number; 
     consecutive_failures: number;
+    successful_validation_runs: number;
     enabled: boolean;
   };
+  
   const currentRuns = r.validation_runs || 0;
   const newRuns = currentRuns + 1;
   const currentFailures = r.consecutive_failures || 0;
+  const currentSuccessRuns = r.successful_validation_runs || 0;
   
   let newStatus = r.validation_status;
   let shouldEnable = false;
   let shouldDisable = false;
   let newFailures = currentFailures;
+  let newSuccessRuns = currentSuccessRuns;
   let disableReason: string | null = null;
   
   if (hasError || vehiclesFound === 0) {
-    // Failed run - increment consecutive failures
+    // Failed run - increment consecutive failures, DO NOT increment successful_validation_runs
     newStatus = 'failed';
     newFailures = currentFailures + 1;
+    // Note: newSuccessRuns stays the same - don't increment on failure
     
     // AUTO-DISABLE: 3+ consecutive failures
     if (newFailures >= MAX_CONSECUTIVE_FAILURES && r.enabled) {
@@ -1478,15 +1484,16 @@ async function updateRooftopValidation(
       console.log(`[dealer-site-crawl] AUTO-DISABLE: ${slug} - ${disableReason}`);
     }
   } else {
-    // Successful run - reset failure count
+    // Successful run - reset failure count, increment successful_validation_runs
     newFailures = 0;
+    newSuccessRuns = currentSuccessRuns + 1;
     
-    if (newRuns >= 2 && r.validation_status !== 'passed') {
-      // 2 successful runs = passed
+    // Enable only when: successful_validation_runs >= 2 AND consecutive_failures == 0
+    if (newSuccessRuns >= 2 && newFailures === 0 && r.validation_status !== 'passed') {
       newStatus = 'passed';
       shouldEnable = true;
-    } else if (newRuns === 1) {
-      // First run passed, needs second run
+    } else if (newSuccessRuns === 1) {
+      // First successful run, needs second
       newStatus = 'pending';
     }
   }
@@ -1495,6 +1502,7 @@ async function updateRooftopValidation(
     validation_status: newStatus,
     validation_runs: newRuns,
     consecutive_failures: newFailures,
+    successful_validation_runs: newSuccessRuns,
     last_validated_at: new Date().toISOString(),
     last_crawl_at: new Date().toISOString(),
     last_vehicles_found: vehiclesFound,
@@ -1502,7 +1510,7 @@ async function updateRooftopValidation(
   
   if (shouldEnable) {
     updateData.enabled = true;
-    updateData.validation_notes = `Auto-enabled after ${newRuns} successful validation runs`;
+    updateData.validation_notes = `Auto-enabled after ${newSuccessRuns} successful validation runs`;
   }
   
   if (shouldDisable) {
@@ -1517,7 +1525,7 @@ async function updateRooftopValidation(
     .update(updateData)
     .eq('dealer_slug', slug);
   
-  console.log(`[dealer-site-crawl] Updated ${slug}: status=${newStatus}, runs=${newRuns}, failures=${newFailures}, enabled=${shouldEnable}, disabled=${shouldDisable}`);
+  console.log(`[dealer-site-crawl] Updated ${slug}: status=${newStatus}, runs=${newRuns}, successRuns=${newSuccessRuns}, failures=${newFailures}, enabled=${shouldEnable}`);
 }
 
 // =============================================================================
