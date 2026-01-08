@@ -144,6 +144,48 @@ export type Database = {
           },
         ]
       }
+      dealer_crawl_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          dealer_slug: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          max_attempts: number
+          result: Json | null
+          run_type: string
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          dealer_slug: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          max_attempts?: number
+          result?: Json | null
+          run_type: string
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          dealer_slug?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          max_attempts?: number
+          result?: Json | null
+          run_type?: string
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       dealer_crawl_runs: {
         Row: {
           created_at: string
