@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     const { data: trap, error: trapError } = await supabase
       .from('dealer_traps')
       .select('*')
-      .eq('dealer_slug', trapSlug)
+      .eq('trap_slug', trapSlug)
       .single();
 
     if (trapError || !trap) {

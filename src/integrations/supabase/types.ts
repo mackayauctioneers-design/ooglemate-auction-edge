@@ -139,6 +139,13 @@ export type Database = {
             foreignKeyName: "clearance_events_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
+            referencedRelation: "stale_dealer_grade"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clearance_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
             referencedRelation: "vehicle_listings"
             referencedColumns: ["id"]
           },
@@ -313,7 +320,6 @@ export type Database = {
           created_at: string
           dealer_group: string | null
           dealer_name: string
-          dealer_slug: string
           enabled: boolean
           group_id: string | null
           id: string
@@ -332,6 +338,7 @@ export type Database = {
           state: string | null
           suburb: string | null
           successful_validation_runs: number
+          trap_slug: string
           updated_at: string
           validation_notes: string | null
           validation_runs: number
@@ -345,7 +352,6 @@ export type Database = {
           created_at?: string
           dealer_group?: string | null
           dealer_name: string
-          dealer_slug: string
           enabled?: boolean
           group_id?: string | null
           id?: string
@@ -364,6 +370,7 @@ export type Database = {
           state?: string | null
           suburb?: string | null
           successful_validation_runs?: number
+          trap_slug: string
           updated_at?: string
           validation_notes?: string | null
           validation_runs?: number
@@ -377,7 +384,6 @@ export type Database = {
           created_at?: string
           dealer_group?: string | null
           dealer_name?: string
-          dealer_slug?: string
           enabled?: boolean
           group_id?: string | null
           id?: string
@@ -396,6 +402,7 @@ export type Database = {
           state?: string | null
           suburb?: string | null
           successful_validation_runs?: number
+          trap_slug?: string
           updated_at?: string
           validation_notes?: string | null
           validation_runs?: number
@@ -701,6 +708,13 @@ export type Database = {
           status?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "listing_snapshots_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "stale_dealer_grade"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "listing_snapshots_listing_id_fkey"
             columns: ["listing_id"]
@@ -1137,7 +1151,245 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      dealer_crawl_jobs: {
+        Row: {
+          attempts: number | null
+          created_at: string | null
+          error: string | null
+          finished_at: string | null
+          id: string | null
+          max_attempts: number | null
+          result: Json | null
+          run_type: string | null
+          started_at: string | null
+          status: string | null
+          trap_slug: string | null
+        }
+        Insert: {
+          attempts?: number | null
+          created_at?: string | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string | null
+          max_attempts?: number | null
+          result?: Json | null
+          run_type?: string | null
+          started_at?: string | null
+          status?: string | null
+          trap_slug?: string | null
+        }
+        Update: {
+          attempts?: number | null
+          created_at?: string | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string | null
+          max_attempts?: number | null
+          result?: Json | null
+          run_type?: string | null
+          started_at?: string | null
+          status?: string | null
+          trap_slug?: string | null
+        }
+        Relationships: []
+      }
+      dealer_crawl_runs: {
+        Row: {
+          created_at: string | null
+          dealer_name: string | null
+          drop_reasons: Json | null
+          error: string | null
+          id: string | null
+          parser_mode: string | null
+          run_completed_at: string | null
+          run_date: string | null
+          run_started_at: string | null
+          trap_slug: string | null
+          vehicles_dropped: number | null
+          vehicles_found: number | null
+          vehicles_ingested: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          dealer_name?: string | null
+          drop_reasons?: Json | null
+          error?: string | null
+          id?: string | null
+          parser_mode?: string | null
+          run_completed_at?: string | null
+          run_date?: string | null
+          run_started_at?: string | null
+          trap_slug?: string | null
+          vehicles_dropped?: number | null
+          vehicles_found?: number | null
+          vehicles_ingested?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          dealer_name?: string | null
+          drop_reasons?: Json | null
+          error?: string | null
+          id?: string | null
+          parser_mode?: string | null
+          run_completed_at?: string | null
+          run_date?: string | null
+          run_started_at?: string | null
+          trap_slug?: string | null
+          vehicles_dropped?: number | null
+          vehicles_found?: number | null
+          vehicles_ingested?: number | null
+        }
+        Relationships: []
+      }
+      dealer_rooftops: {
+        Row: {
+          anchor_trap: boolean | null
+          auto_disabled_at: string | null
+          auto_disabled_reason: string | null
+          consecutive_failures: number | null
+          created_at: string | null
+          dealer_group: string | null
+          dealer_name: string | null
+          enabled: boolean | null
+          group_id: string | null
+          id: string | null
+          inventory_url: string | null
+          last_crawl_at: string | null
+          last_fail_at: string | null
+          last_fail_reason: string | null
+          last_preflight_markers: Json | null
+          last_validated_at: string | null
+          last_vehicle_count: number | null
+          parser_confidence: string | null
+          parser_mode: string | null
+          postcode: string | null
+          priority: string | null
+          region_id: string | null
+          state: string | null
+          suburb: string | null
+          successful_validation_runs: number | null
+          trap_slug: string | null
+          updated_at: string | null
+          validation_notes: string | null
+          validation_runs: number | null
+          validation_status: string | null
+        }
+        Insert: {
+          anchor_trap?: boolean | null
+          auto_disabled_at?: string | null
+          auto_disabled_reason?: string | null
+          consecutive_failures?: number | null
+          created_at?: string | null
+          dealer_group?: string | null
+          dealer_name?: string | null
+          enabled?: boolean | null
+          group_id?: string | null
+          id?: string | null
+          inventory_url?: string | null
+          last_crawl_at?: string | null
+          last_fail_at?: string | null
+          last_fail_reason?: string | null
+          last_preflight_markers?: Json | null
+          last_validated_at?: string | null
+          last_vehicle_count?: number | null
+          parser_confidence?: string | null
+          parser_mode?: string | null
+          postcode?: string | null
+          priority?: string | null
+          region_id?: string | null
+          state?: string | null
+          suburb?: string | null
+          successful_validation_runs?: number | null
+          trap_slug?: string | null
+          updated_at?: string | null
+          validation_notes?: string | null
+          validation_runs?: number | null
+          validation_status?: string | null
+        }
+        Update: {
+          anchor_trap?: boolean | null
+          auto_disabled_at?: string | null
+          auto_disabled_reason?: string | null
+          consecutive_failures?: number | null
+          created_at?: string | null
+          dealer_group?: string | null
+          dealer_name?: string | null
+          enabled?: boolean | null
+          group_id?: string | null
+          id?: string | null
+          inventory_url?: string | null
+          last_crawl_at?: string | null
+          last_fail_at?: string | null
+          last_fail_reason?: string | null
+          last_preflight_markers?: Json | null
+          last_validated_at?: string | null
+          last_vehicle_count?: number | null
+          parser_confidence?: string | null
+          parser_mode?: string | null
+          postcode?: string | null
+          priority?: string | null
+          region_id?: string | null
+          state?: string | null
+          suburb?: string | null
+          successful_validation_runs?: number | null
+          trap_slug?: string | null
+          updated_at?: string | null
+          validation_notes?: string | null
+          validation_runs?: number | null
+          validation_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_rooftops_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stale_dealer_grade: {
+        Row: {
+          first_seen_at: string | null
+          hours_since_seen: number | null
+          id: string | null
+          is_dealer_grade: boolean | null
+          last_seen_at: string | null
+          listing_id: string | null
+          make: string | null
+          model: string | null
+          source: string | null
+          status: string | null
+          year: number | null
+        }
+        Insert: {
+          first_seen_at?: string | null
+          hours_since_seen?: never
+          id?: string | null
+          is_dealer_grade?: boolean | null
+          last_seen_at?: string | null
+          listing_id?: string | null
+          make?: string | null
+          model?: string | null
+          source?: string | null
+          status?: string | null
+          year?: number | null
+        }
+        Update: {
+          first_seen_at?: string | null
+          hours_since_seen?: never
+          id?: string | null
+          is_dealer_grade?: boolean | null
+          last_seen_at?: string | null
+          listing_id?: string | null
+          make?: string | null
+          model?: string | null
+          source?: string | null
+          status?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       claim_next_job: {
