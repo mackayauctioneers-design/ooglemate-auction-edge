@@ -751,17 +751,90 @@ function applyQualityGate(vehicles: ScrapedVehicle[]): QualityGateResult {
 }
 
 /**
- * Parse vehicles from HTML using data attributes (DigitalDealer platform pattern)
+ * DigitalDealer parser with multi-strategy extraction
+ * 
+ * Strategy order:
+ * 1. JSON-LD structured data (preferred - most reliable)
+ * 2. HTML data-attribute extraction (data-stocknumber, data-stockid, etc.)
+ * 3. Fallback stock-card parsing from vehicle card HTML
  */
 function parseVehiclesFromDigitalDealer(html: string, dealer: DealerConfig): ScrapedVehicle[] {
-  const vehicles: ScrapedVehicle[] = [];
+  // Debug logging for Sydney validation
+  const hasJsonLd = html.includes('application/ld+json');
+  const hasDataStocknumber = html.includes('data-stocknumber');
+  const hasDataStockid = html.includes('data-stockid');
+  const hasStockListItemView = html.includes('stockListItemView');
+  const hasVehicleCard = html.includes('vehicle-card') || html.includes('vehicleCard') || html.includes('stock-item');
+  const hasSearchItem = html.includes('search_item') || html.includes('searchItem');
+  const htmlLen = html.length;
   
-  const stockItemPattern = /<div[^>]+class="[^"]*stockListItemView[^"]*"[^>]+data-stocknumber="([^"]+)"[^>]+data-stockid="([^"]+)"[^>]*data-stockprice="([^"]*)"[^>]*data-stockyear="([^"]+)"[^>]*data-stockmake="([^"]+)"[^>]*data-stockmodel="([^"]+)"[^>]*/gi;
+  console.log(`[dealer-site-crawl] DigitalDealer debug for ${dealer.name}: hasJsonLd=${hasJsonLd}, hasDataStocknumber=${hasDataStocknumber}, hasDataStockid=${hasDataStockid}, hasStockListItemView=${hasStockListItemView}, hasVehicleCard=${hasVehicleCard}, hasSearchItem=${hasSearchItem}, htmlLen=${htmlLen}`);
+  
+  let vehicles: ScrapedVehicle[] = [];
+  
+  // =========================================================================
+  // STRATEGY 1: JSON-LD structured data (most reliable)
+  // =========================================================================
+  if (hasJsonLd) {
+    vehicles = parseVehiclesFromJsonLd(html, dealer);
+    if (vehicles.length > 0) {
+      console.log(`[dealer-site-crawl] ${dealer.name}: JSON-LD strategy yielded ${vehicles.length} vehicles`);
+      return vehicles;
+    }
+    console.log(`[dealer-site-crawl] ${dealer.name}: JSON-LD found but no vehicles extracted, trying data-attributes`);
+  }
+  
+  // =========================================================================
+  // STRATEGY 2: HTML data-attribute extraction (DigitalDealer standard)
+  // Pattern: <div class="stockListItemView" data-stocknumber="..." data-stockid="..." data-stockprice="..." ...>
+  // =========================================================================
+  if (hasDataStocknumber || hasDataStockid) {
+    vehicles = parseDigitalDealerDataAttributes(html, dealer);
+    if (vehicles.length > 0) {
+      console.log(`[dealer-site-crawl] ${dealer.name}: Data-attribute strategy yielded ${vehicles.length} vehicles`);
+      return vehicles;
+    }
+    console.log(`[dealer-site-crawl] ${dealer.name}: Data-attributes found but no vehicles extracted, trying stock-card`);
+  }
+  
+  // =========================================================================
+  // STRATEGY 3: Fallback stock-card parsing (search_item pattern)
+  // Pattern: <div class="search_item">...<a href="/vehicle/...">2016 Volvo S60...</a>...$17,990...
+  // =========================================================================
+  if (hasSearchItem || hasVehicleCard) {
+    vehicles = parseDigitalDealerStockCards(html, dealer);
+    if (vehicles.length > 0) {
+      console.log(`[dealer-site-crawl] ${dealer.name}: Stock-card strategy yielded ${vehicles.length} vehicles`);
+      return vehicles;
+    }
+    console.log(`[dealer-site-crawl] ${dealer.name}: Stock-cards found but no vehicles extracted`);
+  }
+  
+  // =========================================================================
+  // STRATEGY 4: Generic link+title parsing (last resort)
+  // =========================================================================
+  vehicles = parseDigitalDealerGenericLinks(html, dealer);
+  if (vehicles.length > 0) {
+    console.log(`[dealer-site-crawl] ${dealer.name}: Generic link strategy yielded ${vehicles.length} vehicles`);
+  } else {
+    console.log(`[dealer-site-crawl] ${dealer.name}: All strategies failed - platform may not be supported`);
+  }
+  
+  return vehicles;
+}
+
+/**
+ * STRATEGY 2: Parse vehicles from data-attribute divs
+ */
+function parseDigitalDealerDataAttributes(html: string, dealer: DealerConfig): ScrapedVehicle[] {
+  const vehicles: ScrapedVehicle[] = [];
+  const processedIds = new Set<string>();
+  
+  // Pattern 1: Full data-attribute set (stockListItemView)
+  const fullPattern = /<div[^>]+class="[^"]*stockListItemView[^"]*"[^>]+data-stocknumber="([^"]+)"[^>]+data-stockid="([^"]+)"[^>]*data-stockprice="([^"]*)"[^>]*data-stockyear="([^"]+)"[^>]*data-stockmake="([^"]+)"[^>]*data-stockmodel="([^"]+)"[^>]*/gi;
   
   let match;
-  const processedStockNumbers = new Set<string>();
-  
-  while ((match = stockItemPattern.exec(html)) !== null) {
+  while ((match = fullPattern.exec(html)) !== null) {
     const stockNumber = match[1];
     const stockId = match[2];
     const priceStr = match[3];
@@ -769,8 +842,8 @@ function parseVehiclesFromDigitalDealer(html: string, dealer: DealerConfig): Scr
     const make = match[5];
     const model = match[6];
     
-    if (processedStockNumbers.has(stockNumber)) continue;
-    processedStockNumbers.add(stockNumber);
+    if (processedIds.has(stockNumber)) continue;
+    processedIds.add(stockNumber);
     
     const year = parseInt(yearStr);
     const price = priceStr ? parseInt(priceStr) : undefined;
@@ -781,10 +854,7 @@ function parseVehiclesFromDigitalDealer(html: string, dealer: DealerConfig): Scr
     const urlPattern = new RegExp(`href="([^"]+${stockNumber.toLowerCase()}-${stockId}[^"]+)"`, 'i');
     const urlMatch = urlPattern.exec(html);
     
-    if (!urlMatch) {
-      console.log(`[dealer-site-crawl] Skipping ${stockNumber}: no detail URL found`);
-      continue;
-    }
+    if (!urlMatch) continue;
     
     let detailUrl = urlMatch[1];
     if (detailUrl.startsWith('/')) {
@@ -811,7 +881,252 @@ function parseVehiclesFromDigitalDealer(html: string, dealer: DealerConfig): Scr
     });
   }
   
-  console.log(`[dealer-site-crawl] Parsed ${vehicles.length} vehicles from DigitalDealer HTML`);
+  // Pattern 2: Looser data-attribute matching (any element with data-stocknumber)
+  if (vehicles.length === 0) {
+    const loosePattern = /data-stocknumber="([^"]+)"[^>]*data-stockyear="([^"]+)"[^>]*data-stockmake="([^"]+)"[^>]*data-stockmodel="([^"]+)"/gi;
+    while ((match = loosePattern.exec(html)) !== null) {
+      const stockNumber = match[1];
+      const yearStr = match[2];
+      const make = match[3];
+      const model = match[4];
+      
+      if (processedIds.has(stockNumber)) continue;
+      processedIds.add(stockNumber);
+      
+      const year = parseInt(yearStr);
+      if (!make || !model || !year || year < 1990 || year > 2030) continue;
+      
+      // Try to find price and URL nearby
+      const startIdx = match.index;
+      const cardHtml = html.slice(Math.max(0, startIdx - 500), Math.min(html.length, startIdx + 2000));
+      
+      // Extract price
+      let price: number | undefined;
+      const priceMatch = /data-stockprice="(\d+)"|class="[^"]*price[^"]*"[^>]*>\s*\$?([\d,]+)|\$\s*([\d,]{5,})/i.exec(cardHtml);
+      if (priceMatch) {
+        const priceStr = priceMatch[1] || priceMatch[2] || priceMatch[3];
+        price = priceStr ? parseInt(priceStr.replace(/,/g, '')) : undefined;
+      }
+      
+      // Extract URL
+      let detailUrl: string | undefined;
+      const urlMatch = /href="([^"]*vehicle[^"]*)"/.exec(cardHtml) || /href="([^"]*stock[^"]*)"/.exec(cardHtml);
+      if (urlMatch) {
+        detailUrl = urlMatch[1];
+        if (detailUrl.startsWith('/')) {
+          try {
+            const baseUrl = new URL(dealer.inventory_url);
+            detailUrl = `${baseUrl.origin}${detailUrl}`;
+          } catch { continue; }
+        }
+      }
+      
+      if (!detailUrl) continue;
+      
+      vehicles.push({
+        source_listing_id: stockNumber,
+        make,
+        model,
+        year,
+        price,
+        listing_url: detailUrl,
+        suburb: dealer.suburb,
+        state: dealer.state,
+        postcode: dealer.postcode,
+        seller_hints: {
+          seller_badge: 'dealer',
+          seller_name: dealer.name,
+          has_abn: true,
+          has_dealer_keywords: true,
+        }
+      });
+    }
+  }
+  
+  return vehicles;
+}
+
+/**
+ * STRATEGY 3: Parse vehicles from stock-card HTML (search_item pattern)
+ * This handles sites like penrithvalleyusedcars.com.au
+ */
+function parseDigitalDealerStockCards(html: string, dealer: DealerConfig): ScrapedVehicle[] {
+  const vehicles: ScrapedVehicle[] = [];
+  const processedUrls = new Set<string>();
+  
+  // Pattern: <div class="search_item"> or <div class="vehicle-card">
+  const cardPatterns = [
+    /<div[^>]+class="[^"]*search_item[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi,
+    /<div[^>]+class="[^"]*vehicle-card[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi,
+  ];
+  
+  for (const pattern of cardPatterns) {
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      const cardHtml = match[1];
+      
+      // Extract vehicle URL and title
+      // Pattern: <a href="/vehicle/2016-volvo-s60-sedan-t5luxury-fseriesmy16-556393">2016 Volvo S60 Sedan T5 Luxury F Series MY16</a>
+      const linkMatch = /href="([^"]*\/vehicle\/([^"]+))"[^>]*>([^<]+)<\/a>/i.exec(cardHtml);
+      if (!linkMatch) continue;
+      
+      let detailUrl = linkMatch[1];
+      const urlSlug = linkMatch[2]; // e.g., 2016-volvo-s60-sedan-t5luxury-fseriesmy16-556393
+      const titleText = linkMatch[3].trim();
+      
+      if (processedUrls.has(detailUrl)) continue;
+      processedUrls.add(detailUrl);
+      
+      // Normalize URL
+      if (detailUrl.startsWith('/')) {
+        try {
+          const baseUrl = new URL(dealer.inventory_url);
+          detailUrl = `${baseUrl.origin}${detailUrl}`;
+        } catch { continue; }
+      }
+      
+      // Parse year make model from title: "2016 Volvo S60 Sedan T5 Luxury F Series MY16"
+      const titleMatch = titleText.match(/^(\d{4})\s+([A-Za-z][A-Za-z\-]+)\s+(.+)/);
+      if (!titleMatch) continue;
+      
+      const year = parseInt(titleMatch[1]);
+      const make = titleMatch[2].trim();
+      const modelVariant = titleMatch[3].trim();
+      const model = modelVariant.split(/\s+/)[0]; // First word is model
+      
+      if (year < 1990 || year > 2030) continue;
+      if (!isValidMake(make)) continue;
+      
+      // Extract stock ID from URL slug (last part after final hyphen)
+      const slugParts = urlSlug.split('-');
+      const stockId = slugParts[slugParts.length - 1] || stableHash(detailUrl);
+      
+      // Extract price
+      let price: number | undefined;
+      const priceMatch = /class="[^"]*(?:vehicle-price|price)[^"]*"[^>]*>(?:<[^>]*>)*\s*\$?([\d,]+)/i.exec(cardHtml);
+      if (priceMatch) {
+        price = parseInt(priceMatch[1].replace(/,/g, ''));
+      }
+      
+      // Extract odometer
+      let km: number | undefined;
+      const kmMatch = /([\d,]+)\s*km/i.exec(cardHtml);
+      if (kmMatch) {
+        km = parseInt(kmMatch[1].replace(/,/g, ''));
+      }
+      
+      vehicles.push({
+        source_listing_id: stockId,
+        make,
+        model,
+        year,
+        variant_raw: modelVariant,
+        km,
+        price,
+        listing_url: detailUrl,
+        suburb: dealer.suburb,
+        state: dealer.state,
+        postcode: dealer.postcode,
+        seller_hints: {
+          seller_badge: 'dealer',
+          seller_name: dealer.name,
+          has_abn: true,
+          has_dealer_keywords: true,
+        }
+      });
+    }
+    
+    if (vehicles.length > 0) break; // Found vehicles, stop trying patterns
+  }
+  
+  return vehicles;
+}
+
+/**
+ * STRATEGY 4: Generic link parsing (last resort)
+ * Finds vehicle links with year-make-model in URL or text
+ */
+function parseDigitalDealerGenericLinks(html: string, dealer: DealerConfig): ScrapedVehicle[] {
+  const vehicles: ScrapedVehicle[] = [];
+  const processedUrls = new Set<string>();
+  
+  // Look for links that contain /vehicle/ or /used-car/ or /stock/
+  const linkPattern = /href="([^"]*(?:\/vehicle\/|\/used-car\/|\/stock\/details\/)([^"]+))"[^>]*>([^<]*)</gi;
+  
+  let match;
+  while ((match = linkPattern.exec(html)) !== null) {
+    let detailUrl = match[1];
+    const urlSlug = match[2];
+    const linkText = match[3].trim();
+    
+    if (processedUrls.has(detailUrl)) continue;
+    
+    // Try to parse year-make-model from link text first
+    let year: number | undefined;
+    let make: string | undefined;
+    let model: string | undefined;
+    
+    const textMatch = linkText.match(/^(\d{4})\s+([A-Za-z][A-Za-z\-]+)\s+(\S+)/);
+    if (textMatch) {
+      year = parseInt(textMatch[1]);
+      make = textMatch[2].trim();
+      model = textMatch[3].trim();
+    } else {
+      // Try to parse from URL slug: 2016-volvo-s60-sedan-...
+      const slugMatch = urlSlug.match(/^(\d{4})-([a-z]+)-([a-z0-9]+)/i);
+      if (slugMatch) {
+        year = parseInt(slugMatch[1]);
+        make = slugMatch[2].charAt(0).toUpperCase() + slugMatch[2].slice(1);
+        model = slugMatch[3].toUpperCase();
+      }
+    }
+    
+    if (!year || !make || !model) continue;
+    if (year < 2016 || year > 2030) continue;
+    if (!isValidMake(make)) continue;
+    
+    processedUrls.add(detailUrl);
+    
+    // Normalize URL
+    if (detailUrl.startsWith('/')) {
+      try {
+        const baseUrl = new URL(dealer.inventory_url);
+        detailUrl = `${baseUrl.origin}${detailUrl}`;
+      } catch { continue; }
+    }
+    
+    // Extract stock ID from URL
+    const slugParts = urlSlug.split('-');
+    const stockId = slugParts[slugParts.length - 1] || stableHash(detailUrl);
+    
+    // Try to find price nearby (within 500 chars after the link)
+    const startIdx = match.index;
+    const nearbyHtml = html.slice(startIdx, Math.min(html.length, startIdx + 1000));
+    let price: number | undefined;
+    const priceMatch = /\$\s*([\d,]{4,})/i.exec(nearbyHtml);
+    if (priceMatch) {
+      price = parseInt(priceMatch[1].replace(/,/g, ''));
+    }
+    
+    vehicles.push({
+      source_listing_id: stockId,
+      make,
+      model,
+      year,
+      price,
+      listing_url: detailUrl,
+      suburb: dealer.suburb,
+      state: dealer.state,
+      postcode: dealer.postcode,
+      seller_hints: {
+        seller_badge: 'dealer',
+        seller_name: dealer.name,
+        has_abn: true,
+        has_dealer_keywords: true,
+      }
+    });
+  }
+  
   return vehicles;
 }
 
