@@ -665,7 +665,7 @@ function stableHash(str: string): string {
 
 /**
  * Check if source_listing_id looks like a VIN or stable stock number
- * VINs are 17 chars, stock numbers are typically 4-24 chars alphanumeric with hyphens
+ * VINs are 17 chars, stock numbers are 4-32 chars alphanumeric with hyphens/underscores
  */
 function isStableId(id: string): boolean {
   if (!id || id.length < 4) return false;
@@ -673,11 +673,73 @@ function isStableId(id: string): boolean {
   if (/^[A-HJ-NPR-Z0-9]{17}$/i.test(id)) return true;
   // VIN-based ID (vin-XXXXXXXX)
   if (/^vin-[A-HJ-NPR-Z0-9]{6,}$/i.test(id)) return true;
-  // Stock number with hyphens (e.g., U002398-1731084) - 4-24 chars alphanumeric with hyphens
-  if (/^[A-Z0-9][A-Z0-9\-]{3,23}$/i.test(id)) return true;
-  // Numeric stock number
-  if (/^\d{4,10}$/.test(id)) return true;
+  // Broadened stock ID: 4-32 chars, alphanumeric with hyphen/underscore
+  if (/^[A-Z0-9_-]{4,32}$/i.test(id)) return true;
   return false;
+}
+
+// =============================================================================
+// URL PREFLIGHT VALIDATION
+// =============================================================================
+
+interface PreflightResult {
+  success: boolean;
+  reason?: 'http_error' | 'no_inventory_markers' | 'dns_failure' | 'timeout';
+  httpStatus?: number;
+  hasMarkers?: {
+    dataStocknumber: boolean;
+    stockListItemView: boolean;
+    vehiclePath: boolean;
+  };
+}
+
+/**
+ * Preflight check: HTTP 200 + content must contain inventory markers
+ */
+async function preflightUrl(url: string): Promise<PreflightResult> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    
+    const response = await fetch(url, { 
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; OogleMate/1.0)',
+      }
+    });
+    clearTimeout(timeout);
+    
+    if (!response.ok) {
+      return { success: false, reason: 'http_error', httpStatus: response.status };
+    }
+    
+    const html = await response.text();
+    
+    // Check for inventory markers
+    const hasMarkers = {
+      dataStocknumber: /data-stock(number|id)/i.test(html),
+      stockListItemView: /stockListItemView/i.test(html),
+      vehiclePath: /["']\/vehicle\//i.test(html) || /href=["'][^"']*\/used-cars?\/[^"']+["']/i.test(html),
+    };
+    
+    const anyMarker = hasMarkers.dataStocknumber || hasMarkers.stockListItemView || hasMarkers.vehiclePath;
+    
+    if (!anyMarker) {
+      return { success: false, reason: 'no_inventory_markers', hasMarkers };
+    }
+    
+    return { success: true, hasMarkers };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('DNS') || message.includes('ENOTFOUND') || message.includes('getaddrinfo')) {
+      return { success: false, reason: 'dns_failure' };
+    }
+    if (message.includes('abort') || message.includes('timeout')) {
+      return { success: false, reason: 'timeout' };
+    }
+    return { success: false, reason: 'http_error' };
+  }
 }
 
 /**
@@ -2024,6 +2086,43 @@ Deno.serve(async (req) => {
           error: `Unsupported parser: ${dealer.parser_mode}`,
         });
         continue;
+      }
+      
+      // URL PREFLIGHT: Only for validation runs - saves Firecrawl credits
+      if (isValidationRun) {
+        console.log(`[dealer-site-crawl] Preflight check for ${dealer.name}: ${dealer.inventory_url}`);
+        const preflight = await preflightUrl(dealer.inventory_url);
+        
+        if (!preflight.success) {
+          const reason = preflight.reason || 'unknown';
+          console.error(`[dealer-site-crawl] Preflight failed for ${dealer.name}: ${reason}`);
+          
+          // Mark as invalid_url in database
+          await supabase
+            .from('dealer_rooftops')
+            .update({ 
+              validation_status: 'invalid_url',
+              validation_notes: `Preflight failed: ${reason}`,
+              consecutive_failures: (dealer as any).consecutive_failures + 1 || 1,
+            })
+            .eq('dealer_slug', dealer.slug);
+          
+          results.push({
+            dealer: dealer.name,
+            slug: dealer.slug,
+            parserMode: dealer.parser_mode,
+            vehiclesFound: 0,
+            vehiclesIngested: 0,
+            vehiclesDropped: 0,
+            dropReasons: {},
+            healthAlert: false,
+            validationStatus: 'invalid_url',
+            error: `Preflight failed: ${reason}`,
+          });
+          continue;
+        }
+        
+        console.log(`[dealer-site-crawl] Preflight passed for ${dealer.name}: markers=${JSON.stringify(preflight.hasMarkers)}`);
       }
       
       console.log(`[dealer-site-crawl] Scraping ${dealer.name} (${dealer.parser_mode}): ${dealer.inventory_url}`);
