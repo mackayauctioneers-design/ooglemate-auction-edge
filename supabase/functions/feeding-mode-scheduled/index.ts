@@ -16,45 +16,68 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Call the feeding-mode-report function to get the report JSON
-    const reportResponse = await fetch(`${supabaseUrl}/functions/v1/feeding-mode-report`, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${supabaseKey}`,
-        "Content-Type": "application/json",
-      },
-    });
+    const reportDate = new Date().toISOString().split("T")[0];
+    let reportJson = null;
+    let cronSuccess = true;
+    let cronError = null;
 
-    if (!reportResponse.ok) {
-      const errorText = await reportResponse.text();
-      throw new Error(`Failed to fetch report: ${reportResponse.status} - ${errorText}`);
+    try {
+      // Call the feeding-mode-report function to get the report JSON
+      const reportResponse = await fetch(`${supabaseUrl}/functions/v1/feeding-mode-report`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${supabaseKey}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!reportResponse.ok) {
+        const errorText = await reportResponse.text();
+        throw new Error(`Failed to fetch report: ${reportResponse.status} - ${errorText}`);
+      }
+
+      reportJson = await reportResponse.json();
+
+      // Upsert the report into feeding_mode_reports table
+      const { error } = await supabase
+        .from("feeding_mode_reports")
+        .upsert(
+          {
+            report_date: reportDate,
+            report_json: reportJson,
+          },
+          { onConflict: "report_date" }
+        );
+
+      if (error) throw error;
+
+      console.log(`Feeding mode report stored for ${reportDate}`);
+    } catch (err) {
+      cronSuccess = false;
+      cronError = err instanceof Error ? err.message : String(err);
+      console.error("Report generation failed:", cronError);
     }
 
-    const reportJson = await reportResponse.json();
-    const reportDate = new Date().toISOString().split("T")[0];
-
-    // Upsert the report into feeding_mode_reports table
-    const { data, error } = await supabase
-      .from("feeding_mode_reports")
+    // Log to cron_audit_log
+    await supabase
+      .from("cron_audit_log")
       .upsert(
         {
-          report_date: reportDate,
-          report_json: reportJson,
+          cron_name: "feeding-mode-scheduled",
+          run_date: reportDate,
+          success: cronSuccess,
+          result: cronSuccess ? { fingerprints: reportJson?.top_fingerprints?.length || 0 } : null,
+          error: cronError,
         },
-        { onConflict: "report_date" }
-      )
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    console.log(`Feeding mode report stored for ${reportDate}`);
+        { onConflict: "cron_name,run_date" }
+      );
 
     return new Response(
       JSON.stringify({
-        success: true,
+        success: cronSuccess,
         report_date: reportDate,
         stored_at: new Date().toISOString(),
+        error: cronError,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

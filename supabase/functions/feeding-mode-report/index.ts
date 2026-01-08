@@ -160,6 +160,48 @@ serve(async (req) => {
       ingestionBySource[src].runs += 1;
     });
 
+    // 7. Relist rates by source type
+    const { data: relistData, error: relistError } = await supabase
+      .from("vehicle_listings")
+      .select("source, relist_count")
+      .gte("first_seen_at", startDateStr);
+
+    if (relistError) throw relistError;
+
+    const relistBySource: Record<string, { total: number; relisted: number }> = {
+      auction: { total: 0, relisted: 0 },
+      traps: { total: 0, relisted: 0 },
+    };
+
+    (relistData || []).forEach((row) => {
+      const src = row.source || "";
+      const isAuction = src === "pickles" || src === "manheim";
+      const bucket = isAuction ? "auction" : "traps";
+      relistBySource[bucket].total += 1;
+      if (row.relist_count > 0) {
+        relistBySource[bucket].relisted += 1;
+      }
+    });
+
+    const relistRatesBySource = {
+      auction: {
+        total: relistBySource.auction.total,
+        relisted: relistBySource.auction.relisted,
+        rate_pct: relistBySource.auction.total > 0
+          ? Math.round((relistBySource.auction.relisted / relistBySource.auction.total) * 100)
+          : 0,
+        sources: ["pickles", "manheim"],
+      },
+      traps: {
+        total: relistBySource.traps.total,
+        relisted: relistBySource.traps.relisted,
+        rate_pct: relistBySource.traps.total > 0
+          ? Math.round((relistBySource.traps.relisted / relistBySource.traps.total) * 100)
+          : 0,
+        sources: ["dealer_traps"],
+      },
+    };
+
     const report = {
       generated_at: new Date().toISOString(),
       period: {
@@ -169,6 +211,7 @@ serve(async (req) => {
       },
       top_fingerprints: fingerprintReport,
       source_mix_14d: sourceMix14d,
+      relist_rates_by_source: relistRatesBySource,
       health_summary: {
         total_vehicles_found: totalFound,
         total_vehicles_ingested: totalIngested,
