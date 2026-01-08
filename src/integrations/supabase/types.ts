@@ -1137,6 +1137,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_next_job: {
+        Args: never
+        Returns: {
+          attempts: number
+          dealer_slug: string
+          job_id: string
+          max_attempts: number
+          run_type: string
+        }[]
+      }
       compute_dealer_grade:
         | {
             Args: {
