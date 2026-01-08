@@ -368,6 +368,7 @@ export type Database = {
           last_crawl_at: string | null
           last_validated_at: string | null
           last_vehicles_found: number | null
+          parser_confidence: string | null
           parser_mode: string
           postcode: string | null
           priority: string
@@ -395,6 +396,7 @@ export type Database = {
           last_crawl_at?: string | null
           last_validated_at?: string | null
           last_vehicles_found?: number | null
+          parser_confidence?: string | null
           parser_mode: string
           postcode?: string | null
           priority?: string
@@ -422,6 +424,7 @@ export type Database = {
           last_crawl_at?: string | null
           last_validated_at?: string | null
           last_vehicles_found?: number | null
+          parser_confidence?: string | null
           parser_mode?: string
           postcode?: string | null
           priority?: string
