@@ -144,96 +144,6 @@ export type Database = {
           },
         ]
       }
-      dealer_crawl_jobs: {
-        Row: {
-          attempts: number
-          created_at: string
-          dealer_slug: string
-          error: string | null
-          finished_at: string | null
-          id: string
-          max_attempts: number
-          result: Json | null
-          run_type: string
-          started_at: string | null
-          status: string
-        }
-        Insert: {
-          attempts?: number
-          created_at?: string
-          dealer_slug: string
-          error?: string | null
-          finished_at?: string | null
-          id?: string
-          max_attempts?: number
-          result?: Json | null
-          run_type: string
-          started_at?: string | null
-          status?: string
-        }
-        Update: {
-          attempts?: number
-          created_at?: string
-          dealer_slug?: string
-          error?: string | null
-          finished_at?: string | null
-          id?: string
-          max_attempts?: number
-          result?: Json | null
-          run_type?: string
-          started_at?: string | null
-          status?: string
-        }
-        Relationships: []
-      }
-      dealer_crawl_runs: {
-        Row: {
-          created_at: string
-          dealer_name: string
-          dealer_slug: string
-          drop_reasons: Json | null
-          error: string | null
-          id: string
-          parser_mode: string
-          run_completed_at: string | null
-          run_date: string
-          run_started_at: string
-          vehicles_dropped: number
-          vehicles_found: number
-          vehicles_ingested: number
-        }
-        Insert: {
-          created_at?: string
-          dealer_name: string
-          dealer_slug: string
-          drop_reasons?: Json | null
-          error?: string | null
-          id?: string
-          parser_mode: string
-          run_completed_at?: string | null
-          run_date?: string
-          run_started_at?: string
-          vehicles_dropped?: number
-          vehicles_found?: number
-          vehicles_ingested?: number
-        }
-        Update: {
-          created_at?: string
-          dealer_name?: string
-          dealer_slug?: string
-          drop_reasons?: Json | null
-          error?: string | null
-          id?: string
-          parser_mode?: string
-          run_completed_at?: string | null
-          run_date?: string
-          run_started_at?: string
-          vehicles_dropped?: number
-          vehicles_found?: number
-          vehicles_ingested?: number
-        }
-        Relationships: []
-      }
       dealer_fingerprints: {
         Row: {
           created_at: string
@@ -394,13 +304,14 @@ export type Database = {
         }
         Relationships: []
       }
-      dealer_rooftops: {
+      dealer_traps: {
         Row: {
-          anchor_dealer: boolean
+          anchor_trap: boolean
           auto_disabled_at: string | null
           auto_disabled_reason: string | null
           consecutive_failures: number
           created_at: string
+          dealer_group: string | null
           dealer_name: string
           dealer_slug: string
           enabled: boolean
@@ -412,7 +323,7 @@ export type Database = {
           last_fail_reason: string | null
           last_preflight_markers: Json | null
           last_validated_at: string | null
-          last_vehicles_found: number | null
+          last_vehicle_count: number | null
           parser_confidence: string | null
           parser_mode: string
           postcode: string | null
@@ -427,11 +338,12 @@ export type Database = {
           validation_status: string
         }
         Insert: {
-          anchor_dealer?: boolean
+          anchor_trap?: boolean
           auto_disabled_at?: string | null
           auto_disabled_reason?: string | null
           consecutive_failures?: number
           created_at?: string
+          dealer_group?: string | null
           dealer_name: string
           dealer_slug: string
           enabled?: boolean
@@ -443,7 +355,7 @@ export type Database = {
           last_fail_reason?: string | null
           last_preflight_markers?: Json | null
           last_validated_at?: string | null
-          last_vehicles_found?: number | null
+          last_vehicle_count?: number | null
           parser_confidence?: string | null
           parser_mode: string
           postcode?: string | null
@@ -458,11 +370,12 @@ export type Database = {
           validation_status?: string
         }
         Update: {
-          anchor_dealer?: boolean
+          anchor_trap?: boolean
           auto_disabled_at?: string | null
           auto_disabled_reason?: string | null
           consecutive_failures?: number
           created_at?: string
+          dealer_group?: string | null
           dealer_name?: string
           dealer_slug?: string
           enabled?: boolean
@@ -474,7 +387,7 @@ export type Database = {
           last_fail_reason?: string | null
           last_preflight_markers?: Json | null
           last_validated_at?: string | null
-          last_vehicles_found?: number | null
+          last_vehicle_count?: number | null
           parser_confidence?: string | null
           parser_mode?: string
           postcode?: string | null
@@ -796,6 +709,96 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      trap_crawl_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          max_attempts: number
+          result: Json | null
+          run_type: string
+          started_at: string | null
+          status: string
+          trap_slug: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          max_attempts?: number
+          result?: Json | null
+          run_type: string
+          started_at?: string | null
+          status?: string
+          trap_slug: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          max_attempts?: number
+          result?: Json | null
+          run_type?: string
+          started_at?: string | null
+          status?: string
+          trap_slug?: string
+        }
+        Relationships: []
+      }
+      trap_crawl_runs: {
+        Row: {
+          created_at: string
+          dealer_name: string
+          drop_reasons: Json | null
+          error: string | null
+          id: string
+          parser_mode: string
+          run_completed_at: string | null
+          run_date: string
+          run_started_at: string
+          trap_slug: string
+          vehicles_dropped: number
+          vehicles_found: number
+          vehicles_ingested: number
+        }
+        Insert: {
+          created_at?: string
+          dealer_name: string
+          drop_reasons?: Json | null
+          error?: string | null
+          id?: string
+          parser_mode: string
+          run_completed_at?: string | null
+          run_date?: string
+          run_started_at?: string
+          trap_slug: string
+          vehicles_dropped?: number
+          vehicles_found?: number
+          vehicles_ingested?: number
+        }
+        Update: {
+          created_at?: string
+          dealer_name?: string
+          drop_reasons?: Json | null
+          error?: string | null
+          id?: string
+          parser_mode?: string
+          run_completed_at?: string | null
+          run_date?: string
+          run_started_at?: string
+          trap_slug?: string
+          vehicles_dropped?: number
+          vehicles_found?: number
+          vehicles_ingested?: number
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
@@ -1141,10 +1144,10 @@ export type Database = {
         Args: never
         Returns: {
           attempts: number
-          dealer_slug: string
           job_id: string
           max_attempts: number
           run_type: string
+          trap_slug: string
         }[]
       }
       compute_dealer_grade:
@@ -1269,7 +1272,7 @@ export type Database = {
           vehicles_ingested: number
         }[]
       }
-      get_nsw_rooftop_stats: {
+      get_nsw_trap_stats: {
         Args: never
         Returns: {
           enabled_count: number
@@ -1328,6 +1331,11 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "dealer" | "internal"
+      nsw_region_bucket:
+        | "NSW_SYDNEY_METRO"
+        | "NSW_CENTRAL_COAST"
+        | "NSW_HUNTER_NEWCASTLE"
+        | "NSW_REGIONAL"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1456,6 +1464,12 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "dealer", "internal"],
+      nsw_region_bucket: [
+        "NSW_SYDNEY_METRO",
+        "NSW_CENTRAL_COAST",
+        "NSW_HUNTER_NEWCASTLE",
+        "NSW_REGIONAL",
+      ],
     },
   },
 } as const

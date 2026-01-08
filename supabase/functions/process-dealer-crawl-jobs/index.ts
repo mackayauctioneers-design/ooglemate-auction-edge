@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     }
 
     if (!claimedJobs || claimedJobs.length === 0) {
-      console.log('[process-dealer-crawl-jobs] No pending jobs');
+      console.log('[process-trap-jobs] No pending jobs');
       return new Response(
         JSON.stringify({ message: 'No pending jobs', processed: 0 }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -40,37 +40,37 @@ Deno.serve(async (req) => {
     // RPC returns array, get first (and only) job
     const job = claimedJobs[0];
     const jobId = job.job_id;
-    const dealerSlug = job.dealer_slug;
+    const trapSlug = job.trap_slug;
     const runType = job.run_type;
     const attempts = job.attempts; // Already incremented by RPC
     const maxAttempts = job.max_attempts;
 
-    console.log(`[process-dealer-crawl-jobs] Claimed job ${jobId}: ${dealerSlug} (${runType}), attempt ${attempts}/${maxAttempts}`);
+    console.log(`[process-trap-jobs] Claimed job ${jobId}: ${trapSlug} (${runType}), attempt ${attempts}/${maxAttempts}`);
 
-    // Get the rooftop details
-    const { data: rooftop, error: rooftopError } = await supabase
-      .from('dealer_rooftops')
+    // Get the trap details
+    const { data: trap, error: trapError } = await supabase
+      .from('dealer_traps')
       .select('*')
-      .eq('dealer_slug', dealerSlug)
+      .eq('dealer_slug', trapSlug)
       .single();
 
-    if (rooftopError || !rooftop) {
+    if (trapError || !trap) {
       await supabase
-        .from('dealer_crawl_jobs')
+        .from('trap_crawl_jobs')
         .update({
           status: 'failed',
           finished_at: new Date().toISOString(),
-          error: `Rooftop not found: ${dealerSlug}`,
+          error: `Trap not found: ${trapSlug}`,
         })
         .eq('id', jobId);
 
       return new Response(
-        JSON.stringify({ error: 'Rooftop not found', job_id: jobId }),
+        JSON.stringify({ error: 'Trap not found', job_id: jobId }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Invoke the dealer-site-crawl function with single dealer
+    // Invoke the dealer-site-crawl function with single trap
     const isValidation = runType === 'validation';
     const crawlUrl = `${supabaseUrl}/functions/v1/dealer-site-crawl`;
     
@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          dealer_slugs: [dealerSlug],
+          dealer_slugs: [trapSlug],
           validation_mode: isValidation,
           max_dealers: 1,
         }),
@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
 
       // Update job as completed
       await supabase
-        .from('dealer_crawl_jobs')
+        .from('trap_crawl_jobs')
         .update({
           status: 'completed',
           finished_at: new Date().toISOString(),
@@ -105,13 +105,13 @@ Deno.serve(async (req) => {
         .eq('id', jobId);
 
       const elapsed = Date.now() - startTime;
-      console.log(`[process-dealer-crawl-jobs] Job ${jobId} completed in ${elapsed}ms`);
+      console.log(`[process-trap-jobs] Job ${jobId} completed in ${elapsed}ms`);
 
       return new Response(
         JSON.stringify({
           message: 'Job processed successfully',
           job_id: jobId,
-          dealer_slug: dealerSlug,
+          trap_slug: trapSlug,
           run_type: runType,
           attempts,
           result: crawlResult,
@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
 
     } catch (crawlError: unknown) {
       const crawlMessage = crawlError instanceof Error ? crawlError.message : String(crawlError);
-      console.error(`[process-dealer-crawl-jobs] Crawl error for ${dealerSlug}:`, crawlMessage);
+      console.error(`[process-trap-jobs] Crawl error for ${trapSlug}:`, crawlMessage);
       
       // attempts is already incremented by the RPC claim
       const isFinalFailure = attempts >= maxAttempts;
@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
       }
 
       await supabase
-        .from('dealer_crawl_jobs')
+        .from('trap_crawl_jobs')
         .update(updatePayload)
         .eq('id', jobId);
 
@@ -160,7 +160,7 @@ Deno.serve(async (req) => {
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error('[process-dealer-crawl-jobs] Error:', message);
+    console.error('[process-trap-jobs] Error:', message);
     return new Response(
       JSON.stringify({ error: message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

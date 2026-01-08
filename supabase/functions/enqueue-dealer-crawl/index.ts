@@ -15,11 +15,14 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { dealer_slugs, run_type = 'validation' } = await req.json();
+    const { trap_slugs, dealer_slugs, run_type = 'validation' } = await req.json();
 
-    if (!dealer_slugs || !Array.isArray(dealer_slugs) || dealer_slugs.length === 0) {
+    // Support both trap_slugs (new) and dealer_slugs (legacy)
+    const slugs = trap_slugs || dealer_slugs;
+
+    if (!slugs || !Array.isArray(slugs) || slugs.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'dealer_slugs array required' }),
+        JSON.stringify({ error: 'trap_slugs array required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -32,15 +35,15 @@ Deno.serve(async (req) => {
     }
 
     // Insert jobs (dedup constraint will reject duplicates for pending/processing)
-    const jobs = dealer_slugs.map((slug: string) => ({
-      dealer_slug: slug,
+    const jobs = slugs.map((slug: string) => ({
+      trap_slug: slug,
       run_type,
     }));
 
     const { data, error } = await supabase
-      .from('dealer_crawl_jobs')
+      .from('trap_crawl_jobs')
       .insert(jobs)
-      .select('id, dealer_slug, run_type, status');
+      .select('id, trap_slug, run_type, status');
 
     if (error) {
       // Check if it's a unique constraint violation (duplicate job)
@@ -49,7 +52,7 @@ Deno.serve(async (req) => {
           JSON.stringify({ 
             message: 'Jobs already queued or processing',
             queued: 0,
-            duplicates: dealer_slugs.length 
+            duplicates: slugs.length 
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -57,7 +60,7 @@ Deno.serve(async (req) => {
       throw error;
     }
 
-    console.log(`[enqueue-dealer-crawl] Queued ${data?.length || 0} ${run_type} jobs`);
+    console.log(`[enqueue-trap-crawl] Queued ${data?.length || 0} ${run_type} jobs`);
 
     return new Response(
       JSON.stringify({
@@ -70,7 +73,7 @@ Deno.serve(async (req) => {
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error('[enqueue-dealer-crawl] Error:', message);
+    console.error('[enqueue-trap-crawl] Error:', message);
     return new Response(
       JSON.stringify({ error: message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
