@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RefreshCw, CheckCircle2, AlertTriangle, Clock, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-interface RooftopStat {
+interface TrapStat {
   region_id: string;
   enabled_count: number;
   total_count: number;
@@ -32,7 +32,7 @@ interface DropReason {
 }
 
 interface HealthData {
-  rooftops: RooftopStat[];
+  traps: TrapStat[];
   crawlToday: CrawlStats | null;
   clearanceToday: number;
   fingerprintsToday: number;
@@ -49,8 +49,8 @@ export default function IngestionHealthPage() {
     setLoading(true);
     try {
       // Fetch all stats in parallel
-      const [rooftopsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes] = await Promise.all([
-        supabase.rpc('get_nsw_rooftop_stats' as never),
+      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes] = await Promise.all([
+        supabase.rpc('get_nsw_trap_stats' as never),
         supabase.rpc('get_nsw_crawl_today' as never),
         supabase.rpc('get_clearance_today' as never),
         supabase.rpc('get_fingerprints_today' as never),
@@ -59,7 +59,7 @@ export default function IngestionHealthPage() {
       ]);
 
       setHealth({
-        rooftops: (rooftopsRes.data as RooftopStat[]) || [],
+        traps: (trapsRes.data as TrapStat[]) || [],
         crawlToday: (crawlRes.data as CrawlStats[])?.[0] || null,
         clearanceToday: (clearanceRes.data as { count: number }[])?.[0]?.count || 0,
         fingerprintsToday: (fingerprintsRes.data as { count: number }[])?.[0]?.count || 0,
@@ -80,7 +80,7 @@ export default function IngestionHealthPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const totalEnabled = health?.rooftops.reduce((sum, r) => sum + r.enabled_count, 0) || 0;
+  const totalEnabled = health?.traps.reduce((sum, r) => sum + r.enabled_count, 0) || 0;
 
   return (
     <div className="container py-6 space-y-6">
@@ -143,7 +143,7 @@ export default function IngestionHealthPage() {
             </CardContent>
           </Card>
 
-          {/* Rooftops by Region */}
+          {/* Traps by Region */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="pb-2">
@@ -151,10 +151,10 @@ export default function IngestionHealthPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold">{totalEnabled}</div>
-                <p className="text-muted-foreground text-sm">NSW rooftops</p>
+                <p className="text-muted-foreground text-sm">NSW traps</p>
               </CardContent>
             </Card>
-            {health?.rooftops.map((r) => (
+            {health?.traps.map((r) => (
               <Card key={r.region_id}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium">{r.region_id.replace(/_/g, " ")}</CardTitle>

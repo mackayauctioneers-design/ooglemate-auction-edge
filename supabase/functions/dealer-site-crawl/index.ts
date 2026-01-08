@@ -1729,13 +1729,13 @@ async function checkHealthAndAlert(
 }
 
 // =============================================================================
-// DATABASE-DRIVEN ROOFTOP LOADING
+// DATABASE-DRIVEN TRAP LOADING
 // =============================================================================
 
 // Sydney Metro batch limit - smaller to avoid timeouts
 const SYDNEY_METRO_BATCH_LIMIT = 2;
 
-interface DbRooftop {
+interface DbTrap {
   id: string;
   dealer_slug: string;
   dealer_name: string;
@@ -1747,14 +1747,14 @@ interface DbRooftop {
   parser_mode: string;
   enabled: boolean;
   priority: string;
-  anchor_dealer: boolean;
+  anchor_trap: boolean;
   validation_status: string;
   validation_runs: number;
   consecutive_failures: number;
   successful_validation_runs: number;
 }
 
-function dbRooftopToDealerConfig(r: DbRooftop): DealerConfig {
+function dbTrapToDealerConfig(r: DbTrap): DealerConfig {
   return {
     name: r.dealer_name,
     slug: r.dealer_slug,
@@ -1765,18 +1765,18 @@ function dbRooftopToDealerConfig(r: DbRooftop): DealerConfig {
     region: r.region_id,
     parser_mode: (r.parser_mode as ParserMode) || 'unknown',
     enabled: r.enabled,
-    anchor_dealer: r.anchor_dealer,
+    anchor_dealer: r.anchor_trap,
     priority: (r.priority as DealerPriority) || 'normal',
   };
 }
 
-// Reset validation counters for rooftops when re-assigning to new batch
+// Reset validation counters for traps when re-assigning to new batch
 // deno-lint-ignore no-explicit-any
-async function resetRooftopValidation(supabase: any, slugs: string[]): Promise<void> {
+async function resetTrapValidation(supabase: any, slugs: string[]): Promise<void> {
   if (slugs.length === 0) return;
   
   await supabase
-    .from('dealer_rooftops')
+    .from('dealer_traps')
     .update({
       successful_validation_runs: 0,
       consecutive_failures: 0,
@@ -1786,19 +1786,19 @@ async function resetRooftopValidation(supabase: any, slugs: string[]): Promise<v
     })
     .in('dealer_slug', slugs);
   
-  console.log(`[dealer-site-crawl] Reset validation counters for ${slugs.length} rooftops`);
+  console.log(`[dealer-site-crawl] Reset validation counters for ${slugs.length} traps`);
 }
 
 // deno-lint-ignore no-explicit-any
-async function loadRooftopsFromDb(supabase: any, options: {
+async function loadTrapsFromDb(supabase: any, options: {
   slugs?: string[];
   enabledOnly?: boolean;
   validatedOnly?: boolean;
   limit?: number;
   regionId?: string;
-}): Promise<DbRooftop[]> {
+}): Promise<DbTrap[]> {
   let query = supabase
-    .from('dealer_rooftops')
+    .from('dealer_traps')
     .select('*');
   
   if (options.slugs && options.slugs.length > 0) {
@@ -1827,41 +1827,41 @@ async function loadRooftopsFromDb(supabase: any, options: {
     query = query.limit(effectiveLimit);
   }
   
-  // Order: anchor dealers first, then by priority
-  query = query.order('anchor_dealer', { ascending: false })
+  // Order: anchor traps first, then by priority
+  query = query.order('anchor_trap', { ascending: false })
                .order('priority', { ascending: true });
   
   const { data, error } = await query;
   
   if (error) {
-    console.error('[dealer-site-crawl] Error loading rooftops:', error);
+    console.error('[dealer-site-crawl] Error loading traps:', error);
     return [];
   }
   
-  return (data || []) as DbRooftop[];
+  return (data || []) as DbTrap[];
 }
 
 // Auto-disable threshold: 3 consecutive failures
 const MAX_CONSECUTIVE_FAILURES = 3;
 
 // deno-lint-ignore no-explicit-any
-async function updateRooftopValidation(
+async function updateTrapValidation(
   supabase: any,
   slug: string,
   vehiclesFound: number,
   hasError: boolean
 ): Promise<void> {
-  // Get current rooftop
-  const { data: rooftop } = await supabase
-    .from('dealer_rooftops')
+  // Get current trap
+  const { data: trap } = await supabase
+    .from('dealer_traps')
     .select('validation_status, validation_runs, consecutive_failures, successful_validation_runs, enabled')
     .eq('dealer_slug', slug)
     .single();
   
-  if (!rooftop) return;
+  if (!trap) return;
   
-  // Type assertion for the rooftop data
-  const r = rooftop as { 
+  // Type assertion for the trap data
+  const r = trap as { 
     validation_status: string; 
     validation_runs: number; 
     consecutive_failures: number;
@@ -1984,47 +1984,47 @@ Deno.serve(async (req) => {
       // No body - use default (enabled dealers)
     }
     
-    // Load dealers based on mode
-    let dbRooftops: DbRooftop[] = [];
+    // Load traps based on mode
+    let dbTraps: DbTrap[] = [];
     
     if (mode === 'cron') {
-      // Cron: only enabled + validated rooftops
-      dbRooftops = await loadRooftopsFromDb(supabase, {
+      // Cron: only enabled + validated traps
+      dbTraps = await loadTrapsFromDb(supabase, {
         enabledOnly: true,
         validatedOnly: true,
         limit: batchLimit,
       });
     } else if (mode === 'validate') {
-      // Validate: pending rooftops that need validation runs
+      // Validate: pending traps that need validation runs
       if (targetSlugs.length > 0) {
-        dbRooftops = await loadRooftopsFromDb(supabase, { slugs: targetSlugs });
+        dbTraps = await loadTrapsFromDb(supabase, { slugs: targetSlugs });
       } else {
-        // Get pending rooftops
+        // Get pending traps
         const { data } = await supabase
-          .from('dealer_rooftops')
+          .from('dealer_traps')
           .select('*')
           .in('validation_status', ['pending', 'failed'])
           .lt('validation_runs', 2)
           .limit(batchLimit);
-        dbRooftops = (data || []) as DbRooftop[];
+        dbTraps = (data || []) as DbTrap[];
       }
     } else {
       // Manual: specific slugs or fallback to hardcoded DEALERS
       if (targetSlugs.length > 0) {
-        dbRooftops = await loadRooftopsFromDb(supabase, { slugs: targetSlugs });
+        dbTraps = await loadTrapsFromDb(supabase, { slugs: targetSlugs });
       }
     }
     
     // Convert to DealerConfig or use hardcoded fallback
     let targetDealers: DealerConfig[] = [];
     
-    if (dbRooftops.length > 0) {
-      targetDealers = dbRooftops.map(dbRooftopToDealerConfig);
+    if (dbTraps.length > 0) {
+      targetDealers = dbTraps.map(dbTrapToDealerConfig);
     } else if (targetSlugs.length > 0) {
       // Fallback to hardcoded DEALERS for specific slugs
       targetDealers = DEALERS.filter(d => targetSlugs.includes(d.slug));
     } else if (mode === 'cron') {
-      // Fallback for cron if no DB rooftops
+      // Fallback for cron if no DB traps
       targetDealers = DEALERS.filter(d => d.enabled).slice(0, batchLimit);
     } else {
       targetDealers = DEALERS.filter(d => d.enabled);
@@ -2097,9 +2097,9 @@ Deno.serve(async (req) => {
           const reason = preflight.reason || 'unknown';
           console.error(`[dealer-site-crawl] Preflight failed for ${dealer.name}: ${reason}`);
           
-          // Persist failure telemetry to dealer_rooftops
+          // Persist failure telemetry to dealer_traps
           await supabase
-            .from('dealer_rooftops')
+            .from('dealer_traps')
             .update({ 
               validation_status: 'invalid_url',
               validation_notes: `Preflight failed: ${reason}`,
@@ -2127,7 +2127,7 @@ Deno.serve(async (req) => {
         
         // Store successful preflight markers
         await supabase
-          .from('dealer_rooftops')
+          .from('dealer_traps')
           .update({ last_preflight_markers: preflight.hasMarkers })
           .eq('dealer_slug', dealer.slug);
         
@@ -2159,7 +2159,7 @@ Deno.serve(async (req) => {
           
           // Persist failure telemetry
           await supabase
-            .from('dealer_rooftops')
+            .from('dealer_traps')
             .update({ 
               last_fail_reason: 'scrape_error',
               last_fail_at: new Date().toISOString(),
@@ -2167,8 +2167,8 @@ Deno.serve(async (req) => {
             .eq('dealer_slug', dealer.slug);
           
           // Update validation status
-          if (isValidationRun || dbRooftops.length > 0) {
-            await updateRooftopValidation(supabase, dealer.slug, 0, true);
+          if (isValidationRun || dbTraps.length > 0) {
+            await updateTrapValidation(supabase, dealer.slug, 0, true);
           }
           
           results.push({
@@ -2272,11 +2272,11 @@ Deno.serve(async (req) => {
         
         // Update validation status
         let validationStatus: string | undefined;
-        if (isValidationRun || dbRooftops.length > 0) {
-          await updateRooftopValidation(supabase, dealer.slug, passed.length, false);
+        if (isValidationRun || dbTraps.length > 0) {
+          await updateTrapValidation(supabase, dealer.slug, passed.length, false);
           // Get updated status
           const { data: updated } = await supabase
-            .from('dealer_rooftops')
+            .from('dealer_traps')
             .select('validation_status')
             .eq('dealer_slug', dealer.slug)
             .single();
@@ -2318,8 +2318,8 @@ Deno.serve(async (req) => {
         }, { onConflict: 'run_date,dealer_slug' });
         
         // Update validation status
-        if (isValidationRun || dbRooftops.length > 0) {
-          await updateRooftopValidation(supabase, dealer.slug, 0, true);
+        if (isValidationRun || dbTraps.length > 0) {
+          await updateTrapValidation(supabase, dealer.slug, 0, true);
         }
         
         results.push({
