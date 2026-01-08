@@ -22,6 +22,7 @@ import BuyerReviewQueuePage from "./pages/BuyerReviewQueuePage";
 import PicklesIngestionPage from "./pages/PicklesIngestionPage";
 import RegionalDashboardPage from "./pages/RegionalDashboardPage";
 import DealerDashboardPage from "./pages/DealerDashboardPage";
+import IngestionHealthPage from "./pages/IngestionHealthPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
 
@@ -84,6 +85,9 @@ const App = () => (
             } />
             <Route path="/regional-dashboard" element={
               <AdminGuard><RegionalDashboardPage /></AdminGuard>
+            } />
+            <Route path="/ingestion-health" element={
+              <AdminGuard><IngestionHealthPage /></AdminGuard>
             } />
             <Route path="/dealer-dashboard" element={<DealerDashboardPage />} />
             <Route path="/auth" element={<AuthPage />} />
