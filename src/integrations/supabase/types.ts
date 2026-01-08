@@ -374,6 +374,7 @@ export type Database = {
           region_id: string
           state: string | null
           suburb: string | null
+          successful_validation_runs: number
           updated_at: string
           validation_notes: string | null
           validation_runs: number
@@ -400,6 +401,7 @@ export type Database = {
           region_id?: string
           state?: string | null
           suburb?: string | null
+          successful_validation_runs?: number
           updated_at?: string
           validation_notes?: string | null
           validation_runs?: number
@@ -426,6 +428,7 @@ export type Database = {
           region_id?: string
           state?: string | null
           suburb?: string | null
+          successful_validation_runs?: number
           updated_at?: string
           validation_notes?: string | null
           validation_runs?: number
