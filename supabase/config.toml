@@ -78,3 +78,8 @@ verify_jwt = false
 
 [functions.feeding-mode-report]
 verify_jwt = false
+
+[functions.feeding-mode-scheduled]
+verify_jwt = false
+# Daily cron at 10:45am AEST (00:45 UTC)
+schedule = "45 0 * * *"

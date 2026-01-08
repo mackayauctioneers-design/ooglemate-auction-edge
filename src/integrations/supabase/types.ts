@@ -418,6 +418,27 @@ export type Database = {
           },
         ]
       }
+      feeding_mode_reports: {
+        Row: {
+          created_at: string
+          id: string
+          report_date: string
+          report_json: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          report_date: string
+          report_json: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          report_date?: string
+          report_json?: Json
+        }
+        Relationships: []
+      }
       fingerprint_outcomes: {
         Row: {
           asof_date: string
