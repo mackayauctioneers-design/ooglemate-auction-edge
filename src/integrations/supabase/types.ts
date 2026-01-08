@@ -151,6 +151,36 @@ export type Database = {
           },
         ]
       }
+      cron_audit_log: {
+        Row: {
+          cron_name: string
+          error: string | null
+          id: string
+          result: Json | null
+          run_at: string
+          run_date: string
+          success: boolean
+        }
+        Insert: {
+          cron_name: string
+          error?: string | null
+          id?: string
+          result?: Json | null
+          run_at?: string
+          run_date?: string
+          success?: boolean
+        }
+        Update: {
+          cron_name?: string
+          error?: string | null
+          id?: string
+          result?: Json | null
+          run_at?: string
+          run_date?: string
+          success?: boolean
+        }
+        Relationships: []
+      }
       dealer_fingerprints: {
         Row: {
           created_at: string
@@ -832,6 +862,33 @@ export type Database = {
           vehicles_dropped?: number
           vehicles_found?: number
           vehicles_ingested?: number
+        }
+        Relationships: []
+      }
+      trap_health_alerts: {
+        Row: {
+          alert_date: string
+          alert_type: string
+          id: string
+          payload: Json
+          sent_at: string
+          trap_slug: string
+        }
+        Insert: {
+          alert_date?: string
+          alert_type: string
+          id?: string
+          payload?: Json
+          sent_at?: string
+          trap_slug: string
+        }
+        Update: {
+          alert_date?: string
+          alert_type?: string
+          id?: string
+          payload?: Json
+          sent_at?: string
+          trap_slug?: string
         }
         Relationships: []
       }
