@@ -1222,6 +1222,12 @@ export type Database = {
           alerts_updated: number
         }[]
       }
+      get_clearance_today: {
+        Args: never
+        Returns: {
+          count: number
+        }[]
+      }
       get_dealer_profile: {
         Args: { _user_id: string }
         Returns: {
@@ -1237,6 +1243,45 @@ export type Database = {
           dealer_profile_id: string
           org_id: string
           region_id: string
+        }[]
+      }
+      get_fingerprints_today: {
+        Args: never
+        Returns: {
+          count: number
+        }[]
+      }
+      get_job_queue_stats: {
+        Args: never
+        Returns: {
+          completed: number
+          failed: number
+          pending: number
+          processing: number
+        }[]
+      }
+      get_nsw_crawl_today: {
+        Args: never
+        Returns: {
+          crawl_runs: number
+          vehicles_dropped: number
+          vehicles_found: number
+          vehicles_ingested: number
+        }[]
+      }
+      get_nsw_rooftop_stats: {
+        Args: never
+        Returns: {
+          enabled_count: number
+          region_id: string
+          total_count: number
+        }[]
+      }
+      get_top_drop_reasons: {
+        Args: never
+        Returns: {
+          count: number
+          drop_reason: string
         }[]
       }
       get_user_role: {
