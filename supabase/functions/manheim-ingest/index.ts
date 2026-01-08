@@ -253,8 +253,28 @@ Deno.serve(async (req) => {
     const dropReasons: Record<string, number> = {};
     const regionCounts: Record<string, number> = {};
 
+    const dedupeWarnings: string[] = [];
+    
     for (const lot of parsedLots) {
-      const listingId = `Manheim:${lot.lot_id}`;
+      // Dedupe watch: Include eventId in listing_id if lot_id appears reused
+      const baseListingId = `Manheim:${lot.lot_id}`;
+      let listingId = baseListingId;
+      
+      // Check if this lot_id exists with a different event
+      const { data: existingWithDifferentEvent } = await supabase
+        .from('vehicle_listings')
+        .select('id, event_id')
+        .eq('listing_id', baseListingId)
+        .single();
+      
+      if (existingWithDifferentEvent && existingWithDifferentEvent.event_id && 
+          eventId && existingWithDifferentEvent.event_id !== eventId) {
+        // Lot ID reuse detected across events - use event-scoped ID
+        listingId = `Manheim:${eventId}:${lot.lot_id}`;
+        const warning = `Lot ID reuse detected: ${lot.lot_id} (old: ${existingWithDifferentEvent.event_id}, new: ${eventId})`;
+        dedupeWarnings.push(warning);
+        console.warn(`[manheim-ingest] ${warning}`);
+      }
       
       // Track region distribution
       regionCounts[lot.region_id] = (regionCounts[lot.region_id] || 0) + 1;
@@ -386,7 +406,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Update run status
+    // Update run status with dedupe warnings
     await supabase
       .from('ingestion_runs')
       .update({
@@ -396,7 +416,15 @@ Deno.serve(async (req) => {
         lots_created: created,
         lots_updated: updated,
         errors,
-        metadata: { eventId, auctionDate, dropped, dropReasons, regionCounts, snapshotsAdded }
+        metadata: { 
+          eventId, 
+          auctionDate, 
+          dropped, 
+          dropReasons, 
+          regionCounts, 
+          snapshotsAdded,
+          dedupeWarnings: dedupeWarnings.length > 0 ? dedupeWarnings : undefined,
+        }
       })
       .eq('id', run.id);
 
@@ -414,6 +442,7 @@ Deno.serve(async (req) => {
         snapshotsAdded,
         dropReasons,
         regionCounts,
+        dedupeWarnings: dedupeWarnings.length > 0 ? dedupeWarnings : undefined,
         errors: errors.slice(0, 10),
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
