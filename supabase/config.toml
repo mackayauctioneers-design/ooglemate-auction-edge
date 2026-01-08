@@ -44,21 +44,21 @@ verify_jwt = false
 
 [functions.geo-liquidity-pipeline]
 verify_jwt = false
-# Daily cron at 9am AEST (23:00 UTC) - runs after fingerprint-materialize
-schedule = "0 23 * * *"
+# Daily cron at 9:15am AEST (23:15 UTC) - runs after fingerprint-materialize
+schedule = "15 23 * * *"
 
 [functions.classifieds-ingest]
 verify_jwt = false
 
 [functions.dealer-site-crawl]
 verify_jwt = false
-# Daily cron at 7am AEST (21:00 UTC previous day)
+# Daily cron at 7:00am AEST (21:00 UTC previous day)
 schedule = "0 21 * * *"
 
 [functions.fingerprint-materialize]
 verify_jwt = false
-# Daily cron at 8am AEST (22:00 UTC) - runs after dealer-site-crawl
-schedule = "0 22 * * *"
+# Daily cron at 8:15am AEST (22:15 UTC) - runs after dealer-site-crawl
+schedule = "15 22 * * *"
 
 [functions.enqueue-dealer-crawl]
 verify_jwt = false
@@ -70,8 +70,11 @@ schedule = "*/5 * * * *"
 
 [functions.manheim-crawl]
 verify_jwt = false
-# Daily cron at 10am AEST (00:00 UTC) - runs after geo-pipeline
-schedule = "0 0 * * *"
+# Daily cron at 10:15am AEST (00:15 UTC) - runs after geo-pipeline
+schedule = "15 0 * * *"
 
 [functions.manheim-ingest]
+verify_jwt = false
+
+[functions.feeding-mode-report]
 verify_jwt = false
