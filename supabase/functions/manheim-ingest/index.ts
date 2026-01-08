@@ -24,29 +24,69 @@ interface ManheimLot {
   status: string;
 }
 
-// NSW region bucket mapping based on location
-function deriveNswRegion(location: string): string {
-  if (!location) return 'NSW_REGIONAL';
+// Australia-wide region bucket mapping
+function deriveAuRegion(location: string): string {
+  if (!location) return 'UNKNOWN';
   const loc = location.toUpperCase();
   
-  // Sydney Metro suburbs/areas
-  const sydneyMetro = ['SYDNEY', 'PARRAMATTA', 'BLACKTOWN', 'PENRITH', 'LIVERPOOL', 
+  // === NSW ===
+  const nswSydneyMetro = ['SYDNEY', 'PARRAMATTA', 'BLACKTOWN', 'PENRITH', 'LIVERPOOL', 
     'CAMPBELLTOWN', 'BANKSTOWN', 'HOMEBUSH', 'RYDE', 'CHATSWOOD', 'HORNSBY',
     'SUTHERLAND', 'MIRANDA', 'KOGARAH', 'ROCKDALE', 'MASCOT', 'ALEXANDRIA',
-    'SMITHFIELD', 'WETHERILL', 'MOOREBANK', 'PRESTONS', 'MINTO'];
-  if (sydneyMetro.some(s => loc.includes(s))) return 'NSW_SYDNEY_METRO';
+    'SMITHFIELD', 'WETHERILL', 'MOOREBANK', 'PRESTONS', 'MINTO', 'SILVERWATER'];
+  if (nswSydneyMetro.some(s => loc.includes(s))) return 'NSW_SYDNEY_METRO';
   
-  // Central Coast
-  const centralCoast = ['GOSFORD', 'WYONG', 'TUGGERAH', 'ERINA', 'TERRIGAL', 
+  const nswCentralCoast = ['GOSFORD', 'WYONG', 'TUGGERAH', 'ERINA', 'TERRIGAL', 
     'KARIONG', 'WOY WOY', 'UMINA', 'BATEAU BAY'];
-  if (centralCoast.some(s => loc.includes(s))) return 'NSW_CENTRAL_COAST';
+  if (nswCentralCoast.some(s => loc.includes(s))) return 'NSW_CENTRAL_COAST';
   
-  // Hunter/Newcastle
-  const hunter = ['NEWCASTLE', 'MAITLAND', 'CESSNOCK', 'SINGLETON', 'MUSWELLBROOK',
+  const nswHunter = ['NEWCASTLE', 'MAITLAND', 'CESSNOCK', 'SINGLETON', 'MUSWELLBROOK',
     'HUNTER', 'CHARLESTOWN', 'CARDIFF', 'KOTARA', 'WALLSEND', 'MAYFIELD'];
-  if (hunter.some(s => loc.includes(s))) return 'NSW_HUNTER_NEWCASTLE';
+  if (nswHunter.some(s => loc.includes(s))) return 'NSW_HUNTER_NEWCASTLE';
   
-  return 'NSW_REGIONAL';
+  // Check for NSW state marker before falling through
+  if (loc.includes('NSW') || loc.includes('NEW SOUTH WALES')) return 'NSW_REGIONAL';
+  
+  // === VIC ===
+  const vicMetro = ['MELBOURNE', 'DANDENONG', 'RINGWOOD', 'FRANKSTON', 'CLAYTON',
+    'MOORABBIN', 'TULLAMARINE', 'ESSENDON', 'FOOTSCRAY', 'ALTONA', 'SUNSHINE',
+    'BROADMEADOWS', 'THOMASTOWN', 'BUNDOORA', 'HEIDELBERG', 'CAMBERWELL',
+    'NUNAWADING', 'BOX HILL', 'GLEN WAVERLEY', 'CHELTENHAM', 'LAVERTON'];
+  if (vicMetro.some(s => loc.includes(s))) return 'VIC_METRO';
+  
+  if (loc.includes('VIC') || loc.includes('VICTORIA')) return 'VIC_REGIONAL';
+  
+  // === QLD ===
+  const qldSE = ['BRISBANE', 'GOLD COAST', 'SUNSHINE COAST', 'IPSWICH', 'LOGAN',
+    'TOOWOOMBA', 'REDCLIFFE', 'CABOOLTURE', 'MAROOCHYDORE', 'COOLANGATTA',
+    'SOUTHPORT', 'BEENLEIGH', 'SPRINGWOOD', 'UNDERWOOD', 'ROCKLEA', 'DARRA'];
+  if (qldSE.some(s => loc.includes(s))) return 'QLD_SE';
+  
+  if (loc.includes('QLD') || loc.includes('QUEENSLAND')) return 'QLD_REGIONAL';
+  
+  // === SA ===
+  const saLocations = ['ADELAIDE', 'ELIZABETH', 'SALISBURY', 'PROSPECT', 'EDWARDSTOWN',
+    'POORAKA', 'GEPPS CROSS', 'SA', 'SOUTH AUSTRALIA'];
+  if (saLocations.some(s => loc.includes(s))) return 'SA';
+  
+  // === WA ===
+  const waLocations = ['PERTH', 'FREMANTLE', 'JOONDALUP', 'ROCKINGHAM', 'MIDLAND',
+    'OSBORNE PARK', 'CANNINGTON', 'WELSHPOOL', 'MALAGA', 'WA', 'WESTERN AUSTRALIA'];
+  if (waLocations.some(s => loc.includes(s))) return 'WA';
+  
+  // === TAS ===
+  const tasLocations = ['HOBART', 'LAUNCESTON', 'DEVONPORT', 'BURNIE', 'TAS', 'TASMANIA'];
+  if (tasLocations.some(s => loc.includes(s))) return 'TAS';
+  
+  // === NT ===
+  const ntLocations = ['DARWIN', 'ALICE SPRINGS', 'NT', 'NORTHERN TERRITORY'];
+  if (ntLocations.some(s => loc.includes(s))) return 'NT';
+  
+  // === ACT ===
+  const actLocations = ['CANBERRA', 'FYSHWICK', 'MITCHELL', 'ACT', 'AUSTRALIAN CAPITAL'];
+  if (actLocations.some(s => loc.includes(s))) return 'ACT';
+  
+  return 'UNKNOWN';
 }
 
 // Variant family whitelist for normalization
@@ -98,7 +138,7 @@ function parseManheimFeed(lots: unknown[]): ManheimLot[] {
     
     // Location
     const location = String(l.location || l.yard || l.branch || '').trim();
-    const regionId = deriveNswRegion(location);
+    const regionId = deriveAuRegion(location);
     
     // Auction datetime
     const auctionDatetime = String(l.auction_datetime || l.auction_date || l.sale_date || '');
@@ -208,11 +248,16 @@ Deno.serve(async (req) => {
     let created = 0;
     let updated = 0;
     let dropped = 0;
+    let snapshotsAdded = 0;
     const errors: string[] = [];
     const dropReasons: Record<string, number> = {};
+    const regionCounts: Record<string, number> = {};
 
     for (const lot of parsedLots) {
       const listingId = `Manheim:${lot.lot_id}`;
+      
+      // Track region distribution
+      regionCounts[lot.region_id] = (regionCounts[lot.region_id] || 0) + 1;
       
       // Quality gate: year >= 2016 for dealer grade
       if (lot.year < 2016) {
@@ -225,11 +270,15 @@ Deno.serve(async (req) => {
         // Check if listing exists
         const { data: existing } = await supabase
           .from('vehicle_listings')
-          .select('id, status, pass_count, relist_count, first_seen_at')
+          .select('id, status, pass_count, relist_count, first_seen_at, reserve, km, location')
           .eq('listing_id', listingId)
           .single();
 
+        let listingUuid: string;
+
         if (existing) {
+          listingUuid = existing.id;
+          
           // Track status transitions
           const wasPassedIn = existing.status === 'passed_in';
           const nowCatalogue = lot.status === 'catalogue';
@@ -262,9 +311,28 @@ Deno.serve(async (req) => {
             })
             .eq('id', existing.id);
           updated++;
+          
+          // Add snapshot if anything changed
+          const hasChanged = 
+            existing.status !== lot.status ||
+            existing.reserve !== lot.reserve ||
+            existing.km !== lot.km ||
+            existing.location !== lot.location;
+          
+          if (hasChanged) {
+            await supabase.from('listing_snapshots').insert({
+              listing_id: listingUuid,
+              seen_at: new Date().toISOString(),
+              status: lot.status,
+              reserve: lot.reserve,
+              km: lot.km,
+              location: lot.location,
+            });
+            snapshotsAdded++;
+          }
         } else {
           // Insert new listing
-          await supabase
+          const { data: inserted } = await supabase
             .from('vehicle_listings')
             .insert({
               listing_id: listingId,
@@ -290,8 +358,25 @@ Deno.serve(async (req) => {
               seller_type: 'dealer',
               visible_to_dealers: true,
               is_dealer_grade: true,
-            });
+            })
+            .select('id')
+            .single();
+          
+          listingUuid = inserted?.id;
           created++;
+          
+          // Add initial snapshot for new listing
+          if (listingUuid) {
+            await supabase.from('listing_snapshots').insert({
+              listing_id: listingUuid,
+              seen_at: new Date().toISOString(),
+              status: lot.status,
+              reserve: lot.reserve,
+              km: lot.km,
+              location: lot.location,
+            });
+            snapshotsAdded++;
+          }
         }
       } catch (e: unknown) {
         const errorMsg = e instanceof Error ? e.message : String(e);
@@ -311,11 +396,11 @@ Deno.serve(async (req) => {
         lots_created: created,
         lots_updated: updated,
         errors,
-        metadata: { eventId, auctionDate, dropped, dropReasons }
+        metadata: { eventId, auctionDate, dropped, dropReasons, regionCounts, snapshotsAdded }
       })
       .eq('id', run.id);
 
-    console.log(`[manheim-ingest] Complete: ${created} created, ${updated} updated, ${dropped} dropped, ${errors.length} errors`);
+    console.log(`[manheim-ingest] Complete: ${created} created, ${updated} updated, ${dropped} dropped, ${snapshotsAdded} snapshots, ${errors.length} errors`);
 
     return new Response(
       JSON.stringify({
@@ -326,8 +411,10 @@ Deno.serve(async (req) => {
         created,
         updated,
         dropped,
+        snapshotsAdded,
         dropReasons,
-        errors: errors.slice(0, 10), // Limit error output
+        regionCounts,
+        errors: errors.slice(0, 10),
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
