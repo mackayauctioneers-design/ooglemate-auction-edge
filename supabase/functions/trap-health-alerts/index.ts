@@ -8,7 +8,7 @@ const corsHeaders = {
 
 interface TrapAlert {
   trap_slug: string;
-  alert_type: "crawl_fail" | "zero_vehicles" | "count_drop" | "consecutive_failures";
+  alert_type: "anchor_crawl_fail" | "anchor_zero_vehicles" | "anchor_count_drop" | "consecutive_failures" | "two_day_drop";
   region_id: string;
   last_vehicle_count: number | null;
   avg_7d: number | null;
@@ -16,6 +16,8 @@ interface TrapAlert {
   last_crawl_at: string | null;
   consecutive_failures: number;
   is_anchor: boolean;
+  today_count?: number;
+  yesterday_count?: number;
 }
 
 async function sendSlackAlert(webhookUrl: string, alerts: TrapAlert[]): Promise<boolean> {
@@ -39,10 +41,11 @@ async function sendSlackAlert(webhookUrl: string, alerts: TrapAlert[]): Promise<
   for (const alert of alerts) {
     const emoji = alert.is_anchor ? "⚓" : "🔧";
     const typeLabel = {
-      crawl_fail: "Crawl Failed",
-      zero_vehicles: "Zero Vehicles Found",
-      count_drop: ">50% Drop",
+      anchor_crawl_fail: "Anchor Crawl Failed",
+      anchor_zero_vehicles: "Anchor Zero Vehicles",
+      anchor_count_drop: "Anchor >50% Drop",
       consecutive_failures: "2+ Consecutive Failures",
+      two_day_drop: ">50% Drop (2 days)",
     }[alert.alert_type];
 
     blocks.push({
@@ -68,6 +71,20 @@ async function sendSlackAlert(webhookUrl: string, alerts: TrapAlert[]): Promise<
   return response.ok;
 }
 
+async function sendHeartbeat(webhookUrl: string, trapsChecked: number): Promise<boolean> {
+  if (!webhookUrl) return false;
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: `✅ All traps healthy (${new Date().toISOString().split("T")[0]}) - ${trapsChecked} traps checked, no alerts triggered`,
+    }),
+  });
+
+  return response.ok;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -80,6 +97,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const today = new Date().toISOString().split("T")[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
     const alerts: TrapAlert[] = [];
 
     // Get all enabled traps with their stats
@@ -96,19 +114,26 @@ serve(async (req) => {
 
     const { data: recentRuns, error: runsError } = await supabase
       .from("trap_crawl_runs")
-      .select("trap_slug, vehicles_found, run_date, error")
+      .select("trap_slug, vehicles_found, run_date")
       .gte("run_date", sevenDaysAgo.toISOString().split("T")[0]);
 
     if (runsError) throw runsError;
 
-    // Calculate 7-day averages
+    // Calculate 7-day averages and track per-day counts
     const avgByTrap: Record<string, { sum: number; count: number }> = {};
+    const countByTrapAndDate: Record<string, Record<string, number>> = {};
+    
     for (const run of recentRuns || []) {
       if (!avgByTrap[run.trap_slug]) {
         avgByTrap[run.trap_slug] = { sum: 0, count: 0 };
       }
       avgByTrap[run.trap_slug].sum += run.vehicles_found || 0;
       avgByTrap[run.trap_slug].count += 1;
+
+      if (!countByTrapAndDate[run.trap_slug]) {
+        countByTrapAndDate[run.trap_slug] = {};
+      }
+      countByTrapAndDate[run.trap_slug][run.run_date] = run.vehicles_found || 0;
     }
 
     // Check already sent alerts today for dedup
@@ -121,11 +146,22 @@ serve(async (req) => {
       (sentToday || []).map((a) => `${a.trap_slug}:${a.alert_type}`)
     );
 
-    // Evaluate each trap
+    // Evaluate each trap with refined rules
     for (const trap of traps || []) {
       const avg = avgByTrap[trap.trap_slug];
-      const avg7d = avg ? avg.sum / avg.count : null;
+      const avg7d = avg && avg.count > 0 ? avg.sum / avg.count : null;
       const lastCount = trap.last_vehicle_count;
+      
+      const todayCount = countByTrapAndDate[trap.trap_slug]?.[today];
+      const yesterdayCount = countByTrapAndDate[trap.trap_slug]?.[yesterday];
+
+      // Calculate drop percentages
+      const todayDrop = avg7d && avg7d > 0 && todayCount !== undefined
+        ? (avg7d - todayCount) / avg7d
+        : null;
+      const yesterdayDrop = avg7d && avg7d > 0 && yesterdayCount !== undefined
+        ? (avg7d - yesterdayCount) / avg7d
+        : null;
 
       const baseAlert: Omit<TrapAlert, "alert_type"> = {
         trap_slug: trap.trap_slug,
@@ -136,48 +172,61 @@ serve(async (req) => {
         last_crawl_at: trap.last_crawl_at,
         consecutive_failures: trap.consecutive_failures,
         is_anchor: trap.anchor_trap || false,
+        today_count: todayCount,
+        yesterday_count: yesterdayCount,
       };
 
-      // Check for anchor trap crawl failure (any error)
-      if (trap.anchor_trap && trap.last_fail_reason) {
-        const key = `${trap.trap_slug}:crawl_fail`;
-        if (!sentKeys.has(key)) {
-          alerts.push({ ...baseAlert, alert_type: "crawl_fail" });
-        }
-      }
-
-      // Check for zero vehicles
-      if (lastCount === 0 || lastCount === null) {
-        const key = `${trap.trap_slug}:zero_vehicles`;
-        if (!sentKeys.has(key)) {
-          alerts.push({ ...baseAlert, alert_type: "zero_vehicles" });
-        }
-      }
-
-      // Check for >50% drop vs 7-day average
-      if (avg7d && avg7d > 0 && lastCount !== null) {
-        const dropPct = (avg7d - lastCount) / avg7d;
-        if (dropPct > 0.5) {
-          const key = `${trap.trap_slug}:count_drop`;
+      if (trap.anchor_trap) {
+        // ANCHOR TRAPS: Always alert on any issue
+        if (trap.last_fail_reason && trap.consecutive_failures > 0) {
+          const key = `${trap.trap_slug}:anchor_crawl_fail`;
           if (!sentKeys.has(key)) {
-            alerts.push({ ...baseAlert, alert_type: "count_drop" });
+            alerts.push({ ...baseAlert, alert_type: "anchor_crawl_fail" });
           }
         }
-      }
 
-      // Check for 2+ consecutive failures
-      if (trap.consecutive_failures >= 2) {
-        const key = `${trap.trap_slug}:consecutive_failures`;
-        if (!sentKeys.has(key)) {
-          alerts.push({ ...baseAlert, alert_type: "consecutive_failures" });
+        if (lastCount === 0 || lastCount === null) {
+          const key = `${trap.trap_slug}:anchor_zero_vehicles`;
+          if (!sentKeys.has(key)) {
+            alerts.push({ ...baseAlert, alert_type: "anchor_zero_vehicles" });
+          }
+        }
+
+        if (todayDrop !== null && todayDrop > 0.5) {
+          const key = `${trap.trap_slug}:anchor_count_drop`;
+          if (!sentKeys.has(key)) {
+            alerts.push({ ...baseAlert, alert_type: "anchor_count_drop" });
+          }
+        }
+      } else {
+        // NON-ANCHOR TRAPS: Stricter rules to reduce noise
+        // Rule 1: Alert on consecutive_failures >= 2
+        if (trap.consecutive_failures >= 2) {
+          const key = `${trap.trap_slug}:consecutive_failures`;
+          if (!sentKeys.has(key)) {
+            alerts.push({ ...baseAlert, alert_type: "consecutive_failures" });
+          }
+        }
+
+        // Rule 2: Alert on >50% drop for 2 consecutive days
+        if (todayDrop !== null && yesterdayDrop !== null && todayDrop > 0.5 && yesterdayDrop > 0.5) {
+          const key = `${trap.trap_slug}:two_day_drop`;
+          if (!sentKeys.has(key)) {
+            alerts.push({ ...baseAlert, alert_type: "two_day_drop" });
+          }
         }
       }
     }
 
-    // Send Slack alert if we have any
+    // Send Slack alert or heartbeat
     let slackSent = false;
-    if (alerts.length > 0 && slackWebhook) {
-      slackSent = await sendSlackAlert(slackWebhook, alerts);
+    if (slackWebhook) {
+      if (alerts.length > 0) {
+        slackSent = await sendSlackAlert(slackWebhook, alerts);
+      } else {
+        // Daily heartbeat when all green
+        slackSent = await sendHeartbeat(slackWebhook, traps?.length || 0);
+      }
     }
 
     // Record sent alerts for dedup
@@ -206,6 +255,7 @@ serve(async (req) => {
             alerts_count: alerts.length,
             checked_traps: traps?.length || 0,
             slack_sent: slackSent,
+            heartbeat_sent: alerts.length === 0,
           },
         },
         { onConflict: "cron_name,run_date" }
@@ -222,6 +272,7 @@ serve(async (req) => {
           is_anchor: a.is_anchor,
         })),
         slack_sent: slackSent,
+        heartbeat_sent: alerts.length === 0,
         checked_traps: traps?.length || 0,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
