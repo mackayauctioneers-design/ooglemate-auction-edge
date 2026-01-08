@@ -2097,13 +2097,16 @@ Deno.serve(async (req) => {
           const reason = preflight.reason || 'unknown';
           console.error(`[dealer-site-crawl] Preflight failed for ${dealer.name}: ${reason}`);
           
-          // Mark as invalid_url in database
+          // Persist failure telemetry to dealer_rooftops
           await supabase
             .from('dealer_rooftops')
             .update({ 
               validation_status: 'invalid_url',
               validation_notes: `Preflight failed: ${reason}`,
               consecutive_failures: (dealer as any).consecutive_failures + 1 || 1,
+              last_fail_reason: reason,
+              last_fail_at: new Date().toISOString(),
+              last_preflight_markers: preflight.hasMarkers || null,
             })
             .eq('dealer_slug', dealer.slug);
           
@@ -2121,6 +2124,12 @@ Deno.serve(async (req) => {
           });
           continue;
         }
+        
+        // Store successful preflight markers
+        await supabase
+          .from('dealer_rooftops')
+          .update({ last_preflight_markers: preflight.hasMarkers })
+          .eq('dealer_slug', dealer.slug);
         
         console.log(`[dealer-site-crawl] Preflight passed for ${dealer.name}: markers=${JSON.stringify(preflight.hasMarkers)}`);
       }
@@ -2147,6 +2156,15 @@ Deno.serve(async (req) => {
             run_started_at: runStartedAt,
             run_completed_at: new Date().toISOString(),
           }, { onConflict: 'run_date,dealer_slug' });
+          
+          // Persist failure telemetry
+          await supabase
+            .from('dealer_rooftops')
+            .update({ 
+              last_fail_reason: 'scrape_error',
+              last_fail_at: new Date().toISOString(),
+            })
+            .eq('dealer_slug', dealer.slug);
           
           // Update validation status
           if (isValidationRun || dbRooftops.length > 0) {
