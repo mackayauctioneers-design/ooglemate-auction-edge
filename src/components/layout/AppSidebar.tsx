@@ -16,9 +16,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { PushNotificationPrompt } from '@/components/notifications/PushNotificationPrompt';
+import { supabase } from '@/integrations/supabase/client';
+import { Badge } from '@/components/ui/badge';
 
 // ============================================================================
 // DEALER NAVIGATION
@@ -41,6 +43,23 @@ export function AppSidebar() {
   const location = useLocation();
   const { currentUser, isAdmin, logout, user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // Fetch pending job count for operator badge
+  useEffect(() => {
+    if (!isAdmin) return;
+    
+    const fetchPendingJobs = async () => {
+      const { data } = await supabase.rpc('get_job_queue_stats');
+      if (data && data[0]) {
+        setPendingCount(data[0].pending + data[0].processing);
+      }
+    };
+    
+    fetchPendingJobs();
+    const interval = setInterval(fetchPendingJobs, 30000); // refresh every 30s
+    return () => clearInterval(interval);
+  }, [isAdmin]);
 
   return (
     <aside 
@@ -97,14 +116,25 @@ export function AppSidebar() {
               <Button
                 variant="nav"
                 className={cn(
-                  "w-full",
+                  "w-full relative",
                   collapsed ? "justify-center px-2" : "justify-start",
                   "bg-amber-500/20 text-amber-600 dark:text-amber-400 hover:bg-amber-500/30 font-medium"
                 )}
-                title={collapsed ? "Operator Mode" : undefined}
+                title={collapsed ? `Operator Mode${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}` : undefined}
               >
                 <Settings className="h-4 w-4" />
                 {!collapsed && <span>⚙️ Operator Mode</span>}
+                {pendingCount > 0 && (
+                  <Badge 
+                    variant="destructive" 
+                    className={cn(
+                      "h-5 min-w-5 px-1.5 text-xs font-bold",
+                      collapsed ? "absolute -top-1 -right-1" : "ml-auto"
+                    )}
+                  >
+                    {pendingCount > 99 ? '99+' : pendingCount}
+                  </Badge>
+                )}
               </Button>
             </Link>
           </div>
