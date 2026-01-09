@@ -83,8 +83,8 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           dealer_slugs: [trapSlug],
-          validation_mode: isValidation,
-          max_dealers: 1,
+          validate: isValidation,
+          batch_limit: 1,
         }),
       });
 
