@@ -9,8 +9,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { format } from 'date-fns';
-import { TrendingDown, TrendingUp, Minus } from 'lucide-react';
+import { TrendingDown, TrendingUp, Minus, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface TrapInventoryTableProps {
   listings: TrapListing[];
@@ -39,8 +40,31 @@ const getStatusBadge = (days: number) => {
   }
 };
 
+const getDeltaBadge = (deltaPct: number | null, noBenchmark: boolean) => {
+  if (noBenchmark) {
+    return (
+      <Badge variant="outline" className="opacity-50">
+        <HelpCircle className="h-3 w-3 mr-1" />
+        No data
+      </Badge>
+    );
+  }
+  if (deltaPct === null) return null;
+  
+  if (deltaPct <= -25) {
+    return <Badge className="bg-emerald-600 hover:bg-emerald-600">Mispriced</Badge>;
+  } else if (deltaPct <= -15) {
+    return <Badge className="bg-emerald-500 hover:bg-emerald-500">Strong Buy</Badge>;
+  } else if (deltaPct <= -5) {
+    return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">Under</Badge>;
+  } else if (deltaPct < 5) {
+    return <Badge variant="outline">At Market</Badge>;
+  } else {
+    return <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/30">Over</Badge>;
+  }
+};
+
 const getTrapName = (source: string) => {
-  // Extract dealer name from source (e.g., "trap_dealer_xyz" -> "dealer_xyz")
   return source.replace(/^trap_/, '').replace(/_/g, ' ');
 };
 
@@ -54,110 +78,121 @@ export function TrapInventoryTable({ listings, onRowClick }: TrapInventoryTableP
   }
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-muted/50 hover:bg-muted/50">
-            <TableHead className="w-[180px]">Trap (Dealer)</TableHead>
-            <TableHead>Vehicle</TableHead>
-            <TableHead className="text-right w-[100px]">KM</TableHead>
-            <TableHead className="text-right w-[120px]">Price</TableHead>
-            <TableHead className="text-center w-[100px]">First Seen</TableHead>
-            <TableHead className="text-center w-[80px]">Days</TableHead>
-            <TableHead className="text-right w-[140px]">Price Change</TableHead>
-            <TableHead className="text-center w-[100px]">Status</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {listings.map(listing => (
-            <TableRow
-              key={listing.id}
-              onClick={() => onRowClick(listing)}
-              className="cursor-pointer hover:bg-muted/30"
-            >
-              <TableCell className="font-medium">
-                <div className="truncate max-w-[180px]" title={getTrapName(listing.source)}>
-                  {getTrapName(listing.source)}
-                </div>
-              </TableCell>
-              <TableCell>
-                <div>
-                  <span className="font-medium">{listing.year} {listing.make} {listing.model}</span>
-                  {listing.variant_family && (
-                    <span className="text-muted-foreground text-sm ml-1">
-                      ({listing.variant_family})
-                    </span>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell className="text-right mono text-sm">
-                {listing.km ? `${formatNumber(listing.km)} km` : '-'}
-              </TableCell>
-              <TableCell className="text-right font-semibold mono">
-                {formatCurrency(listing.asking_price)}
-              </TableCell>
-              <TableCell className="text-center text-sm text-muted-foreground">
-                {format(new Date(listing.first_seen_at), 'dd MMM')}
-              </TableCell>
-              <TableCell className="text-center font-medium">
-                {listing.days_on_market}
-              </TableCell>
-              <TableCell className="text-right">
-                <PriceChangeCell 
-                  amount={listing.price_change_amount} 
-                  pct={listing.price_change_pct}
-                  lastChangeDate={listing.last_price_change_date}
-                />
-              </TableCell>
-              <TableCell className="text-center">
-                {getStatusBadge(listing.days_on_market)}
-              </TableCell>
+    <TooltipProvider>
+      <div className="rounded-lg border border-border overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/50 hover:bg-muted/50">
+              <TableHead className="w-[160px]">Trap (Dealer)</TableHead>
+              <TableHead>Vehicle</TableHead>
+              <TableHead className="text-right w-[90px]">KM</TableHead>
+              <TableHead className="text-right w-[100px]">Price</TableHead>
+              <TableHead className="text-right w-[100px]">Benchmark</TableHead>
+              <TableHead className="text-center w-[110px]">Under %</TableHead>
+              <TableHead className="text-center w-[70px]">Days</TableHead>
+              <TableHead className="text-center w-[90px]">Status</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {listings.map(listing => (
+              <TableRow
+                key={listing.id}
+                onClick={() => onRowClick(listing)}
+                className="cursor-pointer hover:bg-muted/30"
+              >
+                <TableCell className="font-medium">
+                  <div className="truncate max-w-[160px]" title={getTrapName(listing.source)}>
+                    {getTrapName(listing.source)}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div>
+                    <span className="font-medium">{listing.year} {listing.make} {listing.model}</span>
+                    {listing.variant_family && (
+                      <span className="text-muted-foreground text-sm ml-1">
+                        ({listing.variant_family})
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right mono text-sm">
+                  {listing.km ? `${formatNumber(listing.km)} km` : '-'}
+                </TableCell>
+                <TableCell className="text-right font-semibold mono">
+                  {formatCurrency(listing.asking_price)}
+                </TableCell>
+                <TableCell className="text-right mono text-sm text-muted-foreground">
+                  {listing.no_benchmark ? (
+                    <span className="opacity-50">—</span>
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="cursor-help">{formatCurrency(listing.benchmark_price)}</span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Based on {listing.benchmark_sample} cleared sales
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </TableCell>
+                <TableCell className="text-center">
+                  <DeltaCell 
+                    deltaPct={listing.delta_pct} 
+                    deltaDollars={listing.delta_dollars}
+                    noBenchmark={listing.no_benchmark}
+                  />
+                </TableCell>
+                <TableCell className="text-center font-medium">
+                  {listing.days_on_market}
+                </TableCell>
+                <TableCell className="text-center">
+                  {getDeltaBadge(listing.delta_pct, listing.no_benchmark)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </TooltipProvider>
   );
 }
 
-function PriceChangeCell({ 
-  amount, 
-  pct, 
-  lastChangeDate 
+function DeltaCell({ 
+  deltaPct, 
+  deltaDollars,
+  noBenchmark 
 }: { 
-  amount: number | null; 
-  pct: number | null;
-  lastChangeDate: string | null;
+  deltaPct: number | null; 
+  deltaDollars: number | null;
+  noBenchmark: boolean;
 }) {
-  if (amount === null || amount === 0) {
+  if (noBenchmark || deltaPct === null) {
     return (
-      <div className="flex items-center justify-end gap-1 text-muted-foreground">
+      <div className="flex items-center justify-center text-muted-foreground opacity-50">
         <Minus className="h-3 w-3" />
-        <span className="text-sm">No change</span>
       </div>
     );
   }
 
-  const isNegative = amount < 0;
-  const Icon = isNegative ? TrendingDown : TrendingUp;
-  const colorClass = isNegative ? 'text-emerald-600' : 'text-destructive';
+  const isUnder = deltaPct < 0;
+  const Icon = isUnder ? TrendingDown : TrendingUp;
+  const colorClass = isUnder ? 'text-emerald-600' : 'text-red-500';
 
   return (
-    <div className={cn('flex flex-col items-end', colorClass)}>
-      <div className="flex items-center gap-1">
-        <Icon className="h-3 w-3" />
-        <span className="font-medium mono text-sm">
-          {formatCurrency(Math.abs(amount))}
-        </span>
-        <span className="text-xs">
-          ({Math.abs(pct ?? 0).toFixed(1)}%)
-        </span>
-      </div>
-      {lastChangeDate && (
-        <span className="text-xs text-muted-foreground">
-          {format(new Date(lastChangeDate), 'dd MMM')}
-        </span>
-      )}
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className={cn('flex flex-col items-center cursor-help', colorClass)}>
+          <div className="flex items-center gap-1">
+            <Icon className="h-3 w-3" />
+            <span className="font-semibold mono text-sm">
+              {deltaPct > 0 ? '+' : ''}{deltaPct.toFixed(1)}%
+            </span>
+          </div>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>
+        {isUnder ? 'Under' : 'Over'} benchmark by {formatCurrency(Math.abs(deltaDollars ?? 0))}
+      </TooltipContent>
+    </Tooltip>
   );
 }

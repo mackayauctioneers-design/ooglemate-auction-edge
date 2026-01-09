@@ -21,12 +21,19 @@ export interface TrapListing {
   status: string;
   listing_url: string | null;
   location: string | null;
+  region_id: string | null;
   // Computed fields
   days_on_market: number;
   price_change_amount: number | null;
   price_change_pct: number | null;
   last_price_change_date: string | null;
   first_price: number | null;
+  // Benchmark fields
+  benchmark_price: number | null;
+  benchmark_sample: number | null;
+  delta_dollars: number | null;
+  delta_pct: number | null;
+  no_benchmark: boolean;
 }
 
 export default function TrapInventoryPage() {
@@ -39,8 +46,10 @@ export default function TrapInventoryPage() {
     make: '',
     model: '',
     daysOnMarket: 'all',
-    sortBy: 'days_on_market',
-    sortDir: 'desc',
+    deltaBand: 'all',
+    preset: 'none',
+    sortBy: 'delta_pct',
+    sortDir: 'asc',
   });
 
   // Extract unique dealers, makes, models for filter dropdowns
@@ -56,7 +65,68 @@ export default function TrapInventoryPage() {
   const fetchListings = async () => {
     setLoading(true);
     
-    // Fetch trap listings (classifieds from dealer traps)
+    // Fetch from trap_deals view (joins with fingerprint benchmarks)
+    const { data: dealsData, error } = await supabase
+      .from('trap_deals')
+      .select('*')
+      .order('delta_pct', { ascending: true, nullsFirst: false });
+
+    if (error) {
+      console.error('Error fetching trap deals:', error);
+      // Fallback to direct query if view doesn't exist yet
+      await fetchListingsFallback();
+      return;
+    }
+
+    if (!dealsData || dealsData.length === 0) {
+      setListings([]);
+      setLoading(false);
+      return;
+    }
+
+    // Transform to TrapListing
+    const transformed: TrapListing[] = dealsData.map((l: any) => ({
+      id: l.id,
+      listing_id: l.listing_id,
+      make: l.make,
+      model: l.model,
+      variant_family: l.variant_family,
+      year: l.year,
+      km: l.km,
+      asking_price: l.asking_price,
+      first_seen_at: l.first_seen_at,
+      last_seen_at: l.last_seen_at,
+      source: l.source,
+      status: l.status,
+      listing_url: l.listing_url,
+      location: l.location,
+      region_id: l.region_id,
+      days_on_market: l.days_on_market ?? 0,
+      price_change_amount: l.price_change_dollars,
+      price_change_pct: l.price_change_pct,
+      last_price_change_date: l.last_price_change_at,
+      first_price: l.first_price,
+      benchmark_price: l.benchmark_price,
+      benchmark_sample: l.benchmark_sample,
+      delta_dollars: l.delta_dollars,
+      delta_pct: l.delta_pct,
+      no_benchmark: l.no_benchmark ?? true,
+    }));
+
+    // Extract unique values for filters
+    const uniqueDealers = [...new Set(transformed.map(l => l.source))].sort();
+    const uniqueMakes = [...new Set(transformed.map(l => l.make))].sort();
+    const uniqueModels = [...new Set(transformed.map(l => l.model))].sort();
+
+    setDealers(uniqueDealers);
+    setMakes(uniqueMakes);
+    setModels(uniqueModels);
+    setListings(transformed);
+    setLoading(false);
+  };
+
+  // Fallback for when view doesn't exist
+  const fetchListingsFallback = async () => {
     const { data: listingsData, error } = await supabase
       .from('vehicle_listings')
       .select('*')
@@ -96,7 +166,6 @@ export default function TrapInventoryPage() {
         const firstWithPrice = snaps.find(s => s.asking_price != null);
         let lastChangeDate: string | null = null;
         
-        // Find last price change
         for (let i = snaps.length - 1; i > 0; i--) {
           if (snaps[i].asking_price !== snaps[i - 1].asking_price) {
             lastChangeDate = snaps[i].seen_at;
@@ -144,15 +213,20 @@ export default function TrapInventoryPage() {
         status: l.status,
         listing_url: l.listing_url,
         location: l.location,
+        region_id: null,
         days_on_market: daysOnMarket,
         price_change_amount: priceChangeAmount,
         price_change_pct: priceChangePct,
         last_price_change_date: snapshotInfo.last_change_date,
         first_price: firstPrice,
+        benchmark_price: null,
+        benchmark_sample: null,
+        delta_dollars: null,
+        delta_pct: null,
+        no_benchmark: true,
       };
     });
 
-    // Extract unique values for filters
     const uniqueDealers = [...new Set(transformed.map(l => l.source))].sort();
     const uniqueMakes = [...new Set(transformed.map(l => l.make))].sort();
     const uniqueModels = [...new Set(transformed.map(l => l.model))].sort();
@@ -167,6 +241,15 @@ export default function TrapInventoryPage() {
   // Apply filters and sorting
   const filteredListings = useMemo(() => {
     let result = [...listings];
+
+    // Apply preset first (overrides other filters)
+    if (filters.preset === 'strong_buy') {
+      result = result.filter(l => l.delta_pct !== null && l.delta_pct <= -15 && !l.no_benchmark);
+    } else if (filters.preset === 'mispriced') {
+      result = result.filter(l => l.delta_pct !== null && l.delta_pct <= -25 && !l.no_benchmark);
+    } else if (filters.preset === '90_plus') {
+      result = result.filter(l => l.days_on_market >= 90);
+    }
 
     // Filter by dealer
     if (filters.dealer) {
@@ -193,12 +276,36 @@ export default function TrapInventoryPage() {
       }
     }
 
+    // Filter by delta band
+    if (filters.deltaBand !== 'all') {
+      if (filters.deltaBand === 'under_15') {
+        result = result.filter(l => l.delta_pct !== null && l.delta_pct <= -15);
+      } else if (filters.deltaBand === 'under_10') {
+        result = result.filter(l => l.delta_pct !== null && l.delta_pct <= -10);
+      } else if (filters.deltaBand === 'under_5') {
+        result = result.filter(l => l.delta_pct !== null && l.delta_pct <= -5);
+      } else if (filters.deltaBand === 'at_benchmark') {
+        result = result.filter(l => l.delta_pct !== null && l.delta_pct > -5 && l.delta_pct < 5);
+      } else if (filters.deltaBand === 'over_5') {
+        result = result.filter(l => l.delta_pct !== null && l.delta_pct >= 5);
+      } else if (filters.deltaBand === 'no_benchmark') {
+        result = result.filter(l => l.no_benchmark);
+      }
+    }
+
     // Sort
     result.sort((a, b) => {
       let aVal: number | null = null;
       let bVal: number | null = null;
 
       switch (filters.sortBy) {
+        case 'delta_pct':
+          // Put items without benchmark at the end
+          if (a.no_benchmark && !b.no_benchmark) return 1;
+          if (!a.no_benchmark && b.no_benchmark) return -1;
+          aVal = a.delta_pct ?? 999;
+          bVal = b.delta_pct ?? 999;
+          break;
         case 'days_on_market':
           aVal = a.days_on_market;
           bVal = b.days_on_market;
@@ -214,7 +321,7 @@ export default function TrapInventoryPage() {
       }
 
       if (aVal === null || bVal === null) return 0;
-      return filters.sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+      return filters.sortDir === 'asc' ? aVal - bVal : bVal - aVal;
     });
 
     return result;
@@ -224,6 +331,14 @@ export default function TrapInventoryPage() {
     setSelectedListing(listing);
     setDrawerOpen(true);
   };
+
+  // Stats for header
+  const stats = useMemo(() => {
+    const withBenchmark = listings.filter(l => !l.no_benchmark);
+    const strongBuys = withBenchmark.filter(l => l.delta_pct !== null && l.delta_pct <= -15);
+    const aged90 = listings.filter(l => l.days_on_market >= 90);
+    return { total: listings.length, withBenchmark: withBenchmark.length, strongBuys: strongBuys.length, aged90: aged90.length };
+  }, [listings]);
 
   return (
     <AppLayout>
@@ -235,11 +350,18 @@ export default function TrapInventoryPage() {
               Trap Inventory
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Monitor retail stock from dealer traps – track price decay and identify wholesale opportunities
+              Monitor retail stock vs benchmark – identify mispriced wholesale opportunities
             </p>
           </div>
-          <div className="text-sm text-muted-foreground">
-            {!loading && `${filteredListings.length} listings`}
+          <div className="text-right text-sm text-muted-foreground space-y-0.5">
+            {!loading && (
+              <>
+                <div>{filteredListings.length} of {stats.total} listings</div>
+                <div className="text-xs">
+                  {stats.strongBuys} strong buys • {stats.aged90} aged 90+
+                </div>
+              </>
+            )}
           </div>
         </div>
 
