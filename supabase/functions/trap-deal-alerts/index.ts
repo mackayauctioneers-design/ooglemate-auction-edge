@@ -32,11 +32,12 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get today's strong buy deals with sufficient sample size
+    // NOTE: Temporarily lowered to 1 for testing - restore to 10 for production
     const { data: deals, error: dealsError } = await supabase
       .from("trap_deals")
       .select("*")
       .in("deal_label", ["MISPRICED", "STRONG_BUY"])
-      .gte("fingerprint_sample", 10)
+      .gte("fingerprint_sample", 1)
       .not("fingerprint_price", "is", null)
       .order("delta_pct", { ascending: true });
 
