@@ -147,28 +147,54 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange }: TrapInvento
         </SheetHeader>
 
         <div className="space-y-6 py-6">
-          {/* Current Price */}
+          {/* Current Price & Benchmark */}
           <section className="grid grid-cols-2 gap-4">
             <div className="stat-card">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Current Price</p>
               <p className="text-2xl font-bold text-foreground mono">{formatCurrency(listing.asking_price)}</p>
             </div>
             <div className="stat-card">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">First Price</p>
-              <p className="text-xl font-bold text-muted-foreground mono">{formatCurrency(listing.first_price)}</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">Benchmark</p>
+              {listing.no_benchmark ? (
+                <p className="text-xl font-bold text-muted-foreground opacity-50">No data</p>
+              ) : (
+                <p className="text-xl font-bold text-muted-foreground mono">{formatCurrency(listing.benchmark_price)}</p>
+              )}
             </div>
             
-            {listing.price_change_amount && listing.price_change_amount !== 0 && (
-              <div className="stat-card col-span-2 bg-primary/5 border-primary/20">
-                <p className="text-xs text-primary uppercase tracking-wide flex items-center gap-1">
+            {/* Delta vs Benchmark */}
+            {!listing.no_benchmark && listing.delta_pct !== null && (
+              <div className={`stat-card col-span-2 ${listing.delta_pct < 0 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+                <p className={`text-xs uppercase tracking-wide flex items-center gap-1 ${listing.delta_pct < 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                   <TrendingDown className="h-3 w-3" />
-                  Total Price Change
+                  {listing.delta_pct < 0 ? 'Under Benchmark' : 'Over Benchmark'}
                 </p>
                 <div className="flex items-baseline gap-2">
-                  <p className="text-xl font-bold text-primary mono">
+                  <p className={`text-xl font-bold mono ${listing.delta_pct < 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {listing.delta_pct > 0 ? '+' : ''}{listing.delta_pct.toFixed(1)}%
+                  </p>
+                  <span className={`text-sm ${listing.delta_pct < 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    ({formatCurrency(Math.abs(listing.delta_dollars ?? 0))})
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Based on {listing.benchmark_sample} cleared sales in region
+                </p>
+              </div>
+            )}
+            
+            {/* Price drop from first seen */}
+            {listing.price_change_amount && listing.price_change_amount !== 0 && (
+              <div className="stat-card col-span-2">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                  <TrendingDown className="h-3 w-3" />
+                  Price Drop (since listed)
+                </p>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-lg font-bold text-muted-foreground mono">
                     {formatCurrency(Math.abs(listing.price_change_amount))}
                   </p>
-                  <span className="text-sm text-primary">
+                  <span className="text-sm text-muted-foreground">
                     ({Math.abs(listing.price_change_pct ?? 0).toFixed(1)}%)
                   </span>
                 </div>
@@ -210,6 +236,19 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange }: TrapInvento
                         borderRadius: '8px',
                       }}
                     />
+                    {!listing.no_benchmark && listing.benchmark_price && (
+                      <ReferenceLine 
+                        y={listing.benchmark_price} 
+                        stroke="hsl(var(--muted-foreground))" 
+                        strokeDasharray="5 5"
+                        label={{ 
+                          value: 'Benchmark', 
+                          position: 'right',
+                          fontSize: 10,
+                          fill: 'hsl(var(--muted-foreground))'
+                        }}
+                      />
+                    )}
                     <Line 
                       type="stepAfter" 
                       dataKey="price" 

@@ -146,6 +146,20 @@ export type Database = {
             foreignKeyName: "clearance_events_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
+            referencedRelation: "trap_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clearance_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_inventory_current"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clearance_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
             referencedRelation: "vehicle_listings"
             referencedColumns: ["id"]
           },
@@ -773,6 +787,20 @@ export type Database = {
             columns: ["listing_id"]
             isOneToOne: false
             referencedRelation: "stale_dealer_grade"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_snapshots_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_snapshots_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_inventory_current"
             referencedColumns: ["id"]
           },
           {
@@ -1474,6 +1502,64 @@ export type Database = {
           source?: string | null
           status?: string | null
           year?: number | null
+        }
+        Relationships: []
+      }
+      trap_deals: {
+        Row: {
+          asking_price: number | null
+          benchmark_days_to_clear: number | null
+          benchmark_price: number | null
+          benchmark_sample: number | null
+          days_on_market: number | null
+          delta_dollars: number | null
+          delta_pct: number | null
+          first_price: number | null
+          first_seen_at: string | null
+          id: string | null
+          km: number | null
+          last_price_change_at: string | null
+          last_seen_at: string | null
+          listing_id: string | null
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          model: string | null
+          no_benchmark: boolean | null
+          price_change_dollars: number | null
+          price_change_pct: number | null
+          region_id: string | null
+          source: string | null
+          status: string | null
+          variant_family: string | null
+          year: number | null
+        }
+        Relationships: []
+      }
+      trap_inventory_current: {
+        Row: {
+          asking_price: number | null
+          days_on_market: number | null
+          first_price: number | null
+          first_seen_at: string | null
+          id: string | null
+          km: number | null
+          km_band_max: number | null
+          km_band_min: number | null
+          last_price_change_at: string | null
+          last_seen_at: string | null
+          listing_id: string | null
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          model: string | null
+          region_id: string | null
+          source: string | null
+          status: string | null
+          variant_family: string | null
+          year: number | null
+          year_band_max: number | null
+          year_band_min: number | null
         }
         Relationships: []
       }
