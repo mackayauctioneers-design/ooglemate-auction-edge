@@ -203,29 +203,37 @@ const EURO_REFUSAL_PHRASES = [
 
 let euroRefusalIndex = 0;
 
-// Intent keywords for pricing/valuation (triggers Euro refusal)
-const PRICING_INTENT_KEYWORDS = [
-  'price', 'pricing', 'value', 'valuation', 'worth', 'buy', 'buying',
-  'pay', 'paying', 'offer', 'cost', 'owe', 'own', 'ownership',
-  'what would', 'what should', 'how much', 'give me a', 'quote',
-  'reckon', 'think its worth', 'think it\'s worth', 'steer', 'number'
+// STRONG pricing intent keywords - these ALWAYS trigger pricing intent
+const STRONG_PRICING_KEYWORDS = [
+  'worth', 'buy', 'price', 'value it', 'put a number', 'get out'
 ];
 
-// Intent keywords for market trends (does NOT trigger Euro refusal)
+// General pricing intent keywords
+const PRICING_INTENT_KEYWORDS = [
+  'pricing', 'valuation', 'buying', 'pay', 'paying', 'offer', 'cost',
+  'owe', 'own', 'ownership', 'what would', 'what should', 'how much',
+  'give me a', 'quote', 'reckon', 'think its worth', 'think it\'s worth',
+  'steer', 'number'
+];
+
+// EXPLICIT trend keywords only - location words do NOT override pricing
 const TREND_INTENT_KEYWORDS = [
-  'trend', 'trending', 'market', 'demand', 'moving', 'selling',
-  'clearance', 'days to sell', 'days to clear', 'popular', 'hot',
-  'what\'s the go', 'whats the go', 'how are they going', 'how\'s the'
+  'trend', 'trending', 'moving', 'selling', 'hot', 'cooling', 'demand',
+  'clearance', 'days to sell', 'days to clear'
 ];
 
 function detectPricingIntent(message: string): boolean {
   const text = message.toLowerCase();
   
-  // Check for trend intent first (trumps pricing)
+  // STRONG pricing keywords ALWAYS trigger pricing intent (no override)
+  const hasStrongPricing = STRONG_PRICING_KEYWORDS.some(k => text.includes(k));
+  if (hasStrongPricing) return true;
+  
+  // Check for explicit trend intent (only these specific words)
   const hasTrendIntent = TREND_INTENT_KEYWORDS.some(k => text.includes(k));
   if (hasTrendIntent) return false;
   
-  // Check for pricing intent
+  // Check for general pricing intent
   return PRICING_INTENT_KEYWORDS.some(k => text.includes(k));
 }
 
