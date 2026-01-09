@@ -10,6 +10,7 @@ import { OperatorGuard } from "@/components/guards/OperatorGuard";
 import OpportunitiesPage from "./pages/OpportunitiesPage";
 import UpcomingAuctionsPage from "./pages/UpcomingAuctionsPage";
 import SearchLotsPage from "./pages/SearchLotsPage";
+import TrapInventoryPage from "./pages/TrapInventoryPage";
 import MatchesPage from "./pages/MatchesPage";
 import ValuationPage from "./pages/ValuationPage";
 import HelpPage from "./pages/HelpPage";
@@ -46,6 +47,7 @@ const App = () => (
             <Route path="/" element={<OpportunitiesPage />} />
             <Route path="/upcoming-auctions" element={<UpcomingAuctionsPage />} />
             <Route path="/search-lots" element={<SearchLotsPage />} />
+            <Route path="/trap-inventory" element={<TrapInventoryPage />} />
             <Route path="/matches" element={<MatchesPage />} />
             <Route path="/valuation" element={<ValuationPage />} />
             <Route path="/valo" element={<ValoPage />} />

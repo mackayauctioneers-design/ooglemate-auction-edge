@@ -11,7 +11,8 @@ import {
   DollarSign,
   Sparkles,
   MapPin,
-  Settings
+  Settings,
+  Store
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -33,6 +34,7 @@ const dealerNavItems = [
   { path: '/', label: "Today's Opportunities", icon: BarChart3 },
   { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
   { path: '/search-lots', label: 'Search Lots', icon: Search },
+  { path: '/trap-inventory', label: 'Trap Inventory', icon: Store },
   { path: '/matches', label: 'Matches', icon: Crosshair },
   { path: '/valuation', label: 'Valuation', icon: DollarSign },
   { path: '/dealer-dashboard', label: 'My Dashboard', icon: MapPin },
