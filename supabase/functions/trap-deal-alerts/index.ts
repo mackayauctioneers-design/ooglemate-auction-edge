@@ -25,19 +25,84 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Parse request body for test flags
+    let forceTestAlert = false;
+    let dryRun = false;
+    
+    if (req.method === "POST") {
+      try {
+        const body = await req.json();
+        forceTestAlert = body.force_test_alert === true;
+        dryRun = body.dry_run === true;
+      } catch {
+        // No body or invalid JSON - continue with defaults
+      }
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const slackWebhookUrl = Deno.env.get("SLACK_WEBHOOK_URL");
 
+    // FORCE TEST ALERT MODE: Just send a test Slack message, no DB interaction
+    if (forceTestAlert) {
+      console.log("Force test alert mode - sending test Slack message only");
+      
+      if (!slackWebhookUrl) {
+        return new Response(
+          JSON.stringify({ success: false, error: "SLACK_WEBHOOK_URL not configured" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const testBlocks = [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: "✅ Trap Deal Alerts Pipeline Test",
+            emoji: true,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `Pipeline is *online* and Slack integration is working.\n\n_Timestamp: ${new Date().toISOString()}_`,
+          },
+        },
+      ];
+
+      const slackRes = await fetch(slackWebhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blocks: testBlocks }),
+      });
+
+      if (slackRes.ok) {
+        console.log("Test Slack notification sent successfully");
+        return new Response(
+          JSON.stringify({ success: true, mode: "force_test_alert", message: "Test Slack message sent" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } else {
+        const errorText = await slackRes.text();
+        console.error("Test Slack notification failed:", errorText);
+        return new Response(
+          JSON.stringify({ success: false, error: `Slack send failed: ${errorText}` }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get today's strong buy deals with sufficient sample size
-    // NOTE: Temporarily lowered to 1 for testing - restore to 10 for production
+    // Production thresholds: MISPRICED/STRONG_BUY + fingerprint_sample >= 10
     const { data: deals, error: dealsError } = await supabase
       .from("trap_deals")
       .select("*")
       .in("deal_label", ["MISPRICED", "STRONG_BUY"])
-      .gte("fingerprint_sample", 1)
+      .gte("fingerprint_sample", 10)
       .not("fingerprint_price", "is", null)
       .order("delta_pct", { ascending: true });
 
@@ -49,14 +114,19 @@ Deno.serve(async (req) => {
     if (!deals || deals.length === 0) {
       console.log("No strong buy deals found today");
       return new Response(
-        JSON.stringify({ success: true, message: "No deals to alert", alerts_created: 0 }),
+        JSON.stringify({ 
+          success: true, 
+          message: "No deals to alert", 
+          alerts_created: 0,
+          mode: dryRun ? "dry_run" : "production"
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`Found ${deals.length} strong buy deals`);
+    console.log(`Found ${deals.length} strong buy deals (mode: ${dryRun ? "dry_run" : "production"})`);
 
-    // Insert alerts (dedup by listing_id + alert_date)
+    // Prepare alerts data
     const alertsToInsert = deals.map((d: TrapDeal) => ({
       listing_id: d.id,
       alert_date: new Date().toISOString().split("T")[0],
@@ -71,6 +141,23 @@ Deno.serve(async (req) => {
       fingerprint_price: d.fingerprint_price,
     }));
 
+    // DRY RUN MODE: Return what would be alerted without DB writes
+    if (dryRun) {
+      console.log("Dry run mode - skipping DB insert and Slack notification");
+      return new Response(
+        JSON.stringify({
+          success: true,
+          mode: "dry_run",
+          deals_found: deals.length,
+          would_alert: alertsToInsert,
+          mispriced: deals.filter((d: TrapDeal) => d.deal_label === "MISPRICED").length,
+          strong_buys: deals.filter((d: TrapDeal) => d.deal_label === "STRONG_BUY").length,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // PRODUCTION MODE: Insert alerts
     const { data: insertedAlerts, error: insertError } = await supabase
       .from("trap_deal_alerts")
       .upsert(alertsToInsert, { onConflict: "listing_id,alert_date", ignoreDuplicates: true })
