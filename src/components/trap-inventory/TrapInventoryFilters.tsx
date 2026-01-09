@@ -1,7 +1,7 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { RotateCcw, TrendingDown, Clock, Zap } from 'lucide-react';
+import { RotateCcw, TrendingDown, Clock, Zap, AlertTriangle, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface TrapInventoryFiltersState {
@@ -10,7 +10,7 @@ export interface TrapInventoryFiltersState {
   model: string;
   daysOnMarket: string;
   deltaBand: string;
-  preset: 'none' | 'strong_buy' | 'mispriced' | '90_plus';
+  preset: 'none' | 'strong_buy' | 'mispriced' | '90_plus' | 'no_benchmark';
   sortBy: 'delta_pct' | 'days_on_market' | 'price_drop' | 'price';
   sortDir: 'asc' | 'desc';
 }
@@ -34,25 +34,26 @@ const daysOnMarketOptions = [
 
 const deltaBandOptions = [
   { value: 'all', label: 'All' },
+  { value: 'under_25', label: '≤-25% (Mispriced)' },
   { value: 'under_15', label: '≤-15% (Strong Buy)' },
-  { value: 'under_10', label: '≤-10%' },
-  { value: 'under_5', label: '≤-5%' },
+  { value: 'under_10', label: '≤-10% (Watch)' },
   { value: 'at_benchmark', label: 'At Benchmark (±5%)' },
   { value: 'over_5', label: '≥+5% (Overpriced)' },
   { value: 'no_benchmark', label: 'No Benchmark' },
 ];
 
 const sortOptions = [
-  { value: 'delta_pct', label: 'Under % (Delta)' },
+  { value: 'delta_pct', label: 'Delta % (Under)' },
   { value: 'days_on_market', label: 'Days on Market' },
-  { value: 'price_drop', label: 'Price Drop' },
+  { value: 'price_drop', label: 'Delta $' },
   { value: 'price', label: 'Current Price' },
 ];
 
 const presets = [
+  { value: 'mispriced', label: 'Mispriced', icon: AlertTriangle, color: 'bg-emerald-600/20 text-emerald-500 border-emerald-500/40' },
   { value: 'strong_buy', label: 'Strong Buy', icon: Zap, color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' },
-  { value: 'mispriced', label: 'Mispriced', icon: TrendingDown, color: 'bg-blue-500/10 text-blue-600 border-blue-500/30' },
   { value: '90_plus', label: '90+ Days', icon: Clock, color: 'bg-amber-500/10 text-amber-600 border-amber-500/30' },
+  { value: 'no_benchmark', label: 'No Benchmark', icon: HelpCircle, color: 'bg-muted text-muted-foreground border-border' },
 ] as const;
 
 export function TrapInventoryFilters({ 
@@ -78,7 +79,7 @@ export function TrapInventoryFilters({
         preset,
         // Reset conflicting filters when preset is active
         daysOnMarket: preset === '90_plus' ? '90-999' : 'all',
-        deltaBand: preset === 'strong_buy' ? 'under_15' : preset === 'mispriced' ? 'all' : 'all',
+        deltaBand: preset === 'no_benchmark' ? 'no_benchmark' : 'all',
       });
     }
   };
@@ -130,7 +131,7 @@ export function TrapInventoryFilters({
           <SelectContent>
             <SelectItem value="all">All Dealers</SelectItem>
             {dealers.map(d => (
-              <SelectItem key={d} value={d}>{d}</SelectItem>
+              <SelectItem key={d} value={d}>{d.replace(/^trap_/, '').replace(/_/g, ' ')}</SelectItem>
             ))}
           </SelectContent>
         </Select>

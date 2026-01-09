@@ -8,7 +8,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { format } from 'date-fns';
 import { TrendingDown, TrendingUp, Minus, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -40,27 +39,24 @@ const getStatusBadge = (days: number) => {
   }
 };
 
-const getDeltaBadge = (deltaPct: number | null, noBenchmark: boolean) => {
-  if (noBenchmark) {
-    return (
-      <Badge variant="outline" className="opacity-50">
-        <HelpCircle className="h-3 w-3 mr-1" />
-        No data
-      </Badge>
-    );
-  }
-  if (deltaPct === null) return null;
-  
-  if (deltaPct <= -25) {
-    return <Badge className="bg-emerald-600 hover:bg-emerald-600">Mispriced</Badge>;
-  } else if (deltaPct <= -15) {
-    return <Badge className="bg-emerald-500 hover:bg-emerald-500">Strong Buy</Badge>;
-  } else if (deltaPct <= -5) {
-    return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">Under</Badge>;
-  } else if (deltaPct < 5) {
-    return <Badge variant="outline">At Market</Badge>;
-  } else {
-    return <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/30">Over</Badge>;
+const getDealLabelBadge = (dealLabel: string) => {
+  switch (dealLabel) {
+    case 'MISPRICED':
+      return <Badge className="bg-emerald-600 hover:bg-emerald-600">Mispriced</Badge>;
+    case 'STRONG_BUY':
+      return <Badge className="bg-emerald-500 hover:bg-emerald-500">Strong Buy</Badge>;
+    case 'WATCH':
+      return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">Watch</Badge>;
+    case 'NORMAL':
+      return <Badge variant="outline">Normal</Badge>;
+    case 'NO_BENCHMARK':
+    default:
+      return (
+        <Badge variant="outline" className="opacity-50">
+          <HelpCircle className="h-3 w-3 mr-1" />
+          No data
+        </Badge>
+      );
   }
 };
 
@@ -88,9 +84,9 @@ export function TrapInventoryTable({ listings, onRowClick }: TrapInventoryTableP
               <TableHead className="text-right w-[90px]">KM</TableHead>
               <TableHead className="text-right w-[100px]">Price</TableHead>
               <TableHead className="text-right w-[100px]">Benchmark</TableHead>
-              <TableHead className="text-center w-[110px]">Under %</TableHead>
+              <TableHead className="text-center w-[110px]">Δ%</TableHead>
               <TableHead className="text-center w-[70px]">Days</TableHead>
-              <TableHead className="text-center w-[90px]">Status</TableHead>
+              <TableHead className="text-center w-[100px]">Deal</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -146,7 +142,7 @@ export function TrapInventoryTable({ listings, onRowClick }: TrapInventoryTableP
                   {listing.days_on_market}
                 </TableCell>
                 <TableCell className="text-center">
-                  {getDeltaBadge(listing.delta_pct, listing.no_benchmark)}
+                  {getDealLabelBadge(listing.deal_label)}
                 </TableCell>
               </TableRow>
             ))}
