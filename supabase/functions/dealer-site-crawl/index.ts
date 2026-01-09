@@ -1788,6 +1788,7 @@ interface DbTrap {
   validation_runs: number;
   consecutive_failures: number;
   successful_validation_runs: number;
+  preflight_status: string | null;
 }
 
 function dbTrapToDealerConfig(r: DbTrap): DealerConfig {
@@ -2125,7 +2126,11 @@ Deno.serve(async (req) => {
       }
       
       // URL PREFLIGHT: Only for validation runs - saves Firecrawl credits
-      if (isValidationRun) {
+      // Skip if external preflight already passed (trust trap-preflight function)
+      const trapRecord = dbTraps.find((t: DbTrap) => t.trap_slug === dealer.slug);
+      const externalPreflightPassed = trapRecord?.preflight_status === 'pass';
+      
+      if (isValidationRun && !externalPreflightPassed) {
         console.log(`[dealer-site-crawl] Preflight check for ${dealer.name}: ${dealer.inventory_url}`);
         const preflight = await preflightUrl(dealer.inventory_url);
         
@@ -2175,6 +2180,8 @@ Deno.serve(async (req) => {
           .eq('trap_slug', dealer.slug);
         
         console.log(`[dealer-site-crawl] Preflight passed for ${dealer.name}: markers=${JSON.stringify(preflight.hasMarkers)}`);
+      } else if (externalPreflightPassed) {
+        console.log(`[dealer-site-crawl] Skipping preflight for ${dealer.name} - external preflight already passed`);
       }
       
       console.log(`[dealer-site-crawl] Scraping ${dealer.name} (${dealer.parser_mode}): ${dealer.inventory_url}`);
