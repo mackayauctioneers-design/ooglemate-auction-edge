@@ -99,12 +99,12 @@ export function AppSidebar() {
                 className={cn(
                   "w-full",
                   collapsed ? "justify-center px-2" : "justify-start",
-                  "text-destructive hover:bg-destructive/10"
+                  "bg-amber-500/20 text-amber-600 dark:text-amber-400 hover:bg-amber-500/30 font-medium"
                 )}
                 title={collapsed ? "Operator Mode" : undefined}
               >
                 <Settings className="h-4 w-4" />
-                {!collapsed && <span>Operator Mode</span>}
+                {!collapsed && <span>⚙️ Operator Mode</span>}
               </Button>
             </Link>
           </div>
