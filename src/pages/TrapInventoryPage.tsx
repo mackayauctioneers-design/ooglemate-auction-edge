@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { TrapInventoryTable } from '@/components/trap-inventory/TrapInventoryTable';
 import { TrapInventoryFilters, TrapInventoryFiltersState } from '@/components/trap-inventory/TrapInventoryFilters';
 import { TrapInventoryDrawer } from '@/components/trap-inventory/TrapInventoryDrawer';
@@ -37,10 +38,13 @@ export interface TrapListing {
 }
 
 export default function TrapInventoryPage() {
+  const { user } = useAuth();
   const [listings, setListings] = useState<TrapListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedListing, setSelectedListing] = useState<TrapListing | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [watchlistIds, setWatchlistIds] = useState<Set<string>>(new Set());
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<TrapInventoryFiltersState>({
     dealer: '',
     make: '',
@@ -60,7 +64,10 @@ export default function TrapInventoryPage() {
   useEffect(() => {
     document.title = 'Trap Inventory | OogleMate';
     fetchListings();
-  }, []);
+    if (user) {
+      fetchWatchlist();
+    }
+  }, [user]);
 
   const fetchListings = async () => {
     setLoading(true);
@@ -125,12 +132,39 @@ export default function TrapInventoryPage() {
     setLoading(false);
   };
 
+  const fetchWatchlist = async () => {
+    if (!user) return;
+    
+    const { data, error } = await supabase
+      .from('user_watchlist')
+      .select('listing_id, is_watching, is_pinned')
+      .eq('user_id', user.id);
+
+    if (error) {
+      console.error('Error fetching watchlist:', error);
+      return;
+    }
+
+    const watching = new Set<string>();
+    const pinned = new Set<string>();
+    
+    data?.forEach(item => {
+      if (item.is_watching) watching.add(item.listing_id);
+      if (item.is_pinned) pinned.add(item.listing_id);
+    });
+
+    setWatchlistIds(watching);
+    setPinnedIds(pinned);
+  };
+
   // Apply filters and sorting
   const filteredListings = useMemo(() => {
     let result = [...listings];
 
     // Apply preset first (overrides other filters)
-    if (filters.preset === 'strong_buy') {
+    if (filters.preset === 'watchlist') {
+      result = result.filter(l => watchlistIds.has(l.id));
+    } else if (filters.preset === 'strong_buy') {
       result = result.filter(l => l.deal_label === 'STRONG_BUY' || l.deal_label === 'MISPRICED');
     } else if (filters.preset === 'mispriced') {
       result = result.filter(l => l.deal_label === 'MISPRICED');
@@ -184,6 +218,10 @@ export default function TrapInventoryPage() {
 
     // Sort
     result.sort((a, b) => {
+      // Pinned items always first
+      if (pinnedIds.has(a.id) && !pinnedIds.has(b.id)) return -1;
+      if (!pinnedIds.has(a.id) && pinnedIds.has(b.id)) return 1;
+
       let aVal: number | null = null;
       let bVal: number | null = null;
 
@@ -214,7 +252,7 @@ export default function TrapInventoryPage() {
     });
 
     return result;
-  }, [listings, filters]);
+  }, [listings, filters, watchlistIds, pinnedIds]);
 
   const handleRowClick = (listing: TrapListing) => {
     setSelectedListing(listing);
