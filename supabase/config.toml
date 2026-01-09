@@ -96,5 +96,9 @@ schedule = "*/15 * * * *"
 
 [functions.trap-validation-daily]
 verify_jwt = false
+
+[functions.trap-deal-alerts]
+verify_jwt = false
+schedule = "0 7 * * *"
 # Daily cron at 6:30am AEST (20:30 UTC) - enqueue validation jobs before crawl
 schedule = "30 20 * * *"

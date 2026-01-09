@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { TrapListing } from '@/pages/TrapInventoryPage';
 import { supabase } from '@/integrations/supabase/client';
+import { useTrapWatchlist } from '@/hooks/useTrapWatchlist';
 import {
   Sheet,
   SheetContent,
@@ -77,8 +78,15 @@ const getDealBadge = (dealLabel: string) => {
 export function TrapInventoryDrawer({ listing, open, onOpenChange }: TrapInventoryDrawerProps) {
   const [priceHistory, setPriceHistory] = useState<PriceSnapshot[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [isWatching, setIsWatching] = useState(false);
-  const [isPinned, setIsPinned] = useState(false);
+  
+  // Use watchlist hook for persistence
+  const { 
+    isWatching, 
+    isPinned, 
+    loading: watchlistLoading,
+    toggleWatch, 
+    togglePin 
+  } = useTrapWatchlist(listing?.id ?? null);
 
   useEffect(() => {
     if (listing && open) {
@@ -307,7 +315,8 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange }: TrapInvento
               <Switch 
                 id="watch-toggle"
                 checked={isWatching}
-                onCheckedChange={setIsWatching}
+                onCheckedChange={toggleWatch}
+                disabled={watchlistLoading}
               />
             </div>
             <div className="flex items-center justify-between">
@@ -318,11 +327,12 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange }: TrapInvento
               <Switch 
                 id="pin-toggle"
                 checked={isPinned}
-                onCheckedChange={setIsPinned}
+                onCheckedChange={togglePin}
+                disabled={watchlistLoading}
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Watch/Pin states are local only (not persisted yet).
+              {watchlistLoading ? 'Saving...' : 'Saved to your watchlist'}
             </p>
           </section>
 

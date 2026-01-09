@@ -916,6 +916,57 @@ export type Database = {
         }
         Relationships: []
       }
+      trap_deal_alerts: {
+        Row: {
+          alert_date: string
+          asking_price: number | null
+          created_at: string
+          deal_label: string
+          delta_pct: number | null
+          fingerprint_price: number | null
+          fingerprint_sample: number | null
+          id: string
+          listing_id: string
+          make: string | null
+          model: string | null
+          slack_sent_at: string | null
+          trap_slug: string | null
+          year: number | null
+        }
+        Insert: {
+          alert_date?: string
+          asking_price?: number | null
+          created_at?: string
+          deal_label: string
+          delta_pct?: number | null
+          fingerprint_price?: number | null
+          fingerprint_sample?: number | null
+          id?: string
+          listing_id: string
+          make?: string | null
+          model?: string | null
+          slack_sent_at?: string | null
+          trap_slug?: string | null
+          year?: number | null
+        }
+        Update: {
+          alert_date?: string
+          asking_price?: number | null
+          created_at?: string
+          deal_label?: string
+          delta_pct?: number | null
+          fingerprint_price?: number | null
+          fingerprint_sample?: number | null
+          id?: string
+          listing_id?: string
+          make?: string | null
+          model?: string | null
+          slack_sent_at?: string | null
+          trap_slug?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       trap_health_alerts: {
         Row: {
           alert_date: string
