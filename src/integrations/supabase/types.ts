@@ -363,6 +363,9 @@ export type Database = {
           parser_confidence: string | null
           parser_mode: string
           postcode: string | null
+          preflight_checked_at: string | null
+          preflight_reason: string | null
+          preflight_status: string | null
           priority: string
           region_id: string
           state: string | null
@@ -395,6 +398,9 @@ export type Database = {
           parser_confidence?: string | null
           parser_mode: string
           postcode?: string | null
+          preflight_checked_at?: string | null
+          preflight_reason?: string | null
+          preflight_status?: string | null
           priority?: string
           region_id?: string
           state?: string | null
@@ -427,6 +433,9 @@ export type Database = {
           parser_confidence?: string | null
           parser_mode?: string
           postcode?: string | null
+          preflight_checked_at?: string | null
+          preflight_reason?: string | null
+          preflight_status?: string | null
           priority?: string
           region_id?: string
           state?: string | null
