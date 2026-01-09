@@ -1952,7 +1952,7 @@ async function updateTrapValidation(
     successful_validation_runs: newSuccessRuns,
     last_validated_at: new Date().toISOString(),
     last_crawl_at: new Date().toISOString(),
-    last_vehicles_found: vehiclesFound,
+    last_vehicle_count: vehiclesFound,
   };
   
   if (shouldEnable) {
