@@ -153,6 +153,13 @@ export type Database = {
             foreignKeyName: "clearance_events_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
+            referencedRelation: "trap_deals_90_plus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clearance_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
             referencedRelation: "trap_inventory_current"
             referencedColumns: ["id"]
           },
@@ -800,6 +807,13 @@ export type Database = {
             foreignKeyName: "listing_snapshots_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
+            referencedRelation: "trap_deals_90_plus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_snapshots_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
             referencedRelation: "trap_inventory_current"
             referencedColumns: ["id"]
           },
@@ -946,6 +960,39 @@ export type Database = {
           created_at?: string
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_watchlist: {
+        Row: {
+          created_at: string
+          id: string
+          is_pinned: boolean | null
+          is_watching: boolean | null
+          listing_id: string
+          notes: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_pinned?: boolean | null
+          is_watching?: boolean | null
+          listing_id: string
+          notes?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_pinned?: boolean | null
+          is_watching?: boolean | null
+          listing_id?: string
+          notes?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -1463,6 +1510,36 @@ export type Database = {
           },
         ]
       }
+      fingerprint_outcomes_latest: {
+        Row: {
+          asof_date: string | null
+          avg_days_to_clear: number | null
+          avg_price: number | null
+          cleared_total: number | null
+          created_at: string | null
+          example_listing_id: string | null
+          fuel: string | null
+          id: string | null
+          km_band_max: number | null
+          km_band_min: number | null
+          listing_total: number | null
+          make: string | null
+          max_days_to_clear: number | null
+          max_price: number | null
+          min_days_to_clear: number | null
+          min_price: number | null
+          model: string | null
+          passed_in_total: number | null
+          region_id: string | null
+          relisted_total: number | null
+          transmission: string | null
+          updated_at: string | null
+          variant_family: string | null
+          year_max: number | null
+          year_min: number | null
+        }
+        Relationships: []
+      }
       stale_dealer_grade: {
         Row: {
           first_seen_at: string | null
@@ -1508,29 +1585,60 @@ export type Database = {
       trap_deals: {
         Row: {
           asking_price: number | null
-          benchmark_days_to_clear: number | null
-          benchmark_price: number | null
-          benchmark_sample: number | null
           days_on_market: number | null
+          deal_label: string | null
           delta_dollars: number | null
           delta_pct: number | null
+          fingerprint_price: number | null
+          fingerprint_sample: number | null
+          fingerprint_ttd: number | null
           first_price: number | null
           first_seen_at: string | null
           id: string | null
           km: number | null
           last_price_change_at: string | null
-          last_seen_at: string | null
           listing_id: string | null
           listing_url: string | null
           location: string | null
           make: string | null
           model: string | null
           no_benchmark: boolean | null
-          price_change_dollars: number | null
-          price_change_pct: number | null
+          price_change_count: number | null
           region_id: string | null
           source: string | null
           status: string | null
+          trap_slug: string | null
+          variant_family: string | null
+          year: number | null
+        }
+        Relationships: []
+      }
+      trap_deals_90_plus: {
+        Row: {
+          asking_price: number | null
+          days_on_market: number | null
+          deal_label: string | null
+          delta_dollars: number | null
+          delta_pct: number | null
+          fingerprint_price: number | null
+          fingerprint_sample: number | null
+          fingerprint_ttd: number | null
+          first_price: number | null
+          first_seen_at: string | null
+          id: string | null
+          km: number | null
+          last_price_change_at: string | null
+          listing_id: string | null
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          model: string | null
+          no_benchmark: boolean | null
+          price_change_count: number | null
+          region_id: string | null
+          source: string | null
+          status: string | null
+          trap_slug: string | null
           variant_family: string | null
           year: number | null
         }
@@ -1547,15 +1655,17 @@ export type Database = {
           km_band_max: number | null
           km_band_min: number | null
           last_price_change_at: string | null
-          last_seen_at: string | null
           listing_id: string | null
           listing_url: string | null
           location: string | null
           make: string | null
           model: string | null
+          price_change_count: number | null
           region_id: string | null
           source: string | null
+          source_class: string | null
           status: string | null
+          trap_slug: string | null
           variant_family: string | null
           year: number | null
           year_band_max: number | null

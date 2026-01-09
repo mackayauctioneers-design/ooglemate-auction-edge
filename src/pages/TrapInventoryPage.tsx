@@ -16,23 +16,23 @@ export interface TrapListing {
   km: number | null;
   asking_price: number | null;
   first_seen_at: string;
-  last_seen_at: string;
   source: string;
   status: string;
   listing_url: string | null;
   location: string | null;
   region_id: string | null;
-  // Computed fields
+  // Time-based fields
   days_on_market: number;
-  price_change_amount: number | null;
-  price_change_pct: number | null;
-  last_price_change_date: string | null;
+  price_change_count: number;
+  last_price_change_at: string | null;
   first_price: number | null;
   // Benchmark fields
   benchmark_price: number | null;
   benchmark_sample: number | null;
+  benchmark_ttd: number | null;
   delta_dollars: number | null;
   delta_pct: number | null;
+  deal_label: string;
   no_benchmark: boolean;
 }
 
@@ -65,168 +65,55 @@ export default function TrapInventoryPage() {
   const fetchListings = async () => {
     setLoading(true);
     
-    // Fetch from trap_deals view (joins with fingerprint benchmarks)
-    const { data: dealsData, error } = await supabase
+    // Fetch from trap_deals view
+    const { data, error } = await supabase
       .from('trap_deals')
       .select('*')
       .order('delta_pct', { ascending: true, nullsFirst: false });
 
     if (error) {
       console.error('Error fetching trap deals:', error);
-      // Fallback to direct query if view doesn't exist yet
-      await fetchListingsFallback();
+      setListings([]);
+      setLoading(false);
       return;
     }
 
-    if (!dealsData || dealsData.length === 0) {
+    if (!data || data.length === 0) {
       setListings([]);
       setLoading(false);
       return;
     }
 
     // Transform to TrapListing
-    const transformed: TrapListing[] = dealsData.map((l: any) => ({
+    const transformed: TrapListing[] = data.map((l: any) => ({
       id: l.id,
       listing_id: l.listing_id,
       make: l.make,
       model: l.model,
-      variant_family: l.variant_family,
+      variant_family: l.variant_family === 'ALL' ? null : l.variant_family,
       year: l.year,
       km: l.km,
       asking_price: l.asking_price,
       first_seen_at: l.first_seen_at,
-      last_seen_at: l.last_seen_at,
       source: l.source,
       status: l.status,
       listing_url: l.listing_url,
       location: l.location,
       region_id: l.region_id,
       days_on_market: l.days_on_market ?? 0,
-      price_change_amount: l.price_change_dollars,
-      price_change_pct: l.price_change_pct,
-      last_price_change_date: l.last_price_change_at,
+      price_change_count: l.price_change_count ?? 0,
+      last_price_change_at: l.last_price_change_at,
       first_price: l.first_price,
-      benchmark_price: l.benchmark_price,
-      benchmark_sample: l.benchmark_sample,
+      benchmark_price: l.fingerprint_price,
+      benchmark_sample: l.fingerprint_sample,
+      benchmark_ttd: l.fingerprint_ttd,
       delta_dollars: l.delta_dollars,
       delta_pct: l.delta_pct,
+      deal_label: l.deal_label ?? 'NO_BENCHMARK',
       no_benchmark: l.no_benchmark ?? true,
     }));
 
     // Extract unique values for filters
-    const uniqueDealers = [...new Set(transformed.map(l => l.source))].sort();
-    const uniqueMakes = [...new Set(transformed.map(l => l.make))].sort();
-    const uniqueModels = [...new Set(transformed.map(l => l.model))].sort();
-
-    setDealers(uniqueDealers);
-    setMakes(uniqueMakes);
-    setModels(uniqueModels);
-    setListings(transformed);
-    setLoading(false);
-  };
-
-  // Fallback for when view doesn't exist
-  const fetchListingsFallback = async () => {
-    const { data: listingsData, error } = await supabase
-      .from('vehicle_listings')
-      .select('*')
-      .eq('source_class', 'classifieds')
-      .order('first_seen_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching trap listings:', error);
-      setLoading(false);
-      return;
-    }
-
-    if (!listingsData || listingsData.length === 0) {
-      setListings([]);
-      setLoading(false);
-      return;
-    }
-
-    // Fetch first snapshots for price change calculation
-    const listingIds = listingsData.map(l => l.id);
-    const { data: snapshots } = await supabase
-      .from('listing_snapshots')
-      .select('listing_id, asking_price, seen_at')
-      .in('listing_id', listingIds)
-      .order('seen_at', { ascending: true });
-
-    // Group snapshots by listing
-    const snapshotsByListing: Record<string, { first_price: number | null; last_change_date: string | null }> = {};
-    if (snapshots) {
-      const grouped: Record<string, typeof snapshots> = {};
-      snapshots.forEach(s => {
-        if (!grouped[s.listing_id]) grouped[s.listing_id] = [];
-        grouped[s.listing_id].push(s);
-      });
-      
-      Object.entries(grouped).forEach(([listingId, snaps]) => {
-        const firstWithPrice = snaps.find(s => s.asking_price != null);
-        let lastChangeDate: string | null = null;
-        
-        for (let i = snaps.length - 1; i > 0; i--) {
-          if (snaps[i].asking_price !== snaps[i - 1].asking_price) {
-            lastChangeDate = snaps[i].seen_at;
-            break;
-          }
-        }
-        
-        snapshotsByListing[listingId] = {
-          first_price: firstWithPrice?.asking_price ?? null,
-          last_change_date: lastChangeDate,
-        };
-      });
-    }
-
-    // Transform to TrapListing
-    const now = new Date();
-    const transformed: TrapListing[] = listingsData.map(l => {
-      const firstSeenDate = new Date(l.first_seen_at);
-      const daysOnMarket = Math.floor((now.getTime() - firstSeenDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      const snapshotInfo = snapshotsByListing[l.id] || { first_price: null, last_change_date: null };
-      const firstPrice = snapshotInfo.first_price ?? l.asking_price;
-      const currentPrice = l.asking_price;
-      
-      let priceChangeAmount: number | null = null;
-      let priceChangePct: number | null = null;
-      
-      if (firstPrice && currentPrice && firstPrice !== currentPrice) {
-        priceChangeAmount = currentPrice - firstPrice;
-        priceChangePct = ((currentPrice - firstPrice) / firstPrice) * 100;
-      }
-
-      return {
-        id: l.id,
-        listing_id: l.listing_id,
-        make: l.make,
-        model: l.model,
-        variant_family: l.variant_family,
-        year: l.year,
-        km: l.km,
-        asking_price: l.asking_price,
-        first_seen_at: l.first_seen_at,
-        last_seen_at: l.last_seen_at,
-        source: l.source,
-        status: l.status,
-        listing_url: l.listing_url,
-        location: l.location,
-        region_id: null,
-        days_on_market: daysOnMarket,
-        price_change_amount: priceChangeAmount,
-        price_change_pct: priceChangePct,
-        last_price_change_date: snapshotInfo.last_change_date,
-        first_price: firstPrice,
-        benchmark_price: null,
-        benchmark_sample: null,
-        delta_dollars: null,
-        delta_pct: null,
-        no_benchmark: true,
-      };
-    });
-
     const uniqueDealers = [...new Set(transformed.map(l => l.source))].sort();
     const uniqueMakes = [...new Set(transformed.map(l => l.make))].sort();
     const uniqueModels = [...new Set(transformed.map(l => l.model))].sort();
@@ -244,11 +131,13 @@ export default function TrapInventoryPage() {
 
     // Apply preset first (overrides other filters)
     if (filters.preset === 'strong_buy') {
-      result = result.filter(l => l.delta_pct !== null && l.delta_pct <= -15 && !l.no_benchmark);
+      result = result.filter(l => l.deal_label === 'STRONG_BUY' || l.deal_label === 'MISPRICED');
     } else if (filters.preset === 'mispriced') {
-      result = result.filter(l => l.delta_pct !== null && l.delta_pct <= -25 && !l.no_benchmark);
+      result = result.filter(l => l.deal_label === 'MISPRICED');
     } else if (filters.preset === '90_plus') {
       result = result.filter(l => l.days_on_market >= 90);
+    } else if (filters.preset === 'no_benchmark') {
+      result = result.filter(l => l.no_benchmark);
     }
 
     // Filter by dealer
@@ -278,12 +167,12 @@ export default function TrapInventoryPage() {
 
     // Filter by delta band
     if (filters.deltaBand !== 'all') {
-      if (filters.deltaBand === 'under_15') {
+      if (filters.deltaBand === 'under_25') {
+        result = result.filter(l => l.delta_pct !== null && l.delta_pct <= -25);
+      } else if (filters.deltaBand === 'under_15') {
         result = result.filter(l => l.delta_pct !== null && l.delta_pct <= -15);
       } else if (filters.deltaBand === 'under_10') {
         result = result.filter(l => l.delta_pct !== null && l.delta_pct <= -10);
-      } else if (filters.deltaBand === 'under_5') {
-        result = result.filter(l => l.delta_pct !== null && l.delta_pct <= -5);
       } else if (filters.deltaBand === 'at_benchmark') {
         result = result.filter(l => l.delta_pct !== null && l.delta_pct > -5 && l.delta_pct < 5);
       } else if (filters.deltaBand === 'over_5') {
@@ -311,8 +200,8 @@ export default function TrapInventoryPage() {
           bVal = b.days_on_market;
           break;
         case 'price_drop':
-          aVal = a.price_change_amount ?? 0;
-          bVal = b.price_change_amount ?? 0;
+          aVal = a.delta_dollars ?? 0;
+          bVal = b.delta_dollars ?? 0;
           break;
         case 'price':
           aVal = a.asking_price ?? 0;
@@ -335,9 +224,16 @@ export default function TrapInventoryPage() {
   // Stats for header
   const stats = useMemo(() => {
     const withBenchmark = listings.filter(l => !l.no_benchmark);
-    const strongBuys = withBenchmark.filter(l => l.delta_pct !== null && l.delta_pct <= -15);
+    const strongBuys = listings.filter(l => l.deal_label === 'STRONG_BUY' || l.deal_label === 'MISPRICED');
+    const mispriced = listings.filter(l => l.deal_label === 'MISPRICED');
     const aged90 = listings.filter(l => l.days_on_market >= 90);
-    return { total: listings.length, withBenchmark: withBenchmark.length, strongBuys: strongBuys.length, aged90: aged90.length };
+    return { 
+      total: listings.length, 
+      withBenchmark: withBenchmark.length, 
+      strongBuys: strongBuys.length, 
+      mispriced: mispriced.length,
+      aged90: aged90.length 
+    };
   }, [listings]);
 
   return (
@@ -358,7 +254,7 @@ export default function TrapInventoryPage() {
               <>
                 <div>{filteredListings.length} of {stats.total} listings</div>
                 <div className="text-xs">
-                  {stats.strongBuys} strong buys • {stats.aged90} aged 90+
+                  {stats.mispriced} mispriced • {stats.strongBuys} strong buys • {stats.aged90} aged 90+
                 </div>
               </>
             )}

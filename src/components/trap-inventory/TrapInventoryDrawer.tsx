@@ -19,9 +19,11 @@ import {
   MapPin, 
   Store,
   TrendingDown,
+  TrendingUp,
   Eye,
   Pin,
-  Loader2
+  Loader2,
+  Clock
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -56,6 +58,19 @@ const getStatusBadge = (days: number) => {
     return <Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/30">Softening</Badge>;
   } else {
     return <Badge variant="destructive">90+ days</Badge>;
+  }
+};
+
+const getDealBadge = (dealLabel: string) => {
+  switch (dealLabel) {
+    case 'MISPRICED':
+      return <Badge className="bg-emerald-600 hover:bg-emerald-600">Mispriced</Badge>;
+    case 'STRONG_BUY':
+      return <Badge className="bg-emerald-500 hover:bg-emerald-500">Strong Buy</Badge>;
+    case 'WATCH':
+      return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">Watch</Badge>;
+    default:
+      return null;
   }
 };
 
@@ -100,12 +115,17 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange }: TrapInvento
     return source.replace(/^trap_/, '').replace(/_/g, ' ');
   };
 
+  const dealBadge = getDealBadge(listing.deal_label);
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg bg-card border-l border-border overflow-y-auto">
         <SheetHeader className="space-y-4 pb-6 border-b border-border">
           <div className="flex items-center justify-between">
-            {getStatusBadge(listing.days_on_market)}
+            <div className="flex items-center gap-2">
+              {getStatusBadge(listing.days_on_market)}
+              {dealBadge}
+            </div>
             <span className="text-sm text-muted-foreground">
               {listing.days_on_market} days on market
             </span>
@@ -166,7 +186,7 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange }: TrapInvento
             {!listing.no_benchmark && listing.delta_pct !== null && (
               <div className={`stat-card col-span-2 ${listing.delta_pct < 0 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
                 <p className={`text-xs uppercase tracking-wide flex items-center gap-1 ${listing.delta_pct < 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                  <TrendingDown className="h-3 w-3" />
+                  {listing.delta_pct < 0 ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
                   {listing.delta_pct < 0 ? 'Under Benchmark' : 'Over Benchmark'}
                 </p>
                 <div className="flex items-baseline gap-2">
@@ -178,26 +198,34 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange }: TrapInvento
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Based on {listing.benchmark_sample} cleared sales in region
+                  Based on {listing.benchmark_sample} cleared sales
+                  {listing.benchmark_ttd && ` • Avg ${Math.round(listing.benchmark_ttd)} days to clear`}
                 </p>
               </div>
             )}
-            
-            {/* Price drop from first seen */}
-            {listing.price_change_amount && listing.price_change_amount !== 0 && (
+
+            {/* Price changes */}
+            {listing.price_change_count > 0 && (
               <div className="stat-card col-span-2">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                  <TrendingDown className="h-3 w-3" />
-                  Price Drop (since listed)
+                  <Clock className="h-3 w-3" />
+                  Price Changes
                 </p>
                 <div className="flex items-baseline gap-2">
-                  <p className="text-lg font-bold text-muted-foreground mono">
-                    {formatCurrency(Math.abs(listing.price_change_amount))}
+                  <p className="text-lg font-bold text-foreground">
+                    {listing.price_change_count} change{listing.price_change_count !== 1 ? 's' : ''}
                   </p>
-                  <span className="text-sm text-muted-foreground">
-                    ({Math.abs(listing.price_change_pct ?? 0).toFixed(1)}%)
-                  </span>
+                  {listing.first_price && listing.asking_price && listing.first_price !== listing.asking_price && (
+                    <span className="text-sm text-muted-foreground">
+                      {formatCurrency(listing.first_price)} → {formatCurrency(listing.asking_price)}
+                    </span>
+                  )}
                 </div>
+                {listing.last_price_change_at && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Last changed {format(new Date(listing.last_price_change_at), 'dd MMM yyyy')}
+                  </p>
+                )}
               </div>
             )}
           </section>
