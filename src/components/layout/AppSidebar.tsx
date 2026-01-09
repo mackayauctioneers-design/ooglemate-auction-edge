@@ -1,23 +1,17 @@
 import { Link, useLocation } from 'react-router-dom';
 import { 
-  Car, 
   BarChart3, 
-  FileText, 
-  Bell, 
   LogOut,
   ChevronLeft,
   ChevronRight,
   HelpCircle,
   Calendar,
   Search,
-  ClipboardList,
   Crosshair,
-  Bookmark,
-  Wrench,
   DollarSign,
   Sparkles,
-  Eye,
-  MapPin
+  MapPin,
+  Settings
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,39 +21,19 @@ import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { PushNotificationPrompt } from '@/components/notifications/PushNotificationPrompt';
 
 // ============================================================================
-// NAVIGATION: DEALER MODE vs ADMIN MODE
+// DEALER NAVIGATION
 // ============================================================================
-// PHASE 3: VALO/Ask Frank is admin-only during testing phase.
-// Dealer Mode: Search Lots, Upcoming Auctions, Matches (results only), Valuation
-// Admin Mode: Everything above PLUS Ask Frank, Admin Tools, full diagnostics, 
-//             Buyer Review Queue, Sales Review, Fingerprints, etc.
+// Clean dealer-focused navigation. Admin items moved to Operator Mode.
 // ============================================================================
 
-const navItems = [
-  // === ADMIN ONLY: PHASE 3 - Ask Bob (formerly Frank) at top ===
-  { path: '/valo', label: 'Ask Bob', icon: Sparkles, highlight: true, adminOnly: true },
-  
-  // === SHARED: All users ===
+const dealerNavItems = [
+  { path: '/valo', label: 'Ask Bob', icon: Sparkles, highlight: true },
   { path: '/', label: "Today's Opportunities", icon: BarChart3 },
   { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
   { path: '/search-lots', label: 'Search Lots', icon: Search },
   { path: '/matches', label: 'Matches', icon: Crosshair },
   { path: '/valuation', label: 'Valuation', icon: DollarSign },
   { path: '/dealer-dashboard', label: 'My Dashboard', icon: MapPin },
-  
-  // === ADMIN ONLY: Sales management ===
-  { path: '/log-sale', label: 'Log Sale', icon: FileText, adminOnly: true },
-  { path: '/sales-review', label: 'Sales Review', icon: ClipboardList, adminOnly: true },
-  { path: '/fingerprints', label: 'Sale Fingerprints', icon: Car, adminOnly: true },
-  { path: '/saved-searches', label: 'Saved Searches', icon: Bookmark, adminOnly: true },
-  
-  // === ADMIN ONLY: Review & management ===
-  { path: '/regional-dashboard', label: 'Regional Dashboard', icon: MapPin, adminOnly: true },
-  { path: '/buyer-review-queue', label: 'Buyer Review Queue', icon: Eye, adminOnly: true },
-  { path: '/alerts', label: 'Alert Log', icon: Bell, adminOnly: true },
-  { path: '/admin-tools', label: 'Admin Tools', icon: Wrench, adminOnly: true },
-  
-  // === SHARED: Help ===
   { path: '/help', label: 'How to Use', icon: HelpCircle },
 ];
 
@@ -67,8 +41,6 @@ export function AppSidebar() {
   const location = useLocation();
   const { currentUser, isAdmin, logout, user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
-
-  const filteredNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
 
   return (
     <aside 
@@ -98,7 +70,7 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-1">
-        {filteredNavItems.map(item => {
+        {dealerNavItems.map(item => {
           const isActive = location.pathname === item.path;
           const isHighlight = 'highlight' in item && item.highlight;
           return (
@@ -117,6 +89,26 @@ export function AppSidebar() {
             </Link>
           );
         })}
+
+        {/* Operator Mode link for admins */}
+        {isAdmin && (
+          <div className="pt-4 mt-4 border-t border-sidebar-border">
+            <Link to="/operator/ingestion-health">
+              <Button
+                variant="nav"
+                className={cn(
+                  "w-full",
+                  collapsed ? "justify-center px-2" : "justify-start",
+                  "text-destructive hover:bg-destructive/10"
+                )}
+                title={collapsed ? "Operator Mode" : undefined}
+              >
+                <Settings className="h-4 w-4" />
+                {!collapsed && <span>Operator Mode</span>}
+              </Button>
+            </Link>
+          </div>
+        )}
       </nav>
 
       {/* User section */}
@@ -125,7 +117,7 @@ export function AppSidebar() {
           <div className="px-3 py-2 rounded-lg bg-muted/30">
             <p className="text-sm font-medium text-foreground truncate">{currentUser.dealer_name}</p>
             <p className="text-xs text-muted-foreground capitalize">
-              {currentUser.role === 'admin' ? '🔑 Admin' : '🚗 Dealer'}
+              {isAdmin ? '🔑 Admin' : '🚗 Dealer'}
             </p>
           </div>
         )}

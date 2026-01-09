@@ -4,39 +4,34 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { AdminGuard } from "@/components/guards/AdminGuard";
+import { OperatorGuard } from "@/components/guards/OperatorGuard";
+
+// Dealer pages
 import OpportunitiesPage from "./pages/OpportunitiesPage";
-import LogSalePage from "./pages/LogSalePage";
-import FingerprintsPage from "./pages/FingerprintsPage";
-import AlertsPage from "./pages/AlertsPage";
-import HelpPage from "./pages/HelpPage";
 import UpcomingAuctionsPage from "./pages/UpcomingAuctionsPage";
 import SearchLotsPage from "./pages/SearchLotsPage";
-import SalesReviewPage from "./pages/SalesReviewPage";
 import MatchesPage from "./pages/MatchesPage";
-import SavedSearchesPage from "./pages/SavedSearchesPage";
-import AdminToolsPage from "./pages/AdminToolsPage";
 import ValuationPage from "./pages/ValuationPage";
+import HelpPage from "./pages/HelpPage";
 import ValoPage from "./pages/ValoPage";
-import BuyerReviewQueuePage from "./pages/BuyerReviewQueuePage";
-import PicklesIngestionPage from "./pages/PicklesIngestionPage";
-import RegionalDashboardPage from "./pages/RegionalDashboardPage";
 import DealerDashboardPage from "./pages/DealerDashboardPage";
-import IngestionHealthPage from "./pages/IngestionHealthPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
+
+// Operator pages
+import OperatorIngestionHealthPage from "./pages/operator/OperatorIngestionHealthPage";
+import { OperatorPlaceholderPage } from "./pages/operator/OperatorPlaceholderPage";
 
 const queryClient = new QueryClient();
 
 // ============================================================================
-// ROUTING: DEALER MODE vs ADMIN MODE
+// ROUTING: DEALER MODE vs OPERATOR MODE
 // ============================================================================
-// PHASE 3: VALO/Ask Bob is admin-only during testing phase.
-// Routes wrapped in <AdminGuard> redirect non-admins to home page.
+// Dealer Mode: Primary UI for dealers - Search Lots, Upcoming Auctions, etc.
+// Operator Mode: Backend controls for admin/internal users only.
 // 
-// - Admin-only (Phase 3): valo, log-sale, sales-review, fingerprints, 
-//                         saved-searches, alerts, admin-tools, buyer-review-queue
-// - Shared: /, upcoming-auctions, search-lots, matches, valuation, help
+// - Dealer routes: /, /upcoming-auctions, /search-lots, /matches, /valuation, etc.
+// - Operator routes: /operator/* (protected by OperatorGuard)
 // ============================================================================
 
 const App = () => (
@@ -47,53 +42,66 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            {/* === SHARED ROUTES: All users === */}
+            {/* === DEALER ROUTES: All authenticated users === */}
             <Route path="/" element={<OpportunitiesPage />} />
             <Route path="/upcoming-auctions" element={<UpcomingAuctionsPage />} />
             <Route path="/search-lots" element={<SearchLotsPage />} />
             <Route path="/matches" element={<MatchesPage />} />
             <Route path="/valuation" element={<ValuationPage />} />
-            <Route path="/help" element={<HelpPage />} />
-            
-            {/* === VALO/Ask Bob: Available to all authenticated users === */}
             <Route path="/valo" element={<ValoPage />} />
-            
-            {/* === ADMIN-ONLY ROUTES: Redirect non-admins to home === */}
-            <Route path="/log-sale" element={
-              <AdminGuard><LogSalePage /></AdminGuard>
-            } />
-            <Route path="/sales-review" element={
-              <AdminGuard><SalesReviewPage /></AdminGuard>
-            } />
-            <Route path="/fingerprints" element={
-              <AdminGuard><FingerprintsPage /></AdminGuard>
-            } />
-            <Route path="/saved-searches" element={
-              <AdminGuard><SavedSearchesPage /></AdminGuard>
-            } />
-            <Route path="/alerts" element={
-              <AdminGuard><AlertsPage /></AdminGuard>
-            } />
-            <Route path="/admin-tools" element={
-              <AdminGuard><AdminToolsPage /></AdminGuard>
-            } />
-            <Route path="/buyer-review-queue" element={
-              <AdminGuard><BuyerReviewQueuePage /></AdminGuard>
-            } />
-            <Route path="/pickles-ingestion" element={
-              <AdminGuard><PicklesIngestionPage /></AdminGuard>
-            } />
-            <Route path="/regional-dashboard" element={
-              <AdminGuard><RegionalDashboardPage /></AdminGuard>
-            } />
-            <Route path="/ingestion-health" element={
-              <AdminGuard><IngestionHealthPage /></AdminGuard>
-            } />
             <Route path="/dealer-dashboard" element={<DealerDashboardPage />} />
+            <Route path="/help" element={<HelpPage />} />
             <Route path="/auth" element={<AuthPage />} />
-            
-            <Route path="*" element={<NotFound />} />
-            
+
+            {/* === OPERATOR ROUTES: Admin/Internal only === */}
+            {/* Monitoring */}
+            <Route path="/operator/ingestion-health" element={
+              <OperatorGuard><OperatorIngestionHealthPage /></OperatorGuard>
+            } />
+            <Route path="/operator/cron-audit" element={
+              <OperatorGuard><OperatorPlaceholderPage title="Cron Audit Log" description="View scheduled task execution history" /></OperatorGuard>
+            } />
+            <Route path="/operator/trap-health" element={
+              <OperatorGuard><OperatorPlaceholderPage title="Trap Health Alerts" description="Monitor trap failures and issues" /></OperatorGuard>
+            } />
+            <Route path="/operator/job-queue" element={
+              <OperatorGuard><OperatorPlaceholderPage title="Job Queue" description="View and manage background jobs" /></OperatorGuard>
+            } />
+
+            {/* Data Ops */}
+            <Route path="/operator/traps" element={
+              <OperatorGuard><OperatorPlaceholderPage title="Traps Registry" description="Manage dealer traps and configurations" /></OperatorGuard>
+            } />
+            <Route path="/operator/preflight" element={
+              <OperatorGuard><OperatorPlaceholderPage title="Preflight Queue" description="View pending preflight checks" /></OperatorGuard>
+            } />
+            <Route path="/operator/validation" element={
+              <OperatorGuard><OperatorPlaceholderPage title="Validation Queue" description="Monitor validation runs" /></OperatorGuard>
+            } />
+            <Route path="/operator/ingestion-runs" element={
+              <OperatorGuard><OperatorPlaceholderPage title="Ingestion Runs" description="View ingestion run history" /></OperatorGuard>
+            } />
+
+            {/* Analytics */}
+            <Route path="/operator/feeding-mode" element={
+              <OperatorGuard><OperatorPlaceholderPage title="Feeding Mode Report" description="14-day stabilization metrics" /></OperatorGuard>
+            } />
+            <Route path="/operator/fingerprints" element={
+              <OperatorGuard><OperatorPlaceholderPage title="Fingerprints Explorer" description="Browse fingerprint outcomes" /></OperatorGuard>
+            } />
+
+            {/* Admin */}
+            <Route path="/operator/dealer-onboarding" element={
+              <OperatorGuard><OperatorPlaceholderPage title="Dealer Onboarding" description="Add and configure new dealers" /></OperatorGuard>
+            } />
+            <Route path="/operator/feature-flags" element={
+              <OperatorGuard><OperatorPlaceholderPage title="Feature Flags" description="Toggle features and rollouts" /></OperatorGuard>
+            } />
+            <Route path="/operator/settings" element={
+              <OperatorGuard><OperatorPlaceholderPage title="Settings" description="System configuration" /></OperatorGuard>
+            } />
+
+            {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
