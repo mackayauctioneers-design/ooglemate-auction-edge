@@ -88,3 +88,13 @@ schedule = "45 0 * * *"
 verify_jwt = false
 # Daily cron at 8:00am AEST (22:00 UTC) - runs after dealer crawl
 schedule = "0 22 * * *"
+
+[functions.trap-preflight]
+verify_jwt = false
+# Every 15 minutes - drains pending preflight queue
+schedule = "*/15 * * * *"
+
+[functions.trap-validation-daily]
+verify_jwt = false
+# Daily cron at 6:30am AEST (20:30 UTC) - enqueue validation jobs before crawl
+schedule = "30 20 * * *"

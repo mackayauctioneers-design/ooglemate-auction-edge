@@ -5,6 +5,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const MAX_CHECKS_PER_RUN = 10;
+
 // Inventory markers by platform
 const PLATFORM_MARKERS: Record<string, RegExp[]> = {
   digitaldealer: [
@@ -37,18 +39,32 @@ interface PreflightResult {
   markers: string[];
   tier: 1 | 2;
   responseTime: number;
+  validation_status?: string; // For failed traps
+}
+
+function categorizeFailure(reason: string): string {
+  if (reason.startsWith('http_404') || reason.startsWith('http_5')) {
+    return 'disabled_invalid_url';
+  }
+  if (reason.startsWith('http_403') || reason.includes('timeout')) {
+    return 'disabled_blocked';
+  }
+  if (reason.includes('insufficient_markers') || reason.includes('no_html')) {
+    return 'disabled_unsupported_platform';
+  }
+  return 'disabled_preflight_fail';
 }
 
 async function tier1DirectFetch(url: string, parserMode: string): Promise<PreflightResult | null> {
   const start = Date.now();
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 8000);
     
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; TrapBot/1.0)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'text/html,application/xhtml+xml',
       },
     });
@@ -61,6 +77,7 @@ async function tier1DirectFetch(url: string, parserMode: string): Promise<Prefli
         markers: [],
         tier: 1,
         responseTime: Date.now() - start,
+        validation_status: categorizeFailure(`http_${response.status}`),
       };
     }
     
@@ -95,6 +112,7 @@ async function tier1DirectFetch(url: string, parserMode: string): Promise<Prefli
         markers: [],
         tier: 1,
         responseTime: Date.now() - start,
+        validation_status: categorizeFailure('timeout'),
       };
     }
     // Network error - try tier 2
@@ -107,13 +125,13 @@ async function tier2FirecrawlFetch(url: string, parserMode: string): Promise<Pre
   const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
   
   if (!firecrawlKey) {
-    // Fall back to fail if no Firecrawl
     return {
       status: 'fail',
       reason: 'tier2_no_firecrawl_key',
       markers: [],
       tier: 2,
       responseTime: Date.now() - start,
+      validation_status: 'disabled_preflight_fail',
     };
   }
   
@@ -128,18 +146,18 @@ async function tier2FirecrawlFetch(url: string, parserMode: string): Promise<Pre
         url,
         formats: ['html'],
         onlyMainContent: false,
-        waitFor: 3000, // Wait for SPA content
+        waitFor: 3000,
       }),
     });
     
     if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
       return {
         status: 'fail',
         reason: `tier2_firecrawl_${response.status}`,
         markers: [],
         tier: 2,
         responseTime: Date.now() - start,
+        validation_status: categorizeFailure(`tier2_firecrawl_${response.status}`),
       };
     }
     
@@ -153,6 +171,7 @@ async function tier2FirecrawlFetch(url: string, parserMode: string): Promise<Pre
         markers: [],
         tier: 2,
         responseTime: Date.now() - start,
+        validation_status: categorizeFailure('no_html'),
       };
     }
     
@@ -181,27 +200,27 @@ async function tier2FirecrawlFetch(url: string, parserMode: string): Promise<Pre
       markers: foundMarkers,
       tier: 2,
       responseTime: Date.now() - start,
+      validation_status: categorizeFailure('insufficient_markers'),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
       status: 'fail',
-      reason: `tier2_error_${message.slice(0, 50)}`,
+      reason: `tier2_error_${message.slice(0, 30)}`,
       markers: [],
       tier: 2,
       responseTime: Date.now() - start,
+      validation_status: 'disabled_preflight_fail',
     };
   }
 }
 
 async function runPreflight(url: string, parserMode: string): Promise<PreflightResult> {
-  // Tier 1: Direct fetch
   const tier1Result = await tier1DirectFetch(url, parserMode);
   if (tier1Result) {
     return tier1Result;
   }
   
-  // Tier 2: Firecrawl for SPA sites
   console.log(`[preflight] Tier 1 inconclusive for ${url}, trying Tier 2`);
   return await tier2FirecrawlFetch(url, parserMode);
 }
@@ -216,24 +235,36 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { trap_slugs, check_all_pending = false } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { trap_slugs, check_all_pending = false, limit = MAX_CHECKS_PER_RUN } = body;
 
     let slugsToCheck: string[] = trap_slugs || [];
 
-    // If checking all pending, fetch them
-    if (check_all_pending) {
+    // If checking all pending, fetch them with limit
+    if (check_all_pending && !trap_slugs) {
       const { data: pending } = await supabase
         .from('dealer_traps')
         .select('trap_slug')
         .eq('preflight_status', 'pending')
-        .limit(50);
+        .order('created_at', { ascending: true })
+        .limit(Math.min(limit, MAX_CHECKS_PER_RUN));
       
       slugsToCheck = pending?.map(t => t.trap_slug) || [];
     }
 
+    // Get remaining count
+    const { count: remainingPending } = await supabase
+      .from('dealer_traps')
+      .select('*', { count: 'exact', head: true })
+      .eq('preflight_status', 'pending');
+
     if (slugsToCheck.length === 0) {
       return new Response(
-        JSON.stringify({ message: 'No traps to preflight', checked: 0 }),
+        JSON.stringify({ 
+          message: 'No traps to preflight', 
+          checked: 0,
+          remaining_pending: remainingPending || 0,
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -251,6 +282,7 @@ Deno.serve(async (req) => {
       status: string;
       reason: string;
       tier: number;
+      validation_status?: string;
     }> = [];
 
     // Process each trap
@@ -259,15 +291,22 @@ Deno.serve(async (req) => {
       
       const result = await runPreflight(trap.inventory_url, trap.parser_mode);
       
-      // Update trap with preflight result
+      // Build update payload
+      const updatePayload: Record<string, unknown> = {
+        preflight_status: result.status,
+        preflight_reason: result.reason,
+        last_preflight_markers: result.markers,
+        preflight_checked_at: new Date().toISOString(),
+      };
+
+      // If failed, update validation_status to disable the trap
+      if (result.status === 'fail' && result.validation_status) {
+        updatePayload.validation_status = result.validation_status;
+      }
+
       const { error: updateError } = await supabase
         .from('dealer_traps')
-        .update({
-          preflight_status: result.status,
-          preflight_reason: result.reason,
-          last_preflight_markers: result.markers,
-          preflight_checked_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('trap_slug', trap.trap_slug);
 
       if (updateError) {
@@ -279,6 +318,7 @@ Deno.serve(async (req) => {
         status: result.status,
         reason: result.reason,
         tier: result.tier,
+        validation_status: result.validation_status,
       });
 
       console.log(`[preflight] ${trap.trap_slug}: ${result.status} (${result.reason}) - ${result.responseTime}ms`);
@@ -286,8 +326,23 @@ Deno.serve(async (req) => {
 
     const passed = results.filter(r => r.status === 'pass').length;
     const failed = results.filter(r => r.status === 'fail').length;
+    const actualRemaining = (remainingPending || 0) - results.length;
 
-    console.log(`[preflight] Complete: ${passed} passed, ${failed} failed`);
+    console.log(`[preflight] Complete: ${passed} passed, ${failed} failed, ${actualRemaining} remaining`);
+
+    // Log to cron_audit if this was an automated run
+    if (check_all_pending) {
+      const today = new Date().toISOString().split('T')[0];
+      await supabase
+        .from('cron_audit_log')
+        .upsert({
+          cron_name: 'trap-preflight',
+          run_date: today,
+          run_at: new Date().toISOString(),
+          success: true,
+          result: { checked: results.length, passed, failed, remaining: actualRemaining },
+        }, { onConflict: 'cron_name,run_date' });
+    }
 
     return new Response(
       JSON.stringify({
@@ -295,6 +350,7 @@ Deno.serve(async (req) => {
         checked: results.length,
         passed,
         failed,
+        remaining_pending: Math.max(0, actualRemaining),
         results,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
