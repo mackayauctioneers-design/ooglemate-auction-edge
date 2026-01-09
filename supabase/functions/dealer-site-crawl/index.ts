@@ -1702,9 +1702,9 @@ async function checkHealthAndAlert(
   // ALERT 3: >50% drop vs 7-day average
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const { data: recentRuns } = await supabase
-    .from('dealer_crawl_runs')
+    .from('trap_crawl_runs')
     .select('vehicles_found')
-    .eq('dealer_slug', dealer.slug)
+    .eq('trap_slug', dealer.slug)
     .gte('run_date', sevenDaysAgo)
     .order('run_date', { ascending: false })
     .limit(7);
@@ -1735,9 +1735,45 @@ async function checkHealthAndAlert(
 // Sydney Metro batch limit - smaller to avoid timeouts
 const SYDNEY_METRO_BATCH_LIMIT = 2;
 
+// Failure categorization types
+type FailureCategory = 'invalid_url' | 'unsupported_platform' | 'scrape_error' | 'parser_issue' | 'transient';
+
+function categorizeFailure(error: string): FailureCategory {
+  const errorLower = error.toLowerCase();
+  
+  // invalid_url: DNS/404/no markers - no retries
+  if (errorLower.includes('dns resolution failed') || 
+      errorLower.includes('404') ||
+      errorLower.includes('not found') ||
+      errorLower.includes('no inventory markers')) {
+    return 'invalid_url';
+  }
+  
+  // unsupported_platform: parser not supported - no retries
+  if (errorLower.includes('unsupported parser') ||
+      errorLower.includes('parser_mode')) {
+    return 'unsupported_platform';
+  }
+  
+  // parser_issue: vehicles found but failed to parse - flag for review
+  if (errorLower.includes('parse error') ||
+      errorLower.includes('extraction failed')) {
+    return 'parser_issue';
+  }
+  
+  // scrape_error / transient: SSL, timeout, etc - retry per normal
+  if (errorLower.includes('ssl') ||
+      errorLower.includes('timeout') ||
+      errorLower.includes('fetch failed')) {
+    return 'transient';
+  }
+  
+  return 'scrape_error';
+}
+
 interface DbTrap {
   id: string;
-  dealer_slug: string;
+  trap_slug: string;
   dealer_name: string;
   inventory_url: string;
   suburb: string | null;
@@ -1757,7 +1793,7 @@ interface DbTrap {
 function dbTrapToDealerConfig(r: DbTrap): DealerConfig {
   return {
     name: r.dealer_name,
-    slug: r.dealer_slug,
+    slug: r.trap_slug,
     inventory_url: r.inventory_url,
     suburb: r.suburb || '',
     state: r.state || 'NSW',
@@ -1784,7 +1820,7 @@ async function resetTrapValidation(supabase: any, slugs: string[]): Promise<void
       validation_status: 'pending',
       validation_notes: 'Reset for new validation batch',
     })
-    .in('dealer_slug', slugs);
+    .in('trap_slug', slugs);
   
   console.log(`[dealer-site-crawl] Reset validation counters for ${slugs.length} traps`);
 }
@@ -1802,7 +1838,7 @@ async function loadTrapsFromDb(supabase: any, options: {
     .select('*');
   
   if (options.slugs && options.slugs.length > 0) {
-    query = query.in('dealer_slug', options.slugs);
+    query = query.in('trap_slug', options.slugs);
   }
   
   if (options.enabledOnly) {
@@ -1855,7 +1891,7 @@ async function updateTrapValidation(
   const { data: trap } = await supabase
     .from('dealer_traps')
     .select('validation_status, validation_runs, consecutive_failures, successful_validation_runs, enabled')
-    .eq('dealer_slug', slug)
+    .eq('trap_slug', slug)
     .single();
   
   if (!trap) return;
@@ -1931,9 +1967,9 @@ async function updateTrapValidation(
   }
   
   await supabase
-    .from('dealer_rooftops')
+    .from('dealer_traps')
     .update(updateData)
-    .eq('dealer_slug', slug);
+    .eq('trap_slug', slug);
   
   console.log(`[dealer-site-crawl] Updated ${slug}: status=${newStatus}, runs=${newRuns}, successRuns=${newSuccessRuns}, failures=${newFailures}, enabled=${shouldEnable}`);
 }
@@ -2061,9 +2097,9 @@ Deno.serve(async (req) => {
         console.log(`[dealer-site-crawl] Skipping ${dealer.name}: parser_mode=${dealer.parser_mode} not supported (only ${SUPPORTED_PARSERS.join(', ')})`);
         
         // Log as unsupported but don't count as error
-        await supabase.from('dealer_crawl_runs').upsert({
+        await supabase.from('trap_crawl_runs').upsert({
           run_date: runDate,
-          dealer_slug: dealer.slug,
+          trap_slug: dealer.slug,
           dealer_name: dealer.name,
           parser_mode: dealer.parser_mode,
           vehicles_found: 0,
@@ -2072,7 +2108,7 @@ Deno.serve(async (req) => {
           error: `Unsupported parser_mode: ${dealer.parser_mode}`,
           run_started_at: runStartedAt,
           run_completed_at: new Date().toISOString(),
-        }, { onConflict: 'run_date,dealer_slug' });
+        }, { onConflict: 'run_date,trap_slug' });
         
         results.push({
           dealer: dealer.name,
@@ -2098,17 +2134,24 @@ Deno.serve(async (req) => {
           console.error(`[dealer-site-crawl] Preflight failed for ${dealer.name}: ${reason}`);
           
           // Persist failure telemetry to dealer_traps
+          // Categorize failure type
+          const failureCategory = categorizeFailure(reason);
+          const shouldDisable = failureCategory === 'invalid_url' || failureCategory === 'unsupported_platform';
+          
           await supabase
             .from('dealer_traps')
             .update({ 
-              validation_status: 'invalid_url',
+              validation_status: shouldDisable ? failureCategory : 'pending',
               validation_notes: `Preflight failed: ${reason}`,
               consecutive_failures: (dealer as any).consecutive_failures + 1 || 1,
               last_fail_reason: reason,
               last_fail_at: new Date().toISOString(),
               last_preflight_markers: preflight.hasMarkers || null,
+              enabled: shouldDisable ? false : (dealer as any).enabled,
+              auto_disabled_at: shouldDisable ? new Date().toISOString() : null,
+              auto_disabled_reason: shouldDisable ? `${failureCategory}: ${reason}` : null,
             })
-            .eq('dealer_slug', dealer.slug);
+            .eq('trap_slug', dealer.slug);
           
           results.push({
             dealer: dealer.name,
@@ -2129,7 +2172,7 @@ Deno.serve(async (req) => {
         await supabase
           .from('dealer_traps')
           .update({ last_preflight_markers: preflight.hasMarkers })
-          .eq('dealer_slug', dealer.slug);
+          .eq('trap_slug', dealer.slug);
         
         console.log(`[dealer-site-crawl] Preflight passed for ${dealer.name}: markers=${JSON.stringify(preflight.hasMarkers)}`);
       }
@@ -2144,9 +2187,12 @@ Deno.serve(async (req) => {
           console.error(`[dealer-site-crawl] Failed to scrape ${dealer.name}: ${error}`);
           
           // Record failed run
-          await supabase.from('dealer_crawl_runs').upsert({
+          // Categorize failure for telemetry
+          const failureCategory = categorizeFailure(error);
+          
+          await supabase.from('trap_crawl_runs').upsert({
             run_date: runDate,
-            dealer_slug: dealer.slug,
+            trap_slug: dealer.slug,
             dealer_name: dealer.name,
             parser_mode: dealer.parser_mode,
             vehicles_found: 0,
@@ -2155,16 +2201,16 @@ Deno.serve(async (req) => {
             error: error,
             run_started_at: runStartedAt,
             run_completed_at: new Date().toISOString(),
-          }, { onConflict: 'run_date,dealer_slug' });
+          }, { onConflict: 'run_date,trap_slug' });
           
-          // Persist failure telemetry
+          // Persist failure telemetry with categorization
           await supabase
             .from('dealer_traps')
             .update({ 
-              last_fail_reason: 'scrape_error',
+              last_fail_reason: failureCategory,
               last_fail_at: new Date().toISOString(),
             })
-            .eq('dealer_slug', dealer.slug);
+            .eq('trap_slug', dealer.slug);
           
           // Update validation status
           if (isValidationRun || dbTraps.length > 0) {
@@ -2217,7 +2263,7 @@ Deno.serve(async (req) => {
           const ingestPayload = {
             source_name: sourceName,
             source_group: 'dealer_site',
-            dealer_slug: dealer.slug,
+            trap_slug: dealer.slug,
             listings: passed.map(v => ({
               source_listing_id: v.source_listing_id,
               make: v.make,
@@ -2256,9 +2302,9 @@ Deno.serve(async (req) => {
         }
         
         // Record successful run
-        await supabase.from('dealer_crawl_runs').upsert({
+        await supabase.from('trap_crawl_runs').upsert({
           run_date: runDate,
-          dealer_slug: dealer.slug,
+          trap_slug: dealer.slug,
           dealer_name: dealer.name,
           parser_mode: dealer.parser_mode,
           vehicles_found: passed.length,
@@ -2268,7 +2314,7 @@ Deno.serve(async (req) => {
           error: null,
           run_started_at: runStartedAt,
           run_completed_at: new Date().toISOString(),
-        }, { onConflict: 'run_date,dealer_slug' });
+        }, { onConflict: 'run_date,trap_slug' });
         
         // Update validation status
         let validationStatus: string | undefined;
@@ -2278,7 +2324,7 @@ Deno.serve(async (req) => {
           const { data: updated } = await supabase
             .from('dealer_traps')
             .select('validation_status')
-            .eq('dealer_slug', dealer.slug)
+            .eq('trap_slug', dealer.slug)
             .single();
           validationStatus = updated?.validation_status;
         }
@@ -2304,9 +2350,9 @@ Deno.serve(async (req) => {
         const errorMsg = e instanceof Error ? e.message : String(e);
         console.error(`[dealer-site-crawl] Error processing ${dealer.name}: ${errorMsg}`);
         
-        await supabase.from('dealer_crawl_runs').upsert({
+        await supabase.from('trap_crawl_runs').upsert({
           run_date: runDate,
-          dealer_slug: dealer.slug,
+          trap_slug: dealer.slug,
           dealer_name: dealer.name,
           parser_mode: dealer.parser_mode,
           vehicles_found: 0,
@@ -2315,7 +2361,7 @@ Deno.serve(async (req) => {
           error: errorMsg,
           run_started_at: runStartedAt,
           run_completed_at: new Date().toISOString(),
-        }, { onConflict: 'run_date,dealer_slug' });
+        }, { onConflict: 'run_date,trap_slug' });
         
         // Update validation status
         if (isValidationRun || dbTraps.length > 0) {
