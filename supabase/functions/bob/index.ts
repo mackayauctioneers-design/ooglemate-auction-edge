@@ -192,9 +192,10 @@ const EUROPEAN_MAKES_REFUSE = [
   'alfa romeo', 'alfa', 'peugeot', 'renault'
 ];
 
-// Rotating refusal phrases for European cars
+// Rotating refusal phrases for European cars (safe, blunt, funny)
 const EURO_REFUSAL_PHRASES = [
-  "Mate, to be honest, I'd rather drive a rusty nail through my cock than price that.",
+  "Mate, I'd rather eat glass than price that.",
+  "European? Yeah nah. I'm not touching that headache.",
   "Yeah nah. That's someone else's problem.",
   "That's a brave way to lose money.",
   "I'll talk to Macka and get back to you.",
@@ -202,7 +203,33 @@ const EURO_REFUSAL_PHRASES = [
 
 let euroRefusalIndex = 0;
 
-function isEuropeanCarRefusal(make: string, km?: number): boolean {
+// Intent keywords for pricing/valuation (triggers Euro refusal)
+const PRICING_INTENT_KEYWORDS = [
+  'price', 'pricing', 'value', 'valuation', 'worth', 'buy', 'buying',
+  'pay', 'paying', 'offer', 'cost', 'owe', 'own', 'ownership',
+  'what would', 'what should', 'how much', 'give me a', 'quote',
+  'reckon', 'think its worth', 'think it\'s worth', 'steer', 'number'
+];
+
+// Intent keywords for market trends (does NOT trigger Euro refusal)
+const TREND_INTENT_KEYWORDS = [
+  'trend', 'trending', 'market', 'demand', 'moving', 'selling',
+  'clearance', 'days to sell', 'days to clear', 'popular', 'hot',
+  'what\'s the go', 'whats the go', 'how are they going', 'how\'s the'
+];
+
+function detectPricingIntent(message: string): boolean {
+  const text = message.toLowerCase();
+  
+  // Check for trend intent first (trumps pricing)
+  const hasTrendIntent = TREND_INTENT_KEYWORDS.some(k => text.includes(k));
+  if (hasTrendIntent) return false;
+  
+  // Check for pricing intent
+  return PRICING_INTENT_KEYWORDS.some(k => text.includes(k));
+}
+
+function isEuropeanMake(make: string): boolean {
   const makeLower = make.toLowerCase().trim();
   return EUROPEAN_MAKES_REFUSE.some(m => makeLower.includes(m) || makeLower === m);
 }
@@ -849,32 +876,13 @@ function applyNameLock(text: string): string {
 // ============================================================================
 
 function applyAccentGuardrail(text: string): string {
-  // Replace American phrases with Australian equivalents
+  // TIGHT guardrail: Only replace a small list of obvious Americanisms
+  // Avoid broad replacements that change meaning
   const replacements: [RegExp, string][] = [
-    [/\bawesome\b/gi, "yeah right"],
-    [/\bthat's awesome\b/gi, "yeah not bad"],
+    [/\bawesome\b/gi, "not bad"],
     [/\bgreat opportunity\b/gi, "if you're feeling lucky"],
     [/\blet's take a look\b/gi, "we can have a squiz"],
-    [/\blet me take a look\b/gi, "I'll have a squiz"],
-    [/\bhave a look\b/gi, "have a squiz"],
-    [/\btake a look\b/gi, "have a squiz"],
-    [/\bsounds great\b/gi, "sounds alright"],
-    [/\bthat's great\b/gi, "yeah not bad"],
     [/\bno problem\b/gi, "no worries"],
-    [/\bno worries at all\b/gi, "no dramas"],
-    [/\blet's go\b/gi, "let's crack on"],
-    [/\bI'd be happy to\b/gi, "yeah I can"],
-    [/\bI would be happy to\b/gi, "yeah I can"],
-    [/\bwonderful\b/gi, "not bad"],
-    [/\bfantastic\b/gi, "not bad"],
-    [/\bexcellent\b/gi, "solid"],
-    [/\bperfect\b/gi, "sweet"],
-    [/\babsolutely\b/gi, "yeah mate"],
-    [/\bcertainly\b/gi, "yeah"],
-    [/\bdefinitely\b/gi, "for sure"],
-    [/\bI appreciate\b/gi, "cheers for"],
-    [/\bthank you so much\b/gi, "cheers"],
-    [/\bthank you\b/gi, "cheers"],
   ];
   
   let result = text;
@@ -1197,10 +1205,14 @@ serve(async (req) => {
       
       // ================================================================
       // EUROPEAN CAR HARD RULE - Check BEFORE pricing engine
-      // Any European make requesting valuation = automatic refusal
+      // Triggers ONLY when: European make AND pricing/valuation intent
+      // Does NOT trigger for market trend questions
       // ================================================================
-      if (isEuropeanCarRefusal(vehicleInput.make, vehicleInput.km)) {
-        console.log(`[BOB] EURO REFUSAL: ${vehicleInput.make} - automatic refusal`);
+      const isEuro = isEuropeanMake(vehicleInput.make);
+      const hasPricingIntent = detectPricingIntent(transcript);
+      
+      if (isEuro && hasPricingIntent) {
+        console.log(`[BOB] EURO REFUSAL: ${vehicleInput.make} with pricing intent - automatic refusal`);
         
         bobScript = getEuropeanRefusalPhrase();
         
@@ -1220,7 +1232,7 @@ serve(async (req) => {
           owe_base: null,
           avg_days: 0,
           avg_gross: 0,
-          notes: ['EURO_REFUSAL: Automatic refusal for European make'],
+          notes: ['EURO_REFUSAL: Automatic refusal for European make with pricing intent'],
           comps_used: [],
           processing_time_ms: 0,
           adjustments: { km_adj: 0, year_adj: 0, trim_adj: 0, demand_adj: 0 },
