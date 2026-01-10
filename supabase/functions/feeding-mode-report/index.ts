@@ -206,6 +206,39 @@ serve(async (req) => {
       },
     };
 
+    // 8. Benchmark coverage from trap_deals view
+    const { data: benchmarkData, error: benchmarkError } = await supabase
+      .from("trap_deals")
+      .select("region_id, fingerprint_price");
+
+    if (benchmarkError) throw benchmarkError;
+
+    const benchmarkByRegion: Record<string, { total: number; benchmarked: number }> = {};
+    (benchmarkData || []).forEach((row) => {
+      const region = row.region_id || "UNKNOWN";
+      if (!benchmarkByRegion[region]) {
+        benchmarkByRegion[region] = { total: 0, benchmarked: 0 };
+      }
+      benchmarkByRegion[region].total += 1;
+      if (row.fingerprint_price !== null) {
+        benchmarkByRegion[region].benchmarked += 1;
+      }
+    });
+
+    const benchmarkCoverage = Object.entries(benchmarkByRegion)
+      .map(([region, stats]) => ({
+        region_id: region,
+        total_deals: stats.total,
+        benchmarked: stats.benchmarked,
+        coverage_pct: stats.total > 0 
+          ? Math.round(1000 * stats.benchmarked / stats.total) / 10 
+          : 0,
+      }))
+      .sort((a, b) => b.total_deals - a.total_deals);
+
+    const totalDeals = benchmarkCoverage.reduce((sum, r) => sum + r.total_deals, 0);
+    const totalBenchmarked = benchmarkCoverage.reduce((sum, r) => sum + r.benchmarked, 0);
+
     const report = {
       generated_at: new Date().toISOString(),
       period: {
@@ -229,6 +262,14 @@ serve(async (req) => {
       },
       ingestion_by_source: ingestionBySource,
       top_drop_reasons: topDropReasons,
+      benchmark_coverage: {
+        total_deals: totalDeals,
+        total_benchmarked: totalBenchmarked,
+        overall_pct: totalDeals > 0 
+          ? Math.round(1000 * totalBenchmarked / totalDeals) / 10 
+          : 0,
+        by_region: benchmarkCoverage,
+      },
     };
 
     return new Response(JSON.stringify(report, null, 2), {
