@@ -31,6 +31,13 @@ interface DropReason {
   count: number;
 }
 
+interface BenchmarkCoverage {
+  region_id: string;
+  total_deals: number;
+  benchmarked: number;
+  coverage_pct: number;
+}
+
 interface HealthData {
   traps: TrapStat[];
   crawlToday: CrawlStats | null;
@@ -38,6 +45,7 @@ interface HealthData {
   fingerprintsToday: number;
   jobQueue: JobQueue | null;
   dropReasons: DropReason[];
+  benchmarkCoverage: BenchmarkCoverage[];
   lastRefresh: Date;
 }
 
@@ -52,13 +60,14 @@ export function IngestionHealthContent() {
   const fetchHealth = async () => {
     setLoading(true);
     try {
-      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes] = await Promise.all([
+      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes, benchmarkRes] = await Promise.all([
         supabase.rpc('get_nsw_trap_stats' as never),
         supabase.rpc('get_nsw_crawl_today' as never),
         supabase.rpc('get_clearance_today' as never),
         supabase.rpc('get_fingerprints_today' as never),
         supabase.rpc('get_job_queue_stats' as never),
         supabase.rpc('get_top_drop_reasons' as never),
+        supabase.rpc('get_benchmark_coverage' as never),
       ]);
 
       setHealth({
@@ -68,6 +77,7 @@ export function IngestionHealthContent() {
         fingerprintsToday: (fingerprintsRes.data as { count: number }[])?.[0]?.count || 0,
         jobQueue: (jobQueueRes.data as JobQueue[])?.[0] || null,
         dropReasons: (dropReasonsRes.data as DropReason[]) || [],
+        benchmarkCoverage: (benchmarkRes.data as BenchmarkCoverage[]) || [],
         lastRefresh: new Date(),
       });
     } catch (err) {
@@ -256,6 +266,43 @@ export function IngestionHealthContent() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Benchmark Coverage */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Benchmark Coverage</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                % of trap_deals with fingerprint_price populated (enables deal alerts)
+              </p>
+            </CardHeader>
+            <CardContent>
+              {health?.benchmarkCoverage.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No trap deals yet</p>
+              ) : (
+                <div className="space-y-3">
+                  {health?.benchmarkCoverage.map((bc) => (
+                    <div key={bc.region_id} className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span>{bc.region_id.replace(/_/g, " ")}</span>
+                        <span className="font-mono">
+                          {bc.benchmarked} / {bc.total_deals} ({bc.coverage_pct}%)
+                        </span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all ${
+                            bc.coverage_pct >= 50 ? 'bg-green-500' : 
+                            bc.coverage_pct >= 20 ? 'bg-yellow-500' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${Math.min(bc.coverage_pct, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Stabilization Notice */}
           <Card className="border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950">

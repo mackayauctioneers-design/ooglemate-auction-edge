@@ -1811,6 +1811,15 @@ export type Database = {
           alerts_updated: number
         }[]
       }
+      get_benchmark_coverage: {
+        Args: never
+        Returns: {
+          benchmarked: number
+          coverage_pct: number
+          region_id: string
+          total_deals: number
+        }[]
+      }
       get_clearance_today: {
         Args: never
         Returns: {
