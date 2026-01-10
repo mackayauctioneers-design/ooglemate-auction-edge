@@ -2323,7 +2323,18 @@ Deno.serve(async (req) => {
           run_completed_at: new Date().toISOString(),
         }, { onConflict: 'run_date,trap_slug' });
         
-        // Update validation status
+        // ALWAYS update last_crawl_at and last_vehicle_count on successful runs
+        await supabase
+          .from('dealer_traps')
+          .update({
+            last_crawl_at: new Date().toISOString(),
+            last_vehicle_count: passed.length,
+            consecutive_failures: 0,
+            last_fail_reason: null,
+          })
+          .eq('trap_slug', dealer.slug);
+        
+        // Update validation status (for validation runs or DB-loaded traps)
         let validationStatus: string | undefined;
         if (isValidationRun || dbTraps.length > 0) {
           await updateTrapValidation(supabase, dealer.slug, passed.length, false);
