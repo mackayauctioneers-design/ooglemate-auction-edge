@@ -8,7 +8,7 @@ const corsHeaders = {
 
 interface TrapAlert {
   trap_slug: string;
-  alert_type: "anchor_crawl_fail" | "anchor_zero_vehicles" | "anchor_count_drop" | "consecutive_failures" | "two_day_drop";
+  alert_type: "anchor_crawl_fail" | "anchor_zero_vehicles" | "anchor_count_drop" | "anchor_not_crawled" | "consecutive_failures" | "two_day_drop";
   region_id: string;
   last_vehicle_count: number | null;
   avg_7d: number | null;
@@ -18,6 +18,7 @@ interface TrapAlert {
   is_anchor: boolean;
   today_count?: number;
   yesterday_count?: number;
+  crawled_today?: boolean;
 }
 
 async function sendSlackAlert(webhookUrl: string, alerts: TrapAlert[]): Promise<boolean> {
@@ -42,8 +43,9 @@ async function sendSlackAlert(webhookUrl: string, alerts: TrapAlert[]): Promise<
     const emoji = alert.is_anchor ? "⚓" : "🔧";
     const typeLabel = {
       anchor_crawl_fail: "Anchor Crawl Failed",
-      anchor_zero_vehicles: "Anchor Zero Vehicles",
+      anchor_zero_vehicles: "Anchor Zero Vehicles (Today's Run)",
       anchor_count_drop: "Anchor >50% Drop",
+      anchor_not_crawled: "Anchor Not Crawled Today",
       consecutive_failures: "2+ Consecutive Failures",
       two_day_drop: ">50% Drop (2 days)",
     }[alert.alert_type];
@@ -55,6 +57,7 @@ async function sendSlackAlert(webhookUrl: string, alerts: TrapAlert[]): Promise<
         text: `${emoji} *${alert.trap_slug}* (${alert.region_id})\n` +
           `• Type: ${typeLabel}\n` +
           `• Last count: ${alert.last_vehicle_count ?? "N/A"} | 7d avg: ${alert.avg_7d?.toFixed(1) ?? "N/A"}\n` +
+          `• Crawled today: ${alert.crawled_today ? "Yes" : "No"}\n` +
           `• Failures: ${alert.consecutive_failures}\n` +
           `• Last crawl: ${alert.last_crawl_at ?? "Never"}\n` +
           (alert.last_fail_reason ? `• Reason: ${alert.last_fail_reason}` : ""),
@@ -108,22 +111,32 @@ serve(async (req) => {
 
     if (trapsError) throw trapsError;
 
-    // Get 7-day crawl averages per trap
+    // Get 7-day crawl data per trap
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     const { data: recentRuns, error: runsError } = await supabase
       .from("trap_crawl_runs")
-      .select("trap_slug, vehicles_found, run_date")
+      .select("trap_slug, vehicles_found, run_date, error")
       .gte("run_date", sevenDaysAgo.toISOString().split("T")[0]);
 
     if (runsError) throw runsError;
 
-    // Calculate 7-day averages and track per-day counts
+    // Calculate 7-day averages and track per-day counts + crawl existence
     const avgByTrap: Record<string, { sum: number; count: number }> = {};
     const countByTrapAndDate: Record<string, Record<string, number>> = {};
+    const crawledTodaySet = new Set<string>(); // traps that have a run_date = today
+    const errorTodaySet = new Set<string>(); // traps with error on today's run
     
     for (const run of recentRuns || []) {
+      // Track if this trap was crawled today (regardless of success/failure)
+      if (run.run_date === today) {
+        crawledTodaySet.add(run.trap_slug);
+        if (run.error) {
+          errorTodaySet.add(run.trap_slug);
+        }
+      }
+
       if (!avgByTrap[run.trap_slug]) {
         avgByTrap[run.trap_slug] = { sum: 0, count: 0 };
       }
@@ -154,6 +167,8 @@ serve(async (req) => {
       
       const todayCount = countByTrapAndDate[trap.trap_slug]?.[today];
       const yesterdayCount = countByTrapAndDate[trap.trap_slug]?.[yesterday];
+      const crawledToday = crawledTodaySet.has(trap.trap_slug);
+      const errorToday = errorTodaySet.has(trap.trap_slug);
 
       // Calculate drop percentages
       const todayDrop = avg7d && avg7d > 0 && todayCount !== undefined
@@ -174,25 +189,39 @@ serve(async (req) => {
         is_anchor: trap.anchor_trap || false,
         today_count: todayCount,
         yesterday_count: yesterdayCount,
+        crawled_today: crawledToday,
       };
 
       if (trap.anchor_trap) {
-        // ANCHOR TRAPS: Always alert on any issue
-        if (trap.last_fail_reason && trap.consecutive_failures > 0) {
+        // ANCHOR TRAPS: Alert on any issue but with refined logic
+
+        // 1. NOT_CRAWLED: Anchor trap has no crawl run for today
+        if (!crawledToday) {
+          const key = `${trap.trap_slug}:anchor_not_crawled`;
+          if (!sentKeys.has(key)) {
+            alerts.push({ ...baseAlert, alert_type: "anchor_not_crawled" });
+          }
+        }
+
+        // 2. CRAWL_FAIL: Has today's run but it errored
+        if (crawledToday && errorToday) {
           const key = `${trap.trap_slug}:anchor_crawl_fail`;
           if (!sentKeys.has(key)) {
             alerts.push({ ...baseAlert, alert_type: "anchor_crawl_fail" });
           }
         }
 
-        if (lastCount === 0 || lastCount === null) {
+        // 3. ZERO_VEHICLES: Has today's run with vehicles_found = 0 (but no error)
+        //    ONLY trigger if we actually crawled today and got 0
+        if (crawledToday && !errorToday && todayCount === 0) {
           const key = `${trap.trap_slug}:anchor_zero_vehicles`;
           if (!sentKeys.has(key)) {
             alerts.push({ ...baseAlert, alert_type: "anchor_zero_vehicles" });
           }
         }
 
-        if (todayDrop !== null && todayDrop > 0.5) {
+        // 4. COUNT_DROP: >50% drop vs 7d avg (only if crawled today)
+        if (crawledToday && todayDrop !== null && todayDrop > 0.5) {
           const key = `${trap.trap_slug}:anchor_count_drop`;
           if (!sentKeys.has(key)) {
             alerts.push({ ...baseAlert, alert_type: "anchor_count_drop" });
@@ -208,7 +237,7 @@ serve(async (req) => {
           }
         }
 
-        // Rule 2: Alert on >50% drop for 2 consecutive days
+        // Rule 2: Alert on >50% drop for 2 consecutive days (must have crawl data)
         if (todayDrop !== null && yesterdayDrop !== null && todayDrop > 0.5 && yesterdayDrop > 0.5) {
           const key = `${trap.trap_slug}:two_day_drop`;
           if (!sentKeys.has(key)) {
@@ -256,6 +285,7 @@ serve(async (req) => {
             checked_traps: traps?.length || 0,
             slack_sent: slackSent,
             heartbeat_sent: alerts.length === 0,
+            anchor_not_crawled: alerts.filter(a => a.alert_type === "anchor_not_crawled").length,
           },
         },
         { onConflict: "cron_name,run_date" }
@@ -270,6 +300,7 @@ serve(async (req) => {
           trap_slug: a.trap_slug,
           alert_type: a.alert_type,
           is_anchor: a.is_anchor,
+          crawled_today: a.crawled_today,
         })),
         slack_sent: slackSent,
         heartbeat_sent: alerts.length === 0,
