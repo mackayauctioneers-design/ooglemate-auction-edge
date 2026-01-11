@@ -1245,6 +1245,8 @@ export type Database = {
           auction_datetime: string | null
           auction_history: Json | null
           auction_house: string | null
+          avoid_reason: string | null
+          buy_window_at: string | null
           drivetrain: string | null
           event_id: string | null
           excluded_keyword: string | null
@@ -1276,11 +1278,14 @@ export type Database = {
           source: string
           source_class: string
           status: string
+          tracked_by: string | null
           transmission: string | null
           updated_at: string
           variant_family: string | null
           variant_raw: string | null
           visible_to_dealers: boolean
+          watch_reason: string | null
+          watch_status: string | null
           year: number
         }
         Insert: {
@@ -1288,6 +1293,8 @@ export type Database = {
           auction_datetime?: string | null
           auction_history?: Json | null
           auction_house?: string | null
+          avoid_reason?: string | null
+          buy_window_at?: string | null
           drivetrain?: string | null
           event_id?: string | null
           excluded_keyword?: string | null
@@ -1319,11 +1326,14 @@ export type Database = {
           source?: string
           source_class?: string
           status?: string
+          tracked_by?: string | null
           transmission?: string | null
           updated_at?: string
           variant_family?: string | null
           variant_raw?: string | null
           visible_to_dealers?: boolean
+          watch_reason?: string | null
+          watch_status?: string | null
           year: number
         }
         Update: {
@@ -1331,6 +1341,8 @@ export type Database = {
           auction_datetime?: string | null
           auction_history?: Json | null
           auction_house?: string | null
+          avoid_reason?: string | null
+          buy_window_at?: string | null
           drivetrain?: string | null
           event_id?: string | null
           excluded_keyword?: string | null
@@ -1362,11 +1374,14 @@ export type Database = {
           source?: string
           source_class?: string
           status?: string
+          tracked_by?: string | null
           transmission?: string | null
           updated_at?: string
           variant_family?: string | null
           variant_raw?: string | null
           visible_to_dealers?: boolean
+          watch_reason?: string | null
+          watch_status?: string | null
           year?: number
         }
         Relationships: []
@@ -1818,6 +1833,15 @@ export type Database = {
           reason: string
         }[]
       }
+      evaluate_watch_status: {
+        Args: { p_force_recalc?: boolean; p_listing_id: string }
+        Returns: {
+          avoid_reason: string
+          new_reason: string
+          new_status: string
+          should_avoid: boolean
+        }[]
+      }
       generate_geo_heat_alerts: {
         Args: {
           p_asof?: string
@@ -1904,6 +1928,9 @@ export type Database = {
         Args: never
         Returns: {
           asking_price: number
+          attempt_count: number
+          attempt_stage: string
+          buy_window_at: string
           days_on_market: number
           deal_label: string
           delta_dollars: number
@@ -1928,8 +1955,11 @@ export type Database = {
           sold_returned_suspected: boolean
           source: string
           status: string
+          tracked_by: string
           trap_slug: string
           variant_family: string
+          watch_reason: string
+          watch_status: string
           year: number
         }[]
       }
@@ -1958,6 +1988,15 @@ export type Database = {
         Returns: {
           records_upserted: number
           regions_processed: number
+        }[]
+      }
+      refresh_watch_statuses: {
+        Args: never
+        Returns: {
+          avoid_count: number
+          buy_window_count: number
+          total_evaluated: number
+          watching_count: number
         }[]
       }
       rollup_geo_model_metrics_daily: {

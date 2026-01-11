@@ -42,6 +42,14 @@ export interface TrapListing {
   // Risk flags
   sold_returned_suspected?: boolean;
   sold_returned_reason?: string | null;
+  // Watch mode fields
+  watch_status?: 'watching' | 'buy_window' | 'avoid' | null;
+  watch_reason?: string | null;
+  buy_window_at?: string | null;
+  tracked_by?: string | null;
+  attempt_count?: number;
+  attempt_stage?: string | null;
+  avoid_reason?: string | null;
 }
 
 export default function TrapInventoryPage() {
@@ -129,6 +137,16 @@ export default function TrapInventoryPage() {
       delta_pct: l.delta_pct,
       deal_label: l.deal_label ?? 'NO_BENCHMARK',
       no_benchmark: l.no_benchmark ?? true,
+      // Watch mode fields
+      sold_returned_suspected: l.sold_returned_suspected ?? false,
+      sold_returned_reason: l.sold_returned_reason,
+      watch_status: l.watch_status,
+      watch_reason: l.watch_reason,
+      buy_window_at: l.buy_window_at,
+      tracked_by: l.tracked_by,
+      attempt_count: l.attempt_count ?? 0,
+      attempt_stage: l.attempt_stage,
+      avoid_reason: l.avoid_reason,
     }));
 
     // Extract unique values for filters
