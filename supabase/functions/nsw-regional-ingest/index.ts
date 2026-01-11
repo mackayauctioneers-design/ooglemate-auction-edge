@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const validSources = ['f3', 'valley', 'autoauctions', 'southcoast'];
+    const validSources = ['f3', 'valley', 'autoauctions', 'southcoast', 'bidsonline'];
     if (!validSources.includes(source)) {
       return new Response(
         JSON.stringify({ error: `Invalid source: ${source}. Must be one of: ${validSources.join(', ')}` }),
@@ -249,8 +249,9 @@ Deno.serve(async (req) => {
     const auctionHouseMap: Record<string, string> = {
       f3: 'F3 Motor Auctions',
       valley: 'Valley Motor Auctions',
-      autoauctions: 'Auto Auctions',
+      autoauctions: 'Auto Auctions Sydney',
       southcoast: 'South Coast Auctions',
+      bidsonline: 'BidsOnline Auction',
     };
 
     // 10-year window policy: only ingest vehicles from current_year - 10
