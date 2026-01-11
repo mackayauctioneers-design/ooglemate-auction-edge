@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, CheckCircle2, AlertTriangle, Clock, XCircle } from "lucide-react";
+import { RefreshCw, CheckCircle2, AlertTriangle, Clock, XCircle, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface TrapStat {
@@ -38,6 +38,15 @@ interface BenchmarkCoverage {
   coverage_pct: number;
 }
 
+interface NswRegionalRun {
+  source: string;
+  created: number;
+  updated: number;
+  dropped: number;
+  dropReasons: Record<string, number>;
+  runAt: string;
+}
+
 interface HealthData {
   traps: TrapStat[];
   crawlToday: CrawlStats | null;
@@ -46,6 +55,7 @@ interface HealthData {
   jobQueue: JobQueue | null;
   dropReasons: DropReason[];
   benchmarkCoverage: BenchmarkCoverage[];
+  nswRegionalRuns: NswRegionalRun[];
   lastRefresh: Date;
 }
 
@@ -60,7 +70,7 @@ export function IngestionHealthContent() {
   const fetchHealth = async () => {
     setLoading(true);
     try {
-      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes, benchmarkRes] = await Promise.all([
+      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes, benchmarkRes, nswRegionalRes] = await Promise.all([
         supabase.rpc('get_nsw_trap_stats' as never),
         supabase.rpc('get_nsw_crawl_today' as never),
         supabase.rpc('get_clearance_today' as never),
@@ -68,7 +78,46 @@ export function IngestionHealthContent() {
         supabase.rpc('get_job_queue_stats' as never),
         supabase.rpc('get_top_drop_reasons' as never),
         supabase.rpc('get_benchmark_coverage' as never),
+        // Fetch NSW regional auction runs from ingestion_runs
+        supabase
+          .from('ingestion_runs')
+          .select('source, lots_created, lots_updated, started_at, metadata')
+          .like('source', 'nsw-regional-%')
+          .gte('started_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
+          .order('started_at', { ascending: false }),
       ]);
+
+      // Parse NSW regional runs
+      const nswRegionalRuns: NswRegionalRun[] = [];
+      if (nswRegionalRes.data) {
+        const runsBySource: Record<string, NswRegionalRun> = {};
+        for (const run of nswRegionalRes.data as { source: string; lots_created: number; lots_updated: number; started_at: string; metadata: Record<string, unknown> }[]) {
+          const sourceKey = run.source.replace('nsw-regional-', '');
+          if (!runsBySource[sourceKey]) {
+            const meta = run.metadata || {};
+            runsBySource[sourceKey] = {
+              source: sourceKey,
+              created: run.lots_created || 0,
+              updated: run.lots_updated || 0,
+              dropped: (meta.dropped as number) || 0,
+              dropReasons: (meta.dropReasons as Record<string, number>) || {},
+              runAt: run.started_at,
+            };
+          } else {
+            // Aggregate if multiple runs per source today
+            const meta = run.metadata || {};
+            runsBySource[sourceKey].created += run.lots_created || 0;
+            runsBySource[sourceKey].updated += run.lots_updated || 0;
+            runsBySource[sourceKey].dropped += (meta.dropped as number) || 0;
+            // Merge drop reasons
+            const newReasons = (meta.dropReasons as Record<string, number>) || {};
+            for (const [k, v] of Object.entries(newReasons)) {
+              runsBySource[sourceKey].dropReasons[k] = (runsBySource[sourceKey].dropReasons[k] || 0) + v;
+            }
+          }
+        }
+        nswRegionalRuns.push(...Object.values(runsBySource));
+      }
 
       setHealth({
         traps: (trapsRes.data as TrapStat[]) || [],
@@ -78,6 +127,7 @@ export function IngestionHealthContent() {
         jobQueue: (jobQueueRes.data as JobQueue[])?.[0] || null,
         dropReasons: (dropReasonsRes.data as DropReason[]) || [],
         benchmarkCoverage: (benchmarkRes.data as BenchmarkCoverage[]) || [],
+        nswRegionalRuns,
         lastRefresh: new Date(),
       });
     } catch (err) {
@@ -266,6 +316,60 @@ export function IngestionHealthContent() {
               </CardContent>
             </Card>
           </div>
+
+          {/* NSW Regional Auctions */}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-primary" />
+                <CardTitle className="text-base">NSW Regional Auctions</CardTitle>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Today's ingestion from F3, Valley, and other regional sources
+              </p>
+            </CardHeader>
+            <CardContent>
+              {health?.nswRegionalRuns.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No regional auction runs today</p>
+              ) : (
+                <div className="space-y-4">
+                  {health?.nswRegionalRuns.map((run) => (
+                    <div key={run.source} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium uppercase">{run.source}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(run.runAt).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-sm">
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground text-xs">Created</span>
+                          <span className="font-mono text-green-600">{run.created}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground text-xs">Updated</span>
+                          <span className="font-mono">{run.updated}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground text-xs">Dropped</span>
+                          <span className="font-mono text-orange-500">{run.dropped}</span>
+                        </div>
+                      </div>
+                      {Object.keys(run.dropReasons).length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {Object.entries(run.dropReasons).map(([reason, count]) => (
+                            <Badge key={reason} variant="outline" className="text-xs">
+                              {reason.replace(/_/g, ' ')}: {count}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Benchmark Coverage */}
           <Card>
