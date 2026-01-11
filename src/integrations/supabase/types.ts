@@ -1882,6 +1882,37 @@ export type Database = {
           drop_reason: string
         }[]
       }
+      get_trap_deals: {
+        Args: never
+        Returns: {
+          asking_price: number
+          days_on_market: number
+          deal_label: string
+          delta_dollars: number
+          delta_pct: number
+          fingerprint_price: number
+          fingerprint_sample: number
+          fingerprint_ttd: number
+          first_price: number
+          first_seen_at: string
+          id: string
+          km: number
+          last_price_change_at: string
+          listing_id: string
+          listing_url: string
+          location: string
+          make: string
+          model: string
+          no_benchmark: boolean
+          price_change_count: number
+          region_id: string
+          source: string
+          status: string
+          trap_slug: string
+          variant_family: string
+          year: number
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -1893,6 +1924,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_admin_or_internal: { Args: never; Returns: boolean }
       km_to_band: {
         Args: { p_km: number }
         Returns: {
