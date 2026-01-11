@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -6,7 +6,10 @@ import { AdminGuard } from '@/components/guards/AdminGuard';
 import { TrapInventoryTable } from '@/components/trap-inventory/TrapInventoryTable';
 import { TrapInventoryFilters, TrapInventoryFiltersState } from '@/components/trap-inventory/TrapInventoryFilters';
 import { TrapInventoryDrawer } from '@/components/trap-inventory/TrapInventoryDrawer';
-import { Loader2, Store } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Loader2, Store, Download } from 'lucide-react';
+import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 export interface TrapListing {
   id: string;
@@ -81,6 +84,10 @@ export default function TrapInventoryPage() {
 
     if (error) {
       console.error('Error fetching trap deals:', error);
+      // Check for 403/insufficient privilege
+      if (error.code === '42501' || error.message?.includes('forbidden')) {
+        toast.error('Not authorised to view trap deals');
+      }
       setListings([]);
       setLoading(false);
       return;
@@ -280,6 +287,83 @@ export default function TrapInventoryPage() {
     };
   }, [listings]);
 
+  // CSV export function
+  const exportCsv = useCallback(() => {
+    if (filteredListings.length === 0) {
+      toast.error('No listings to export');
+      return;
+    }
+
+    // Build watchlist lookup for current user
+    const getWatchlistInfo = (id: string) => ({
+      watched: watchlistIds.has(id) ? 'Y' : '',
+      pinned: pinnedIds.has(id) ? 'Y' : '',
+      hasNotes: notesIds.has(id) ? 'Y' : '',
+    });
+
+    // CSV headers
+    const headers = [
+      'trap_slug', 'make', 'model', 'variant_family', 'year', 'km',
+      'asking_price', 'fingerprint_price', 'fingerprint_sample',
+      'delta_pct', 'delta_dollars', 'deal_label',
+      'days_on_market', 'price_change_count', 'location', 'listing_url',
+      'watched', 'pinned', 'has_notes'
+    ];
+
+    // Build rows
+    const rows = filteredListings.map(l => {
+      const wl = getWatchlistInfo(l.id);
+      return [
+        l.source.replace(/^trap_/, ''),
+        l.make,
+        l.model,
+        l.variant_family || '',
+        l.year,
+        l.km ?? '',
+        l.asking_price ?? '',
+        l.benchmark_price ?? '',
+        l.benchmark_sample ?? '',
+        l.delta_pct !== null ? l.delta_pct.toFixed(1) : '',
+        l.delta_dollars ?? '',
+        l.deal_label,
+        l.days_on_market,
+        l.price_change_count,
+        l.location || '',
+        l.listing_url || '',
+        wl.watched,
+        wl.pinned,
+        wl.hasNotes
+      ];
+    });
+
+    // Escape and format CSV
+    const escapeCell = (val: any) => {
+      const str = String(val ?? '');
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(escapeCell).join(','))
+    ].join('\n');
+
+    // Download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `trap_inventory_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success(`Exported ${filteredListings.length} listings`);
+  }, [filteredListings, watchlistIds, pinnedIds, notesIds]);
+
   return (
     <AdminGuard>
       <AppLayout>
@@ -294,15 +378,26 @@ export default function TrapInventoryPage() {
                 Monitor retail stock vs benchmark – identify mispriced wholesale opportunities
               </p>
             </div>
-            <div className="text-right text-sm text-muted-foreground space-y-0.5">
-              {!loading && (
-                <>
-                  <div>{filteredListings.length} of {stats.total} listings</div>
-                  <div className="text-xs">
-                    {stats.mispriced} mispriced • {stats.strongBuys} strong buys • {stats.aged90} aged 90+
-                  </div>
-                </>
-              )}
+            <div className="flex items-center gap-4">
+              <div className="text-right text-sm text-muted-foreground space-y-0.5">
+                {!loading && (
+                  <>
+                    <div>{filteredListings.length} of {stats.total} listings</div>
+                    <div className="text-xs">
+                      {stats.mispriced} mispriced • {stats.strongBuys} strong buys • {stats.aged90} aged 90+
+                    </div>
+                  </>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportCsv}
+                disabled={loading || filteredListings.length === 0}
+              >
+                <Download className="h-4 w-4" />
+                Export CSV
+              </Button>
             </div>
           </div>
 
