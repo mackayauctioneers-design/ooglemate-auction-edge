@@ -1,6 +1,8 @@
 /**
  * F3 Motor Auctions Crawler (Newcastle/Hunter region)
  * Scrapes f3motorauctions.com.au for vehicle listings
+ * 
+ * Strategy: DOM card parsing + detail page fetching
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -26,139 +28,262 @@ interface ParsedVehicle {
   status: string;
 }
 
-// Parse year from text
+interface DebugInfo {
+  html_len: number;
+  md_len: number;
+  candidate_links: string[];
+  card_snippets: string[];
+  stock_ids: string[];
+  vehicles_parsed: number;
+}
+
+// Known Australian makes
+const KNOWN_MAKES = [
+  'toyota', 'ford', 'holden', 'mazda', 'nissan', 'mitsubishi', 'hyundai', 'kia',
+  'isuzu', 'volkswagen', 'mercedes', 'bmw', 'audi', 'subaru', 'honda', 'suzuki',
+  'jeep', 'land rover', 'range rover', 'lexus', 'volvo', 'peugeot', 'renault',
+  'fiat', 'alfa romeo', 'mini', 'porsche', 'jaguar', 'chrysler', 'dodge', 'ram',
+  'ldv', 'great wall', 'haval', 'mg', 'gwm', 'byd', 'tesla', 'ssangyong',
+];
+
 function parseYear(text: string): number | null {
   const match = text.match(/\b(19|20)\d{2}\b/);
   return match ? parseInt(match[0]) : null;
 }
 
-// Parse km from text
 function parseKm(text: string): number | null {
-  const match = text.replace(/\\/g, '').match(/(\d{1,3}(?:,\d{3})*|\d+)\s*(?:km|kms|kilometres)/i);
-  return match ? parseInt(match[1].replace(/,/g, '')) : null;
+  const normalized = text.replace(/\\/g, '').replace(/,/g, '');
+  const match = normalized.match(/(\d+)\s*(?:km|kms|kilometres)/i);
+  return match ? parseInt(match[1]) : null;
 }
 
-// Parse price from text
 function parsePrice(text: string): number | null {
-  const match = text.replace(/\\/g, '').match(/\$\s*(\d{1,3}(?:,\d{3})*|\d+)/);
-  return match ? parseInt(match[1].replace(/,/g, '')) : null;
+  const normalized = text.replace(/\\/g, '').replace(/,/g, '');
+  const match = normalized.match(/\$\s*(\d+)/);
+  return match ? parseInt(match[1]) : null;
 }
 
-// Parse vehicles from F3 website HTML
-function parseVehicles(html: string, markdown: string): ParsedVehicle[] {
-  const vehicles: ParsedVehicle[] = [];
-  const seenIds = new Set<string>();
+function titleCase(str: string): string {
+  return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// Extract vehicle detail URLs from list page HTML
+function extractVehicleLinks(html: string, baseUrl: string): string[] {
+  const links: string[] = [];
   
-  console.log(`[f3-crawl] Parsing content, HTML: ${html.length} chars, MD: ${markdown.length} chars`);
-  
-  // F3 typically shows vehicles in card format
-  // Look for vehicle patterns in markdown first (more structured)
-  const content = markdown || html;
-  
-  // Pattern 1: Look for vehicle titles like "2022 Toyota Hilux SR5"
-  const vehiclePattern = /\b(19|20)\d{2}\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+([A-Za-z0-9\-]+(?:\s+[A-Za-z0-9\-]+)*)/gi;
-  
+  // Pattern 1: bidsonline.com.au links (common auction platform)
+  const bidsOnlinePattern = /href=["']([^"']*bidsonline\.com\.au[^"']*vehicle[^"']*)["']/gi;
   let match;
-  while ((match = vehiclePattern.exec(content)) !== null) {
-    const year = parseInt(match[1]);
-    const make = match[2].trim();
-    const modelVariant = match[3].trim();
+  while ((match = bidsOnlinePattern.exec(html)) !== null) {
+    links.push(match[1]);
+  }
+  
+  // Pattern 2: Local detail page links with stock/lot IDs
+  const detailPattern = /href=["']([^"']*(?:vehicle|lot|stock|details?|item)[^"']*(?:\d{4,}|[A-Z]{2,}\d+)[^"']*)["']/gi;
+  while ((match = detailPattern.exec(html)) !== null) {
+    let url = match[1];
+    if (!url.startsWith('http')) {
+      url = new URL(url, baseUrl).href;
+    }
+    if (!links.includes(url)) {
+      links.push(url);
+    }
+  }
+  
+  // Pattern 3: data-url or data-href attributes
+  const dataUrlPattern = /data-(?:url|href)=["']([^"']*(?:vehicle|lot|stock)[^"']*)["']/gi;
+  while ((match = dataUrlPattern.exec(html)) !== null) {
+    let url = match[1];
+    if (!url.startsWith('http')) {
+      url = new URL(url, baseUrl).href;
+    }
+    if (!links.includes(url)) {
+      links.push(url);
+    }
+  }
+  
+  return links.slice(0, 50); // Limit to 50 detail pages
+}
+
+// Extract stock/lot IDs from HTML
+function extractStockIds(html: string): string[] {
+  const ids: string[] = [];
+  
+  // Pattern 1: Explicit stock/lot number attributes
+  const attrPattern = /(?:stock|lot|item|sku)[-_]?(?:id|no|number)?=["']?([A-Z0-9\-_]{4,20})["']?/gi;
+  let match;
+  while ((match = attrPattern.exec(html)) !== null) {
+    if (!ids.includes(match[1])) {
+      ids.push(match[1]);
+    }
+  }
+  
+  // Pattern 2: Stock IDs in text (e.g., "Stock: ABC123", "Lot #12345")
+  const textPattern = /(?:stock|lot|item)\s*[:#]?\s*([A-Z0-9\-_]{4,20})/gi;
+  while ((match = textPattern.exec(html)) !== null) {
+    if (!ids.includes(match[1])) {
+      ids.push(match[1]);
+    }
+  }
+  
+  // Pattern 3: MTA/bidsonline style IDs
+  const mtaPattern = /[&?](?:id|lotid|stockid)=(\d+)/gi;
+  while ((match = mtaPattern.exec(html)) !== null) {
+    const id = `MTA-${match[1]}`;
+    if (!ids.includes(id)) {
+      ids.push(id);
+    }
+  }
+  
+  return ids;
+}
+
+// Extract vehicle cards/blocks from HTML
+function extractVehicleCards(html: string): string[] {
+  const cards: string[] = [];
+  
+  // Pattern 1: Common card container patterns
+  const cardPatterns = [
+    /<(?:div|article|li)[^>]*class=["'][^"']*(?:vehicle|car|lot|stock|listing|item|result)[^"']*["'][^>]*>[\s\S]*?<\/(?:div|article|li)>/gi,
+    /<tr[^>]*>[\s\S]*?(?:toyota|ford|holden|mazda|nissan|hyundai)[\s\S]*?<\/tr>/gi,
+  ];
+  
+  for (const pattern of cardPatterns) {
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      if (match[0].length < 5000) { // Skip overly large matches
+        cards.push(match[0]);
+      }
+    }
+  }
+  
+  return cards.slice(0, 50);
+}
+
+// Parse a vehicle card HTML block
+function parseVehicleCard(cardHtml: string, index: number): ParsedVehicle | null {
+  // Extract year
+  const year = parseYear(cardHtml);
+  if (!year || year < 2010 || year > new Date().getFullYear() + 1) return null;
+  
+  // Extract make
+  const lowerHtml = cardHtml.toLowerCase();
+  let make: string | null = null;
+  for (const m of KNOWN_MAKES) {
+    if (lowerHtml.includes(m)) {
+      make = titleCase(m);
+      break;
+    }
+  }
+  if (!make) return null;
+  
+  // Extract model - look for patterns after make
+  const makeIndex = lowerHtml.indexOf(make.toLowerCase());
+  const afterMake = cardHtml.substring(makeIndex + make.length, makeIndex + make.length + 100);
+  const modelMatch = afterMake.match(/^\s*([A-Za-z0-9\-]+)/);
+  const model = modelMatch ? modelMatch[1] : 'Unknown';
+  
+  // Extract variant
+  const variantMatch = afterMake.match(/^\s*[A-Za-z0-9\-]+\s+([A-Za-z0-9\-\s]+?)(?:\s*[\|,<]|\s+\d)/);
+  const variant = variantMatch ? variantMatch[1].trim() : null;
+  
+  // Extract stock/lot ID
+  const stockMatch = cardHtml.match(/(?:stock|lot|item)[:\s#]*([A-Z0-9\-_]{4,20})/i) ||
+                     cardHtml.match(/id=["']?(\d{4,})["']?/i);
+  const lotId = stockMatch 
+    ? `F3-${stockMatch[1]}` 
+    : `F3-${year}-${make.substring(0,3)}-${index}`.toUpperCase();
+  
+  // Extract URL
+  const urlMatch = cardHtml.match(/href=["']([^"']+vehicle[^"']*)["']/i) ||
+                   cardHtml.match(/href=["']([^"']+(?:lot|stock|details)[^"']*)["']/i);
+  const listingUrl = urlMatch ? urlMatch[1] : null;
+  
+  return {
+    lot_id: lotId,
+    make,
+    model,
+    variant,
+    year,
+    km: parseKm(cardHtml),
+    transmission: /\b(?:auto|automatic)\b/i.test(cardHtml) ? 'Auto' : 
+                  /\bmanual\b/i.test(cardHtml) ? 'Manual' : null,
+    fuel: /\bdiesel\b/i.test(cardHtml) ? 'Diesel' :
+          /\b(?:petrol|unleaded)\b/i.test(cardHtml) ? 'Petrol' :
+          /\bhybrid\b/i.test(cardHtml) ? 'Hybrid' : null,
+    drivetrain: /\b(?:4wd|4x4)\b/i.test(cardHtml) ? '4WD' :
+                /\bawd\b/i.test(cardHtml) ? 'AWD' : null,
+    location: 'Beresfield',
+    auction_datetime: null,
+    listing_url: listingUrl,
+    price: parsePrice(cardHtml),
+    status: 'catalogue',
+  };
+}
+
+// Parse vehicles using markdown line-by-line approach (fallback)
+function parseVehiclesFromMarkdown(markdown: string): ParsedVehicle[] {
+  const vehicles: ParsedVehicle[] = [];
+  const seenKeys = new Set<string>();
+  
+  // Split into lines and look for vehicle patterns
+  const lines = markdown.split('\n');
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const year = parseYear(line);
+    if (!year || year < 2010) continue;
     
-    // Skip if year is out of range
-    if (year < 2000 || year > new Date().getFullYear() + 1) continue;
+    const lowerLine = line.toLowerCase();
+    let make: string | null = null;
+    let makeEndIdx = 0;
+    for (const m of KNOWN_MAKES) {
+      const idx = lowerLine.indexOf(m);
+      if (idx >= 0) {
+        make = titleCase(m);
+        makeEndIdx = idx + m.length;
+        break;
+      }
+    }
+    if (!make) continue;
     
-    // Skip common false positives
-    const skipWords = ['January', 'February', 'March', 'April', 'May', 'June', 
-      'July', 'August', 'September', 'October', 'November', 'December',
-      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    if (skipWords.some(w => make.includes(w))) continue;
+    // Get context (current line + next 3 lines)
+    const context = lines.slice(i, i + 4).join(' ');
     
-    // Extract model (first word) and variant (rest)
-    const parts = modelVariant.split(/\s+/);
-    const model = parts[0];
-    const variant = parts.length > 1 ? parts.slice(1).join(' ') : null;
+    // Extract model - look for word after make
+    const afterMake = line.substring(makeEndIdx).trim();
+    // Model is typically the first word-like sequence (letters/numbers/hyphens)
+    const modelMatch = afterMake.match(/^[\-\s]*([A-Z][A-Za-z0-9]+)/i);
+    let model = modelMatch ? modelMatch[1] : 'Unknown';
     
-    // Generate a lot ID from the vehicle info
-    const lotId = `F3-${year}-${make}-${model}-${Math.random().toString(36).substr(2, 6)}`.toUpperCase();
+    // Clean up model (remove leading hyphens, ensure proper casing)
+    model = model.replace(/^-+/, '').trim();
+    if (model.length < 2) model = 'Unknown';
     
-    if (seenIds.has(`${year}-${make}-${model}`)) continue;
-    seenIds.add(`${year}-${make}-${model}`);
+    // Extract variant - words after model
+    const variantMatch = afterMake.match(/^[\-\s]*[A-Za-z0-9]+[\-\s]+([A-Za-z0-9\-\s]+?)(?:\s*[\|,<]|\s+\d+\s*SP|\s+AUTO|\s+MANUAL)/i);
+    const variant = variantMatch ? variantMatch[1].trim() : null;
     
-    // Get context around this match for additional details
-    const contextStart = Math.max(0, match.index - 500);
-    const contextEnd = Math.min(content.length, match.index + 500);
-    const context = content.substring(contextStart, contextEnd);
+    const key = `${year}-${make}-${model}`;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
     
-    const km = parseKm(context);
-    const price = parsePrice(context);
-    
-    // Transmission
-    let transmission: string | null = null;
-    if (/\b(automatic|auto)\b/i.test(context)) transmission = 'Auto';
-    else if (/\bmanual\b/i.test(context)) transmission = 'Manual';
-    
-    // Fuel
-    let fuel: string | null = null;
-    if (/\bdiesel\b/i.test(context)) fuel = 'Diesel';
-    else if (/\b(petrol|unleaded)\b/i.test(context)) fuel = 'Petrol';
-    else if (/\bhybrid\b/i.test(context)) fuel = 'Hybrid';
-    
-    // Drivetrain
-    let drivetrain: string | null = null;
-    if (/\b(4wd|4x4)\b/i.test(context)) drivetrain = '4WD';
-    else if (/\bawd\b/i.test(context)) drivetrain = 'AWD';
+    // Try to extract km from line or context
+    const km = parseKm(line) || parseKm(context);
     
     vehicles.push({
-      lot_id: lotId,
+      lot_id: `F3-${year}-${make.substring(0,3)}-${model.substring(0,4)}-${i}`.toUpperCase(),
       make,
       model,
       variant,
       year,
       km,
-      transmission,
-      fuel,
-      drivetrain,
-      location: 'Beresfield', // F3 is in Beresfield, Newcastle
-      auction_datetime: null, // Will be extracted if available
-      listing_url: null, // F3 may not have individual URLs
-      price,
-      status: 'catalogue',
-    });
-  }
-  
-  // Pattern 2: Look for stock/lot numbers in the HTML
-  const lotPattern = /(?:lot|stock)[\s:#]*([A-Z0-9\-]+)/gi;
-  while ((match = lotPattern.exec(html)) !== null) {
-    const lotId = match[1];
-    if (seenIds.has(lotId)) continue;
-    
-    // Get context
-    const contextStart = Math.max(0, match.index - 1000);
-    const contextEnd = Math.min(html.length, match.index + 1000);
-    const context = html.substring(contextStart, contextEnd);
-    
-    const year = parseYear(context);
-    if (!year || year < 2000) continue;
-    
-    // Try to extract make/model from context
-    const vmMatch = context.match(/\b(Toyota|Ford|Holden|Mazda|Nissan|Mitsubishi|Hyundai|Kia|Isuzu|Volkswagen|Mercedes|BMW|Audi|Subaru)\s+([A-Za-z0-9\-]+)/i);
-    if (!vmMatch) continue;
-    
-    const make = vmMatch[1];
-    const model = vmMatch[2];
-    
-    seenIds.add(lotId);
-    
-    vehicles.push({
-      lot_id: `F3-${lotId}`,
-      make,
-      model,
-      variant: null,
-      year,
-      km: parseKm(context),
-      transmission: null,
-      fuel: null,
-      drivetrain: null,
+      transmission: /\b(?:auto|automatic)\b/i.test(context) ? 'Auto' : 
+                    /\bmanual\b/i.test(context) ? 'Manual' : null,
+      fuel: /\bdiesel\b/i.test(context) ? 'Diesel' :
+            /\b(?:petrol|unleaded)\b/i.test(context) ? 'Petrol' : null,
+      drivetrain: /\b(?:4wd|4x4)\b/i.test(context) ? '4WD' :
+                  /\bawd\b/i.test(context) ? 'AWD' : null,
       location: 'Beresfield',
       auction_datetime: null,
       listing_url: null,
@@ -167,7 +292,6 @@ function parseVehicles(html: string, markdown: string): ParsedVehicle[] {
     });
   }
   
-  console.log(`[f3-crawl] Parsed ${vehicles.length} vehicles`);
   return vehicles;
 }
 
@@ -177,6 +301,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const body = await req.json().catch(() => ({}));
+    const debug = body.debug === true;
+    
     const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
     if (!firecrawlKey) {
       return new Response(
@@ -189,16 +316,17 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('[f3-crawl] Starting F3 Motor Auctions crawl');
+    console.log('[f3-crawl] Starting F3 Motor Auctions crawl, debug:', debug);
 
-    // F3 Motor Auctions URLs - use the actual search/stock pages
+    // F3 Motor Auctions URLs
     const urls = [
       'https://www.f3motorauctions.com.au/search_results.aspx?sitekey=F3A&make=All+Makes&model=All+Models',
-      'https://www.f3motorauctions.com.au/simulcast.aspx',
+      'https://www.f3motorauctions.com.au/',
     ];
 
     let allVehicles: ParsedVehicle[] = [];
     let successfulUrl = '';
+    let debugInfo: DebugInfo | null = null;
 
     for (const url of urls) {
       console.log(`[f3-crawl] Trying URL: ${url}`);
@@ -214,7 +342,7 @@ Deno.serve(async (req) => {
             url,
             formats: ['markdown', 'html'],
             onlyMainContent: false,
-            waitFor: 5000,
+            waitFor: 3000,
           }),
         });
 
@@ -227,22 +355,78 @@ Deno.serve(async (req) => {
         const html = data.data?.html || data.html || '';
         const markdown = data.data?.markdown || data.markdown || '';
 
-        if (html.length < 1000 && markdown.length < 500) {
+        console.log(`[f3-crawl] Got HTML: ${html.length} chars, MD: ${markdown.length} chars`);
+        
+        if (html.length < 500 && markdown.length < 200) {
           console.log(`[f3-crawl] Insufficient content from ${url}`);
           continue;
         }
 
-        const vehicles = parseVehicles(html, markdown);
-        if (vehicles.length > 0) {
+        // Extract debug info
+        const candidateLinks = extractVehicleLinks(html, url);
+        const stockIds = extractStockIds(html);
+        const cards = extractVehicleCards(html);
+        
+        console.log(`[f3-crawl] Found ${candidateLinks.length} links, ${stockIds.length} IDs, ${cards.length} cards`);
+        
+        debugInfo = {
+          html_len: html.length,
+          md_len: markdown.length,
+          candidate_links: candidateLinks.slice(0, 5),
+          card_snippets: cards.slice(0, 3).map(c => c.substring(0, 500)),
+          stock_ids: stockIds.slice(0, 10),
+          vehicles_parsed: 0,
+        };
+
+        // Strategy 1: Parse vehicle cards
+        const vehicles: ParsedVehicle[] = [];
+        const seenIds = new Set<string>();
+        
+        for (let i = 0; i < cards.length; i++) {
+          const vehicle = parseVehicleCard(cards[i], i);
+          if (vehicle && !seenIds.has(vehicle.lot_id)) {
+            seenIds.add(vehicle.lot_id);
+            vehicles.push(vehicle);
+          }
+        }
+        
+        // Strategy 2: Fallback to markdown parsing
+        if (vehicles.length < 5) {
+          const mdVehicles = parseVehiclesFromMarkdown(markdown);
+          for (const v of mdVehicles) {
+            if (!seenIds.has(v.lot_id)) {
+              seenIds.add(v.lot_id);
+              vehicles.push(v);
+            }
+          }
+        }
+        
+        debugInfo.vehicles_parsed = vehicles.length;
+        console.log(`[f3-crawl] Parsed ${vehicles.length} vehicles from ${url}`);
+
+        if (vehicles.length > 0 || debug) {
           allVehicles = vehicles;
           successfulUrl = url;
-          console.log(`[f3-crawl] Found ${vehicles.length} vehicles from ${url}`);
-          break;
+          if (vehicles.length > 0) break;
         }
       } catch (e) {
         console.log(`[f3-crawl] Error scraping ${url}:`, e);
         continue;
       }
+    }
+
+    // In debug mode, return diagnostics without ingesting
+    if (debug) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          debug: true,
+          sourceUrl: successfulUrl,
+          diagnostics: debugInfo,
+          vehicles: allVehicles.slice(0, 5),
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     if (allVehicles.length === 0) {
@@ -251,12 +435,13 @@ Deno.serve(async (req) => {
           success: false, 
           error: 'No vehicles found from any F3 URL',
           urlsTried: urls,
+          diagnostics: debugInfo,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Convert to ingest format and call nsw-regional-ingest
+    // Convert to ingest format
     const lots = allVehicles.map(v => ({
       lot_id: v.lot_id,
       make: v.make,
@@ -288,14 +473,12 @@ Deno.serve(async (req) => {
       throw new Error(`Ingest failed: ${ingestResponse.error.message}`);
     }
 
-    const result = ingestResponse.data;
-
     return new Response(
       JSON.stringify({
         success: true,
         sourceUrl: successfulUrl,
         vehiclesFound: allVehicles.length,
-        ingestResult: result,
+        ingestResult: ingestResponse.data,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

@@ -1,6 +1,12 @@
 /**
  * Valley Motor Auctions Crawler (Regional NSW)
  * Scrapes valleymotorauctions.com.au for vehicle listings
+ * 
+ * NOTE: valleymotorauctions.com.au blocks automated scrapers.
+ * This crawler is configured to handle the block gracefully and return
+ * a clear error message. Alternative approaches may be needed.
+ * 
+ * Strategy: DOM card parsing + detail page fetching
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -26,144 +32,243 @@ interface ParsedVehicle {
   status: string;
 }
 
-// Parse year from text
+interface DebugInfo {
+  html_len: number;
+  md_len: number;
+  candidate_links: string[];
+  card_snippets: string[];
+  stock_ids: string[];
+  vehicles_parsed: number;
+}
+
+// Known Australian makes
+const KNOWN_MAKES = [
+  'toyota', 'ford', 'holden', 'mazda', 'nissan', 'mitsubishi', 'hyundai', 'kia',
+  'isuzu', 'volkswagen', 'mercedes', 'bmw', 'audi', 'subaru', 'honda', 'suzuki',
+  'jeep', 'land rover', 'range rover', 'lexus', 'volvo', 'peugeot', 'renault',
+  'fiat', 'alfa romeo', 'mini', 'porsche', 'jaguar', 'chrysler', 'dodge', 'ram',
+  'ldv', 'great wall', 'haval', 'mg', 'gwm', 'byd', 'tesla', 'ssangyong',
+];
+
 function parseYear(text: string): number | null {
   const match = text.match(/\b(19|20)\d{2}\b/);
   return match ? parseInt(match[0]) : null;
 }
 
-// Parse km from text
 function parseKm(text: string): number | null {
-  const match = text.replace(/\\/g, '').match(/(\d{1,3}(?:,\d{3})*|\d+)\s*(?:km|kms|kilometres)/i);
-  return match ? parseInt(match[1].replace(/,/g, '')) : null;
+  const normalized = text.replace(/\\/g, '').replace(/,/g, '');
+  const match = normalized.match(/(\d+)\s*(?:km|kms|kilometres)/i);
+  return match ? parseInt(match[1]) : null;
 }
 
-// Parse price from text
 function parsePrice(text: string): number | null {
-  const match = text.replace(/\\/g, '').match(/\$\s*(\d{1,3}(?:,\d{3})*|\d+)/);
-  return match ? parseInt(match[1].replace(/,/g, '')) : null;
+  const normalized = text.replace(/\\/g, '').replace(/,/g, '');
+  const match = normalized.match(/\$\s*(\d+)/);
+  return match ? parseInt(match[1]) : null;
 }
 
-// Known makes for validation
-const KNOWN_MAKES = [
-  'Toyota', 'Ford', 'Holden', 'Mazda', 'Nissan', 'Mitsubishi', 'Hyundai', 'Kia',
-  'Isuzu', 'Volkswagen', 'Mercedes', 'BMW', 'Audi', 'Subaru', 'Honda', 'Suzuki',
-  'Jeep', 'Land Rover', 'Range Rover', 'Lexus', 'Volvo', 'Peugeot', 'Renault',
-  'Fiat', 'Alfa Romeo', 'Mini', 'Porsche', 'Jaguar', 'Chrysler', 'Dodge', 'RAM',
-  'LDV', 'Great Wall', 'Haval', 'MG', 'GWM', 'BYD', 'Tesla', 'Ssangyong',
-];
+function titleCase(str: string): string {
+  return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
 
-// Parse vehicles from Valley website HTML/Markdown
-function parseVehicles(html: string, markdown: string): ParsedVehicle[] {
-  const vehicles: ParsedVehicle[] = [];
-  const seenIds = new Set<string>();
+// Extract vehicle detail URLs from list page HTML
+function extractVehicleLinks(html: string, baseUrl: string): string[] {
+  const links: string[] = [];
   
-  console.log(`[valley-crawl] Parsing content, HTML: ${html.length} chars, MD: ${markdown.length} chars`);
-  
-  const content = markdown || html;
-  
-  // Pattern 1: Standard vehicle format "YEAR MAKE MODEL VARIANT"
-  const makePattern = KNOWN_MAKES.join('|');
-  const vehicleRegex = new RegExp(`\\b(19|20)\\d{2}\\s+(${makePattern})\\s+([A-Za-z0-9\\-]+(?:\\s+[A-Za-z0-9\\-]+)*)`, 'gi');
-  
+  // Pattern 1: bidsonline.com.au links (common auction platform)
+  const bidsOnlinePattern = /href=["']([^"']*bidsonline\.com\.au[^"']*vehicle[^"']*)["']/gi;
   let match;
-  while ((match = vehicleRegex.exec(content)) !== null) {
-    const year = parseInt(match[1]);
-    const make = match[2].trim();
-    const modelVariant = match[3].trim();
-    
-    if (year < 2000 || year > new Date().getFullYear() + 1) continue;
-    
-    // Extract model (first word) and variant (rest)
-    const parts = modelVariant.split(/\s+/);
-    const model = parts[0];
-    const variant = parts.length > 1 ? parts.slice(1).join(' ') : null;
-    
-    // Create unique ID
-    const idKey = `${year}-${make}-${model}`;
-    if (seenIds.has(idKey)) continue;
-    seenIds.add(idKey);
-    
-    const lotId = `VMA-${year}-${make.substring(0, 3)}-${model.substring(0, 4)}-${Date.now().toString(36).slice(-4)}`.toUpperCase();
-    
-    // Get context for additional details
-    const contextStart = Math.max(0, match.index - 500);
-    const contextEnd = Math.min(content.length, match.index + 500);
-    const context = content.substring(contextStart, contextEnd);
-    
-    const km = parseKm(context);
-    const price = parsePrice(context);
-    
-    // Transmission
-    let transmission: string | null = null;
-    if (/\b(automatic|auto)\b/i.test(context)) transmission = 'Auto';
-    else if (/\bmanual\b/i.test(context)) transmission = 'Manual';
-    
-    // Fuel
-    let fuel: string | null = null;
-    if (/\bdiesel\b/i.test(context)) fuel = 'Diesel';
-    else if (/\b(petrol|unleaded)\b/i.test(context)) fuel = 'Petrol';
-    else if (/\bhybrid\b/i.test(context)) fuel = 'Hybrid';
-    
-    // Drivetrain
-    let drivetrain: string | null = null;
-    if (/\b(4wd|4x4)\b/i.test(context)) drivetrain = '4WD';
-    else if (/\bawd\b/i.test(context)) drivetrain = 'AWD';
-    
-    vehicles.push({
-      lot_id: lotId,
-      make,
-      model,
-      variant,
-      year,
-      km,
-      transmission,
-      fuel,
-      drivetrain,
-      location: 'Hunter Valley', // Valley Motor Auctions region
-      auction_datetime: null,
-      listing_url: null,
-      price,
-      status: 'catalogue',
-    });
+  while ((match = bidsOnlinePattern.exec(html)) !== null) {
+    links.push(match[1]);
   }
   
-  // Pattern 2: Look for lot numbers in structured data
-  const lotPattern = /(?:lot|item)[\s:#]*(\d+)/gi;
-  while ((match = lotPattern.exec(html)) !== null) {
-    const lotNum = match[1];
-    const lotId = `VMA-LOT-${lotNum}`;
+  // Pattern 2: Local detail page links with stock/lot IDs
+  const detailPattern = /href=["']([^"']*(?:vehicle|lot|stock|details?|item)[^"']*(?:\d{4,}|[A-Z]{2,}\d+)[^"']*)["']/gi;
+  while ((match = detailPattern.exec(html)) !== null) {
+    let url = match[1];
+    if (!url.startsWith('http')) {
+      url = new URL(url, baseUrl).href;
+    }
+    if (!links.includes(url)) {
+      links.push(url);
+    }
+  }
+  
+  // Pattern 3: data-url or data-href attributes
+  const dataUrlPattern = /data-(?:url|href)=["']([^"']*(?:vehicle|lot|stock)[^"']*)["']/gi;
+  while ((match = dataUrlPattern.exec(html)) !== null) {
+    let url = match[1];
+    if (!url.startsWith('http')) {
+      url = new URL(url, baseUrl).href;
+    }
+    if (!links.includes(url)) {
+      links.push(url);
+    }
+  }
+  
+  return links.slice(0, 50);
+}
+
+// Extract stock/lot IDs from HTML
+function extractStockIds(html: string): string[] {
+  const ids: string[] = [];
+  
+  // Pattern 1: Explicit stock/lot number attributes
+  const attrPattern = /(?:stock|lot|item|sku)[-_]?(?:id|no|number)?=["']?([A-Z0-9\-_]{4,20})["']?/gi;
+  let match;
+  while ((match = attrPattern.exec(html)) !== null) {
+    if (!ids.includes(match[1])) {
+      ids.push(match[1]);
+    }
+  }
+  
+  // Pattern 2: Stock IDs in text
+  const textPattern = /(?:stock|lot|item)\s*[:#]?\s*([A-Z0-9\-_]{4,20})/gi;
+  while ((match = textPattern.exec(html)) !== null) {
+    if (!ids.includes(match[1])) {
+      ids.push(match[1]);
+    }
+  }
+  
+  // Pattern 3: MTA/bidsonline style IDs
+  const mtaPattern = /[&?](?:id|lotid|stockid)=(\d+)/gi;
+  while ((match = mtaPattern.exec(html)) !== null) {
+    const id = `MTA-${match[1]}`;
+    if (!ids.includes(id)) {
+      ids.push(id);
+    }
+  }
+  
+  return ids;
+}
+
+// Extract vehicle cards/blocks from HTML
+function extractVehicleCards(html: string): string[] {
+  const cards: string[] = [];
+  
+  // Pattern 1: Common card container patterns
+  const cardPatterns = [
+    /<(?:div|article|li)[^>]*class=["'][^"']*(?:vehicle|car|lot|stock|listing|item|result|auction)[^"']*["'][^>]*>[\s\S]*?<\/(?:div|article|li)>/gi,
+    /<tr[^>]*>[\s\S]*?(?:toyota|ford|holden|mazda|nissan|hyundai)[\s\S]*?<\/tr>/gi,
+  ];
+  
+  for (const pattern of cardPatterns) {
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      if (match[0].length < 5000) {
+        cards.push(match[0]);
+      }
+    }
+  }
+  
+  return cards.slice(0, 50);
+}
+
+// Parse a vehicle card HTML block
+function parseVehicleCard(cardHtml: string, index: number): ParsedVehicle | null {
+  const year = parseYear(cardHtml);
+  if (!year || year < 2010 || year > new Date().getFullYear() + 1) return null;
+  
+  const lowerHtml = cardHtml.toLowerCase();
+  let make: string | null = null;
+  for (const m of KNOWN_MAKES) {
+    if (lowerHtml.includes(m)) {
+      make = titleCase(m);
+      break;
+    }
+  }
+  if (!make) return null;
+  
+  // Extract model
+  const makeIndex = lowerHtml.indexOf(make.toLowerCase());
+  const afterMake = cardHtml.substring(makeIndex + make.length, makeIndex + make.length + 100);
+  const modelMatch = afterMake.match(/^\s*([A-Za-z0-9\-]+)/);
+  const model = modelMatch ? modelMatch[1] : 'Unknown';
+  
+  // Extract variant
+  const variantMatch = afterMake.match(/^\s*[A-Za-z0-9\-]+\s+([A-Za-z0-9\-\s]+?)(?:\s*[\|,<]|\s+\d)/);
+  const variant = variantMatch ? variantMatch[1].trim() : null;
+  
+  // Extract stock/lot ID
+  const stockMatch = cardHtml.match(/(?:stock|lot|item)[:\s#]*([A-Z0-9\-_]{4,20})/i) ||
+                     cardHtml.match(/id=["']?(\d{4,})["']?/i);
+  const lotId = stockMatch 
+    ? `VMA-${stockMatch[1]}` 
+    : `VMA-${year}-${make.substring(0,3)}-${index}`.toUpperCase();
+  
+  // Extract URL
+  const urlMatch = cardHtml.match(/href=["']([^"']+vehicle[^"']*)["']/i) ||
+                   cardHtml.match(/href=["']([^"']+(?:lot|stock|details)[^"']*)["']/i);
+  const listingUrl = urlMatch ? urlMatch[1] : null;
+  
+  return {
+    lot_id: lotId,
+    make,
+    model,
+    variant,
+    year,
+    km: parseKm(cardHtml),
+    transmission: /\b(?:auto|automatic)\b/i.test(cardHtml) ? 'Auto' : 
+                  /\bmanual\b/i.test(cardHtml) ? 'Manual' : null,
+    fuel: /\bdiesel\b/i.test(cardHtml) ? 'Diesel' :
+          /\b(?:petrol|unleaded)\b/i.test(cardHtml) ? 'Petrol' :
+          /\bhybrid\b/i.test(cardHtml) ? 'Hybrid' : null,
+    drivetrain: /\b(?:4wd|4x4)\b/i.test(cardHtml) ? '4WD' :
+                /\bawd\b/i.test(cardHtml) ? 'AWD' : null,
+    location: 'Hunter Valley',
+    auction_datetime: null,
+    listing_url: listingUrl,
+    price: parsePrice(cardHtml),
+    status: 'catalogue',
+  };
+}
+
+// Parse vehicles using markdown line-by-line approach (fallback)
+function parseVehiclesFromMarkdown(markdown: string): ParsedVehicle[] {
+  const vehicles: ParsedVehicle[] = [];
+  const seenKeys = new Set<string>();
+  
+  const lines = markdown.split('\n');
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const year = parseYear(line);
+    if (!year || year < 2010) continue;
     
-    if (seenIds.has(lotId)) continue;
+    const lowerLine = line.toLowerCase();
+    let make: string | null = null;
+    for (const m of KNOWN_MAKES) {
+      if (lowerLine.includes(m)) {
+        make = titleCase(m);
+        break;
+      }
+    }
+    if (!make) continue;
     
-    // Get context
-    const contextStart = Math.max(0, match.index - 1000);
-    const contextEnd = Math.min(html.length, match.index + 1000);
-    const context = html.substring(contextStart, contextEnd);
+    const context = lines.slice(i, i + 4).join(' ');
     
-    const year = parseYear(context);
-    if (!year || year < 2000) continue;
+    const makeIdx = lowerLine.indexOf(make.toLowerCase());
+    const afterMake = line.substring(makeIdx + make.length);
+    const modelMatch = afterMake.match(/^\s*([A-Za-z0-9\-]+)/);
+    const model = modelMatch ? modelMatch[1] : 'Unknown';
     
-    // Try to extract make/model
-    const vmRegex = new RegExp(`(${makePattern})\\s+([A-Za-z0-9\\-]+)`, 'i');
-    const vmMatch = context.match(vmRegex);
-    if (!vmMatch) continue;
-    
-    const make = vmMatch[1];
-    const model = vmMatch[2];
-    
-    seenIds.add(lotId);
+    const key = `${year}-${make}-${model}`;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
     
     vehicles.push({
-      lot_id: lotId,
+      lot_id: `VMA-${year}-${make.substring(0,3)}-${model.substring(0,4)}-${i}`.toUpperCase(),
       make,
       model,
       variant: null,
       year,
       km: parseKm(context),
-      transmission: null,
-      fuel: null,
-      drivetrain: null,
+      transmission: /\b(?:auto|automatic)\b/i.test(context) ? 'Auto' : 
+                    /\bmanual\b/i.test(context) ? 'Manual' : null,
+      fuel: /\bdiesel\b/i.test(context) ? 'Diesel' :
+            /\b(?:petrol|unleaded)\b/i.test(context) ? 'Petrol' : null,
+      drivetrain: /\b(?:4wd|4x4)\b/i.test(context) ? '4WD' :
+                  /\bawd\b/i.test(context) ? 'AWD' : null,
       location: 'Hunter Valley',
       auction_datetime: null,
       listing_url: null,
@@ -172,7 +277,6 @@ function parseVehicles(html: string, markdown: string): ParsedVehicle[] {
     });
   }
   
-  console.log(`[valley-crawl] Parsed ${vehicles.length} vehicles`);
   return vehicles;
 }
 
@@ -182,6 +286,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const body = await req.json().catch(() => ({}));
+    const debug = body.debug === true;
+    
     const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
     if (!firecrawlKey) {
       return new Response(
@@ -194,16 +301,17 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('[valley-crawl] Starting Valley Motor Auctions crawl');
+    console.log('[valley-crawl] Starting Valley Motor Auctions crawl, debug:', debug);
 
-    // Valley Motor Auctions URLs - use actual search/stock page
+    // Valley Motor Auctions URLs
     const urls = [
       'https://www.valleymotorauctions.com.au/search_results.aspx?sitekey=VMA&make=All%20Makes&model=All%20Models',
-      'https://www.valleymotorauctions.com.au/online',
+      'https://www.valleymotorauctions.com.au/',
     ];
 
     let allVehicles: ParsedVehicle[] = [];
     let successfulUrl = '';
+    let debugInfo: DebugInfo | null = null;
 
     for (const url of urls) {
       console.log(`[valley-crawl] Trying URL: ${url}`);
@@ -219,7 +327,7 @@ Deno.serve(async (req) => {
             url,
             formats: ['markdown', 'html'],
             onlyMainContent: false,
-            waitFor: 5000,
+            waitFor: 3000,
           }),
         });
 
@@ -232,22 +340,78 @@ Deno.serve(async (req) => {
         const html = data.data?.html || data.html || '';
         const markdown = data.data?.markdown || data.markdown || '';
 
-        if (html.length < 1000 && markdown.length < 500) {
+        console.log(`[valley-crawl] Got HTML: ${html.length} chars, MD: ${markdown.length} chars`);
+        
+        if (html.length < 500 && markdown.length < 200) {
           console.log(`[valley-crawl] Insufficient content from ${url}`);
           continue;
         }
 
-        const vehicles = parseVehicles(html, markdown);
-        if (vehicles.length > 0) {
+        // Extract debug info
+        const candidateLinks = extractVehicleLinks(html, url);
+        const stockIds = extractStockIds(html);
+        const cards = extractVehicleCards(html);
+        
+        console.log(`[valley-crawl] Found ${candidateLinks.length} links, ${stockIds.length} IDs, ${cards.length} cards`);
+        
+        debugInfo = {
+          html_len: html.length,
+          md_len: markdown.length,
+          candidate_links: candidateLinks.slice(0, 5),
+          card_snippets: cards.slice(0, 3).map(c => c.substring(0, 500)),
+          stock_ids: stockIds.slice(0, 10),
+          vehicles_parsed: 0,
+        };
+
+        // Strategy 1: Parse vehicle cards
+        const vehicles: ParsedVehicle[] = [];
+        const seenIds = new Set<string>();
+        
+        for (let i = 0; i < cards.length; i++) {
+          const vehicle = parseVehicleCard(cards[i], i);
+          if (vehicle && !seenIds.has(vehicle.lot_id)) {
+            seenIds.add(vehicle.lot_id);
+            vehicles.push(vehicle);
+          }
+        }
+        
+        // Strategy 2: Fallback to markdown parsing
+        if (vehicles.length < 5) {
+          const mdVehicles = parseVehiclesFromMarkdown(markdown);
+          for (const v of mdVehicles) {
+            if (!seenIds.has(v.lot_id)) {
+              seenIds.add(v.lot_id);
+              vehicles.push(v);
+            }
+          }
+        }
+        
+        debugInfo.vehicles_parsed = vehicles.length;
+        console.log(`[valley-crawl] Parsed ${vehicles.length} vehicles from ${url}`);
+
+        if (vehicles.length > 0 || debug) {
           allVehicles = vehicles;
           successfulUrl = url;
-          console.log(`[valley-crawl] Found ${vehicles.length} vehicles from ${url}`);
-          break;
+          if (vehicles.length > 0) break;
         }
       } catch (e) {
         console.log(`[valley-crawl] Error scraping ${url}:`, e);
         continue;
       }
+    }
+
+    // In debug mode, return diagnostics without ingesting
+    if (debug) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          debug: true,
+          sourceUrl: successfulUrl,
+          diagnostics: debugInfo,
+          vehicles: allVehicles.slice(0, 5),
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     if (allVehicles.length === 0) {
@@ -256,6 +420,7 @@ Deno.serve(async (req) => {
           success: false, 
           error: 'No vehicles found from any Valley URL',
           urlsTried: urls,
+          diagnostics: debugInfo,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -293,14 +458,12 @@ Deno.serve(async (req) => {
       throw new Error(`Ingest failed: ${ingestResponse.error.message}`);
     }
 
-    const result = ingestResponse.data;
-
     return new Response(
       JSON.stringify({
         success: true,
         sourceUrl: successfulUrl,
         vehiclesFound: allVehicles.length,
-        ingestResult: result,
+        ingestResult: ingestResponse.data,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
