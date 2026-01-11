@@ -39,6 +39,9 @@ export interface TrapListing {
   delta_pct: number | null;
   deal_label: string;
   no_benchmark: boolean;
+  // Risk flags
+  sold_returned_suspected?: boolean;
+  sold_returned_reason?: string | null;
 }
 
 export default function TrapInventoryPage() {
@@ -183,6 +186,8 @@ export default function TrapInventoryPage() {
       result = result.filter(l => l.deal_label === 'MISPRICED');
     } else if (filters.preset === '90_plus') {
       result = result.filter(l => l.days_on_market >= 90);
+    } else if (filters.preset === 'return_risk') {
+      result = result.filter(l => l.sold_returned_suspected === true);
     } else if (filters.preset === 'no_benchmark') {
       result = result.filter(l => l.no_benchmark);
     }

@@ -27,7 +27,8 @@ import {
   Loader2,
   Clock,
   Save,
-  StickyNote
+  StickyNote,
+  AlertTriangle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -190,6 +191,23 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
         </SheetHeader>
 
         <div className="space-y-6 py-6">
+          {/* Sold-Returned-Suspected Warning */}
+          {listing.sold_returned_suspected && (
+            <section className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-red-600">⚠️ Return Risk Detected</h3>
+                  <p className="text-sm text-red-500/80 mt-1">
+                    {listing.sold_returned_reason || 'This vehicle has been seen multiple times, disappeared (likely sold), and reappeared within 1-2 weeks. This pattern suggests it may have been sold and returned.'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Bob will not recommend buying this vehicle.
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
           {/* Current Price & Benchmark */}
           <section className="grid grid-cols-2 gap-4">
             <div className="stat-card">

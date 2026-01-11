@@ -1270,6 +1270,9 @@ export type Database = {
           seller_confidence: string | null
           seller_reasons: string[] | null
           seller_type: string
+          sold_returned_flagged_at: string | null
+          sold_returned_reason: string | null
+          sold_returned_suspected: boolean
           source: string
           source_class: string
           status: string
@@ -1310,6 +1313,9 @@ export type Database = {
           seller_confidence?: string | null
           seller_reasons?: string[] | null
           seller_type?: string
+          sold_returned_flagged_at?: string | null
+          sold_returned_reason?: string | null
+          sold_returned_suspected?: boolean
           source?: string
           source_class?: string
           status?: string
@@ -1350,6 +1356,9 @@ export type Database = {
           seller_confidence?: string | null
           seller_reasons?: string[] | null
           seller_type?: string
+          sold_returned_flagged_at?: string | null
+          sold_returned_reason?: string | null
+          sold_returned_suspected?: boolean
           source?: string
           source_class?: string
           status?: string
@@ -1800,6 +1809,15 @@ export type Database = {
           variant_bucket: string
         }[]
       }
+      detect_sold_returned_suspects: {
+        Args: never
+        Returns: {
+          flagged_count: number
+          listing_id: string
+          listing_uuid: string
+          reason: string
+        }[]
+      }
       generate_geo_heat_alerts: {
         Args: {
           p_asof?: string
@@ -1906,6 +1924,8 @@ export type Database = {
           no_benchmark: boolean
           price_change_count: number
           region_id: string
+          sold_returned_reason: string
+          sold_returned_suspected: boolean
           source: string
           status: string
           trap_slug: string
