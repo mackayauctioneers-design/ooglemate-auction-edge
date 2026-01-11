@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { TrendingDown, TrendingUp, Minus, HelpCircle, Eye, Pin } from 'lucide-react';
+import { TrendingDown, TrendingUp, Minus, HelpCircle, Eye, Pin, StickyNote } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -17,6 +17,7 @@ interface TrapInventoryTableProps {
   onRowClick: (listing: TrapListing) => void;
   watchedIds?: Set<string>;
   pinnedIds?: Set<string>;
+  notesIds?: Set<string>;
 }
 
 const formatCurrency = (val: number | null) => {
@@ -66,7 +67,7 @@ const getTrapName = (source: string) => {
   return source.replace(/^trap_/, '').replace(/_/g, ' ');
 };
 
-export function TrapInventoryTable({ listings, onRowClick, watchedIds, pinnedIds }: TrapInventoryTableProps) {
+export function TrapInventoryTable({ listings, onRowClick, watchedIds, pinnedIds, notesIds }: TrapInventoryTableProps) {
   if (listings.length === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground">
@@ -92,9 +93,10 @@ export function TrapInventoryTable({ listings, onRowClick, watchedIds, pinnedIds
             </TableRow>
           </TableHeader>
           <TableBody>
-            {listings.map(listing => {
+          {listings.map(listing => {
               const isWatched = watchedIds?.has(listing.id) ?? false;
               const isPinned = pinnedIds?.has(listing.id) ?? false;
+              const hasNotes = notesIds?.has(listing.id) ?? false;
               
               return (
               <TableRow
@@ -112,7 +114,7 @@ export function TrapInventoryTable({ listings, onRowClick, watchedIds, pinnedIds
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 min-w-[28px]">
+                    <div className="flex items-center gap-1 min-w-[40px]">
                       {isPinned && (
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -127,6 +129,14 @@ export function TrapInventoryTable({ listings, onRowClick, watchedIds, pinnedIds
                             <Eye className="h-3 w-3 text-muted-foreground" />
                           </TooltipTrigger>
                           <TooltipContent>Watching</TooltipContent>
+                        </Tooltip>
+                      )}
+                      {hasNotes && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <StickyNote className="h-3 w-3 text-amber-500" />
+                          </TooltipTrigger>
+                          <TooltipContent>Has notes</TooltipContent>
                         </Tooltip>
                       )}
                     </div>

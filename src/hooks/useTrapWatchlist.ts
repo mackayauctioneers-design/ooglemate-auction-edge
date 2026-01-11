@@ -108,6 +108,36 @@ export function useTrapWatchlist(listingId: string | null) {
     setLoading(false);
   }, [listingId, user, isWatching, isPinned]);
 
+  const updateNotes = useCallback(async (newNotes: string) => {
+    if (!listingId || !user) return;
+    
+    setLoading(true);
+
+    const { error } = await supabase
+      .from('user_watchlist')
+      .upsert(
+        {
+          user_id: user.id,
+          listing_id: listingId,
+          is_watching: isWatching || true, // Auto-watch when adding notes
+          is_pinned: isPinned,
+          notes: newNotes || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,listing_id' }
+      );
+
+    if (error) {
+      console.error('Error updating notes:', error);
+    } else {
+      setNotes(newNotes || null);
+      if (!isWatching) {
+        setIsWatching(true); // Auto-watch when adding notes
+      }
+    }
+    setLoading(false);
+  }, [listingId, user, isWatching, isPinned]);
+
   return {
     isWatching,
     isPinned,
@@ -115,6 +145,7 @@ export function useTrapWatchlist(listingId: string | null) {
     loading,
     toggleWatch,
     togglePin,
+    updateNotes,
   };
 }
 

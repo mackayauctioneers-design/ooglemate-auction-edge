@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   ExternalLink, 
   Calendar, 
@@ -24,7 +25,9 @@ import {
   Eye,
   Pin,
   Loader2,
-  Clock
+  Clock,
+  Save,
+  StickyNote
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -33,6 +36,7 @@ interface TrapInventoryDrawerProps {
   listing: TrapListing | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onNotesChange?: () => void;
 }
 
 interface PriceSnapshot {
@@ -75,18 +79,29 @@ const getDealBadge = (dealLabel: string) => {
   }
 };
 
-export function TrapInventoryDrawer({ listing, open, onOpenChange }: TrapInventoryDrawerProps) {
+export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange }: TrapInventoryDrawerProps) {
   const [priceHistory, setPriceHistory] = useState<PriceSnapshot[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [localNotes, setLocalNotes] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesDirty, setNotesDirty] = useState(false);
   
   // Use watchlist hook for persistence
   const { 
     isWatching, 
     isPinned, 
+    notes,
     loading: watchlistLoading,
     toggleWatch, 
-    togglePin 
+    togglePin,
+    updateNotes
   } = useTrapWatchlist(listing?.id ?? null);
+
+  // Sync local notes with hook notes
+  useEffect(() => {
+    setLocalNotes(notes || '');
+    setNotesDirty(false);
+  }, [notes, listing?.id]);
 
   useEffect(() => {
     if (listing && open) {
@@ -334,6 +349,43 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange }: TrapInvento
             <p className="text-xs text-muted-foreground">
               {watchlistLoading ? 'Saving...' : 'Saved to your watchlist'}
             </p>
+            
+            {/* Notes */}
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center gap-2">
+                <StickyNote className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-sm">Notes</Label>
+              </div>
+              <Textarea
+                placeholder="Add notes about this listing..."
+                value={localNotes}
+                onChange={(e) => {
+                  setLocalNotes(e.target.value);
+                  setNotesDirty(e.target.value !== (notes || ''));
+                }}
+                className="min-h-[80px] text-sm"
+              />
+              <Button
+                size="sm"
+                variant={notesDirty ? 'default' : 'outline'}
+                disabled={!notesDirty || savingNotes}
+                onClick={async () => {
+                  setSavingNotes(true);
+                  await updateNotes(localNotes);
+                  setNotesDirty(false);
+                  setSavingNotes(false);
+                  onNotesChange?.();
+                }}
+                className="w-full"
+              >
+                {savingNotes ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {savingNotes ? 'Saving...' : notesDirty ? 'Save Notes' : 'Notes saved'}
+              </Button>
+            </div>
           </section>
 
           <Separator />
