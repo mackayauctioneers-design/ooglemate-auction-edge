@@ -27,15 +27,121 @@ interface DebugInfo {
   rawHtmlLength: number;
   lotBlocksFound: number;
   parsedLots: ParsedLot[];
+  parserProfile: string;
   errors: string[];
 }
 
-// Helper: title case
+// ============= PARSER PROFILES =============
+// Each profile has specific extraction patterns for different BidsOnline variants
+
+interface ParserProfile {
+  name: string;
+  lotBlockPatterns: RegExp[];
+  lotIdPatterns: RegExp[];
+  titlePatterns: RegExp[];
+  urlPatterns: RegExp[];
+}
+
+const PARSER_PROFILES: Record<string, ParserProfile> = {
+  bidsonline_default: {
+    name: 'BidsOnline Default',
+    lotBlockPatterns: [
+      /<div[^>]*class=["'][^"']*(?:lot-item|vehicle-card|auction-item|listing-item|stock-item)[^"']*["'][^>]*>[\s\S]*?(?=<div[^>]*class=["'][^"']*(?:lot-item|vehicle-card|auction-item|listing-item|stock-item)|$)/gi,
+      /<article[^>]*>[\s\S]*?<\/article>/gi,
+      /<li[^>]*class=["'][^"']*(?:lot|vehicle|item)[^"']*["'][^>]*>[\s\S]*?<\/li>/gi,
+    ],
+    lotIdPatterns: [
+      /data-(?:lot-)?id=["']([^"']+)["']/i,
+      /href=["'][^"']*\/lot[s]?\/(\d+)[^"']*["']/i,
+      /href=["'][^"']*[?&](?:item|lot)=(\d+)[^"']*["']/i,
+      /(?:stock|lot)\s*#?\s*:?\s*(\d{3,})/i,
+    ],
+    titlePatterns: [
+      /<h\d[^>]*>([^<]+)<\/h\d>/gi,
+      /class=["'][^"']*(?:title|heading|name)[^"']*["'][^>]*>([^<]+)/gi,
+      /<a[^>]*>([^<]*\d{4}[^<]*(?:toyota|mazda|ford|hyundai|kia|mitsubishi|nissan|holden|volkswagen|honda|subaru)[^<]*)<\/a>/gi,
+    ],
+    urlPatterns: [
+      /href=["']([^"']*(?:lot|vehicle|item)[^"']*)["']/i,
+    ],
+  },
+  bidsonline_grid: {
+    name: 'BidsOnline Grid Layout',
+    lotBlockPatterns: [
+      /<div[^>]*class=["'][^"']*(?:vehicle-card|lot-card|grid-item|card)[^"']*["'][^>]*>[\s\S]*?(?=<div[^>]*class=["'][^"']*(?:vehicle-card|lot-card|grid-item|card)|$)/gi,
+      /<div[^>]*class=["'][^"']*col[^"']*["'][^>]*>[\s\S]*?<\/div>\s*(?=<div[^>]*class=["'][^"']*col|$)/gi,
+    ],
+    lotIdPatterns: [
+      /data-id=["']([^"']+)["']/i,
+      /data-vehicle-id=["']([^"']+)["']/i,
+      /href=["'][^"']*\/(\d{4,})["']/i,
+    ],
+    titlePatterns: [
+      /<h[234][^>]*class=["'][^"']*(?:title|name)[^"']*["'][^>]*>([^<]+)/gi,
+      /<div[^>]*class=["'][^"']*(?:vehicle-name|lot-title)[^"']*["'][^>]*>([^<]+)/gi,
+    ],
+    urlPatterns: [
+      /href=["']([^"']+)["'][^>]*class=["'][^"']*(?:details|view|more)/i,
+      /<a[^>]*href=["']([^"']+)["']/i,
+    ],
+  },
+  bidsonline_table: {
+    name: 'BidsOnline Table Layout',
+    lotBlockPatterns: [
+      /<tr[^>]*(?:data-lot|data-vehicle|class=["'][^"']*(?:lot|vehicle|item))[^>]*>[\s\S]*?<\/tr>/gi,
+    ],
+    lotIdPatterns: [
+      /data-lot-id=["']([^"']+)["']/i,
+      /data-id=["']([^"']+)["']/i,
+      /<td[^>]*>(?:Lot\s*)?#?\s*(\d+)/i,
+    ],
+    titlePatterns: [
+      /<td[^>]*class=["'][^"']*(?:vehicle|description|title)[^"']*["'][^>]*>([^<]+)/gi,
+    ],
+    urlPatterns: [
+      /href=["']([^"']+)["']/i,
+    ],
+  },
+  custom_f3: {
+    name: 'F3 Motor Auctions',
+    lotBlockPatterns: [
+      /<div[^>]*class=["'][^"']*stock-item[^"']*["'][^>]*>[\s\S]*?(?=<div[^>]*class=["'][^"']*stock-item|$)/gi,
+    ],
+    lotIdPatterns: [
+      /F3-MTA-(\d+)/i,
+      /data-stock=["']([^"']+)["']/i,
+    ],
+    titlePatterns: [
+      /<h3[^>]*>([^<]+)<\/h3>/gi,
+    ],
+    urlPatterns: [
+      /href=["']([^"']*stock[^"']*)["']/i,
+    ],
+  },
+  custom_valley: {
+    name: 'Valley Motor Auctions',
+    lotBlockPatterns: [
+      /<div[^>]*class=["'][^"']*vehicle-listing[^"']*["'][^>]*>[\s\S]*?(?=<div[^>]*class=["'][^"']*vehicle-listing|$)/gi,
+    ],
+    lotIdPatterns: [
+      /VMA-(\d+)/i,
+      /stock_id=["']([^"']+)["']/i,
+    ],
+    titlePatterns: [
+      /<div[^>]*class=["'][^"']*vehicle-title[^"']*["'][^>]*>([^<]+)/gi,
+    ],
+    urlPatterns: [
+      /href=["']([^"']*vehicle-detail[^"']*)["']/i,
+    ],
+  },
+};
+
+// ============= HELPERS =============
+
 function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
 }
 
-// Helper: parse km from various formats
 function parseKm(raw: string | null): number | null {
   if (!raw) return null;
   const clean = raw.replace(/[^0-9]/g, '');
@@ -44,7 +150,6 @@ function parseKm(raw: string | null): number | null {
   return km;
 }
 
-// Helper: parse year
 function parseYear(raw: string | null): number | null {
   if (!raw) return null;
   const match = raw.match(/\b(19|20)\d{2}\b/);
@@ -55,7 +160,6 @@ function parseYear(raw: string | null): number | null {
   return year;
 }
 
-// Helper: parse price from various formats
 function parsePrice(raw: string | null): number | null {
   if (!raw) return null;
   const clean = raw.replace(/[^0-9]/g, '');
@@ -64,95 +168,117 @@ function parsePrice(raw: string | null): number | null {
   return price;
 }
 
-// Parse a single lot from BidsOnline-style HTML
-function parseLotItem(html: string, baseUrl: string): ParsedLot | null {
-  const errors: string[] = [];
+// ============= LOT PARSING =============
+
+function findLotBlocks(html: string, profile: ParserProfile): string[] {
+  for (const pattern of profile.lotBlockPatterns) {
+    const matches = html.match(pattern);
+    if (matches && matches.length > 0) {
+      return matches;
+    }
+  }
+  return [];
+}
+
+function extractLotId(html: string, profile: ParserProfile): string | null {
+  for (const pattern of profile.lotIdPatterns) {
+    const match = html.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  return null;
+}
+
+function extractTitle(html: string, profile: ParserProfile): string | null {
+  for (const pattern of profile.titlePatterns) {
+    const matches = html.matchAll(pattern);
+    for (const match of matches) {
+      if (match[1] && match[1].trim().length > 5) {
+        return match[1].trim();
+      }
+    }
+  }
+  return null;
+}
+
+function extractUrl(html: string, baseUrl: string, profile: ParserProfile): string | null {
+  for (const pattern of profile.urlPatterns) {
+    const match = html.match(pattern);
+    if (match && match[1]) {
+      const href = match[1];
+      return href.startsWith('http') ? href : new URL(href, baseUrl).toString();
+    }
+  }
+  return null;
+}
+
+function parseVehicleFromTitle(title: string): { year: number | null; make: string; model: string; variant: string | null } {
+  const result = { year: null as number | null, make: '', model: '', variant: null as string | null };
   
-  // Try to extract lot ID (various patterns)
-  let lotId: string | null = null;
-  
-  // Pattern 1: data-lot-id or data-id attribute
-  const dataLotMatch = html.match(/data-(?:lot-)?id=["']([^"']+)["']/i);
-  if (dataLotMatch) lotId = dataLotMatch[1];
-  
-  // Pattern 2: href with lot number (e.g., /lot/12345)
-  if (!lotId) {
-    const lotUrlMatch = html.match(/href=["'][^"']*\/lot[s]?\/(\d+)[^"']*["']/i);
-    if (lotUrlMatch) lotId = lotUrlMatch[1];
+  // Extract year
+  const yearMatch = title.match(/\b(20[0-2]\d|19\d{2})\b/);
+  if (yearMatch) {
+    result.year = parseInt(yearMatch[1]);
   }
   
-  // Pattern 3: item ID in URL
-  if (!lotId) {
-    const itemMatch = html.match(/href=["'][^"']*[?&](?:item|lot)=(\d+)[^"']*["']/i);
-    if (itemMatch) lotId = itemMatch[1];
+  // Known makes
+  const makes = ['toyota', 'mazda', 'ford', 'hyundai', 'kia', 'mitsubishi', 'nissan', 'holden', 
+    'volkswagen', 'honda', 'subaru', 'isuzu', 'mercedes', 'bmw', 'audi', 'lexus', 'suzuki',
+    'jeep', 'land rover', 'range rover', 'volvo', 'peugeot', 'renault', 'skoda', 'fiat',
+    'alfa romeo', 'mini', 'porsche', 'tesla', 'mg', 'ldv', 'great wall', 'haval', 'gwm'];
+  
+  const lowerTitle = title.toLowerCase();
+  for (const make of makes) {
+    if (lowerTitle.includes(make)) {
+      result.make = titleCase(make);
+      // Extract model (word after make)
+      const makeIndex = lowerTitle.indexOf(make);
+      const afterMake = title.substring(makeIndex + make.length).trim();
+      const parts = afterMake.split(/\s+/);
+      if (parts.length > 0) {
+        result.model = titleCase(parts[0].replace(/[^a-zA-Z0-9-]/g, ''));
+        if (parts.length > 1) {
+          result.variant = parts.slice(1).join(' ').trim() || null;
+        }
+      }
+      break;
+    }
   }
   
-  // Pattern 4: Stock number text
-  if (!lotId) {
-    const stockMatch = html.match(/(?:stock|lot)\s*#?\s*:?\s*(\d{3,})/i);
-    if (stockMatch) lotId = stockMatch[1];
-  }
-  
+  return result;
+}
+
+function parseLotItem(html: string, baseUrl: string, profile: ParserProfile): ParsedLot | null {
+  const lotId = extractLotId(html, profile);
   if (!lotId) return null;
   
-  // Extract detail URL
-  let listingUrl: string | null = null;
-  const hrefMatch = html.match(/href=["']([^"']*(?:lot|vehicle|item)[^"']*)["']/i);
-  if (hrefMatch) {
-    const href = hrefMatch[1];
-    listingUrl = href.startsWith('http') ? href : new URL(href, baseUrl).toString();
-  }
+  const title = extractTitle(html, profile);
+  const listingUrl = extractUrl(html, baseUrl, profile);
   
-  // Extract year/make/model from title or heading
+  // Parse vehicle info from title
   let year: number | null = null;
   let make = '';
   let model = '';
   let variantRaw: string | null = null;
   
-  // Try various title patterns
-  const titlePatterns = [
-    /<h\d[^>]*>([^<]+)<\/h\d>/gi,
-    /class=["'][^"']*(?:title|heading|name)[^"']*["'][^>]*>([^<]+)/gi,
-    /<a[^>]*>([^<]*\d{4}[^<]*(?:toyota|mazda|ford|hyundai|kia|mitsubishi|nissan|holden|volkswagen|honda|subaru)[^<]*)<\/a>/gi,
-  ];
-  
-  for (const pattern of titlePatterns) {
-    const matches = html.matchAll(pattern);
-    for (const match of matches) {
-      const text = match[1].trim();
-      // Look for year pattern
-      const yearMatch = text.match(/\b(20[0-2]\d)\b/);
-      if (yearMatch) {
-        year = parseInt(yearMatch[1]);
-        // Extract make/model after year
-        const afterYear = text.substring(text.indexOf(yearMatch[0]) + 4).trim();
-        const parts = afterYear.split(/\s+/);
-        if (parts.length >= 2) {
-          make = titleCase(parts[0]);
-          model = titleCase(parts[1]);
-          if (parts.length > 2) {
-            variantRaw = parts.slice(2).join(' ');
-          }
-        }
-        break;
-      }
-    }
-    if (year && make) break;
+  if (title) {
+    const parsed = parseVehicleFromTitle(title);
+    year = parsed.year;
+    make = parsed.make;
+    model = parsed.model;
+    variantRaw = parsed.variant;
   }
   
-  // Fallback: look for common makes in text
+  // Fallback make detection
   if (!make) {
-    const makes = ['toyota', 'mazda', 'ford', 'hyundai', 'kia', 'mitsubishi', 'nissan', 'holden', 'volkswagen', 'honda', 'subaru', 'isuzu', 'mercedes', 'bmw', 'audi'];
+    const makes = ['toyota', 'mazda', 'ford', 'hyundai', 'kia', 'mitsubishi', 'nissan', 'holden'];
     for (const m of makes) {
-      const makeMatch = html.match(new RegExp(`\\b${m}\\b`, 'i'));
-      if (makeMatch) {
+      if (html.toLowerCase().includes(m)) {
         make = titleCase(m);
-        // Try to find model after make
         const modelPattern = new RegExp(`${m}\\s+([a-z0-9-]+)`, 'i');
         const modelMatch = html.match(modelPattern);
-        if (modelMatch) {
-          model = titleCase(modelMatch[1]);
-        }
+        if (modelMatch) model = titleCase(modelMatch[1]);
         break;
       }
     }
@@ -160,7 +286,7 @@ function parseLotItem(html: string, baseUrl: string): ParsedLot | null {
   
   if (!make || !model) return null;
   
-  // Extract km/odometer
+  // Extract km
   let km: number | null = null;
   const kmPatterns = [
     /(\d{1,3}[,\s]?\d{3})\s*(?:km|kms|kilometres)/i,
@@ -168,88 +294,54 @@ function parseLotItem(html: string, baseUrl: string): ParsedLot | null {
   ];
   for (const p of kmPatterns) {
     const m = html.match(p);
-    if (m) {
-      km = parseKm(m[1]);
-      if (km) break;
-    }
+    if (m) { km = parseKm(m[1]); if (km) break; }
   }
   
-  // Extract transmission
+  // Transmission
   let transmission: string | null = null;
   if (/\b(?:automatic|auto)\b/i.test(html)) transmission = 'Auto';
   else if (/\bmanual\b/i.test(html)) transmission = 'Manual';
   else if (/\bcvt\b/i.test(html)) transmission = 'CVT';
   
-  // Extract fuel type
+  // Fuel
   let fuel: string | null = null;
   if (/\bdiesel\b/i.test(html)) fuel = 'Diesel';
   else if (/\bpetrol\b/i.test(html) || /\bunleaded\b/i.test(html)) fuel = 'Petrol';
   else if (/\bhybrid\b/i.test(html)) fuel = 'Hybrid';
   else if (/\belectric\b/i.test(html) || /\bev\b/i.test(html)) fuel = 'Electric';
   
-  // Extract price/reserve/bid
+  // Price
   let reserve: number | null = null;
   let askingPrice: number | null = null;
-  
-  const pricePatterns = [
-    /\$\s*([\d,]+)/g,
-    /(?:reserve|guide|price)\s*:?\s*\$?\s*([\d,]+)/gi,
-    /(?:current\s*bid|bid)\s*:?\s*\$?\s*([\d,]+)/gi,
-  ];
-  
-  for (const p of pricePatterns) {
-    const matches = html.matchAll(p);
-    for (const m of matches) {
-      const price = parsePrice(m[1]);
-      if (price && price >= 1000 && price <= 500000) {
-        if (!askingPrice) askingPrice = price;
-        else if (!reserve) reserve = price;
-      }
+  const priceMatches = html.matchAll(/\$\s*([\d,]+)/g);
+  for (const m of priceMatches) {
+    const price = parsePrice(m[1]);
+    if (price && price >= 1000 && price <= 500000) {
+      if (!askingPrice) askingPrice = price;
+      else if (!reserve) reserve = price;
     }
   }
   
-  // Extract location
+  // Location
   let location: string | null = null;
-  const locationPatterns = [
-    /(?:location|yard|branch)\s*:?\s*([^<,]+)/i,
-    /(?:sydney|melbourne|brisbane|perth|adelaide|newcastle|parramatta|campbelltown|smithfield)/i,
-  ];
-  for (const p of locationPatterns) {
-    const m = html.match(p);
-    if (m) {
-      location = titleCase(m[1] || m[0]).trim();
-      break;
-    }
-  }
+  const locMatch = html.match(/(?:location|yard|branch)\s*:?\s*([^<,]+)/i);
+  if (locMatch) location = titleCase(locMatch[1]).trim();
   
-  // Extract auction date
+  // Auction date
   let auctionDatetime: string | null = null;
-  const datePatterns = [
-    /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/,
-    /(?:auction|sale)\s*(?:date)?\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-  ];
-  for (const p of datePatterns) {
-    const m = html.match(p);
-    if (m) {
-      try {
-        // Parse as DD/MM/YYYY
-        const parts = (m[1] || m[0]).split(/[\/\-]/);
-        if (parts.length === 3) {
-          const day = parseInt(parts[0]);
-          const month = parseInt(parts[1]) - 1;
-          let yr = parseInt(parts[2]);
-          if (yr < 100) yr += 2000;
-          const d = new Date(yr, month, day);
-          if (!isNaN(d.getTime())) {
-            auctionDatetime = d.toISOString();
-          }
-        }
-      } catch {}
-      break;
-    }
+  const dateMatch = html.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (dateMatch) {
+    try {
+      const day = parseInt(dateMatch[1]);
+      const month = parseInt(dateMatch[2]) - 1;
+      let yr = parseInt(dateMatch[3]);
+      if (yr < 100) yr += 2000;
+      const d = new Date(yr, month, day);
+      if (!isNaN(d.getTime())) auctionDatetime = d.toISOString();
+    } catch {}
   }
   
-  // Determine status
+  // Status
   let status = 'catalogue';
   const statusText = html.toLowerCase();
   if (/\bsold\b/.test(statusText)) status = 'cleared';
@@ -274,36 +366,7 @@ function parseLotItem(html: string, baseUrl: string): ParsedLot | null {
   };
 }
 
-// Split HTML into lot blocks
-function findLotBlocks(html: string): string[] {
-  const blocks: string[] = [];
-  
-  // Common BidsOnline lot container patterns
-  const patterns = [
-    /<div[^>]*class=["'][^"']*(?:lot-item|vehicle-card|auction-item|listing-item|stock-item)[^"']*["'][^>]*>[\s\S]*?<\/div>\s*(?=<div[^>]*class=["'][^"']*(?:lot-item|vehicle-card|auction-item|listing-item|stock-item)|\s*$)/gi,
-    /<article[^>]*>[\s\S]*?<\/article>/gi,
-    /<li[^>]*class=["'][^"']*(?:lot|vehicle|item)[^"']*["'][^>]*>[\s\S]*?<\/li>/gi,
-  ];
-  
-  for (const pattern of patterns) {
-    const matches = html.match(pattern);
-    if (matches && matches.length > 0) {
-      blocks.push(...matches);
-      break;
-    }
-  }
-  
-  // Fallback: split by common separators
-  if (blocks.length === 0) {
-    // Try to find any divs with lot-related classes
-    const lotDivs = html.match(/<div[^>]*(?:data-lot|lot-id|vehicle|item)[^>]*>[\s\S]*?(?=<div[^>]*(?:data-lot|lot-id|vehicle|item)|$)/gi);
-    if (lotDivs) {
-      blocks.push(...lotDivs);
-    }
-  }
-  
-  return blocks;
-}
+// ============= MAIN HANDLER =============
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -319,42 +382,54 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { source_key, debug = false } = body;
 
-    // If source_key provided, look up from auction_sources
-    let listUrl: string;
-    let sourceKey: string;
-    let regionHint: string = 'NSW_REGIONAL';
-    
-    if (source_key) {
-      const { data: auctionSource, error: sourceError } = await supabase
-        .from('auction_sources')
-        .select('*')
-        .eq('source_key', source_key)
-        .eq('enabled', true)
-        .single();
-      
-      if (sourceError || !auctionSource) {
-        return new Response(
-          JSON.stringify({ error: `Auction source not found or disabled: ${source_key}` }),
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      listUrl = auctionSource.list_url;
-      sourceKey = auctionSource.source_key;
-      regionHint = auctionSource.region_hint;
-    } else if (body.list_url) {
-      listUrl = body.list_url;
-      sourceKey = 'manual';
-    } else {
+    if (!source_key) {
       return new Response(
-        JSON.stringify({ error: 'Must provide source_key or list_url' }),
+        JSON.stringify({ error: 'Must provide source_key' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`[bidsonline-crawl] Crawling: ${listUrl} (source: ${sourceKey})`);
+    // Look up source from registry
+    const { data: auctionSource, error: sourceError } = await supabase
+      .from('auction_sources')
+      .select('*')
+      .eq('source_key', source_key)
+      .single();
+    
+    if (sourceError || !auctionSource) {
+      return new Response(
+        JSON.stringify({ error: `Auction source not found: ${source_key}` }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    // Fetch page with Firecrawl
+    // CRITICAL: Require preflight pass before crawling
+    if (auctionSource.preflight_status !== 'pass' && !debug) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Preflight required', 
+          message: `Source ${source_key} has not passed preflight (status: ${auctionSource.preflight_status}). Run auction-preflight first.`,
+          preflight_status: auctionSource.preflight_status,
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check if source is enabled (skip for debug mode)
+    if (!auctionSource.enabled && !debug) {
+      return new Response(
+        JSON.stringify({ error: `Auction source is disabled: ${source_key}` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const listUrl = auctionSource.list_url;
+    const regionHint = auctionSource.region_hint;
+    const parserProfileName = auctionSource.parser_profile || 'bidsonline_default';
+    const profile = PARSER_PROFILES[parserProfileName] || PARSER_PROFILES.bidsonline_default;
+
+    console.log(`[bidsonline-crawl] Crawling: ${listUrl} (source: ${source_key}, profile: ${parserProfileName})`);
+
     if (!firecrawlApiKey) {
       return new Response(
         JSON.stringify({ error: 'FIRECRAWL_API_KEY not configured' }),
@@ -362,6 +437,7 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Fetch page with Firecrawl
     const crawlResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
@@ -371,7 +447,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         url: listUrl,
         formats: ['html'],
-        waitFor: 3000, // Wait for JS rendering
+        waitFor: 3000,
       }),
     });
 
@@ -379,13 +455,20 @@ Deno.serve(async (req) => {
       const errorText = await crawlResponse.text();
       console.error(`[bidsonline-crawl] Firecrawl error: ${errorText}`);
       
-      // Update auction source with error
-      if (source_key) {
-        await supabase
-          .from('auction_sources')
-          .update({ last_error: `Firecrawl: ${crawlResponse.status}` })
-          .eq('source_key', source_key);
-      }
+      // Update auction source with error and increment failure
+      const failures = (auctionSource.consecutive_failures || 0) + 1;
+      await supabase
+        .from('auction_sources')
+        .update({ 
+          last_error: `Firecrawl: ${crawlResponse.status}`,
+          consecutive_failures: failures,
+          ...(failures >= 3 ? {
+            enabled: false,
+            auto_disabled_at: new Date().toISOString(),
+            auto_disabled_reason: `3 consecutive crawl failures`,
+          } : {}),
+        })
+        .eq('source_key', source_key);
       
       return new Response(
         JSON.stringify({ error: `Firecrawl failed: ${crawlResponse.status}` }),
@@ -404,10 +487,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[bidsonline-crawl] Got ${html.length} bytes of HTML`);
+    console.log(`[bidsonline-crawl] Got ${html.length} bytes of HTML, using profile: ${profile.name}`);
 
-    // Parse lots
-    const lotBlocks = findLotBlocks(html);
+    // Parse lots using selected profile
+    const lotBlocks = findLotBlocks(html, profile);
     console.log(`[bidsonline-crawl] Found ${lotBlocks.length} lot blocks`);
 
     const parsedLots: ParsedLot[] = [];
@@ -417,12 +500,10 @@ Deno.serve(async (req) => {
 
     for (const block of lotBlocks) {
       try {
-        const lot = parseLotItem(block, listUrl);
+        const lot = parseLotItem(block, listUrl, profile);
         if (lot) {
           // Apply 10-year window filter
           if (lot.year >= minYear) {
-            // Add prefix for deterministic ID
-            lot.lot_id = `BIDSONLINE:${lot.lot_id}`;
             parsedLots.push(lot);
           }
         }
@@ -440,6 +521,7 @@ Deno.serve(async (req) => {
         rawHtmlLength: html.length,
         lotBlocksFound: lotBlocks.length,
         parsedLots,
+        parserProfile: parserProfileName,
         errors,
       };
       return new Response(
@@ -452,26 +534,23 @@ Deno.serve(async (req) => {
     if (parsedLots.length === 0) {
       console.log('[bidsonline-crawl] No valid lots found');
       
-      // Log to cron_audit
       await supabase.from('cron_audit_log').insert({
-        cron_name: `bidsonline-crawl:${sourceKey}`,
+        cron_name: `bidsonline-crawl:${source_key}`,
         success: true,
         result: { lotsFound: 0, message: 'No late-model lots found' },
       });
       
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          lotsFound: 0, 
-          message: 'No late-model lots found on page' 
-        }),
+        JSON.stringify({ success: true, lotsFound: 0, message: 'No late-model lots found on page' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Map to ingest format and call nsw-regional-ingest
+    // ===== CANONICAL LISTING_ID: {source_key}:{platform_lot_id} =====
+    // Map to ingest format with CANONICAL IDs
     const ingestPayload = parsedLots.map(lot => ({
-      lot_id: lot.lot_id,
+      // CANONICAL: listing_id = source_key:lot_id (NOT "BIDSONLINE:" prefix)
+      lot_id: `${source_key}:${lot.lot_id}`,
       make: lot.make,
       model: lot.model,
       variant: lot.variant_raw,
@@ -488,16 +567,9 @@ Deno.serve(async (req) => {
       status: lot.status,
     }));
 
-    // Map source_key to valid ingest source
-    const sourceMap: Record<string, string> = {
-      'autoauctions_sydney': 'autoauctions',
-      'valley_motor_auctions': 'valley',
-      'f3_motor_auctions': 'f3',
-    };
-    const ingestSource = sourceMap[sourceKey] || 'autoauctions';
-
     console.log(`[bidsonline-crawl] Calling nsw-regional-ingest with ${ingestPayload.length} lots`);
 
+    // Call ingest function with source = source_key (canonical)
     const ingestResponse = await fetch(`${supabaseUrl}/functions/v1/nsw-regional-ingest`, {
       method: 'POST',
       headers: {
@@ -506,60 +578,63 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         lots: ingestPayload,
-        source: ingestSource,
-        eventId: `${sourceKey}-${new Date().toISOString().slice(0, 10)}`,
-        auctionDate: new Date().toISOString().slice(0, 10),
+        source: source_key, // CANONICAL: source = source_key
       }),
     });
 
     const ingestResult = await ingestResponse.json();
-    console.log(`[bidsonline-crawl] Ingest result:`, ingestResult);
-
-    // Update auction source with success
-    if (source_key) {
-      await supabase
-        .from('auction_sources')
-        .update({ 
-          last_success_at: new Date().toISOString(),
-          last_lots_found: parsedLots.length,
-          last_error: null,
-        })
-        .eq('source_key', source_key);
+    
+    if (!ingestResponse.ok) {
+      console.error(`[bidsonline-crawl] Ingest error: ${JSON.stringify(ingestResult)}`);
+      return new Response(
+        JSON.stringify({ error: 'Ingest failed', details: ingestResult }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Log to cron_audit
-    await supabase.from('cron_audit_log').insert({
-      cron_name: `bidsonline-crawl:${sourceKey}`,
-      success: true,
-      result: {
-        lotsFound: parsedLots.length,
-        ingestResult,
-      },
-    });
+    // Update auction source with success
+    const validationRuns = (auctionSource.validation_runs || 0) + 1;
+    const successfulRuns = (auctionSource.successful_validation_runs || 0) + (ingestResult.created > 0 || ingestResult.updated > 0 ? 1 : 0);
+    
+    const updateData: Record<string, unknown> = {
+      last_success_at: new Date().toISOString(),
+      last_lots_found: parsedLots.length,
+      last_error: null,
+      consecutive_failures: 0,
+      validation_runs: validationRuns,
+      successful_validation_runs: successfulRuns,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Auto-enable after 2 successful validation runs
+    if (successfulRuns >= 2 && !auctionSource.enabled) {
+      updateData.enabled = true;
+      updateData.validation_status = 'validated';
+      console.log(`[bidsonline-crawl] Auto-enabling ${source_key} after ${successfulRuns} successful runs`);
+    }
+
+    await supabase
+      .from('auction_sources')
+      .update(updateData)
+      .eq('source_key', source_key);
+
+    console.log(`[bidsonline-crawl] Complete: ${ingestResult.created} created, ${ingestResult.updated} updated, ${ingestResult.snapshotsAdded} snapshots`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        source: sourceKey,
+        source_key,
+        parserProfile: parserProfileName,
         lotsFound: parsedLots.length,
-        ingestResult,
+        ...ingestResult,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
     console.error('[bidsonline-crawl] Error:', error);
-
-    // Log to cron_audit
-    await supabase.from('cron_audit_log').insert({
-      cron_name: 'bidsonline-crawl:error',
-      success: false,
-      error: errorMsg,
-    });
-
     return new Response(
-      JSON.stringify({ error: errorMsg }),
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

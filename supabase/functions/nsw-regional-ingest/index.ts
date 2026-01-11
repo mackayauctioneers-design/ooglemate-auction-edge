@@ -208,12 +208,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    const validSources = ['f3', 'valley', 'autoauctions', 'southcoast', 'bidsonline'];
-    if (!validSources.includes(source)) {
-      return new Response(
-        JSON.stringify({ error: `Invalid source: ${source}. Must be one of: ${validSources.join(', ')}` }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Accept any source_key from auction_sources registry or known sources
+    // Legacy sources for backward compat, plus any source_key from registry
+    const legacySources = ['f3', 'valley', 'autoauctions', 'southcoast', 'bidsonline'];
+    const isLegacy = legacySources.includes(source);
+    
+    // For non-legacy sources, validate against auction_sources registry
+    if (!isLegacy) {
+      const { data: registrySource } = await supabase
+        .from('auction_sources')
+        .select('source_key')
+        .eq('source_key', source)
+        .single();
+      
+      if (!registrySource) {
+        return new Response(
+          JSON.stringify({ error: `Invalid source: ${source}. Must be registered in auction_sources or one of: ${legacySources.join(', ')}` }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     console.log(`[nsw-regional-ingest] Starting: source=${source}, ${lots.length} lots, event=${eventId || 'N/A'}`);
@@ -245,14 +258,25 @@ Deno.serve(async (req) => {
     const dropReasons: Record<string, number> = {};
     const regionCounts: Record<string, number> = {};
 
-    // Source-specific auction house names
-    const auctionHouseMap: Record<string, string> = {
+    // Source-specific auction house names (legacy + registry lookup)
+    const legacyAuctionHouseMap: Record<string, string> = {
       f3: 'F3 Motor Auctions',
       valley: 'Valley Motor Auctions',
       autoauctions: 'Auto Auctions Sydney',
       southcoast: 'South Coast Auctions',
       bidsonline: 'BidsOnline Auction',
     };
+    
+    // Look up display name from registry for non-legacy sources
+    let auctionHouse = legacyAuctionHouseMap[source];
+    if (!auctionHouse) {
+      const { data: registrySource } = await supabase
+        .from('auction_sources')
+        .select('display_name')
+        .eq('source_key', source)
+        .single();
+      auctionHouse = registrySource?.display_name || source;
+    }
 
     // 10-year window policy: only ingest vehicles from current_year - 10
     const currentYear = new Date().getFullYear();
@@ -263,7 +287,9 @@ Deno.serve(async (req) => {
     const PRICE_MAX = 150000;
 
     for (const lot of parsedLots) {
-      const listingId = `${source}:${lot.lot_id}`;
+      // CANONICAL listing_id: if lot_id already contains source prefix, use as-is
+      // Otherwise prefix with source
+      const listingId = lot.lot_id.includes(':') ? lot.lot_id : `${source}:${lot.lot_id}`;
       
       // Track region distribution
       regionCounts[lot.region_id] = (regionCounts[lot.region_id] || 0) + 1;
@@ -347,36 +373,29 @@ Deno.serve(async (req) => {
             .eq('id', existing.id);
           updated++;
           
-          // Add snapshot if changed
-          const hasChanged = 
-            existing.status !== lot.status ||
-            existing.reserve !== lot.reserve ||
-            existing.asking_price !== lot.asking_price ||
-            existing.km !== lot.km ||
-            existing.location !== lot.location;
-          
-          if (hasChanged) {
-            await supabase.from('listing_snapshots').insert({
-              listing_id: listingUuid,
-              seen_at: new Date().toISOString(),
-              status: lot.status,
-              reserve: lot.reserve,
-              asking_price: lot.asking_price,
-              km: lot.km,
-              location: lot.location,
-            });
-            snapshotsAdded++;
-          }
+          // IDEMPOTENCY: Always add snapshot on update to track every crawl run
+          // This ensures run twice → snapshots += N
+          await supabase.from('listing_snapshots').insert({
+            listing_id: listingUuid,
+            seen_at: new Date().toISOString(),
+            status: lot.status,
+            reserve: lot.reserve,
+            asking_price: lot.asking_price,
+            km: lot.km,
+            location: lot.location,
+          });
+          snapshotsAdded++;
         } else {
           // Insert new listing
           const { data: inserted } = await supabase
             .from('vehicle_listings')
             .insert({
               listing_id: listingId,
-              lot_id: lot.lot_id,
+              // Extract raw lot_id without source prefix
+              lot_id: lot.lot_id.includes(':') ? lot.lot_id.split(':').slice(1).join(':') : lot.lot_id,
               source: source,
               source_class: 'auction',
-              auction_house: auctionHouseMap[source],
+              auction_house: auctionHouse,
               event_id: eventId || null,
               make: lot.make,
               model: lot.model,

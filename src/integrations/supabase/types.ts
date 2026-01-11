@@ -111,6 +111,9 @@ export type Database = {
       }
       auction_sources: {
         Row: {
+          auto_disabled_at: string | null
+          auto_disabled_reason: string | null
+          consecutive_failures: number | null
           created_at: string
           display_name: string
           enabled: boolean
@@ -120,12 +123,23 @@ export type Database = {
           last_success_at: string | null
           list_url: string
           notes: string | null
+          parser_profile: string | null
           platform: string
+          preflight_checked_at: string | null
+          preflight_markers: Json | null
+          preflight_reason: string | null
+          preflight_status: string | null
           region_hint: string
           source_key: string
+          successful_validation_runs: number | null
           updated_at: string
+          validation_runs: number | null
+          validation_status: string | null
         }
         Insert: {
+          auto_disabled_at?: string | null
+          auto_disabled_reason?: string | null
+          consecutive_failures?: number | null
           created_at?: string
           display_name: string
           enabled?: boolean
@@ -135,12 +149,23 @@ export type Database = {
           last_success_at?: string | null
           list_url: string
           notes?: string | null
+          parser_profile?: string | null
           platform?: string
+          preflight_checked_at?: string | null
+          preflight_markers?: Json | null
+          preflight_reason?: string | null
+          preflight_status?: string | null
           region_hint?: string
           source_key: string
+          successful_validation_runs?: number | null
           updated_at?: string
+          validation_runs?: number | null
+          validation_status?: string | null
         }
         Update: {
+          auto_disabled_at?: string | null
+          auto_disabled_reason?: string | null
+          consecutive_failures?: number | null
           created_at?: string
           display_name?: string
           enabled?: boolean
@@ -150,10 +175,18 @@ export type Database = {
           last_success_at?: string | null
           list_url?: string
           notes?: string | null
+          parser_profile?: string | null
           platform?: string
+          preflight_checked_at?: string | null
+          preflight_markers?: Json | null
+          preflight_reason?: string | null
+          preflight_status?: string | null
           region_hint?: string
           source_key?: string
+          successful_validation_runs?: number | null
           updated_at?: string
+          validation_runs?: number | null
+          validation_status?: string | null
         }
         Relationships: []
       }
