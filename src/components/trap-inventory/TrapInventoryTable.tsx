@@ -42,6 +42,21 @@ const getStatusBadge = (days: number) => {
   }
 };
 
+const getConfidenceBadge = (confidence?: 'high' | 'med' | 'low' | null) => {
+  if (!confidence) return null;
+  
+  switch (confidence) {
+    case 'high':
+      return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">HIGH</Badge>;
+    case 'med':
+      return <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs">MED</Badge>;
+    case 'low':
+      return <Badge variant="outline" className="bg-gray-500/10 text-gray-500 border-gray-500/30 text-xs">LOW</Badge>;
+    default:
+      return null;
+  }
+};
+
 const getWatchStatusBadge = (listing: TrapListing) => {
   // Priority: avoid > buy_window > watching > deal_label
   if (listing.watch_status === 'avoid' || listing.sold_returned_suspected) {
@@ -258,7 +273,10 @@ export function TrapInventoryTable({ listings, onRowClick, watchedIds, pinnedIds
                         )}
                       </TooltipContent>
                     </Tooltip>
-                    {getAttemptBadge(listing.attempt_count, listing.attempt_stage)}
+                    <div className="flex items-center gap-1">
+                      {getConfidenceBadge(listing.watch_confidence)}
+                      {getAttemptBadge(listing.attempt_count, listing.attempt_stage)}
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell className="text-center">

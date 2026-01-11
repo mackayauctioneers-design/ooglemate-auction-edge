@@ -7,6 +7,53 @@ const corsHeaders = {
 };
 
 // ============================================================================
+// SAFETY HARDENING: Check if vehicle is in AVOID status
+// Bob must NEVER recommend buying an AVOID vehicle
+// ============================================================================
+
+async function checkIfVehicleIsAvoided(input: OancaInput): Promise<{ isAvoided: boolean; reason?: string }> {
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.log("[AVOID CHECK] Missing credentials, skipping check");
+    return { isAvoided: false };
+  }
+  
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    
+    // Search for matching vehicles with AVOID status
+    const { data, error } = await supabase
+      .from("vehicle_listings")
+      .select("id, watch_status, sold_returned_suspected, avoid_reason, sold_returned_reason")
+      .ilike("make", input.make)
+      .ilike("model", `%${input.model}%`)
+      .eq("year", input.year)
+      .or("watch_status.eq.avoid,sold_returned_suspected.eq.true")
+      .limit(1);
+    
+    if (error) {
+      console.error("[AVOID CHECK] Query error:", error);
+      return { isAvoided: false };
+    }
+    
+    if (data && data.length > 0) {
+      const match = data[0];
+      const reason = match.avoid_reason || match.sold_returned_reason || 
+        (match.sold_returned_suspected ? 'SOLD_RETURNED_SUSPECTED' : 'WATCH_STATUS_AVOID');
+      console.log(`[AVOID CHECK] Found AVOID match: ${reason}`);
+      return { isAvoided: true, reason };
+    }
+    
+    return { isAvoided: false };
+  } catch (err) {
+    console.error("[AVOID CHECK] Error:", err);
+    return { isAvoided: false };
+  }
+}
+
+// ============================================================================
 // OOGLEMATE PRICING ENGINE v4 - COMPARABLE ADJUSTMENT ENGINE
 // ============================================================================
 // Bob is NOT a valuer. Bob is a voice narrator.
@@ -1212,26 +1259,25 @@ serve(async (req) => {
       console.log(`[BOB] Detected vehicle: ${vehicleInput.year} ${vehicleInput.make} ${vehicleInput.model}${vehicleInput.km ? ` @ ${vehicleInput.km}km` : ''}`);
       
       // ================================================================
-      // EUROPEAN CAR HARD RULE - Check BEFORE pricing engine
-      // Triggers ONLY when: European make AND pricing/valuation intent
-      // Does NOT trigger for market trend questions
+      // SAFETY HARDENING: Check if this vehicle is in AVOID status
+      // Bob must NEVER recommend buying an AVOID vehicle
       // ================================================================
-      const isEuro = isEuropeanMake(vehicleInput.make);
-      const hasPricingIntent = detectPricingIntent(transcript);
-      
-      if (isEuro && hasPricingIntent) {
-        console.log(`[BOB] EURO REFUSAL: ${vehicleInput.make} with pricing intent - automatic refusal`);
+      const avoidCheck = await checkIfVehicleIsAvoided(vehicleInput);
+      if (avoidCheck.isAvoided) {
+        console.log(`[BOB] AVOID CHECK: Vehicle flagged as AVOID - automatic refusal`);
         
-        bobScript = getEuropeanRefusalPhrase();
+        bobScript = avoidCheck.reason?.includes('SOLD_RETURNED') 
+          ? "Yeah nah, that one's been around the block mate. Sold and returned - that's someone else's problem."
+          : "I'd steer clear of that one, mate. Something's not right with it. Find a clean one.";
         
-        // Create a mock decision for logging
         decision = {
           decision: 'DNR',
           buy_price: null,
           vehicle_class: 'POISON',
           data_source: null,
           confidence: null,
-          reason: 'EURO_REFUSAL',
+          reason: 'AVOID_STATUS',
+          instruction: avoidCheck.reason,
         };
         engineState = {
           n_comps: 0,
@@ -1240,24 +1286,61 @@ serve(async (req) => {
           owe_base: null,
           avg_days: 0,
           avg_gross: 0,
-          notes: ['EURO_REFUSAL: Automatic refusal for European make with pricing intent'],
+          notes: [`AVOID: ${avoidCheck.reason || 'Vehicle flagged as avoid'}`],
           comps_used: [],
           processing_time_ms: 0,
           adjustments: { km_adj: 0, year_adj: 0, trim_adj: 0, demand_adj: 0 },
         };
-      } else {
-        // Load sales history
-        const salesHistory = await queryDealerSalesHistory();
+      }
+      // ================================================================
+      // EUROPEAN CAR HARD RULE - Check BEFORE pricing engine
+      // Triggers ONLY when: European make AND pricing/valuation intent
+      // Does NOT trigger for market trend questions
+      // ================================================================
+      else {
+        const isEuro = isEuropeanMake(vehicleInput.make);
+        const hasPricingIntent = detectPricingIntent(transcript);
         
-        // Run pricing engine
-        const result = runPricingEngine(vehicleInput, salesHistory);
-        decision = result.decision;
-        engineState = result.engineState;
-        
-        // Generate Bob's locked phrase
-        bobScript = generateBobScript(decision);
-        
-        console.log(`[BOB] Decision: ${decision.decision}, buy_price: ${decision.buy_price}, tier: ${engineState.comp_tier}`);
+        if (isEuro && hasPricingIntent) {
+          console.log(`[BOB] EURO REFUSAL: ${vehicleInput.make} with pricing intent - automatic refusal`);
+          
+          bobScript = getEuropeanRefusalPhrase();
+          
+          // Create a mock decision for logging
+          decision = {
+            decision: 'DNR',
+            buy_price: null,
+            vehicle_class: 'POISON',
+            data_source: null,
+            confidence: null,
+            reason: 'EURO_REFUSAL',
+          };
+          engineState = {
+            n_comps: 0,
+            comp_tier: null,
+            anchor_owe: null,
+            owe_base: null,
+            avg_days: 0,
+            avg_gross: 0,
+            notes: ['EURO_REFUSAL: Automatic refusal for European make with pricing intent'],
+            comps_used: [],
+            processing_time_ms: 0,
+            adjustments: { km_adj: 0, year_adj: 0, trim_adj: 0, demand_adj: 0 },
+          };
+        } else {
+          // Load sales history
+          const salesHistory = await queryDealerSalesHistory();
+          
+          // Run pricing engine
+          const result = runPricingEngine(vehicleInput, salesHistory);
+          decision = result.decision;
+          engineState = result.engineState;
+          
+          // Generate Bob's locked phrase
+          bobScript = generateBobScript(decision);
+          
+          console.log(`[BOB] Decision: ${decision.decision}, buy_price: ${decision.buy_price}, tier: ${engineState.comp_tier}`);
+        }
       }
     } else {
       // No vehicle detected - just chat

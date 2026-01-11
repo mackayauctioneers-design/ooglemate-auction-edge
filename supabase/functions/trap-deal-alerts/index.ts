@@ -107,21 +107,21 @@ Deno.serve(async (req) => {
       .not("fingerprint_price", "is", null)
       .order("delta_pct", { ascending: true });
 
-    // Filter out sold-returned-suspected vehicles (join to vehicle_listings to check flag)
+    // SAFETY: Filter out watch_status='avoid' OR sold_returned_suspected vehicles
     let deals = dealsRaw || [];
     if (deals.length > 0) {
       const listingIds = deals.map((d: TrapDeal) => d.id);
       const { data: flaggedListings } = await supabase
         .from("vehicle_listings")
-        .select("id")
+        .select("id, watch_status, sold_returned_suspected")
         .in("id", listingIds)
-        .eq("sold_returned_suspected", true);
+        .or("watch_status.eq.avoid,sold_returned_suspected.eq.true");
       
       if (flaggedListings && flaggedListings.length > 0) {
         const flaggedIds = new Set(flaggedListings.map(f => f.id));
         const beforeCount = deals.length;
         deals = deals.filter((d: TrapDeal) => !flaggedIds.has(d.id));
-        console.log(`Excluded ${beforeCount - deals.length} sold-returned-suspected vehicles from alerts`);
+        console.log(`SAFETY: Excluded ${beforeCount - deals.length} AVOID/sold-returned vehicles from alerts`);
       }
     }
 
