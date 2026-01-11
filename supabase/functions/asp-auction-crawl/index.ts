@@ -1,6 +1,6 @@
 /**
  * Generic ASP Auction Crawler
- * Handles auction sites using ASP search_results.aspx pattern (F3, AAV, etc.)
+ * Handles auction sites using ASP patterns (F3, AAV, etc.)
  * 
  * Canonical listing_id: {source_key}:{MTA_ID}
  * Supports parser_profile for site-specific variations
@@ -29,28 +29,22 @@ interface ParsedVehicle {
   status: string;
 }
 
-interface DebugInfo {
-  html_len: number;
-  cards_found: number;
-  mta_ids: string[];
-  sample_vehicles: ParsedVehicle[];
-  url_used: string;
-}
-
-// Site-specific configurations
 interface SiteConfig {
   defaultLocation: string;
   urlPrefix: string;
+  parserType: 'f3_result_item' | 'aav_listing_grid';
 }
 
 const SITE_CONFIGS: Record<string, SiteConfig> = {
   'f3': {
     defaultLocation: 'Beresfield',
     urlPrefix: 'https://www.f3motorauctions.com.au/',
+    parserType: 'f3_result_item',
   },
   'auto_auctions_aav': {
     defaultLocation: 'Sydney',
-    urlPrefix: 'https://www.autoauctionsonline.com.au/',
+    urlPrefix: 'https://www.auto-auctions.com.au/',
+    parserType: 'aav_listing_grid',
   },
 };
 
@@ -78,32 +72,105 @@ function parseYear(text: string): number | null {
   return match ? parseInt(match[0]) : null;
 }
 
-function parsePrice(text: string): number | null {
-  // Match patterns like "$12,345" or "12345"
-  const match = text.replace(/[$,\s]/g, '').match(/(\d{4,6})/);
-  if (match) {
-    const price = parseInt(match[1]);
-    // Sanity check: $3k-$300k
-    if (price >= 3000 && price <= 300000) {
-      return price;
-    }
-  }
+function parseTransmission(text: string): string | null {
+  if (/\bAUTOMATIC\b/i.test(text) || /\bAUTO\b/i.test(text) || /\bAUT\b/i.test(text)) return 'Auto';
+  if (/\bMANUAL\b/i.test(text) || /\bMAN\b/i.test(text)) return 'Manual';
+  if (/\bCVT\b/i.test(text)) return 'CVT';
+  if (/\bS-TRONIC\b/i.test(text) || /\bDSG\b/i.test(text)) return 'Auto';
   return null;
 }
 
-// Parse vehicle from a result-item HTML block
-function parseResultItem(itemHtml: string, sourceKey: string, config: SiteConfig): ParsedVehicle | null {
-  // Extract MTA ID from URL pattern: MTA=12345
+function parseFuel(text: string): string | null {
+  if (/\bDIESEL\b/i.test(text)) return 'Diesel';
+  if (/\bPETROL\b/i.test(text) || /\bUNLEADED\b/i.test(text) || /\bPREMIUM\b/i.test(text)) return 'Petrol';
+  if (/\bHYBRID\b/i.test(text)) return 'Hybrid';
+  if (/\bELECTRIC\b/i.test(text)) return 'Electric';
+  return null;
+}
+
+function parseDrivetrain(text: string): string | null {
+  if (/\b4[xX]4\b/.test(text) || /\b4WD\b/i.test(text)) return '4WD';
+  if (/\bAWD\b/i.test(text)) return 'AWD';
+  if (/\b4[xX]2\b/.test(text) || /\b2WD\b/i.test(text)) return '2WD';
+  return null;
+}
+
+// Parse vehicle from F3-style result-item HTML block
+function parseF3ResultItem(itemHtml: string, sourceKey: string, config: SiteConfig): ParsedVehicle | null {
   const mtaMatch = itemHtml.match(/MTA=(\d+)/);
   if (!mtaMatch) return null;
   const mtaId = mtaMatch[1];
   
-  // Extract title from result-item-title
   const titleMatch = itemHtml.match(/<h4[^>]*class="result-item-title"[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i);
   const title = titleMatch ? titleMatch[1].trim() : '';
   if (!title) return null;
   
-  // Parse year from title (e.g., "2015 FORD ECOSPORT TREND BK")
+  const year = parseYear(title);
+  if (!year) return null;
+  
+  const lowerTitle = title.toLowerCase();
+  let make: string | null = null;
+  let makeEndIdx = 0;
+  for (const m of KNOWN_MAKES) {
+    const idx = lowerTitle.indexOf(m);
+    if (idx >= 0) {
+      make = titleCase(m);
+      makeEndIdx = idx + m.length;
+      break;
+    }
+  }
+  if (!make) return null;
+  
+  const afterMake = title.substring(makeEndIdx).trim();
+  const words = afterMake.split(/\s+/).filter(w => w.length > 0);
+  const model = words[0] || 'Unknown';
+  const variant = words.length > 1 ? words.slice(1).join(' ') : null;
+  
+  const featuresMatch = itemHtml.match(/<div class="result-item-features">([\s\S]*?)<\/div>/i);
+  const featuresHtml = featuresMatch ? featuresMatch[1] : '';
+  const km = parseKm(featuresHtml);
+  const transmission = parseTransmission(featuresHtml);
+  const fuel = parseFuel(featuresHtml);
+  const drivetrain = parseDrivetrain(title + ' ' + featuresHtml);
+  
+  const urlMatch = itemHtml.match(/href="([^"]*cp_veh_inspection_report\.aspx[^"]*)"/i);
+  let listingUrl: string | null = null;
+  if (urlMatch) {
+    const rawUrl = urlMatch[1].replace(/&amp;/g, '&');
+    listingUrl = rawUrl.startsWith('http') ? rawUrl : config.urlPrefix + rawUrl;
+  }
+  
+  return {
+    lot_id: `${sourceKey}:${mtaId}`,
+    make,
+    model,
+    variant,
+    year,
+    km,
+    transmission,
+    fuel,
+    drivetrain,
+    location: config.defaultLocation,
+    auction_datetime: null,
+    listing_url: listingUrl,
+    price: null,
+    status: 'catalogue',
+  };
+}
+
+// Parse vehicle from AAV-style div.listing HTML block
+function parseAAVListing(listingHtml: string, sourceKey: string, config: SiteConfig): ParsedVehicle | null {
+  // Extract MTA ID from URL: MTA=620675
+  const mtaMatch = listingHtml.match(/MTA=(\d+)/);
+  if (!mtaMatch) return null;
+  const mtaId = mtaMatch[1];
+  
+  // Extract title: <div class="title"><a href="...">2017 ALFA ROMEO STELVIO FIRST EDITION</a></div>
+  const titleMatch = listingHtml.match(/<div class="title"[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i);
+  const title = titleMatch ? titleMatch[1].trim() : '';
+  if (!title) return null;
+  
+  // Parse year from title
   const year = parseYear(title);
   if (!year) return null;
   
@@ -121,55 +188,31 @@ function parseResultItem(itemHtml: string, sourceKey: string, config: SiteConfig
   }
   if (!make) return null;
   
-  // Parse model - word(s) after make
+  // Parse model and variant from title
   const afterMake = title.substring(makeEndIdx).trim();
   const words = afterMake.split(/\s+/).filter(w => w.length > 0);
   const model = words[0] || 'Unknown';
   const variant = words.length > 1 ? words.slice(1).join(' ') : null;
   
-  // Extract km from features (e.g., "196904 kms")
-  const featuresMatch = itemHtml.match(/<div class="result-item-features">([\s\S]*?)<\/div>/i);
-  const featuresHtml = featuresMatch ? featuresMatch[1] : '';
-  const km = parseKm(featuresHtml);
+  // Extract gear info (transmission, km, fuel, body style)
+  const gearMatches = listingHtml.match(/<div class="gear"[^>]*>([\s\S]*?)<\/div>/gi) || [];
+  const gearText = gearMatches.map(g => g.replace(/<[^>]+>/g, ' ')).join(' ');
   
-  // Extract transmission from features
-  let transmission: string | null = null;
-  if (/\bAUTOMATIC\b/i.test(featuresHtml)) transmission = 'Auto';
-  else if (/\bMANUAL\b/i.test(featuresHtml)) transmission = 'Manual';
-  else if (/\bCVT\b/i.test(featuresHtml)) transmission = 'CVT';
+  const km = parseKm(gearText);
+  const transmission = parseTransmission(gearText);
+  const fuel = parseFuel(gearText);
+  const drivetrain = parseDrivetrain(title + ' ' + gearText);
   
-  // Extract fuel from features
-  let fuel: string | null = null;
-  if (/\bDIESEL\b/i.test(featuresHtml)) fuel = 'Diesel';
-  else if (/\bPETROL\b/i.test(featuresHtml) || /\bUNLEADED\b/i.test(featuresHtml)) fuel = 'Petrol';
-  else if (/\bHYBRID\b/i.test(featuresHtml)) fuel = 'Hybrid';
-  else if (/\bELECTRIC\b/i.test(featuresHtml)) fuel = 'Electric';
-  
-  // Extract drivetrain from title/features
-  const combinedText = title + ' ' + featuresHtml;
-  let drivetrain: string | null = null;
-  if (/\b4[xX]4\b/.test(combinedText) || /\b4WD\b/i.test(combinedText)) drivetrain = '4WD';
-  else if (/\bAWD\b/i.test(combinedText)) drivetrain = 'AWD';
-  else if (/\b4[xX]2\b/.test(combinedText) || /\b2WD\b/i.test(combinedText)) drivetrain = '2WD';
-  
-  // Extract detail URL - make it absolute
-  const urlMatch = itemHtml.match(/href="([^"]*cp_veh_inspection_report\.aspx[^"]*)"/i);
+  // Build listing URL
+  const urlMatch = listingHtml.match(/href="([^"]*cp_veh_inspection_report\.aspx[^"]*)"/i);
   let listingUrl: string | null = null;
   if (urlMatch) {
     const rawUrl = urlMatch[1].replace(/&amp;/g, '&');
     listingUrl = rawUrl.startsWith('http') ? rawUrl : config.urlPrefix + rawUrl;
   }
   
-  // Try to extract price if present
-  const priceMatch = itemHtml.match(/\$[\d,]+/);
-  const price = priceMatch ? parsePrice(priceMatch[0]) : null;
-  
-  // Extract location if present (some sites show yard/location)
-  const locationMatch = itemHtml.match(/(?:location|yard|branch)[:\s]*([^<,]+)/i);
-  const location = locationMatch ? titleCase(locationMatch[1].trim()) : config.defaultLocation;
-  
   return {
-    lot_id: `${sourceKey}:${mtaId}`, // Canonical format
+    lot_id: `${sourceKey}:${mtaId}`,
     make,
     model,
     variant,
@@ -178,10 +221,10 @@ function parseResultItem(itemHtml: string, sourceKey: string, config: SiteConfig
     transmission,
     fuel,
     drivetrain,
-    location,
+    location: config.defaultLocation,
     auction_datetime: null,
     listing_url: listingUrl,
-    price,
+    price: null,
     status: 'catalogue',
   };
 }
@@ -192,23 +235,37 @@ function parseListPage(html: string, sourceKey: string, config: SiteConfig): { v
   const mtaIds: string[] = [];
   const seenIds = new Set<string>();
   
-  // Find all result-item blocks
-  const itemPattern = /<div class="result-item format-standard"[^>]*>([\s\S]*?)(?=<div class="result-item format-standard"|<\/div>\s*<\/div>\s*<\/div>\s*$)/gi;
-  
-  let match;
-  while ((match = itemPattern.exec(html)) !== null) {
-    const itemHtml = match[0];
-    
-    // Extract MTA ID for tracking
-    const mtaMatch = itemHtml.match(/MTA=(\d+)/);
-    if (mtaMatch) {
-      mtaIds.push(mtaMatch[1]);
+  // Extract all MTA IDs for tracking
+  const allMtaMatches = html.matchAll(/MTA=(\d+)/gi);
+  for (const match of allMtaMatches) {
+    if (!mtaIds.includes(match[1])) {
+      mtaIds.push(match[1]);
     }
+  }
+  
+  if (config.parserType === 'aav_listing_grid') {
+    // AAV uses div.listing cards
+    const listingPattern = /<div class="listing"[^>]*>([\s\S]*?)(?=<div class="listing"|<\/div>\s*<\/div>\s*<\/div>\s*$|<!-- end \.listing -->)/gi;
     
-    const vehicle = parseResultItem(itemHtml, sourceKey, config);
-    if (vehicle && !seenIds.has(vehicle.lot_id)) {
-      seenIds.add(vehicle.lot_id);
-      vehicles.push(vehicle);
+    let match;
+    while ((match = listingPattern.exec(html)) !== null) {
+      const vehicle = parseAAVListing(match[0], sourceKey, config);
+      if (vehicle && !seenIds.has(vehicle.lot_id)) {
+        seenIds.add(vehicle.lot_id);
+        vehicles.push(vehicle);
+      }
+    }
+  } else {
+    // F3 uses div.result-item cards
+    const itemPattern = /<div class="result-item format-standard"[^>]*>([\s\S]*?)(?=<div class="result-item format-standard"|<\/div>\s*<\/div>\s*<\/div>\s*$)/gi;
+    
+    let match;
+    while ((match = itemPattern.exec(html)) !== null) {
+      const vehicle = parseF3ResultItem(match[0], sourceKey, config);
+      if (vehicle && !seenIds.has(vehicle.lot_id)) {
+        seenIds.add(vehicle.lot_id);
+        vehicles.push(vehicle);
+      }
     }
   }
   
@@ -220,18 +277,26 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const bodyText = await req.text();
+  let body: Record<string, unknown> = {};
+  
   try {
-    const body = await req.json().catch(() => ({}));
-    const debug = body.debug === true;
-    const sourceKey = body.source_key as string;
-    
-    if (!sourceKey) {
-      return new Response(
-        JSON.stringify({ error: 'source_key is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
+    body = bodyText ? JSON.parse(bodyText) : {};
+  } catch {
+    body = {};
+  }
+  
+  const debug = body.debug === true;
+  const sourceKey = body.source_key as string;
+  
+  if (!sourceKey) {
+    return new Response(
+      JSON.stringify({ error: 'source_key is required' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  try {
     const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
     if (!firecrawlKey) {
       return new Response(
@@ -260,27 +325,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check preflight status (skip in debug mode)
-    if (!debug && auctionSource.preflight_status !== 'pass' && auctionSource.enabled === false) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Source requires preflight check before crawling',
-          preflight_status: auctionSource.preflight_status,
-          validation_status: auctionSource.validation_status,
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Get site-specific config or use defaults
+    // Get site-specific config or derive from auction source
     const config: SiteConfig = SITE_CONFIGS[sourceKey] || {
       defaultLocation: auctionSource.region_hint?.split('_').pop() || 'Unknown',
       urlPrefix: new URL(auctionSource.list_url).origin + '/',
+      parserType: auctionSource.parser_profile === 'asp_search_results' ? 'aav_listing_grid' : 'f3_result_item',
     };
 
     const listUrl = auctionSource.list_url;
     
-    // Stage 1: Fetch list page
+    // Fetch list page via Firecrawl
     console.log(`[asp-auction-crawl] Fetching: ${listUrl}`);
     const listResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
@@ -292,7 +346,7 @@ Deno.serve(async (req) => {
         url: listUrl,
         formats: ['html'],
         onlyMainContent: false,
-        waitFor: 3000,
+        waitFor: 5000,
       }),
     });
 
@@ -307,7 +361,6 @@ Deno.serve(async (req) => {
     console.log(`[asp-auction-crawl] Got HTML: ${html.length} chars`);
     
     if (html.length < 1000) {
-      // Update consecutive failures
       await supabase
         .from('auction_sources')
         .update({
@@ -330,10 +383,11 @@ Deno.serve(async (req) => {
     const validVehicles = allVehicles.filter(v => v.year >= minYear);
     console.log(`[asp-auction-crawl] After year filter (>=${minYear}): ${validVehicles.length} vehicles`);
 
-    const debugInfo: DebugInfo = {
+    const debugInfo = {
       html_len: html.length,
       cards_found: allVehicles.length,
-      mta_ids: mtaIds.slice(0, 10),
+      mta_ids: mtaIds.slice(0, 15),
+      parser_type: config.parserType,
       sample_vehicles: validVehicles.slice(0, 5),
       url_used: listUrl,
     };
@@ -390,7 +444,7 @@ Deno.serve(async (req) => {
     const ingestResponse = await supabase.functions.invoke('nsw-regional-ingest', {
       body: {
         lots,
-        source: sourceKey, // Use source_key for canonical listing_id
+        source: sourceKey,
         eventId: `${sourceKey.toUpperCase()}-${new Date().toISOString().split('T')[0]}`,
         auctionDate: new Date().toISOString().split('T')[0],
       },
@@ -444,15 +498,12 @@ Deno.serve(async (req) => {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error('[asp-auction-crawl] Error:', error);
     
-    // Log failure to cron_audit_log
+    // Log failure
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
       const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
       const supabase = createClient(supabaseUrl, supabaseKey);
       const runDate = new Date().toISOString().split('T')[0];
-      
-      const body = await req.clone().json().catch(() => ({}));
-      const sourceKey = body.source_key || 'unknown';
       
       await supabase.from('cron_audit_log').insert({
         cron_name: `asp-auction-crawl:${sourceKey}`,
