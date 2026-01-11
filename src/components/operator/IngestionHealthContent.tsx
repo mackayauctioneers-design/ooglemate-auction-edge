@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, CheckCircle2, AlertTriangle, Clock, XCircle, MapPin } from "lucide-react";
+import { RefreshCw, CheckCircle2, AlertTriangle, Clock, XCircle, MapPin, Gavel } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface TrapStat {
@@ -47,6 +47,20 @@ interface NswRegionalRun {
   runAt: string;
 }
 
+interface AuctionSourceStat {
+  source_key: string;
+  display_name: string;
+  platform: string;
+  region_hint: string;
+  enabled: boolean;
+  last_success_at: string | null;
+  last_lots_found: number | null;
+  today_runs: number;
+  today_created: number;
+  today_updated: number;
+  today_dropped: number;
+}
+
 interface HealthData {
   traps: TrapStat[];
   crawlToday: CrawlStats | null;
@@ -56,6 +70,7 @@ interface HealthData {
   dropReasons: DropReason[];
   benchmarkCoverage: BenchmarkCoverage[];
   nswRegionalRuns: NswRegionalRun[];
+  auctionSources: AuctionSourceStat[];
   lastRefresh: Date;
 }
 
@@ -70,7 +85,7 @@ export function IngestionHealthContent() {
   const fetchHealth = async () => {
     setLoading(true);
     try {
-      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes, benchmarkRes, nswRegionalRes] = await Promise.all([
+      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes, benchmarkRes, nswRegionalRes, auctionSourcesRes] = await Promise.all([
         supabase.rpc('get_nsw_trap_stats' as never),
         supabase.rpc('get_nsw_crawl_today' as never),
         supabase.rpc('get_clearance_today' as never),
@@ -85,6 +100,8 @@ export function IngestionHealthContent() {
           .like('source', 'nsw-regional-%')
           .gte('started_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
           .order('started_at', { ascending: false }),
+        // Fetch auction sources with stats
+        supabase.rpc('get_auction_source_stats' as never),
       ]);
 
       // Parse NSW regional runs
@@ -128,6 +145,7 @@ export function IngestionHealthContent() {
         dropReasons: (dropReasonsRes.data as DropReason[]) || [],
         benchmarkCoverage: (benchmarkRes.data as BenchmarkCoverage[]) || [],
         nswRegionalRuns,
+        auctionSources: (auctionSourcesRes.data as AuctionSourceStat[]) || [],
         lastRefresh: new Date(),
       });
     } catch (err) {
@@ -362,6 +380,66 @@ export function IngestionHealthContent() {
                               {reason.replace(/_/g, ' ')}: {count}
                             </Badge>
                           ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Auction Sources Registry */}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <Gavel className="h-4 w-4 text-primary" />
+                <CardTitle className="text-base">Auction Sources</CardTitle>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                BidsOnline and custom auction feeds
+              </p>
+            </CardHeader>
+            <CardContent>
+              {health?.auctionSources.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No auction sources configured</p>
+              ) : (
+                <div className="space-y-3">
+                  {health?.auctionSources.map((src) => (
+                    <div key={src.source_key} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{src.display_name}</span>
+                          <Badge variant={src.enabled ? "default" : "secondary"} className="text-xs">
+                            {src.enabled ? "Enabled" : "Disabled"}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">{src.platform}</Badge>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {src.region_hint.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 text-sm">
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground text-xs">Today Runs</span>
+                          <span className="font-mono">{src.today_runs}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground text-xs">Created</span>
+                          <span className="font-mono text-green-600">{src.today_created}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground text-xs">Updated</span>
+                          <span className="font-mono">{src.today_updated}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground text-xs">Dropped</span>
+                          <span className="font-mono text-orange-500">{src.today_dropped}</span>
+                        </div>
+                      </div>
+                      {src.last_success_at && (
+                        <div className="text-xs text-muted-foreground">
+                          Last success: {new Date(src.last_success_at).toLocaleString()} ({src.last_lots_found ?? 0} lots)
                         </div>
                       )}
                     </div>

@@ -109,6 +109,54 @@ export type Database = {
           },
         ]
       }
+      auction_sources: {
+        Row: {
+          created_at: string
+          display_name: string
+          enabled: boolean
+          id: string
+          last_error: string | null
+          last_lots_found: number | null
+          last_success_at: string | null
+          list_url: string
+          notes: string | null
+          platform: string
+          region_hint: string
+          source_key: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          enabled?: boolean
+          id?: string
+          last_error?: string | null
+          last_lots_found?: number | null
+          last_success_at?: string | null
+          list_url: string
+          notes?: string | null
+          platform?: string
+          region_hint?: string
+          source_key: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          enabled?: boolean
+          id?: string
+          last_error?: string | null
+          last_lots_found?: number | null
+          last_success_at?: string | null
+          list_url?: string
+          notes?: string | null
+          platform?: string
+          region_hint?: string
+          source_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       clearance_events: {
         Row: {
           clearance_type: string
@@ -1891,6 +1939,22 @@ export type Database = {
         Returns: {
           alerts_created: number
           alerts_updated: number
+        }[]
+      }
+      get_auction_source_stats: {
+        Args: never
+        Returns: {
+          display_name: string
+          enabled: boolean
+          last_lots_found: number
+          last_success_at: string
+          platform: string
+          region_hint: string
+          source_key: string
+          today_created: number
+          today_dropped: number
+          today_runs: number
+          today_updated: number
         }[]
       }
       get_benchmark_coverage: {
