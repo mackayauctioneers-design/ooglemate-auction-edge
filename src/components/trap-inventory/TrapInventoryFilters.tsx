@@ -1,7 +1,7 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { RotateCcw, TrendingDown, Clock, Zap, AlertTriangle, HelpCircle, Eye } from 'lucide-react';
+import { RotateCcw, TrendingDown, Clock, Zap, AlertTriangle, HelpCircle, Eye, StickyNote } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface TrapInventoryFiltersState {
@@ -10,7 +10,7 @@ export interface TrapInventoryFiltersState {
   model: string;
   daysOnMarket: string;
   deltaBand: string;
-  preset: 'none' | 'strong_buy' | 'mispriced' | '90_plus' | 'no_benchmark' | 'watchlist';
+  preset: 'none' | 'strong_buy' | 'mispriced' | '90_plus' | 'no_benchmark' | 'watchlist' | 'has_notes';
   sortBy: 'delta_pct' | 'days_on_market' | 'price_drop' | 'price';
   sortDir: 'asc' | 'desc';
 }
@@ -51,6 +51,7 @@ const sortOptions = [
 
 const presets = [
   { value: 'watchlist', label: 'My Watchlist', icon: Eye, color: 'bg-primary/20 text-primary border-primary/40' },
+  { value: 'has_notes', label: 'Has Notes', icon: StickyNote, color: 'bg-amber-500/20 text-amber-600 border-amber-500/40' },
   { value: 'mispriced', label: 'Mispriced', icon: AlertTriangle, color: 'bg-emerald-600/20 text-emerald-500 border-emerald-500/40' },
   { value: 'strong_buy', label: 'Strong Buy', icon: Zap, color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' },
   { value: '90_plus', label: '90+ Days', icon: Clock, color: 'bg-amber-500/10 text-amber-600 border-amber-500/30' },

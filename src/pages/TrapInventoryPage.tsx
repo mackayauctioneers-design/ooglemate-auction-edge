@@ -46,6 +46,7 @@ export default function TrapInventoryPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [watchlistIds, setWatchlistIds] = useState<Set<string>>(new Set());
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  const [notesIds, setNotesIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<TrapInventoryFiltersState>({
     dealer: '',
     make: '',
@@ -137,7 +138,7 @@ export default function TrapInventoryPage() {
     
     const { data, error } = await supabase
       .from('user_watchlist')
-      .select('listing_id, is_watching, is_pinned')
+      .select('listing_id, is_watching, is_pinned, notes')
       .eq('user_id', user.id);
 
     if (error) {
@@ -147,14 +148,17 @@ export default function TrapInventoryPage() {
 
     const watching = new Set<string>();
     const pinned = new Set<string>();
+    const withNotes = new Set<string>();
     
     data?.forEach(item => {
       if (item.is_watching) watching.add(item.listing_id);
       if (item.is_pinned) pinned.add(item.listing_id);
+      if (item.notes && item.notes.trim()) withNotes.add(item.listing_id);
     });
 
     setWatchlistIds(watching);
     setPinnedIds(pinned);
+    setNotesIds(withNotes);
   };
 
   // Apply filters and sorting
@@ -164,6 +168,8 @@ export default function TrapInventoryPage() {
     // Apply preset first (overrides other filters)
     if (filters.preset === 'watchlist') {
       result = result.filter(l => watchlistIds.has(l.id));
+    } else if (filters.preset === 'has_notes') {
+      result = result.filter(l => notesIds.has(l.id));
     } else if (filters.preset === 'strong_buy') {
       result = result.filter(l => l.deal_label === 'STRONG_BUY' || l.deal_label === 'MISPRICED');
     } else if (filters.preset === 'mispriced') {
@@ -252,7 +258,7 @@ export default function TrapInventoryPage() {
     });
 
     return result;
-  }, [listings, filters, watchlistIds, pinnedIds]);
+  }, [listings, filters, watchlistIds, pinnedIds, notesIds]);
 
   const handleRowClick = (listing: TrapListing) => {
     setSelectedListing(listing);
@@ -318,6 +324,7 @@ export default function TrapInventoryPage() {
               onRowClick={handleRowClick}
               watchedIds={watchlistIds}
               pinnedIds={pinnedIds}
+              notesIds={notesIds}
             />
           )}
 
@@ -325,6 +332,7 @@ export default function TrapInventoryPage() {
             listing={selectedListing}
             open={drawerOpen}
             onOpenChange={setDrawerOpen}
+            onNotesChange={fetchWatchlist}
           />
         </div>
       </AppLayout>
