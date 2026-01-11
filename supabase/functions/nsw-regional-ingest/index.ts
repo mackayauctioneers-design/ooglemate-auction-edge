@@ -274,25 +274,24 @@ Deno.serve(async (req) => {
         continue;
       }
       
-      // Quality gate: must have price or reserve for auction lots
+      // Quality gate: price enforcement (but allow catalogue without price for auctions)
       const effectivePrice = lot.reserve ?? lot.asking_price;
-      if (effectivePrice === null) {
-        dropped++;
-        dropReasons['no_price'] = (dropReasons['no_price'] || 0) + 1;
-        continue;
-      }
       
-      // Quality gate: enforce dealer-grade price band ($3k - $150k)
-      if (effectivePrice < PRICE_MIN) {
-        dropped++;
-        dropReasons['price_below_3k'] = (dropReasons['price_below_3k'] || 0) + 1;
-        continue;
+      // For auction catalogues, allow no_price (they're "call for price" until auction)
+      // But if price is present, enforce dealer-grade band
+      if (effectivePrice !== null) {
+        if (effectivePrice < PRICE_MIN) {
+          dropped++;
+          dropReasons['price_below_3k'] = (dropReasons['price_below_3k'] || 0) + 1;
+          continue;
+        }
+        if (effectivePrice > PRICE_MAX) {
+          dropped++;
+          dropReasons['price_above_150k'] = (dropReasons['price_above_150k'] || 0) + 1;
+          continue;
+        }
       }
-      if (effectivePrice > PRICE_MAX) {
-        dropped++;
-        dropReasons['price_above_150k'] = (dropReasons['price_above_150k'] || 0) + 1;
-        continue;
-      }
+      // Note: no_price is now allowed for auction catalogue presence tracking
       
       try {
         // Check if listing exists
