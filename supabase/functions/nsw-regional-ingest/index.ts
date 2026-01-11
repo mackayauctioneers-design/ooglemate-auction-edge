@@ -253,23 +253,44 @@ Deno.serve(async (req) => {
       southcoast: 'South Coast Auctions',
     };
 
+    // 10-year window policy: only ingest vehicles from current_year - 10
+    const currentYear = new Date().getFullYear();
+    const minYear = currentYear - 10; // 2016 for 2026
+    
+    // Price band for dealer-grade ($3k - $150k)
+    const PRICE_MIN = 3000;
+    const PRICE_MAX = 150000;
+
     for (const lot of parsedLots) {
       const listingId = `${source}:${lot.lot_id}`;
       
       // Track region distribution
       regionCounts[lot.region_id] = (regionCounts[lot.region_id] || 0) + 1;
       
-      // Quality gate: year >= 2016
-      if (lot.year < 2016) {
+      // Quality gate: 10-year window policy (year >= current_year - 10)
+      if (lot.year < minYear) {
         dropped++;
-        dropReasons['year_below_2016'] = (dropReasons['year_below_2016'] || 0) + 1;
+        dropReasons['year_window_10y'] = (dropReasons['year_window_10y'] || 0) + 1;
         continue;
       }
       
-      // Quality gate: must have price or reserve
-      if (lot.reserve === null && lot.asking_price === null) {
+      // Quality gate: must have price or reserve for auction lots
+      const effectivePrice = lot.reserve ?? lot.asking_price;
+      if (effectivePrice === null) {
         dropped++;
         dropReasons['no_price'] = (dropReasons['no_price'] || 0) + 1;
+        continue;
+      }
+      
+      // Quality gate: enforce dealer-grade price band ($3k - $150k)
+      if (effectivePrice < PRICE_MIN) {
+        dropped++;
+        dropReasons['price_below_3k'] = (dropReasons['price_below_3k'] || 0) + 1;
+        continue;
+      }
+      if (effectivePrice > PRICE_MAX) {
+        dropped++;
+        dropReasons['price_above_150k'] = (dropReasons['price_above_150k'] || 0) + 1;
         continue;
       }
       
@@ -398,7 +419,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Update run status
+    // Update run status with comprehensive metrics
     await supabase
       .from('ingestion_runs')
       .update({
@@ -412,15 +433,24 @@ Deno.serve(async (req) => {
           source,
           eventId, 
           auctionDate, 
-          dropped, 
-          dropReasons, 
+          lotsReceived: lots.length,
+          lotsParsed: parsedLots.length,
+          created,
+          updated,
+          dropped,
+          dropReasons,
           regionCounts, 
           snapshotsAdded,
+          qualityGates: {
+            minYear: currentYear - 10,
+            priceMin: 3000,
+            priceMax: 150000,
+          },
         }
       })
       .eq('id', run.id);
 
-    console.log(`[nsw-regional-ingest] Complete: ${created} created, ${updated} updated, ${dropped} dropped, ${snapshotsAdded} snapshots`);
+    console.log(`[nsw-regional-ingest] Complete: ${created} created, ${updated} updated, ${dropped} dropped (reasons: ${JSON.stringify(dropReasons)})`);
 
     return new Response(
       JSON.stringify({
