@@ -1490,6 +1490,21 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_opportunity_21d: {
+        Row: {
+          cleared_count: number | null
+          combined_score: number | null
+          dealer_cleared_total: number | null
+          demand_score: number | null
+          distinct_sellers: number | null
+          make: string | null
+          median_days_to_clear: number | null
+          model: string | null
+          opportunity_label: string | null
+          region_id: string | null
+        }
+        Relationships: []
+      }
       dealer_rooftops: {
         Row: {
           anchor_trap: boolean | null
@@ -1624,6 +1639,18 @@ export type Database = {
           variant_family: string | null
           year_max: number | null
           year_min: number | null
+        }
+        Relationships: []
+      }
+      regional_demand_21d: {
+        Row: {
+          cleared_count: number | null
+          demand_score: number | null
+          distinct_sellers: number | null
+          make: string | null
+          median_days_to_clear: number | null
+          model: string | null
+          region_id: string | null
         }
         Relationships: []
       }
