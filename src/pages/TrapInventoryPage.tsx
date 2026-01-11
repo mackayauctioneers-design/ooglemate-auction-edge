@@ -50,6 +50,7 @@ export interface TrapListing {
   attempt_count?: number;
   attempt_stage?: string | null;
   avoid_reason?: string | null;
+  watch_confidence?: 'high' | 'med' | 'low' | null;
 }
 
 export default function TrapInventoryPage() {
@@ -147,6 +148,7 @@ export default function TrapInventoryPage() {
       attempt_count: l.attempt_count ?? 0,
       attempt_stage: l.attempt_stage,
       avoid_reason: l.avoid_reason,
+      watch_confidence: l.watch_confidence,
     }));
 
     // Extract unique values for filters
@@ -199,9 +201,19 @@ export default function TrapInventoryPage() {
     } else if (filters.preset === 'has_notes') {
       result = result.filter(l => notesIds.has(l.id));
     } else if (filters.preset === 'strong_buy') {
-      result = result.filter(l => l.deal_label === 'STRONG_BUY' || l.deal_label === 'MISPRICED');
+      // SAFETY: Exclude AVOID from Strong Buy views
+      result = result.filter(l => 
+        (l.deal_label === 'STRONG_BUY' || l.deal_label === 'MISPRICED') &&
+        l.watch_status !== 'avoid' &&
+        !l.sold_returned_suspected
+      );
     } else if (filters.preset === 'mispriced') {
-      result = result.filter(l => l.deal_label === 'MISPRICED');
+      // SAFETY: Exclude AVOID from Mispriced views
+      result = result.filter(l => 
+        l.deal_label === 'MISPRICED' &&
+        l.watch_status !== 'avoid' &&
+        !l.sold_returned_suspected
+      );
     } else if (filters.preset === '90_plus') {
       result = result.filter(l => l.days_on_market >= 90);
     } else if (filters.preset === 'return_risk') {
@@ -399,9 +411,12 @@ export default function TrapInventoryPage() {
   const exportCallList = useCallback(() => {
     // Start from filtered listings (respects user's current filters)
     // but enforce call list rules on top
+    // SAFETY: ALWAYS exclude AVOID / sold_returned_suspected from Call List
     const callListItems = filteredListings
       .filter(l => 
-        l.days_on_market >= 90 && (
+        l.days_on_market >= 90 &&
+        l.watch_status !== 'avoid' &&
+        !l.sold_returned_suspected && (
           l.deal_label === 'MISPRICED' ||
           l.deal_label === 'STRONG_BUY' ||
           l.price_change_count >= 2 ||

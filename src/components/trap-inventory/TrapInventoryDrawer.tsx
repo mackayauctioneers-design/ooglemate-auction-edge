@@ -350,20 +350,36 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
           {/* Watch Status Display */}
           {listing.watch_status && (
             <section className="p-4 rounded-lg border border-border bg-muted/30">
-              <div className="flex items-center gap-2 mb-2">
-                {listing.watch_status === 'buy_window' && <ShoppingCart className="h-4 w-4 text-emerald-500" />}
-                {listing.watch_status === 'watching' && <Target className="h-4 w-4 text-blue-500" />}
-                {listing.watch_status === 'avoid' && <Ban className="h-4 w-4 text-red-500" />}
-                <span className={cn(
-                  "font-semibold text-sm",
-                  listing.watch_status === 'buy_window' && "text-emerald-500",
-                  listing.watch_status === 'watching' && "text-blue-500",
-                  listing.watch_status === 'avoid' && "text-red-500"
-                )}>
-                  {listing.watch_status === 'buy_window' && 'Buy Window Open'}
-                  {listing.watch_status === 'watching' && 'Watching'}
-                  {listing.watch_status === 'avoid' && 'Avoid'}
-                </span>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  {listing.watch_status === 'buy_window' && <ShoppingCart className="h-4 w-4 text-emerald-500" />}
+                  {listing.watch_status === 'watching' && <Target className="h-4 w-4 text-blue-500" />}
+                  {listing.watch_status === 'avoid' && <Ban className="h-4 w-4 text-red-500" />}
+                  <span className={cn(
+                    "font-semibold text-sm",
+                    listing.watch_status === 'buy_window' && "text-emerald-500",
+                    listing.watch_status === 'watching' && "text-blue-500",
+                    listing.watch_status === 'avoid' && "text-red-500"
+                  )}>
+                    {listing.watch_status === 'buy_window' && 'Buy Window Open'}
+                    {listing.watch_status === 'watching' && 'Watching'}
+                    {listing.watch_status === 'avoid' && 'Avoid'}
+                  </span>
+                </div>
+                {/* Confidence Badge */}
+                {listing.watch_confidence && (
+                  <Badge 
+                    variant="outline" 
+                    className={cn(
+                      "text-xs",
+                      listing.watch_confidence === 'high' && "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
+                      listing.watch_confidence === 'med' && "bg-amber-500/10 text-amber-600 border-amber-500/30",
+                      listing.watch_confidence === 'low' && "bg-gray-500/10 text-gray-500 border-gray-500/30"
+                    )}
+                  >
+                    {listing.watch_confidence.toUpperCase()}
+                  </Badge>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">{listing.watch_reason}</p>
               {listing.attempt_count && listing.attempt_count >= 2 && (

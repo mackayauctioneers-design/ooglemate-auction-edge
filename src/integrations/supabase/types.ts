@@ -1943,6 +1943,7 @@ export type Database = {
           asking_price: number
           attempt_count: number
           attempt_stage: string
+          avoid_reason: string
           buy_window_at: string
           days_on_market: number
           deal_label: string
@@ -1969,8 +1970,8 @@ export type Database = {
           source: string
           status: string
           tracked_by: string
-          trap_slug: string
           variant_family: string
+          watch_confidence: string
           watch_reason: string
           watch_status: string
           year: number
