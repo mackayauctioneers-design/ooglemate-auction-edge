@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { cn } from '@/lib/utils';
 import { TrapListing } from '@/pages/TrapInventoryPage';
 import { supabase } from '@/integrations/supabase/client';
 import { useTrapWatchlist } from '@/hooks/useTrapWatchlist';
@@ -28,8 +29,13 @@ import {
   Clock,
   Save,
   StickyNote,
-  AlertTriangle
+  AlertTriangle,
+  User,
+  Target,
+  ShoppingCart,
+  Ban
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
@@ -38,6 +44,7 @@ interface TrapInventoryDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onNotesChange?: () => void;
+  onTrackedByChange?: (listingId: string, trackedBy: string | null) => void;
 }
 
 interface PriceSnapshot {
@@ -80,12 +87,14 @@ const getDealBadge = (dealLabel: string) => {
   }
 };
 
-export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange }: TrapInventoryDrawerProps) {
+export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange, onTrackedByChange }: TrapInventoryDrawerProps) {
   const [priceHistory, setPriceHistory] = useState<PriceSnapshot[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [localNotes, setLocalNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesDirty, setNotesDirty] = useState(false);
+  const [localTrackedBy, setLocalTrackedBy] = useState('');
+  const [savingTrackedBy, setSavingTrackedBy] = useState(false);
   
   // Use watchlist hook for persistence
   const { 
@@ -102,7 +111,8 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
   useEffect(() => {
     setLocalNotes(notes || '');
     setNotesDirty(false);
-  }, [notes, listing?.id]);
+    setLocalTrackedBy(listing?.tracked_by || '');
+  }, [notes, listing?.id, listing?.tracked_by]);
 
   useEffect(() => {
     if (listing && open) {
@@ -337,9 +347,77 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
 
           <Separator />
 
+          {/* Watch Status Display */}
+          {listing.watch_status && (
+            <section className="p-4 rounded-lg border border-border bg-muted/30">
+              <div className="flex items-center gap-2 mb-2">
+                {listing.watch_status === 'buy_window' && <ShoppingCart className="h-4 w-4 text-emerald-500" />}
+                {listing.watch_status === 'watching' && <Target className="h-4 w-4 text-blue-500" />}
+                {listing.watch_status === 'avoid' && <Ban className="h-4 w-4 text-red-500" />}
+                <span className={cn(
+                  "font-semibold text-sm",
+                  listing.watch_status === 'buy_window' && "text-emerald-500",
+                  listing.watch_status === 'watching' && "text-blue-500",
+                  listing.watch_status === 'avoid' && "text-red-500"
+                )}>
+                  {listing.watch_status === 'buy_window' && 'Buy Window Open'}
+                  {listing.watch_status === 'watching' && 'Watching'}
+                  {listing.watch_status === 'avoid' && 'Avoid'}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">{listing.watch_reason}</p>
+              {listing.attempt_count && listing.attempt_count >= 2 && (
+                <p className="text-xs text-amber-500 mt-1">
+                  Auction Run #{listing.attempt_count}
+                </p>
+              )}
+            </section>
+          )}
+
+          {/* Tracked By Assignment */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <User className="h-4 w-4" />
+              Assigned To
+            </h3>
+            <div className="flex gap-2">
+              <Input
+                placeholder="e.g. Dave"
+                value={localTrackedBy}
+                onChange={(e) => setLocalTrackedBy(e.target.value)}
+                className="flex-1"
+              />
+              <Button
+                size="sm"
+                variant={localTrackedBy !== (listing.tracked_by || '') ? 'default' : 'outline'}
+                disabled={localTrackedBy === (listing.tracked_by || '') || savingTrackedBy}
+                onClick={async () => {
+                  setSavingTrackedBy(true);
+                  const newValue = localTrackedBy.trim() || null;
+                  const { error } = await supabase
+                    .from('vehicle_listings')
+                    .update({ tracked_by: newValue })
+                    .eq('id', listing.id);
+                  
+                  if (!error) {
+                    onTrackedByChange?.(listing.id, newValue);
+                  }
+                  setSavingTrackedBy(false);
+                }}
+              >
+                {savingTrackedBy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Assign this vehicle to someone for tracking
+            </p>
+          </section>
+
+          <Separator />
+
           {/* Watch / Pin Toggles */}
           <section className="space-y-4">
-            <h3 className="text-sm font-semibold text-foreground">Monitoring</h3>
+            <h3 className="text-sm font-semibold text-foreground">Personal Watchlist</h3>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Eye className="h-4 w-4 text-muted-foreground" />
@@ -364,9 +442,6 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
                 disabled={watchlistLoading}
               />
             </div>
-            <p className="text-xs text-muted-foreground">
-              {watchlistLoading ? 'Saving...' : 'Saved to your watchlist'}
-            </p>
             
             {/* Notes */}
             <div className="space-y-2 pt-2">

@@ -1242,6 +1242,8 @@ export type Database = {
       vehicle_listings: {
         Row: {
           asking_price: number | null
+          attempt_count: number
+          attempt_stage: string | null
           auction_datetime: string | null
           auction_history: Json | null
           auction_house: string | null
@@ -1257,6 +1259,7 @@ export type Database = {
           id: string
           is_dealer_grade: boolean | null
           km: number | null
+          last_attempt_at: string | null
           last_auction_date: string | null
           last_seen_at: string
           listed_date_raw: string | null
@@ -1284,12 +1287,15 @@ export type Database = {
           variant_family: string | null
           variant_raw: string | null
           visible_to_dealers: boolean
+          watch_confidence: string | null
           watch_reason: string | null
           watch_status: string | null
           year: number
         }
         Insert: {
           asking_price?: number | null
+          attempt_count?: number
+          attempt_stage?: string | null
           auction_datetime?: string | null
           auction_history?: Json | null
           auction_house?: string | null
@@ -1305,6 +1311,7 @@ export type Database = {
           id?: string
           is_dealer_grade?: boolean | null
           km?: number | null
+          last_attempt_at?: string | null
           last_auction_date?: string | null
           last_seen_at?: string
           listed_date_raw?: string | null
@@ -1332,12 +1339,15 @@ export type Database = {
           variant_family?: string | null
           variant_raw?: string | null
           visible_to_dealers?: boolean
+          watch_confidence?: string | null
           watch_reason?: string | null
           watch_status?: string | null
           year: number
         }
         Update: {
           asking_price?: number | null
+          attempt_count?: number
+          attempt_stage?: string | null
           auction_datetime?: string | null
           auction_history?: Json | null
           auction_house?: string | null
@@ -1353,6 +1363,7 @@ export type Database = {
           id?: string
           is_dealer_grade?: boolean | null
           km?: number | null
+          last_attempt_at?: string | null
           last_auction_date?: string | null
           last_seen_at?: string
           listed_date_raw?: string | null
@@ -1380,6 +1391,7 @@ export type Database = {
           variant_family?: string | null
           variant_raw?: string | null
           visible_to_dealers?: boolean
+          watch_confidence?: string | null
           watch_reason?: string | null
           watch_status?: string | null
           year?: number
@@ -1840,6 +1852,7 @@ export type Database = {
           new_reason: string
           new_status: string
           should_avoid: boolean
+          watch_confidence: string
         }[]
       }
       generate_geo_heat_alerts: {
