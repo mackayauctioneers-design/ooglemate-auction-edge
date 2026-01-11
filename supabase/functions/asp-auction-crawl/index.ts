@@ -41,10 +41,20 @@ const SITE_CONFIGS: Record<string, SiteConfig> = {
     urlPrefix: 'https://www.f3motorauctions.com.au/',
     parserType: 'f3_result_item',
   },
+  'f3_motor_auctions': {
+    defaultLocation: 'Beresfield',
+    urlPrefix: 'https://www.f3motorauctions.com.au/',
+    parserType: 'f3_result_item',
+  },
   'auto_auctions_aav': {
     defaultLocation: 'Sydney',
     urlPrefix: 'https://www.auto-auctions.com.au/',
     parserType: 'aav_listing_grid',
+  },
+  'valley_motor_auctions': {
+    defaultLocation: 'Rutherford',
+    urlPrefix: 'https://www.valleymotorauctions.com.au/',
+    parserType: 'f3_result_item',  // Uses same F3 result-item structure
   },
 };
 
