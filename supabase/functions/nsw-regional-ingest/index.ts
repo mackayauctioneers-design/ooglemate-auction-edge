@@ -277,6 +277,9 @@ Deno.serve(async (req) => {
       // Quality gate: price enforcement (but allow catalogue without price for auctions)
       const effectivePrice = lot.reserve ?? lot.asking_price;
       
+      // Track price visibility for auction catalogues
+      let priceVisibility = 'visible';
+      
       // For auction catalogues, allow no_price (they're "call for price" until auction)
       // But if price is present, enforce dealer-grade band
       if (effectivePrice !== null) {
@@ -290,8 +293,10 @@ Deno.serve(async (req) => {
           dropReasons['price_above_150k'] = (dropReasons['price_above_150k'] || 0) + 1;
           continue;
         }
+      } else {
+        // No price = catalogue presence tracking only, mark as hidden
+        priceVisibility = 'hidden';
       }
-      // Note: no_price is now allowed for auction catalogue presence tracking
       
       try {
         // Check if listing exists
@@ -336,6 +341,7 @@ Deno.serve(async (req) => {
                 ? (existing.pass_count || 0) + 1 
                 : existing.pass_count,
               is_dealer_grade: true,
+              price_visibility: priceVisibility,
             })
             .eq('id', existing.id);
           updated++;
@@ -389,6 +395,7 @@ Deno.serve(async (req) => {
               seller_type: 'dealer',
               visible_to_dealers: true,
               is_dealer_grade: true,
+              price_visibility: priceVisibility,
             })
             .select('id')
             .single();

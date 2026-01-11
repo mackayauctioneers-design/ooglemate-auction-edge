@@ -102,3 +102,16 @@ verify_jwt = false
 schedule = "0 7 * * *"
 # Daily cron at 6:30am AEST (20:30 UTC) - enqueue validation jobs before crawl
 schedule = "30 20 * * *"
+
+[functions.f3-crawl]
+verify_jwt = false
+# Daily cron at 06:45am AEST (20:45 UTC previous day) - regional auction presence early
+schedule = "45 20 * * *"
+
+[functions.valley-crawl]
+verify_jwt = false
+# Daily cron at 06:50am AEST (20:50 UTC previous day) - regional auction presence
+schedule = "50 20 * * *"
+
+[functions.nsw-regional-ingest]
+verify_jwt = false
