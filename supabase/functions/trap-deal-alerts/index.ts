@@ -98,13 +98,32 @@ Deno.serve(async (req) => {
 
     // Get today's strong buy deals with sufficient sample size
     // Production thresholds: MISPRICED/STRONG_BUY + fingerprint_sample >= 10
-    const { data: deals, error: dealsError } = await supabase
+    // EXCLUDE vehicles with sold-returned-suspected risk flag
+    const { data: dealsRaw, error: dealsError } = await supabase
       .from("trap_deals")
       .select("*")
       .in("deal_label", ["MISPRICED", "STRONG_BUY"])
       .gte("fingerprint_sample", 10)
       .not("fingerprint_price", "is", null)
       .order("delta_pct", { ascending: true });
+
+    // Filter out sold-returned-suspected vehicles (join to vehicle_listings to check flag)
+    let deals = dealsRaw || [];
+    if (deals.length > 0) {
+      const listingIds = deals.map((d: TrapDeal) => d.id);
+      const { data: flaggedListings } = await supabase
+        .from("vehicle_listings")
+        .select("id")
+        .in("id", listingIds)
+        .eq("sold_returned_suspected", true);
+      
+      if (flaggedListings && flaggedListings.length > 0) {
+        const flaggedIds = new Set(flaggedListings.map(f => f.id));
+        const beforeCount = deals.length;
+        deals = deals.filter((d: TrapDeal) => !flaggedIds.has(d.id));
+        console.log(`Excluded ${beforeCount - deals.length} sold-returned-suspected vehicles from alerts`);
+      }
+    }
 
     if (dealsError) {
       console.error("Error fetching trap deals:", dealsError);

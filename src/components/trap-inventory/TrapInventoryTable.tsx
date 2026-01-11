@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { TrendingDown, TrendingUp, Minus, HelpCircle, Eye, Pin, StickyNote } from 'lucide-react';
+import { TrendingDown, TrendingUp, Minus, HelpCircle, Eye, Pin, StickyNote, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -42,7 +42,17 @@ const getStatusBadge = (days: number) => {
   }
 };
 
-const getDealLabelBadge = (dealLabel: string) => {
+const getDealLabelBadge = (dealLabel: string, soldReturnedSuspected?: boolean) => {
+  // If return risk, show that badge instead
+  if (soldReturnedSuspected) {
+    return (
+      <Badge variant="destructive" className="bg-red-600 hover:bg-red-600">
+        <AlertTriangle className="h-3 w-3 mr-1" />
+        Return Risk
+      </Badge>
+    );
+  }
+
   switch (dealLabel) {
     case 'MISPRICED':
       return <Badge className="bg-emerald-600 hover:bg-emerald-600">Mispriced</Badge>;
@@ -181,7 +191,18 @@ export function TrapInventoryTable({ listings, onRowClick, watchedIds, pinnedIds
                   {listing.days_on_market}
                 </TableCell>
                 <TableCell className="text-center">
-                  {getDealLabelBadge(listing.deal_label)}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>{getDealLabelBadge(listing.deal_label, listing.sold_returned_suspected)}</span>
+                    </TooltipTrigger>
+                    {listing.sold_returned_suspected && listing.sold_returned_reason && (
+                      <TooltipContent className="max-w-[300px]">
+                        <p className="font-semibold text-red-500">⚠️ Sold-Then-Returned Suspect</p>
+                        <p className="text-xs mt-1">{listing.sold_returned_reason}</p>
+                        <p className="text-xs mt-1 text-muted-foreground">Bob will not recommend buying this vehicle.</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
                 </TableCell>
               </TableRow>
               );
