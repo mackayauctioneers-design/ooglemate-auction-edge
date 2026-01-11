@@ -208,6 +208,14 @@ export default function TrapInventoryPage() {
       result = result.filter(l => l.sold_returned_suspected === true);
     } else if (filters.preset === 'no_benchmark') {
       result = result.filter(l => l.no_benchmark);
+    } else if (filters.preset === 'buy_window') {
+      result = result.filter(l => l.watch_status === 'buy_window');
+    } else if (filters.preset === 'watching') {
+      result = result.filter(l => l.watch_status === 'watching');
+    } else if (filters.preset === 'avoid') {
+      result = result.filter(l => l.watch_status === 'avoid' || l.sold_returned_suspected);
+    } else if (filters.preset === 'tracked') {
+      result = result.filter(l => l.tracked_by != null && l.tracked_by !== '');
     }
 
     // Filter by dealer
@@ -571,6 +579,16 @@ export default function TrapInventoryPage() {
             open={drawerOpen}
             onOpenChange={setDrawerOpen}
             onNotesChange={fetchWatchlist}
+            onTrackedByChange={(listingId, trackedBy) => {
+              // Update listings in state
+              setListings(prev => prev.map(l => 
+                l.id === listingId ? { ...l, tracked_by: trackedBy ?? undefined } : l
+              ));
+              // Update selected listing too
+              if (selectedListing?.id === listingId) {
+                setSelectedListing(prev => prev ? { ...prev, tracked_by: trackedBy ?? undefined } : null);
+              }
+            }}
           />
         </div>
       </AppLayout>
