@@ -115,3 +115,8 @@ schedule = "50 20 * * *"
 
 [functions.nsw-regional-ingest]
 verify_jwt = false
+
+[functions.refresh-watch-statuses]
+verify_jwt = false
+# Daily cron at 08:30am AEST (22:30 UTC) - runs after fingerprint-materialize to update watch states
+schedule = "30 22 * * *"
