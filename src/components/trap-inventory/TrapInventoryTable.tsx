@@ -8,13 +8,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { TrendingDown, TrendingUp, Minus, HelpCircle } from 'lucide-react';
+import { TrendingDown, TrendingUp, Minus, HelpCircle, Eye, Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface TrapInventoryTableProps {
   listings: TrapListing[];
   onRowClick: (listing: TrapListing) => void;
+  watchedIds?: Set<string>;
+  pinnedIds?: Set<string>;
 }
 
 const formatCurrency = (val: number | null) => {
@@ -64,7 +66,7 @@ const getTrapName = (source: string) => {
   return source.replace(/^trap_/, '').replace(/_/g, ' ');
 };
 
-export function TrapInventoryTable({ listings, onRowClick }: TrapInventoryTableProps) {
+export function TrapInventoryTable({ listings, onRowClick, watchedIds, pinnedIds }: TrapInventoryTableProps) {
   if (listings.length === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground">
@@ -90,11 +92,18 @@ export function TrapInventoryTable({ listings, onRowClick }: TrapInventoryTableP
             </TableRow>
           </TableHeader>
           <TableBody>
-            {listings.map(listing => (
+            {listings.map(listing => {
+              const isWatched = watchedIds?.has(listing.id) ?? false;
+              const isPinned = pinnedIds?.has(listing.id) ?? false;
+              
+              return (
               <TableRow
                 key={listing.id}
                 onClick={() => onRowClick(listing)}
-                className="cursor-pointer hover:bg-muted/30"
+                className={cn(
+                  "cursor-pointer hover:bg-muted/30",
+                  isPinned && "bg-primary/5 border-l-2 border-l-primary"
+                )}
               >
                 <TableCell className="font-medium">
                   <div className="truncate max-w-[160px]" title={getTrapName(listing.source)}>
@@ -102,13 +111,33 @@ export function TrapInventoryTable({ listings, onRowClick }: TrapInventoryTableP
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div>
-                    <span className="font-medium">{listing.year} {listing.make} {listing.model}</span>
-                    {listing.variant_family && (
-                      <span className="text-muted-foreground text-sm ml-1">
-                        ({listing.variant_family})
-                      </span>
-                    )}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 min-w-[28px]">
+                      {isPinned && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Pin className="h-3 w-3 text-primary" />
+                          </TooltipTrigger>
+                          <TooltipContent>Pinned</TooltipContent>
+                        </Tooltip>
+                      )}
+                      {isWatched && !isPinned && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Eye className="h-3 w-3 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>Watching</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                    <div>
+                      <span className="font-medium">{listing.year} {listing.make} {listing.model}</span>
+                      {listing.variant_family && (
+                        <span className="text-muted-foreground text-sm ml-1">
+                          ({listing.variant_family})
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell className="text-right mono text-sm">
@@ -145,7 +174,8 @@ export function TrapInventoryTable({ listings, onRowClick }: TrapInventoryTableP
                   {getDealLabelBadge(listing.deal_label)}
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       </div>

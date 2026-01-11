@@ -34,7 +34,7 @@ const dealerNavItems = [
   { path: '/', label: "Today's Opportunities", icon: BarChart3 },
   { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
   { path: '/search-lots', label: 'Search Lots', icon: Search },
-  { path: '/trap-inventory', label: 'Trap Inventory', icon: Store },
+  { path: '/trap-inventory', label: 'Trap Inventory', icon: Store, adminOnly: true },
   { path: '/matches', label: 'Matches', icon: Crosshair },
   { path: '/valuation', label: 'Valuation', icon: DollarSign },
   { path: '/dealer-dashboard', label: 'My Dashboard', icon: MapPin },
@@ -92,6 +92,10 @@ export function AppSidebar() {
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-1">
         {dealerNavItems.map(item => {
+          // Skip admin-only items for non-admin users
+          const isAdminOnlyItem = 'adminOnly' in item && item.adminOnly;
+          if (isAdminOnlyItem && !isAdmin) return null;
+          
           const isActive = location.pathname === item.path;
           const isHighlight = 'highlight' in item && item.highlight;
           return (

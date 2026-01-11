@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { AdminGuard } from '@/components/guards/AdminGuard';
 import { TrapInventoryTable } from '@/components/trap-inventory/TrapInventoryTable';
 import { TrapInventoryFilters, TrapInventoryFiltersState } from '@/components/trap-inventory/TrapInventoryFilters';
 import { TrapInventoryDrawer } from '@/components/trap-inventory/TrapInventoryDrawer';
@@ -72,10 +73,9 @@ export default function TrapInventoryPage() {
   const fetchListings = async () => {
     setLoading(true);
     
-    // Fetch from trap_deals view
+    // Use secure RPC that checks admin status server-side
     const { data, error } = await supabase
-      .from('trap_deals')
-      .select('*')
+      .rpc('get_trap_deals')
       .order('delta_pct', { ascending: true, nullsFirst: false });
 
     if (error) {
@@ -275,55 +275,59 @@ export default function TrapInventoryPage() {
   }, [listings]);
 
   return (
-    <AppLayout>
-      <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Store className="h-6 w-6" />
-              Trap Inventory
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Monitor retail stock vs benchmark – identify mispriced wholesale opportunities
-            </p>
+    <AdminGuard>
+      <AppLayout>
+        <div className="p-6 space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                <Store className="h-6 w-6" />
+                Trap Inventory
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Monitor retail stock vs benchmark – identify mispriced wholesale opportunities
+              </p>
+            </div>
+            <div className="text-right text-sm text-muted-foreground space-y-0.5">
+              {!loading && (
+                <>
+                  <div>{filteredListings.length} of {stats.total} listings</div>
+                  <div className="text-xs">
+                    {stats.mispriced} mispriced • {stats.strongBuys} strong buys • {stats.aged90} aged 90+
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-          <div className="text-right text-sm text-muted-foreground space-y-0.5">
-            {!loading && (
-              <>
-                <div>{filteredListings.length} of {stats.total} listings</div>
-                <div className="text-xs">
-                  {stats.mispriced} mispriced • {stats.strongBuys} strong buys • {stats.aged90} aged 90+
-                </div>
-              </>
-            )}
-          </div>
-        </div>
 
-        <TrapInventoryFilters
-          filters={filters}
-          onFiltersChange={setFilters}
-          dealers={dealers}
-          makes={makes}
-          models={models}
-        />
-
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <TrapInventoryTable
-            listings={filteredListings}
-            onRowClick={handleRowClick}
+          <TrapInventoryFilters
+            filters={filters}
+            onFiltersChange={setFilters}
+            dealers={dealers}
+            makes={makes}
+            models={models}
           />
-        )}
 
-        <TrapInventoryDrawer
-          listing={selectedListing}
-          open={drawerOpen}
-          onOpenChange={setDrawerOpen}
-        />
-      </div>
-    </AppLayout>
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <TrapInventoryTable
+              listings={filteredListings}
+              onRowClick={handleRowClick}
+              watchedIds={watchlistIds}
+              pinnedIds={pinnedIds}
+            />
+          )}
+
+          <TrapInventoryDrawer
+            listing={selectedListing}
+            open={drawerOpen}
+            onOpenChange={setDrawerOpen}
+          />
+        </div>
+      </AppLayout>
+    </AdminGuard>
   );
 }
