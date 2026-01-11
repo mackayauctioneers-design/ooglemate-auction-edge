@@ -1968,6 +1968,13 @@ export type Database = {
         }[]
       }
       seller_weight: { Args: { p_seller_type: string }; Returns: number }
+      update_auction_attempts: {
+        Args: never
+        Returns: {
+          stage_counts: Json
+          updated_count: number
+        }[]
+      }
       year_to_band: {
         Args: { p_year: number }
         Returns: {

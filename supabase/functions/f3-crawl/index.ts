@@ -301,6 +301,20 @@ Deno.serve(async (req) => {
       throw new Error(`Ingest failed: ${ingestResponse.error.message}`);
     }
 
+    // Log to cron_audit_log
+    const runDate = new Date().toISOString().split('T')[0];
+    await supabase.from('cron_audit_log').insert({
+      cron_name: 'f3-crawl',
+      run_date: runDate,
+      success: true,
+      result: {
+        totalParsed: allVehicles.length,
+        validForIngest: validVehicles.length,
+        droppedYearFilter: allVehicles.length - validVehicles.length,
+        ingestResult: ingestResponse.data,
+      },
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -316,6 +330,23 @@ Deno.serve(async (req) => {
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error('[f3-crawl] Error:', error);
+    
+    // Log failure to cron_audit_log
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const runDate = new Date().toISOString().split('T')[0];
+      await supabase.from('cron_audit_log').insert({
+        cron_name: 'f3-crawl',
+        run_date: runDate,
+        success: false,
+        error: errorMsg,
+      });
+    } catch (logErr) {
+      console.error('[f3-crawl] Failed to log to audit:', logErr);
+    }
+    
     return new Response(
       JSON.stringify({ error: errorMsg }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
