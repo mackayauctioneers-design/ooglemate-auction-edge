@@ -7,7 +7,7 @@ import { TrapInventoryTable } from '@/components/trap-inventory/TrapInventoryTab
 import { TrapInventoryFilters, TrapInventoryFiltersState } from '@/components/trap-inventory/TrapInventoryFilters';
 import { TrapInventoryDrawer } from '@/components/trap-inventory/TrapInventoryDrawer';
 import { Button } from '@/components/ui/button';
-import { Loader2, Store, Download } from 'lucide-react';
+import { Loader2, Store, Download, Phone } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -364,6 +364,117 @@ export default function TrapInventoryPage() {
     toast.success(`Exported ${filteredListings.length} listings`);
   }, [filteredListings, watchlistIds, pinnedIds, notesIds]);
 
+  // Call List export function (90+ day prospects)
+  const exportCallList = useCallback(() => {
+    // Start from filtered listings (respects user's current filters)
+    // but enforce call list rules on top
+    const callListItems = filteredListings
+      .filter(l => 
+        l.days_on_market >= 90 && (
+          l.deal_label === 'MISPRICED' ||
+          l.deal_label === 'STRONG_BUY' ||
+          l.price_change_count >= 2 ||
+          (l.delta_pct !== null && l.delta_pct <= -10)
+        )
+      );
+
+    if (callListItems.length === 0) {
+      toast.error('No listings match call list criteria (90+ days with price signals)');
+      return;
+    }
+
+    // Sort: deal_label priority, then days_on_market DESC, then delta_pct ASC
+    const dealPriority: Record<string, number> = {
+      'MISPRICED': 1,
+      'STRONG_BUY': 2,
+      'WATCH': 3,
+      'NORMAL': 4,
+      'NO_BENCHMARK': 5,
+    };
+
+    const sorted = [...callListItems].sort((a, b) => {
+      // 1. Deal label priority
+      const aPri = dealPriority[a.deal_label] ?? 99;
+      const bPri = dealPriority[b.deal_label] ?? 99;
+      if (aPri !== bPri) return aPri - bPri;
+      
+      // 2. Days on market DESC
+      if (a.days_on_market !== b.days_on_market) return b.days_on_market - a.days_on_market;
+      
+      // 3. Delta pct ASC (nulls last)
+      const aDelta = a.delta_pct ?? 999;
+      const bDelta = b.delta_pct ?? 999;
+      return aDelta - bDelta;
+    });
+
+    // Watchlist lookup
+    const getWatchlistInfo = (id: string) => ({
+      watched: watchlistIds.has(id) ? 'Y' : '',
+      pinned: pinnedIds.has(id) ? 'Y' : '',
+      hasNotes: notesIds.has(id) ? 'Y' : '',
+    });
+
+    // CSV headers (specified columns)
+    const headers = [
+      'trap_slug', 'year', 'make', 'model', 'variant_family', 'km',
+      'asking_price', 'fingerprint_price', 'delta_pct', 'delta_dollars',
+      'days_on_market', 'price_change_count', 'last_price_change_at',
+      'watched', 'pinned', 'has_notes', 'listing_url', 'location'
+    ];
+
+    // Build rows
+    const rows = sorted.map(l => {
+      const wl = getWatchlistInfo(l.id);
+      return [
+        l.source.replace(/^trap_/, ''),
+        l.year,
+        l.make,
+        l.model,
+        l.variant_family || '',
+        l.km ?? '',
+        l.asking_price ?? '',
+        l.benchmark_price ?? '',
+        l.delta_pct !== null ? l.delta_pct.toFixed(1) : '',
+        l.delta_dollars ?? '',
+        l.days_on_market,
+        l.price_change_count,
+        l.last_price_change_at ? format(new Date(l.last_price_change_at), 'yyyy-MM-dd') : '',
+        wl.watched,
+        wl.pinned,
+        wl.hasNotes,
+        l.listing_url || '',
+        l.location || ''
+      ];
+    });
+
+    // Escape and format CSV
+    const escapeCell = (val: any) => {
+      const str = String(val ?? '');
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(escapeCell).join(','))
+    ].join('\n');
+
+    // Download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `call_list_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success(`Exported ${sorted.length} call list prospects`);
+  }, [filteredListings, watchlistIds, pinnedIds, notesIds]);
+
   return (
     <AdminGuard>
       <AppLayout>
@@ -397,6 +508,15 @@ export default function TrapInventoryPage() {
               >
                 <Download className="h-4 w-4" />
                 Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportCallList}
+                disabled={loading || filteredListings.length === 0}
+              >
+                <Phone className="h-4 w-4" />
+                Export Call List
               </Button>
             </div>
           </div>
