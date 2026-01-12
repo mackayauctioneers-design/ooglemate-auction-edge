@@ -1,7 +1,7 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { RotateCcw, TrendingDown, Clock, Zap, AlertTriangle, HelpCircle, Eye, StickyNote, RotateCw, Target, ShoppingCart, Ban, User } from 'lucide-react';
+import { RotateCcw, TrendingDown, Clock, Zap, AlertTriangle, HelpCircle, Eye, StickyNote, RotateCw, Target, ShoppingCart, Ban, User, Sparkles, CheckCircle, DollarSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface TrapInventoryFiltersState {
@@ -10,7 +10,7 @@ export interface TrapInventoryFiltersState {
   model: string;
   daysOnMarket: string;
   deltaBand: string;
-  preset: 'none' | 'strong_buy' | 'mispriced' | '90_plus' | 'no_benchmark' | 'watchlist' | 'has_notes' | 'return_risk' | 'buy_window' | 'buy_window_unassigned' | 'watching' | 'avoid' | 'tracked';
+  preset: 'none' | 'strong_buy' | 'mispriced' | '90_plus' | 'no_benchmark' | 'watchlist' | 'has_notes' | 'return_risk' | 'buy_window' | 'buy_window_unassigned' | 'watching' | 'avoid' | 'tracked' | 'lifecycle_new' | 'lifecycle_watch' | 'lifecycle_buy' | 'lifecycle_bought';
   sortBy: 'delta_pct' | 'days_on_market' | 'price_drop' | 'price';
   sortDir: 'asc' | 'desc';
 }
@@ -50,13 +50,16 @@ const sortOptions = [
 ];
 
 const presets = [
+  // Lifecycle-based presets (human decision layer)
+  { value: 'lifecycle_new', label: '🆕 New', icon: Sparkles, color: 'bg-slate-500/20 text-slate-600 border-slate-500/40' },
+  { value: 'lifecycle_watch', label: '👀 Watching', icon: Eye, color: 'bg-blue-500/20 text-blue-600 border-blue-500/40' },
+  { value: 'lifecycle_buy', label: '🎯 Buy', icon: Target, color: 'bg-emerald-600/20 text-emerald-500 border-emerald-500/40' },
+  { value: 'lifecycle_bought', label: '✅ Bought', icon: CheckCircle, color: 'bg-green-500/20 text-green-600 border-green-500/40' },
+  // System-based presets
   { value: 'buy_window', label: 'Buy Window', icon: ShoppingCart, color: 'bg-emerald-600/20 text-emerald-500 border-emerald-500/40' },
   { value: 'buy_window_unassigned', label: 'BW (Unassigned)', icon: Target, color: 'bg-emerald-500/20 text-emerald-600 border-emerald-500/40' },
-  { value: 'watching', label: 'Watching', icon: Eye, color: 'bg-blue-500/20 text-blue-600 border-blue-500/40' },
-  { value: 'tracked', label: 'Tracked', icon: User, color: 'bg-primary/20 text-primary border-primary/40' },
   { value: 'avoid', label: 'Avoid', icon: Ban, color: 'bg-red-500/20 text-red-500 border-red-500/40' },
   { value: '90_plus', label: '90+ Days', icon: Clock, color: 'bg-amber-500/10 text-amber-600 border-amber-500/30' },
-  { value: 'no_benchmark', label: 'No Data', icon: HelpCircle, color: 'bg-muted text-muted-foreground border-border' },
 ] as const;
 
 export function TrapInventoryFilters({ 

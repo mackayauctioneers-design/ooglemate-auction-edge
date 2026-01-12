@@ -1570,6 +1570,7 @@ export type Database = {
           last_attempt_at: string | null
           last_auction_date: string | null
           last_seen_at: string
+          lifecycle_state: string
           listed_date_raw: string | null
           listing_id: string
           listing_url: string | null
@@ -1626,6 +1627,7 @@ export type Database = {
           last_attempt_at?: string | null
           last_auction_date?: string | null
           last_seen_at?: string
+          lifecycle_state?: string
           listed_date_raw?: string | null
           listing_id: string
           listing_url?: string | null
@@ -1682,6 +1684,7 @@ export type Database = {
           last_attempt_at?: string | null
           last_auction_date?: string | null
           last_seen_at?: string
+          lifecycle_state?: string
           listed_date_raw?: string | null
           listing_id?: string
           listing_url?: string | null
@@ -2335,6 +2338,8 @@ export type Database = {
         Args: never
         Returns: {
           asking_price: number
+          assigned_at: string
+          assigned_to: string
           attempt_count: number
           attempt_stage: string
           avoid_reason: string
@@ -2351,6 +2356,7 @@ export type Database = {
           id: string
           km: number
           last_price_change_at: string
+          lifecycle_state: string
           listing_id: string
           listing_url: string
           location: string

@@ -11,6 +11,8 @@ import { Loader2, Store, Download, Phone } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
+export type LifecycleState = 'NEW' | 'WATCH' | 'BUY' | 'BOUGHT' | 'SOLD' | 'AVOID';
+
 export interface TrapListing {
   id: string;
   listing_id: string;
@@ -53,6 +55,8 @@ export interface TrapListing {
   attempt_stage?: string | null;
   avoid_reason?: string | null;
   watch_confidence?: 'high' | 'med' | 'low' | null;
+  // Lifecycle state
+  lifecycle_state?: LifecycleState;
 }
 
 export default function TrapInventoryPage() {
@@ -153,6 +157,7 @@ export default function TrapInventoryPage() {
       attempt_stage: l.attempt_stage,
       avoid_reason: l.avoid_reason,
       watch_confidence: l.watch_confidence,
+      lifecycle_state: l.lifecycle_state ?? 'NEW',
     }));
 
     // Extract unique values for filters
@@ -238,6 +243,14 @@ export default function TrapInventoryPage() {
       result = result.filter(l => l.watch_status === 'avoid' || l.sold_returned_suspected);
     } else if (filters.preset === 'tracked') {
       result = result.filter(l => l.tracked_by != null && l.tracked_by !== '');
+    } else if (filters.preset === 'lifecycle_new') {
+      result = result.filter(l => l.lifecycle_state === 'NEW');
+    } else if (filters.preset === 'lifecycle_watch') {
+      result = result.filter(l => l.lifecycle_state === 'WATCH');
+    } else if (filters.preset === 'lifecycle_buy') {
+      result = result.filter(l => l.lifecycle_state === 'BUY');
+    } else if (filters.preset === 'lifecycle_bought') {
+      result = result.filter(l => l.lifecycle_state === 'BOUGHT');
     }
 
     // Filter by dealer

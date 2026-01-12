@@ -38,6 +38,8 @@ type Row = {
 
   sold_returned_suspected: boolean | null;
   avoid_reason: string | null;
+  
+  lifecycle_state: string | null;
 };
 
 function safe(v: string | null | undefined) {
@@ -114,6 +116,7 @@ Deno.serve(async (req) => {
     const today = new Date().toISOString().slice(0, 10);
 
     // Pull top buy_window items (safety: exclude avoid + sold-returned + assigned)
+    // NEW: Only ping lifecycle_state = 'BUY' for noise reduction
     const { data, error } = await supabase
       .from("vehicle_listings")
       .select(
@@ -143,9 +146,11 @@ Deno.serve(async (req) => {
           "assigned_at",
           "sold_returned_suspected",
           "avoid_reason",
+          "lifecycle_state",
         ].join(",")
       )
       .eq("watch_status", "buy_window")
+      .eq("lifecycle_state", "BUY") // ✅ Only lifecycle = BUY gets pinged
       .is("assigned_to", null) // ✅ suppression: only unassigned
       .or("sold_returned_suspected.is.false,sold_returned_suspected.is.null")
       .order("buy_window_at", { ascending: false, nullsFirst: false })
@@ -159,6 +164,7 @@ Deno.serve(async (req) => {
         r.watch_status === "buy_window" && 
         !r.sold_returned_suspected && 
         !r.assigned_to &&
+        r.lifecycle_state === "BUY" &&
         r.avoid_reason !== "SOLD_RETURNED_MECHANICAL"
     );
 
