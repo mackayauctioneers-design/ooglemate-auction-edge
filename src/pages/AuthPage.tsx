@@ -7,9 +7,13 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useEffect } from 'react';
 
 export default function AuthPage() {
   const navigate = useNavigate();
+  const { user, isLoading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   
   // Signup state
@@ -20,6 +24,13 @@ export default function AuthPage() {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
+  // Redirect if already logged in
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate('/');
+    }
+  }, [authLoading, user, navigate]);
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -27,6 +38,9 @@ export default function AuthPage() {
     const { data, error } = await supabase.auth.signUp({
       email: signupEmail,
       password: signupPassword,
+      options: {
+        emailRedirectTo: window.location.origin,
+      },
     });
     
     setLoading(false);
@@ -37,8 +51,8 @@ export default function AuthPage() {
     }
     
     if (data.user) {
-      toast.success(`Account created! User ID: ${data.user.id}`);
-      console.log('Created user:', data.user.id);
+      toast.success('Account created! You are now signed in.');
+      navigate('/');
     }
   };
 
@@ -59,29 +73,73 @@ export default function AuthPage() {
     }
     
     if (data.user) {
-      toast.success(`Logged in as ${data.user.email}`);
+      toast.success(`Signed in as ${data.user.email}`);
       navigate('/');
     }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    toast.success('Logged out');
-  };
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Authentication</CardTitle>
-          <CardDescription>Sign up or log in to test dealer linking</CardDescription>
+        <CardHeader className="text-center">
+          <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-primary text-primary-foreground font-bold text-xl mx-auto mb-2">
+            O
+          </div>
+          <CardTitle>Sign In to OogleMate</CardTitle>
+          <CardDescription>Access your dealer account and auction tools</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="signup">
+          <Tabs defaultValue="login">
             <TabsList className="grid w-full grid-cols-2 mb-4">
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
-              <TabsTrigger value="login">Log In</TabsTrigger>
+              <TabsTrigger value="login">Sign In</TabsTrigger>
+              <TabsTrigger value="signup">Create Account</TabsTrigger>
             </TabsList>
+            
+            <TabsContent value="login">
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="login-email">Email</Label>
+                  <Input
+                    id="login-email"
+                    type="email"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                    disabled={loading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="login-password">Password</Label>
+                  <Input
+                    id="login-password"
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    required
+                    disabled={loading}
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    'Sign In'
+                  )}
+                </Button>
+              </form>
+            </TabsContent>
             
             <TabsContent value="signup">
               <form onSubmit={handleSignup} className="space-y-4">
@@ -92,8 +150,9 @@ export default function AuthPage() {
                     type="email"
                     value={signupEmail}
                     onChange={(e) => setSignupEmail(e.target.value)}
-                    placeholder="dealer@example.com"
+                    placeholder="you@example.com"
                     required
+                    disabled={loading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -106,49 +165,22 @@ export default function AuthPage() {
                     placeholder="Min 6 characters"
                     minLength={6}
                     required
+                    disabled={loading}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Creating...' : 'Create Account'}
-                </Button>
-              </form>
-            </TabsContent>
-            
-            <TabsContent value="login">
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="login-email">Email</Label>
-                  <Input
-                    id="login-email"
-                    type="email"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="dealer@example.com"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="login-password">Password</Label>
-                  <Input
-                    id="login-password"
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    required
-                  />
-                </div>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Logging in...' : 'Log In'}
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating account...
+                    </>
+                  ) : (
+                    'Create Account'
+                  )}
                 </Button>
               </form>
             </TabsContent>
           </Tabs>
-          
-          <div className="mt-4 pt-4 border-t">
-            <Button variant="outline" className="w-full" onClick={handleLogout}>
-              Log Out
-            </Button>
-          </div>
         </CardContent>
       </Card>
     </div>

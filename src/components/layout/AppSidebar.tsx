@@ -1,7 +1,9 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { 
   BarChart3, 
   LogOut,
+  LogIn,
   ChevronLeft,
   ChevronRight,
   HelpCircle,
@@ -17,11 +19,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
-import { useState, useEffect } from 'react';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { PushNotificationPrompt } from '@/components/notifications/PushNotificationPrompt';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
+import { AuthModal } from '@/components/auth/AuthModal';
 
 // ============================================================================
 // DEALER NAVIGATION
@@ -43,9 +45,10 @@ const dealerNavItems = [
 
 export function AppSidebar() {
   const location = useLocation();
-  const { currentUser, isAdmin, logout, user } = useAuth();
+  const { currentUser, isAdmin, logout, user, isLoading } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   // Fetch pending job count for operator badge
   useEffect(() => {
@@ -64,134 +67,152 @@ export function AppSidebar() {
   }, [isAdmin]);
 
   return (
-    <aside 
-      className={cn(
-        "flex flex-col h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300",
-        collapsed ? "w-16" : "w-64"
-      )}
-    >
-      {/* Logo and Notification Bell */}
-      <div className={cn(
-        "flex items-center justify-between px-4 h-16 border-b border-sidebar-border",
-        collapsed && "justify-center px-2"
-      )}>
-        <div className={cn("flex items-center gap-3", collapsed && "gap-0")}>
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground font-bold text-lg">
-            O
+    <>
+      <aside 
+        className={cn(
+          "flex flex-col h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300",
+          collapsed ? "w-16" : "w-64"
+        )}
+      >
+        {/* Logo and Notification Bell */}
+        <div className={cn(
+          "flex items-center justify-between px-4 h-16 border-b border-sidebar-border",
+          collapsed && "justify-center px-2"
+        )}>
+          <div className={cn("flex items-center gap-3", collapsed && "gap-0")}>
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground font-bold text-lg">
+              O
+            </div>
+            {!collapsed && (
+              <div>
+                <h1 className="font-semibold text-foreground">OogleMate</h1>
+                <p className="text-xs text-muted-foreground">Auction Edge</p>
+              </div>
+            )}
           </div>
-          {!collapsed && (
-            <div>
-              <h1 className="font-semibold text-foreground">OogleMate</h1>
-              <p className="text-xs text-muted-foreground">Auction Edge</p>
+          {!collapsed && user && <NotificationBell />}
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 p-3 space-y-1">
+          {dealerNavItems.map(item => {
+            // Skip admin-only items for non-admin users
+            const isAdminOnlyItem = 'adminOnly' in item && item.adminOnly;
+            if (isAdminOnlyItem && !isAdmin) return null;
+            
+            const isActive = location.pathname === item.path;
+            const isHighlight = 'highlight' in item && item.highlight;
+            return (
+              <Link key={item.path} to={item.path}>
+                <Button
+                  variant={isActive ? "navActive" : "nav"}
+                  className={cn(
+                    "w-full",
+                    collapsed ? "justify-center px-2" : "justify-start",
+                    isHighlight && !isActive && "bg-primary/10 text-primary hover:bg-primary/20"
+                  )}
+                >
+                  <item.icon className={cn("h-4 w-4", isHighlight && !isActive && "text-primary")} />
+                  {!collapsed && <span>{item.label}</span>}
+                </Button>
+              </Link>
+            );
+          })}
+
+          {/* Operator Mode link for admins */}
+          {isAdmin && (
+            <div className="pt-4 mt-4 border-t border-sidebar-border">
+              <Link to="/operator/ingestion-health">
+                <Button
+                  variant="nav"
+                  className={cn(
+                    "w-full relative",
+                    collapsed ? "justify-center px-2" : "justify-start",
+                    "bg-amber-500/20 text-amber-600 dark:text-amber-400 hover:bg-amber-500/30 font-medium"
+                  )}
+                  title={collapsed ? `Operator Mode${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}` : undefined}
+                >
+                  <Settings className="h-4 w-4" />
+                  {!collapsed && <span>⚙️ Operator Mode</span>}
+                  {pendingCount > 0 && (
+                    <Badge 
+                      variant="destructive" 
+                      className={cn(
+                        "h-5 min-w-5 px-1.5 text-xs font-bold",
+                        collapsed ? "absolute -top-1 -right-1" : "ml-auto"
+                      )}
+                    >
+                      {pendingCount > 99 ? '99+' : pendingCount}
+                    </Badge>
+                  )}
+                </Button>
+              </Link>
             </div>
           )}
-        </div>
-        {!collapsed && <NotificationBell />}
-      </div>
+        </nav>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1">
-        {dealerNavItems.map(item => {
-          // Skip admin-only items for non-admin users
-          const isAdminOnlyItem = 'adminOnly' in item && item.adminOnly;
-          if (isAdminOnlyItem && !isAdmin) return null;
-          
-          const isActive = location.pathname === item.path;
-          const isHighlight = 'highlight' in item && item.highlight;
-          return (
-            <Link key={item.path} to={item.path}>
-              <Button
-                variant={isActive ? "navActive" : "nav"}
-                className={cn(
-                  "w-full",
-                  collapsed ? "justify-center px-2" : "justify-start",
-                  isHighlight && !isActive && "bg-primary/10 text-primary hover:bg-primary/20"
-                )}
-              >
-                <item.icon className={cn("h-4 w-4", isHighlight && !isActive && "text-primary")} />
-                {!collapsed && <span>{item.label}</span>}
-              </Button>
-            </Link>
-          );
-        })}
-
-        {/* Operator Mode link for admins */}
-        {isAdmin && (
-          <div className="pt-4 mt-4 border-t border-sidebar-border">
-            <Link to="/operator/ingestion-health">
-              <Button
-                variant="nav"
-                className={cn(
-                  "w-full relative",
-                  collapsed ? "justify-center px-2" : "justify-start",
-                  "bg-amber-500/20 text-amber-600 dark:text-amber-400 hover:bg-amber-500/30 font-medium"
-                )}
-                title={collapsed ? `Operator Mode${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}` : undefined}
-              >
-                <Settings className="h-4 w-4" />
-                {!collapsed && <span>⚙️ Operator Mode</span>}
-                {pendingCount > 0 && (
-                  <Badge 
-                    variant="destructive" 
-                    className={cn(
-                      "h-5 min-w-5 px-1.5 text-xs font-bold",
-                      collapsed ? "absolute -top-1 -right-1" : "ml-auto"
-                    )}
-                  >
-                    {pendingCount > 99 ? '99+' : pendingCount}
-                  </Badge>
-                )}
-              </Button>
-            </Link>
-          </div>
-        )}
-      </nav>
-
-      {/* User section */}
-      <div className="p-3 border-t border-sidebar-border space-y-2">
-        {currentUser && !collapsed && (
-          <div className="px-3 py-2 rounded-lg bg-muted/30">
-            <p className="text-sm font-medium text-foreground truncate">{currentUser.dealer_name}</p>
-            <p className="text-xs text-muted-foreground capitalize">
-              {isAdmin ? '🔑 Admin' : '🚗 Dealer'}
-            </p>
-          </div>
-        )}
-        
-        {/* User info */}
-        {!collapsed && user && (
-          <div className="px-1">
-            <p className="text-xs text-muted-foreground truncate" title={currentUser?.email}>
-              {currentUser?.dealer_name || currentUser?.email || 'Not linked'}
-            </p>
-          </div>
-        )}
-        
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="iconSm"
-            onClick={() => setCollapsed(!collapsed)}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </Button>
-          
-          {!collapsed && (
-            <>
-              <PushNotificationPrompt showOnMount />
-              <Button
-                variant="ghost"
-                size="iconSm"
-                onClick={logout}
-                className="text-muted-foreground hover:text-destructive"
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </>
+        {/* User section */}
+        <div className="p-3 border-t border-sidebar-border space-y-2">
+          {/* Show Sign In button when logged out */}
+          {!isLoading && !user && (
+            <Button
+              variant="default"
+              className={cn("w-full", collapsed ? "px-2" : "")}
+              onClick={() => setShowAuthModal(true)}
+            >
+              <LogIn className="h-4 w-4" />
+              {!collapsed && <span className="ml-2">Sign In</span>}
+            </Button>
           )}
+
+          {/* User info when logged in */}
+          {user && currentUser && !collapsed && (
+            <div className="px-3 py-2 rounded-lg bg-muted/30">
+              <p className="text-sm font-medium text-foreground truncate">{currentUser.dealer_name}</p>
+              <p className="text-xs text-muted-foreground capitalize">
+                {isAdmin ? '🔑 Admin' : '🚗 Dealer'}
+              </p>
+            </div>
+          )}
+          
+          {/* Email display */}
+          {!collapsed && user && (
+            <div className="px-1">
+              <p className="text-xs text-muted-foreground truncate" title={currentUser?.email}>
+                {currentUser?.dealer_name || currentUser?.email || 'Not linked'}
+              </p>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="iconSm"
+              onClick={() => setCollapsed(!collapsed)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </Button>
+            
+            {!collapsed && user && (
+              <>
+                <PushNotificationPrompt showOnMount />
+                <Button
+                  variant="ghost"
+                  size="iconSm"
+                  onClick={logout}
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+
+      {/* Auth Modal */}
+      <AuthModal open={showAuthModal} onOpenChange={setShowAuthModal} />
+    </>
   );
 }
