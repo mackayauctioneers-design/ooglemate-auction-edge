@@ -28,6 +28,7 @@ import { OperatorPlaceholderPage } from "./pages/operator/OperatorPlaceholderPag
 import FingerprintsExplorerPage from "./pages/operator/FingerprintsExplorerPage";
 import FeedingModeReportPage from "./pages/operator/FeedingModeReportPage";
 import BenchmarkGapPanel from "./pages/operator/BenchmarkGapPanel";
+import BenchmarkWatchlistPage from "./pages/operator/BenchmarkWatchlistPage";
 
 const queryClient = new QueryClient();
 
@@ -101,6 +102,9 @@ const App = () => (
             } />
             <Route path="/operator/benchmark-gaps" element={
               <RequireAdmin><BenchmarkGapPanel /></RequireAdmin>
+            } />
+            <Route path="/operator/benchmark-watchlist" element={
+              <RequireAdmin><BenchmarkWatchlistPage /></RequireAdmin>
             } />
 
             {/* Admin */}
