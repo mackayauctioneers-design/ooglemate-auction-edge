@@ -26,6 +26,7 @@ import OperatorIngestionHealthPage from "./pages/operator/OperatorIngestionHealt
 import { OperatorPlaceholderPage } from "./pages/operator/OperatorPlaceholderPage";
 import FingerprintsExplorerPage from "./pages/operator/FingerprintsExplorerPage";
 import FeedingModeReportPage from "./pages/operator/FeedingModeReportPage";
+import BenchmarkGapPanel from "./pages/operator/BenchmarkGapPanel";
 
 const queryClient = new QueryClient();
 
@@ -95,6 +96,9 @@ const App = () => (
             } />
             <Route path="/operator/fingerprints" element={
               <RequireAdmin><FingerprintsExplorerPage /></RequireAdmin>
+            } />
+            <Route path="/operator/benchmark-gaps" element={
+              <RequireAdmin><BenchmarkGapPanel /></RequireAdmin>
             } />
 
             {/* Admin */}

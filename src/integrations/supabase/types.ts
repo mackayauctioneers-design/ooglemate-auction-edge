@@ -1916,6 +1916,21 @@ export type Database = {
           },
         ]
       }
+      fingerprint_benchmark_gaps: {
+        Row: {
+          avg_days_to_clear: number | null
+          avg_price: number | null
+          cleared_total: number | null
+          listing_total: number | null
+          make: string | null
+          model: string | null
+          region_id: string | null
+          variant_family: string | null
+          year_max: number | null
+          year_min: number | null
+        }
+        Relationships: []
+      }
       fingerprint_outcomes_latest: {
         Row: {
           asof_date: string | null
