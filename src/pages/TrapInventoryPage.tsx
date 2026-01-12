@@ -251,6 +251,16 @@ export default function TrapInventoryPage() {
       result = result.filter(l => l.lifecycle_state === 'BUY');
     } else if (filters.preset === 'lifecycle_bought') {
       result = result.filter(l => l.lifecycle_state === 'BOUGHT');
+    } else if (filters.preset === 'new_today') {
+      // First seen within last 24 hours
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      result = result.filter(l => l.first_seen_at >= oneDayAgo);
+    } else if (filters.preset === 'missing_today') {
+      // Status cleared/inactive (went missing)
+      result = result.filter(l => l.status === 'cleared');
+    } else if (filters.preset === 'returned') {
+      // Sold-returned suspected OR relist detected
+      result = result.filter(l => l.sold_returned_suspected === true);
     }
 
     // Filter by dealer

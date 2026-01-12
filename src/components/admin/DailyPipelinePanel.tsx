@@ -55,6 +55,7 @@ const STEP_LABELS: Record<string, string> = {
   valuations_ingestion: 'Valuations/Fingerprints',
   f3_ingestion: 'F3 Auction Crawl',
   postprocess_rules: 'Post-Process Rules',
+  presence_tracking: 'Presence Tracking',
   slack_summary: 'Slack Summary',
 };
 

@@ -835,6 +835,84 @@ export type Database = {
         }
         Relationships: []
       }
+      listing_events: {
+        Row: {
+          created_at: string
+          event_at: string
+          event_type: string
+          id: string
+          listing_id: string
+          meta: Json | null
+          new_price: number | null
+          new_status: string | null
+          previous_price: number | null
+          previous_status: string | null
+          run_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_at?: string
+          event_type: string
+          id?: string
+          listing_id: string
+          meta?: Json | null
+          new_price?: number | null
+          new_status?: string | null
+          previous_price?: number | null
+          previous_status?: string | null
+          run_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_at?: string
+          event_type?: string
+          id?: string
+          listing_id?: string
+          meta?: Json | null
+          new_price?: number | null
+          new_status?: string | null
+          previous_price?: number | null
+          previous_status?: string | null
+          run_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "stale_dealer_grade"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_deals_90_plus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_inventory_current"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       listing_snapshots: {
         Row: {
           asking_price: number | null
@@ -2292,6 +2370,15 @@ export type Database = {
         Returns: {
           events_created: number
           listings_processed: number
+        }[]
+      }
+      derive_presence_events: {
+        Args: { p_run_id: string; p_source?: string; p_stale_hours?: number }
+        Returns: {
+          new_listings: number
+          returned: number
+          still_active: number
+          went_missing: number
         }[]
       }
       detect_geo_heat_alerts: {
