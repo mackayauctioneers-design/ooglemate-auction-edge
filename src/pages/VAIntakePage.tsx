@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Upload, FileSpreadsheet, Loader2, CheckCircle2, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { Upload, FileSpreadsheet, Loader2, CheckCircle2, XCircle, AlertCircle, RefreshCw, Download, FileWarning } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -18,6 +18,7 @@ interface UploadBatch {
   source_key: string;
   auction_date: string;
   file_name: string;
+  file_path: string;
   file_type: string;
   status: string;
   rows_total: number;
@@ -199,6 +200,22 @@ export default function VAIntakePage() {
     }
   }, []);
 
+  // Download PDF helper
+  const handleDownloadPdf = async (batch: UploadBatch) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('va-auction-uploads')
+        .createSignedUrl(batch.file_path, 60); // 60 second expiry
+
+      if (error) throw error;
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      }
+    } catch (err) {
+      toast.error('Failed to get download link');
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending': return <Badge variant="secondary">Pending</Badge>;
@@ -207,6 +224,8 @@ export default function VAIntakePage() {
       case 'ingesting': return <Badge variant="outline" className="text-blue-600">Ingesting...</Badge>;
       case 'completed': return <Badge className="bg-green-600">Completed</Badge>;
       case 'failed': return <Badge variant="destructive">Failed</Badge>;
+      case 'received_pdf': return <Badge variant="outline" className="text-orange-600"><FileWarning className="h-3 w-3 mr-1" />PDF (convert)</Badge>;
+      case 'pending_manual_extract': return <Badge variant="outline" className="text-orange-600">Manual Extract</Badge>;
       default: return <Badge variant="secondary">{status}</Badge>;
     }
   };
@@ -334,24 +353,38 @@ export default function VAIntakePage() {
                       <TableCell className="text-right text-red-600">{batch.rows_rejected}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
-                          {batch.status === 'pending' && (
+                          {/* PDF: Show download only, no Parse/Ingest */}
+                          {(batch.status === 'received_pdf' || batch.file_type === 'pdf') ? (
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => parseMutation.mutate(batch.id)}
-                              disabled={parseMutation.isPending}
+                              onClick={() => handleDownloadPdf(batch)}
                             >
-                              {parseMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Parse'}
+                              <Download className="h-3 w-3 mr-1" />
+                              Download
                             </Button>
-                          )}
-                          {batch.status === 'parsed' && (
-                            <Button
-                              size="sm"
-                              onClick={() => ingestMutation.mutate(batch.id)}
-                              disabled={ingestMutation.isPending}
-                            >
-                              {ingestMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Ingest'}
-                            </Button>
+                          ) : (
+                            <>
+                              {batch.status === 'pending' && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => parseMutation.mutate(batch.id)}
+                                  disabled={parseMutation.isPending}
+                                >
+                                  {parseMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Parse'}
+                                </Button>
+                              )}
+                              {batch.status === 'parsed' && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => ingestMutation.mutate(batch.id)}
+                                  disabled={ingestMutation.isPending}
+                                >
+                                  {ingestMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Ingest'}
+                                </Button>
+                              )}
+                            </>
                           )}
                           <Button
                             size="sm"
