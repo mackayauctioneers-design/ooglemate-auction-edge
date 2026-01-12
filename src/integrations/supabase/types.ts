@@ -2465,6 +2465,7 @@ export type Database = {
           new_listings: number
           pending_missing: number
           returned: number
+          seen_this_run: number
           still_active: number
           went_missing: number
         }[]

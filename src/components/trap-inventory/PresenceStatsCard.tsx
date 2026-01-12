@@ -1,6 +1,6 @@
 import { formatDistanceToNow } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
-import { Sparkles, AlertTriangle, RotateCw, Activity, Clock, HelpCircle } from 'lucide-react';
+import { Sparkles, AlertTriangle, RotateCw, Activity, Clock, HelpCircle, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePresenceStats } from '@/hooks/usePresenceStats';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -55,6 +55,21 @@ export function PresenceStatsCard() {
 
         {/* Presence Stats */}
         <div className="flex items-center gap-3">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge 
+                variant="outline" 
+                className="bg-slate-500/10 text-slate-600 border-slate-500/30 gap-1 cursor-help"
+              >
+                <Eye className="h-3 w-3" />
+                {stats.seenThisRun} seen
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs">Total listings touched by this pipeline run</p>
+            </TooltipContent>
+          </Tooltip>
+
           <Badge 
             variant="outline" 
             className="bg-green-500/10 text-green-600 border-green-500/30 gap-1"

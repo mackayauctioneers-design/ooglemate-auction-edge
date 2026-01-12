@@ -112,18 +112,21 @@ const PIPELINE_STEPS: StepConfig[] = [
       
       // Check circuit breaker
       if (result.circuit_breaker_tripped) {
-        throw new Error(`Circuit breaker tripped: scrape returned too few results (likely blocked)`);
+        throw new Error(`Circuit breaker tripped: scrape returned too few results (likely blocked). Seen: ${result.seen_this_run}, Expected: ${result.still_active}`);
       }
       
       return {
-        recordsProcessed: (result.new_listings ?? 0) + (result.went_missing ?? 0) + (result.returned ?? 0),
+        // recordsProcessed = seen + went_missing events (actual work done)
+        recordsProcessed: (result.seen_this_run ?? 0) + (result.went_missing ?? 0),
         recordsCreated: result.new_listings ?? 0,
-        recordsUpdated: result.went_missing ?? 0,
-        recordsFailed: result.pending_missing ?? 0, // Pending = 1 strike
+        recordsUpdated: (result.went_missing ?? 0) + (result.returned ?? 0),
+        // recordsFailed = 0 (pending_missing is NOT a failure, it's "1 strike")
+        recordsFailed: 0,
         metadata: {
           new_listings: result.new_listings,
+          seen_this_run: result.seen_this_run,
           still_active: result.still_active,
-          pending_missing: result.pending_missing,
+          pending_missing: result.pending_missing, // Track in metadata only
           went_missing: result.went_missing,
           returned: result.returned,
           circuit_breaker_tripped: result.circuit_breaker_tripped,
