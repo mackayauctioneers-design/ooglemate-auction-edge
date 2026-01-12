@@ -18,7 +18,8 @@ import {
   ChevronRight,
   Home,
   LayoutDashboard,
-  Upload
+  Upload,
+  Target
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -68,6 +69,7 @@ const operatorSections: NavSection[] = [
     items: [
       { path: '/operator/feeding-mode', label: 'Feeding Mode Report', icon: TrendingUp },
       { path: '/operator/fingerprints', label: 'Fingerprints Explorer', icon: Fingerprint },
+      { path: '/operator/benchmark-gaps', label: 'Benchmark Gaps', icon: Target },
     ],
   },
   {
