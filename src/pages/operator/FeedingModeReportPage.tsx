@@ -4,7 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, AlertTriangle, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type SourceMixRow = { source: string; count: number; pct: number };
 
@@ -45,7 +48,6 @@ type HealthSummary = {
 };
 
 type IngestionBySource = Record<string, { found: number; created: number; updated: number; runs: number }>;
-
 type DropReason = { reason: string; count: number };
 
 type FeedingModeReport = {
@@ -65,20 +67,104 @@ type FeedingModeReport = {
   top_drop_reasons: DropReason[];
 };
 
-function pctColor(p: number) {
-  if (p >= 60) return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
-  if (p >= 25) return "bg-amber-500/15 text-amber-300 border-amber-500/30";
-  return "bg-red-500/15 text-red-400 border-red-500/30";
-}
+type CronAuditRow = {
+  cron_name: string;
+  run_date: string;
+  run_at?: string | null;
+  success: boolean;
+  result?: unknown;
+  error?: string | null;
+  created_at?: string;
+};
 
 function fmtNum(n: number | null | undefined) {
   if (n === null || n === undefined) return "—";
   return n.toLocaleString();
 }
 
-function fmtPct(n: number | null | undefined) {
+function fmtPct(n: number | null | undefined, digits = 0) {
   if (n === null || n === undefined) return "—";
-  return `${n.toFixed(0)}%`;
+  return `${n.toFixed(digits)}%`;
+}
+
+function pctClass(p: number) {
+  if (p >= 60) return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+  if (p >= 25) return "bg-amber-500/15 text-amber-300 border-amber-500/30";
+  return "bg-red-500/15 text-red-400 border-red-500/30";
+}
+
+function scoreColor(score: number) {
+  if (score >= 80) return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+  if (score >= 55) return "bg-amber-500/15 text-amber-300 border-amber-500/30";
+  return "bg-red-500/15 text-red-400 border-red-500/30";
+}
+
+function isAuctionSource(source: string) {
+  const s = (source || "").toLowerCase();
+  return (
+    s.includes("pickles") ||
+    s.includes("manheim") ||
+    s.includes("nsw-regional") ||
+    s.includes("f3") ||
+    s.includes("auto_auctions") ||
+    s.includes("autoauctions") ||
+    s.includes("aav") ||
+    s.includes("auction")
+  );
+}
+
+function computeFeedScore(report: FeedingModeReport, cronRows: CronAuditRow[]) {
+  const h = report.health_summary;
+  const bench = report.benchmark_coverage?.coverage_pct ?? 0;
+
+  const ingestionRate = h.ingestion_rate ?? 0;
+  const sIngest =
+    ingestionRate >= 90 ? 30 :
+    ingestionRate >= 75 ? 22 :
+    ingestionRate >= 60 ? 15 :
+    ingestionRate >= 40 ? 8 : 3;
+
+  const sBench =
+    bench >= 50 ? 35 :
+    bench >= 30 ? 26 :
+    bench >= 15 ? 18 :
+    bench >= 5 ? 10 : 2;
+
+  const clears = h.clearances_recorded ?? 0;
+  const sClears =
+    clears >= 200 ? 15 :
+    clears >= 100 ? 11 :
+    clears >= 50 ? 7 :
+    clears >= 10 ? 3 : 1;
+
+  const expected = [
+    "dealer-site-crawl",
+    "fingerprint-materialize",
+    "geo-pipeline",
+    "manheim-crawl",
+    "trap-health-alerts",
+    "feeding-mode-report",
+  ];
+  const last24 = cronRows;
+
+  const failures = last24.filter(r => r.success === false);
+  const seen = new Set(last24.map(r => r.cron_name));
+  const missing = expected.filter(n => !seen.has(n));
+
+  let sCron = 20;
+  if (failures.length > 0) sCron -= Math.min(12, failures.length * 4);
+  if (missing.length > 0) sCron -= Math.min(12, missing.length * 3);
+  if (sCron < 0) sCron = 0;
+
+  const score = Math.max(0, Math.min(100, sIngest + sBench + sClears + sCron));
+
+  const notes: string[] = [];
+  notes.push(`Ingestion rate: ${ingestionRate.toFixed(0)}% (+${sIngest})`);
+  notes.push(`Benchmark coverage: ${bench.toFixed(1)}% (+${sBench})`);
+  notes.push(`Clearances: ${clears} (+${sClears})`);
+  notes.push(`Cron health: ${sCron}/20 (failures=${failures.length}, missing=${missing.length})`);
+
+  return { score, breakdown: { sIngest, sBench, sClears, sCron }, failures, missing, notes };
 }
 
 export default function FeedingModeReportPage() {
@@ -86,12 +172,18 @@ export default function FeedingModeReportPage() {
   const [report, setReport] = useState<FeedingModeReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [cronLoading, setCronLoading] = useState(true);
+  const [cronRows, setCronRows] = useState<CronAuditRow[]>([]);
+
+  const [regionScope, setRegionScope] = useState<"NSW" | "ALL">("NSW");
+  const [sourceScope, setSourceScope] = useState<"ALL" | "AUCTIONS" | "TRAPS">("ALL");
+  const [onlyBenchmarked, setOnlyBenchmarked] = useState(false);
+
   async function fetchReport() {
     setLoading(true);
     setError(null);
 
     try {
-      // Preferred: use latest stored report from DB (fast + stable)
       const dbRes = await supabase
         .from("feeding_mode_reports")
         .select("report_date, report_json, created_at")
@@ -101,15 +193,10 @@ export default function FeedingModeReportPage() {
       if (!dbRes.error && dbRes.data && dbRes.data.length > 0) {
         const row = dbRes.data[0];
         setReport(row.report_json as unknown as FeedingModeReport);
-        setLoading(false);
         return;
       }
 
-      // Fallback: hit edge function directly
-      const { data, error: fnErr } = await supabase.functions.invoke("feeding-mode-report", {
-        body: { days: 14 },
-      });
-
+      const { data, error: fnErr } = await supabase.functions.invoke("feeding-mode-report", { body: { days: 14 } });
       if (fnErr) throw new Error(fnErr.message);
       setReport(data as FeedingModeReport);
     } catch (e: unknown) {
@@ -120,8 +207,32 @@ export default function FeedingModeReportPage() {
     }
   }
 
+  async function fetchCronAudit() {
+    setCronLoading(true);
+    try {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const res = await supabase
+        .from("cron_audit_log")
+        .select("cron_name, run_date, run_at, success, result, error")
+        .gte("run_at", since)
+        .order("run_at", { ascending: false })
+        .limit(50);
+
+      if (res.error) throw res.error;
+      setCronRows((res.data as CronAuditRow[]) || []);
+    } catch {
+      setCronRows([]);
+    } finally {
+      setCronLoading(false);
+    }
+  }
+
+  async function refreshAll() {
+    await Promise.all([fetchReport(), fetchCronAudit()]);
+  }
+
   useEffect(() => {
-    fetchReport();
+    refreshAll();
   }, []);
 
   const headline = useMemo(() => {
@@ -138,13 +249,50 @@ export default function FeedingModeReportPage() {
     };
   }, [report]);
 
-  const benchmarkOverall = report?.benchmark_coverage
-    ? {
-        pct: report.benchmark_coverage.coverage_pct,
-        total: report.benchmark_coverage.total_deals,
-        bench: report.benchmark_coverage.total_benchmarked,
-      }
-    : null;
+  const filteredBenchByRegion = useMemo(() => {
+    const rows = report?.benchmark_coverage?.by_region || [];
+    const scoped = regionScope === "NSW" ? rows.filter(r => (r.region_id || "").startsWith("NSW_")) : rows;
+    return scoped.sort((a, b) => (b.total_deals || 0) - (a.total_deals || 0));
+  }, [report, regionScope]);
+
+  const filteredTopFingerprints = useMemo(() => {
+    const rows = report?.top_fingerprints || [];
+    const scoped = regionScope === "NSW" ? rows.filter(r => (r.region_id || "").startsWith("NSW_")) : rows;
+    return scoped;
+  }, [report, regionScope]);
+
+  const filteredSourceMix = useMemo(() => {
+    const rows = report?.source_mix_14d || [];
+    if (sourceScope === "ALL") return rows;
+    if (sourceScope === "AUCTIONS") return rows.filter(r => isAuctionSource(r.source));
+    return rows.filter(r => !isAuctionSource(r.source));
+  }, [report, sourceScope]);
+
+  const sourceTotals = useMemo(() => {
+    const by = report?.ingestion_by_source || {};
+    const entries = Object.entries(by);
+    const auctions = entries.filter(([k]) => isAuctionSource(k));
+    const traps = entries.filter(([k]) => !isAuctionSource(k));
+
+    const sum = (arr: [string, { found: number; created: number; updated: number; runs: number }][]) =>
+      arr.reduce(
+        (acc, [, v]) => {
+          acc.found += v.found || 0;
+          acc.created += v.created || 0;
+          acc.updated += v.updated || 0;
+          acc.runs += v.runs || 0;
+          return acc;
+        },
+        { found: 0, created: 0, updated: 0, runs: 0 }
+      );
+
+    return { auctions: sum(auctions), traps: sum(traps) };
+  }, [report]);
+
+  const feedScore = useMemo(() => {
+    if (!report) return null;
+    return computeFeedScore(report, cronRows);
+  }, [report, cronRows]);
 
   return (
     <div className="p-6 space-y-6">
@@ -152,7 +300,7 @@ export default function FeedingModeReportPage() {
         <div>
           <h1 className="text-2xl font-semibold">Feeding Mode Report</h1>
           <p className="text-sm text-muted-foreground">
-            Daily snapshot of ingestion health, fingerprint maturity, and benchmark coverage.
+            Health snapshot + benchmark maturity + cron confidence.
           </p>
           {report?.period && (
             <p className="text-xs text-muted-foreground mt-1">
@@ -162,13 +310,53 @@ export default function FeedingModeReportPage() {
           )}
         </div>
 
-        <Button onClick={fetchReport} disabled={loading} variant="secondary" className="gap-2">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        <Button onClick={refreshAll} disabled={loading || cronLoading} variant="secondary" className="gap-2">
+          <RefreshCw className={`h-4 w-4 ${(loading || cronLoading) ? "animate-spin" : ""}`} />
           Refresh
         </Button>
       </div>
 
-      {loading ? (
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Filters</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col md:flex-row gap-4 md:items-center">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground w-[90px]">Region</Label>
+            <Select value={regionScope} onValueChange={(v) => setRegionScope(v as "NSW" | "ALL")}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Region scope" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="NSW">NSW only</SelectItem>
+                <SelectItem value="ALL">National</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground w-[90px]">Sources</Label>
+            <Select value={sourceScope} onValueChange={(v) => setSourceScope(v as "ALL" | "AUCTIONS" | "TRAPS")}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Source scope" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All</SelectItem>
+                <SelectItem value="AUCTIONS">Auctions</SelectItem>
+                <SelectItem value="TRAPS">Traps</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Switch checked={onlyBenchmarked} onCheckedChange={setOnlyBenchmarked} />
+            <Label className="text-xs text-muted-foreground">Only benchmarked</Label>
+          </div>
+        </CardContent>
+      </Card>
+
+      {(loading || cronLoading) ? (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[...Array(8)].map((_, i) => (
             <Skeleton key={i} className="h-[110px] rounded-xl" />
@@ -177,7 +365,7 @@ export default function FeedingModeReportPage() {
       ) : error ? (
         <Card className="border-destructive/30">
           <CardHeader>
-            <CardTitle className="text-destructive">Failed to load report</CardTitle>
+            <CardTitle className="text-destructive">Failed to load</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">{error}</CardContent>
         </Card>
@@ -187,17 +375,82 @@ export default function FeedingModeReportPage() {
             <CardTitle>No report yet</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            No feeding-mode report data found. Run the `feeding-mode-report` function or wait for cron.
+            No feeding-mode report data found. Run `feeding-mode-report` once or wait for cron.
           </CardContent>
         </Card>
       ) : (
         <>
-          {/* KPI Cards */}
+          {/* Feed Score */}
+          {feedScore ? (
+            <Card className="border-primary/30">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Feed Score</span>
+                  <Badge variant="outline" className={scoreColor(feedScore.score)}>
+                    {feedScore.score}/100
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full bg-primary" style={{ width: `${feedScore.score}%` }} />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+                  <div className="rounded-xl border p-3">
+                    <div className="text-xs text-muted-foreground">Ingestion</div>
+                    <div className="text-lg font-semibold">{feedScore.breakdown.sIngest}/30</div>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <div className="text-xs text-muted-foreground">Benchmark coverage</div>
+                    <div className="text-lg font-semibold">{feedScore.breakdown.sBench}/35</div>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <div className="text-xs text-muted-foreground">Clearances volume</div>
+                    <div className="text-lg font-semibold">{feedScore.breakdown.sClears}/15</div>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <div className="text-xs text-muted-foreground">Cron health</div>
+                    <div className="text-lg font-semibold">{feedScore.breakdown.sCron}/20</div>
+                  </div>
+                </div>
+
+                <div className="text-xs text-muted-foreground space-y-1">
+                  {feedScore.notes.map((n, i) => (
+                    <div key={i}>• {n}</div>
+                  ))}
+                </div>
+
+                {(feedScore.failures.length > 0 || feedScore.missing.length > 0) && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                    <div className="text-sm font-medium flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-400" />
+                      Action required
+                    </div>
+                    {feedScore.failures.length > 0 && (
+                      <div className="text-xs text-muted-foreground mt-2">
+                        Failed crons (24h):{" "}
+                        <span className="text-amber-300">
+                          {feedScore.failures.map(f => f.cron_name).join(", ")}
+                        </span>
+                      </div>
+                    )}
+                    {feedScore.missing.length > 0 && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Missing expected runs (24h):{" "}
+                        <span className="text-amber-300">{feedScore.missing.join(", ")}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {/* KPI cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Vehicles Found</CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Vehicles Found</CardTitle></CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold">{fmtNum(headline.found)}</div>
                 <div className="text-xs text-muted-foreground">All sources</div>
@@ -205,9 +458,7 @@ export default function FeedingModeReportPage() {
             </Card>
 
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Ingested</CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Ingested</CardTitle></CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold">{fmtNum(headline.ingested)}</div>
                 <div className="text-xs text-muted-foreground">Ingestion rate: {fmtPct(headline.ingestRate)}</div>
@@ -215,9 +466,7 @@ export default function FeedingModeReportPage() {
             </Card>
 
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Clearances</CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Clearances</CardTitle></CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold">{fmtNum(headline.clears)}</div>
                 <div className="text-xs text-muted-foreground">Events recorded</div>
@@ -225,26 +474,86 @@ export default function FeedingModeReportPage() {
             </Card>
 
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Benchmark Coverage</CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Snapshots</CardTitle></CardHeader>
               <CardContent>
-                {benchmarkOverall ? (
-                  <>
-                    <div className="text-2xl font-semibold">{fmtPct(benchmarkOverall.pct)}</div>
-                    <div className="text-xs text-muted-foreground">
-                      Benchmarked {fmtNum(benchmarkOverall.bench)} / {fmtNum(benchmarkOverall.total)} trap deals
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-2xl font-semibold">—</div>
-                    <div className="text-xs text-muted-foreground">No benchmark coverage data</div>
-                  </>
-                )}
+                <div className="text-2xl font-semibold">{fmtNum(headline.snaps)}</div>
+                <div className="text-xs text-muted-foreground">Price / status snapshots</div>
               </CardContent>
             </Card>
           </div>
+
+          {/* Source Breakdown */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Source Breakdown (14d)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-xl border p-4">
+                  <div className="text-sm font-medium mb-2">Auctions</div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>Found: <span className="font-semibold">{fmtNum(sourceTotals.auctions.found)}</span></div>
+                    <div>Created: <span className="font-semibold">{fmtNum(sourceTotals.auctions.created)}</span></div>
+                    <div>Updated: <span className="font-semibold">{fmtNum(sourceTotals.auctions.updated)}</span></div>
+                    <div>Runs: <span className="font-semibold">{fmtNum(sourceTotals.auctions.runs)}</span></div>
+                  </div>
+                </div>
+                <div className="rounded-xl border p-4">
+                  <div className="text-sm font-medium mb-2">Traps</div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>Found: <span className="font-semibold">{fmtNum(sourceTotals.traps.found)}</span></div>
+                    <div>Created: <span className="font-semibold">{fmtNum(sourceTotals.traps.created)}</span></div>
+                    <div>Updated: <span className="font-semibold">{fmtNum(sourceTotals.traps.updated)}</span></div>
+                    <div>Runs: <span className="font-semibold">{fmtNum(sourceTotals.traps.runs)}</span></div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Cron Audit Panel */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Cron Audit (last 24h)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {cronRows.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No cron audit data found.</div>
+              ) : (
+                <div className="space-y-2">
+                  {cronRows.slice(0, 12).map((r, idx) => (
+                    <div key={`${r.cron_name}-${idx}`} className="flex items-start justify-between gap-3 rounded-xl border p-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{r.cron_name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {r.run_at ? new Date(r.run_at).toLocaleString() : (r.created_at ? new Date(r.created_at).toLocaleString() : r.run_date)}
+                        </div>
+                        {r.error ? (
+                          <div className="text-xs text-destructive mt-1 break-words">Error: {r.error}</div>
+                        ) : null}
+                      </div>
+                      <div className="shrink-0">
+                        {r.success ? (
+                          <Badge variant="outline" className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+                            <CheckCircle2 className="h-3 w-3 inline mr-1" />
+                            success
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-red-500/15 text-red-400 border-red-500/30">
+                            <XCircle className="h-3 w-3 inline mr-1" />
+                            fail
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Benchmark Coverage by Region */}
           {report.benchmark_coverage?.by_region?.length ? (
@@ -253,13 +562,16 @@ export default function FeedingModeReportPage() {
                 <CardTitle>Benchmark Coverage by Region</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                <div className="text-xs text-muted-foreground">
+                  Shows how much of Trap Inventory has a benchmark price (enables deal logic).
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {report.benchmark_coverage.by_region.map((r) => (
+                  {filteredBenchByRegion.map((r) => (
                     <div key={r.region_id} className="rounded-xl border p-3">
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-sm font-medium">{r.region_id.replace(/_/g, " ")}</div>
-                        <Badge variant="outline" className={pctColor(r.coverage_pct)}>
-                          {fmtPct(r.coverage_pct)}
+                        <Badge variant="outline" className={pctClass(r.coverage_pct)}>
+                          {fmtPct(r.coverage_pct, 1)}
                         </Badge>
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
@@ -284,9 +596,9 @@ export default function FeedingModeReportPage() {
               <CardTitle>Source Mix (14d)</CardTitle>
             </CardHeader>
             <CardContent>
-              {report.source_mix_14d?.length ? (
+              {filteredSourceMix?.length ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {report.source_mix_14d.map((s) => (
+                  {filteredSourceMix.map((s) => (
                     <div key={s.source} className="flex items-center justify-between rounded-xl border p-3">
                       <div className="text-sm font-medium">{s.source}</div>
                       <div className="text-xs text-muted-foreground">
@@ -369,7 +681,7 @@ export default function FeedingModeReportPage() {
               <CardTitle>Top Fingerprints (14d window)</CardTitle>
             </CardHeader>
             <CardContent>
-              {report.top_fingerprints?.length ? (
+              {filteredTopFingerprints?.length ? (
                 <div className="overflow-auto">
                   <table className="w-full text-sm">
                     <thead className="text-xs text-muted-foreground">
@@ -388,7 +700,7 @@ export default function FeedingModeReportPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {report.top_fingerprints.map((fp, idx) => (
+                      {filteredTopFingerprints.map((fp, idx) => (
                         <tr key={`${fp.make}-${fp.model}-${idx}`} className="border-b last:border-0">
                           <td className="py-2">{fp.region_id}</td>
                           <td className="py-2">{fp.make}</td>
