@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { TrapListing } from '@/pages/TrapInventoryPage';
+import { TrapListing, LifecycleState } from '@/pages/TrapInventoryPage';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -17,6 +17,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   ExternalLink, 
   Calendar, 
@@ -35,7 +36,10 @@ import {
   User,
   Target,
   ShoppingCart,
-  Ban
+  Ban,
+  Sparkles,
+  CheckCircle,
+  DollarSign
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
@@ -47,6 +51,7 @@ interface TrapInventoryDrawerProps {
   onOpenChange: (open: boolean) => void;
   onNotesChange?: () => void;
   onTrackedByChange?: (listingId: string, trackedBy: string | null) => void;
+  onLifecycleChange?: (listingId: string, state: LifecycleState) => void;
 }
 
 interface PriceSnapshot {
@@ -89,7 +94,7 @@ const getDealBadge = (dealLabel: string) => {
   }
 };
 
-export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange, onTrackedByChange }: TrapInventoryDrawerProps) {
+export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange, onTrackedByChange, onLifecycleChange }: TrapInventoryDrawerProps) {
   const { user } = useAuth();
   const [priceHistory, setPriceHistory] = useState<PriceSnapshot[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -98,6 +103,8 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
   const [notesDirty, setNotesDirty] = useState(false);
   const [localTrackedBy, setLocalTrackedBy] = useState('');
   const [savingTrackedBy, setSavingTrackedBy] = useState(false);
+  const [localLifecycle, setLocalLifecycle] = useState<LifecycleState>('NEW');
+  const [savingLifecycle, setSavingLifecycle] = useState(false);
   
   // Use watchlist hook for persistence
   const { 
@@ -115,7 +122,8 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
     setLocalNotes(notes || '');
     setNotesDirty(false);
     setLocalTrackedBy(listing?.tracked_by || '');
-  }, [notes, listing?.id, listing?.tracked_by]);
+    setLocalLifecycle(listing?.lifecycle_state || 'NEW');
+  }, [notes, listing?.id, listing?.tracked_by, listing?.lifecycle_state]);
 
   useEffect(() => {
     if (listing && open) {
@@ -392,6 +400,53 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
               )}
             </section>
           )}
+
+          {/* Lifecycle State Section */}
+          <section className="p-4 rounded-lg border border-border bg-muted/30">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Target className="h-4 w-4" />
+                Lifecycle State
+              </h3>
+              {savingLifecycle && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+            <Select
+              value={localLifecycle}
+              onValueChange={async (val: LifecycleState) => {
+                if (!listing?.id) return;
+                setSavingLifecycle(true);
+                const { error } = await supabase
+                  .from('vehicle_listings')
+                  .update({ lifecycle_state: val })
+                  .eq('id', listing.id);
+                
+                if (!error) {
+                  setLocalLifecycle(val);
+                  onLifecycleChange?.(listing.id, val);
+                  toast.success(`Lifecycle → ${val}`);
+                } else {
+                  toast.error('Failed to update lifecycle');
+                }
+                setSavingLifecycle(false);
+              }}
+              disabled={savingLifecycle}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select lifecycle state" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="NEW">🆕 New (Unreviewed)</SelectItem>
+                <SelectItem value="WATCH">👀 Watch</SelectItem>
+                <SelectItem value="BUY">🎯 Buy</SelectItem>
+                <SelectItem value="BOUGHT">✅ Bought</SelectItem>
+                <SelectItem value="SOLD">💰 Sold</SelectItem>
+                <SelectItem value="AVOID">⛔ Avoid</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-2">
+              Human decision layer. Changes do not affect automated signals.
+            </p>
+          </section>
 
           {/* Assignment Section */}
           <section className="space-y-3">
