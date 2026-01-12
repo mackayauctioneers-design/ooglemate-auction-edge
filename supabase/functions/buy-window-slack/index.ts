@@ -33,6 +33,8 @@ type Row = {
   reserve: number | null;
 
   tracked_by: string | null;
+  assigned_to: string | null;
+  assigned_at: string | null;
 
   sold_returned_suspected: boolean | null;
   avoid_reason: string | null;
@@ -111,7 +113,7 @@ Deno.serve(async (req) => {
   try {
     const today = new Date().toISOString().slice(0, 10);
 
-    // Pull top buy_window items (safety: exclude avoid + sold-returned)
+    // Pull top buy_window items (safety: exclude avoid + sold-returned + assigned)
     const { data, error } = await supabase
       .from("vehicle_listings")
       .select(
@@ -137,11 +139,14 @@ Deno.serve(async (req) => {
           "asking_price",
           "reserve",
           "tracked_by",
+          "assigned_to",
+          "assigned_at",
           "sold_returned_suspected",
           "avoid_reason",
         ].join(",")
       )
       .eq("watch_status", "buy_window")
+      .is("assigned_to", null) // ✅ suppression: only unassigned
       .or("sold_returned_suspected.is.false,sold_returned_suspected.is.null")
       .order("buy_window_at", { ascending: false, nullsFirst: false })
       .limit(12);
@@ -150,7 +155,11 @@ Deno.serve(async (req) => {
 
     // extra safety filter in code
     const rows = ((data as unknown as Row[]) || []).filter(
-      (r) => r.watch_status === "buy_window" && !r.sold_returned_suspected && r.avoid_reason !== "SOLD_RETURNED_MECHANICAL"
+      (r) => 
+        r.watch_status === "buy_window" && 
+        !r.sold_returned_suspected && 
+        !r.assigned_to &&
+        r.avoid_reason !== "SOLD_RETURNED_MECHANICAL"
     );
 
     // No items = green heartbeat
