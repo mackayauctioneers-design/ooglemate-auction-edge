@@ -97,8 +97,34 @@ const PIPELINE_STEPS: StepConfig[] = [
     },
   },
   {
-    name: "slack_summary",
+    name: "presence_tracking",
     order: 6,
+    handler: async (supabase, _stepId) => {
+      // Call derive_presence_events RPC to track new/missing/returned
+      const { data, error } = await supabase.rpc("derive_presence_events", {
+        p_run_id: null,
+        p_source: null,
+        p_stale_hours: 36,
+      });
+      if (error) throw new Error(`derive_presence_events: ${error.message}`);
+      const result = data?.[0] ?? {};
+      return {
+        recordsProcessed: (result.new_listings ?? 0) + (result.went_missing ?? 0) + (result.returned ?? 0),
+        recordsCreated: result.new_listings ?? 0,
+        recordsUpdated: result.went_missing ?? 0,
+        recordsFailed: result.returned ?? 0, // using this field to track returned
+        metadata: {
+          new_listings: result.new_listings,
+          still_active: result.still_active,
+          went_missing: result.went_missing,
+          returned: result.returned,
+        },
+      };
+    },
+  },
+  {
+    name: "slack_summary",
+    order: 7,
     handler: async (supabase, _stepId) => {
       // Call buy-window-slack function
       const { data, error } = await supabase.functions.invoke("buy-window-slack");
