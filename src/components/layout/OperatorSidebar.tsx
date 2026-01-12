@@ -17,7 +17,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Home,
-  LayoutDashboard
+  LayoutDashboard,
+  Upload
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -55,6 +56,7 @@ const operatorSections: NavSection[] = [
   {
     title: 'Data Ops',
     items: [
+      { path: '/admin-tools/va-intake', label: 'VA Intake', icon: Upload },
       { path: '/operator/traps', label: 'Traps Registry', icon: Database },
       { path: '/operator/preflight', label: 'Preflight Queue', icon: Radar },
       { path: '/operator/validation', label: 'Validation Queue', icon: CheckSquare },
