@@ -8,9 +8,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Upload, FileSpreadsheet, Loader2, CheckCircle2, XCircle, AlertCircle, RefreshCw, Download, FileWarning } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Upload, FileSpreadsheet, Loader2, CheckCircle2, XCircle, AlertCircle, RefreshCw, Download, FileWarning, FileDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+
+interface VASource {
+  id: string;
+  source_key: string;
+  display_name: string;
+  location_hint: string | null;
+  enabled: boolean;
+}
 
 interface UploadBatch {
   id: string;
@@ -39,12 +48,31 @@ interface UploadRow {
   rejection_reason: string | null;
 }
 
+// CSV template header row
+const CSV_TEMPLATE_HEADER = 'lot_id,year,make,model,variant_raw,km,location,vin,stock_number,reserve,asking_price,fuel,transmission,listing_url,status';
+const CSV_TEMPLATE_EXAMPLE = 'LOT001,2022,TOYOTA,HILUX,SR5 4X4,45000,Sydney,JTFSC5E1234567890,STK123,35000,38000,diesel,automatic,https://example.com/lot001,listed';
+
 export default function VAIntakePage() {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [sourceKey, setSourceKey] = useState('');
   const [auctionDate, setAuctionDate] = useState('');
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+
+  // Fetch VA sources for dropdown
+  const { data: sources } = useQuery({
+    queryKey: ['va-sources'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('va_sources')
+        .select('id, source_key, display_name, location_hint, enabled')
+        .eq('enabled', true)
+        .order('display_name');
+      
+      if (error) throw error;
+      return data as VASource[];
+    },
+  });
 
   // Fetch recent batches
   const { data: batches, isLoading: batchesLoading } = useQuery({
@@ -205,7 +233,7 @@ export default function VAIntakePage() {
     try {
       const { data, error } = await supabase.storage
         .from('va-auction-uploads')
-        .createSignedUrl(batch.file_path, 60); // 60 second expiry
+        .createSignedUrl(batch.file_path, 60);
 
       if (error) throw error;
       if (data?.signedUrl) {
@@ -216,6 +244,18 @@ export default function VAIntakePage() {
     }
   };
 
+  // Download CSV template
+  const handleDownloadTemplate = () => {
+    const csvContent = `${CSV_TEMPLATE_HEADER}\n${CSV_TEMPLATE_EXAMPLE}`;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'va_auction_template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending': return <Badge variant="secondary">Pending</Badge>;
@@ -224,7 +264,7 @@ export default function VAIntakePage() {
       case 'ingesting': return <Badge variant="outline" className="text-blue-600">Ingesting...</Badge>;
       case 'completed': return <Badge className="bg-green-600">Completed</Badge>;
       case 'failed': return <Badge variant="destructive">Failed</Badge>;
-      case 'received_pdf': return <Badge variant="outline" className="text-orange-600"><FileWarning className="h-3 w-3 mr-1" />PDF (convert)</Badge>;
+      case 'received_pdf': return <Badge variant="outline" className="text-orange-600"><FileWarning className="h-3 w-3 mr-1" />PDF Received</Badge>;
       case 'pending_manual_extract': return <Badge variant="outline" className="text-orange-600">Manual Extract</Badge>;
       default: return <Badge variant="secondary">{status}</Badge>;
     }
@@ -238,6 +278,9 @@ export default function VAIntakePage() {
     }
   };
 
+  const isPdfBatch = (batch: UploadBatch) => 
+    batch.status === 'received_pdf' || batch.file_type === 'pdf';
+
   return (
     <AdminGuard>
       <div className="container mx-auto py-6 space-y-6">
@@ -246,7 +289,27 @@ export default function VAIntakePage() {
             <h1 className="text-2xl font-bold">VA Auction Intake</h1>
             <p className="text-muted-foreground">Upload and process auction catalogue files</p>
           </div>
+          <Button variant="outline" onClick={handleDownloadTemplate}>
+            <FileDown className="h-4 w-4 mr-2" />
+            Download Template CSV
+          </Button>
         </div>
+
+        {/* Instructions Card */}
+        <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-blue-800 dark:text-blue-200">Daily Job (10 minutes)</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-blue-700 dark:text-blue-300">
+            <ol className="list-decimal list-inside space-y-1">
+              <li>Pick <strong>Source</strong> from dropdown</li>
+              <li>Pick <strong>Auction date</strong> (today)</li>
+              <li>Upload file: <strong>CSV</strong> (best), <strong>XLSX</strong> (OK), or <strong>PDF</strong> (archive only)</li>
+              <li>For CSV/XLSX: Click <strong>Parse</strong> → check rejected count → Click <strong>Ingest</strong></li>
+              <li>For PDF: Download, convert to CSV, then upload CSV with same Source + Date</li>
+            </ol>
+          </CardContent>
+        </Card>
 
         {/* Upload Form */}
         <Card>
@@ -256,19 +319,31 @@ export default function VAIntakePage() {
               Upload Catalogue
             </CardTitle>
             <CardDescription>
-              Upload CSV, XLSX, or PDF files. 10-year window enforced. Row-level rejection applies.
+              CSV/XLSX files are parsed automatically. PDFs are stored for manual conversion.
+              10-year window enforced (rows with year &lt; {new Date().getFullYear() - 10} rejected).
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-2">
-                <Label htmlFor="source_key">Source Key</Label>
-                <Input
-                  id="source_key"
-                  placeholder="e.g., pickles_sydney"
-                  value={sourceKey}
-                  onChange={(e) => setSourceKey(e.target.value)}
-                />
+                <Label htmlFor="source_key">Source</Label>
+                <Select value={sourceKey} onValueChange={setSourceKey}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select auction source..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sources?.map((source) => (
+                      <SelectItem key={source.source_key} value={source.source_key}>
+                        {source.display_name}
+                        {source.location_hint && (
+                          <span className="text-muted-foreground ml-2 text-xs">
+                            ({source.location_hint})
+                          </span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="auction_date">Auction Date</Label>
@@ -353,16 +428,20 @@ export default function VAIntakePage() {
                       <TableCell className="text-right text-red-600">{batch.rows_rejected}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
-                          {/* PDF: Show download only, no Parse/Ingest */}
-                          {(batch.status === 'received_pdf' || batch.file_type === 'pdf') ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDownloadPdf(batch)}
-                            >
-                              <Download className="h-3 w-3 mr-1" />
-                              Download
-                            </Button>
+                          {isPdfBatch(batch) ? (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDownloadPdf(batch)}
+                              >
+                                <Download className="h-3 w-3 mr-1" />
+                                Download
+                              </Button>
+                              <span className="text-xs text-muted-foreground self-center">
+                                Convert to CSV
+                              </span>
+                            </>
                           ) : (
                             <>
                               {batch.status === 'pending' && (
@@ -450,13 +529,21 @@ export default function VAIntakePage() {
                         <TableCell>{row.model || '-'}</TableCell>
                         <TableCell className="max-w-32 truncate">{row.variant_raw || '-'}</TableCell>
                         <TableCell className="text-right">{row.km?.toLocaleString() || '-'}</TableCell>
-                        <TableCell className="text-red-600 text-sm">{row.rejection_reason || '-'}</TableCell>
+                        <TableCell>
+                          {row.rejection_reason && (
+                            <Badge variant="outline" className="text-red-600 text-xs">
+                              {row.rejection_reason}
+                            </Badge>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               ) : (
-                <p className="text-muted-foreground text-center py-8">No rows to display</p>
+                <p className="text-muted-foreground text-center py-8">
+                  No rows to display (PDF files require manual conversion)
+                </p>
               )}
             </CardContent>
           </Card>

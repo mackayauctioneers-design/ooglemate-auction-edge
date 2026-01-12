@@ -1129,6 +1129,39 @@ export type Database = {
         }
         Relationships: []
       }
+      va_sources: {
+        Row: {
+          created_at: string
+          display_name: string
+          enabled: boolean | null
+          id: string
+          location_hint: string | null
+          source_key: string
+          source_type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          enabled?: boolean | null
+          id?: string
+          location_hint?: string | null
+          source_key: string
+          source_type?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          enabled?: boolean | null
+          id?: string
+          location_hint?: string | null
+          source_key?: string
+          source_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       va_upload_batches: {
         Row: {
           auction_date: string
@@ -1144,6 +1177,8 @@ export type Database = {
           metadata: Json | null
           parse_completed_at: string | null
           parse_started_at: string | null
+          pdf_extract_notes: string | null
+          pdf_extract_required: boolean | null
           rows_accepted: number | null
           rows_rejected: number | null
           rows_total: number | null
@@ -1165,6 +1200,8 @@ export type Database = {
           metadata?: Json | null
           parse_completed_at?: string | null
           parse_started_at?: string | null
+          pdf_extract_notes?: string | null
+          pdf_extract_required?: boolean | null
           rows_accepted?: number | null
           rows_rejected?: number | null
           rows_total?: number | null
@@ -1186,6 +1223,8 @@ export type Database = {
           metadata?: Json | null
           parse_completed_at?: string | null
           parse_started_at?: string | null
+          pdf_extract_notes?: string | null
+          pdf_extract_required?: boolean | null
           rows_accepted?: number | null
           rows_rejected?: number | null
           rows_total?: number | null
