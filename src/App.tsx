@@ -24,6 +24,7 @@ import VAIntakePage from "./pages/VAIntakePage";
 // Operator pages
 import OperatorIngestionHealthPage from "./pages/operator/OperatorIngestionHealthPage";
 import { OperatorPlaceholderPage } from "./pages/operator/OperatorPlaceholderPage";
+import FingerprintsExplorerPage from "./pages/operator/FingerprintsExplorerPage";
 
 const queryClient = new QueryClient();
 
@@ -92,7 +93,7 @@ const App = () => (
               <OperatorGuard><OperatorPlaceholderPage title="Feeding Mode Report" description="14-day stabilization metrics" /></OperatorGuard>
             } />
             <Route path="/operator/fingerprints" element={
-              <OperatorGuard><OperatorPlaceholderPage title="Fingerprints Explorer" description="Browse fingerprint outcomes" /></OperatorGuard>
+              <OperatorGuard><FingerprintsExplorerPage /></OperatorGuard>
             } />
 
             {/* Admin */}
