@@ -58,6 +58,8 @@ export interface TrapListing {
   watch_confidence?: 'high' | 'med' | 'low' | null;
   // Lifecycle state
   lifecycle_state?: LifecycleState;
+  // Missing streak (for 2-run confirmation)
+  missing_streak?: number;
 }
 
 export default function TrapInventoryPage() {
@@ -159,6 +161,7 @@ export default function TrapInventoryPage() {
       avoid_reason: l.avoid_reason,
       watch_confidence: l.watch_confidence,
       lifecycle_state: l.lifecycle_state ?? 'NEW',
+      missing_streak: l.missing_streak ?? 0,
     }));
 
     // Extract unique values for filters
@@ -256,8 +259,14 @@ export default function TrapInventoryPage() {
       // First seen within last 24 hours
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       result = result.filter(l => l.first_seen_at >= oneDayAgo);
+    } else if (filters.preset === 'pending_missing') {
+      // 1 strike: active but not seen last run (might be gone)
+      result = result.filter(l => 
+        l.status !== 'cleared' && 
+        (l.missing_streak ?? 0) === 1
+      );
     } else if (filters.preset === 'missing_today') {
-      // Status cleared/inactive (went missing)
+      // Status cleared/inactive (2+ strikes, confirmed gone)
       result = result.filter(l => l.status === 'cleared');
     } else if (filters.preset === 'returned') {
       // Sold-returned suspected OR relist detected

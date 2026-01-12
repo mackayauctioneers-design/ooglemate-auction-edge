@@ -1785,6 +1785,7 @@ export type Database = {
           location: string | null
           lot_id: string | null
           make: string
+          missing_streak: number
           model: string
           pass_count: number
           relist_count: number
@@ -1847,6 +1848,7 @@ export type Database = {
           location?: string | null
           lot_id?: string | null
           make: string
+          missing_streak?: number
           model: string
           pass_count?: number
           relist_count?: number
@@ -1909,6 +1911,7 @@ export type Database = {
           location?: string | null
           lot_id?: string | null
           make?: string
+          missing_streak?: number
           model?: string
           pass_count?: number
           relist_count?: number
@@ -2455,6 +2458,17 @@ export type Database = {
           went_missing: number
         }[]
       }
+      derive_presence_events_v2: {
+        Args: { p_min_seen_pct?: number; p_run_id: string; p_source?: string }
+        Returns: {
+          circuit_breaker_tripped: boolean
+          new_listings: number
+          pending_missing: number
+          returned: number
+          still_active: number
+          went_missing: number
+        }[]
+      }
       detect_geo_heat_alerts: {
         Args: {
           p_asof?: string
@@ -2635,6 +2649,7 @@ export type Database = {
           listing_url: string
           location: string
           make: string
+          missing_streak: number
           model: string
           no_benchmark: boolean
           price_change_count: number

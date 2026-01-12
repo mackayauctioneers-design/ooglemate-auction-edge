@@ -6,7 +6,8 @@ export interface PresenceStats {
   runDate: string | null;
   runStatus: string | null;
   newToday: number;
-  missingToday: number;
+  pendingMissing: number;  // 1 strike (might be gone)
+  missingToday: number;    // 2+ strikes (confirmed gone)
   returnedToday: number;
   stillActive: number;
 }
@@ -17,6 +18,7 @@ export function usePresenceStats() {
     runDate: null,
     runStatus: null,
     newToday: 0,
+    pendingMissing: 0,
     missingToday: 0,
     returnedToday: 0,
     stillActive: 0,
@@ -51,18 +53,27 @@ export function usePresenceStats() {
         const missingCount = events?.filter(e => e.event_type === 'WENT_MISSING').length ?? 0;
         const returnedCount = events?.filter(e => e.event_type === 'RETURNED').length ?? 0;
 
-        // Get still active count
+        // Get still active count (seen this run)
         const { count: activeCount } = await supabase
           .from('vehicle_listings')
           .select('*', { count: 'exact', head: true })
           .eq('last_ingest_run_id', latestRun.id)
           .in('status', ['catalogue', 'listed', 'active']);
 
+        // Get pending missing count (1 strike - active but missed last run)
+        const { count: pendingCount } = await supabase
+          .from('vehicle_listings')
+          .select('*', { count: 'exact', head: true })
+          .in('status', ['catalogue', 'listed', 'active'])
+          .eq('is_dealer_grade', true)
+          .eq('missing_streak', 1);
+
         setStats({
           runId: latestRun.id,
           runDate: latestRun.started_at,
           runStatus: latestRun.status,
           newToday: newCount,
+          pendingMissing: pendingCount ?? 0,
           missingToday: missingCount,
           returnedToday: returnedCount,
           stillActive: activeCount ?? 0,
