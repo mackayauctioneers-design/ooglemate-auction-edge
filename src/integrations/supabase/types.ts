@@ -907,6 +907,104 @@ export type Database = {
           },
         ]
       }
+      pipeline_runs: {
+        Row: {
+          completed_at: string | null
+          completed_steps: number | null
+          created_at: string
+          error_summary: string | null
+          failed_steps: number | null
+          id: string
+          started_at: string
+          status: string
+          total_steps: number | null
+          triggered_by: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          completed_steps?: number | null
+          created_at?: string
+          error_summary?: string | null
+          failed_steps?: number | null
+          id?: string
+          started_at?: string
+          status?: string
+          total_steps?: number | null
+          triggered_by?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          completed_steps?: number | null
+          created_at?: string
+          error_summary?: string | null
+          failed_steps?: number | null
+          id?: string
+          started_at?: string
+          status?: string
+          total_steps?: number | null
+          triggered_by?: string | null
+        }
+        Relationships: []
+      }
+      pipeline_steps: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_sample: string | null
+          id: string
+          metadata: Json | null
+          records_created: number | null
+          records_failed: number | null
+          records_processed: number | null
+          records_updated: number | null
+          run_id: string
+          started_at: string | null
+          status: string
+          step_name: string
+          step_order: number
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_sample?: string | null
+          id?: string
+          metadata?: Json | null
+          records_created?: number | null
+          records_failed?: number | null
+          records_processed?: number | null
+          records_updated?: number | null
+          run_id: string
+          started_at?: string | null
+          status?: string
+          step_name: string
+          step_order: number
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_sample?: string | null
+          id?: string
+          metadata?: Json | null
+          records_created?: number | null
+          records_failed?: number | null
+          records_processed?: number | null
+          records_updated?: number | null
+          run_id?: string
+          started_at?: string | null
+          status?: string
+          step_name?: string
+          step_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_steps_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trap_crawl_jobs: {
         Row: {
           attempts: number
@@ -2413,6 +2511,7 @@ export type Database = {
           watching_count: number
         }[]
       }
+      release_pipeline_lock: { Args: never; Returns: undefined }
       rollup_geo_model_metrics_daily: {
         Args: { p_day?: string }
         Returns: {
@@ -2421,6 +2520,7 @@ export type Database = {
         }[]
       }
       seller_weight: { Args: { p_seller_type: string }; Returns: number }
+      try_acquire_pipeline_lock: { Args: never; Returns: boolean }
       update_auction_attempts: {
         Args: never
         Returns: {
