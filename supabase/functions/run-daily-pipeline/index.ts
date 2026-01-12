@@ -97,7 +97,7 @@ const PIPELINE_STEPS: StepConfig[] = [
     },
   },
   {
-    name: "presence_tracking_pickles",
+    name: "presence_pickles",
     order: 6,
     // Pickles-specific presence tracking with circuit breaker
     handler: async (supabase, _stepId, runId?: string) => {
