@@ -47,6 +47,8 @@ export interface TrapListing {
   watch_reason?: string | null;
   buy_window_at?: string | null;
   tracked_by?: string | null;
+  assigned_to?: string | null;
+  assigned_at?: string | null;
   attempt_count?: number;
   attempt_stage?: string | null;
   avoid_reason?: string | null;
@@ -145,6 +147,8 @@ export default function TrapInventoryPage() {
       watch_reason: l.watch_reason,
       buy_window_at: l.buy_window_at,
       tracked_by: l.tracked_by,
+      assigned_to: l.assigned_to ?? null,
+      assigned_at: l.assigned_at ?? null,
       attempt_count: l.attempt_count ?? 0,
       attempt_stage: l.attempt_stage,
       avoid_reason: l.avoid_reason,
@@ -222,6 +226,12 @@ export default function TrapInventoryPage() {
       result = result.filter(l => l.no_benchmark);
     } else if (filters.preset === 'buy_window') {
       result = result.filter(l => l.watch_status === 'buy_window');
+    } else if (filters.preset === 'buy_window_unassigned') {
+      result = result.filter(l => 
+        l.watch_status === 'buy_window' &&
+        !l.assigned_to &&
+        !l.sold_returned_suspected
+      );
     } else if (filters.preset === 'watching') {
       result = result.filter(l => l.watch_status === 'watching');
     } else if (filters.preset === 'avoid') {

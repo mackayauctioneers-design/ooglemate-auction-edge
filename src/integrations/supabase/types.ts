@@ -1546,6 +1546,10 @@ export type Database = {
       vehicle_listings: {
         Row: {
           asking_price: number | null
+          assigned_at: string | null
+          assigned_by: string | null
+          assigned_to: string | null
+          assignment_notes: string | null
           attempt_count: number
           attempt_stage: string | null
           auction_datetime: string | null
@@ -1598,6 +1602,10 @@ export type Database = {
         }
         Insert: {
           asking_price?: number | null
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_to?: string | null
+          assignment_notes?: string | null
           attempt_count?: number
           attempt_stage?: string | null
           auction_datetime?: string | null
@@ -1650,6 +1658,10 @@ export type Database = {
         }
         Update: {
           asking_price?: number | null
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_to?: string | null
+          assignment_notes?: string | null
           attempt_count?: number
           attempt_stage?: string | null
           auction_datetime?: string | null

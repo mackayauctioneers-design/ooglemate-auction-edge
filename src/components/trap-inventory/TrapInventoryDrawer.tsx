@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { TrapListing } from '@/pages/TrapInventoryPage';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 import { useTrapWatchlist } from '@/hooks/useTrapWatchlist';
 import {
   Sheet,
@@ -88,6 +90,7 @@ const getDealBadge = (dealLabel: string) => {
 };
 
 export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange, onTrackedByChange }: TrapInventoryDrawerProps) {
+  const { user } = useAuth();
   const [priceHistory, setPriceHistory] = useState<PriceSnapshot[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [localNotes, setLocalNotes] = useState('');
@@ -390,11 +393,11 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
             </section>
           )}
 
-          {/* Tracked By Assignment */}
+          {/* Assignment Section */}
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <User className="h-4 w-4" />
-              Assigned To
+              Assignment
             </h3>
             <div className="flex gap-2">
               <Input
@@ -405,27 +408,64 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
               />
               <Button
                 size="sm"
-                variant={localTrackedBy !== (listing.tracked_by || '') ? 'default' : 'outline'}
-                disabled={localTrackedBy === (listing.tracked_by || '') || savingTrackedBy}
+                variant="default"
+                disabled={savingTrackedBy}
                 onClick={async () => {
+                  if (!user) return;
                   setSavingTrackedBy(true);
-                  const newValue = localTrackedBy.trim() || null;
+                  const display = (user.email || '').split('@')[0] || 'operator';
                   const { error } = await supabase
                     .from('vehicle_listings')
-                    .update({ tracked_by: newValue })
+                    .update({ 
+                      assigned_to: display,
+                      assigned_at: new Date().toISOString(),
+                      assigned_by: user.id
+                    })
                     .eq('id', listing.id);
                   
                   if (!error) {
-                    onTrackedByChange?.(listing.id, newValue);
+                    setLocalTrackedBy(display);
+                    onTrackedByChange?.(listing.id, display);
+                    toast.success(`Assigned to ${display}`);
+                  } else {
+                    toast.error('Assign failed');
                   }
                   setSavingTrackedBy(false);
                 }}
               >
-                {savingTrackedBy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {savingTrackedBy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign to me'}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={savingTrackedBy || !localTrackedBy}
+                onClick={async () => {
+                  if (!user) return;
+                  setSavingTrackedBy(true);
+                  const { error } = await supabase
+                    .from('vehicle_listings')
+                    .update({ 
+                      assigned_to: null,
+                      assigned_at: null,
+                      assigned_by: null
+                    })
+                    .eq('id', listing.id);
+                  
+                  if (!error) {
+                    setLocalTrackedBy('');
+                    onTrackedByChange?.(listing.id, null);
+                    toast.success('Unassigned');
+                  } else {
+                    toast.error('Unassign failed');
+                  }
+                  setSavingTrackedBy(false);
+                }}
+              >
+                Unassign
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Assign this vehicle to someone for tracking
+              Assigned items stop appearing in the daily BUY WINDOW Slack ping.
             </p>
           </section>
 
