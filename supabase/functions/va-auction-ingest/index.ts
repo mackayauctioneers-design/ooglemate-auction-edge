@@ -9,17 +9,20 @@ const corsHeaders = {
 // 10-year window enforcement
 const MIN_YEAR = new Date().getFullYear() - 10;
 
-// Rejection reasons
+// Rejection reasons - must match exactly what crawlers use
 type RejectionReason = 
-  | "YEAR_BELOW_WINDOW"
+  | "YEAR_WINDOW_10Y"
   | "MISSING_YEAR"
   | "MISSING_MAKE"
   | "MISSING_MODEL"
-  | "DUPLICATE_LISTING";
+  | "DUPLICATE_LISTING"
+  | "UPDATE_FAILED"
+  | "INSERT_FAILED";
 
 function validateRow(row: any): { valid: boolean; reason?: RejectionReason } {
   if (!row.year) return { valid: false, reason: "MISSING_YEAR" };
-  if (row.year < MIN_YEAR) return { valid: false, reason: "YEAR_BELOW_WINDOW" };
+  // 10-year window: year >= currentYear - 10 (same as crawlers)
+  if (row.year < MIN_YEAR) return { valid: false, reason: "YEAR_WINDOW_10Y" };
   if (!row.make) return { valid: false, reason: "MISSING_MAKE" };
   if (!row.model) return { valid: false, reason: "MISSING_MODEL" };
   return { valid: true };

@@ -182,10 +182,12 @@ serve(async (req) => {
       parsedRows = parseCSV(content);
     } else if (batch.file_type === "pdf") {
       // PDF received - store it and prompt for manual conversion
+      // DO NOT fail - just mark as received_pdf
       await supabase
         .from("va_upload_batches")
         .update({ 
           status: "received_pdf",
+          pdf_extract_required: true,
           parse_started_at: new Date().toISOString(),
           parse_completed_at: new Date().toISOString(),
           rows_total: 0,
@@ -197,7 +199,7 @@ serve(async (req) => {
         success: true,
         batch_id,
         rows_parsed: 0,
-        message: "PDF stored. Convert to CSV/XLSX to ingest.",
+        message: "PDF stored. Convert to CSV and upload to ingest.",
       }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
