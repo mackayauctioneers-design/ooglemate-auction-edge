@@ -27,15 +27,17 @@ type GapRow = {
 
 function buildLogSaleParams(r: GapRow) {
   const p = new URLSearchParams();
+  if (r.region_id) p.set('region_id', r.region_id);
   if (r.make) p.set('make', r.make);
   if (r.model) p.set('model', r.model);
+  // LogSalePage uses variant_normalised, so pass as 'variant'
   if (r.variant_family && r.variant_family !== 'ALL') p.set('variant', r.variant_family);
-  // Use year_max as the default year (most recent)
-  if (r.year_max !== null && r.year_max !== undefined) {
-    p.set('year', String(r.year_max));
-  } else if (r.year_min !== null && r.year_min !== undefined) {
-    p.set('year', String(r.year_min));
-  }
+  // Pick a default year (use year_max if available)
+  const year = r.year_max ?? r.year_min ?? null;
+  if (year !== null) p.set('year', String(year));
+  // Keep the range too (useful later)
+  if (r.year_min !== null) p.set('year_min', String(r.year_min));
+  if (r.year_max !== null) p.set('year_max', String(r.year_max));
   return p.toString();
 }
 
