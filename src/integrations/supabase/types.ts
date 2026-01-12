@@ -1766,6 +1766,7 @@ export type Database = {
           excluded_keyword: string | null
           excluded_reason: string | null
           fingerprint: string | null
+          fingerprint_confidence: number
           fingerprint_version: number
           first_seen_at: string
           fuel: string | null
@@ -1805,6 +1806,7 @@ export type Database = {
           updated_at: string
           variant_family: string | null
           variant_raw: string | null
+          variant_source: string | null
           visible_to_dealers: boolean
           watch_confidence: string | null
           watch_reason: string | null
@@ -1829,6 +1831,7 @@ export type Database = {
           excluded_keyword?: string | null
           excluded_reason?: string | null
           fingerprint?: string | null
+          fingerprint_confidence?: number
           fingerprint_version?: number
           first_seen_at?: string
           fuel?: string | null
@@ -1868,6 +1871,7 @@ export type Database = {
           updated_at?: string
           variant_family?: string | null
           variant_raw?: string | null
+          variant_source?: string | null
           visible_to_dealers?: boolean
           watch_confidence?: string | null
           watch_reason?: string | null
@@ -1892,6 +1896,7 @@ export type Database = {
           excluded_keyword?: string | null
           excluded_reason?: string | null
           fingerprint?: string | null
+          fingerprint_confidence?: number
           fingerprint_version?: number
           first_seen_at?: string
           fuel?: string | null
@@ -1931,6 +1936,7 @@ export type Database = {
           updated_at?: string
           variant_family?: string | null
           variant_raw?: string | null
+          variant_source?: string | null
           visible_to_dealers?: boolean
           watch_confidence?: string | null
           watch_reason?: string | null
@@ -2535,6 +2541,28 @@ export type Database = {
           p_year: number
         }
         Returns: string
+      }
+      generate_vehicle_fingerprint_v2: {
+        Args: {
+          p_body?: string
+          p_drivetrain?: string
+          p_fuel?: string
+          p_km?: number
+          p_make: string
+          p_model: string
+          p_region?: string
+          p_transmission?: string
+          p_variant_family?: string
+          p_variant_raw?: string
+          p_year: number
+        }
+        Returns: {
+          canonical: string
+          fingerprint: string
+          fingerprint_confidence: number
+          variant_source: string
+          variant_used: string
+        }[]
       }
       get_auction_source_stats: {
         Args: never
