@@ -139,3 +139,6 @@ verify_jwt = false
 
 [functions.va-auction-ingest]
 verify_jwt = false
+
+[functions.run-daily-pipeline]
+verify_jwt = false

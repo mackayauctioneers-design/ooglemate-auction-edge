@@ -14,6 +14,7 @@ import { ingestMackayTradersSales } from '@/utils/ingestMackayTradersSales';
 import { toast } from 'sonner';
 import { Navigate, Link } from 'react-router-dom';
 import { DealerOnboarding } from '@/components/admin/DealerOnboarding';
+import { DailyPipelinePanel } from '@/components/admin/DailyPipelinePanel';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -266,6 +267,9 @@ export default function AdminToolsPage() {
             Administrative utilities for data management and testing
           </p>
         </div>
+
+        {/* Daily Pipeline Panel - Top priority */}
+        <DailyPipelinePanel />
 
         {/* VA Intake Quick Access */}
         <Card className="border-primary">
