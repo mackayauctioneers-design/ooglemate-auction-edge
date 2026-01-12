@@ -66,7 +66,7 @@ function confidenceEmoji(conf: string | null) {
 }
 
 function attemptText(r: Row) {
-  if (!r.source_class || r.source_class !== "auction") return "";
+  if (r.source_class !== "auction") return "";
   if (!r.attempt_count) return "";
   return ` • Run #${r.attempt_count}${r.attempt_stage ? ` (${r.attempt_stage})` : ""}`;
 }
