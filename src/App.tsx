@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { OperatorGuard } from "@/components/guards/OperatorGuard";
+import { RequireAdmin } from "@/components/guards/RequireAdmin";
 
 // Dealer pages
 import OpportunitiesPage from "./pages/OpportunitiesPage";
@@ -34,6 +35,7 @@ const queryClient = new QueryClient();
 // 
 // - Dealer routes: /, /upcoming-auctions, /search-lots, /matches, /valuation, etc.
 // - Operator routes: /operator/* (protected by OperatorGuard)
+// - Admin tools: /admin-tools/* (protected by RequireAdmin)
 // ============================================================================
 
 const App = () => (
@@ -104,8 +106,13 @@ const App = () => (
               <OperatorGuard><OperatorPlaceholderPage title="Settings" description="System configuration" /></OperatorGuard>
             } />
 
-            {/* Admin Tools */}
-            <Route path="/admin-tools/va-intake" element={<VAIntakePage />} />
+            {/* === ADMIN TOOLS: Protected by RequireAdmin === */}
+            <Route path="/admin-tools" element={
+              <RequireAdmin><NotFound /></RequireAdmin>
+            } />
+            <Route path="/admin-tools/va-intake" element={
+              <RequireAdmin><VAIntakePage /></RequireAdmin>
+            } />
 
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
