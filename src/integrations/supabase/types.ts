@@ -220,6 +220,13 @@ export type Database = {
             foreignKeyName: "clearance_events_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
+            referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clearance_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
             referencedRelation: "stale_dealer_grade"
             referencedColumns: ["id"]
           },
@@ -880,6 +887,13 @@ export type Database = {
             foreignKeyName: "listing_events_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
+            referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
             referencedRelation: "stale_dealer_grade"
             referencedColumns: ["id"]
           },
@@ -948,6 +962,13 @@ export type Database = {
           status?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "listing_snapshots_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "listing_snapshots_listing_id_fkey"
             columns: ["listing_id"]
@@ -1495,6 +1516,13 @@ export type Database = {
             foreignKeyName: "va_upload_rows_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
+            referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_upload_rows_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
             referencedRelation: "stale_dealer_grade"
             referencedColumns: ["id"]
           },
@@ -1737,6 +1765,8 @@ export type Database = {
           event_id: string | null
           excluded_keyword: string | null
           excluded_reason: string | null
+          fingerprint: string | null
+          fingerprint_version: number
           first_seen_at: string
           fuel: string | null
           highest_bid: number | null
@@ -1745,6 +1775,8 @@ export type Database = {
           km: number | null
           last_attempt_at: string | null
           last_auction_date: string | null
+          last_ingest_run_id: string | null
+          last_ingested_at: string | null
           last_seen_at: string
           lifecycle_state: string
           listed_date_raw: string | null
@@ -1766,6 +1798,7 @@ export type Database = {
           source: string
           source_class: string
           status: string
+          status_changed_at: string | null
           tracked_by: string | null
           transmission: string | null
           updated_at: string
@@ -1794,6 +1827,8 @@ export type Database = {
           event_id?: string | null
           excluded_keyword?: string | null
           excluded_reason?: string | null
+          fingerprint?: string | null
+          fingerprint_version?: number
           first_seen_at?: string
           fuel?: string | null
           highest_bid?: number | null
@@ -1802,6 +1837,8 @@ export type Database = {
           km?: number | null
           last_attempt_at?: string | null
           last_auction_date?: string | null
+          last_ingest_run_id?: string | null
+          last_ingested_at?: string | null
           last_seen_at?: string
           lifecycle_state?: string
           listed_date_raw?: string | null
@@ -1823,6 +1860,7 @@ export type Database = {
           source?: string
           source_class?: string
           status?: string
+          status_changed_at?: string | null
           tracked_by?: string | null
           transmission?: string | null
           updated_at?: string
@@ -1851,6 +1889,8 @@ export type Database = {
           event_id?: string | null
           excluded_keyword?: string | null
           excluded_reason?: string | null
+          fingerprint?: string | null
+          fingerprint_version?: number
           first_seen_at?: string
           fuel?: string | null
           highest_bid?: number | null
@@ -1859,6 +1899,8 @@ export type Database = {
           km?: number | null
           last_attempt_at?: string | null
           last_auction_date?: string | null
+          last_ingest_run_id?: string | null
+          last_ingested_at?: string | null
           last_seen_at?: string
           lifecycle_state?: string
           listed_date_raw?: string | null
@@ -1880,6 +1922,7 @@ export type Database = {
           source?: string
           source_class?: string
           status?: string
+          status_changed_at?: string | null
           tracked_by?: string | null
           transmission?: string | null
           updated_at?: string
@@ -1891,7 +1934,15 @@ export type Database = {
           watch_status?: string | null
           year?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_listings_last_ingest_run_id_fkey"
+            columns: ["last_ingest_run_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_runs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -2172,6 +2223,29 @@ export type Database = {
         }
         Relationships: []
       }
+      listing_presence_by_run: {
+        Row: {
+          asking_price: number | null
+          event_at: string | null
+          event_type: string | null
+          first_seen_at: string | null
+          id: string | null
+          km: number | null
+          last_seen_at: string | null
+          listing_id: string | null
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          model: string | null
+          run_id: string | null
+          source: string | null
+          status: string | null
+          status_changed_at: string | null
+          variant_family: string | null
+          year: number | null
+        }
+        Relationships: []
+      }
       regional_demand_21d: {
         Row: {
           cleared_count: number | null
@@ -2431,6 +2505,21 @@ export type Database = {
           alerts_created: number
           alerts_updated: number
         }[]
+      }
+      generate_vehicle_fingerprint: {
+        Args: {
+          p_body?: string
+          p_drivetrain?: string
+          p_fuel?: string
+          p_km?: number
+          p_make: string
+          p_model: string
+          p_region?: string
+          p_transmission?: string
+          p_variant?: string
+          p_year: number
+        }
+        Returns: string
       }
       get_auction_source_stats: {
         Args: never

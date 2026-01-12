@@ -12,7 +12,7 @@ type SupabaseClient = any;
 interface StepConfig {
   name: string;
   order: number;
-  handler: (supabase: SupabaseClient, stepId: string) => Promise<StepResult>;
+  handler: (supabase: SupabaseClient, stepId: string, runId?: string) => Promise<StepResult>;
 }
 
 interface StepResult {
@@ -99,10 +99,11 @@ const PIPELINE_STEPS: StepConfig[] = [
   {
     name: "presence_tracking",
     order: 6,
-    handler: async (supabase, _stepId) => {
+    // Note: This step needs run_id passed in, we'll handle it specially
+    handler: async (supabase, _stepId, runId?: string) => {
       // Call derive_presence_events RPC to track new/missing/returned
       const { data, error } = await supabase.rpc("derive_presence_events", {
-        p_run_id: null,
+        p_run_id: runId ?? null,
         p_source: null,
         p_stale_hours: 36,
       });
@@ -257,7 +258,8 @@ Deno.serve(async (req) => {
         .eq("id", stepId);
 
       try {
-        const result = await step.handler(supabase, stepId);
+        // Pass runId for presence_tracking step
+        const result = await step.handler(supabase, stepId, runId);
 
         // Mark step as SUCCESS
         await supabase

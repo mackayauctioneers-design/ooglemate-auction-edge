@@ -7,6 +7,7 @@ const corsHeaders = {
 
 interface ParsedLot {
   lot_id: string;
+  source_listing_id: string;  // Stable Pickles dedupe key
   make: string;
   model: string;
   variant_raw: string;
@@ -99,9 +100,13 @@ function parsePicklesCatalogue(rawText: string, eventId: string, auctionDate: st
       
       const variant_family = deriveVariantFamily(variant_raw);
       
+      // Build stable source_listing_id: event:lot
+      const source_listing_id = `${eventId}:${lotNumber}`;
+      
       seenLots.add(lotNumber);
       lots.push({
         lot_id: lotNumber,
+        source_listing_id,
         make,
         model,
         variant_raw,
@@ -132,7 +137,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body = await req.json();
-    const { catalogueText, eventId, auctionDate } = body;
+    const { catalogueText, eventId, auctionDate, pipelineRunId } = body;
 
     if (!catalogueText || !eventId || !auctionDate) {
       return new Response(
@@ -148,7 +153,7 @@ Deno.serve(async (req) => {
       .from('ingestion_runs')
       .insert({
         source: 'pickles_catalogue',
-        metadata: { eventId, auctionDate }
+        metadata: { eventId, auctionDate, pipelineRunId }
       })
       .select()
       .single();
@@ -164,28 +169,50 @@ Deno.serve(async (req) => {
 
     let created = 0;
     let updated = 0;
+    let unchanged = 0;
     const errors: string[] = [];
+    const now = new Date().toISOString();
 
     for (const lot of parsedLots) {
-      const listingId = `Pickles:${lot.lot_id}`;
+      // Use source + listing_id as dedupe key (listing_id = source_listing_id for Pickles)
+      const listingId = lot.source_listing_id;
       
       try {
         // Check if listing exists
         const { data: existing } = await supabase
           .from('vehicle_listings')
-          .select('id, status, pass_count')
+          .select('id, status, first_seen_at, asking_price, km')
+          .eq('source', 'pickles')
           .eq('listing_id', listingId)
           .single();
 
+        // Generate fingerprint using DB function
+        const { data: fingerprintData } = await supabase.rpc('generate_vehicle_fingerprint', {
+          p_year: lot.year,
+          p_make: lot.make,
+          p_model: lot.model,
+          p_variant: lot.variant_family || null,
+          p_body: null,
+          p_transmission: lot.transmission || null,
+          p_fuel: lot.fuel || null,
+          p_drivetrain: lot.drivetrain || null,
+          p_km: lot.km,
+          p_region: lot.location || null,
+        });
+        const fingerprint = fingerprintData ?? null;
+
         if (existing) {
+          // Check if listing was previously cleared (RETURNED case)
+          const wasCleared = existing.status === 'cleared';
+          
           // Update existing listing
-          await supabase
+          const { error: updateError } = await supabase
             .from('vehicle_listings')
             .update({
               make: lot.make,
               model: lot.model,
               variant_raw: lot.variant_raw,
-              variant_family: lot.variant_family,
+              variant_family: lot.variant_family || null,
               year: lot.year,
               km: lot.km,
               transmission: lot.transmission,
@@ -194,14 +221,34 @@ Deno.serve(async (req) => {
               location: lot.location,
               auction_datetime: lot.auction_datetime,
               listing_url: lot.listing_url,
-              last_seen_at: new Date().toISOString(),
+              last_seen_at: now,
+              last_ingested_at: now,
+              last_ingest_run_id: pipelineRunId || null,
               status: 'catalogue',
+              status_changed_at: wasCleared ? now : undefined, // Only update if status changed
+              fingerprint,
+              fingerprint_version: 1,
             })
             .eq('id', existing.id);
+
+          if (updateError) throw updateError;
           updated++;
+
+          // If was cleared and now active, log RETURNED event
+          if (wasCleared) {
+            await supabase
+              .from('listing_events')
+              .insert({
+                listing_id: existing.id,
+                event_type: 'RETURNED',
+                run_id: pipelineRunId || null,
+                source: 'pickles',
+                meta: { from_status: existing.status, event_id: eventId },
+              });
+          }
         } else {
           // Insert new listing
-          await supabase
+          const { data: inserted, error: insertError } = await supabase
             .from('vehicle_listings')
             .insert({
               listing_id: listingId,
@@ -212,7 +259,7 @@ Deno.serve(async (req) => {
               make: lot.make,
               model: lot.model,
               variant_raw: lot.variant_raw,
-              variant_family: lot.variant_family,
+              variant_family: lot.variant_family || null,
               year: lot.year,
               km: lot.km,
               transmission: lot.transmission,
@@ -222,9 +269,33 @@ Deno.serve(async (req) => {
               auction_datetime: lot.auction_datetime,
               listing_url: lot.listing_url,
               status: 'catalogue',
+              status_changed_at: now,
+              first_seen_at: now,
+              last_seen_at: now,
+              last_ingested_at: now,
+              last_ingest_run_id: pipelineRunId || null,
               visible_to_dealers: true,
-            });
+              fingerprint,
+              fingerprint_version: 1,
+            })
+            .select('id')
+            .single();
+
+          if (insertError) throw insertError;
           created++;
+
+          // Log FIRST_SEEN event
+          if (inserted) {
+            await supabase
+              .from('listing_events')
+              .insert({
+                listing_id: inserted.id,
+                event_type: 'FIRST_SEEN',
+                run_id: pipelineRunId || null,
+                source: 'pickles',
+                meta: { event_id: eventId, lot_id: lot.lot_id },
+              });
+          }
         }
       } catch (e: unknown) {
         const errorMsg = e instanceof Error ? e.message : String(e);
@@ -247,7 +318,7 @@ Deno.serve(async (req) => {
       })
       .eq('id', run.id);
 
-    console.log(`[pickles-ingest] Complete: ${created} created, ${updated} updated, ${errors.length} errors`);
+    console.log(`[pickles-ingest] Complete: ${created} created, ${updated} updated, ${unchanged} unchanged, ${errors.length} errors`);
 
     return new Response(
       JSON.stringify({
@@ -256,6 +327,7 @@ Deno.serve(async (req) => {
         lotsFound: parsedLots.length,
         created,
         updated,
+        unchanged,
         errors,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

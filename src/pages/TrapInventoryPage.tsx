@@ -6,6 +6,7 @@ import { AdminGuard } from '@/components/guards/AdminGuard';
 import { TrapInventoryTable } from '@/components/trap-inventory/TrapInventoryTable';
 import { TrapInventoryFilters, TrapInventoryFiltersState } from '@/components/trap-inventory/TrapInventoryFilters';
 import { TrapInventoryDrawer } from '@/components/trap-inventory/TrapInventoryDrawer';
+import { PresenceStatsCard } from '@/components/trap-inventory/PresenceStatsCard';
 import { Button } from '@/components/ui/button';
 import { Loader2, Store, Download, Phone } from 'lucide-react';
 import { format } from 'date-fns';
@@ -599,6 +600,9 @@ export default function TrapInventoryPage() {
               </Button>
             </div>
           </div>
+
+          {/* Presence Stats Card */}
+          <PresenceStatsCard />
 
           <TrapInventoryFilters
             filters={filters}
