@@ -93,7 +93,7 @@ const App = () => (
               <OperatorGuard><OperatorPlaceholderPage title="Feeding Mode Report" description="14-day stabilization metrics" /></OperatorGuard>
             } />
             <Route path="/operator/fingerprints" element={
-              <OperatorGuard><FingerprintsExplorerPage /></OperatorGuard>
+              <RequireAdmin><FingerprintsExplorerPage /></RequireAdmin>
             } />
 
             {/* Admin */}
@@ -113,6 +113,10 @@ const App = () => (
             } />
             <Route path="/admin-tools/va-intake" element={
               <RequireAdmin><VAIntakePage /></RequireAdmin>
+            } />
+            {/* Alias for fingerprints explorer */}
+            <Route path="/admin-tools/fingerprints" element={
+              <RequireAdmin><FingerprintsExplorerPage /></RequireAdmin>
             } />
 
             {/* Catch-all */}

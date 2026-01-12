@@ -3,6 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -13,32 +22,47 @@ import {
 } from '@/components/ui/table';
 import { Fingerprint, Loader2 } from 'lucide-react';
 
+type Confidence = 'high' | 'med' | 'low' | 'unknown';
+
 interface FingerprintOutcome {
-  id: string;
   region_id: string | null;
   make: string | null;
   model: string | null;
   variant_family: string | null;
   year_min: number | null;
   year_max: number | null;
-  cleared_total: number | null;
+  km_band_min: number | null;
+  km_band_max: number | null;
   listing_total: number | null;
+  cleared_total: number | null;
+  passed_in_total: number | null;
+  relisted_total: number | null;
   avg_days_to_clear: number | null;
   avg_price: number | null;
-  asof_date: string | null;
+  asof_date?: string | null;
 }
 
-type ConfidenceLevel = 'high' | 'med' | 'low' | 'unknown';
+const NSW_REGION_OPTIONS = [
+  { value: 'NSW_%', label: 'All NSW' },
+  { value: 'NSW_SYDNEY_METRO', label: 'NSW Sydney Metro' },
+  { value: 'NSW_CENTRAL_COAST', label: 'NSW Central Coast' },
+  { value: 'NSW_HUNTER_NEWCASTLE', label: 'NSW Hunter / Newcastle' },
+  { value: 'NSW_REGIONAL', label: 'NSW Regional' },
+];
 
-function getConfidenceLevel(clearedTotal: number | null): ConfidenceLevel {
-  if (clearedTotal === null) return 'unknown';
-  if (clearedTotal >= 10) return 'high';
-  if (clearedTotal >= 3) return 'med';
-  if (clearedTotal >= 1) return 'low';
+function confidenceLevel(cleared: number | null): Confidence {
+  const c = cleared ?? 0;
+  if (c >= 10) return 'high';
+  if (c >= 3) return 'med';
+  if (c >= 1) return 'low';
   return 'unknown';
 }
 
-function getConfidenceBadgeVariant(level: ConfidenceLevel): 'confidence-high' | 'confidence-mid' | 'confidence-low' | 'outline' {
+function confRank(c: Confidence): number {
+  return c === 'high' ? 3 : c === 'med' ? 2 : c === 'low' ? 1 : 0;
+}
+
+function getConfidenceBadgeVariant(level: Confidence): 'confidence-high' | 'confidence-mid' | 'confidence-low' | 'outline' {
   switch (level) {
     case 'high': return 'confidence-high';
     case 'med': return 'confidence-mid';
@@ -47,73 +71,104 @@ function getConfidenceBadgeVariant(level: ConfidenceLevel): 'confidence-high' | 
   }
 }
 
-function formatClearanceRate(cleared: number | null, total: number | null): string {
-  if (!cleared || !total || total === 0) return '-';
-  return `${Math.round((cleared / total) * 100)}%`;
+function fmtNum(n: number | null | undefined): string {
+  if (n === null || n === undefined) return '-';
+  return n.toLocaleString();
 }
 
-function formatNumber(num: number | null): string {
-  if (num === null || num === undefined) return '-';
-  return num.toLocaleString();
+function fmtPct(cleared: number | null, total: number | null): string {
+  const t = total ?? 0;
+  const cl = cleared ?? 0;
+  if (t <= 0) return '-';
+  return `${Math.round((cl / t) * 100)}%`;
 }
 
-function formatPrice(price: number | null): string {
-  if (price === null || price === undefined) return '-';
-  return `$${Math.round(price).toLocaleString()}`;
+function fmtPrice(p: number | null): string {
+  if (p === null || p === undefined) return '-';
+  return new Intl.NumberFormat('en-AU', { 
+    style: 'currency', 
+    currency: 'AUD', 
+    maximumFractionDigits: 0 
+  }).format(p);
 }
 
-function formatDays(days: number | null): string {
+function fmtDays(days: number | null): string {
   if (days === null || days === undefined) return '-';
   return `${Math.round(days)}d`;
 }
 
 export default function FingerprintsExplorerPage() {
-  const [sortField, setSortField] = useState<keyof FingerprintOutcome>('cleared_total');
-  const [sortDesc, setSortDesc] = useState(true);
+  const [regionFilter, setRegionFilter] = useState('NSW_%');
+  const [confidenceFilter, setConfidenceFilter] = useState<Confidence | 'all'>('all');
+  const [makeFilter, setMakeFilter] = useState<string>('all');
+  const [search, setSearch] = useState('');
 
-  const { data: outcomes, isLoading, error } = useQuery({
-    queryKey: ['fingerprint-outcomes-latest'],
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['fingerprints-explorer', regionFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('fingerprint_outcomes_latest')
-        .select('*')
-        .like('region_id', 'NSW_%')
-        .order('cleared_total', { ascending: false, nullsFirst: false })
-        .limit(500);
+      let q = supabase.from('fingerprint_outcomes_latest').select('*');
 
+      if (regionFilter === 'NSW_%') {
+        q = q.like('region_id', 'NSW_%');
+      } else {
+        q = q.eq('region_id', regionFilter);
+      }
+
+      const { data, error } = await q.limit(2000);
       if (error) throw error;
-      return data as FingerprintOutcome[];
+      return (data || []) as FingerprintOutcome[];
     },
   });
 
-  const sortedOutcomes = useMemo(() => {
-    if (!outcomes) return [];
-    
-    return [...outcomes].sort((a, b) => {
-      // Primary: confidence (cleared_total desc)
-      const confA = getConfidenceLevel(a.cleared_total);
-      const confB = getConfidenceLevel(b.cleared_total);
-      const confOrder = { high: 3, med: 2, low: 1, unknown: 0 };
-      
-      if (confOrder[confA] !== confOrder[confB]) {
-        return confOrder[confB] - confOrder[confA];
-      }
-      
-      // Secondary: clearance rate desc
-      const rateA = a.listing_total ? (a.cleared_total || 0) / a.listing_total : 0;
-      const rateB = b.listing_total ? (b.cleared_total || 0) / b.listing_total : 0;
-      
-      if (rateA !== rateB) {
-        return rateB - rateA;
-      }
-      
-      // Tertiary: avg_days_to_clear asc (faster is better)
-      const daysA = a.avg_days_to_clear ?? 999;
-      const daysB = b.avg_days_to_clear ?? 999;
-      
-      return daysA - daysB;
+  const makes = useMemo(() => {
+    const set = new Set<string>();
+    (data || []).forEach((r) => {
+      if (r.make) set.add(r.make);
     });
-  }, [outcomes]);
+    return ['all', ...Array.from(set).sort()];
+  }, [data]);
+
+  const rows = useMemo(() => {
+    let r = [...(data || [])];
+
+    // Filter by confidence
+    if (confidenceFilter !== 'all') {
+      r = r.filter((x) => confidenceLevel(x.cleared_total) === confidenceFilter);
+    }
+
+    // Filter by make
+    if (makeFilter !== 'all') {
+      r = r.filter((x) => (x.make || '').toUpperCase() === makeFilter.toUpperCase());
+    }
+
+    // Filter by search
+    if (search.trim()) {
+      const s = search.toLowerCase();
+      r = r.filter((x) => {
+        const hay = `${x.make || ''} ${x.model || ''} ${x.variant_family || ''}`.toLowerCase();
+        return hay.includes(s);
+      });
+    }
+
+    // Sort: confidence desc → clearance rate desc → avg_days_to_clear asc → listing_total desc
+    r.sort((a, b) => {
+      const ca = confidenceLevel(a.cleared_total);
+      const cb = confidenceLevel(b.cleared_total);
+      if (confRank(ca) !== confRank(cb)) return confRank(cb) - confRank(ca);
+
+      const ra = (a.listing_total ?? 0) > 0 ? (a.cleared_total ?? 0) / (a.listing_total ?? 1) : 0;
+      const rb = (b.listing_total ?? 0) > 0 ? (b.cleared_total ?? 0) / (b.listing_total ?? 1) : 0;
+      if (ra !== rb) return rb - ra;
+
+      const da = a.avg_days_to_clear ?? 9999;
+      const db = b.avg_days_to_clear ?? 9999;
+      if (da !== db) return da - db;
+
+      return (b.listing_total ?? 0) - (a.listing_total ?? 0);
+    });
+
+    return r;
+  }, [data, confidenceFilter, makeFilter, search]);
 
   return (
     <OperatorLayout>
@@ -128,6 +183,72 @@ export default function FingerprintsExplorerPage() {
           </p>
         </div>
 
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Filters</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Region</label>
+                <Select value={regionFilter} onValueChange={setRegionFilter}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NSW_REGION_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Confidence</label>
+                <Select value={confidenceFilter} onValueChange={(v) => setConfidenceFilter(v as Confidence | 'all')}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="high">High (≥10 cleared)</SelectItem>
+                    <SelectItem value="med">Med (≥3 cleared)</SelectItem>
+                    <SelectItem value="low">Low (≥1 cleared)</SelectItem>
+                    <SelectItem value="unknown">Unknown (0)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Make</label>
+                <Select value={makeFilter} onValueChange={setMakeFilter}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {makes.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m === 'all' ? 'All' : m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Search</label>
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="e.g., Corolla Hybrid"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {isLoading ? (
           <div className="bg-card border border-border rounded-lg p-12 flex items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -136,16 +257,16 @@ export default function FingerprintsExplorerPage() {
           <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-6 text-center">
             <p className="text-destructive">Failed to load fingerprint outcomes</p>
           </div>
-        ) : sortedOutcomes.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div className="bg-card border border-border rounded-lg p-12 text-center">
             <Fingerprint className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No fingerprint outcomes found for NSW regions</p>
+            <p className="text-muted-foreground">No fingerprint outcomes found</p>
           </div>
         ) : (
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="px-4 py-3 border-b border-border bg-muted/30">
               <p className="text-sm text-muted-foreground">
-                {sortedOutcomes.length} fingerprints • Sorted by confidence → clearance rate → TTD
+                {rows.length} fingerprints • Sorted by confidence → clearance rate → TTD
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -159,19 +280,28 @@ export default function FingerprintsExplorerPage() {
                     <TableHead className="text-xs font-semibold text-muted-foreground uppercase">Years</TableHead>
                     <TableHead className="text-xs font-semibold text-muted-foreground uppercase text-right">Cleared</TableHead>
                     <TableHead className="text-xs font-semibold text-muted-foreground uppercase text-right">Listed</TableHead>
-                    <TableHead className="text-xs font-semibold text-muted-foreground uppercase text-right">Clear Rate</TableHead>
+                    <TableHead className="text-xs font-semibold text-muted-foreground uppercase text-right">Clear %</TableHead>
                     <TableHead className="text-xs font-semibold text-muted-foreground uppercase text-right">Avg TTD</TableHead>
                     <TableHead className="text-xs font-semibold text-muted-foreground uppercase text-right">Avg Price</TableHead>
                     <TableHead className="text-xs font-semibold text-muted-foreground uppercase text-center">Confidence</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedOutcomes.map((outcome) => {
-                    const confidence = getConfidenceLevel(outcome.cleared_total);
+                  {rows.map((outcome, idx) => {
+                    const confidence = confidenceLevel(outcome.cleared_total);
                     const badgeVariant = getConfidenceBadgeVariant(confidence);
-                    
+                    const years =
+                      outcome.year_min && outcome.year_max
+                        ? outcome.year_min === outcome.year_max
+                          ? `${outcome.year_min}`
+                          : `${outcome.year_min}–${outcome.year_max}`
+                        : '-';
+
                     return (
-                      <TableRow key={outcome.id} className="border-b border-border">
+                      <TableRow 
+                        key={`${outcome.region_id}-${outcome.make}-${outcome.model}-${outcome.variant_family}-${idx}`} 
+                        className="border-b border-border"
+                      >
                         <TableCell className="font-mono text-xs">
                           {outcome.region_id || '-'}
                         </TableCell>
@@ -185,26 +315,22 @@ export default function FingerprintsExplorerPage() {
                           {outcome.variant_family || 'ALL'}
                         </TableCell>
                         <TableCell className="font-mono text-sm">
-                          {outcome.year_min && outcome.year_max 
-                            ? outcome.year_min === outcome.year_max 
-                              ? outcome.year_min 
-                              : `${outcome.year_min}–${outcome.year_max}`
-                            : '-'}
+                          {years}
                         </TableCell>
                         <TableCell className="text-right font-mono font-medium">
-                          {formatNumber(outcome.cleared_total)}
+                          {fmtNum(outcome.cleared_total)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-muted-foreground">
-                          {formatNumber(outcome.listing_total)}
+                          {fmtNum(outcome.listing_total)}
                         </TableCell>
                         <TableCell className="text-right font-mono font-medium">
-                          {formatClearanceRate(outcome.cleared_total, outcome.listing_total)}
+                          {fmtPct(outcome.cleared_total, outcome.listing_total)}
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {formatDays(outcome.avg_days_to_clear)}
+                          {fmtDays(outcome.avg_days_to_clear)}
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {formatPrice(outcome.avg_price)}
+                          {fmtPrice(outcome.avg_price)}
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge variant={badgeVariant} className="uppercase text-xs">
