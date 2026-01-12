@@ -101,24 +101,32 @@ const PIPELINE_STEPS: StepConfig[] = [
     order: 6,
     // Note: This step needs run_id passed in, we'll handle it specially
     handler: async (supabase, _stepId, runId?: string) => {
-      // Call derive_presence_events RPC to track new/missing/returned
-      const { data, error } = await supabase.rpc("derive_presence_events", {
+      // Call derive_presence_events_v2 RPC with 2-strike missing logic
+      const { data, error } = await supabase.rpc("derive_presence_events_v2", {
         p_run_id: runId ?? null,
         p_source: null,
-        p_stale_hours: 36,
+        p_min_seen_pct: 0.30,  // Circuit breaker: fail if <30% seen
       });
-      if (error) throw new Error(`derive_presence_events: ${error.message}`);
+      if (error) throw new Error(`derive_presence_events_v2: ${error.message}`);
       const result = data?.[0] ?? {};
+      
+      // Check circuit breaker
+      if (result.circuit_breaker_tripped) {
+        throw new Error(`Circuit breaker tripped: scrape returned too few results (likely blocked)`);
+      }
+      
       return {
         recordsProcessed: (result.new_listings ?? 0) + (result.went_missing ?? 0) + (result.returned ?? 0),
         recordsCreated: result.new_listings ?? 0,
         recordsUpdated: result.went_missing ?? 0,
-        recordsFailed: result.returned ?? 0, // using this field to track returned
+        recordsFailed: result.pending_missing ?? 0, // Pending = 1 strike
         metadata: {
           new_listings: result.new_listings,
           still_active: result.still_active,
+          pending_missing: result.pending_missing,
           went_missing: result.went_missing,
           returned: result.returned,
+          circuit_breaker_tripped: result.circuit_breaker_tripped,
         },
       };
     },

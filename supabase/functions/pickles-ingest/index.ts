@@ -205,7 +205,7 @@ Deno.serve(async (req) => {
           // Check if listing was previously cleared (RETURNED case)
           const wasCleared = existing.status === 'cleared';
           
-          // Update existing listing
+          // Update existing listing - reset missing_streak to 0
           const { error: updateError } = await supabase
             .from('vehicle_listings')
             .update({
@@ -226,6 +226,7 @@ Deno.serve(async (req) => {
               last_ingest_run_id: pipelineRunId || null,
               status: 'catalogue',
               status_changed_at: wasCleared ? now : undefined, // Only update if status changed
+              missing_streak: 0,  // Reset missing streak on every successful scrape
               fingerprint,
               fingerprint_version: 1,
             })

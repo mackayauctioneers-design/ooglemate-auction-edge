@@ -10,7 +10,7 @@ export interface TrapInventoryFiltersState {
   model: string;
   daysOnMarket: string;
   deltaBand: string;
-  preset: 'none' | 'strong_buy' | 'mispriced' | '90_plus' | 'no_benchmark' | 'watchlist' | 'has_notes' | 'return_risk' | 'buy_window' | 'buy_window_unassigned' | 'watching' | 'avoid' | 'tracked' | 'lifecycle_new' | 'lifecycle_watch' | 'lifecycle_buy' | 'lifecycle_bought' | 'new_today' | 'missing_today' | 'returned';
+  preset: 'none' | 'strong_buy' | 'mispriced' | '90_plus' | 'no_benchmark' | 'watchlist' | 'has_notes' | 'return_risk' | 'buy_window' | 'buy_window_unassigned' | 'watching' | 'avoid' | 'tracked' | 'lifecycle_new' | 'lifecycle_watch' | 'lifecycle_buy' | 'lifecycle_bought' | 'new_today' | 'missing_today' | 'pending_missing' | 'returned';
   sortBy: 'delta_pct' | 'days_on_market' | 'price_drop' | 'price';
   sortDir: 'asc' | 'desc';
 }
@@ -52,7 +52,8 @@ const sortOptions = [
 const presets = [
   // Presence tracking presets (pipeline audit)
   { value: 'new_today', label: '🆕 New Today', icon: Sparkles, color: 'bg-green-500/20 text-green-600 border-green-500/40' },
-  { value: 'missing_today', label: '⚠️ Missing', icon: AlertTriangle, color: 'bg-amber-500/20 text-amber-600 border-amber-500/40' },
+  { value: 'pending_missing', label: '⏳ Pending', icon: HelpCircle, color: 'bg-yellow-500/20 text-yellow-600 border-yellow-500/40' },
+  { value: 'missing_today', label: '⚠️ Gone', icon: AlertTriangle, color: 'bg-amber-500/20 text-amber-600 border-amber-500/40' },
   { value: 'returned', label: '🔄 Returned', icon: RotateCw, color: 'bg-purple-500/20 text-purple-600 border-purple-500/40' },
   // Lifecycle-based presets (human decision layer)
   { value: 'lifecycle_new', label: '🆕 New', icon: Sparkles, color: 'bg-slate-500/20 text-slate-600 border-slate-500/40' },
