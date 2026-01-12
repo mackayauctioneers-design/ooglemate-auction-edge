@@ -186,12 +186,13 @@ Deno.serve(async (req) => {
           .eq('listing_id', listingId)
           .single();
 
-        // Generate fingerprint using DB function
-        const { data: fingerprintData } = await supabase.rpc('generate_vehicle_fingerprint', {
+        // Generate fingerprint using v2 function (includes confidence + variant_source)
+        const { data: fpRows, error: fpErr } = await supabase.rpc('generate_vehicle_fingerprint_v2', {
           p_year: lot.year,
           p_make: lot.make,
           p_model: lot.model,
-          p_variant: lot.variant_family || null,
+          p_variant_raw: lot.variant_raw || null,
+          p_variant_family: lot.variant_family || null,
           p_body: null,
           p_transmission: lot.transmission || null,
           p_fuel: lot.fuel || null,
@@ -199,7 +200,13 @@ Deno.serve(async (req) => {
           p_km: lot.km,
           p_region: lot.location || null,
         });
-        const fingerprint = fingerprintData ?? null;
+
+        if (fpErr) throw new Error(`fingerprint_v2: ${fpErr.message}`);
+
+        const fp = fpRows?.[0] ?? null;
+        const fingerprint = fp?.fingerprint ?? null;
+        const fingerprint_confidence = fp?.fingerprint_confidence ?? 0;
+        const variant_source = fp?.variant_source ?? 'none';
 
         if (existing) {
           // Check if listing was previously cleared (RETURNED case)
@@ -228,7 +235,9 @@ Deno.serve(async (req) => {
               status_changed_at: wasCleared ? now : undefined, // Only update if status changed
               missing_streak: 0,  // Reset missing streak on every successful scrape
               fingerprint,
-              fingerprint_version: 1,
+              fingerprint_version: 2,
+              fingerprint_confidence,
+              variant_source,
             })
             .eq('id', existing.id);
 
@@ -277,7 +286,9 @@ Deno.serve(async (req) => {
               last_ingest_run_id: pipelineRunId || null,
               visible_to_dealers: true,
               fingerprint,
-              fingerprint_version: 1,
+              fingerprint_version: 2,
+              fingerprint_confidence,
+              variant_source,
             })
             .select('id')
             .single();
