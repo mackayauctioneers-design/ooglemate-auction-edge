@@ -1,5 +1,10 @@
 project_id = "xznchxsbuwngfmwvsvhq"
 
+[functions.benchmark-watchlist-slack]
+verify_jwt = false
+# Daily cron at 7:00am AEST (21:00 UTC previous day)
+schedule = "0 21 * * *"
+
 [functions.google-sheets]
 verify_jwt = false
 
