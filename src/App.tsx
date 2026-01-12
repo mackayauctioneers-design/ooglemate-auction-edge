@@ -25,6 +25,7 @@ import VAIntakePage from "./pages/VAIntakePage";
 import OperatorIngestionHealthPage from "./pages/operator/OperatorIngestionHealthPage";
 import { OperatorPlaceholderPage } from "./pages/operator/OperatorPlaceholderPage";
 import FingerprintsExplorerPage from "./pages/operator/FingerprintsExplorerPage";
+import FeedingModeReportPage from "./pages/operator/FeedingModeReportPage";
 
 const queryClient = new QueryClient();
 
@@ -90,7 +91,7 @@ const App = () => (
 
             {/* Analytics */}
             <Route path="/operator/feeding-mode" element={
-              <OperatorGuard><OperatorPlaceholderPage title="Feeding Mode Report" description="14-day stabilization metrics" /></OperatorGuard>
+              <OperatorGuard><FeedingModeReportPage /></OperatorGuard>
             } />
             <Route path="/operator/fingerprints" element={
               <RequireAdmin><FingerprintsExplorerPage /></RequireAdmin>
