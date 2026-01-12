@@ -181,19 +181,25 @@ serve(async (req) => {
       const content = await fileData.text();
       parsedRows = parseCSV(content);
     } else if (batch.file_type === "pdf") {
-      // PDF parsing would require OCR - mark as needing manual conversion
+      // PDF received - store it and prompt for manual conversion
       await supabase
         .from("va_upload_batches")
         .update({ 
-          status: "failed", 
-          error: "PDF parsing not yet supported. Please convert to CSV/XLSX first." 
+          status: "received_pdf",
+          parse_started_at: new Date().toISOString(),
+          parse_completed_at: new Date().toISOString(),
+          rows_total: 0,
+          error: null,
         })
         .eq("id", batch_id);
       
       return new Response(JSON.stringify({ 
-        error: "PDF parsing not yet supported. Please convert to CSV/XLSX." 
+        success: true,
+        batch_id,
+        rows_parsed: 0,
+        message: "PDF stored. Convert to CSV/XLSX to ingest.",
       }), {
-        status: 400,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
