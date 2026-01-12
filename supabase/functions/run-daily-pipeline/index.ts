@@ -97,14 +97,14 @@ const PIPELINE_STEPS: StepConfig[] = [
     },
   },
   {
-    name: "presence_tracking",
+    name: "presence_tracking_pickles",
     order: 6,
-    // Note: This step needs run_id passed in, we'll handle it specially
+    // Pickles-specific presence tracking with circuit breaker
     handler: async (supabase, _stepId, runId?: string) => {
-      // Call derive_presence_events_v2 RPC with 2-strike missing logic
+      // Call derive_presence_events_v2 RPC with source='pickles' for proper circuit breaker
       const { data, error } = await supabase.rpc("derive_presence_events_v2", {
         p_run_id: runId ?? null,
-        p_source: null,
+        p_source: "pickles",  // Source-specific for accurate circuit breaker
         p_min_seen_pct: 0.30,  // Circuit breaker: fail if <30% seen
       });
       if (error) throw new Error(`derive_presence_events_v2: ${error.message}`);
@@ -112,21 +112,20 @@ const PIPELINE_STEPS: StepConfig[] = [
       
       // Check circuit breaker
       if (result.circuit_breaker_tripped) {
-        throw new Error(`Circuit breaker tripped: scrape returned too few results (likely blocked). Seen: ${result.seen_this_run}, Expected: ${result.still_active}`);
+        throw new Error(`Circuit breaker tripped: Pickles scrape returned too few results (likely blocked). Seen: ${result.seen_this_run}, Expected: ~${result.still_active}`);
       }
       
       return {
-        // recordsProcessed = seen + went_missing events (actual work done)
         recordsProcessed: (result.seen_this_run ?? 0) + (result.went_missing ?? 0),
         recordsCreated: result.new_listings ?? 0,
         recordsUpdated: (result.went_missing ?? 0) + (result.returned ?? 0),
-        // recordsFailed = 0 (pending_missing is NOT a failure, it's "1 strike")
         recordsFailed: 0,
         metadata: {
+          source: "pickles",
           new_listings: result.new_listings,
           seen_this_run: result.seen_this_run,
           still_active: result.still_active,
-          pending_missing: result.pending_missing, // Track in metadata only
+          pending_missing: result.pending_missing,
           went_missing: result.went_missing,
           returned: result.returned,
           circuit_breaker_tripped: result.circuit_breaker_tripped,
