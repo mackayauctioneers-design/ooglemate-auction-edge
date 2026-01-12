@@ -20,6 +20,7 @@ import DealerDashboardPage from "./pages/DealerDashboardPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
 import VAIntakePage from "./pages/VAIntakePage";
+import LogSalePage from "./pages/LogSalePage";
 
 // Operator pages
 import OperatorIngestionHealthPage from "./pages/operator/OperatorIngestionHealthPage";
@@ -58,6 +59,7 @@ const App = () => (
             <Route path="/valuation" element={<ValuationPage />} />
             <Route path="/valo" element={<ValoPage />} />
             <Route path="/dealer-dashboard" element={<DealerDashboardPage />} />
+            <Route path="/log-sale" element={<LogSalePage />} />
             <Route path="/help" element={<HelpPage />} />
             <Route path="/auth" element={<AuthPage />} />
 
