@@ -267,11 +267,31 @@ export default function AdminToolsPage() {
           </p>
         </div>
 
+        {/* VA Intake Quick Access */}
+        <Card className="border-primary">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Upload className="h-5 w-5 text-primary" />
+              VA Auction Intake
+            </CardTitle>
+            <CardDescription>
+              Upload and process auction catalogues with automatic validation
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link to="/admin-tools/va-intake">
+              <Button className="w-full gap-2">
+                <Upload className="h-4 w-4" />
+                Open VA Intake
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
         {/* Tool Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {/* Dealer Onboarding - First card */}
           <DealerOnboarding />
-          {/* Pickles Catalogue Import */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">

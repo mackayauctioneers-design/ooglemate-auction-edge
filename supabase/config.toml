@@ -120,3 +120,12 @@ verify_jwt = false
 verify_jwt = false
 # Daily cron at 08:30am AEST (22:30 UTC) - runs after fingerprint-materialize to update watch states
 schedule = "30 22 * * *"
+
+[functions.va-auction-upload]
+verify_jwt = false
+
+[functions.va-auction-parse]
+verify_jwt = false
+
+[functions.va-auction-ingest]
+verify_jwt = false

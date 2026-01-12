@@ -1129,6 +1129,190 @@ export type Database = {
         }
         Relationships: []
       }
+      va_upload_batches: {
+        Row: {
+          auction_date: string
+          created_at: string
+          error: string | null
+          file_name: string
+          file_path: string
+          file_size_bytes: number | null
+          file_type: string
+          id: string
+          ingest_completed_at: string | null
+          ingest_started_at: string | null
+          metadata: Json | null
+          parse_completed_at: string | null
+          parse_started_at: string | null
+          rows_accepted: number | null
+          rows_rejected: number | null
+          rows_total: number | null
+          source_key: string
+          status: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          auction_date: string
+          created_at?: string
+          error?: string | null
+          file_name: string
+          file_path: string
+          file_size_bytes?: number | null
+          file_type: string
+          id?: string
+          ingest_completed_at?: string | null
+          ingest_started_at?: string | null
+          metadata?: Json | null
+          parse_completed_at?: string | null
+          parse_started_at?: string | null
+          rows_accepted?: number | null
+          rows_rejected?: number | null
+          rows_total?: number | null
+          source_key: string
+          status?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          auction_date?: string
+          created_at?: string
+          error?: string | null
+          file_name?: string
+          file_path?: string
+          file_size_bytes?: number | null
+          file_type?: string
+          id?: string
+          ingest_completed_at?: string | null
+          ingest_started_at?: string | null
+          metadata?: Json | null
+          parse_completed_at?: string | null
+          parse_started_at?: string | null
+          rows_accepted?: number | null
+          rows_rejected?: number | null
+          rows_total?: number | null
+          source_key?: string
+          status?: string
+          uploaded_by?: string | null
+        }
+        Relationships: []
+      }
+      va_upload_rows: {
+        Row: {
+          asking_price: number | null
+          batch_id: string
+          created_at: string
+          fuel: string | null
+          id: string
+          km: number | null
+          listing_id: string | null
+          location: string | null
+          lot_id: string | null
+          make: string | null
+          model: string | null
+          raw_data: Json
+          rejection_reason: string | null
+          reserve: number | null
+          row_number: number
+          status: string
+          stock_number: string | null
+          transmission: string | null
+          variant_family: string | null
+          variant_raw: string | null
+          vin: string | null
+          year: number | null
+        }
+        Insert: {
+          asking_price?: number | null
+          batch_id: string
+          created_at?: string
+          fuel?: string | null
+          id?: string
+          km?: number | null
+          listing_id?: string | null
+          location?: string | null
+          lot_id?: string | null
+          make?: string | null
+          model?: string | null
+          raw_data?: Json
+          rejection_reason?: string | null
+          reserve?: number | null
+          row_number: number
+          status?: string
+          stock_number?: string | null
+          transmission?: string | null
+          variant_family?: string | null
+          variant_raw?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Update: {
+          asking_price?: number | null
+          batch_id?: string
+          created_at?: string
+          fuel?: string | null
+          id?: string
+          km?: number | null
+          listing_id?: string | null
+          location?: string | null
+          lot_id?: string | null
+          make?: string | null
+          model?: string | null
+          raw_data?: Json
+          rejection_reason?: string | null
+          reserve?: number | null
+          row_number?: number
+          status?: string
+          stock_number?: string | null
+          transmission?: string | null
+          variant_family?: string | null
+          variant_raw?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "va_upload_rows_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "va_upload_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_upload_rows_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "stale_dealer_grade"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_upload_rows_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_upload_rows_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_deals_90_plus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_upload_rows_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_inventory_current"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_upload_rows_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       valo_requests: {
         Row: {
           allow_price: boolean

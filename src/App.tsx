@@ -18,6 +18,7 @@ import ValoPage from "./pages/ValoPage";
 import DealerDashboardPage from "./pages/DealerDashboardPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
+import VAIntakePage from "./pages/VAIntakePage";
 
 // Operator pages
 import OperatorIngestionHealthPage from "./pages/operator/OperatorIngestionHealthPage";
@@ -102,6 +103,9 @@ const App = () => (
             <Route path="/operator/settings" element={
               <OperatorGuard><OperatorPlaceholderPage title="Settings" description="System configuration" /></OperatorGuard>
             } />
+
+            {/* Admin Tools */}
+            <Route path="/admin-tools/va-intake" element={<VAIntakePage />} />
 
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />

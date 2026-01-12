@@ -38,6 +38,7 @@ interface HealthData {
   fingerprintsToday: number;
   jobQueue: JobQueue | null;
   dropReasons: DropReason[];
+  vaUploadsToday: number;
   lastRefresh: Date;
 }
 
@@ -49,13 +50,16 @@ export default function IngestionHealthPage() {
     setLoading(true);
     try {
       // Fetch all stats in parallel
-      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes] = await Promise.all([
+      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes, vaUploadsRes] = await Promise.all([
         supabase.rpc('get_nsw_trap_stats' as never),
         supabase.rpc('get_nsw_crawl_today' as never),
         supabase.rpc('get_clearance_today' as never),
         supabase.rpc('get_fingerprints_today' as never),
         supabase.rpc('get_job_queue_stats' as never),
         supabase.rpc('get_top_drop_reasons' as never),
+        supabase.from('va_upload_batches')
+          .select('id', { count: 'exact', head: true })
+          .gte('created_at', new Date().toISOString().split('T')[0]),
       ]);
 
       setHealth({
@@ -65,6 +69,7 @@ export default function IngestionHealthPage() {
         fingerprintsToday: (fingerprintsRes.data as { count: number }[])?.[0]?.count || 0,
         jobQueue: (jobQueueRes.data as JobQueue[])?.[0] || null,
         dropReasons: (dropReasonsRes.data as DropReason[]) || [],
+        vaUploadsToday: vaUploadsRes.count || 0,
         lastRefresh: new Date(),
       });
     } catch (err) {
@@ -249,6 +254,10 @@ export default function IngestionHealthPage() {
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Fingerprint outcomes</span>
                   <span className="font-mono">{health?.fingerprintsToday || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">VA Uploads</span>
+                  <span className="font-mono">{health?.vaUploadsToday || 0}</span>
                 </div>
               </CardContent>
             </Card>
