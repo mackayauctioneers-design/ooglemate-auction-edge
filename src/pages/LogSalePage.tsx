@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function LogSalePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [dealers, setDealers] = useState<Dealer[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,6 +63,25 @@ export default function LogSalePage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Prefill form from URL params (from Benchmark Gaps panel)
+  useEffect(() => {
+    const make = searchParams.get('make');
+    const model = searchParams.get('model');
+    const variant = searchParams.get('variant');
+    const year = searchParams.get('year');
+
+    const hasPrefill = make || model || variant || year;
+    if (!hasPrefill) return;
+
+    setFormData(prev => ({
+      ...prev,
+      make: make || prev.make,
+      model: model || prev.model,
+      variant_normalised: variant || prev.variant_normalised,
+      year: year ? parseInt(year, 10) : prev.year,
+    }));
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
