@@ -1931,6 +1931,26 @@ export type Database = {
         }
         Relationships: []
       }
+      fingerprint_benchmark_watchlist: {
+        Row: {
+          avg_days_to_clear: number | null
+          avg_price: number | null
+          cleared_total: number | null
+          confidence_level: string | null
+          impact_score: number | null
+          listing_total: number | null
+          make: string | null
+          missing_benchmark: boolean | null
+          model: string | null
+          region_id: string | null
+          stale_benchmark: boolean | null
+          thin_benchmark: boolean | null
+          variant_family: string | null
+          year_max: number | null
+          year_min: number | null
+        }
+        Relationships: []
+      }
       fingerprint_outcomes_latest: {
         Row: {
           asof_date: string | null
