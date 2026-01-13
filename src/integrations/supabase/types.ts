@@ -148,6 +148,7 @@ export type Database = {
           last_crawl_fail_at: string | null
           last_error: string | null
           last_lots_found: number | null
+          last_scheduled_run_at: string | null
           last_success_at: string | null
           list_url: string
           notes: string | null
@@ -158,6 +159,13 @@ export type Database = {
           preflight_reason: string | null
           preflight_status: string | null
           region_hint: string
+          schedule_days: string[]
+          schedule_enabled: boolean
+          schedule_min_interval_minutes: number
+          schedule_pause_reason: string | null
+          schedule_paused: boolean
+          schedule_time_local: string
+          schedule_tz: string
           source_key: string
           successful_validation_runs: number | null
           updated_at: string
@@ -175,6 +183,7 @@ export type Database = {
           last_crawl_fail_at?: string | null
           last_error?: string | null
           last_lots_found?: number | null
+          last_scheduled_run_at?: string | null
           last_success_at?: string | null
           list_url: string
           notes?: string | null
@@ -185,6 +194,13 @@ export type Database = {
           preflight_reason?: string | null
           preflight_status?: string | null
           region_hint?: string
+          schedule_days?: string[]
+          schedule_enabled?: boolean
+          schedule_min_interval_minutes?: number
+          schedule_pause_reason?: string | null
+          schedule_paused?: boolean
+          schedule_time_local?: string
+          schedule_tz?: string
           source_key: string
           successful_validation_runs?: number | null
           updated_at?: string
@@ -202,6 +218,7 @@ export type Database = {
           last_crawl_fail_at?: string | null
           last_error?: string | null
           last_lots_found?: number | null
+          last_scheduled_run_at?: string | null
           last_success_at?: string | null
           list_url?: string
           notes?: string | null
@@ -212,6 +229,13 @@ export type Database = {
           preflight_reason?: string | null
           preflight_status?: string | null
           region_hint?: string
+          schedule_days?: string[]
+          schedule_enabled?: boolean
+          schedule_min_interval_minutes?: number
+          schedule_pause_reason?: string | null
+          schedule_paused?: boolean
+          schedule_time_local?: string
+          schedule_tz?: string
           source_key?: string
           successful_validation_runs?: number | null
           updated_at?: string
@@ -2803,8 +2827,14 @@ export type Database = {
           last_crawl_fail_at: string
           last_crawl_success_at: string
           last_lots_found: number
+          last_scheduled_run_at: string
           platform: string
           preflight_status: string
+          schedule_days: string[]
+          schedule_enabled: boolean
+          schedule_pause_reason: string
+          schedule_paused: boolean
+          schedule_time_local: string
           source_key: string
         }[]
       }

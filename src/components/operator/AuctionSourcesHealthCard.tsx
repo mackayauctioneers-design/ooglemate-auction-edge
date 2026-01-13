@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Clock, Pause, Play } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { toast } from "sonner";
 
 type Row = {
   source_key: string;
@@ -25,6 +26,12 @@ type Row = {
   last_crawl_error: string | null;
   auto_disabled_at: string | null;
   auto_disabled_reason: string | null;
+  schedule_enabled: boolean;
+  schedule_paused: boolean;
+  schedule_pause_reason: string | null;
+  schedule_time_local: string;
+  schedule_days: string[];
+  last_scheduled_run_at: string | null;
 };
 
 type EventRow = {
@@ -40,6 +47,17 @@ function statusBadge(r: Row) {
   if (!r.enabled) return <Badge variant="destructive">Disabled</Badge>;
   if (r.consecutive_crawl_failures >= 1) return <Badge variant="secondary">Flaky</Badge>;
   return <Badge className="bg-green-600">Healthy</Badge>;
+}
+
+function scheduleBadge(r: Row) {
+  if (!r.schedule_enabled) return null;
+  if (r.schedule_paused) return <Badge variant="secondary">Paused</Badge>;
+  return (
+    <Badge variant="outline" className="gap-1">
+      <Clock className="h-3 w-3" />
+      {r.schedule_time_local} {r.schedule_days?.join(",")}
+    </Badge>
+  );
 }
 
 function eventBadge(type: string) {
@@ -84,6 +102,31 @@ export function AuctionSourcesHealthCard() {
     await supabase.functions.invoke("auction-run-now", {
       body: { source_key: sourceKey, debug },
     });
+    await load();
+    setActionLoading(null);
+  }
+
+  async function toggleSchedule(sourceKey: string, currentEnabled: boolean) {
+    setActionLoading(sourceKey);
+    await supabase
+      .from("auction_sources")
+      .update({ schedule_enabled: !currentEnabled })
+      .eq("source_key", sourceKey);
+    toast.success(!currentEnabled ? "Schedule enabled" : "Schedule disabled");
+    await load();
+    setActionLoading(null);
+  }
+
+  async function togglePause(sourceKey: string, currentPaused: boolean) {
+    setActionLoading(sourceKey);
+    await supabase
+      .from("auction_sources")
+      .update({
+        schedule_paused: !currentPaused,
+        schedule_pause_reason: !currentPaused ? "Paused by operator" : null,
+      })
+      .eq("source_key", sourceKey);
+    toast.success(!currentPaused ? "Paused" : "Resumed");
     await load();
     setActionLoading(null);
   }
@@ -141,6 +184,7 @@ export function AuctionSourcesHealthCard() {
                       {r.preflight_status && (
                         <Badge variant="outline">{r.preflight_status}</Badge>
                       )}
+                      {scheduleBadge(r)}
                     </div>
                   </div>
 
@@ -220,6 +264,42 @@ export function AuctionSourcesHealthCard() {
                       >
                         Re-enable
                       </Button>
+                    )}
+                  </div>
+
+                  {/* Schedule controls */}
+                  <div className="mt-2 flex gap-2 flex-wrap border-t pt-2">
+                    <Button
+                      size="sm"
+                      variant={r.schedule_enabled ? "default" : "outline"}
+                      onClick={() => toggleSchedule(r.source_key, r.schedule_enabled)}
+                      disabled={actionLoading === r.source_key}
+                    >
+                      <Clock className="h-3 w-3 mr-1" />
+                      {r.schedule_enabled ? "Schedule ON" : "Schedule OFF"}
+                    </Button>
+                    {r.schedule_enabled && (
+                      <Button
+                        size="sm"
+                        variant={r.schedule_paused ? "destructive" : "outline"}
+                        onClick={() => togglePause(r.source_key, r.schedule_paused)}
+                        disabled={actionLoading === r.source_key}
+                      >
+                        {r.schedule_paused ? (
+                          <>
+                            <Play className="h-3 w-3 mr-1" /> Resume
+                          </>
+                        ) : (
+                          <>
+                            <Pause className="h-3 w-3 mr-1" /> Pause
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    {r.last_scheduled_run_at && (
+                      <span className="text-xs text-muted-foreground self-center">
+                        Last scheduled: {new Date(r.last_scheduled_run_at).toLocaleString()}
+                      </span>
                     )}
                   </div>
                 </div>
