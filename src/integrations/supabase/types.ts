@@ -2662,6 +2662,19 @@ export type Database = {
         }
         Relationships: []
       }
+      va_blocked_sources: {
+        Row: {
+          display_name: string | null
+          last_checked_at: string | null
+          preflight_status: string | null
+          reason: string | null
+          region_id: string | null
+          source_key: string | null
+          source_type: string | null
+          url: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       backfill_fingerprints_v2: {
@@ -3129,6 +3142,12 @@ export type Database = {
         }[]
       }
       seller_weight: { Args: { p_seller_type: string }; Returns: number }
+      spawn_va_tasks_for_blocked_sources: {
+        Args: { p_limit?: number }
+        Returns: {
+          created_count: number
+        }[]
+      }
       spawn_va_tasks_for_buy_window: {
         Args: { p_hours?: number }
         Returns: {

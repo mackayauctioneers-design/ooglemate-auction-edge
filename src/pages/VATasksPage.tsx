@@ -6,8 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Sparkles, ExternalLink, Play, CheckCircle, AlertTriangle } from "lucide-react";
+import { RefreshCw, Sparkles, ExternalLink, Play, CheckCircle, AlertTriangle, ShieldAlert } from "lucide-react";
 import { RequireAuth } from "@/components/guards/RequireAuth";
+
+type BlockedSource = {
+  source_type: string;
+  source_key: string;
+  display_name: string;
+  url: string | null;
+  region_id: string | null;
+  preflight_status: string | null;
+  reason: string | null;
+  last_checked_at: string | null;
+};
 
 type TabStatus = "todo" | "in_progress" | "done" | "blocked";
 
@@ -48,10 +59,15 @@ export default function VATasksPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabStatus>("todo");
   const [spawning, setSpawning] = useState(false);
+  const [spawningBlocked, setSpawningBlocked] = useState(false);
 
   const [tasks, setTasks] = useState<VATask[]>([]);
   const [listingMap, setListingMap] = useState<Record<string, ListingMini>>({});
   const [taskNotes, setTaskNotes] = useState<Record<string, string>>({});
+
+  // Blocked sources state
+  const [blocked, setBlocked] = useState<BlockedSource[]>([]);
+  const [blockedLoading, setBlockedLoading] = useState(false);
 
   const tabs: { key: TabStatus; label: string }[] = [
     { key: "todo", label: "To Do" },
@@ -102,9 +118,45 @@ export default function VATasksPage() {
     }
   }
 
+  async function fetchBlockedSources() {
+    setBlockedLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("va_blocked_sources")
+        .select("*")
+        .order("source_type", { ascending: true })
+        .order("display_name", { ascending: true })
+        .limit(50);
+
+      if (error) throw error;
+      setBlocked((data as BlockedSource[]) || []);
+    } catch {
+      setBlocked([]);
+    } finally {
+      setBlockedLoading(false);
+    }
+  }
+
+  async function spawnBlockedTasks() {
+    setSpawningBlocked(true);
+    try {
+      const { data, error } = await supabase.rpc("spawn_va_tasks_for_blocked_sources", { p_limit: 20 });
+      if (error) throw error;
+      const created = (data as { created_count: number }[])?.[0]?.created_count ?? 0;
+      toast.success(`Spawned ${created} blocked-source tasks`);
+      fetchTasks();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "unknown";
+      toast.error("Failed to spawn blocked-source tasks: " + msg);
+    } finally {
+      setSpawningBlocked(false);
+    }
+  }
+
   useEffect(() => {
     if (!user) return;
     fetchTasks();
+    fetchBlockedSources();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, activeTab]);
 
@@ -182,6 +234,64 @@ export default function VATasksPage() {
             )}
           </div>
         </div>
+
+        {/* Blocked Sources Panel */}
+        <Card className="mb-4 border-orange-500/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ShieldAlert className="h-4 w-4 text-orange-500" />
+              Blocked Sources
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-sm text-muted-foreground">
+                These can't be scraped (WAF/Cloudflare). VA downloads catalogue → upload via VA Intake.
+              </div>
+              {isAdmin && (
+                <Button variant="secondary" size="sm" onClick={spawnBlockedTasks} disabled={spawningBlocked}>
+                  {spawningBlocked ? "Spawning..." : "Spawn Blocked Tasks"}
+                </Button>
+              )}
+            </div>
+
+            {blockedLoading ? (
+              <div className="text-sm text-muted-foreground">Loading…</div>
+            ) : blocked.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No blocked sources right now.</div>
+            ) : (
+              <div className="grid gap-2 max-h-64 overflow-y-auto">
+                {blocked.slice(0, 12).map((b) => (
+                  <div key={`${b.source_type}-${b.source_key}`} className="flex items-start justify-between border rounded-md p-3">
+                    <div>
+                      <div className="font-medium text-sm">
+                        {b.display_name}{" "}
+                        <Badge variant="outline" className="ml-1 text-xs">{b.source_type}</Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {b.region_id} • {b.preflight_status} • {b.reason || "—"}
+                      </div>
+                    </div>
+                    {b.url ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => window.open(b.url!, "_blank")}
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+                {blocked.length > 12 && (
+                  <div className="text-xs text-muted-foreground text-center">
+                    +{blocked.length - 12} more
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <div className="flex gap-2 border-b pb-2">
           {tabs.map(tab => (
