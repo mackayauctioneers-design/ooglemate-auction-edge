@@ -179,3 +179,8 @@ schedule = "0 21 * * *"
 verify_jwt = false
 # Daily cron at 6:45am AEST (20:45 UTC) - sync sales before Bob/UI need them
 schedule = "45 20 * * *"
+
+[functions.sales-sync-health-slack]
+verify_jwt = false
+# Daily cron at 6:50am AEST (20:50 UTC) - alert if sales sync is stale
+schedule = "50 20 * * *"
