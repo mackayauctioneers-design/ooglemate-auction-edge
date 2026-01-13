@@ -143,6 +143,12 @@ verify_jwt = false
 [functions.run-daily-pipeline]
 verify_jwt = false
 
+[functions.auction-wrapper-cron]
+verify_jwt = false
+# Daily cron at 7:40am AEST (21:40 UTC) - crawl all enabled auction sources safely
+schedule = "40 21 * * *"
+
+
 [functions.va-task-spawn-cron]
 verify_jwt = false
 # Daily cron at 6:50am AEST (20:50 UTC) - spawn VA tasks before Slack ping
