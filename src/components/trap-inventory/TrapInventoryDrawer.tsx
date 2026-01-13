@@ -127,8 +127,6 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
   const [localNotes, setLocalNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesDirty, setNotesDirty] = useState(false);
-  const [localTrackedBy, setLocalTrackedBy] = useState('');
-  const [savingTrackedBy, setSavingTrackedBy] = useState(false);
   
   // Last Sale Anchor state
   const [lastSale, setLastSale] = useState<LastSale | null>(null);
@@ -253,7 +251,6 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
       if (error) throw error;
 
       setAssignResult(target ? `Assigned to ${target.toUpperCase()} ✅` : "Unassigned ✅");
-      setLocalTrackedBy(target || '');
       onLifecycleChange?.();
       onTrackedByChange?.(listing.id, target);
     } catch (e: unknown) {
@@ -282,13 +279,11 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
     updateNotes
   } = useTrapWatchlist(listing?.id ?? null);
 
-  // Sync local notes with hook notes
   useEffect(() => {
     setLocalNotes(notes || '');
     setNotesDirty(false);
-    setLocalTrackedBy(listing?.tracked_by || '');
     setLocalLifecycle(listing?.lifecycle_state || 'NEW');
-  }, [notes, listing?.id, listing?.tracked_by, listing?.lifecycle_state]);
+  }, [notes, listing?.id, listing?.lifecycle_state]);
 
   useEffect(() => {
     if (listing && open) {
