@@ -25,6 +25,18 @@ const PLATFORM_MARKERS: Record<string, RegExp[]> = {
     /class="[^"]*car-listing/i,
     /"inventory":\s*\[/i,
   ],
+  // RAMP / Dealer Solutions / Indiqator platform (Toyota franchise sites)
+  ramp: [
+    /radius-cdn\.ramp\.indiqator\.com\.au/i,
+    /indiqator/i,
+    /ramp\.indiqator/i,
+    /"@type"\s*:\s*"Vehicle"/i,
+    /"@type"\s*:\s*"Car"/i,
+    /class="[^"]*vehicle[^"]*"/i,
+    /class="[^"]*stock[^"]*"/i,
+    /class="[^"]*inventory[^"]*"/i,
+    /class="[^"]*listing[^"]*"/i,
+  ],
   generic: [
     /"@type"\s*:\s*"Vehicle"/i,
     /class="[^"]*vehicle/i,
@@ -32,6 +44,13 @@ const PLATFORM_MARKERS: Record<string, RegExp[]> = {
     /class="[^"]*inventory/i,
   ],
 };
+
+// Strong RAMP markers - if ANY of these are found, pass immediately on Tier1
+const RAMP_STRONG_MARKERS: RegExp[] = [
+  /radius-cdn\.ramp\.indiqator\.com\.au/i,
+  /indiqator/i,
+  /ramp\.indiqator/i,
+];
 
 interface PreflightResult {
   status: 'pass' | 'fail';
@@ -82,6 +101,33 @@ async function tier1DirectFetch(url: string, parserMode: string): Promise<Prefli
     }
     
     const html = await response.text();
+    
+    // RAMP special handling: if parser_mode is 'ramp' and we find strong markers, PASS immediately
+    if (parserMode === 'ramp') {
+      const rampStrongFound: string[] = [];
+      for (const marker of RAMP_STRONG_MARKERS) {
+        if (marker.test(html)) {
+          rampStrongFound.push(marker.source);
+        }
+      }
+      
+      // Also check for JSON-LD Vehicle schema as a strong signal
+      if (/"@type"\s*:\s*"(Vehicle|Car)"/i.test(html)) {
+        rampStrongFound.push('jsonld_vehicle');
+      }
+      
+      if (rampStrongFound.length >= 1) {
+        console.log(`[preflight] RAMP strong markers found for ${url}: ${rampStrongFound.join(', ')}`);
+        return {
+          status: 'pass',
+          reason: `tier1_direct_ramp_${rampStrongFound.length}_strong`,
+          markers: rampStrongFound,
+          tier: 1,
+          responseTime: Date.now() - start,
+        };
+      }
+    }
+    
     const markers = PLATFORM_MARKERS[parserMode] || PLATFORM_MARKERS.generic;
     const foundMarkers: string[] = [];
     
@@ -95,6 +141,17 @@ async function tier1DirectFetch(url: string, parserMode: string): Promise<Prefli
       return {
         status: 'pass',
         reason: `tier1_direct_${foundMarkers.length}_markers`,
+        markers: foundMarkers,
+        tier: 1,
+        responseTime: Date.now() - start,
+      };
+    }
+    
+    // For RAMP, if Tier1 is inconclusive but we got HTML, mark as timeout-safe (don't auto-disable)
+    if (parserMode === 'ramp' && html.length > 5000) {
+      return {
+        status: 'pass',
+        reason: 'tier1_ramp_html_present',
         markers: foundMarkers,
         tier: 1,
         responseTime: Date.now() - start,
@@ -222,7 +279,19 @@ async function runPreflight(url: string, parserMode: string): Promise<PreflightR
   }
   
   console.log(`[preflight] Tier 1 inconclusive for ${url}, trying Tier 2`);
-  return await tier2FirecrawlFetch(url, parserMode);
+  const tier2Result = await tier2FirecrawlFetch(url, parserMode);
+  
+  // For RAMP mode: if Tier2 times out, don't auto-disable - mark as 'timeout' status
+  if (parserMode === 'ramp' && tier2Result.status === 'fail' && tier2Result.reason.includes('timeout') || tier2Result.reason.includes('408')) {
+    console.log(`[preflight] RAMP tier2 timeout for ${url} - marking as timeout, not disabled`);
+    return {
+      ...tier2Result,
+      reason: 'ramp_firecrawl_timeout',
+      validation_status: undefined, // Don't auto-disable
+    };
+  }
+  
+  return tier2Result;
 }
 
 Deno.serve(async (req) => {
