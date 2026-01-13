@@ -148,6 +148,9 @@ verify_jwt = false
 # Daily cron at 7:40am AEST (21:40 UTC) - crawl all enabled auction sources safely
 schedule = "40 21 * * *"
 
+[functions.auction-run-now]
+verify_jwt = false
+
 
 [functions.va-task-spawn-cron]
 verify_jwt = false

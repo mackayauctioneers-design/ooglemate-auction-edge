@@ -127,6 +127,40 @@ Deno.serve(async (req) => {
             .update(patch)
             .eq("source_key", src.source_key);
 
+          // Log event + Slack alert when auto-disabled
+          if (curFails >= DISABLE_AFTER) {
+            await supabase.from("auction_source_events").insert({
+              source_key: src.source_key,
+              event_type: "disabled",
+              message: `Auto-disabled after ${curFails} consecutive crawl failures`,
+              meta: { last_error: errMsg, failures: curFails },
+            });
+
+            const SLACK_WEBHOOK_URL = Deno.env.get("SLACK_WEBHOOK_URL") || "";
+            if (SLACK_WEBHOOK_URL) {
+              await fetch(SLACK_WEBHOOK_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  blocks: [
+                    { type: "header", text: { type: "plain_text", text: "🧨 Auction Source Auto-Disabled", emoji: true } },
+                    {
+                      type: "section",
+                      text: {
+                        type: "mrkdwn",
+                        text:
+                          `*${(src as any).display_name || src.source_key}* (\`${src.source_key}\`) was auto-disabled.\n` +
+                          `• Fail streak: *${curFails}*\n` +
+                          `• Error: \`${errMsg}\`\n` +
+                          `Action: Re-enable in Operator → Auction Sources Health.`,
+                      },
+                    },
+                  ],
+                }),
+              });
+            }
+          }
+
           await supabase.from("cron_audit_log").upsert(
             {
               cron_name: `auction-wrapper-cron:${src.source_key}`,

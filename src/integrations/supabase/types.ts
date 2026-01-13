@@ -109,6 +109,33 @@ export type Database = {
           },
         ]
       }
+      auction_source_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          message: string | null
+          meta: Json | null
+          source_key: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          message?: string | null
+          meta?: Json | null
+          source_key: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          message?: string | null
+          meta?: Json | null
+          source_key?: string
+        }
+        Relationships: []
+      }
       auction_sources: {
         Row: {
           auto_disabled_at: string | null
@@ -2983,6 +3010,10 @@ export type Database = {
           records_upserted: number
           regions_processed: number
         }[]
+      }
+      reenable_auction_source: {
+        Args: { p_reason?: string; p_source_key: string }
+        Returns: undefined
       }
       refresh_watch_statuses: {
         Args: never
