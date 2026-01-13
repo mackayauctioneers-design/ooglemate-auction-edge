@@ -42,7 +42,8 @@ import {
   Sparkles,
   CheckCircle,
   DollarSign,
-  History
+  History,
+  Send
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
@@ -169,6 +170,33 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
       setBobReply(`Error: ${e?.message || "Failed to contact Bob"}`);
     } finally {
       setBobLoading(false);
+    }
+  }
+
+  // Send to Slack state
+  const [slackLoading, setSlackLoading] = useState(false);
+  const [slackResult, setSlackResult] = useState<string | null>(null);
+
+  async function sendToSlack() {
+    if (!listing) return;
+
+    setSlackLoading(true);
+    setSlackResult(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("send-buy-window-to-slack", {
+        body: {
+          listing_id: listing.id,
+          note: localNotes || "",
+        },
+      });
+
+      if (error) throw error;
+      setSlackResult("Sent to Slack ✅");
+    } catch (e: any) {
+      setSlackResult(`Slack failed: ${e?.message || "unknown error"}`);
+    } finally {
+      setSlackLoading(false);
     }
   }
   
@@ -503,6 +531,47 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
               </div>
             )}
           </div>
+
+          {/* Send to Slack - only show for BUY_WINDOW + unassigned + not avoided */}
+          {listing.watch_status === "buy_window" &&
+            !listing.sold_returned_suspected &&
+            !(listing as any).avoid_reason &&
+            !listing.assigned_to && (
+              <div className="rounded-lg border border-border p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium">Delegate</div>
+                    <div className="text-xs text-muted-foreground">
+                      Push this BUY WINDOW listing to Slack (unassigned only)
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={sendToSlack}
+                    disabled={slackLoading}
+                    className="shrink-0"
+                  >
+                    {slackLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        Sending…
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-1" />
+                        Send to Slack
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {slackResult && (
+                  <div className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">
+                    {slackResult}
+                  </div>
+                )}
+              </div>
+            )}
 
           <Separator />
 
