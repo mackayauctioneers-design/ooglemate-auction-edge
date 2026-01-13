@@ -186,13 +186,13 @@ Deno.serve(async (req) => {
           .eq('listing_id', listingId)
           .single();
 
-        // Generate fingerprint using v2 function (includes confidence + variant_source)
+        // Generate fingerprint using v2 function (includes confidence + variant_source + variant_used)
         const { data: fpRows, error: fpErr } = await supabase.rpc('generate_vehicle_fingerprint_v2', {
           p_year: lot.year,
           p_make: lot.make,
           p_model: lot.model,
-          p_variant_raw: lot.variant_raw || null,
           p_variant_family: lot.variant_family || null,
+          p_variant_raw: lot.variant_raw || null,
           p_body: null,
           p_transmission: lot.transmission || null,
           p_fuel: lot.fuel || null,
@@ -206,7 +206,8 @@ Deno.serve(async (req) => {
         const fp = fpRows?.[0] ?? null;
         const fingerprint = fp?.fingerprint ?? null;
         const fingerprint_confidence = fp?.fingerprint_confidence ?? 0;
-        const variant_source = fp?.variant_source ?? 'none';
+        const variant_used = fp?.variant_used ?? null;
+        const variant_source = fp?.variant_source ?? null;
 
         if (existing) {
           // Check if listing was previously cleared (RETURNED case)
@@ -237,6 +238,7 @@ Deno.serve(async (req) => {
               fingerprint,
               fingerprint_version: 2,
               fingerprint_confidence,
+              variant_used,
               variant_source,
             })
             .eq('id', existing.id);
@@ -288,6 +290,7 @@ Deno.serve(async (req) => {
               fingerprint,
               fingerprint_version: 2,
               fingerprint_confidence,
+              variant_used,
               variant_source,
             })
             .select('id')

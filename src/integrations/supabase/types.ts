@@ -2544,16 +2544,16 @@ export type Database = {
       }
       generate_vehicle_fingerprint_v2: {
         Args: {
-          p_body?: string
-          p_drivetrain?: string
-          p_fuel?: string
-          p_km?: number
+          p_body: string
+          p_drivetrain: string
+          p_fuel: string
+          p_km: number
           p_make: string
           p_model: string
-          p_region?: string
-          p_transmission?: string
-          p_variant_family?: string
-          p_variant_raw?: string
+          p_region: string
+          p_transmission: string
+          p_variant_family: string
+          p_variant_raw: string
           p_year: number
         }
         Returns: {
