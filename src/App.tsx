@@ -31,6 +31,7 @@ import FingerprintsExplorerPage from "./pages/operator/FingerprintsExplorerPage"
 import FeedingModeReportPage from "./pages/operator/FeedingModeReportPage";
 import BenchmarkGapPanel from "./pages/operator/BenchmarkGapPanel";
 import BenchmarkWatchlistPage from "./pages/operator/BenchmarkWatchlistPage";
+import AddAuctionSourcePage from "./pages/operator/AddAuctionSourcePage";
 
 const queryClient = new QueryClient();
 
@@ -93,6 +94,9 @@ const App = () => (
             } />
             <Route path="/operator/ingestion-runs" element={
               <OperatorGuard><OperatorPlaceholderPage title="Ingestion Runs" description="View ingestion run history" /></OperatorGuard>
+            } />
+            <Route path="/operator/auctions/add" element={
+              <OperatorGuard><AddAuctionSourcePage /></OperatorGuard>
             } />
 
             {/* Analytics */}
