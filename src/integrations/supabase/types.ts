@@ -109,6 +109,51 @@ export type Database = {
           },
         ]
       }
+      auction_schedule_runs: {
+        Row: {
+          created: number | null
+          created_at: string
+          dropped: number | null
+          error: string | null
+          id: string
+          lots_found: number | null
+          reason: string | null
+          run_at: string
+          run_date: string
+          source_key: string
+          status: string
+          updated: number | null
+        }
+        Insert: {
+          created?: number | null
+          created_at?: string
+          dropped?: number | null
+          error?: string | null
+          id?: string
+          lots_found?: number | null
+          reason?: string | null
+          run_at?: string
+          run_date?: string
+          source_key: string
+          status: string
+          updated?: number | null
+        }
+        Update: {
+          created?: number | null
+          created_at?: string
+          dropped?: number | null
+          error?: string | null
+          id?: string
+          lots_found?: number | null
+          reason?: string | null
+          run_at?: string
+          run_date?: string
+          source_key?: string
+          status?: string
+          updated?: number | null
+        }
+        Relationships: []
+      }
       auction_source_events: {
         Row: {
           created_at: string
