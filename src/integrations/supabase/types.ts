@@ -2764,6 +2764,17 @@ export type Database = {
           variant_used: string
         }[]
       }
+      get_auction_source_events: {
+        Args: { p_limit?: number; p_source_key: string }
+        Returns: {
+          created_at: string
+          event_type: string
+          id: string
+          message: string
+          meta: Json
+          source_key: string
+        }[]
+      }
       get_auction_source_stats: {
         Args: never
         Returns: {
