@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Plus, 
@@ -18,12 +19,14 @@ import {
   Flame,
   TrendingUp,
   Sparkles,
-  Filter
+  Filter,
+  History
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { RequireAuth } from '@/components/guards/RequireAuth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
+import { LastSaleAnchorCard } from '@/components/LastSaleAnchorCard';
 
 interface DealerSpec {
   id: string;
@@ -62,12 +65,14 @@ function SpecCard({
   spec, 
   onToggle, 
   onDuplicate, 
-  onDelete 
+  onDelete,
+  onShowLastSale
 }: { 
   spec: DealerSpec;
   onToggle: (id: string, enabled: boolean) => void;
   onDuplicate: (spec: DealerSpec) => void;
   onDelete: (id: string) => void;
+  onShowLastSale: (spec: DealerSpec) => void;
 }) {
   const priorityConfig = PRIORITY_CONFIG[spec.priority];
   const currentYear = new Date().getFullYear();
@@ -130,6 +135,15 @@ function SpecCard({
             checked={spec.enabled} 
             onCheckedChange={(checked) => onToggle(spec.id, checked)}
           />
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-8 w-8 p-0"
+            onClick={() => onShowLastSale(spec)}
+            title="Last Sale"
+          >
+            <History className="h-4 w-4" />
+          </Button>
           <Link to={`/dealer/specs/${spec.id}`}>
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
               <Pencil className="h-4 w-4" />
@@ -164,6 +178,32 @@ export default function DealerSpecsPage() {
   const [search, setSearch] = useState('');
   const [filterActive, setFilterActive] = useState(false);
   const [filterHigh, setFilterHigh] = useState(false);
+  
+  // Last Sale dialog state
+  const [saleOpen, setSaleOpen] = useState(false);
+  const [saleCtx, setSaleCtx] = useState<{
+    make: string;
+    model: string;
+    variant_used?: string | null;
+    year: number;
+    km?: number | null;
+    region_id?: string | null;
+    specName: string;
+  } | null>(null);
+
+  const openLastSaleForSpec = (spec: DealerSpec) => {
+    const currentYear = new Date().getFullYear();
+    setSaleCtx({
+      make: spec.make,
+      model: spec.model,
+      variant_used: spec.variant_family || null,
+      year: spec.year_min || currentYear - 5,
+      km: spec.km_max ?? null,
+      region_id: spec.region_scope === 'ALL' ? null : spec.region_scope,
+      specName: spec.name,
+    });
+    setSaleOpen(true);
+  };
 
   useEffect(() => {
     fetchSpecs();
@@ -393,6 +433,7 @@ export default function DealerSpecsPage() {
                         onToggle={handleToggle}
                         onDuplicate={handleDuplicate}
                         onDelete={handleDelete}
+                        onShowLastSale={openLastSaleForSpec}
                       />
                     ))}
                   </div>
@@ -400,6 +441,34 @@ export default function DealerSpecsPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Last Sale Dialog */}
+          <Dialog open={saleOpen} onOpenChange={setSaleOpen}>
+            <DialogContent className="max-w-xl">
+              <DialogHeader>
+                <DialogTitle>
+                  Last Equivalent Sale
+                  {saleCtx?.specName && (
+                    <span className="text-muted-foreground font-normal ml-2">
+                      — {saleCtx.specName}
+                    </span>
+                  )}
+                </DialogTitle>
+              </DialogHeader>
+
+              {saleCtx ? (
+                <LastSaleAnchorCard
+                  title="Last Equivalent Sale"
+                  make={saleCtx.make}
+                  model={saleCtx.model}
+                  variant_used={saleCtx.variant_used}
+                  year={saleCtx.year}
+                  km={saleCtx.km ?? null}
+                  region_id={saleCtx.region_id ?? null}
+                />
+              ) : null}
+            </DialogContent>
+          </Dialog>
         </div>
       </AppLayout>
     </RequireAuth>
