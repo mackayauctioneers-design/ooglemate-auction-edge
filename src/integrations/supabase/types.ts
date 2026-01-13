@@ -326,6 +326,13 @@ export type Database = {
             foreignKeyName: "clearance_events_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
+            referencedRelation: "missed_buy_window"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clearance_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
             referencedRelation: "stale_dealer_grade"
             referencedColumns: ["id"]
           },
@@ -572,6 +579,13 @@ export type Database = {
             columns: ["listing_uuid"]
             isOneToOne: false
             referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_match_alerts_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "missed_buy_window"
             referencedColumns: ["id"]
           },
           {
@@ -832,6 +846,13 @@ export type Database = {
             columns: ["listing_uuid"]
             isOneToOne: false
             referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_spec_matches_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "missed_buy_window"
             referencedColumns: ["id"]
           },
           {
@@ -1456,6 +1477,13 @@ export type Database = {
             foreignKeyName: "listing_events_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
+            referencedRelation: "missed_buy_window"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
             referencedRelation: "stale_dealer_grade"
             referencedColumns: ["id"]
           },
@@ -1529,6 +1557,13 @@ export type Database = {
             columns: ["listing_id"]
             isOneToOne: false
             referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_snapshots_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "missed_buy_window"
             referencedColumns: ["id"]
           },
           {
@@ -2051,6 +2086,13 @@ export type Database = {
             foreignKeyName: "va_tasks_listing_uuid_fkey"
             columns: ["listing_uuid"]
             isOneToOne: false
+            referencedRelation: "missed_buy_window"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_tasks_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
             referencedRelation: "stale_dealer_grade"
             referencedColumns: ["id"]
           },
@@ -2242,6 +2284,13 @@ export type Database = {
             columns: ["listing_id"]
             isOneToOne: false
             referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_upload_rows_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "missed_buy_window"
             referencedColumns: ["id"]
           },
           {
@@ -2992,6 +3041,25 @@ export type Database = {
         }
         Relationships: []
       }
+      missed_buy_window: {
+        Row: {
+          asking_price: number | null
+          buy_window_at: string | null
+          days_to_clear: number | null
+          id: string | null
+          km: number | null
+          listing_id: string | null
+          location: string | null
+          make: string | null
+          model: string | null
+          sold_date: string | null
+          source: string | null
+          variant_used: string | null
+          watch_confidence: string | null
+          year: number | null
+        }
+        Relationships: []
+      }
       regional_demand_21d: {
         Row: {
           cleared_count: number | null
@@ -3273,6 +3341,7 @@ export type Database = {
           reason: string
         }[]
       }
+      escalate_stale_va_tasks: { Args: never; Returns: Json }
       evaluate_dealer_spec_matches_for_listing: {
         Args: { p_listing_uuid: string }
         Returns: {
@@ -3289,6 +3358,7 @@ export type Database = {
           watch_confidence: string
         }[]
       }
+      flag_stale_buy_windows: { Args: never; Returns: Json }
       generate_geo_heat_alerts: {
         Args: {
           p_asof?: string
@@ -3623,6 +3693,7 @@ export type Database = {
           watch_count: number
         }[]
       }
+      get_today_actions: { Args: never; Returns: Json }
       get_top_drop_reasons: {
         Args: never
         Returns: {

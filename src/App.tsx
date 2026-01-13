@@ -115,6 +115,7 @@ const App = () => (
             } />
             <Route path="/operator/franchise-feeds" element={
               <OperatorGuard><FranchisePortalFeedsPage /></OperatorGuard>
+            } />
 
             {/* Analytics */}
             <Route path="/operator/feeding-mode" element={

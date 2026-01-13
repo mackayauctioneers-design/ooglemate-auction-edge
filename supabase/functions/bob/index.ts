@@ -1345,6 +1345,82 @@ serve(async (req) => {
       );
     }
 
+    // ================================================================
+    // "WHAT SHOULD I DO TODAY?" INTENT - Priority dashboard query
+    // ================================================================
+    const todayIntentPatterns = [
+      /what.*(should|do).*(today|now|focus)/i,
+      /what.*(matters|priority|priorities)/i,
+      /what.*(looking at|check|action)/i,
+      /morning brief/i,
+      /daily brief/i,
+      /what's hot/i,
+      /what should i be/i,
+    ];
+    
+    const hasTodayIntent = todayIntentPatterns.some(p => p.test(transcript));
+    
+    if (hasTodayIntent) {
+      console.log("[BOB] TODAY_ACTIONS intent detected");
+      
+      // Query today's actions
+      const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+      const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      
+      if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        const { data: actions, error } = await supabase.rpc("get_today_actions");
+        
+        if (!error && actions) {
+          const a = actions as Record<string, any>;
+          const parts: string[] = [];
+          
+          // Priority order: BUY WINDOW > VA Tasks > Missed opportunities
+          if (a.buy_window_unassigned > 0) {
+            parts.push(`You've got ${a.buy_window_unassigned} unassigned BUY WINDOW cars`);
+            
+            // Add top priority car if available
+            if (a.top_buy_window && Array.isArray(a.top_buy_window) && a.top_buy_window.length > 0) {
+              const top = a.top_buy_window[0];
+              parts.push(`— highest priority is a ${top.year} ${top.make} ${top.model} in ${top.location || 'unknown location'}`);
+            }
+          }
+          
+          if (a.buy_window_stale > 0) {
+            parts.push(`${a.buy_window_stale} have been sitting 36+ hours — need action now`);
+          }
+          
+          if (a.va_tasks_overdue > 0) {
+            parts.push(`${a.va_tasks_overdue} VA tasks are overdue`);
+          } else if (a.va_tasks_due > 0) {
+            parts.push(`${a.va_tasks_due} VA tasks due in the next 24 hours`);
+          }
+          
+          if (a.missed_buy_window_7d > 0) {
+            parts.push(`${a.missed_buy_window_7d} buy windows were missed in the last 7 days — learn from those`);
+          }
+          
+          let todayScript = '';
+          if (parts.length === 0) {
+            todayScript = "All caught up, mate. System's running clean. Go find some deals.";
+          } else {
+            todayScript = parts.join('. ') + ". Assign or act.";
+          }
+          
+          return new Response(
+            JSON.stringify({ response: todayScript, script: todayScript }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+      
+      const fallbackScript = "Couldn't pull the dashboard right now, mate. Check the Operator page.";
+      return new Response(
+        JSON.stringify({ response: fallbackScript, script: fallbackScript }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Extract vehicle from message
     const vehicleInput = extractVehicleFromMessage(transcript);
     let decision: DecisionObject | null = null;
