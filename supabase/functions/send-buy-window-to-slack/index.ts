@@ -119,6 +119,7 @@ Deno.serve(async (req) => {
     const auction = vl.auction_house ? ` (${vl.auction_house})` : "";
     const run = vl.attempt_count ? ` • Run #${vl.attempt_count}${vl.attempt_stage ? ` (${vl.attempt_stage})` : ""}` : "";
     const confidence = (vl.watch_confidence || "—").toString().toUpperCase();
+    const assignedLine = vl.assigned_to ? `Assigned to: *${vl.assigned_to.toUpperCase()}*` : "Assigned to: —";
 
     const blocks: any[] = [
       { type: "header", text: { type: "plain_text", text: "🎯 BUY WINDOW — Manual Push", emoji: true } },
@@ -131,6 +132,7 @@ Deno.serve(async (req) => {
             `Source: *${src}*${auction}${run}\n` +
             `Price: *${price}* • KM: *${km}* ${where}\n` +
             `Confidence: *${confidence}*\n` +
+            `${assignedLine}\n` +
             (vl.watch_reason ? `_Reason: ${vl.watch_reason}_\n` : "") +
             (note ? `*Note:* ${note}\n` : ""),
         },

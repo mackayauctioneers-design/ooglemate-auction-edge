@@ -218,6 +218,51 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
       setClaimPushLoading(false);
     }
   }
+
+  // Quick Assign state
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [assignResult, setAssignResult] = useState<string | null>(null);
+
+  async function quickAssign(target: "dave" | "va" | null) {
+    if (!listing || !user) return;
+
+    setAssignLoading(true);
+    setAssignResult(null);
+
+    try {
+      const patch: Record<string, unknown> =
+        target === null
+          ? {
+              assigned_to: null,
+              assigned_at: null,
+              assigned_by: null,
+              assignment_notes: null,
+            }
+          : {
+              assigned_to: target, // simple key for readability
+              assigned_at: new Date().toISOString(),
+              assigned_by: user.id, // UUID for audit
+              assignment_notes: localNotes || null,
+            };
+
+      const { error } = await supabase
+        .from("vehicle_listings")
+        .update(patch)
+        .eq("id", listing.id);
+
+      if (error) throw error;
+
+      setAssignResult(target ? `Assigned to ${target.toUpperCase()} ✅` : "Unassigned ✅");
+      setLocalTrackedBy(target || '');
+      onLifecycleChange?.();
+      onTrackedByChange?.(listing.id, target);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "unknown error";
+      setAssignResult(`Assign failed: ${msg}`);
+    } finally {
+      setAssignLoading(false);
+    }
+  }
   
   const regionIdForSale = useMemo(() => {
     // Prefer listing.region_id if available; else pass null - RPC will fallback to NATIONAL
@@ -758,81 +803,59 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
             </p>
           </section>
 
-          {/* Assignment Section */}
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-              <User className="h-4 w-4" />
-              Assignment
-            </h3>
-            <div className="flex gap-2">
-              <Input
-                placeholder="e.g. Dave"
-                value={localTrackedBy}
-                onChange={(e) => setLocalTrackedBy(e.target.value)}
-                className="flex-1"
-              />
-              <Button
-                size="sm"
-                variant="default"
-                disabled={savingTrackedBy}
-                onClick={async () => {
-                  if (!user) return;
-                  setSavingTrackedBy(true);
-                  const display = (user.email || '').split('@')[0] || 'operator';
-                  const { error } = await supabase
-                    .from('vehicle_listings')
-                    .update({ 
-                      assigned_to: display,
-                      assigned_at: new Date().toISOString(),
-                      assigned_by: user.id
-                    })
-                    .eq('id', listing.id);
-                  
-                  if (!error) {
-                    setLocalTrackedBy(display);
-                    onTrackedByChange?.(listing.id, display);
-                    toast.success(`Assigned to ${display}`);
-                  } else {
-                    toast.error('Assign failed');
-                  }
-                  setSavingTrackedBy(false);
-                }}
-              >
-                {savingTrackedBy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign to me'}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={savingTrackedBy || !localTrackedBy}
-                onClick={async () => {
-                  if (!user) return;
-                  setSavingTrackedBy(true);
-                  const { error } = await supabase
-                    .from('vehicle_listings')
-                    .update({ 
-                      assigned_to: null,
-                      assigned_at: null,
-                      assigned_by: null
-                    })
-                    .eq('id', listing.id);
-                  
-                  if (!error) {
-                    setLocalTrackedBy('');
-                    onTrackedByChange?.(listing.id, null);
-                    toast.success('Unassigned');
-                  } else {
-                    toast.error('Unassign failed');
-                  }
-                  setSavingTrackedBy(false);
-                }}
-              >
-                Unassign
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Assigned items stop appearing in the daily BUY WINDOW Slack ping.
-            </p>
-          </section>
+          {/* Quick Assign Section */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Quick Assign
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="default"
+                  size="sm"
+                  disabled={assignLoading}
+                  onClick={() => quickAssign("dave")}
+                >
+                  {assignLoading ? "Working..." : "Assign to Dave"}
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={assignLoading}
+                  onClick={() => quickAssign("va")}
+                >
+                  {assignLoading ? "Working..." : "Assign to VA"}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={assignLoading}
+                  onClick={() => quickAssign(null)}
+                >
+                  {assignLoading ? "Working..." : "Unassign"}
+                </Button>
+              </div>
+
+              {assignResult && (
+                <div className="text-sm text-muted-foreground">{assignResult}</div>
+              )}
+
+              {listing.assigned_to && (
+                <div className="text-xs text-muted-foreground">
+                  Currently assigned to: <span className="font-medium">{listing.assigned_to}</span>
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                Assigned items stop appearing in the daily BUY WINDOW Slack ping.
+              </p>
+            </CardContent>
+          </Card>
 
           <Separator />
 
