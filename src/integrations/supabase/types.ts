@@ -2405,6 +2405,13 @@ export type Database = {
       }
     }
     Functions: {
+      backfill_fingerprints_v2: {
+        Args: { batch_size?: number }
+        Returns: {
+          remaining_count: number
+          updated_count: number
+        }[]
+      }
       claim_next_job: {
         Args: never
         Returns: {
@@ -2613,6 +2620,14 @@ export type Database = {
           dealer_profile_id: string
           org_id: string
           region_id: string
+        }[]
+      }
+      get_fingerprint_v2_adoption: {
+        Args: never
+        Returns: {
+          total: number
+          v2: number
+          v2_pct: number
         }[]
       }
       get_fingerprints_today: {
