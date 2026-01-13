@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     }
 
     // Pull listing
-    const { data, error: qErr } = await supabase
+    const { data: vl, error: qErr } = await supabase
       .from("vehicle_listings")
       .select(
         [
@@ -88,12 +88,9 @@ Deno.serve(async (req) => {
         ].join(",")
       )
       .eq("id", listing_id)
-      .single();
+      .single<any>();
 
-    if (qErr || !data) throw qErr || new Error("Listing not found");
-    
-    // Cast to any to work with dynamic fields
-    const vl = data as any;
+    if (qErr || !vl) throw qErr || new Error("Listing not found");
 
     // SAFETY gates
     if (vl.sold_returned_suspected || vl.watch_status === "avoid") {

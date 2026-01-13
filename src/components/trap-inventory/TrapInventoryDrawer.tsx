@@ -533,10 +533,19 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
           </div>
 
           {/* Send to Slack - only show for BUY_WINDOW + unassigned + not avoided */}
-          {listing.watch_status === "buy_window" &&
-            !listing.sold_returned_suspected &&
-            !(listing as any).avoid_reason &&
-            !listing.assigned_to && (
+          {(() => {
+            const isAvoid =
+              listing.watch_status === "avoid" ||
+              listing.sold_returned_suspected === true;
+
+            const isEligibleSlackPush =
+              listing.watch_status === "buy_window" &&
+              !isAvoid &&
+              !listing.assigned_to;
+
+            if (!isEligibleSlackPush) return null;
+
+            return (
               <div className="rounded-lg border border-border p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -571,7 +580,8 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
                   </div>
                 )}
               </div>
-            )}
+            );
+          })()}
 
           <Separator />
 
