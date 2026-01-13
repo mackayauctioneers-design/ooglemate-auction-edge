@@ -1188,6 +1188,51 @@ export type Database = {
         }
         Relationships: []
       }
+      franchise_dealer_candidates: {
+        Row: {
+          brand: string
+          created_at: string
+          dealer_location: string | null
+          dealer_name: string
+          dealer_url: string | null
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          listing_count: number | null
+          notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          brand: string
+          created_at?: string
+          dealer_location?: string | null
+          dealer_name: string
+          dealer_url?: string | null
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          listing_count?: number | null
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          brand?: string
+          created_at?: string
+          dealer_location?: string | null
+          dealer_name?: string
+          dealer_url?: string | null
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          listing_count?: number | null
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       geo_heat_alerts: {
         Row: {
           acknowledged_at: string | null
@@ -2441,10 +2486,13 @@ export type Database = {
           auction_house: string | null
           avoid_reason: string | null
           buy_window_at: string | null
+          dealer_name: string | null
+          dealer_url: string | null
           drivetrain: string | null
           event_id: string | null
           excluded_keyword: string | null
           excluded_reason: string | null
+          external_id: string | null
           fingerprint: string | null
           fingerprint_confidence: number
           fingerprint_version: number
@@ -2507,10 +2555,13 @@ export type Database = {
           auction_house?: string | null
           avoid_reason?: string | null
           buy_window_at?: string | null
+          dealer_name?: string | null
+          dealer_url?: string | null
           drivetrain?: string | null
           event_id?: string | null
           excluded_keyword?: string | null
           excluded_reason?: string | null
+          external_id?: string | null
           fingerprint?: string | null
           fingerprint_confidence?: number
           fingerprint_version?: number
@@ -2573,10 +2624,13 @@ export type Database = {
           auction_house?: string | null
           avoid_reason?: string | null
           buy_window_at?: string | null
+          dealer_name?: string | null
+          dealer_url?: string | null
           drivetrain?: string | null
           event_id?: string | null
           excluded_keyword?: string | null
           excluded_reason?: string | null
+          external_id?: string | null
           fingerprint?: string | null
           fingerprint_confidence?: number
           fingerprint_version?: number

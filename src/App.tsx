@@ -38,6 +38,7 @@ import BenchmarkGapPanel from "./pages/operator/BenchmarkGapPanel";
 import BenchmarkWatchlistPage from "./pages/operator/BenchmarkWatchlistPage";
 import AddAuctionSourcePage from "./pages/operator/AddAuctionSourcePage";
 import OperatorDealerSpecsPage from "./pages/operator/DealerSpecsPage";
+import FranchisePortalFeedsPage from "./pages/operator/FranchisePortalFeedsPage";
 
 // Dealer spec pages
 import DealerSpecsListPage from "./pages/dealer/DealerSpecsPage";
@@ -112,6 +113,8 @@ const App = () => (
             <Route path="/operator/auctions/add" element={
               <OperatorGuard><AddAuctionSourcePage /></OperatorGuard>
             } />
+            <Route path="/operator/franchise-feeds" element={
+              <OperatorGuard><FranchisePortalFeedsPage /></OperatorGuard>
 
             {/* Analytics */}
             <Route path="/operator/feeding-mode" element={
