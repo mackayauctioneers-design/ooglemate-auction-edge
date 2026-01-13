@@ -37,7 +37,12 @@ import FeedingModeReportPage from "./pages/operator/FeedingModeReportPage";
 import BenchmarkGapPanel from "./pages/operator/BenchmarkGapPanel";
 import BenchmarkWatchlistPage from "./pages/operator/BenchmarkWatchlistPage";
 import AddAuctionSourcePage from "./pages/operator/AddAuctionSourcePage";
-import DealerSpecsPage from "./pages/operator/DealerSpecsPage";
+import OperatorDealerSpecsPage from "./pages/operator/DealerSpecsPage";
+
+// Dealer spec pages
+import DealerSpecsListPage from "./pages/dealer/DealerSpecsPage";
+import DealerSpecFormPage from "./pages/dealer/DealerSpecFormPage";
+
 const queryClient = new QueryClient();
 
 // ============================================================================
@@ -71,6 +76,11 @@ const App = () => (
             <Route path="/log-sale" element={<LogSalePage />} />
             <Route path="/help" element={<HelpPage />} />
             <Route path="/auth" element={<AuthPage />} />
+            
+            {/* Dealer Specs */}
+            <Route path="/dealer/specs" element={<DealerSpecsListPage />} />
+            <Route path="/dealer/specs/new" element={<DealerSpecFormPage />} />
+            <Route path="/dealer/specs/:id" element={<DealerSpecFormPage />} />
 
             {/* === OPERATOR ROUTES: Admin/Internal only === */}
             {/* Dashboard */}
@@ -117,7 +127,7 @@ const App = () => (
               <RequireAdmin><BenchmarkWatchlistPage /></RequireAdmin>
             } />
             <Route path="/operator/dealer-specs" element={
-              <RequireAdmin><DealerSpecsPage /></RequireAdmin>
+              <RequireAdmin><OperatorDealerSpecsPage /></RequireAdmin>
             } />
 
             {/* === ADMIN TOOLS: Protected by RequireAdmin === */}

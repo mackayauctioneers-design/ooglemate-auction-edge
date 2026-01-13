@@ -749,6 +749,224 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_spec_matches: {
+        Row: {
+          asking_price: number | null
+          benchmark_price: number | null
+          created_at: string | null
+          deal_label: string | null
+          dealer_spec_id: string
+          delta_pct: number | null
+          id: string
+          km: number | null
+          listing_url: string | null
+          listing_uuid: string
+          make: string | null
+          match_reason: Json | null
+          match_score: number | null
+          matched_at: string | null
+          model: string | null
+          region_id: string | null
+          sent_to_slack_at: string | null
+          source_class: string | null
+          variant_used: string | null
+          watch_status: string | null
+          year: number | null
+        }
+        Insert: {
+          asking_price?: number | null
+          benchmark_price?: number | null
+          created_at?: string | null
+          deal_label?: string | null
+          dealer_spec_id: string
+          delta_pct?: number | null
+          id?: string
+          km?: number | null
+          listing_url?: string | null
+          listing_uuid: string
+          make?: string | null
+          match_reason?: Json | null
+          match_score?: number | null
+          matched_at?: string | null
+          model?: string | null
+          region_id?: string | null
+          sent_to_slack_at?: string | null
+          source_class?: string | null
+          variant_used?: string | null
+          watch_status?: string | null
+          year?: number | null
+        }
+        Update: {
+          asking_price?: number | null
+          benchmark_price?: number | null
+          created_at?: string | null
+          deal_label?: string | null
+          dealer_spec_id?: string
+          delta_pct?: number | null
+          id?: string
+          km?: number | null
+          listing_url?: string | null
+          listing_uuid?: string
+          make?: string | null
+          match_reason?: Json | null
+          match_score?: number | null
+          matched_at?: string | null
+          model?: string | null
+          region_id?: string | null
+          sent_to_slack_at?: string | null
+          source_class?: string | null
+          variant_used?: string | null
+          watch_status?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_spec_matches_dealer_spec_id_fkey"
+            columns: ["dealer_spec_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_specs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_spec_matches_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_spec_matches_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "stale_dealer_grade"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_spec_matches_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "trap_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_spec_matches_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "trap_deals_90_plus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_spec_matches_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "trap_inventory_current"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_spec_matches_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "vehicle_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_specs: {
+        Row: {
+          allow_no_benchmark: boolean | null
+          auto_buy_window: boolean | null
+          created_at: string | null
+          dealer_id: string
+          dealer_name: string
+          deleted_at: string | null
+          drive_allow: string[] | null
+          enabled: boolean | null
+          exploration_mode: boolean | null
+          fuel_allow: string[] | null
+          hard_max_price: number | null
+          id: string
+          km_max: number | null
+          km_min: number | null
+          make: string
+          min_benchmark_confidence: string | null
+          model: string
+          name: string
+          priority: string | null
+          push_watchlist: boolean | null
+          region_scope: string
+          slack_alerts: boolean | null
+          trans_allow: string[] | null
+          under_benchmark_pct: number | null
+          updated_at: string | null
+          va_tasks: boolean | null
+          variant_family: string | null
+          year_max: number | null
+          year_min: number | null
+        }
+        Insert: {
+          allow_no_benchmark?: boolean | null
+          auto_buy_window?: boolean | null
+          created_at?: string | null
+          dealer_id: string
+          dealer_name: string
+          deleted_at?: string | null
+          drive_allow?: string[] | null
+          enabled?: boolean | null
+          exploration_mode?: boolean | null
+          fuel_allow?: string[] | null
+          hard_max_price?: number | null
+          id?: string
+          km_max?: number | null
+          km_min?: number | null
+          make: string
+          min_benchmark_confidence?: string | null
+          model: string
+          name: string
+          priority?: string | null
+          push_watchlist?: boolean | null
+          region_scope?: string
+          slack_alerts?: boolean | null
+          trans_allow?: string[] | null
+          under_benchmark_pct?: number | null
+          updated_at?: string | null
+          va_tasks?: boolean | null
+          variant_family?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          allow_no_benchmark?: boolean | null
+          auto_buy_window?: boolean | null
+          created_at?: string | null
+          dealer_id?: string
+          dealer_name?: string
+          deleted_at?: string | null
+          drive_allow?: string[] | null
+          enabled?: boolean | null
+          exploration_mode?: boolean | null
+          fuel_allow?: string[] | null
+          hard_max_price?: number | null
+          id?: string
+          km_max?: number | null
+          km_min?: number | null
+          make?: string
+          min_benchmark_confidence?: string | null
+          model?: string
+          name?: string
+          priority?: string | null
+          push_watchlist?: boolean | null
+          region_scope?: string
+          slack_alerts?: boolean | null
+          trans_allow?: string[] | null
+          under_benchmark_pct?: number | null
+          updated_at?: string | null
+          va_tasks?: boolean | null
+          variant_family?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Relationships: []
+      }
       dealer_traps: {
         Row: {
           anchor_trap: boolean
@@ -3295,6 +3513,17 @@ export type Database = {
           sample_count: number
         }[]
       }
+      get_spec_hits_summary: {
+        Args: { p_spec_id: string }
+        Returns: {
+          mispriced_count: number
+          no_benchmark_count: number
+          strong_buy_count: number
+          total_30d: number
+          total_7d: number
+          watch_count: number
+        }[]
+      }
       get_top_drop_reasons: {
         Args: never
         Returns: {
@@ -3366,6 +3595,12 @@ export type Database = {
         }[]
       }
       location_to_region: { Args: { p_location: string }; Returns: string }
+      match_dealer_specs_for_listing: {
+        Args: { p_listing_uuid: string }
+        Returns: {
+          matches_created: number
+        }[]
+      }
       materialize_fingerprint_outcomes: {
         Args: { p_asof?: string }
         Returns: {
