@@ -2599,6 +2599,15 @@ export type Database = {
           total_deals: number
         }[]
       }
+      get_benchmark_coverage_summary: {
+        Args: never
+        Returns: {
+          benchmarked: number
+          by_region: Json
+          coverage_pct: number
+          total_deals: number
+        }[]
+      }
       get_clearance_today: {
         Args: never
         Returns: {

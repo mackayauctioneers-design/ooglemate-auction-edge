@@ -61,6 +61,24 @@ interface AuctionSourceStat {
   today_dropped: number;
 }
 
+interface V2Adoption {
+  total: number;
+  v2: number;
+  v2_pct: number;
+}
+
+interface BenchmarkSummary {
+  total_deals: number;
+  benchmarked: number;
+  coverage_pct: number;
+  by_region: Array<{
+    region_id: string;
+    total_deals: number;
+    benchmarked: number;
+    coverage_pct: number;
+  }>;
+}
+
 interface HealthData {
   traps: TrapStat[];
   crawlToday: CrawlStats | null;
@@ -71,6 +89,8 @@ interface HealthData {
   benchmarkCoverage: BenchmarkCoverage[];
   nswRegionalRuns: NswRegionalRun[];
   auctionSources: AuctionSourceStat[];
+  v2Adoption: V2Adoption | null;
+  benchmarkSummary: BenchmarkSummary | null;
   lastRefresh: Date;
 }
 
@@ -85,7 +105,7 @@ export function IngestionHealthContent() {
   const fetchHealth = async () => {
     setLoading(true);
     try {
-      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes, benchmarkRes, nswRegionalRes, auctionSourcesRes] = await Promise.all([
+      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes, benchmarkRes, nswRegionalRes, auctionSourcesRes, v2AdoptionRes, benchmarkSummaryRes] = await Promise.all([
         supabase.rpc('get_nsw_trap_stats' as never),
         supabase.rpc('get_nsw_crawl_today' as never),
         supabase.rpc('get_clearance_today' as never),
@@ -102,6 +122,9 @@ export function IngestionHealthContent() {
           .order('started_at', { ascending: false }),
         // Fetch auction sources with stats
         supabase.rpc('get_auction_source_stats' as never),
+        // v2 adoption and benchmark summary
+        supabase.rpc('get_fingerprint_v2_adoption' as never),
+        supabase.rpc('get_benchmark_coverage_summary' as never),
       ]);
 
       // Parse NSW regional runs
@@ -146,6 +169,8 @@ export function IngestionHealthContent() {
         benchmarkCoverage: (benchmarkRes.data as BenchmarkCoverage[]) || [],
         nswRegionalRuns,
         auctionSources: (auctionSourcesRes.data as AuctionSourceStat[]) || [],
+        v2Adoption: (v2AdoptionRes.data as V2Adoption[])?.[0] || null,
+        benchmarkSummary: (benchmarkSummaryRes.data as BenchmarkSummary[])?.[0] || null,
         lastRefresh: new Date(),
       });
     } catch (err) {
@@ -294,6 +319,67 @@ export function IngestionHealthContent() {
                   {health?.crawlToday?.crawl_runs || 0}
                 </div>
                 <p className="text-muted-foreground text-sm">today</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Machine Fed Cards: v2 Adoption & Benchmark Coverage */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Fingerprint v2 Adoption */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Fingerprint v2 Adoption</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {health?.v2Adoption ? (
+                  <div className="space-y-2">
+                    <div className="text-3xl font-semibold">
+                      {health.v2Adoption.v2_pct}%
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {health.v2Adoption.v2.toLocaleString()} / {health.v2Adoption.total.toLocaleString()} dealer-grade listings
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">No data</div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Benchmark Coverage */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Benchmark Coverage</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {health?.benchmarkSummary ? (
+                  <div className="space-y-3">
+                    <div className="text-3xl font-semibold">
+                      {health.benchmarkSummary.coverage_pct}%
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {health.benchmarkSummary.benchmarked.toLocaleString()} / {health.benchmarkSummary.total_deals.toLocaleString()} trap deals benchmarked
+                    </div>
+
+                    {/* Mini region breakdown (top 5) */}
+                    <div className="space-y-2 pt-2">
+                      {(Array.isArray(health.benchmarkSummary.by_region) ? health.benchmarkSummary.by_region : [])
+                        .slice(0, 5)
+                        .map((r) => (
+                          <div key={r.region_id} className="flex items-center justify-between text-sm">
+                            <div className="text-muted-foreground">
+                              {String(r.region_id || '').replace(/_/g, ' ')}
+                            </div>
+                            <div className="font-medium">
+                              {r.coverage_pct}% ({r.benchmarked}/{r.total_deals})
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">No data</div>
+                )}
               </CardContent>
             </Card>
           </div>
