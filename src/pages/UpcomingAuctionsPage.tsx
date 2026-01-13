@@ -1,117 +1,197 @@
 import { useState, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { format, parseISO, addDays, isAfter, isBefore, startOfDay } from 'date-fns';
-import { toZonedTime } from 'date-fns-tz';
-import { ExternalLink, Plus, Pencil, Loader2, Search } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { format, parseISO, startOfDay, addDays, isAfter, isBefore } from 'date-fns';
+import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
+import { ExternalLink, Loader2, Search, Flame, Thermometer, Snowflake, Calendar, MapPin, AlertCircle } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { dataService } from '@/services/dataService';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { AuctionEvent } from '@/types';
-import { AuctionEventEditor } from '@/components/auctions/AuctionEventEditor';
 
 const AEST_TIMEZONE = 'Australia/Sydney';
+const MAX_DAYS_AHEAD = 14;
 
-type DateRangeFilter = 'next7' | 'next14' | 'all';
+interface AuctionSummary {
+  auction_house: string;
+  auction_date: string;
+  location: string | null;
+  total_lots: number;
+  eligible_lots: number;
+  matching_lots: number;
+}
+
+type HeatLevel = 'hot' | 'warm' | 'cold';
+
+function getHeatLevel(matchingLots: number): HeatLevel {
+  if (matchingLots >= 8) return 'hot';
+  if (matchingLots >= 3) return 'warm';
+  return 'cold';
+}
+
+function HeatIndicator({ level, count }: { level: HeatLevel; count: number }) {
+  const config = {
+    hot: { icon: Flame, label: 'Hot', className: 'text-destructive' },
+    warm: { icon: Thermometer, label: 'Warm', className: 'text-amber-500' },
+    cold: { icon: Snowflake, label: 'Cold', className: 'text-muted-foreground' },
+  };
+  
+  const { icon: Icon, label, className } = config[level];
+  
+  return (
+    <div className={`flex items-center gap-1 ${className}`}>
+      <Icon className="h-4 w-4" />
+      <span className="text-xs font-medium">{count} relevant</span>
+    </div>
+  );
+}
 
 export default function UpcomingAuctionsPage() {
-  const { isAdmin } = useAuth();
-  const queryClient = useQueryClient();
+  const { dealerProfile } = useAuth();
   const navigate = useNavigate();
   
   const [auctionHouseFilter, setAuctionHouseFilter] = useState<string>('all');
   const [locationFilter, setLocationFilter] = useState<string>('all');
-  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>('next7');
-  const [editingEvent, setEditingEvent] = useState<AuctionEvent | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
 
-  const { data: events = [], isLoading } = useQuery({
-    queryKey: ['auctionEvents'],
-    queryFn: () => dataService.getAuctionEvents(),
-  });
+  // Fetch upcoming auction summaries directly from vehicle_listings
+  const { data: auctions = [], isLoading, error } = useQuery({
+    queryKey: ['upcomingAuctionSummaries', dealerProfile?.dealer_name],
+    queryFn: async () => {
+      // Get the current date in AEST
+      const nowAest = toZonedTime(new Date(), AEST_TIMEZONE);
+      const todayStart = startOfDay(nowAest);
+      const maxDate = addDays(todayStart, MAX_DAYS_AHEAD);
+      
+      // Format dates for SQL query
+      const todayIso = todayStart.toISOString();
+      const maxDateIso = maxDate.toISOString();
 
-  const { data: filterOptions } = useQuery({
-    queryKey: ['eventFilterOptions'],
-    queryFn: () => dataService.getEventFilterOptions(),
-  });
+      // Query vehicle_listings for auction summaries
+      const { data, error } = await supabase
+        .from('vehicle_listings')
+        .select('auction_house, auction_datetime, location, is_dealer_grade, lifecycle_state, excluded_reason, make, model, year')
+        .eq('source_class', 'auction')
+        .gte('auction_datetime', todayIso)
+        .lte('auction_datetime', maxDateIso)
+        .not('auction_datetime', 'is', null);
 
-  // Filter and sort events
-  const filteredEvents = useMemo(() => {
-    const now = startOfDay(new Date());
-    
-    return events
-      .filter((event) => {
-        // Only active events
-        if (event.active !== 'Y') return false;
+      if (error) throw error;
+
+      // Aggregate by auction_house + date + location
+      const summaryMap = new Map<string, AuctionSummary>();
+      
+      (data || []).forEach((lot) => {
+        if (!lot.auction_datetime || !lot.auction_house) return;
         
-        // Parse the datetime
-        const eventDate = parseISO(event.start_datetime);
+        // Parse auction date in AEST
+        const auctionDate = parseISO(lot.auction_datetime);
+        const dateKey = formatInTimeZone(auctionDate, AEST_TIMEZONE, 'yyyy-MM-dd');
+        const location = lot.location || 'Unknown';
+        const key = `${lot.auction_house}|${dateKey}|${location}`;
         
-        // Date range filter
-        if (dateRangeFilter === 'next7') {
-          const cutoff = addDays(now, 7);
-          if (isAfter(eventDate, cutoff) || isBefore(eventDate, now)) return false;
-        } else if (dateRangeFilter === 'next14') {
-          const cutoff = addDays(now, 14);
-          if (isAfter(eventDate, cutoff) || isBefore(eventDate, now)) return false;
-        } else {
-          // 'all' - only show future events
-          if (isBefore(eventDate, now)) return false;
+        if (!summaryMap.has(key)) {
+          summaryMap.set(key, {
+            auction_house: lot.auction_house,
+            auction_date: dateKey,
+            location: location,
+            total_lots: 0,
+            eligible_lots: 0,
+            matching_lots: 0,
+          });
         }
         
-        // Auction house filter
-        if (auctionHouseFilter !== 'all' && event.auction_house !== auctionHouseFilter) return false;
+        const summary = summaryMap.get(key)!;
+        summary.total_lots++;
         
-        // Location filter
-        if (locationFilter !== 'all' && event.location !== locationFilter) return false;
+        // Check if lot is eligible (dealer-grade, not excluded, not in terminal state)
+        const isEligible = 
+          lot.is_dealer_grade === true &&
+          !lot.excluded_reason &&
+          !['AVOID', 'SOLD', 'CLEARED'].includes(lot.lifecycle_state || '');
         
-        return true;
-      })
-      .sort((a, b) => {
-        const dateA = parseISO(a.start_datetime);
-        const dateB = parseISO(b.start_datetime);
-        return dateA.getTime() - dateB.getTime();
+        if (isEligible) {
+          summary.eligible_lots++;
+          
+          // TODO: Check if lot matches dealer fingerprints (simplified for now)
+          // For now, count all eligible as matching
+          summary.matching_lots++;
+        }
       });
-  }, [events, auctionHouseFilter, locationFilter, dateRangeFilter]);
 
-  // Group events by date (AEST)
-  const groupedEvents = useMemo(() => {
-    const groups: Record<string, AuctionEvent[]> = {};
+      return Array.from(summaryMap.values()).sort((a, b) => {
+        // Sort by date first, then auction house, then location
+        const dateCompare = a.auction_date.localeCompare(b.auction_date);
+        if (dateCompare !== 0) return dateCompare;
+        const houseCompare = a.auction_house.localeCompare(b.auction_house);
+        if (houseCompare !== 0) return houseCompare;
+        return (a.location || '').localeCompare(b.location || '');
+      });
+    },
+    refetchInterval: 60000, // Refresh every minute
+  });
+
+  // Get unique values for filters
+  const filterOptions = useMemo(() => {
+    const houses = new Set<string>();
+    const locations = new Set<string>();
     
-    filteredEvents.forEach((event) => {
-      const eventDate = parseISO(event.start_datetime);
-      const aestDate = toZonedTime(eventDate, AEST_TIMEZONE);
-      const dateKey = format(aestDate, 'yyyy-MM-dd');
-      
-      if (!groups[dateKey]) {
-        groups[dateKey] = [];
+    auctions.forEach((a) => {
+      houses.add(a.auction_house);
+      if (a.location) locations.add(a.location);
+    });
+    
+    return {
+      auctionHouses: Array.from(houses).sort(),
+      locations: Array.from(locations).sort(),
+    };
+  }, [auctions]);
+
+  // Filter auctions
+  const filteredAuctions = useMemo(() => {
+    return auctions.filter((auction) => {
+      if (auctionHouseFilter !== 'all' && auction.auction_house !== auctionHouseFilter) return false;
+      if (locationFilter !== 'all' && auction.location !== locationFilter) return false;
+      return true;
+    });
+  }, [auctions, auctionHouseFilter, locationFilter]);
+
+  // Group auctions by date
+  const groupedAuctions = useMemo(() => {
+    const groups: Record<string, AuctionSummary[]> = {};
+    
+    filteredAuctions.forEach((auction) => {
+      if (!groups[auction.auction_date]) {
+        groups[auction.auction_date] = [];
       }
-      groups[dateKey].push(event);
+      groups[auction.auction_date].push(auction);
     });
     
     return groups;
-  }, [filteredEvents]);
-
-  const handleEventSaved = () => {
-    queryClient.invalidateQueries({ queryKey: ['auctionEvents'] });
-    queryClient.invalidateQueries({ queryKey: ['eventFilterOptions'] });
-    setEditingEvent(null);
-    setIsCreating(false);
-  };
-
-  const formatEventTime = (datetime: string) => {
-    const date = parseISO(datetime);
-    const aestDate = toZonedTime(date, AEST_TIMEZONE);
-    return format(aestDate, 'h:mm a');
-  };
+  }, [filteredAuctions]);
 
   const formatDateHeader = (dateKey: string) => {
     const date = parseISO(dateKey);
-    return format(date, 'EEEE, d MMMM yyyy');
+    const today = startOfDay(toZonedTime(new Date(), AEST_TIMEZONE));
+    const tomorrow = addDays(today, 1);
+    
+    if (format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')) {
+      return 'Today';
+    }
+    if (format(date, 'yyyy-MM-dd') === format(tomorrow, 'yyyy-MM-dd')) {
+      return 'Tomorrow';
+    }
+    return format(date, 'EEEE, d MMMM');
+  };
+
+  const handleViewLots = (auction: AuctionSummary) => {
+    const params = new URLSearchParams();
+    params.set('auction_house', auction.auction_house);
+    if (auction.location) params.set('location', auction.location);
+    params.set('date', auction.auction_date);
+    navigate(`/search-lots?${params.toString()}`);
   };
 
   return (
@@ -121,25 +201,21 @@ export default function UpcomingAuctionsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-foreground">Upcoming Auctions</h1>
-            <p className="text-sm text-muted-foreground">Scheduled auction events</p>
+            <p className="text-sm text-muted-foreground">
+              Next {MAX_DAYS_AHEAD} days • {filteredAuctions.length} auction{filteredAuctions.length !== 1 ? 's' : ''} found
+            </p>
           </div>
-          {isAdmin && (
-            <Button onClick={() => setIsCreating(true)} className="gap-2 w-full sm:w-auto">
-              <Plus className="h-4 w-4" />
-              Add Event
-            </Button>
-          )}
         </div>
 
         {/* Filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
           <Select value={auctionHouseFilter} onValueChange={setAuctionHouseFilter}>
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Auction House" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Auction Houses</SelectItem>
-              {filterOptions?.auction_houses.map((house) => (
+              {filterOptions.auctionHouses.map((house) => (
                 <SelectItem key={house} value={house}>{house}</SelectItem>
               ))}
             </SelectContent>
@@ -151,112 +227,105 @@ export default function UpcomingAuctionsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Locations</SelectItem>
-              {filterOptions?.locations.map((loc) => (
+              {filterOptions.locations.map((loc) => (
                 <SelectItem key={loc} value={loc}>{loc}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-
-          <Select value={dateRangeFilter} onValueChange={(v) => setDateRangeFilter(v as DateRangeFilter)}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Date Range" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="next7">Next 7 Days</SelectItem>
-              <SelectItem value="next14">Next 14 Days</SelectItem>
-              <SelectItem value="all">All Upcoming</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
-        {/* Events List */}
+        {/* Content */}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
-        ) : Object.keys(groupedEvents).length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            No upcoming auctions found for the selected filters.
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center py-12 text-destructive gap-2">
+            <AlertCircle className="h-8 w-8" />
+            <p>Failed to load auctions</p>
           </div>
+        ) : Object.keys(groupedAuctions).length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+              <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold text-foreground mb-2">
+                No upcoming auctions in your active window
+              </h3>
+              <p className="text-sm text-muted-foreground max-w-sm">
+                There are no auctions scheduled in the next {MAX_DAYS_AHEAD} days matching your filters.
+              </p>
+            </CardContent>
+          </Card>
         ) : (
           <div className="space-y-8">
-            {Object.entries(groupedEvents).map(([dateKey, dayEvents]) => (
+            {Object.entries(groupedAuctions).map(([dateKey, dayAuctions]) => (
               <div key={dateKey} className="space-y-4">
-                <h2 className="text-lg font-semibold text-foreground border-b border-border pb-2">
+                <h2 className="text-lg font-semibold text-foreground border-b border-border pb-2 flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-muted-foreground" />
                   {formatDateHeader(dateKey)}
+                  <Badge variant="secondary" className="ml-auto">
+                    {dayAuctions.reduce((sum, a) => sum + a.eligible_lots, 0)} eligible lots
+                  </Badge>
                 </h2>
+                
                 <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                  {dayEvents.map((event) => (
-                    <Card key={event.event_id} className="relative group">
-                      <CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-semibold text-foreground text-sm sm:text-base line-clamp-2">
-                            {event.event_title}
-                          </h3>
-                          {isAdmin && (
-                            <Button
-                              variant="ghost"
-                              size="iconSm"
-                              onClick={() => setEditingEvent(event)}
-                              className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                        
-                        <div className="flex flex-wrap items-center gap-2 text-sm">
-                          <Badge variant="secondary" className="text-xs">{event.auction_house}</Badge>
-                          <span className="text-muted-foreground">•</span>
-                          <span className="text-muted-foreground">{event.location}</span>
-                          <span className="text-muted-foreground">•</span>
-                          <span className="text-muted-foreground font-medium">
-                            {formatEventTime(event.start_datetime)} AEST
-                          </span>
-                        </div>
-                        
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 gap-2"
-                            onClick={() => {
-                              const dateKey = format(toZonedTime(parseISO(event.start_datetime), AEST_TIMEZONE), 'yyyy-MM-dd');
-                              navigate(`/search-lots?auction_house=${encodeURIComponent(event.auction_house)}&location=${encodeURIComponent(event.location)}&date=${dateKey}`);
-                            }}
-                          >
-                            <Search className="h-4 w-4" />
-                            View Lots
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-2"
-                            onClick={() => window.open(event.event_url, '_blank')}
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                            Open
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                  {dayAuctions.map((auction) => {
+                    const heat = getHeatLevel(auction.matching_lots);
+                    const hasLots = auction.eligible_lots > 0;
+                    
+                    return (
+                      <Card 
+                        key={`${auction.auction_house}-${auction.auction_date}-${auction.location}`}
+                        className={`relative ${!hasLots ? 'opacity-60' : ''}`}
+                      >
+                        <CardContent className="p-3 sm:p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <h3 className="font-semibold text-foreground text-sm sm:text-base">
+                                {auction.auction_house}
+                              </h3>
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                                <MapPin className="h-3 w-3" />
+                                {auction.location || 'Unknown'}
+                              </div>
+                            </div>
+                            <HeatIndicator level={heat} count={auction.matching_lots} />
+                          </div>
+                          
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <Badge variant="outline" className="text-xs">
+                              {auction.total_lots} total lots
+                            </Badge>
+                            <Badge variant="secondary" className="text-xs">
+                              {auction.eligible_lots} eligible
+                            </Badge>
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            {hasLots ? (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                className="flex-1 gap-2"
+                                onClick={() => handleViewLots(auction)}
+                              >
+                                <Search className="h-4 w-4" />
+                                View Lots
+                              </Button>
+                            ) : (
+                              <div className="flex-1 text-center text-sm text-muted-foreground py-2">
+                                No eligible lots for this auction
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               </div>
             ))}
           </div>
-        )}
-
-        {/* Event Editor Modal */}
-        {(editingEvent || isCreating) && (
-          <AuctionEventEditor
-            event={editingEvent}
-            onClose={() => {
-              setEditingEvent(null);
-              setIsCreating(false);
-            }}
-            onSaved={handleEventSaved}
-          />
         )}
       </div>
     </AppLayout>

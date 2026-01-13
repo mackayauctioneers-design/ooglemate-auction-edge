@@ -42,12 +42,13 @@ export default function SearchLotsPage() {
   // Get initial filters from URL params (for linking from Upcoming Auctions)
   const initialAuctionHouse = searchParams.get('auction_house') || 'all';
   const initialLocation = searchParams.get('location') || 'all';
-  const initialDate = searchParams.get('date') || '';
+  const initialSpecificDate = searchParams.get('date') || ''; // Specific date from Upcoming Auctions
 
   const [searchQuery, setSearchQuery] = useState('');
   const [auctionHouseFilter, setAuctionHouseFilter] = useState(initialAuctionHouse);
   const [locationFilter, setLocationFilter] = useState(initialLocation);
-  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>(initialDate ? 'all' : 'all');
+  const [specificDateFilter, setSpecificDateFilter] = useState(initialSpecificDate); // yyyy-MM-dd format
+  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>(initialSpecificDate ? 'all' : 'all');
   const [yearMin, setYearMin] = useState('');
   const [yearMax, setYearMax] = useState('');
   const [kmMax, setKmMax] = useState('');
@@ -83,6 +84,7 @@ export default function SearchLotsPage() {
     setSearchQuery('');
     setAuctionHouseFilter('all');
     setLocationFilter('all');
+    setSpecificDateFilter('');
     setDateRangeFilter('all');
     setYearMin('');
     setYearMax('');
@@ -118,7 +120,12 @@ export default function SearchLotsPage() {
     if (locationFilter !== 'all') {
       filters.push({ key: 'location', label: 'Location', value: locationFilter, onClear: () => setLocationFilter('all') });
     }
-    if (dateRangeFilter !== 'all') {
+    if (auctionHouseFilter !== 'all') {
+      filters.push({ key: 'auctionHouse', label: 'Auction', value: auctionHouseFilter, onClear: () => setAuctionHouseFilter('all') });
+    }
+    if (specificDateFilter) {
+      filters.push({ key: 'specificDate', label: 'Date', value: specificDateFilter, onClear: () => setSpecificDateFilter('') });
+    } else if (dateRangeFilter !== 'all') {
       const dateLabels = { today: 'Today', next7: 'Next 7 Days', next14: 'Next 14 Days' };
       filters.push({ key: 'date', label: 'Date', value: dateLabels[dateRangeFilter], onClear: () => setDateRangeFilter('all') });
     }
@@ -148,7 +155,7 @@ export default function SearchLotsPage() {
     }
     
     return filters;
-  }, [searchQuery, sourceTypeFilter, sourceNameFilter, locationFilter, dateRangeFilter, statusFilter, passCountFilter, actionFilter, yearMin, yearMax, kmMax, marginMin, showExcluded]);
+  }, [searchQuery, sourceTypeFilter, sourceNameFilter, auctionHouseFilter, locationFilter, specificDateFilter, dateRangeFilter, statusFilter, passCountFilter, actionFilter, yearMin, yearMax, kmMax, marginMin, showExcluded]);
 
   // Filter and sort lots
   const filteredLots = useMemo(() => {
@@ -195,8 +202,15 @@ export default function SearchLotsPage() {
           if (!matchFound) return false;
         }
 
-        // Date range filter
-        if (lot.auction_datetime) {
+        // Specific date filter (from Upcoming Auctions linking)
+        if (specificDateFilter && lot.auction_datetime) {
+          const lotDate = parseISO(lot.auction_datetime);
+          const lotDateKey = format(toZonedTime(lotDate, AEST_TIMEZONE), 'yyyy-MM-dd');
+          if (lotDateKey !== specificDateFilter) return false;
+        }
+        
+        // Date range filter (only applies if no specific date is set)
+        if (!specificDateFilter && lot.auction_datetime) {
           const lotDate = parseISO(lot.auction_datetime);
           if (dateRangeFilter === 'today') {
             const tomorrow = addDays(now, 1);
@@ -243,7 +257,7 @@ export default function SearchLotsPage() {
         if (dateA !== dateB) return dateA - dateB;
         return b.estimated_margin - a.estimated_margin;
       });
-  }, [lots, searchQuery, auctionHouseFilter, locationFilter, dateRangeFilter, yearMin, yearMax, kmMax, statusFilter, passCountFilter, actionFilter, marginMin, sourceTypeFilter, sourceNameFilter, isAdmin, showExcluded]);
+  }, [lots, searchQuery, auctionHouseFilter, locationFilter, specificDateFilter, dateRangeFilter, yearMin, yearMax, kmMax, statusFilter, passCountFilter, actionFilter, marginMin, sourceTypeFilter, sourceNameFilter, isAdmin, showExcluded]);
 
   // Count excluded lots for admin indicator
   const excludedCount = useMemo(() => lots.filter(l => l.excluded_reason).length, [lots]);
