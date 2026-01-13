@@ -2665,6 +2665,28 @@ export type Database = {
           processing: number
         }[]
       }
+      get_last_equivalent_sale: {
+        Args: {
+          p_km: number
+          p_make: string
+          p_model: string
+          p_region_id?: string
+          p_variant_used: string
+          p_year: number
+        }
+        Returns: {
+          days_in_stock: number
+          km: number
+          make: string
+          match_scope: string
+          model: string
+          region_id: string
+          sale_date: string
+          sale_price: number
+          variant_used: string
+          year: number
+        }[]
+      }
       get_nsw_crawl_today: {
         Args: never
         Returns: {

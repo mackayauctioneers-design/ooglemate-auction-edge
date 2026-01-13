@@ -255,6 +255,24 @@ const STRONG_PRICING_KEYWORDS = [
   'worth', 'buy', 'price', 'value it', 'put a number', 'get out'
 ];
 
+// LAST EQUIVALENT SALE intent keywords
+const LAST_EQUIVALENT_INTENT = [
+  "last equivalent",
+  "last comparable",
+  "last comp",
+  "what did we sell",
+  "what did you last sell",
+  "last one we sold",
+  "last sale",
+  "previous sale",
+  "last deal",
+];
+
+function detectLastEquivalentSaleIntent(message: string): boolean {
+  const t = (message || "").toLowerCase();
+  return LAST_EQUIVALENT_INTENT.some(k => t.includes(k));
+}
+
 // General pricing intent keywords
 const PRICING_INTENT_KEYWORDS = [
   'pricing', 'valuation', 'buying', 'pay', 'paying', 'offer', 'cost',
@@ -1036,6 +1054,65 @@ async function queryDealerSalesHistory(): Promise<SalesHistoryRecord[]> {
 }
 
 // ============================================================================
+// LAST EQUIVALENT SALE - Query via RPC
+// ============================================================================
+
+interface LastEquivalentSaleResult {
+  sale_date: string | null;
+  make: string;
+  model: string;
+  variant_used: string | null;
+  year: number;
+  km: number | null;
+  sale_price: number | null;
+  days_in_stock: number | null;
+  region_id: string | null;
+  match_scope: string;
+}
+
+async function getLastEquivalentSale(
+  input: {
+    make: string;
+    model: string;
+    variant_used?: string | null;
+    year: number;
+    km?: number | null;
+    region_id?: string | null;
+  }
+): Promise<LastEquivalentSaleResult | null> {
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.error("[last-equivalent-sale] Missing credentials");
+    return null;
+  }
+  
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    
+    const { data, error } = await supabase.rpc("get_last_equivalent_sale", {
+      p_make: input.make,
+      p_model: input.model,
+      p_variant_used: input.variant_used ?? "",
+      p_year: input.year,
+      p_km: input.km ?? 0,
+      p_region_id: input.region_id ?? null,
+    });
+
+    if (error) {
+      console.error("[last-equivalent-sale] rpc error:", error);
+      return null;
+    }
+
+    return (data && data.length > 0) ? data[0] : null;
+  } catch (err) {
+    console.error("[last-equivalent-sale] Error:", err);
+    return null;
+  }
+}
+
+// ============================================================================
 // LOG VALO REQUEST TO DATABASE
 // ============================================================================
 
@@ -1288,6 +1365,62 @@ serve(async (req) => {
           avg_gross: 0,
           notes: [`AVOID: ${avoidCheck.reason || 'Vehicle flagged as avoid'}`],
           comps_used: [],
+          processing_time_ms: 0,
+          adjustments: { km_adj: 0, year_adj: 0, trim_adj: 0, demand_adj: 0 },
+        };
+      }
+      // ================================================================
+      // LAST EQUIVALENT SALE INTENT - Check before pricing
+      // If user is asking about their last equivalent sale, answer that
+      // ================================================================
+      else if (detectLastEquivalentSaleIntent(transcript)) {
+        console.log(`[BOB] LAST EQUIVALENT SALE: Intent detected`);
+        
+        const km = vehicleInput.km ?? 0;
+        const variantUsed = vehicleInput.variant_family || '';
+        
+        const lastSale = await getLastEquivalentSale({
+          make: vehicleInput.make,
+          model: vehicleInput.model,
+          variant_used: variantUsed,
+          year: vehicleInput.year,
+          km,
+          region_id: null, // Could add location parsing later
+        });
+        
+        if (!lastSale) {
+          bobScript = "Can't find a clean last equivalent sale for that combo yet. Log one sale and it'll start talking.";
+        } else {
+          const soldWhen = lastSale.sale_date ? String(lastSale.sale_date) : "unknown date";
+          const soldFor = lastSale.sale_price ? `$${Math.round(Number(lastSale.sale_price)).toLocaleString("en-AU")}` : "—";
+          const daysInStock = lastSale.days_in_stock != null ? `${lastSale.days_in_stock} days in stock` : "";
+          const scope = lastSale.match_scope === "REGION_STRICT" ? "same region" :
+                        lastSale.match_scope === "NO_VARIANT" ? "variant ignored" : "national";
+          
+          bobScript = `Last equivalent we sold: ${lastSale.year} ${lastSale.make} ${lastSale.model}` +
+            `${lastSale.variant_used ? ` (${lastSale.variant_used})` : ""}, ` +
+            `${(lastSale.km ?? 0).toLocaleString("en-AU")} km — sold ${soldWhen} for ${soldFor}. ` +
+            `${daysInStock}${daysInStock ? '. ' : ''}Match scope: ${scope}.`;
+        }
+        
+        // Create a minimal decision/engineState for logging
+        decision = {
+          decision: 'PRICE_AVAILABLE',
+          buy_price: null,
+          vehicle_class: null,
+          data_source: 'OWN_SALES',
+          confidence: lastSale ? 'HIGH' : null,
+          reason: 'LAST_EQUIVALENT_SALE',
+        };
+        engineState = {
+          n_comps: lastSale ? 1 : 0,
+          comp_tier: null,
+          anchor_owe: null,
+          owe_base: null,
+          avg_days: lastSale?.days_in_stock ?? 0,
+          avg_gross: 0,
+          notes: ['LAST_EQUIVALENT_SALE intent'],
+          comps_used: lastSale ? [`${lastSale.year}-${lastSale.make}-${lastSale.model}`] : [],
           processing_time_ms: 0,
           adjustments: { km_adj: 0, year_adj: 0, trim_adj: 0, demand_adj: 0 },
         };
