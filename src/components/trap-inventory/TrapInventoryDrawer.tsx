@@ -77,7 +77,7 @@ interface TrapInventoryDrawerProps {
   onOpenChange: (open: boolean) => void;
   onNotesChange?: () => void;
   onTrackedByChange?: (listingId: string, trackedBy: string | null) => void;
-  onLifecycleChange?: (listingId: string, state: LifecycleState) => void;
+  onLifecycleChange?: (listingId?: string, state?: LifecycleState) => void;
 }
 
 interface PriceSnapshot {
@@ -184,13 +184,13 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
     setClaimPushResult(null);
 
     try {
-      // 1) Claim (assign_to = current user)
+      // 1) Claim (assigned_to MUST be user.id UUID)
       const { error: assignErr } = await supabase
         .from("vehicle_listings")
         .update({
-          assigned_to: user.email?.split("@")[0] ?? user.id,
+          assigned_to: user.id,
           assigned_at: new Date().toISOString(),
-          assigned_by: user.email?.split("@")[0] ?? user.id,
+          assigned_by: user.id,
           assignment_notes: localNotes || null,
         })
         .eq("id", listing.id)
@@ -199,14 +199,15 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
 
       if (assignErr) throw assignErr;
 
-      // Update UI immediately
-      onLifecycleChange?.(listing.id, listing.lifecycle_state);
-      onTrackedByChange?.(listing.id, user.email?.split("@")[0] ?? null);
+      // Refresh parent page list if provided
+      onLifecycleChange?.();
+      onTrackedByChange?.(listing.id, user.email ?? null);
 
       // 2) Push to Slack (note included)
-      const { error: slackErr } = await supabase.functions.invoke("send-buy-window-to-slack", {
-        body: { listing_id: listing.id, note: localNotes || "" },
-      });
+      const { error: slackErr } = await supabase.functions.invoke(
+        "send-buy-window-to-slack",
+        { body: { listing_id: listing.id, note: localNotes || "" } }
+      );
 
       if (slackErr) throw slackErr;
 
