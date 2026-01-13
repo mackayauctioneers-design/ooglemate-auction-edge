@@ -174,3 +174,8 @@ schedule = "50 20 * * *"
 verify_jwt = false
 # Daily cron at 7:00am AEST (21:00 UTC) - VA task queue Slack ping
 schedule = "0 21 * * *"
+
+[functions.sync-sales-normalised]
+verify_jwt = false
+# Daily cron at 6:45am AEST (20:45 UTC) - sync sales before Bob/UI need them
+schedule = "45 20 * * *"
