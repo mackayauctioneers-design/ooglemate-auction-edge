@@ -3548,6 +3548,16 @@ export type Database = {
           sample_count: number
         }[]
       }
+      get_sales_sync_health: {
+        Args: never
+        Returns: {
+          latest_sale_date: string
+          latest_updated_at: string
+          status: string
+          sync_freshness_hours: number
+          total_rows: number
+        }[]
+      }
       get_spec_hits_summary: {
         Args: { p_spec_id: string }
         Returns: {

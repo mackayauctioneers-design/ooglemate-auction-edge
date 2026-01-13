@@ -67,6 +67,14 @@ interface V2Adoption {
   v2_pct: number;
 }
 
+interface SalesSyncHealth {
+  total_rows: number;
+  latest_sale_date: string | null;
+  latest_updated_at: string | null;
+  sync_freshness_hours: number | null;
+  status: "empty" | "broken" | "fresh" | "stale" | "critical";
+}
+
 interface BenchmarkSummary {
   total_deals: number;
   benchmarked: number;
@@ -115,6 +123,7 @@ interface HealthData {
   v2Adoption: V2Adoption | null;
   benchmarkSummary: BenchmarkSummary | null;
   buyWindow: BuyWindowSummary | null;
+  salesSync: SalesSyncHealth | null;
   lastRefresh: Date;
 }
 
@@ -129,7 +138,7 @@ export function IngestionHealthContent() {
   const fetchHealth = async () => {
     setLoading(true);
     try {
-      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes, benchmarkRes, nswRegionalRes, auctionSourcesRes, v2AdoptionRes, benchmarkSummaryRes, buyWindowRes] = await Promise.all([
+      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes, benchmarkRes, nswRegionalRes, auctionSourcesRes, v2AdoptionRes, benchmarkSummaryRes, buyWindowRes, salesSyncRes] = await Promise.all([
         supabase.rpc('get_nsw_trap_stats' as never),
         supabase.rpc('get_nsw_crawl_today' as never),
         supabase.rpc('get_clearance_today' as never),
@@ -150,6 +159,8 @@ export function IngestionHealthContent() {
         supabase.rpc('get_fingerprint_v2_adoption' as never),
         supabase.rpc('get_benchmark_coverage_summary' as never),
         supabase.rpc('get_buy_window_summary' as never),
+        // Sales sync health
+        supabase.rpc('get_sales_sync_health' as never),
       ]);
 
       // Parse NSW regional runs
@@ -197,6 +208,7 @@ export function IngestionHealthContent() {
         v2Adoption: (v2AdoptionRes.data as V2Adoption[])?.[0] || null,
         benchmarkSummary: (benchmarkSummaryRes.data as BenchmarkSummary[])?.[0] || null,
         buyWindow: (buyWindowRes.data as BuyWindowSummary[])?.[0] || null,
+        salesSync: (salesSyncRes.data as SalesSyncHealth[])?.[0] || null,
         lastRefresh: new Date(),
       });
     } catch (err) {
@@ -403,6 +415,68 @@ export function IngestionHealthContent() {
                         ))}
                     </div>
                   </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">No data</div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Sales Sync Health */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Sales Sync Health</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {health?.salesSync ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="text-2xl font-semibold">
+                        {health.salesSync.status.toUpperCase()}
+                      </div>
+                      <Badge
+                        className={
+                          health.salesSync.status === "fresh"
+                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                            : health.salesSync.status === "stale"
+                            ? "bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30"
+                            : "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30"
+                        }
+                        variant="outline"
+                      >
+                        {health.salesSync.sync_freshness_hours !== null
+                          ? `${health.salesSync.sync_freshness_hours}h old`
+                          : "—"}
+                      </Badge>
+                    </div>
+
+                    <div className="text-sm text-muted-foreground">
+                      Rows: {health.salesSync.total_rows?.toLocaleString() ?? "—"}
+                    </div>
+
+                    <div className="text-sm text-muted-foreground">
+                      Latest sale date:{" "}
+                      {health.salesSync.latest_sale_date
+                        ? new Date(health.salesSync.latest_sale_date).toLocaleDateString()
+                        : "—"}
+                    </div>
+
+                    <div className="text-sm text-muted-foreground">
+                      Last sync:{" "}
+                      {health.salesSync.latest_updated_at
+                        ? new Date(health.salesSync.latest_updated_at).toLocaleString()
+                        : "—"}
+                    </div>
+
+                    {(health.salesSync.status === "stale" ||
+                      health.salesSync.status === "critical" ||
+                      health.salesSync.status === "empty" ||
+                      health.salesSync.status === "broken") && (
+                      <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-sm text-amber-700 dark:text-amber-200">
+                        Sales data is not fresh. Bob's "last equivalent sale" may be wrong
+                        until the sync runs.
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="text-sm text-muted-foreground">No data</div>
                 )}
