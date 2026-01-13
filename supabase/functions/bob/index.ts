@@ -1347,21 +1347,24 @@ serve(async (req) => {
 
     // ================================================================
     // "WHAT SHOULD I DO TODAY?" INTENT - Priority dashboard query
+    // Bob early-returns on this intent with decisive, actionable response
     // ================================================================
     const todayIntentPatterns = [
       /what.*(should|do).*(today|now|focus)/i,
       /what.*(matters|priority|priorities)/i,
       /what.*(looking at|check|action)/i,
+      /what.*(need).*(act|do)/i,
       /morning brief/i,
       /daily brief/i,
       /what's hot/i,
       /what should i be/i,
+      /what do i need/i,
     ];
     
     const hasTodayIntent = todayIntentPatterns.some(p => p.test(transcript));
     
     if (hasTodayIntent) {
-      console.log("[BOB] TODAY_ACTIONS intent detected");
+      console.log("[BOB] TODAY_ACTIONS intent detected - early return");
       
       // Query today's actions
       const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -1375,27 +1378,35 @@ serve(async (req) => {
           const a = actions as Record<string, any>;
           const parts: string[] = [];
           
-          // Priority order: BUY WINDOW > VA Tasks > Missed opportunities
+          // 1. Stale BUY WINDOW first (most urgent)
+          if (a.buy_window_stale > 0) {
+            parts.push(`${a.buy_window_stale} BUY WINDOW cars have been sitting 36+ hours — these need action NOW`);
+          }
+          
+          // 2. Overdue VA tasks
+          if (a.va_tasks_overdue > 0) {
+            parts.push(`${a.va_tasks_overdue} VA tasks are overdue`);
+          }
+          
+          // 3. Unassigned BUY WINDOW with top priority
           if (a.buy_window_unassigned > 0) {
-            parts.push(`You've got ${a.buy_window_unassigned} unassigned BUY WINDOW cars`);
+            let buyWindowMsg = `You've got ${a.buy_window_unassigned} unassigned BUY WINDOW cars`;
             
             // Add top priority car if available
             if (a.top_buy_window && Array.isArray(a.top_buy_window) && a.top_buy_window.length > 0) {
               const top = a.top_buy_window[0];
-              parts.push(`— highest priority is a ${top.year} ${top.make} ${top.model} in ${top.location || 'unknown location'}`);
+              const priceStr = top.asking_price ? ` at $${Math.round(top.asking_price).toLocaleString()}` : '';
+              buyWindowMsg += `. Top priority: ${top.year} ${top.make} ${top.model}${priceStr} in ${top.location || 'unknown'}`;
             }
+            parts.push(buyWindowMsg);
           }
           
-          if (a.buy_window_stale > 0) {
-            parts.push(`${a.buy_window_stale} have been sitting 36+ hours — need action now`);
-          }
-          
-          if (a.va_tasks_overdue > 0) {
-            parts.push(`${a.va_tasks_overdue} VA tasks are overdue`);
-          } else if (a.va_tasks_due > 0) {
+          // 4. Due VA tasks (if not already showing overdue)
+          if (a.va_tasks_due > 0 && a.va_tasks_overdue === 0) {
             parts.push(`${a.va_tasks_due} VA tasks due in the next 24 hours`);
           }
           
+          // 5. Missed opportunities (learning)
           if (a.missed_buy_window_7d > 0) {
             parts.push(`${a.missed_buy_window_7d} buy windows were missed in the last 7 days — learn from those`);
           }

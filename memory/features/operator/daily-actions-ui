@@ -1,0 +1,18 @@
+# Memory: features/operator/daily-actions-ui
+Updated: now
+
+The Operator Dashboard (/operator) includes a 'TodayActionsCard' component powered by the 'get_today_actions()' RPC. It displays:
+
+SECTIONS:
+- URGENT (red): Stale BUY_WINDOW (36h+), Overdue VA tasks
+- ACTIONS: Unassigned BUY_WINDOW, VA tasks due (24h), Traps pending validation
+- LEARNING: Missed Buy Windows (7d)
+- TOP PRIORITY: Single highlighted vehicle callout with details
+
+DISPLAY RULES:
+- Polls every 60 seconds
+- Red border when urgent items exist
+- 'All caught up' state when nothing pending
+- Links directly to relevant pages
+
+This drives daily operator focus without manual searching.
