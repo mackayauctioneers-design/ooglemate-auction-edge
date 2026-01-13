@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Clock, Pause, Play, Zap, FlaskConical, Settings2 } from "lucide-react";
+import { RefreshCw, Clock, Pause, Play, Zap, FlaskConical, Settings2, Plus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -83,6 +84,7 @@ const NSW_PACK_KEYS = [
 ];
 
 export function AuctionSourcesHealthCard() {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -231,8 +233,12 @@ export function AuctionSourcesHealthCard() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-base">Auction Sources Health</CardTitle>
-          <div className="flex items-center gap-2">
-            <Button variant="default" size="sm" onClick={enableNswPack}>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="default" size="sm" onClick={() => navigate("/operator/auctions/add")}>
+              <Plus className="h-4 w-4 mr-1" />
+              Add Source
+            </Button>
+            <Button variant="secondary" size="sm" onClick={enableNswPack}>
               <Zap className="h-4 w-4 mr-1" />
               Enable NSW Pack
             </Button>

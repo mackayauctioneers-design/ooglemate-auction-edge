@@ -2717,6 +2717,16 @@ export type Database = {
             }
             Returns: boolean
           }
+      create_auction_source: {
+        Args: {
+          p_display_name: string
+          p_list_url: string
+          p_platform: string
+          p_region_hint: string
+          p_source_key: string
+        }
+        Returns: undefined
+      }
       derive_clearance_events: {
         Args: { p_stale_hours?: number }
         Returns: {
