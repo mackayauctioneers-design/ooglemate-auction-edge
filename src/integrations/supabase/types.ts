@@ -2608,6 +2608,17 @@ export type Database = {
           total_deals: number
         }[]
       }
+      get_buy_window_summary: {
+        Args: never
+        Returns: {
+          assigned: number
+          auctions: number
+          top_unassigned: Json
+          total: number
+          traps: number
+          unassigned: number
+        }[]
+      }
       get_clearance_today: {
         Args: never
         Returns: {
