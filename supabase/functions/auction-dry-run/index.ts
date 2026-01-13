@@ -15,25 +15,65 @@ type AuctionSource = {
 };
 
 // deno-lint-ignore no-explicit-any
-async function invokeCrawler(supabase: any, src: AuctionSource, debug: boolean) {
+async function invokeCrawler(supabase: any, src: AuctionSource) {
   const platform = (src.platform || "").toLowerCase();
   const profile = (src.parser_profile || "").toLowerCase();
 
   if (platform.includes("asp") || profile.includes("asp")) {
     return await supabase.functions.invoke("asp-auction-crawl", { 
-      body: { source_key: src.source_key, debug } 
+      body: { source_key: src.source_key, debug: true } 
     });
   }
   if (platform.includes("bidsonline")) {
     return await supabase.functions.invoke("bidsonline-crawl", { 
-      body: { source_key: src.source_key, debug } 
+      body: { source_key: src.source_key, debug: true } 
     });
   }
 
-  // custom fallback
   return await supabase.functions.invoke("custom-auction-crawl", { 
-    body: { source_key: src.source_key, debug } 
+    body: { source_key: src.source_key, debug: true } 
   });
+}
+
+// deno-lint-ignore no-explicit-any
+function yearGateStats(items: any[]): { kept: number; dropped: number; minYear: number } {
+  const currentYear = new Date().getFullYear();
+  const minYear = currentYear - 10;
+
+  let kept = 0;
+  let dropped = 0;
+
+  for (const it of items) {
+    const y = Number(it.year ?? it.Year ?? it.year_model ?? 0);
+    if (!y) continue;
+    if (y >= minYear) kept++;
+    else dropped++;
+  }
+  return { kept, dropped, minYear };
+}
+
+// deno-lint-ignore no-explicit-any
+function extractParsedLots(debugData: any): any[] {
+  if (!debugData) return [];
+  
+  // Try common debug payload shapes
+  if (Array.isArray(debugData.diagnostics?.sample_vehicles)) {
+    return debugData.diagnostics.sample_vehicles;
+  }
+  if (Array.isArray(debugData.parsedLots)) {
+    return debugData.parsedLots;
+  }
+  if (Array.isArray(debugData.diagnostics?.parsedLots)) {
+    return debugData.diagnostics.parsedLots;
+  }
+  if (Array.isArray(debugData.lots)) {
+    return debugData.lots;
+  }
+  if (Array.isArray(debugData.vehicles)) {
+    return debugData.vehicles;
+  }
+  
+  return [];
 }
 
 Deno.serve(async (req) => {
@@ -41,13 +81,11 @@ Deno.serve(async (req) => {
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const SLACK_WEBHOOK_URL = Deno.env.get("SLACK_WEBHOOK_URL") || "";
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
   try {
     const body = await req.json().catch(() => ({}));
     const source_key = body.source_key as string | undefined;
-    const debug = body.debug === true;
 
     if (!source_key) {
       return new Response(JSON.stringify({ error: "source_key is required" }), {
@@ -64,61 +102,41 @@ Deno.serve(async (req) => {
 
     if (error || !src) throw error || new Error("source not found");
 
-    // Allow run even if preflight not ok for manual testing
     const t0 = Date.now();
-    const { data: runData, error: runErr } = await invokeCrawler(supabase, src as AuctionSource, debug);
+    const { data: debugData, error: runErr } = await invokeCrawler(supabase, src as AuctionSource);
     const ms = Date.now() - t0;
 
     if (runErr) throw new Error(runErr.message || "crawl invoke error");
 
-    const lotsFound = runData?.lots_found ?? runData?.lotsFound ?? null;
+    const parsedLots = extractParsedLots(debugData);
+    const stats = yearGateStats(parsedLots);
 
     // Log event
     await supabase.from("auction_source_events").insert({
       source_key,
-      event_type: "run_manual",
-      message: `Manual run (${debug ? "debug" : "live"})`,
-      meta: { ms, lots_found: lotsFound, result_keys: Object.keys(runData || {}) },
+      event_type: "dry_run",
+      message: `Dry run completed`,
+      meta: { 
+        ms, 
+        sample_count: parsedLots.length, 
+        year_gate: stats,
+        debug_keys: Object.keys(debugData || {}) 
+      },
     });
 
-    // Update source stats on live run
-    if (!debug && lotsFound !== null) {
-      await supabase
-        .from("auction_sources")
-        .update({
-          last_success_at: new Date().toISOString(),
-          last_lots_found: lotsFound,
-          consecutive_failures: 0,
-          last_error: null,
-        })
-        .eq("source_key", source_key);
-    }
-
-    // Optional Slack ping
-    if (SLACK_WEBHOOK_URL && !debug) {
-      await fetch(SLACK_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          blocks: [
-            { type: "header", text: { type: "plain_text", text: "▶️ Auction Source Run Now", emoji: true } },
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text:
-                  `*${(src as AuctionSource).display_name}* (\`${source_key}\`) manual run complete.\n` +
-                  `Mode: *${debug ? "debug" : "live"}* • Time: *${ms}ms* • Lots: *${lotsFound ?? "?"}*`,
-              },
-            },
-          ],
-        }),
-      });
-    }
-
-    return new Response(JSON.stringify({ success: true, source_key, ms, debug, result: runData }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        source_key,
+        ms,
+        debug_shape_keys: Object.keys(debugData || {}),
+        sample_count: parsedLots.length,
+        year_gate: stats,
+        sample: parsedLots.slice(0, 10),
+        raw: debugData,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return new Response(JSON.stringify({ success: false, error: msg }), {
