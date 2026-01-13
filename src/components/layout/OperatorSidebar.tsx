@@ -72,6 +72,7 @@ const operatorSections: NavSection[] = [
   {
     title: 'Admin',
     items: [
+      { path: '/operator/dealer-specs', label: 'Dealer Buy Specs', icon: Target },
       { path: '/operator/dealer-onboarding', label: 'Dealer Onboarding', icon: UserPlus },
       { path: '/operator/settings', label: 'Settings', icon: Settings },
     ],

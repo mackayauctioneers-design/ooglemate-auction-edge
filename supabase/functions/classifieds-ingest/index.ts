@@ -505,6 +505,15 @@ Deno.serve(async (req) => {
           snapshotsCreated++;
         }
         
+        // Evaluate dealer spec matches for this listing
+        try {
+          await supabase.rpc('evaluate_dealer_spec_matches_for_listing', {
+            p_listing_uuid: vehicleListingId
+          });
+        } catch (matchError) {
+          console.error(`[classifieds-ingest] Match eval error for ${listingId}:`, matchError);
+        }
+        
         console.log(`[classifieds-ingest] ${existing ? 'Updated' : 'Created'} ${listingId} as ${classification.seller_type} (${classification.confidence})`);
         
       } catch (e: unknown) {
