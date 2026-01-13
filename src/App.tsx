@@ -21,6 +21,7 @@ import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
 import VAIntakePage from "./pages/VAIntakePage";
 import LogSalePage from "./pages/LogSalePage";
+import VATasksPage from "./pages/VATasksPage";
 
 // Operator pages
 import OperatorIngestionHealthPage from "./pages/operator/OperatorIngestionHealthPage";
@@ -129,6 +130,9 @@ const App = () => (
             <Route path="/admin-tools/fingerprints" element={
               <RequireAdmin><FingerprintsExplorerPage /></RequireAdmin>
             } />
+
+            {/* === VA ROUTES: Authenticated users === */}
+            <Route path="/va/tasks" element={<VATasksPage />} />
 
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
