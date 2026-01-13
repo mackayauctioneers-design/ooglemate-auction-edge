@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { OperatorGuard } from "@/components/guards/OperatorGuard";
 import { RequireAdmin } from "@/components/guards/RequireAdmin";
+import { RequireAuth } from "@/components/guards/RequireAuth";
 
 // Dealer pages
 import OpportunitiesPage from "./pages/OpportunitiesPage";
@@ -132,7 +133,14 @@ const App = () => (
             } />
 
             {/* === VA ROUTES: Authenticated users === */}
-            <Route path="/va/tasks" element={<VATasksPage />} />
+            <Route
+              path="/va/tasks"
+              element={
+                <RequireAuth>
+                  <VATasksPage />
+                </RequireAuth>
+              }
+            />
 
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
