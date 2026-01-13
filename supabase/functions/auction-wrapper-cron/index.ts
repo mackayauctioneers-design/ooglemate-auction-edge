@@ -16,6 +16,7 @@ type AuctionSource = {
 
 const TIMEOUT_MS = 3 * 60 * 1000; // 3 min per source
 const MAX_CONCURRENCY = 2;       // keep it gentle
+const DISABLE_AFTER = 3;         // auto-disable after N consecutive failures
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -38,11 +39,11 @@ Deno.serve(async (req) => {
     // 1) Load enabled auction sources
     const { data: sources, error } = await supabase
       .from("auction_sources")
-      .select("source_key, parser_profile, platform, enabled, preflight_status, preflight_notes")
+      .select("source_key, parser_profile, platform, enabled, preflight_status, preflight_notes, consecutive_failures")
       .eq("enabled", true);
 
     if (error) throw error;
-    const enabled = (sources as AuctionSource[]) || [];
+    const enabled = (sources as (AuctionSource & { consecutive_failures?: number })[]) || [];
 
     // 2) Filter: only preflight OK (skip blocked sites)
     const runnable = enabled.filter(s => s.preflight_status === "ok");
@@ -62,7 +63,7 @@ Deno.serve(async (req) => {
               ? "asp-auction-crawl"
               : "custom-auction-crawl";
 
-          await withTimeout(
+          const resp = await withTimeout(
             supabase.functions.invoke(fn, {
               body: {
                 source_key: src.source_key,
@@ -72,7 +73,22 @@ Deno.serve(async (req) => {
             TIMEOUT_MS
           );
 
+          // If the function returned an error payload
+          if ((resp as any)?.error) {
+            throw new Error((resp as any).error.message || "crawl invoke error");
+          }
+
           success++;
+
+          // ✅ Mark success on auction_sources
+          await supabase
+            .from("auction_sources")
+            .update({
+              consecutive_failures: 0,
+              last_success_at: new Date().toISOString(),
+              last_error: null,
+            })
+            .eq("source_key", src.source_key);
 
           await supabase.from("cron_audit_log").upsert(
             {
@@ -88,12 +104,35 @@ Deno.serve(async (req) => {
           );
         } catch (e: any) {
           failed++;
+
+          // Increment failures
+          const curFails = ((src as any).consecutive_failures || 0) + 1;
+          const errMsg = e?.message || String(e);
+
+          const patch: Record<string, unknown> = {
+            consecutive_failures: curFails,
+            last_crawl_fail_at: new Date().toISOString(),
+            last_error: errMsg,
+          };
+
+          // 🧨 Auto-disable if repeated failures
+          if (curFails >= DISABLE_AFTER) {
+            patch.enabled = false;
+            patch.auto_disabled_at = new Date().toISOString();
+            patch.auto_disabled_reason = `Auto-disabled after ${curFails} consecutive crawl failures`;
+          }
+
+          await supabase
+            .from("auction_sources")
+            .update(patch)
+            .eq("source_key", src.source_key);
+
           await supabase.from("cron_audit_log").upsert(
             {
               cron_name: `auction-wrapper-cron:${src.source_key}`,
               run_date: today,
               success: false,
-              error: e?.message || String(e),
+              error: errMsg,
             },
             { onConflict: "cron_name,run_date" }
           );
