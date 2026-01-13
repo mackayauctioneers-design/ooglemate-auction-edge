@@ -235,6 +235,83 @@ function normalizeLocation(listing: ClassifiedsListing): string {
 }
 
 // =============================================================================
+// V2 FINGERPRINT HELPER
+// =============================================================================
+
+async function applyFingerprintV2ToListing(
+  supabase: any,
+  input: {
+    year: number | null;
+    make: string | null;
+    model: string | null;
+    variant_family: string | null;
+    variant_raw: string | null;
+    body: string | null;
+    transmission: string | null;
+    fuel: string | null;
+    drivetrain: string | null;
+    km: number | null;
+    region_id: string | null;
+  }
+) {
+  const { data, error } = await supabase.rpc('generate_vehicle_fingerprint_v2', {
+    p_year: input.year,
+    p_make: input.make,
+    p_model: input.model,
+    p_variant_family: input.variant_family,
+    p_variant_raw: input.variant_raw,
+    p_body: input.body,
+    p_transmission: input.transmission,
+    p_fuel: input.fuel,
+    p_drivetrain: input.drivetrain,
+    p_km: input.km,
+    p_region: input.region_id,
+  });
+
+  if (error) {
+    console.error('[classifieds-ingest] Fingerprint v2 error:', error);
+    return {
+      fingerprint: null,
+      fingerprint_version: null,
+      fingerprint_confidence: null,
+      variant_used: null,
+      variant_source: null,
+    };
+  }
+
+  const out = data?.[0];
+  return {
+    fingerprint: out?.fingerprint ?? null,
+    fingerprint_version: 2,
+    fingerprint_confidence: out?.fingerprint_confidence ?? null,
+    variant_used: out?.variant_used ?? null,
+    variant_source: out?.variant_source ?? null,
+  };
+}
+
+// Derive region from location for fingerprint
+function deriveRegionFromLocation(location: string | null): string | null {
+  if (!location) return null;
+  const loc = location.toUpperCase();
+  
+  // NSW regions
+  if (['GOSFORD', 'WYONG', 'TUGGERAH', 'ERINA', 'TERRIGAL'].some(s => loc.includes(s))) return 'NSW_CENTRAL_COAST';
+  if (['NEWCASTLE', 'MAITLAND', 'HUNTER', 'CHARLESTOWN'].some(s => loc.includes(s))) return 'NSW_HUNTER_NEWCASTLE';
+  if (['SYDNEY', 'PARRAMATTA', 'BLACKTOWN', 'PENRITH', 'LIVERPOOL'].some(s => loc.includes(s))) return 'NSW_SYDNEY_METRO';
+  if (loc.includes('NSW')) return 'NSW_REGIONAL';
+  
+  // VIC
+  if (['MELBOURNE', 'DANDENONG', 'RINGWOOD'].some(s => loc.includes(s))) return 'VIC_METRO';
+  if (loc.includes('VIC')) return 'VIC_REGIONAL';
+  
+  // QLD
+  if (['BRISBANE', 'GOLD COAST', 'SUNSHINE COAST'].some(s => loc.includes(s))) return 'QLD_SE';
+  if (loc.includes('QLD')) return 'QLD_REGIONAL';
+  
+  return null;
+}
+
+// =============================================================================
 // MAIN HANDLER
 // =============================================================================
 
@@ -324,6 +401,22 @@ Deno.serve(async (req) => {
           .eq('listing_id', listingId)
           .maybeSingle();
 
+        // Apply v2 fingerprint
+        const regionId = deriveRegionFromLocation(location);
+        const fp = await applyFingerprintV2ToListing(supabase, {
+          year: listing.year ?? null,
+          make: listing.make ?? null,
+          model: listing.model ?? null,
+          variant_family: variantFamily || null,
+          variant_raw: listing.variant_raw || null,
+          body: null,
+          transmission: listing.transmission || null,
+          fuel: listing.fuel || null,
+          drivetrain: listing.drivetrain || null,
+          km: listing.km ?? null,
+          region_id: regionId,
+        });
+
         // Classifieds-specific data (NO auction fields)
         const listingData = {
           make: listing.make,
@@ -354,6 +447,8 @@ Deno.serve(async (req) => {
           event_id: null,
           // Source class: classifieds (not auction)
           source_class: 'classifieds',
+          // V2 fingerprint fields
+          ...fp,
         };
 
         let vehicleListingId: string;

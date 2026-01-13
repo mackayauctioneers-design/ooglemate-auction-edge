@@ -203,6 +203,60 @@ function parseManheimFeed(lots: unknown[]): ManheimLot[] {
   
   return parsed;
 }
+// =============================================================================
+// V2 FINGERPRINT HELPER
+// =============================================================================
+
+async function applyFingerprintV2ToListing(
+  supabase: any,
+  input: {
+    year: number | null;
+    make: string | null;
+    model: string | null;
+    variant_family: string | null;
+    variant_raw: string | null;
+    body: string | null;
+    transmission: string | null;
+    fuel: string | null;
+    drivetrain: string | null;
+    km: number | null;
+    region_id: string | null;
+  }
+) {
+  const { data, error } = await supabase.rpc('generate_vehicle_fingerprint_v2', {
+    p_year: input.year,
+    p_make: input.make,
+    p_model: input.model,
+    p_variant_family: input.variant_family,
+    p_variant_raw: input.variant_raw,
+    p_body: input.body,
+    p_transmission: input.transmission,
+    p_fuel: input.fuel,
+    p_drivetrain: input.drivetrain,
+    p_km: input.km,
+    p_region: input.region_id,
+  });
+
+  if (error) {
+    console.error('[manheim-ingest] Fingerprint v2 error:', error);
+    return {
+      fingerprint: null,
+      fingerprint_version: null,
+      fingerprint_confidence: null,
+      variant_used: null,
+      variant_source: null,
+    };
+  }
+
+  const out = data?.[0];
+  return {
+    fingerprint: out?.fingerprint ?? null,
+    fingerprint_version: 2,
+    fingerprint_confidence: out?.fingerprint_confidence ?? null,
+    variant_used: out?.variant_used ?? null,
+    variant_source: out?.variant_source ?? null,
+  };
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -294,6 +348,21 @@ Deno.serve(async (req) => {
           .eq('listing_id', listingId)
           .single();
 
+        // Apply v2 fingerprint
+        const fp = await applyFingerprintV2ToListing(supabase, {
+          year: lot.year ?? null,
+          make: lot.make ?? null,
+          model: lot.model ?? null,
+          variant_family: lot.variant_family ?? null,
+          variant_raw: lot.variant_raw ?? null,
+          body: null,
+          transmission: lot.transmission ?? null,
+          fuel: lot.fuel ?? null,
+          drivetrain: lot.drivetrain ?? null,
+          km: lot.km ?? null,
+          region_id: lot.region_id ?? null,
+        });
+
         let listingUuid: string;
 
         if (existing) {
@@ -328,6 +397,7 @@ Deno.serve(async (req) => {
                 ? (existing.pass_count || 0) + 1 
                 : existing.pass_count,
               is_dealer_grade: true,
+              ...fp,
             })
             .eq('id', existing.id);
           updated++;
@@ -378,6 +448,7 @@ Deno.serve(async (req) => {
               seller_type: 'dealer',
               visible_to_dealers: true,
               is_dealer_grade: true,
+              ...fp,
             })
             .select('id')
             .single();
