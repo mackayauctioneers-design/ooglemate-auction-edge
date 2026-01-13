@@ -99,6 +99,9 @@ serve(async (req) => {
       });
     }
 
+    // PDF uploads get special status - they need manual conversion first
+    const status = fileType === "pdf" ? "received_pdf" : "pending";
+
     // Create batch record
     const { data: batch, error: batchError } = await supabase
       .from("va_upload_batches")
@@ -110,7 +113,8 @@ serve(async (req) => {
         file_path: filePath,
         file_type: fileType,
         file_size_bytes: file.size,
-        status: "pending",
+        status,
+        pdf_extract_required: fileType === "pdf",
       })
       .select()
       .single();

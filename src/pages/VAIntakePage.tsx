@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { AdminGuard } from '@/components/guards/AdminGuard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Upload, FileSpreadsheet, Loader2, CheckCircle2, XCircle, AlertCircle, RefreshCw, Download, FileWarning, FileDown } from 'lucide-react';
+import { Upload, FileSpreadsheet, Loader2, CheckCircle2, XCircle, AlertCircle, RefreshCw, Download, FileWarning, FileDown, ExternalLink, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -35,6 +36,7 @@ interface UploadBatch {
   rows_accepted: number;
   rows_rejected: number;
   error: string | null;
+  pdf_extract_notes: string | null;
 }
 
 interface UploadRow {
@@ -53,13 +55,19 @@ interface UploadRow {
 const CSV_TEMPLATE_HEADER = 'lot_id,year,make,model,variant_raw,km,location,vin,stock_number,reserve,asking_price,fuel,transmission,listing_url,status';
 const CSV_TEMPLATE_EXAMPLE = 'LOT001,2022,TOYOTA,HILUX,SR5 4X4,45000,Sydney,JTFSC5E1234567890,STK123,35000,38000,diesel,automatic,https://example.com/lot001,listed';
 
+function openLink(url: string) {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 export default function VAIntakePage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [file, setFile] = useState<File | null>(null);
   const [sourceKey, setSourceKey] = useState('');
   const [auctionDate, setAuctionDate] = useState('');
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [pdfNotes, setPdfNotes] = useState('');
 
   // Prefill from URL params (deep-link from blocked source tasks)
   useEffect(() => {
@@ -303,6 +311,26 @@ export default function VAIntakePage() {
   const isPdfBatch = (batch: UploadBatch) => 
     batch.status === 'received_pdf' || batch.file_type === 'pdf';
 
+  // Build deep link to upload CSV for a PDF batch
+  const buildCsvUploadLink = (batch: UploadBatch) => {
+    const params = new URLSearchParams({
+      source: batch.source_key,
+      date: batch.auction_date,
+      focus: "file",
+    });
+    return `/admin-tools/va-intake?${params.toString()}`;
+  };
+
+  // Get selected batch object
+  const selectedBatch = batches?.find(b => b.id === selectedBatchId);
+
+  // Update pdfNotes when selecting a batch
+  useEffect(() => {
+    if (selectedBatch) {
+      setPdfNotes(selectedBatch.pdf_extract_notes || '');
+    }
+  }, [selectedBatch?.id]);
+
   return (
     <AdminGuard>
       <div className="container mx-auto py-6 space-y-6">
@@ -330,6 +358,71 @@ export default function VAIntakePage() {
               <li>For CSV/XLSX: Click <strong>Parse</strong> → check rejected count → Click <strong>Ingest</strong></li>
               <li>For PDF: Download, convert to CSV, then upload CSV with same Source + Date</li>
             </ol>
+          </CardContent>
+        </Card>
+
+        {/* PDF → CSV Conversion Playbook */}
+        <Card className="border-border/60">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              PDF → CSV (when scraping is blocked)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-muted-foreground">
+            <ol className="list-decimal pl-5 space-y-2">
+              <li>Download the auction catalogue PDF from the source site.</li>
+              <li>Convert to <strong>CSV</strong> (best) or <strong>XLSX</strong> (ok) using one of the tools below.</li>
+              <li>Open the file and confirm columns exist: <strong>year, make, model, km</strong> at minimum.</li>
+              <li>Upload the CSV here with the same <strong>Source</strong> + <strong>Auction Date</strong>.</li>
+              <li>Click <strong>Parse</strong> → check rejects → click <strong>Ingest</strong>.</li>
+            </ol>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => openLink("https://www.adobe.com/acrobat/online/pdf-to-excel.html")}
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Adobe PDF→Excel
+                <ExternalLink className="h-4 w-4 ml-2" />
+              </Button>
+
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => openLink("https://smallpdf.com/pdf-to-excel")}
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Smallpdf
+                <ExternalLink className="h-4 w-4 ml-2" />
+              </Button>
+
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => openLink("https://www.ilovepdf.com/pdf_to_excel")}
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                iLovePDF
+                <ExternalLink className="h-4 w-4 ml-2" />
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadTemplate}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Download template CSV
+              </Button>
+            </div>
+
+            <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+              <strong>Rules:</strong> 10-year window ({new Date().getFullYear() - 10}+) is enforced. 
+              Cars with older year will be rejected automatically after parse.
+            </div>
           </CardContent>
         </Card>
 
@@ -465,11 +558,16 @@ export default function VAIntakePage() {
                                 onClick={() => handleDownloadPdf(batch)}
                               >
                                 <Download className="h-3 w-3 mr-1" />
-                                Download
+                                Download PDF
                               </Button>
-                              <span className="text-xs text-muted-foreground self-center">
-                                Convert to CSV
-                              </span>
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => navigate(buildCsvUploadLink(batch))}
+                              >
+                                <Upload className="h-3 w-3 mr-1" />
+                                Upload CSV
+                              </Button>
                             </>
                           ) : (
                             <>
@@ -573,6 +671,34 @@ export default function VAIntakePage() {
                 <p className="text-muted-foreground text-center py-8">
                   No rows to display (PDF files require manual conversion)
                 </p>
+              )}
+
+              {/* PDF Extract Notes section for PDF batches */}
+              {selectedBatch && isPdfBatch(selectedBatch) && (
+                <div className="mt-6 pt-4 border-t space-y-3">
+                  <Label>PDF Extract Notes</Label>
+                  <Textarea
+                    value={pdfNotes}
+                    onChange={(e) => setPdfNotes(e.target.value)}
+                    rows={2}
+                    placeholder="e.g. pages 2-5 contain cars; kms column labelled 'Odometer'"
+                    className="text-sm"
+                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={async () => {
+                      await supabase
+                        .from("va_upload_batches")
+                        .update({ pdf_extract_notes: pdfNotes })
+                        .eq("id", selectedBatch.id);
+                      toast.success("Notes saved");
+                      queryClient.invalidateQueries({ queryKey: ['va-batches'] });
+                    }}
+                  >
+                    Save notes
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>
