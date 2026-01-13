@@ -1,0 +1,11 @@
+# Memory: features/bob/daily-brief-intent
+Updated: now
+
+Bob supports a 'What should I do today?' intent that replaces manual data analysis. It calls the 'get_today_actions()' RPC and provides a decisive, prioritized response covering:
+1. Stale BUY_WINDOW (36h+ unassigned) - URGENT
+2. Overdue VA tasks - URGENT  
+3. Unassigned BUY_WINDOW cars with top priority vehicle details
+4. VA tasks due (24h)
+5. Missed opportunities (7d) for learning
+
+The response style is brief, decisive, and action-oriented ending with 'Assign or act.' Bob early-returns on this intent for fast responses.
