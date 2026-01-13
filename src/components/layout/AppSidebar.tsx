@@ -14,7 +14,8 @@ import {
   Sparkles,
   MapPin,
   Settings,
-  Store
+  Store,
+  ClipboardList
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -37,6 +38,7 @@ const dealerNavItems = [
   { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
   { path: '/search-lots', label: 'Search Lots', icon: Search },
   { path: '/trap-inventory', label: 'Trap Inventory', icon: Store, adminOnly: true },
+  { path: '/va/tasks', label: 'VA Task Queue', icon: ClipboardList, authOnly: true },
   { path: '/matches', label: 'Matches', icon: Crosshair },
   { path: '/valuation', label: 'Valuation', icon: DollarSign },
   { path: '/dealer-dashboard', label: 'My Dashboard', icon: MapPin },
@@ -99,6 +101,10 @@ export function AppSidebar() {
             // Skip admin-only items for non-admin users
             const isAdminOnlyItem = 'adminOnly' in item && item.adminOnly;
             if (isAdminOnlyItem && !isAdmin) return null;
+            
+            // Skip auth-only items for logged-out users
+            const isAuthOnlyItem = 'authOnly' in item && item.authOnly;
+            if (isAuthOnlyItem && !user) return null;
             
             const isActive = location.pathname === item.path;
             const isHighlight = 'highlight' in item && item.highlight;
