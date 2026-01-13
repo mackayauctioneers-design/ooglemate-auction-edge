@@ -29,12 +29,32 @@ function statusBadge(r: Row) {
 export function AuctionSourcesHealthCard() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     const { data, error } = await supabase.rpc("get_auction_sources_health" as never);
     if (!error) setRows((data as Row[]) || []);
     setLoading(false);
+  }
+
+  async function reenable(sourceKey: string) {
+    setActionLoading(sourceKey);
+    await supabase.rpc("reenable_auction_source" as never, {
+      p_source_key: sourceKey,
+      p_reason: "UI re-enable",
+    } as never);
+    await load();
+    setActionLoading(null);
+  }
+
+  async function runNow(sourceKey: string, debug = true) {
+    setActionLoading(sourceKey);
+    await supabase.functions.invoke("auction-run-now", {
+      body: { source_key: sourceKey, debug },
+    });
+    await load();
+    setActionLoading(null);
   }
 
   useEffect(() => {
@@ -116,6 +136,35 @@ export function AuctionSourcesHealthCard() {
                     )}
                   </div>
                 )}
+
+                <div className="mt-3 flex gap-2 flex-wrap">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => runNow(r.source_key, true)}
+                    disabled={actionLoading === r.source_key}
+                  >
+                    Run Now (Debug)
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => runNow(r.source_key, false)}
+                    disabled={actionLoading === r.source_key}
+                  >
+                    Run Now (Live)
+                  </Button>
+                  {!r.enabled && (
+                    <Button
+                      size="sm"
+                      variant="action"
+                      onClick={() => reenable(r.source_key)}
+                      disabled={actionLoading === r.source_key}
+                    >
+                      Re-enable
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
