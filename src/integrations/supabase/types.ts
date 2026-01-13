@@ -3492,6 +3492,26 @@ export type Database = {
           total_count: number
         }[]
       }
+      get_pending_spec_match_slack_alerts: {
+        Args: never
+        Returns: {
+          asking_price: number
+          benchmark_price: number
+          deal_label: string
+          dealer_name: string
+          delta_pct: number
+          km: number
+          listing_url: string
+          make: string
+          match_id: string
+          model: string
+          region_id: string
+          source_class: string
+          spec_name: string
+          variant_used: string
+          year: number
+        }[]
+      }
       get_price_memory: {
         Args: {
           p_km: number
@@ -3595,10 +3615,18 @@ export type Database = {
         }[]
       }
       location_to_region: { Args: { p_location: string }; Returns: string }
+      mark_spec_matches_slack_sent: {
+        Args: { p_match_ids: string[] }
+        Returns: number
+      }
       match_dealer_specs_for_listing: {
-        Args: { p_listing_uuid: string }
+        Args: { p_listing_id: string }
         Returns: {
-          matches_created: number
+          deal_label: string
+          dealer_spec_id: string
+          listing_uuid: string
+          match_score: number
+          reason: string
         }[]
       }
       materialize_fingerprint_outcomes: {
@@ -3627,6 +3655,17 @@ export type Database = {
         Returns: {
           records_upserted: number
           regions_updated: number
+        }[]
+      }
+      run_spec_matching_batch: {
+        Args: { p_since_hours?: number }
+        Returns: {
+          buy_windows_set: number
+          listings_checked: number
+          matches_created: number
+          mispriced: number
+          specs_evaluated: number
+          strong_buys: number
         }[]
       }
       seller_weight: { Args: { p_seller_type: string }; Returns: number }
