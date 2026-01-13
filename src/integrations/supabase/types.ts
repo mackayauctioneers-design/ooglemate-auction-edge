@@ -1422,6 +1422,103 @@ export type Database = {
         }
         Relationships: []
       }
+      va_tasks: {
+        Row: {
+          assigned_to: string | null
+          attempt_count: number | null
+          buy_window_at: string | null
+          created_at: string
+          due_at: string | null
+          id: string
+          listing_url: string | null
+          listing_uuid: string
+          note: string | null
+          priority: string
+          status: string
+          task_type: string
+          updated_at: string
+          watch_confidence: string | null
+          watch_reason: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          attempt_count?: number | null
+          buy_window_at?: string | null
+          created_at?: string
+          due_at?: string | null
+          id?: string
+          listing_url?: string | null
+          listing_uuid: string
+          note?: string | null
+          priority?: string
+          status?: string
+          task_type?: string
+          updated_at?: string
+          watch_confidence?: string | null
+          watch_reason?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          attempt_count?: number | null
+          buy_window_at?: string | null
+          created_at?: string
+          due_at?: string | null
+          id?: string
+          listing_url?: string | null
+          listing_uuid?: string
+          note?: string | null
+          priority?: string
+          status?: string
+          task_type?: string
+          updated_at?: string
+          watch_confidence?: string | null
+          watch_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "va_tasks_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_tasks_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "stale_dealer_grade"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_tasks_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "trap_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_tasks_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "trap_deals_90_plus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_tasks_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "trap_inventory_current"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_tasks_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "vehicle_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       va_upload_batches: {
         Row: {
           auction_date: string
@@ -2885,6 +2982,12 @@ export type Database = {
         }[]
       }
       seller_weight: { Args: { p_seller_type: string }; Returns: number }
+      spawn_va_tasks_for_buy_window: {
+        Args: { p_hours?: number }
+        Returns: {
+          created_count: number
+        }[]
+      }
       try_acquire_pipeline_lock: { Args: never; Returns: boolean }
       update_auction_attempts: {
         Args: never
