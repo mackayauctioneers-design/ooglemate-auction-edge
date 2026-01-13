@@ -79,6 +79,29 @@ interface BenchmarkSummary {
   }>;
 }
 
+interface BuyWindowSummary {
+  total: number;
+  auctions: number;
+  traps: number;
+  unassigned: number;
+  assigned: number;
+  top_unassigned: Array<{
+    id: string;
+    source_class: string;
+    source: string;
+    make: string;
+    model: string;
+    variant: string;
+    year: number;
+    km: number;
+    location: string;
+    buy_window_at: string;
+    watch_reason: string;
+    watch_confidence: string;
+    listing_url: string;
+  }>;
+}
+
 interface HealthData {
   traps: TrapStat[];
   crawlToday: CrawlStats | null;
@@ -91,6 +114,7 @@ interface HealthData {
   auctionSources: AuctionSourceStat[];
   v2Adoption: V2Adoption | null;
   benchmarkSummary: BenchmarkSummary | null;
+  buyWindow: BuyWindowSummary | null;
   lastRefresh: Date;
 }
 
@@ -105,7 +129,7 @@ export function IngestionHealthContent() {
   const fetchHealth = async () => {
     setLoading(true);
     try {
-      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes, benchmarkRes, nswRegionalRes, auctionSourcesRes, v2AdoptionRes, benchmarkSummaryRes] = await Promise.all([
+      const [trapsRes, crawlRes, clearanceRes, fingerprintsRes, jobQueueRes, dropReasonsRes, benchmarkRes, nswRegionalRes, auctionSourcesRes, v2AdoptionRes, benchmarkSummaryRes, buyWindowRes] = await Promise.all([
         supabase.rpc('get_nsw_trap_stats' as never),
         supabase.rpc('get_nsw_crawl_today' as never),
         supabase.rpc('get_clearance_today' as never),
@@ -125,6 +149,7 @@ export function IngestionHealthContent() {
         // v2 adoption and benchmark summary
         supabase.rpc('get_fingerprint_v2_adoption' as never),
         supabase.rpc('get_benchmark_coverage_summary' as never),
+        supabase.rpc('get_buy_window_summary' as never),
       ]);
 
       // Parse NSW regional runs
@@ -171,6 +196,7 @@ export function IngestionHealthContent() {
         auctionSources: (auctionSourcesRes.data as AuctionSourceStat[]) || [],
         v2Adoption: (v2AdoptionRes.data as V2Adoption[])?.[0] || null,
         benchmarkSummary: (benchmarkSummaryRes.data as BenchmarkSummary[])?.[0] || null,
+        buyWindow: (buyWindowRes.data as BuyWindowSummary[])?.[0] || null,
         lastRefresh: new Date(),
       });
     } catch (err) {
@@ -383,6 +409,51 @@ export function IngestionHealthContent() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Buy Window */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Buy Window</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {health?.buyWindow ? (
+                <div className="space-y-3">
+                  <div className="text-3xl font-semibold">
+                    {health.buyWindow.total ?? 0}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>Auctions: <span className="font-medium">{health.buyWindow.auctions ?? 0}</span></div>
+                    <div>Traps: <span className="font-medium">{health.buyWindow.traps ?? 0}</span></div>
+                    <div>Unassigned: <span className="font-medium">{health.buyWindow.unassigned ?? 0}</span></div>
+                    <div>Assigned: <span className="font-medium">{health.buyWindow.assigned ?? 0}</span></div>
+                  </div>
+
+                  {Array.isArray(health.buyWindow.top_unassigned) && health.buyWindow.top_unassigned.length > 0 && (
+                    <div className="pt-2 border-t border-border">
+                      <div className="text-xs text-muted-foreground mb-2">
+                        Top unassigned (latest first)
+                      </div>
+                      <div className="space-y-2">
+                        {health.buyWindow.top_unassigned.slice(0, 5).map((x) => (
+                          <div key={x.id} className="text-sm">
+                            <div className="font-medium">
+                              {x.year} {x.make} {x.model} {x.variant ? `(${x.variant})` : ''}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {x.source_class === 'auction' ? 'Auction' : 'Trap'} • {x.location || '—'} • {x.watch_confidence || '—'} • {x.watch_reason || '—'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">No data</div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Drop Reasons & Pipeline Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
