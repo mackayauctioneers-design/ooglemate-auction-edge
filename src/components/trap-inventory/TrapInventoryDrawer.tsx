@@ -63,12 +63,36 @@ type LastSale = {
   match_scope: "REGION_STRICT" | "NATIONAL" | "NO_VARIANT" | string;
 };
 
+// Buy Range types
+type BuyRange = {
+  match_scope: string;
+  sample_count: number;
+  q1_price: number | null;
+  median_price: number | null;
+  q3_price: number | null;
+  buy_low: number | null;
+  buy_high: number | null;
+  stretch_high: number | null;
+  position_label: string | null;
+  position_note: string | null;
+};
+
 function scopeBadge(scope: string) {
   const s = (scope || "").toUpperCase();
   if (s === "REGION_STRICT") return { label: "Region match", variant: "confidence-high" as const };
   if (s === "NATIONAL") return { label: "National match", variant: "confidence-mid" as const };
   if (s === "NO_VARIANT") return { label: "No-variant match", variant: "outline" as const };
   return { label: s || "Unknown", variant: "outline" as const };
+}
+
+function positionBadge(label: string | null) {
+  const l = (label || "").toUpperCase();
+  if (l === "STRONG_BUY") return { label: "Strong Buy", color: "bg-emerald-600 text-white" };
+  if (l === "BUY_WINDOW") return { label: "Buy Window", color: "bg-emerald-500/20 text-emerald-600 border border-emerald-500/30" };
+  if (l === "STRETCH") return { label: "Stretch", color: "bg-amber-500/20 text-amber-600 border border-amber-500/30" };
+  if (l === "OVER") return { label: "Over", color: "bg-red-500/20 text-red-500 border border-red-500/30" };
+  if (l === "NO_PRICE") return { label: "No Price", color: "bg-muted text-muted-foreground" };
+  return { label: l || "Unknown", color: "bg-muted text-muted-foreground" };
 }
 
 interface TrapInventoryDrawerProps {
@@ -131,6 +155,10 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
   // Last Sale Anchor state
   const [lastSale, setLastSale] = useState<LastSale | null>(null);
   const [lastSaleLoading, setLastSaleLoading] = useState(false);
+  
+  // Buy Range state
+  const [buyRange, setBuyRange] = useState<BuyRange | null>(null);
+  const [buyRangeLoading, setBuyRangeLoading] = useState(false);
   
   // Ask Bob state
   const [bobLoading, setBobLoading] = useState(false);
@@ -331,6 +359,50 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
       cancelled = true;
     };
   }, [open, listing?.id, listing?.make, listing?.model, listing?.year, listing?.km, listing?.variant_family, regionIdForSale]);
+
+  // Fetch Buy Range when drawer opens
+  useEffect(() => {
+    if (!open || !listing) return;
+
+    // Only fetch when we have core identity
+    if (!listing.make || !listing.model || !listing.year) {
+      setBuyRange(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      setBuyRangeLoading(true);
+      setBuyRange(null);
+
+      const currentPrice = listing.asking_price || (listing as any).reserve || null;
+
+      const { data, error } = await supabase.rpc("get_buy_range", {
+        p_make: listing.make,
+        p_model: listing.model,
+        p_variant_used: listing.variant_family || (listing as any).variant_used || "",
+        p_year: listing.year,
+        p_km: listing.km ?? 0,
+        p_region_id: regionIdForSale,
+        p_current_price: currentPrice,
+      });
+
+      if (!cancelled) {
+        if (error) {
+          console.error("[BuyRange] RPC error:", error);
+          setBuyRange(null);
+        } else {
+          setBuyRange((data && data.length > 0 ? (data[0] as any) : null) as BuyRange | null);
+        }
+        setBuyRangeLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, listing?.id, listing?.make, listing?.model, listing?.year, listing?.km, listing?.variant_family, listing?.asking_price, regionIdForSale]);
 
   const fetchPriceHistory = async (listingId: string) => {
     setLoadingHistory(true);
@@ -554,7 +626,69 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
             </CardContent>
           </Card>
 
-          {/* Ask Bob */}
+          {/* Buy Range Card */}
+          <Card className="mt-4 border-primary/30">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-primary" />
+                Buy Range
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {buyRangeLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-8 w-full" />
+                </div>
+              ) : !buyRange ? (
+                <div className="text-sm text-muted-foreground">
+                  No price memory yet. Log a sale to build buy guidance.
+                </div>
+              ) : (
+                <>
+                  {/* Match Scope + Position */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant={scopeBadge(buyRange.match_scope).variant}>
+                      {scopeBadge(buyRange.match_scope).label}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {buyRange.sample_count} comp{buyRange.sample_count !== 1 ? 's' : ''}
+                    </span>
+                    {buyRange.position_label && (
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${positionBadge(buyRange.position_label).color}`}>
+                        {positionBadge(buyRange.position_label).label}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Price Quartiles */}
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div className="p-2 rounded bg-emerald-500/10 border border-emerald-500/20">
+                      <div className="text-xs text-muted-foreground">Buy Low (Q1)</div>
+                      <div className="font-semibold text-emerald-600">{formatCurrency(buyRange.buy_low)}</div>
+                    </div>
+                    <div className="p-2 rounded bg-emerald-500/5 border border-emerald-500/20">
+                      <div className="text-xs text-muted-foreground">Buy High (Med)</div>
+                      <div className="font-semibold text-emerald-600">{formatCurrency(buyRange.buy_high)}</div>
+                    </div>
+                    <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20">
+                      <div className="text-xs text-muted-foreground">Stretch (Q3)</div>
+                      <div className="font-semibold text-amber-600">{formatCurrency(buyRange.stretch_high)}</div>
+                    </div>
+                  </div>
+
+                  {/* Current Price Position Note */}
+                  {buyRange.position_note && (
+                    <p className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                      {buyRange.position_note}
+                    </p>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
           <div className="rounded-lg border border-border p-4">
             <div className="flex items-center justify-between gap-3">
               <div>

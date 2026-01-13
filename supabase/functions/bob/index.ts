@@ -268,9 +268,28 @@ const LAST_EQUIVALENT_INTENT = [
   "last deal",
 ];
 
+// BUY RANGE intent keywords
+const BUY_RANGE_INTENT = [
+  "buy range",
+  "what should we pay",
+  "what should i pay",
+  "is it cheap",
+  "is it in the buy window",
+  "is this cheap",
+  "in buy window",
+  "q1 q3",
+  "quartile",
+  "price memory",
+];
+
 function detectLastEquivalentSaleIntent(message: string): boolean {
   const t = (message || "").toLowerCase();
   return LAST_EQUIVALENT_INTENT.some(k => t.includes(k));
+}
+
+function detectBuyRangeIntent(message: string): boolean {
+  const t = (message || "").toLowerCase();
+  return BUY_RANGE_INTENT.some(k => t.includes(k));
 }
 
 // General pricing intent keywords
@@ -1421,6 +1440,66 @@ serve(async (req) => {
           avg_gross: 0,
           notes: ['LAST_EQUIVALENT_SALE intent'],
           comps_used: lastSale ? [`${lastSale.year}-${lastSale.make}-${lastSale.model}`] : [],
+          processing_time_ms: 0,
+          adjustments: { km_adj: 0, year_adj: 0, trim_adj: 0, demand_adj: 0 },
+        };
+      }
+      // ================================================================
+      // BUY RANGE INTENT - Check before general pricing
+      // ================================================================
+      else if (detectBuyRangeIntent(transcript)) {
+        console.log(`[BOB] BUY RANGE: Intent detected`);
+        
+        const km = vehicleInput.km ?? 0;
+        const variantUsed = vehicleInput.variant_family || '';
+        
+        const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+        const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        
+        let buyRangeResponse = "No price memory yet for that combo. Log a sale and it'll start talking.";
+        
+        if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+          const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+          const { data: priceMemory } = await supabase.rpc("get_price_memory", {
+            p_make: vehicleInput.make,
+            p_model: vehicleInput.model,
+            p_variant_used: variantUsed,
+            p_year: vehicleInput.year,
+            p_km: km,
+            p_region_id: null,
+          });
+          
+          if (priceMemory && priceMemory.length > 0) {
+            const pm = priceMemory[0];
+            const q1 = pm.q1_price ? `$${Math.round(Number(pm.q1_price)).toLocaleString("en-AU")}` : "—";
+            const med = pm.median_price ? `$${Math.round(Number(pm.median_price)).toLocaleString("en-AU")}` : "—";
+            const q3 = pm.q3_price ? `$${Math.round(Number(pm.q3_price)).toLocaleString("en-AU")}` : "—";
+            const scope = pm.match_scope === "REGION_STRICT" ? "region" : pm.match_scope === "NO_VARIANT" ? "no-variant" : "national";
+            
+            buyRangeResponse = `Based on ${pm.sample_count} comps (${scope}): Q1 ${q1} • Median ${med} • Q3 ${q3}. ` +
+              `Buy at ${med} or under and you're in the window. Under ${q1} is a strong buy.`;
+          }
+        }
+        
+        bobScript = buyRangeResponse;
+        
+        decision = {
+          decision: 'PRICE_AVAILABLE',
+          buy_price: null,
+          vehicle_class: null,
+          data_source: 'OWN_SALES',
+          confidence: 'MED',
+          reason: 'BUY_RANGE_INTENT',
+        };
+        engineState = {
+          n_comps: 0,
+          comp_tier: null,
+          anchor_owe: null,
+          owe_base: null,
+          avg_days: 0,
+          avg_gross: 0,
+          notes: ['BUY_RANGE intent'],
+          comps_used: [],
           processing_time_ms: 0,
           adjustments: { km_adj: 0, year_adj: 0, trim_adj: 0, demand_adj: 0 },
         };
