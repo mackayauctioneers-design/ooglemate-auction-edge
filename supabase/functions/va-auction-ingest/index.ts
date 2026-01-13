@@ -33,6 +33,77 @@ function generateListingId(sourceKey: string, auctionDate: string, row: any): st
   const identifier = row.lot_id || row.stock_number || row.vin || `row_${row.row_number}`;
   return `VA:${sourceKey}:${auctionDate}:${identifier}`;
 }
+// =============================================================================
+// V2 FINGERPRINT HELPER
+// =============================================================================
+
+async function applyFingerprintV2ToListing(
+  supabase: any,
+  input: {
+    year: number | null;
+    make: string | null;
+    model: string | null;
+    variant_family: string | null;
+    variant_raw: string | null;
+    body: string | null;
+    transmission: string | null;
+    fuel: string | null;
+    drivetrain: string | null;
+    km: number | null;
+    region_id: string | null;
+  }
+) {
+  const { data, error } = await supabase.rpc('generate_vehicle_fingerprint_v2', {
+    p_year: input.year,
+    p_make: input.make,
+    p_model: input.model,
+    p_variant_family: input.variant_family,
+    p_variant_raw: input.variant_raw,
+    p_body: input.body,
+    p_transmission: input.transmission,
+    p_fuel: input.fuel,
+    p_drivetrain: input.drivetrain,
+    p_km: input.km,
+    p_region: input.region_id,
+  });
+
+  if (error) {
+    console.error('[va-auction-ingest] Fingerprint v2 error:', error);
+    return {
+      fingerprint: null,
+      fingerprint_version: null,
+      fingerprint_confidence: null,
+      variant_used: null,
+      variant_source: null,
+    };
+  }
+
+  const out = data?.[0];
+  return {
+    fingerprint: out?.fingerprint ?? null,
+    fingerprint_version: 2,
+    fingerprint_confidence: out?.fingerprint_confidence ?? null,
+    variant_used: out?.variant_used ?? null,
+    variant_source: out?.variant_source ?? null,
+  };
+}
+
+// Derive region from location for fingerprint
+function deriveRegionFromLocation(location: string | null): string | null {
+  if (!location) return null;
+  const loc = location.toUpperCase();
+  
+  if (['GOSFORD', 'WYONG', 'TUGGERAH', 'ERINA'].some(s => loc.includes(s))) return 'NSW_CENTRAL_COAST';
+  if (['NEWCASTLE', 'MAITLAND', 'HUNTER'].some(s => loc.includes(s))) return 'NSW_HUNTER_NEWCASTLE';
+  if (['SYDNEY', 'PARRAMATTA', 'BLACKTOWN'].some(s => loc.includes(s))) return 'NSW_SYDNEY_METRO';
+  if (loc.includes('NSW')) return 'NSW_REGIONAL';
+  if (['MELBOURNE', 'DANDENONG'].some(s => loc.includes(s))) return 'VIC_METRO';
+  if (loc.includes('VIC')) return 'VIC_REGIONAL';
+  if (['BRISBANE', 'GOLD COAST'].some(s => loc.includes(s))) return 'QLD_SE';
+  if (loc.includes('QLD')) return 'QLD_REGIONAL';
+  
+  return null;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -148,6 +219,22 @@ serve(async (req) => {
         .eq("listing_id", listingId)
         .single();
 
+      // Apply v2 fingerprint
+      const regionId = deriveRegionFromLocation(row.location);
+      const fp = await applyFingerprintV2ToListing(supabase, {
+        year: row.year ?? null,
+        make: row.make ?? null,
+        model: row.model ?? null,
+        variant_family: row.variant_family ?? null,
+        variant_raw: row.variant_raw ?? null,
+        body: null,
+        transmission: row.transmission ?? null,
+        fuel: row.fuel ?? null,
+        drivetrain: null,
+        km: row.km ?? null,
+        region_id: regionId,
+      });
+
       if (existing) {
         // Update existing listing
         const { error: updateError } = await supabase
@@ -166,6 +253,7 @@ serve(async (req) => {
             asking_price: row.asking_price,
             last_seen_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            ...fp,
           })
           .eq("id", existing.id);
 
@@ -220,6 +308,7 @@ serve(async (req) => {
             lot_id: row.lot_id,
             first_seen_at: new Date().toISOString(),
             last_seen_at: new Date().toISOString(),
+            ...fp,
           })
           .select()
           .single();

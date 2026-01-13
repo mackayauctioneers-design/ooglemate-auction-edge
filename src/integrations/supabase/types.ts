@@ -1807,6 +1807,7 @@ export type Database = {
           variant_family: string | null
           variant_raw: string | null
           variant_source: string | null
+          variant_used: string | null
           visible_to_dealers: boolean
           watch_confidence: string | null
           watch_reason: string | null
@@ -1872,6 +1873,7 @@ export type Database = {
           variant_family?: string | null
           variant_raw?: string | null
           variant_source?: string | null
+          variant_used?: string | null
           visible_to_dealers?: boolean
           watch_confidence?: string | null
           watch_reason?: string | null
@@ -1937,6 +1939,7 @@ export type Database = {
           variant_family?: string | null
           variant_raw?: string | null
           variant_source?: string | null
+          variant_used?: string | null
           visible_to_dealers?: boolean
           watch_confidence?: string | null
           watch_reason?: string | null
