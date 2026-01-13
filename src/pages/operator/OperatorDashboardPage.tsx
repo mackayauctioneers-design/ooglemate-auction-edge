@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import {
   Activity,
@@ -11,8 +10,10 @@ import {
   Target,
   Upload,
   Users,
-  Settings
+  Settings,
+  Car
 } from 'lucide-react';
+import { TodayActionsCard } from '@/components/operator/TodayActionsCard';
 
 export default function OperatorDashboardPage() {
   useEffect(() => {
@@ -35,6 +36,7 @@ export default function OperatorDashboardPage() {
         { label: 'VA Intake', path: '/admin-tools/va-intake', icon: Upload, desc: 'Upload auction catalogues' },
         { label: 'Traps Registry', path: '/operator/traps', icon: Database, desc: 'Manage dealer traps' },
         { label: 'Preflight Queue', path: '/operator/preflight', icon: Database, desc: 'Preflight check status' },
+        { label: 'Franchise Feeds', path: '/operator/franchise-feeds', icon: Car, desc: 'Toyota portal + dealer discovery' },
       ]
     },
     {
@@ -58,9 +60,14 @@ export default function OperatorDashboardPage() {
   return (
     <OperatorLayout>
       <div className="p-6 space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Operator Dashboard</h1>
-          <p className="text-muted-foreground">Backend monitoring and controls</p>
+        <div className="flex flex-col lg:flex-row gap-6">
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-foreground">Operator Dashboard</h1>
+            <p className="text-muted-foreground">Backend monitoring and controls</p>
+          </div>
+          <div className="lg:w-96">
+            <TodayActionsCard />
+          </div>
         </div>
 
         {sections.map((section) => (
