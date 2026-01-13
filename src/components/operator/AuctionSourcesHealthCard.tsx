@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Clock, Pause, Play, Zap, FlaskConical } from "lucide-react";
+import { RefreshCw, Clock, Pause, Play, Zap, FlaskConical, Settings2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { AuctionScheduleEditor } from "@/components/auction/AuctionScheduleEditor";
+import { AuctionTuneDrawer } from "@/components/auction/AuctionTuneDrawer";
 
 type Row = {
   source_key: string;
@@ -99,6 +100,10 @@ export function AuctionSourcesHealthCard() {
     sample: unknown[];
     raw: unknown;
   } | null>(null);
+
+  // Tune drawer state
+  const [tuneOpen, setTuneOpen] = useState(false);
+  const [tuneSrc, setTuneSrc] = useState<Row | null>(null);
 
   async function load() {
     setLoading(true);
@@ -334,6 +339,17 @@ export function AuctionSourcesHealthCard() {
                     >
                       View Events
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setTuneSrc(r);
+                        setTuneOpen(true);
+                      }}
+                    >
+                      <Settings2 className="h-4 w-4 mr-1" />
+                      Tune
+                    </Button>
                     {!r.enabled && (
                       <Button
                         size="sm"
@@ -502,6 +518,14 @@ export function AuctionSourcesHealthCard() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Tune Drawer */}
+      <AuctionTuneDrawer
+        open={tuneOpen}
+        onOpenChange={setTuneOpen}
+        src={tuneSrc}
+        onRefresh={load}
+      />
     </>
   );
 }

@@ -154,6 +154,12 @@ verify_jwt = false
 [functions.auction-dry-run]
 verify_jwt = false
 
+[functions.auction-update-source]
+verify_jwt = false
+
+[functions.auction-preflight]
+verify_jwt = false
+
 [functions.auction-schedule-dispatch]
 verify_jwt = false
 # Every 5 minutes - dispatch scheduled auction sources
