@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { TrapListing, LifecycleState } from '@/pages/TrapInventoryPage';
 import { supabase } from '@/integrations/supabase/client';
@@ -18,6 +18,8 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   ExternalLink, 
   Calendar, 
@@ -39,11 +41,34 @@ import {
   Ban,
   Sparkles,
   CheckCircle,
-  DollarSign
+  DollarSign,
+  History
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+
+// Last Sale Anchor types
+type LastSale = {
+  sale_date: string | null;
+  make: string | null;
+  model: string | null;
+  variant_used: string | null;
+  year: number | null;
+  km: number | null;
+  sale_price: number | null;
+  days_in_stock: number | null;
+  region_id: string | null;
+  match_scope: "REGION_STRICT" | "NATIONAL" | "NO_VARIANT" | string;
+};
+
+function scopeBadge(scope: string) {
+  const s = (scope || "").toUpperCase();
+  if (s === "REGION_STRICT") return { label: "Region match", variant: "confidence-high" as const };
+  if (s === "NATIONAL") return { label: "National match", variant: "confidence-mid" as const };
+  if (s === "NO_VARIANT") return { label: "No-variant match", variant: "outline" as const };
+  return { label: s || "Unknown", variant: "outline" as const };
+}
 
 interface TrapInventoryDrawerProps {
   listing: TrapListing | null;
@@ -103,6 +128,15 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
   const [notesDirty, setNotesDirty] = useState(false);
   const [localTrackedBy, setLocalTrackedBy] = useState('');
   const [savingTrackedBy, setSavingTrackedBy] = useState(false);
+  
+  // Last Sale Anchor state
+  const [lastSale, setLastSale] = useState<LastSale | null>(null);
+  const [lastSaleLoading, setLastSaleLoading] = useState(false);
+  
+  const regionIdForSale = useMemo(() => {
+    // Prefer listing.region_id if available; else pass null - RPC will fallback to NATIONAL
+    return (listing as any)?.region_id ?? null;
+  }, [listing]);
   const [localLifecycle, setLocalLifecycle] = useState<LifecycleState>('NEW');
   const [savingLifecycle, setSavingLifecycle] = useState(false);
   
@@ -130,6 +164,47 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
       fetchPriceHistory(listing.id);
     }
   }, [listing, open]);
+
+  // Fetch Last Sale Anchor when drawer opens
+  useEffect(() => {
+    if (!open || !listing) return;
+
+    // Only fetch when we have core identity
+    if (!listing.make || !listing.model || !listing.year) {
+      setLastSale(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      setLastSaleLoading(true);
+      setLastSale(null);
+
+      const { data, error } = await supabase.rpc("get_last_equivalent_sale_ui", {
+        p_make: listing.make,
+        p_model: listing.model,
+        p_variant_used: listing.variant_family || (listing as any).variant_used || "",
+        p_year: listing.year,
+        p_km: listing.km ?? 0,
+        p_region_id: regionIdForSale,
+      });
+
+      if (!cancelled) {
+        if (error) {
+          console.error("[LastSaleAnchor] RPC error:", error);
+          setLastSale(null);
+        } else {
+          setLastSale((data && data.length > 0 ? (data[0] as any) : null) as LastSale | null);
+        }
+        setLastSaleLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, listing?.id, listing?.make, listing?.model, listing?.year, listing?.km, listing?.variant_family, regionIdForSale]);
 
   const fetchPriceHistory = async (listingId: string) => {
     setLoadingHistory(true);
@@ -291,6 +366,67 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
               </div>
             )}
           </section>
+
+          {/* Last Sale Anchor */}
+          <Card className="mt-4">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <History className="h-4 w-4" />
+                Last Sale Anchor
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {lastSaleLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+              ) : !lastSale ? (
+                <div className="text-sm text-muted-foreground">
+                  No equivalent sale found yet. (Log a sale to strengthen this fingerprint.)
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={scopeBadge(lastSale.match_scope).variant}>
+                      {scopeBadge(lastSale.match_scope).label}
+                    </Badge>
+                    <div className="text-sm text-muted-foreground">
+                      {lastSale.sale_date ? `Sold ${new Date(lastSale.sale_date).toLocaleDateString()}` : "Sold date —"}
+                    </div>
+                  </div>
+
+                  <div className="text-sm">
+                    <span className="font-medium">
+                      {lastSale.year ?? "—"} {lastSale.make ?? "—"} {lastSale.model ?? "—"}
+                    </span>
+                    {lastSale.variant_used ? (
+                      <span className="text-muted-foreground"> ({lastSale.variant_used})</span>
+                    ) : null}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <div className="text-muted-foreground">Sold for</div>
+                      <div className="font-medium">{formatCurrency(lastSale.sale_price)}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Days in stock</div>
+                      <div className="font-medium">{lastSale.days_in_stock ?? "—"}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">KM</div>
+                      <div className="font-medium">{formatNumber(lastSale.km)}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Region</div>
+                      <div className="font-medium">{lastSale.region_id ?? "—"}</div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
 
           <Separator />
 
