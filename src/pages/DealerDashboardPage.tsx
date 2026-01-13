@@ -6,6 +6,7 @@ import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { TrendingUp, TrendingDown, Minus, Flame, Snowflake, Target, Car, MapPin } from 'lucide-react';
+import { SpecMatchesCard } from '@/components/dealer/SpecMatchesCard';
 
 // ============================================================================
 // DEALER DASHBOARD v1 - Brian Hilton Toyota Only
@@ -354,10 +355,13 @@ export default function DealerDashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <MarketPulsePanel categories={marketCategories} />
-        <StockComparisonPanel insights={stockInsights} />
+        <SpecMatchesCard showAll={false} limit={10} />
       </div>
 
-      <SuggestedFocusPanel suggestions={suggestions} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <StockComparisonPanel insights={stockInsights} />
+        <SuggestedFocusPanel suggestions={suggestions} />
+      </div>
     </div>
   );
 }

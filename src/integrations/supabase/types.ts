@@ -487,6 +487,206 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_match_alerts: {
+        Row: {
+          alert_date: string
+          asking_price: number | null
+          benchmark_price: number | null
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string | null
+          dealer_id: string
+          delta_dollars: number | null
+          delta_pct: number | null
+          id: string
+          km: number | null
+          listing_url: string | null
+          listing_uuid: string
+          make: string | null
+          match_score: number | null
+          match_type: string
+          model: string | null
+          region_id: string | null
+          source: string | null
+          source_class: string | null
+          spec_id: string
+          status: string | null
+          variant_used: string | null
+          year: number | null
+        }
+        Insert: {
+          alert_date?: string
+          asking_price?: number | null
+          benchmark_price?: number | null
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string | null
+          dealer_id: string
+          delta_dollars?: number | null
+          delta_pct?: number | null
+          id?: string
+          km?: number | null
+          listing_url?: string | null
+          listing_uuid: string
+          make?: string | null
+          match_score?: number | null
+          match_type: string
+          model?: string | null
+          region_id?: string | null
+          source?: string | null
+          source_class?: string | null
+          spec_id: string
+          status?: string | null
+          variant_used?: string | null
+          year?: number | null
+        }
+        Update: {
+          alert_date?: string
+          asking_price?: number | null
+          benchmark_price?: number | null
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string | null
+          dealer_id?: string
+          delta_dollars?: number | null
+          delta_pct?: number | null
+          id?: string
+          km?: number | null
+          listing_url?: string | null
+          listing_uuid?: string
+          make?: string | null
+          match_score?: number | null
+          match_type?: string
+          model?: string | null
+          region_id?: string | null
+          source?: string | null
+          source_class?: string | null
+          spec_id?: string
+          status?: string | null
+          variant_used?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_match_alerts_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_match_alerts_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "stale_dealer_grade"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_match_alerts_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "trap_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_match_alerts_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "trap_deals_90_plus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_match_alerts_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "trap_inventory_current"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_match_alerts_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "vehicle_listings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_match_alerts_spec_id_fkey"
+            columns: ["spec_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_match_specs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_match_specs: {
+        Row: {
+          created_at: string | null
+          dealer_id: string
+          dealer_name: string
+          drivetrain: string | null
+          enabled: boolean | null
+          fuel: string | null
+          id: string
+          km_max: number | null
+          make: string
+          min_under_pct: number | null
+          model: string
+          note: string | null
+          region_id: string | null
+          region_scope: string | null
+          require_benchmark: boolean | null
+          transmission: string | null
+          updated_at: string | null
+          variant_family: string | null
+          year_max: number | null
+          year_min: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          dealer_id: string
+          dealer_name: string
+          drivetrain?: string | null
+          enabled?: boolean | null
+          fuel?: string | null
+          id?: string
+          km_max?: number | null
+          make: string
+          min_under_pct?: number | null
+          model: string
+          note?: string | null
+          region_id?: string | null
+          region_scope?: string | null
+          require_benchmark?: boolean | null
+          transmission?: string | null
+          updated_at?: string | null
+          variant_family?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          dealer_id?: string
+          dealer_name?: string
+          drivetrain?: string | null
+          enabled?: boolean | null
+          fuel?: string | null
+          id?: string
+          km_max?: number | null
+          make?: string
+          min_under_pct?: number | null
+          model?: string
+          note?: string | null
+          region_id?: string | null
+          region_scope?: string | null
+          require_benchmark?: boolean | null
+          transmission?: string | null
+          updated_at?: string | null
+          variant_family?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Relationships: []
+      }
       dealer_profile_user_links: {
         Row: {
           dealer_profile_id: string
@@ -2799,6 +2999,12 @@ export type Database = {
           listing_id: string
           listing_uuid: string
           reason: string
+        }[]
+      }
+      evaluate_dealer_spec_matches_for_listing: {
+        Args: { p_listing_uuid: string }
+        Returns: {
+          alerts_created: number
         }[]
       }
       evaluate_watch_status: {

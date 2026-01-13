@@ -280,6 +280,16 @@ serve(async (req) => {
             .from("va_upload_rows")
             .update({ status: "accepted", listing_id: existing.id })
             .eq("id", row.id);
+          
+          // Evaluate dealer spec matches
+          try {
+            await supabase.rpc('evaluate_dealer_spec_matches_for_listing', {
+              p_listing_uuid: existing.id
+            });
+          } catch (matchError) {
+            console.error(`[va-auction-ingest] Match eval error for row ${row.row_number}:`, matchError);
+          }
+          
           accepted++;
           updated++;
         }
@@ -336,6 +346,16 @@ serve(async (req) => {
             .from("va_upload_rows")
             .update({ status: "accepted", listing_id: newListing.id })
             .eq("id", row.id);
+          
+          // Evaluate dealer spec matches
+          try {
+            await supabase.rpc('evaluate_dealer_spec_matches_for_listing', {
+              p_listing_uuid: newListing.id
+            });
+          } catch (matchError) {
+            console.error(`[va-auction-ingest] Match eval error for row ${row.row_number}:`, matchError);
+          }
+          
           accepted++;
           created++;
         }

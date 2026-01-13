@@ -37,7 +37,7 @@ import FeedingModeReportPage from "./pages/operator/FeedingModeReportPage";
 import BenchmarkGapPanel from "./pages/operator/BenchmarkGapPanel";
 import BenchmarkWatchlistPage from "./pages/operator/BenchmarkWatchlistPage";
 import AddAuctionSourcePage from "./pages/operator/AddAuctionSourcePage";
-
+import DealerSpecsPage from "./pages/operator/DealerSpecsPage";
 const queryClient = new QueryClient();
 
 // ============================================================================
@@ -115,6 +115,9 @@ const App = () => (
             } />
             <Route path="/operator/benchmark-watchlist" element={
               <RequireAdmin><BenchmarkWatchlistPage /></RequireAdmin>
+            } />
+            <Route path="/operator/dealer-specs" element={
+              <RequireAdmin><DealerSpecsPage /></RequireAdmin>
             } />
 
             {/* === ADMIN TOOLS: Protected by RequireAdmin === */}
