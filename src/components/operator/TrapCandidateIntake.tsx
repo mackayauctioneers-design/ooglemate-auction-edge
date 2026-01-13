@@ -20,6 +20,13 @@ const REGIONS = [
 const PARSER_MODES = [
   { value: 'adtorque', label: 'AdTorque' },
   { value: 'digitaldealer', label: 'DigitalDealer' },
+  { value: 'ramp', label: 'RAMP' },
+];
+
+const TRAP_MODES = [
+  { value: 'auto', label: 'Auto (site crawl)' },
+  { value: 'portal', label: 'Portal-backed (OEM feed)' },
+  { value: 'va', label: 'VA-fed (manual)' },
 ];
 
 // Auto-detect parser mode from URL patterns
@@ -56,16 +63,27 @@ export function TrapCandidateIntake({ onAdded }: TrapCandidateIntakeProps) {
   const [dealerName, setDealerName] = useState('');
   const [inventoryUrl, setInventoryUrl] = useState('');
   const [regionId, setRegionId] = useState('');
-  const [parserMode, setParserMode] = useState<'adtorque' | 'digitaldealer'>('digitaldealer');
+  const [parserMode, setParserMode] = useState<'adtorque' | 'digitaldealer' | 'ramp'>('digitaldealer');
+  const [trapMode, setTrapMode] = useState<'auto' | 'portal' | 'va'>('auto');
   const [isAnchor, setIsAnchor] = useState(false);
   const [loading, setLoading] = useState(false);
   const [recentAdds, setRecentAdds] = useState<string[]>([]);
 
-  // Auto-detect parser mode when URL changes
+  // Auto-detect parser mode and trap mode when URL/dealer name changes
   const handleUrlChange = (url: string) => {
     setInventoryUrl(url);
     if (url.length > 10) {
       setParserMode(guessParserMode(url));
+    }
+  };
+
+  // Auto-suggest portal mode for franchise dealers
+  const handleDealerNameChange = (name: string) => {
+    setDealerName(name);
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('toyota') || lowerName.includes('mazda') || 
+        lowerName.includes('hyundai') || lowerName.includes('kia')) {
+      setTrapMode('portal');
     }
   };
 
@@ -93,10 +111,11 @@ export function TrapCandidateIntake({ onAdded }: TrapCandidateIntakeProps) {
         inventory_url: inventoryUrl.trim(),
         region_id: regionId,
         parser_mode: parserMode,
+        trap_mode: trapMode,
         anchor_trap: isAnchor,
-        enabled: false,
-        validation_status: 'pending',
-        preflight_status: 'pending',
+        enabled: trapMode === 'portal' || trapMode === 'va' ? false : false, // Portal/VA don't need crawl enabled
+        validation_status: trapMode === 'portal' || trapMode === 'va' ? 'not_required' : 'pending',
+        preflight_status: trapMode === 'portal' || trapMode === 'va' ? 'not_required' : 'pending',
         priority: isAnchor ? 'high' : 'normal',
       });
 
@@ -167,7 +186,7 @@ export function TrapCandidateIntake({ onAdded }: TrapCandidateIntakeProps) {
               id="dealerName"
               placeholder="e.g. Newcastle Toyota"
               value={dealerName}
-              onChange={(e) => setDealerName(e.target.value)}
+              onChange={(e) => handleDealerNameChange(e.target.value)}
             />
             {dealerName && (
               <div className="text-xs text-muted-foreground">
@@ -206,10 +225,35 @@ export function TrapCandidateIntake({ onAdded }: TrapCandidateIntakeProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="trapMode">Operating Mode *</Label>
+            <Select value={trapMode} onValueChange={(v) => setTrapMode(v as 'auto' | 'portal' | 'va')}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TRAP_MODES.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="text-xs text-muted-foreground">
+              {trapMode === 'portal' && 'Uses OEM portal feed (no site crawl needed)'}
+              {trapMode === 'va' && 'VA manually submits inventory updates'}
+              {trapMode === 'auto' && 'System crawls dealer site automatically'}
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="parserMode">Parser Mode</Label>
-            <Select value={parserMode} onValueChange={(v) => setParserMode(v as 'adtorque' | 'digitaldealer')}>
+            <Select 
+              value={parserMode} 
+              onValueChange={(v) => setParserMode(v as 'adtorque' | 'digitaldealer' | 'ramp')}
+              disabled={trapMode !== 'auto'}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -222,7 +266,7 @@ export function TrapCandidateIntake({ onAdded }: TrapCandidateIntakeProps) {
               </SelectContent>
             </Select>
             <div className="text-xs text-muted-foreground">
-              Auto-detected from URL. Override if needed.
+              {trapMode === 'auto' ? 'Auto-detected from URL.' : 'N/A for this mode'}
             </div>
           </div>
 
@@ -231,7 +275,7 @@ export function TrapCandidateIntake({ onAdded }: TrapCandidateIntakeProps) {
             <div className="flex items-center gap-3 pt-2">
               <Switch checked={isAnchor} onCheckedChange={setIsAnchor} />
               <span className="text-sm text-muted-foreground">
-                {isAnchor ? 'Yes (high priority, alert on failures)' : 'No'}
+                {isAnchor ? 'Yes (high priority)' : 'No'}
               </span>
             </div>
           </div>

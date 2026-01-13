@@ -1018,6 +1018,7 @@ export type Database = {
           state: string | null
           suburb: string | null
           successful_validation_runs: number
+          trap_mode: string
           trap_slug: string
           updated_at: string
           validation_notes: string | null
@@ -1053,6 +1054,7 @@ export type Database = {
           state?: string | null
           suburb?: string | null
           successful_validation_runs?: number
+          trap_mode?: string
           trap_slug: string
           updated_at?: string
           validation_notes?: string | null
@@ -1088,6 +1090,7 @@ export type Database = {
           state?: string | null
           suburb?: string | null
           successful_validation_runs?: number
+          trap_mode?: string
           trap_slug?: string
           updated_at?: string
           validation_notes?: string | null
@@ -3202,6 +3205,17 @@ export type Database = {
           year: number | null
           year_band_max: number | null
           year_band_min: number | null
+        }
+        Relationships: []
+      }
+      trap_operational_summary: {
+        Row: {
+          auto_crawling_count: number | null
+          dormant_count: number | null
+          operational_count: number | null
+          portal_backed_count: number | null
+          total_count: number | null
+          va_fed_count: number | null
         }
         Relationships: []
       }
