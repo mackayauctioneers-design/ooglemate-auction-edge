@@ -118,6 +118,7 @@ export type Database = {
           display_name: string
           enabled: boolean
           id: string
+          last_crawl_fail_at: string | null
           last_error: string | null
           last_lots_found: number | null
           last_success_at: string | null
@@ -144,6 +145,7 @@ export type Database = {
           display_name: string
           enabled?: boolean
           id?: string
+          last_crawl_fail_at?: string | null
           last_error?: string | null
           last_lots_found?: number | null
           last_success_at?: string | null
@@ -170,6 +172,7 @@ export type Database = {
           display_name?: string
           enabled?: boolean
           id?: string
+          last_crawl_fail_at?: string | null
           last_error?: string | null
           last_lots_found?: number | null
           last_success_at?: string | null
@@ -2748,6 +2751,23 @@ export type Database = {
           today_dropped: number
           today_runs: number
           today_updated: number
+        }[]
+      }
+      get_auction_sources_health: {
+        Args: never
+        Returns: {
+          auto_disabled_at: string
+          auto_disabled_reason: string
+          consecutive_crawl_failures: number
+          display_name: string
+          enabled: boolean
+          last_crawl_error: string
+          last_crawl_fail_at: string
+          last_crawl_success_at: string
+          last_lots_found: number
+          platform: string
+          preflight_status: string
+          source_key: string
         }[]
       }
       get_benchmark_coverage: {

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefreshCw, CheckCircle2, AlertTriangle, Clock, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AuctionSourcesHealthCard } from "@/components/operator/AuctionSourcesHealthCard";
 
 interface TrapStat {
   region_id: string;
@@ -262,6 +263,9 @@ export default function IngestionHealthPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Auction Sources Health */}
+          <AuctionSourcesHealthCard />
 
           {/* Stabilization Notice */}
           <Card className="border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950">
