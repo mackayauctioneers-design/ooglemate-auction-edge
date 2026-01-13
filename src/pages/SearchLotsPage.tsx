@@ -3,7 +3,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { format, parseISO, addDays, isAfter, isBefore, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical, Clock, FileSpreadsheet, Ban, X, Bug, RotateCcw } from 'lucide-react';
+import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical, Clock, FileSpreadsheet, Ban, X, Bug, RotateCcw, AlertTriangle } from 'lucide-react';
+import { getAuctionListingUrl, getSessionWarningTooltip, isSessionBasedAuctionHouse } from '@/utils/auctionLinkHandler';
+import { toast } from 'sonner';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -699,18 +701,50 @@ export default function SearchLotsPage() {
                         </TableCell>
                         {/* External Link */}
                         <TableCell>
-                          {lot.listing_url && lot.invalid_source !== 'Y' && !isExcluded ? (
-                            <Button
-                              variant="ghost"
-                              size="iconSm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.open(lot.listing_url, '_blank');
-                              }}
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                          ) : lot.listing_url && !isExcluded ? (
+                          {lot.listing_url && lot.invalid_source !== 'Y' && !isExcluded ? (() => {
+                            const linkResult = getAuctionListingUrl(lot.listing_url, lot.auction_house, lot.location);
+                            const sessionTooltip = getSessionWarningTooltip(lot.auction_house);
+                            const isSessionBased = isSessionBasedAuctionHouse(lot.auction_house);
+                            
+                            const handleClick = (e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              if (linkResult.message) {
+                                toast(linkResult.message, { duration: 3000 });
+                              }
+                              window.open(linkResult.url, '_blank');
+                            };
+                            
+                            if (sessionTooltip) {
+                              return (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="iconSm"
+                                        onClick={handleClick}
+                                      >
+                                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>{sessionTooltip}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              );
+                            }
+                            
+                            return (
+                              <Button
+                                variant="ghost"
+                                size="iconSm"
+                                onClick={handleClick}
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                            );
+                          })() : lot.listing_url && !isExcluded ? (
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>

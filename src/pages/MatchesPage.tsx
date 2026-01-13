@@ -8,12 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { ExternalLink, Target, Crosshair, Loader2, Clock, AlertCircle, RefreshCw, Info } from 'lucide-react';
+import { ExternalLink, Target, Crosshair, Loader2, Clock, AlertCircle, RefreshCw, Info, AlertTriangle } from 'lucide-react';
+import { getAuctionListingUrl, getSessionWarningTooltip, isSessionBasedAuctionHouse } from '@/utils/auctionLinkHandler';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { isPicklesSource as checkPicklesSource } from '@/utils/variantFamilyExtractor';
 
 // Match tiers: Tier 1 (Exact) = Precision, Tier 2 (Variant Family) = Probable
@@ -506,18 +507,15 @@ export default function MatchesPage() {
       setLastEvaluation(new Date());
       
       if (showRefreshToast) {
-        toast({
-          title: "Matches refreshed",
+        toast.success("Matches refreshed", {
           description: `Evaluated ${fps.filter(fp => fp.is_active === 'Y').length} fingerprints against ${allLots.length} lots`,
         });
       }
     } catch (error) {
       console.error('Failed to load data:', error);
       if (showRefreshToast) {
-        toast({
-          title: "Refresh failed",
+        toast.error("Refresh failed", {
           description: "Could not reload match data",
-          variant: "destructive",
         });
       }
     } finally {
@@ -852,28 +850,58 @@ export default function MatchesPage() {
           })()}
         </TableCell>
         <TableCell>
-          {lot.listing_url && lot.invalid_source !== 'Y' ? (
-            <Button variant="ghost" size="sm" asChild>
-              <a href={lot.listing_url} target="_blank" rel="noopener noreferrer">
+          {lot.listing_url && lot.invalid_source !== 'Y' ? (() => {
+            const linkResult = getAuctionListingUrl(lot.listing_url, lot.auction_house, lot.location);
+            const sessionTooltip = getSessionWarningTooltip(lot.auction_house);
+            const isSessionBased = isSessionBasedAuctionHouse(lot.auction_house);
+            
+            const handleClick = () => {
+              if (linkResult.message) {
+                toast(linkResult.message, { duration: 3000 });
+              }
+              window.open(linkResult.url, '_blank');
+            };
+            
+            if (sessionTooltip) {
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" onClick={handleClick}>
+                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{sessionTooltip}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            }
+            
+            return (
+              <Button variant="ghost" size="sm" onClick={handleClick}>
                 <ExternalLink className="h-4 w-4" />
-              </a>
-            </Button>
-          ) : lot.listing_url ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="opacity-50 cursor-not-allowed"
-                  disabled
-                >
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Source link unavailable</p>
-              </TooltipContent>
-            </Tooltip>
+              </Button>
+            );
+          })() : lot.listing_url ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="opacity-50 cursor-not-allowed"
+                    disabled
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Source link unavailable</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ) : null}
         </TableCell>
       </TableRow>

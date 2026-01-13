@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { X, ExternalLink, Pencil, Link2, Shield } from 'lucide-react';
+import { X, ExternalLink, Pencil, Link2, Shield, AlertTriangle } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { AuctionLot, formatCurrency, formatNumber, getLotFlagReasons, LotFlagReason, calculateLotConfidenceScore, determineLotAction } from '@/types';
 import { dataService } from '@/services/dataService';
 import { toast } from '@/hooks/use-toast';
+import { getAuctionListingUrl, getOpenButtonLabel, getSessionWarningTooltip } from '@/utils/auctionLinkHandler';
 
 const AEST_TIMEZONE = 'Australia/Sydney';
 
@@ -478,16 +479,51 @@ export function LotDetailDrawer({ lot, isAdmin, onClose, onEdit, onUpdated }: Lo
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            ) : (
-              <Button
-                variant="default"
-                className="w-full gap-2"
-                onClick={() => window.open(lot.listing_url, '_blank')}
-              >
-                <ExternalLink className="h-4 w-4" />
-                Open Listing
-              </Button>
-            )
+            ) : (() => {
+              const linkResult = getAuctionListingUrl(lot.listing_url, lot.auction_house, lot.location);
+              const sessionTooltip = getSessionWarningTooltip(lot.auction_house);
+              const buttonLabel = getOpenButtonLabel(lot.auction_house);
+              
+              const handleOpenClick = () => {
+                if (linkResult.message) {
+                  toast({ title: linkResult.message, duration: 3000 });
+                }
+                window.open(linkResult.url, '_blank');
+              };
+              
+              if (sessionTooltip) {
+                return (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="default"
+                          className="w-full gap-2"
+                          onClick={handleOpenClick}
+                        >
+                          <AlertTriangle className="h-4 w-4 text-yellow-400" />
+                          {buttonLabel}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{sessionTooltip}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                );
+              }
+              
+              return (
+                <Button
+                  variant="default"
+                  className="w-full gap-2"
+                  onClick={handleOpenClick}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  {buttonLabel}
+                </Button>
+              );
+            })()
           ) : null}
         </div>
       </SheetContent>

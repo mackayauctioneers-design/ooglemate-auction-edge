@@ -28,8 +28,9 @@ import {
 } from '@/components/ui/tooltip';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-import { Bell, CheckCircle, Eye, EyeOff, ExternalLink, Filter, CheckCheck, Clock } from 'lucide-react';
+import { Bell, CheckCircle, Eye, EyeOff, ExternalLink, Filter, CheckCheck, Clock, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { getAuctionListingUrl, getOpenButtonLabel, isSessionBasedAuctionHouse } from '@/utils/auctionLinkHandler';
 
 type StatusFilter = 'all' | 'new' | 'read' | 'acknowledged';
 
@@ -323,16 +324,44 @@ export default function AlertsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        {alert.link && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => window.open(alert.link, '_blank')}
-                          >
-                            <ExternalLink className="h-4 w-4 mr-1" />
-                            Open
-                          </Button>
-                        )}
+                        {alert.link && (() => {
+                          const linkResult = getAuctionListingUrl(alert.link, alert.auction_house);
+                          const isSessionBased = isSessionBasedAuctionHouse(alert.auction_house);
+                          const buttonLabel = getOpenButtonLabel(alert.auction_house);
+                          
+                          const handleOpenClick = () => {
+                            if (linkResult.message) {
+                              toast(linkResult.message, { duration: 3000 });
+                            }
+                            window.open(linkResult.url, '_blank');
+                          };
+                          
+                          return (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm"
+                                    onClick={handleOpenClick}
+                                  >
+                                    {isSessionBased ? (
+                                      <AlertTriangle className="h-4 w-4 mr-1 text-yellow-500" />
+                                    ) : (
+                                      <ExternalLink className="h-4 w-4 mr-1" />
+                                    )}
+                                    {buttonLabel}
+                                  </Button>
+                                </TooltipTrigger>
+                                {isSessionBased && (
+                                  <TooltipContent>
+                                    <p>{alert.auction_house} requires login — opens auction page</p>
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </TooltipProvider>
+                          );
+                        })()}
                         {alert.status === 'new' && (
                           <Button 
                             variant="outline" 
