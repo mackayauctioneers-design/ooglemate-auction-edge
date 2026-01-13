@@ -6,9 +6,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { RefreshCw, Search, CheckCircle, AlertTriangle, Plus, List } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RefreshCw, Search, CheckCircle, AlertTriangle, Plus, List, Radio, Satellite, Users, Moon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { TrapCandidateIntake } from '@/components/operator/TrapCandidateIntake';
+import { toast } from 'sonner';
+
+type TrapMode = 'auto' | 'portal' | 'va' | 'dormant';
 
 interface Trap {
   id: string;
@@ -24,7 +28,39 @@ interface Trap {
   last_crawl_at: string | null;
   last_vehicle_count: number | null;
   consecutive_failures: number;
+  trap_mode: TrapMode;
 }
+
+const TRAP_MODE_CONFIG: Record<TrapMode, { label: string; icon: React.ReactNode; color: string; bgColor: string; borderColor: string }> = {
+  auto: { 
+    label: 'Live Feed', 
+    icon: <Radio className="h-3 w-3" />, 
+    color: 'text-emerald-400',
+    bgColor: 'bg-emerald-500/10',
+    borderColor: 'border-emerald-500/30'
+  },
+  portal: { 
+    label: 'Portal-backed', 
+    icon: <Satellite className="h-3 w-3" />, 
+    color: 'text-amber-400',
+    bgColor: 'bg-amber-500/10',
+    borderColor: 'border-amber-500/30'
+  },
+  va: { 
+    label: 'VA-fed', 
+    icon: <Users className="h-3 w-3" />, 
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-500/10',
+    borderColor: 'border-blue-500/30'
+  },
+  dormant: { 
+    label: 'Dormant', 
+    icon: <Moon className="h-3 w-3" />, 
+    color: 'text-muted-foreground',
+    bgColor: 'bg-muted/50',
+    borderColor: 'border-muted'
+  },
+};
 
 export default function TrapsRegistryPage() {
   const [traps, setTraps] = useState<Trap[]>([]);
@@ -40,7 +76,7 @@ export default function TrapsRegistryPage() {
     try {
       const { data, error } = await supabase
         .from('dealer_traps')
-        .select('id, trap_slug, dealer_name, region_id, enabled, validation_status, preflight_status, parser_mode, parser_confidence, anchor_trap, last_crawl_at, last_vehicle_count, consecutive_failures')
+        .select('id, trap_slug, dealer_name, region_id, enabled, validation_status, preflight_status, parser_mode, parser_confidence, anchor_trap, last_crawl_at, last_vehicle_count, consecutive_failures, trap_mode')
         .order('created_at', { ascending: false })
         .limit(300);
 
@@ -57,16 +93,36 @@ export default function TrapsRegistryPage() {
     fetchTraps();
   }, []);
 
+  const updateTrapMode = async (trapId: string, newMode: TrapMode) => {
+    try {
+      const { error } = await supabase
+        .from('dealer_traps')
+        .update({ trap_mode: newMode })
+        .eq('id', trapId);
+      
+      if (error) throw error;
+      
+      setTraps(prev => prev.map(t => t.id === trapId ? { ...t, trap_mode: newMode } : t));
+      toast.success(`Trap mode updated to ${TRAP_MODE_CONFIG[newMode].label}`);
+    } catch (err) {
+      console.error('Failed to update trap mode:', err);
+      toast.error('Failed to update trap mode');
+    }
+  };
+
   const filtered = traps.filter((t) =>
     t.dealer_name.toLowerCase().includes(search.toLowerCase()) ||
     t.trap_slug.toLowerCase().includes(search.toLowerCase()) ||
     t.region_id.toLowerCase().includes(search.toLowerCase())
   );
 
-  const enabledCount = traps.filter((t) => t.enabled).length;
-  const validatedCount = traps.filter((t) => t.validation_status === 'validated').length;
-  const pendingPreflightCount = traps.filter((t) => t.preflight_status === 'pending').length;
-  const failingCount = traps.filter((t) => t.consecutive_failures > 0).length;
+  // Metrics - reframed for operational clarity
+  const operationalCount = traps.filter((t) => t.enabled || t.trap_mode === 'portal' || t.trap_mode === 'va').length;
+  const autoCrawlingCount = traps.filter((t) => t.enabled && t.trap_mode === 'auto' && t.validation_status === 'validated').length;
+  const portalBackedCount = traps.filter((t) => t.trap_mode === 'portal').length;
+  const vaFedCount = traps.filter((t) => t.trap_mode === 'va').length;
+  const dormantCount = traps.filter((t) => t.trap_mode === 'dormant' || (!t.enabled && t.trap_mode === 'auto')).length;
+  const failingCount = traps.filter((t) => t.consecutive_failures > 0 && t.trap_mode === 'auto').length;
 
   return (
     <OperatorLayout>
@@ -74,7 +130,7 @@ export default function TrapsRegistryPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Traps Registry</h1>
-            <p className="text-muted-foreground">Manage dealer trap configurations</p>
+            <p className="text-muted-foreground">Manage dealer trap configurations and operating modes</p>
           </div>
           <Button variant="outline" size="sm" onClick={fetchTraps} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -82,8 +138,8 @@ export default function TrapsRegistryPage() {
           </Button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {/* Stats - Reframed for operational clarity */}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Total Traps</CardTitle>
@@ -92,40 +148,65 @@ export default function TrapsRegistryPage() {
               <div className="text-3xl font-bold">{traps.length}</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-emerald-500/30">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-emerald-500" /> Enabled
+                <CheckCircle className="h-4 w-4 text-emerald-500" /> Operational
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-emerald-500">{enabledCount}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Validated</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{validatedCount}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Pending Preflight</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-blue-500">{pendingPreflightCount}</div>
+              <div className="text-3xl font-bold text-emerald-500">{operationalCount}</div>
+              <div className="text-xs text-muted-foreground mt-1">Contributing signal</div>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-500" /> Failing
+                <Radio className="h-4 w-4 text-emerald-400" /> Auto-Crawling
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-amber-500">{failingCount}</div>
+              <div className="text-3xl font-bold">{autoCrawlingCount}</div>
+              <div className="text-xs text-muted-foreground mt-1">Site scrape active</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Satellite className="h-4 w-4 text-amber-400" /> Portal-backed
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-amber-500">{portalBackedCount}</div>
+              <div className="text-xs text-muted-foreground mt-1">OEM feed source</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Users className="h-4 w-4 text-blue-400" /> VA-fed
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-blue-500">{vaFedCount}</div>
+              <div className="text-xs text-muted-foreground mt-1">Manual assist</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                {failingCount > 0 ? (
+                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                ) : (
+                  <Moon className="h-4 w-4 text-muted-foreground" />
+                )}
+                {failingCount > 0 ? 'Failing' : 'Dormant'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={`text-3xl font-bold ${failingCount > 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                {failingCount > 0 ? failingCount : dormantCount}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -168,63 +249,97 @@ export default function TrapsRegistryPage() {
                   <tr>
                     <th className="text-left py-2 pr-4">Dealer</th>
                     <th className="text-left py-2 pr-4">Region</th>
-                    <th className="text-left py-2 pr-4">Preflight</th>
-                    <th className="text-left py-2 pr-4">Validation</th>
+                    <th className="text-left py-2 pr-4">Mode</th>
+                    <th className="text-left py-2 pr-4">Status</th>
                     <th className="text-left py-2 pr-4">Parser</th>
                     <th className="text-left py-2 pr-4">Last Crawl</th>
                     <th className="text-left py-2">Vehicles</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((trap) => (
-                    <tr key={trap.id} className="border-b last:border-b-0">
-                      <td className="py-3 pr-4">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{trap.dealer_name}</span>
-                          {trap.anchor_trap && (
-                            <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-400 border-amber-500/30">anchor</Badge>
+                  {filtered.map((trap) => {
+                    const modeConfig = TRAP_MODE_CONFIG[trap.trap_mode] || TRAP_MODE_CONFIG.auto;
+                    return (
+                      <tr key={trap.id} className="border-b last:border-b-0">
+                        <td className="py-3 pr-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{trap.dealer_name}</span>
+                            {trap.anchor_trap && (
+                              <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-400 border-amber-500/30">anchor</Badge>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">{trap.trap_slug}</div>
+                        </td>
+                        <td className="py-3 pr-4 text-sm">{trap.region_id.replace(/_/g, ' ')}</td>
+                        <td className="py-3 pr-4">
+                          <Select 
+                            value={trap.trap_mode} 
+                            onValueChange={(value) => updateTrapMode(trap.id, value as TrapMode)}
+                          >
+                            <SelectTrigger className={`w-36 h-8 text-xs ${modeConfig.bgColor} ${modeConfig.borderColor}`}>
+                              <SelectValue>
+                                <div className={`flex items-center gap-1.5 ${modeConfig.color}`}>
+                                  {modeConfig.icon}
+                                  {modeConfig.label}
+                                </div>
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(Object.keys(TRAP_MODE_CONFIG) as TrapMode[]).map((mode) => {
+                                const cfg = TRAP_MODE_CONFIG[mode];
+                                return (
+                                  <SelectItem key={mode} value={mode}>
+                                    <div className={`flex items-center gap-1.5 ${cfg.color}`}>
+                                      {cfg.icon}
+                                      {cfg.label}
+                                    </div>
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <div className="flex items-center gap-2">
+                            {trap.trap_mode === 'auto' ? (
+                              // Show crawl status for auto mode
+                              trap.enabled ? (
+                                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30">enabled</Badge>
+                              ) : trap.preflight_status === 'fail' ? (
+                                <Badge variant="destructive">preflight fail</Badge>
+                              ) : trap.validation_status === 'pending' ? (
+                                <Badge variant="secondary">pending</Badge>
+                              ) : (
+                                <Badge variant="outline">{trap.validation_status}</Badge>
+                              )
+                            ) : (
+                              // For non-auto modes, show simpler status
+                              <Badge variant="outline" className={`${modeConfig.bgColor} ${modeConfig.color} ${modeConfig.borderColor}`}>
+                                {trap.trap_mode === 'portal' ? 'OEM feed' : trap.trap_mode === 'va' ? 'VA queue' : 'inactive'}
+                              </Badge>
+                            )}
+                            {trap.consecutive_failures > 0 && trap.trap_mode === 'auto' && (
+                              <Badge variant="destructive">{trap.consecutive_failures} fails</Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <div className="text-sm">{trap.parser_mode}</div>
+                          {trap.parser_confidence && trap.trap_mode === 'auto' && (
+                            <div className="text-xs text-muted-foreground">{trap.parser_confidence}</div>
                           )}
-                        </div>
-                        <div className="text-xs text-muted-foreground">{trap.trap_slug}</div>
-                      </td>
-                      <td className="py-3 pr-4 text-sm">{trap.region_id.replace(/_/g, ' ')}</td>
-                      <td className="py-3 pr-4">
-                        {trap.preflight_status === 'pass' ? (
-                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30">pass</Badge>
-                        ) : trap.preflight_status === 'fail' ? (
-                          <Badge variant="destructive">fail</Badge>
-                        ) : (
-                          <Badge variant="secondary">pending</Badge>
-                        )}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <div className="flex items-center gap-2">
-                          {trap.enabled ? (
-                            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30">enabled</Badge>
-                          ) : trap.validation_status === 'validated' ? (
-                            <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">validated</Badge>
-                          ) : trap.validation_status === 'pending' ? (
-                            <Badge variant="secondary">pending</Badge>
-                          ) : (
-                            <Badge variant="destructive">{trap.validation_status}</Badge>
-                          )}
-                          {trap.consecutive_failures > 0 && (
-                            <Badge variant="destructive">{trap.consecutive_failures} fails</Badge>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <div className="text-sm">{trap.parser_mode}</div>
-                        {trap.parser_confidence && (
-                          <div className="text-xs text-muted-foreground">{trap.parser_confidence}</div>
-                        )}
-                      </td>
-                      <td className="py-3 pr-4 text-muted-foreground text-sm">
-                        {trap.last_crawl_at ? format(parseISO(trap.last_crawl_at), 'dd MMM HH:mm') : '—'}
-                      </td>
-                      <td className="py-3 font-mono text-sm">{trap.last_vehicle_count ?? '—'}</td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="py-3 pr-4 text-muted-foreground text-sm">
+                          {trap.trap_mode === 'auto' && trap.last_crawl_at 
+                            ? format(parseISO(trap.last_crawl_at), 'dd MMM HH:mm') 
+                            : trap.trap_mode !== 'auto' ? '—' : '—'}
+                        </td>
+                        <td className="py-3 font-mono text-sm">
+                          {trap.trap_mode === 'auto' ? (trap.last_vehicle_count ?? '—') : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               {filtered.length === 0 && !loading && (
