@@ -9,7 +9,7 @@ const corsHeaders = {
 // DEALER CONFIGURATION - HARDENED WITH PARSER MODES
 // =============================================================================
 
-type ParserMode = 'digitaldealer' | 'adtorque' | 'jsonld_detail' | 'unknown';
+type ParserMode = 'digitaldealer' | 'adtorque' | 'jsonld_detail' | 'ramp' | 'unknown';
 type DealerPriority = 'high' | 'normal' | 'low';
 
 interface DealerConfig {
@@ -1627,6 +1627,208 @@ function parseSchemaOrgVehicle(data: Record<string, unknown>, dealer: DealerConf
 }
 
 // =============================================================================
+// DIRECT FETCH (for RAMP sites that don't need Firecrawl)
+// =============================================================================
+
+interface DirectFetchResult {
+  success: boolean;
+  html?: string;
+  error?: string;
+}
+
+async function directFetchHtml(url: string): Promise<DirectFetchResult> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-AU,en;q=0.9',
+      },
+    });
+    clearTimeout(timeout);
+    
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+    
+    const html = await response.text();
+    return { success: true, html };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+}
+
+// =============================================================================
+// RAMP PARSER (Dealer Solutions / Indiqator / radius-cdn)
+// Direct fetch + JSON-LD extraction for Toyota franchise sites
+// =============================================================================
+
+function parseVehiclesFromRamp(html: string, dealer: DealerConfig): ScrapedVehicle[] {
+  console.log(`[dealer-site-crawl] RAMP parser for ${dealer.name}: HTML length=${html.length}`);
+  
+  const vehicles: ScrapedVehicle[] = [];
+  const processedIds = new Set<string>();
+  
+  // Strategy 1: JSON-LD extraction (most reliable for RAMP sites)
+  const jsonLdVehicles = parseVehiclesFromJsonLd(html, dealer);
+  if (jsonLdVehicles.length > 0) {
+    console.log(`[dealer-site-crawl] RAMP JSON-LD yielded ${jsonLdVehicles.length} vehicles`);
+    return jsonLdVehicles;
+  }
+  
+  // Strategy 2: Link-based extraction from vehicle cards
+  // RAMP sites typically have links like: /pre-owned/view/2018-Ford-Ranger-... or /vehicle/...
+  const linkPatterns = [
+    /href="([^"]*\/pre-owned\/view\/([^"]+))"[^>]*>/gi,
+    /href="([^"]*\/vehicle\/([^"]+))"[^>]*>/gi,
+    /href="([^"]*\/used-cars\/([^"]+))"[^>]*>/gi,
+    /href="([^"]*\/inventory\/([^"]+))"[^>]*>/gi,
+  ];
+  
+  for (const pattern of linkPatterns) {
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      let detailUrl = match[1];
+      const urlSlug = match[2];
+      
+      if (processedIds.has(urlSlug)) continue;
+      processedIds.add(urlSlug);
+      
+      // Parse year-make-model from URL slug: "2018-Ford-Ranger-C124166-..."
+      const slugMatch = urlSlug.match(/^(\d{4})-([A-Za-z]+)-([A-Za-z0-9]+)/i);
+      if (!slugMatch) continue;
+      
+      const year = parseInt(slugMatch[1]);
+      const make = slugMatch[2].charAt(0).toUpperCase() + slugMatch[2].slice(1).toLowerCase();
+      const model = slugMatch[3].toUpperCase();
+      
+      if (year < 2016 || year > 2030) continue;
+      if (!isValidMake(make)) continue;
+      
+      // Normalize URL
+      if (detailUrl.startsWith('/')) {
+        try {
+          const baseUrl = new URL(dealer.inventory_url);
+          detailUrl = `${baseUrl.origin}${detailUrl}`;
+        } catch { continue; }
+      }
+      
+      // Extract stock ID from URL (last segment or VIN-like pattern)
+      const slugParts = urlSlug.split('-');
+      const stockId = slugParts.find(p => /^[A-Z0-9]{10,}$/i.test(p)) || slugParts[slugParts.length - 1] || stableHash(detailUrl);
+      
+      // Try to find price nearby in HTML (within 2000 chars after the link)
+      const startIdx = match.index;
+      const nearbyHtml = html.slice(startIdx, Math.min(html.length, startIdx + 2000));
+      
+      let price: number | undefined;
+      const priceMatch = /\$\s*([\d,]{4,})/i.exec(nearbyHtml);
+      if (priceMatch) {
+        price = parseInt(priceMatch[1].replace(/,/g, ''));
+      }
+      
+      // Try to find km
+      let km: number | undefined;
+      const kmMatch = /([\d,]+)\s*(?:km|kms|kilometres)/i.exec(nearbyHtml);
+      if (kmMatch) {
+        km = parseInt(kmMatch[1].replace(/,/g, ''));
+      }
+      
+      vehicles.push({
+        source_listing_id: stockId,
+        make,
+        model,
+        year,
+        km,
+        price,
+        listing_url: detailUrl,
+        suburb: dealer.suburb,
+        state: dealer.state,
+        postcode: dealer.postcode,
+        seller_hints: {
+          seller_badge: 'dealer',
+          seller_name: dealer.name,
+          has_abn: true,
+          has_dealer_keywords: true,
+        }
+      });
+    }
+    
+    if (vehicles.length > 0) break; // Found vehicles, stop trying patterns
+  }
+  
+  // Strategy 3: Generic card-based extraction for RAMP sites
+  if (vehicles.length === 0) {
+    // Look for vehicle cards with structured data
+    const cardPattern = /<div[^>]+class="[^"]*(?:vehicle|stock|listing|card)[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
+    let match;
+    while ((match = cardPattern.exec(html)) !== null) {
+      const cardHtml = match[1];
+      
+      // Extract title with year-make-model pattern
+      const titleMatch = cardHtml.match(/(?:title|alt)="?(\d{4})\s+([A-Za-z]+)\s+([A-Za-z0-9]+)/i);
+      if (!titleMatch) continue;
+      
+      const year = parseInt(titleMatch[1]);
+      const make = titleMatch[2].charAt(0).toUpperCase() + titleMatch[2].slice(1).toLowerCase();
+      const model = titleMatch[3].toUpperCase();
+      
+      if (year < 2016 || year > 2030) continue;
+      
+      // Find detail URL
+      const urlMatch = /href="([^"]+)"/i.exec(cardHtml);
+      if (!urlMatch) continue;
+      
+      let detailUrl = urlMatch[1];
+      if (detailUrl.startsWith('/')) {
+        try {
+          const baseUrl = new URL(dealer.inventory_url);
+          detailUrl = `${baseUrl.origin}${detailUrl}`;
+        } catch { continue; }
+      }
+      
+      if (processedIds.has(detailUrl)) continue;
+      processedIds.add(detailUrl);
+      
+      const stockId = stableHash(detailUrl);
+      
+      // Extract price
+      let price: number | undefined;
+      const priceMatch = /\$\s*([\d,]{4,})/i.exec(cardHtml);
+      if (priceMatch) {
+        price = parseInt(priceMatch[1].replace(/,/g, ''));
+      }
+      
+      vehicles.push({
+        source_listing_id: stockId,
+        make,
+        model,
+        year,
+        price,
+        listing_url: detailUrl,
+        suburb: dealer.suburb,
+        state: dealer.state,
+        postcode: dealer.postcode,
+        seller_hints: {
+          seller_badge: 'dealer',
+          seller_name: dealer.name,
+          has_abn: true,
+          has_dealer_keywords: true,
+        }
+      });
+    }
+  }
+  
+  console.log(`[dealer-site-crawl] RAMP parser yielded ${vehicles.length} vehicles for ${dealer.name}`);
+  return vehicles;
+}
+
+// =============================================================================
 // FIRECRAWL INTEGRATION
 // =============================================================================
 
@@ -2088,7 +2290,7 @@ Deno.serve(async (req) => {
     }> = [];
     
     // Supported platforms for NSW ramp (platform policy)
-    const SUPPORTED_PARSERS = ['digitaldealer', 'adtorque'];
+    const SUPPORTED_PARSERS = ['digitaldealer', 'adtorque', 'ramp'];
     
     for (const dealer of targetDealers) {
       const runStartedAt = new Date().toISOString();
@@ -2187,66 +2389,35 @@ Deno.serve(async (req) => {
       console.log(`[dealer-site-crawl] Scraping ${dealer.name} (${dealer.parser_mode}): ${dealer.inventory_url}`);
       
       try {
-        const scrapeResult = await scrapeWithFirecrawl(dealer.inventory_url, firecrawlKey);
+        let html: string = '';
         
-        if (!scrapeResult.success || !scrapeResult.data?.html) {
-          const error = scrapeResult.error || 'No HTML returned';
-          console.error(`[dealer-site-crawl] Failed to scrape ${dealer.name}: ${error}`);
-          
-          // Record failed run
-          // Categorize failure for telemetry
-          const failureCategory = categorizeFailure(error);
-          
-          await supabase.from('trap_crawl_runs').upsert({
-            run_date: runDate,
-            trap_slug: dealer.slug,
-            dealer_name: dealer.name,
-            parser_mode: dealer.parser_mode,
-            vehicles_found: 0,
-            vehicles_ingested: 0,
-            vehicles_dropped: 0,
-            error: error,
-            run_started_at: runStartedAt,
-            run_completed_at: new Date().toISOString(),
-          }, { onConflict: 'run_date,trap_slug' });
-          
-          // Persist failure telemetry with categorization
-          await supabase
-            .from('dealer_traps')
-            .update({ 
-              last_fail_reason: failureCategory,
-              last_fail_at: new Date().toISOString(),
-            })
-            .eq('trap_slug', dealer.slug);
-          
-          // Update validation status
-          if (isValidationRun || dbTraps.length > 0) {
-            await updateTrapValidation(supabase, dealer.slug, 0, true);
+        // RAMP sites: use direct fetch (no Firecrawl) - they work fine with direct requests
+        if (dealer.parser_mode === 'ramp') {
+          console.log(`[dealer-site-crawl] Using direct fetch for RAMP site: ${dealer.name}`);
+          const directResult = await directFetchHtml(dealer.inventory_url);
+          if (!directResult.success || !directResult.html) {
+            throw new Error(directResult.error || 'Direct fetch failed');
           }
-          
-          results.push({
-            dealer: dealer.name,
-            slug: dealer.slug,
-            parserMode: dealer.parser_mode,
-            vehiclesFound: 0,
-            vehiclesIngested: 0,
-            vehiclesDropped: 0,
-            dropReasons: {},
-            healthAlert: false,
-            validationStatus: 'failed',
-            error,
-          });
-          continue;
+          html = directResult.html;
+        } else {
+          // Other parsers: use Firecrawl
+          const scrapeResult = await scrapeWithFirecrawl(dealer.inventory_url, firecrawlKey);
+          if (!scrapeResult.success || !scrapeResult.data?.html) {
+            throw new Error(scrapeResult.error || 'No HTML returned');
+          }
+          html = scrapeResult.data.html;
         }
         
         // Parse based on mode
         let rawVehicles: ScrapedVehicle[] = [];
         if (dealer.parser_mode === 'digitaldealer') {
-          rawVehicles = parseVehiclesFromDigitalDealer(scrapeResult.data.html, dealer);
+          rawVehicles = parseVehiclesFromDigitalDealer(html, dealer);
         } else if (dealer.parser_mode === 'adtorque') {
-          rawVehicles = parseVehiclesFromAdTorque(scrapeResult.data.html, dealer);
+          rawVehicles = parseVehiclesFromAdTorque(html, dealer);
         } else if (dealer.parser_mode === 'jsonld_detail') {
-          rawVehicles = parseVehiclesFromJsonLd(scrapeResult.data.html, dealer);
+          rawVehicles = parseVehiclesFromJsonLd(html, dealer);
+        } else if (dealer.parser_mode === 'ramp') {
+          rawVehicles = parseVehiclesFromRamp(html, dealer);
         }
         
         console.log(`[dealer-site-crawl] ${dealer.name}: Found ${rawVehicles.length} raw vehicles`);
