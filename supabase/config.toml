@@ -142,3 +142,8 @@ verify_jwt = false
 
 [functions.run-daily-pipeline]
 verify_jwt = false
+
+[functions.va-task-queue-slack]
+verify_jwt = false
+# Daily cron at 7:00am AEST (21:00 UTC) - VA task queue Slack ping
+schedule = "0 21 * * *"
