@@ -105,12 +105,8 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    if (vl.assigned_to) {
-      return new Response(
-        JSON.stringify({ error: "Already assigned — Slack ping suppressed" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Assigned is OK for manual push (claim+push workflow).
+    // Suppression is handled in the *scheduled* buy-window-slack cron, not here.
 
     const title =
       `${vl.year ?? "—"} ${vl.make ?? "—"} ${vl.model ?? "—"}` +

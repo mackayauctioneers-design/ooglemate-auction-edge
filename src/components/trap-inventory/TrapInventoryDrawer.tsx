@@ -173,30 +173,48 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
     }
   }
 
-  // Send to Slack state
-  const [slackLoading, setSlackLoading] = useState(false);
-  const [slackResult, setSlackResult] = useState<string | null>(null);
+  // Claim + Push to Slack state
+  const [claimPushLoading, setClaimPushLoading] = useState(false);
+  const [claimPushResult, setClaimPushResult] = useState<string | null>(null);
 
-  async function sendToSlack() {
-    if (!listing) return;
+  async function claimAndPushToSlack() {
+    if (!listing || !user) return;
 
-    setSlackLoading(true);
-    setSlackResult(null);
+    setClaimPushLoading(true);
+    setClaimPushResult(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke("send-buy-window-to-slack", {
-        body: {
-          listing_id: listing.id,
-          note: localNotes || "",
-        },
+      // 1) Claim (assign_to = current user)
+      const { error: assignErr } = await supabase
+        .from("vehicle_listings")
+        .update({
+          assigned_to: user.email?.split("@")[0] ?? user.id,
+          assigned_at: new Date().toISOString(),
+          assigned_by: user.email?.split("@")[0] ?? user.id,
+          assignment_notes: localNotes || null,
+        })
+        .eq("id", listing.id)
+        .eq("watch_status", "buy_window")
+        .is("assigned_to", null);
+
+      if (assignErr) throw assignErr;
+
+      // Update UI immediately
+      onLifecycleChange?.(listing.id, listing.lifecycle_state);
+      onTrackedByChange?.(listing.id, user.email?.split("@")[0] ?? null);
+
+      // 2) Push to Slack (note included)
+      const { error: slackErr } = await supabase.functions.invoke("send-buy-window-to-slack", {
+        body: { listing_id: listing.id, note: localNotes || "" },
       });
 
-      if (error) throw error;
-      setSlackResult("Sent to Slack ✅");
+      if (slackErr) throw slackErr;
+
+      setClaimPushResult("Claimed + Sent to Slack ✅");
     } catch (e: any) {
-      setSlackResult(`Slack failed: ${e?.message || "unknown error"}`);
+      setClaimPushResult(`Claim/push failed: ${e?.message || "unknown error"}`);
     } finally {
-      setSlackLoading(false);
+      setClaimPushLoading(false);
     }
   }
   
@@ -532,51 +550,51 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
             )}
           </div>
 
-          {/* Send to Slack - only show for BUY_WINDOW + unassigned + not avoided */}
+          {/* Claim + Push to Slack - only show for BUY_WINDOW + unassigned + not avoided */}
           {(() => {
             const isAvoid =
               listing.watch_status === "avoid" ||
               listing.sold_returned_suspected === true;
 
-            const isEligibleSlackPush =
+            const isEligibleClaimPush =
               listing.watch_status === "buy_window" &&
               !isAvoid &&
               !listing.assigned_to;
 
-            if (!isEligibleSlackPush) return null;
+            if (!isEligibleClaimPush) return null;
 
             return (
               <div className="rounded-lg border border-border p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium">Delegate</div>
+                    <div className="text-sm font-medium">Claim + Push</div>
                     <div className="text-xs text-muted-foreground">
-                      Push this BUY WINDOW listing to Slack (unassigned only)
+                      Assign to you and push to Slack in one click (BUY WINDOW + unassigned only)
                     </div>
                   </div>
 
                   <Button
-                    onClick={sendToSlack}
-                    disabled={slackLoading}
+                    onClick={claimAndPushToSlack}
+                    disabled={claimPushLoading}
                     className="shrink-0"
                   >
-                    {slackLoading ? (
+                    {claimPushLoading ? (
                       <>
                         <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                        Sending…
+                        Working…
                       </>
                     ) : (
                       <>
                         <Send className="h-4 w-4 mr-1" />
-                        Send to Slack
+                        Claim + Push
                       </>
                     )}
                   </Button>
                 </div>
 
-                {slackResult && (
+                {claimPushResult && (
                   <div className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">
-                    {slackResult}
+                    {claimPushResult}
                   </div>
                 )}
               </div>
