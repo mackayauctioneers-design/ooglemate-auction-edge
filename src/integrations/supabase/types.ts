@@ -1533,6 +1533,7 @@ export type Database = {
           listing_uuid: string
           note: string | null
           priority: string
+          source_key: string | null
           status: string
           task_type: string
           updated_at: string
@@ -1550,6 +1551,7 @@ export type Database = {
           listing_uuid: string
           note?: string | null
           priority?: string
+          source_key?: string | null
           status?: string
           task_type?: string
           updated_at?: string
@@ -1567,6 +1569,7 @@ export type Database = {
           listing_uuid?: string
           note?: string | null
           priority?: string
+          source_key?: string | null
           status?: string
           task_type?: string
           updated_at?: string
