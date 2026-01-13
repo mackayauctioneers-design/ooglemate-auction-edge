@@ -133,6 +133,45 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
   const [lastSale, setLastSale] = useState<LastSale | null>(null);
   const [lastSaleLoading, setLastSaleLoading] = useState(false);
   
+  // Ask Bob state
+  const [bobLoading, setBobLoading] = useState(false);
+  const [bobReply, setBobReply] = useState<string | null>(null);
+
+  async function askBobLastSale() {
+    if (!listing) return;
+
+    setBobLoading(true);
+    setBobReply(null);
+
+    try {
+      // The prompt is intentionally explicit so intent detection triggers 100%
+      const prompt =
+        `Last equivalent sale for ${listing.year} ${listing.make} ${listing.model}` +
+        `${listing.variant_family ? ` ${listing.variant_family}` : ""}` +
+        `${listing.km ? ` ${listing.km}km` : ""}.`;
+
+      const { data, error } = await supabase.functions.invoke("bob", {
+        body: {
+          transcript: prompt,
+          context: {
+            region_id: (listing as any).region_id ?? null,
+            listing_id: listing.id,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      // Bob returns { response, script, meta } in our pattern
+      setBobReply((data?.response as string) || "No response returned.");
+    } catch (e: any) {
+      console.error("[AskBob] error:", e);
+      setBobReply(`Error: ${e?.message || "Failed to contact Bob"}`);
+    } finally {
+      setBobLoading(false);
+    }
+  }
+  
   const regionIdForSale = useMemo(() => {
     // Prefer listing.region_id if available; else pass null - RPC will fallback to NATIONAL
     return (listing as any)?.region_id ?? null;
@@ -427,6 +466,43 @@ export function TrapInventoryDrawer({ listing, open, onOpenChange, onNotesChange
               )}
             </CardContent>
           </Card>
+
+          {/* Ask Bob */}
+          <div className="rounded-lg border border-border p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium">Ask Bob</div>
+                <div className="text-xs text-muted-foreground">
+                  One-click: Last equivalent sale for this listing
+                </div>
+              </div>
+
+              <Button
+                onClick={askBobLastSale}
+                disabled={bobLoading}
+                variant="secondary"
+                className="shrink-0"
+              >
+                {bobLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    Asking…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-1" />
+                    Ask Bob
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {bobReply && (
+              <div className="mt-3 rounded-md bg-muted/30 p-3 text-sm whitespace-pre-wrap">
+                {bobReply}
+              </div>
+            )}
+          </div>
 
           <Separator />
 
