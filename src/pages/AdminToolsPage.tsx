@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database, Car, FileDown, Globe, UserPlus, BarChart3 } from 'lucide-react';
+import { FlaskConical, FileSpreadsheet, Upload, RefreshCw, Wrench, Loader2, Tags, Database, Car, FileDown, Globe, UserPlus, BarChart3, Target } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,6 +46,15 @@ export default function AdminToolsPage() {
   const [showReportJson, setShowReportJson] = useState(false);
   const [isSyncingSales, setIsSyncingSales] = useState(false);
   const [syncSalesResult, setSyncSalesResult] = useState<{ synced: number } | null>(null);
+  const [isRunningSpecMatch, setIsRunningSpecMatch] = useState(false);
+  const [specMatchResult, setSpecMatchResult] = useState<{ 
+    listings_checked: number; 
+    matches_created: number; 
+    strong_buys: number;
+    mispriced: number;
+    buy_windows_set: number;
+    slack_sent: number;
+  } | null>(null);
 
   // Fetch latest feeding mode report
   const fetchLatestReport = async () => {
@@ -268,6 +277,30 @@ export default function AdminToolsPage() {
       toast.error('Failed to sync sales: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsSyncingSales(false);
+    }
+  };
+
+  const handleRunSpecMatching = async () => {
+    setIsRunningSpecMatch(true);
+    setSpecMatchResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('dealer-spec-matching-cron', {
+        body: { since_hours: 24 }
+      });
+      if (error) throw error;
+      toast.success(`Spec matching complete: ${data?.matches_created ?? 0} matches, ${data?.buy_windows_set ?? 0} buy windows`);
+      setSpecMatchResult({
+        listings_checked: data?.listings_checked ?? 0,
+        matches_created: data?.matches_created ?? 0,
+        strong_buys: data?.strong_buys ?? 0,
+        mispriced: data?.mispriced ?? 0,
+        buy_windows_set: data?.buy_windows_set ?? 0,
+        slack_sent: data?.slack_sent ?? 0,
+      });
+    } catch (error) {
+      toast.error('Failed to run spec matching: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsRunningSpecMatch(false);
     }
   };
 
@@ -585,6 +618,40 @@ export default function AdminToolsPage() {
               {syncSalesResult && (
                 <div className="text-xs text-muted-foreground border rounded p-2 bg-muted/50">
                   <div>Records synced: <span className="font-medium text-emerald-500">{syncSalesResult.synced}</span></div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Run Spec Matching */}
+          <Card className="border-violet-500/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Target className="h-5 w-5 text-violet-500" />
+                Run Spec Matching
+              </CardTitle>
+              <CardDescription>
+                Match listings against dealer specs, trigger BUY_WINDOW + Slack alerts
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button 
+                onClick={handleRunSpecMatching}
+                className="w-full gap-2"
+                variant="outline"
+                disabled={isRunningSpecMatch}
+              >
+                {isRunningSpecMatch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Target className="h-4 w-4" />}
+                {isRunningSpecMatch ? 'Matching...' : 'Run Spec Matching (24h)'}
+              </Button>
+              {specMatchResult && (
+                <div className="text-xs text-muted-foreground border rounded p-2 bg-muted/50 space-y-1">
+                  <div>Listings checked: <span className="font-medium">{specMatchResult.listings_checked}</span></div>
+                  <div>Matches created: <span className="font-medium text-violet-500">{specMatchResult.matches_created}</span></div>
+                  <div>Strong buys: <span className="font-medium text-emerald-500">{specMatchResult.strong_buys}</span></div>
+                  <div>Mispriced: <span className="font-medium text-orange-500">{specMatchResult.mispriced}</span></div>
+                  <div>Buy windows set: <span className="font-medium text-blue-500">{specMatchResult.buy_windows_set}</span></div>
+                  <div>Slack sent: <span className="font-medium text-cyan-500">{specMatchResult.slack_sent}</span></div>
                 </div>
               )}
             </CardContent>
