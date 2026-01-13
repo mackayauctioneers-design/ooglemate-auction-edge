@@ -1104,6 +1104,69 @@ export type Database = {
           },
         ]
       }
+      sales_normalised: {
+        Row: {
+          days_in_stock: number | null
+          dealer_name: string | null
+          drivetrain: string | null
+          fuel: string | null
+          gross_profit: number | null
+          id: number
+          km: number | null
+          make: string | null
+          model: string | null
+          region_id: string | null
+          sale_date: string | null
+          sale_price: number | null
+          source_row_id: string | null
+          transmission: string | null
+          updated_at: string | null
+          variant_family: string | null
+          variant_used: string | null
+          year: number | null
+        }
+        Insert: {
+          days_in_stock?: number | null
+          dealer_name?: string | null
+          drivetrain?: string | null
+          fuel?: string | null
+          gross_profit?: number | null
+          id?: number
+          km?: number | null
+          make?: string | null
+          model?: string | null
+          region_id?: string | null
+          sale_date?: string | null
+          sale_price?: number | null
+          source_row_id?: string | null
+          transmission?: string | null
+          updated_at?: string | null
+          variant_family?: string | null
+          variant_used?: string | null
+          year?: number | null
+        }
+        Update: {
+          days_in_stock?: number | null
+          dealer_name?: string | null
+          drivetrain?: string | null
+          fuel?: string | null
+          gross_profit?: number | null
+          id?: number
+          km?: number | null
+          make?: string | null
+          model?: string | null
+          region_id?: string | null
+          sale_date?: string | null
+          sale_price?: number | null
+          source_row_id?: string | null
+          transmission?: string | null
+          updated_at?: string | null
+          variant_family?: string | null
+          variant_used?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       trap_crawl_jobs: {
         Row: {
           attempts: number
