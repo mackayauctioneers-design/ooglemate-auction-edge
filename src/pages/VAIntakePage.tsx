@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { AdminGuard } from '@/components/guards/AdminGuard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,10 +55,31 @@ const CSV_TEMPLATE_EXAMPLE = 'LOT001,2022,TOYOTA,HILUX,SR5 4X4,45000,Sydney,JTFS
 
 export default function VAIntakePage() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [file, setFile] = useState<File | null>(null);
   const [sourceKey, setSourceKey] = useState('');
   const [auctionDate, setAuctionDate] = useState('');
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+
+  // Prefill from URL params (deep-link from blocked source tasks)
+  useEffect(() => {
+    const src = searchParams.get("source") || "";
+    const date = searchParams.get("date") || "";
+    const focus = searchParams.get("focus") || "";
+
+    if (src) setSourceKey(src);
+    if (date) setAuctionDate(date);
+
+    // Focus file input when arriving from a task
+    if (focus === "file") {
+      setTimeout(() => {
+        const el = document.getElementById("va-file-input") as HTMLInputElement | null;
+        el?.focus();
+        el?.click();
+      }, 250);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch VA sources for dropdown
   const { data: sources } = useQuery({
@@ -344,6 +366,13 @@ export default function VAIntakePage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {/* Allow typing source key for blocked sources not in va_sources */}
+                <Input
+                  placeholder="Or type source key (for blocked sources)"
+                  value={sourceKey}
+                  onChange={(e) => setSourceKey(e.target.value)}
+                  className="text-xs"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="auction_date">Auction Date</Label>
@@ -355,9 +384,9 @@ export default function VAIntakePage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="file">File</Label>
+                <Label htmlFor="va-file-input">File</Label>
                 <Input
-                  id="file"
+                  id="va-file-input"
                   type="file"
                   accept=".csv,.xlsx,.xls,.pdf"
                   onChange={handleFileChange}

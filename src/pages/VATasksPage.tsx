@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -6,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Sparkles, ExternalLink, Play, CheckCircle, AlertTriangle, ShieldAlert } from "lucide-react";
+import { RefreshCw, Sparkles, ExternalLink, Play, CheckCircle, AlertTriangle, ShieldAlert, Upload } from "lucide-react";
 import { RequireAuth } from "@/components/guards/RequireAuth";
 
 type BlockedSource = {
@@ -38,6 +39,7 @@ type VATask = {
   buy_window_at: string | null;
   attempt_count: number | null;
   listing_url: string | null;
+  source_key: string | null;
 };
 
 type ListingMini = {
@@ -54,7 +56,23 @@ type ListingMini = {
   location: string | null;
 };
 
+function toISODate(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+function buildVaIntakeLink(task: VATask) {
+  const today = toISODate(new Date());
+  const source = task.source_key || "blocked_source";
+  const params = new URLSearchParams({
+    source,
+    date: today,
+    focus: "file",
+  });
+  return `/admin-tools/va-intake?${params.toString()}`;
+}
+
 export default function VATasksPage() {
+  const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabStatus>("todo");
@@ -367,6 +385,24 @@ export default function VATasksPage() {
                   />
 
                   <div className="flex flex-wrap gap-2">
+                    {/* Blocked source tasks: Upload now + Open source buttons */}
+                    {task.task_type === "blocked_source" && (
+                      <>
+                        <Button size="sm" onClick={() => navigate(buildVaIntakeLink(task))}>
+                          <Upload className="h-4 w-4 mr-1" /> Upload now
+                        </Button>
+                        {task.listing_url && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => window.open(task.listing_url!, "_blank")}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-1" /> Open source
+                          </Button>
+                        )}
+                      </>
+                    )}
+                    
                     {activeTab === "todo" && (
                       <Button size="sm" onClick={() => updateTaskStatus(task.id, "in_progress")}>
                         <Play className="h-4 w-4 mr-1" /> Start
