@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Clock, Pause, Play } from "lucide-react";
+import { RefreshCw, Clock, Pause, Play, Zap } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
+import { AuctionScheduleEditor } from "@/components/auction/AuctionScheduleEditor";
 
 type Row = {
   source_key: string;
@@ -55,7 +56,7 @@ function scheduleBadge(r: Row) {
   return (
     <Badge variant="outline" className="gap-1">
       <Clock className="h-3 w-3" />
-      {r.schedule_time_local} {r.schedule_days?.join(",")}
+      {r.schedule_time_local}
     </Badge>
   );
 }
@@ -69,6 +70,15 @@ function eventBadge(type: string) {
   if (t.includes("reenabled")) return <Badge className="bg-blue-600/20 text-blue-300">re-enabled</Badge>;
   return <Badge variant="secondary">{type}</Badge>;
 }
+
+// NSW pack source keys
+const NSW_PACK_KEYS = [
+  "auto_auctions_aav",
+  "f3_motor_auctions",
+  "pickles_nsw",
+  "manheim_nsw",
+  "valley_auctions",
+];
 
 export function AuctionSourcesHealthCard() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -131,6 +141,29 @@ export function AuctionSourcesHealthCard() {
     setActionLoading(null);
   }
 
+  async function enableNswPack() {
+    try {
+      const { error } = await supabase
+        .from("auction_sources")
+        .update({
+          schedule_enabled: true,
+          schedule_paused: false,
+          schedule_tz: "Australia/Sydney",
+          schedule_days: ["MON", "TUE", "WED", "THU", "FRI"],
+          schedule_time_local: "07:05",
+          schedule_min_interval_minutes: 60,
+        })
+        .in("source_key", NSW_PACK_KEYS);
+
+      if (error) throw error;
+      toast.success("NSW pack scheduling enabled");
+      await load();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "unknown error";
+      toast.error(`NSW pack failed: ${msg}`);
+    }
+  }
+
   async function loadEvents(sourceKey: string) {
     setEventsLoading(true);
     setEvents([]);
@@ -154,12 +187,18 @@ export function AuctionSourcesHealthCard() {
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-base">Auction Sources Health</CardTitle>
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="default" size="sm" onClick={enableNswPack}>
+              <Zap className="h-4 w-4 mr-1" />
+              Enable NSW Pack
+            </Button>
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
         </CardHeader>
 
         <CardContent>
@@ -168,7 +207,7 @@ export function AuctionSourcesHealthCard() {
           ) : rows.length === 0 ? (
             <div className="text-sm text-muted-foreground">No auction sources configured.</div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {rows.map((r) => (
                 <div key={r.source_key} className="rounded-md border p-3">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -301,6 +340,19 @@ export function AuctionSourcesHealthCard() {
                         Last scheduled: {new Date(r.last_scheduled_run_at).toLocaleString()}
                       </span>
                     )}
+                  </div>
+
+                  {/* Schedule Editor */}
+                  <div className="mt-3">
+                    <AuctionScheduleEditor
+                      source_key={r.source_key}
+                      schedule_enabled={r.schedule_enabled}
+                      schedule_paused={r.schedule_paused}
+                      schedule_days={r.schedule_days}
+                      schedule_time_local={r.schedule_time_local}
+                      schedule_min_interval_minutes={60}
+                      onSaved={load}
+                    />
                   </div>
                 </div>
               ))}
