@@ -3436,10 +3436,25 @@ export type Database = {
           p_km: number
           p_make: string
           p_model: string
-          p_region_id?: string
+          p_region_id: string
           p_variant_used: string
           p_year: number
         }
+        Returns: {
+          days_in_stock: number
+          km: number
+          make: string
+          match_scope: string
+          model: string
+          region_id: string
+          sale_date: string
+          sale_price: number
+          variant_used: string
+          year: number
+        }[]
+      }
+      get_last_equivalent_sale_for_spec: {
+        Args: { p_dealer_id: string; p_spec_id: string }
         Returns: {
           days_in_stock: number
           km: number
@@ -3607,6 +3622,13 @@ export type Database = {
         Returns: boolean
       }
       is_admin_or_internal: { Args: never; Returns: boolean }
+      km_band_minmax: {
+        Args: { p_km: number }
+        Returns: {
+          km_max: number
+          km_min: number
+        }[]
+      }
       km_to_band: {
         Args: { p_km: number }
         Returns: {
