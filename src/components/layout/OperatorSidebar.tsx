@@ -6,21 +6,18 @@ import {
   ListOrdered,
   Database,
   Radar,
-  CheckSquare,
   FileStack,
   TrendingUp,
   Fingerprint,
   UserPlus,
   Settings,
-  Flag,
   LogOut,
   ChevronLeft,
   ChevronRight,
   Home,
   LayoutDashboard,
   Upload,
-  Target,
-  Eye
+  Target
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -61,8 +58,6 @@ const operatorSections: NavSection[] = [
       { path: '/admin-tools/va-intake', label: 'VA Intake', icon: Upload },
       { path: '/operator/traps', label: 'Traps Registry', icon: Database },
       { path: '/operator/preflight', label: 'Preflight Queue', icon: Radar },
-      { path: '/operator/validation', label: 'Validation Queue', icon: CheckSquare },
-      { path: '/operator/ingestion-runs', label: 'Ingestion Runs', icon: FileStack },
     ],
   },
   {
@@ -78,7 +73,6 @@ const operatorSections: NavSection[] = [
     title: 'Admin',
     items: [
       { path: '/operator/dealer-onboarding', label: 'Dealer Onboarding', icon: UserPlus },
-      { path: '/operator/feature-flags', label: 'Feature Flags', icon: Flag },
       { path: '/operator/settings', label: 'Settings', icon: Settings },
     ],
   },
@@ -86,7 +80,7 @@ const operatorSections: NavSection[] = [
 
 export function OperatorSidebar() {
   const location = useLocation();
-  const { currentUser, logout, user } = useAuth();
+  const { currentUser, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -101,7 +95,7 @@ export function OperatorSidebar() {
         "flex items-center justify-between px-4 h-16 border-b border-sidebar-border",
         collapsed && "justify-center px-2"
       )}>
-        <div className={cn("flex items-center gap-3", collapsed && "gap-0")}>
+        <Link to="/operator" className={cn("flex items-center gap-3", collapsed && "gap-0")}>
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-destructive text-destructive-foreground font-bold text-lg">
             ⚙
           </div>
@@ -111,7 +105,7 @@ export function OperatorSidebar() {
               <p className="text-xs text-muted-foreground">Backend Controls</p>
             </div>
           )}
-        </div>
+        </Link>
       </div>
 
       {/* Back to Dealer View */}
