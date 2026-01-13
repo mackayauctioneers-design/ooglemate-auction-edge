@@ -151,10 +151,14 @@ schedule = "40 21 * * *"
 [functions.auction-run-now]
 verify_jwt = false
 
+[functions.auction-dry-run]
+verify_jwt = false
+
 [functions.auction-schedule-dispatch]
 verify_jwt = false
 # Every 5 minutes - dispatch scheduled auction sources
 schedule = "*/5 * * * *"
+
 [functions.va-task-spawn-cron]
 verify_jwt = false
 # Daily cron at 6:50am AEST (20:50 UTC) - spawn VA tasks before Slack ping

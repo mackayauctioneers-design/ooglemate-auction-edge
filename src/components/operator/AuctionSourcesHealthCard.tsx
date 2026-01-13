@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Clock, Pause, Play, Zap } from "lucide-react";
+import { RefreshCw, Clock, Pause, Play, Zap, FlaskConical } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -67,6 +67,7 @@ function eventBadge(type: string) {
   if (t.includes("fail")) return <Badge variant="destructive">fail</Badge>;
   if (t.includes("success")) return <Badge className="bg-emerald-600/20 text-emerald-400">success</Badge>;
   if (t.includes("run_manual")) return <Badge variant="outline">manual run</Badge>;
+  if (t.includes("dry_run")) return <Badge variant="outline">dry run</Badge>;
   if (t.includes("reenabled")) return <Badge className="bg-blue-600/20 text-blue-300">re-enabled</Badge>;
   return <Badge variant="secondary">{type}</Badge>;
 }
@@ -90,6 +91,15 @@ export function AuctionSourcesHealthCard() {
   const [events, setEvents] = useState<EventRow[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
 
+  // Dry run result drawer
+  const [dryRunResult, setDryRunResult] = useState<{
+    source_key: string;
+    sample_count: number;
+    year_gate: { kept: number; dropped: number; minYear: number };
+    sample: unknown[];
+    raw: unknown;
+  } | null>(null);
+
   async function load() {
     setLoading(true);
     const { data, error } = await supabase.rpc("get_auction_sources_health" as never);
@@ -107,12 +117,39 @@ export function AuctionSourcesHealthCard() {
     setActionLoading(null);
   }
 
-  async function runNow(sourceKey: string, debug = true) {
+  async function runNow(sourceKey: string) {
     setActionLoading(sourceKey);
-    await supabase.functions.invoke("auction-run-now", {
-      body: { source_key: sourceKey, debug },
-    });
+    toast.info("Running live ingest…");
+    try {
+      const { data, error } = await supabase.functions.invoke("auction-run-now", {
+        body: { source_key: sourceKey, debug: false },
+      });
+      if (error) throw error;
+      toast.success(`Run complete: ${data?.result?.lots_found ?? "?"} lots`);
+      console.log("[auction-run-now]", data);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "unknown error";
+      toast.error(`Run failed: ${msg}`);
+    }
     await load();
+    setActionLoading(null);
+  }
+
+  async function dryRun(sourceKey: string) {
+    setActionLoading(sourceKey);
+    toast.info("Running dry run…");
+    try {
+      const { data, error } = await supabase.functions.invoke("auction-dry-run", {
+        body: { source_key: sourceKey },
+      });
+      if (error) throw error;
+      toast.success(`Dry run: ${data?.sample_count ?? 0} sample rows (minYear ${data?.year_gate?.minYear})`);
+      console.log("[auction-dry-run]", data);
+      setDryRunResult(data);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "unknown error";
+      toast.error(`Dry run failed: ${msg}`);
+    }
     setActionLoading(null);
   }
 
@@ -270,22 +307,25 @@ export function AuctionSourcesHealthCard() {
                     </div>
                   )}
 
+                  {/* Run actions */}
                   <div className="mt-3 flex gap-2 flex-wrap">
                     <Button
                       size="sm"
-                      variant="outline"
-                      onClick={() => runNow(r.source_key, true)}
+                      variant="secondary"
+                      onClick={() => dryRun(r.source_key)}
                       disabled={actionLoading === r.source_key}
                     >
-                      Run Now (Debug)
+                      <FlaskConical className="h-4 w-4 mr-1" />
+                      Dry Run
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => runNow(r.source_key, false)}
+                      onClick={() => runNow(r.source_key)}
                       disabled={actionLoading === r.source_key}
                     >
-                      Run Now (Live)
+                      <Play className="h-4 w-4 mr-1" />
+                      Run Now
                     </Button>
                     <Button
                       size="sm"
@@ -412,6 +452,53 @@ export function AuctionSourcesHealthCard() {
                 ))}
               </div>
             </ScrollArea>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dry Run Result Drawer */}
+      <Dialog open={!!dryRunResult} onOpenChange={(v) => !v && setDryRunResult(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Dry Run Results</DialogTitle>
+          </DialogHeader>
+
+          {dryRunResult && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 flex-wrap text-sm">
+                <Badge variant="outline">Source: {dryRunResult.source_key}</Badge>
+                <Badge variant="secondary">Samples: {dryRunResult.sample_count}</Badge>
+                <Badge className="bg-green-600/20 text-green-400">
+                  Kept: {dryRunResult.year_gate.kept}
+                </Badge>
+                <Badge variant="destructive">
+                  Dropped: {dryRunResult.year_gate.dropped}
+                </Badge>
+                <span className="text-muted-foreground">
+                  Min year: {dryRunResult.year_gate.minYear}
+                </span>
+              </div>
+
+              <div>
+                <div className="text-sm font-medium mb-2">Sample Lots (first 10)</div>
+                <ScrollArea className="h-[300px]">
+                  <pre className="text-xs bg-muted p-3 rounded overflow-auto">
+                    {JSON.stringify(dryRunResult.sample, null, 2)}
+                  </pre>
+                </ScrollArea>
+              </div>
+
+              <details className="text-sm">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  Show raw debug payload
+                </summary>
+                <ScrollArea className="h-[200px] mt-2">
+                  <pre className="text-xs bg-muted p-3 rounded overflow-auto">
+                    {JSON.stringify(dryRunResult.raw, null, 2)}
+                  </pre>
+                </ScrollArea>
+              </details>
+            </div>
           )}
         </DialogContent>
       </Dialog>
