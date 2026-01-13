@@ -25,8 +25,13 @@ import LogSalePage from "./pages/LogSalePage";
 import VATasksPage from "./pages/VATasksPage";
 
 // Operator pages
+import OperatorDashboardPage from "./pages/operator/OperatorDashboardPage";
 import OperatorIngestionHealthPage from "./pages/operator/OperatorIngestionHealthPage";
-import { OperatorPlaceholderPage } from "./pages/operator/OperatorPlaceholderPage";
+import CronAuditPage from "./pages/operator/CronAuditPage";
+import TrapHealthAlertsPage from "./pages/operator/TrapHealthAlertsPage";
+import JobQueuePage from "./pages/operator/JobQueuePage";
+import TrapsRegistryPage from "./pages/operator/TrapsRegistryPage";
+import PreflightQueuePage from "./pages/operator/PreflightQueuePage";
 import FingerprintsExplorerPage from "./pages/operator/FingerprintsExplorerPage";
 import FeedingModeReportPage from "./pages/operator/FeedingModeReportPage";
 import BenchmarkGapPanel from "./pages/operator/BenchmarkGapPanel";
@@ -68,32 +73,31 @@ const App = () => (
             <Route path="/auth" element={<AuthPage />} />
 
             {/* === OPERATOR ROUTES: Admin/Internal only === */}
+            {/* Dashboard */}
+            <Route path="/operator" element={
+              <OperatorGuard><OperatorDashboardPage /></OperatorGuard>
+            } />
+
             {/* Monitoring */}
             <Route path="/operator/ingestion-health" element={
               <OperatorGuard><OperatorIngestionHealthPage /></OperatorGuard>
             } />
             <Route path="/operator/cron-audit" element={
-              <OperatorGuard><OperatorPlaceholderPage title="Cron Audit Log" description="View scheduled task execution history" /></OperatorGuard>
+              <OperatorGuard><CronAuditPage /></OperatorGuard>
             } />
             <Route path="/operator/trap-health" element={
-              <OperatorGuard><OperatorPlaceholderPage title="Trap Health Alerts" description="Monitor trap failures and issues" /></OperatorGuard>
+              <OperatorGuard><TrapHealthAlertsPage /></OperatorGuard>
             } />
             <Route path="/operator/job-queue" element={
-              <OperatorGuard><OperatorPlaceholderPage title="Job Queue" description="View and manage background jobs" /></OperatorGuard>
+              <OperatorGuard><JobQueuePage /></OperatorGuard>
             } />
 
             {/* Data Ops */}
             <Route path="/operator/traps" element={
-              <OperatorGuard><OperatorPlaceholderPage title="Traps Registry" description="Manage dealer traps and configurations" /></OperatorGuard>
+              <OperatorGuard><TrapsRegistryPage /></OperatorGuard>
             } />
             <Route path="/operator/preflight" element={
-              <OperatorGuard><OperatorPlaceholderPage title="Preflight Queue" description="View pending preflight checks" /></OperatorGuard>
-            } />
-            <Route path="/operator/validation" element={
-              <OperatorGuard><OperatorPlaceholderPage title="Validation Queue" description="Monitor validation runs" /></OperatorGuard>
-            } />
-            <Route path="/operator/ingestion-runs" element={
-              <OperatorGuard><OperatorPlaceholderPage title="Ingestion Runs" description="View ingestion run history" /></OperatorGuard>
+              <OperatorGuard><PreflightQueuePage /></OperatorGuard>
             } />
             <Route path="/operator/auctions/add" element={
               <OperatorGuard><AddAuctionSourcePage /></OperatorGuard>
@@ -111,17 +115,6 @@ const App = () => (
             } />
             <Route path="/operator/benchmark-watchlist" element={
               <RequireAdmin><BenchmarkWatchlistPage /></RequireAdmin>
-            } />
-
-            {/* Admin */}
-            <Route path="/operator/dealer-onboarding" element={
-              <OperatorGuard><OperatorPlaceholderPage title="Dealer Onboarding" description="Add and configure new dealers" /></OperatorGuard>
-            } />
-            <Route path="/operator/feature-flags" element={
-              <OperatorGuard><OperatorPlaceholderPage title="Feature Flags" description="Toggle features and rollouts" /></OperatorGuard>
-            } />
-            <Route path="/operator/settings" element={
-              <OperatorGuard><OperatorPlaceholderPage title="Settings" description="System configuration" /></OperatorGuard>
             } />
 
             {/* === ADMIN TOOLS: Protected by RequireAdmin === */}
