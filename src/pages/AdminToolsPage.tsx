@@ -44,6 +44,8 @@ export default function AdminToolsPage() {
   const [latestReport, setLatestReport] = useState<{ report_date: string; report_json: Record<string, unknown> } | null>(null);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
   const [showReportJson, setShowReportJson] = useState(false);
+  const [isSyncingSales, setIsSyncingSales] = useState(false);
+  const [syncSalesResult, setSyncSalesResult] = useState<{ synced: number } | null>(null);
 
   // Fetch latest feeding mode report
   const fetchLatestReport = async () => {
@@ -251,6 +253,21 @@ export default function AdminToolsPage() {
       toast.error('Failed to ingest: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsIngestingMackay(false);
+    }
+  };
+
+  const handleSyncSales = async () => {
+    setIsSyncingSales(true);
+    setSyncSalesResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-sales-normalised');
+      if (error) throw error;
+      toast.success(`Sales synced: ${data?.synced ?? 0} records`);
+      setSyncSalesResult({ synced: data?.synced ?? 0 });
+    } catch (error) {
+      toast.error('Failed to sync sales: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsSyncingSales(false);
     }
   };
 
@@ -539,6 +556,35 @@ export default function AdminToolsPage() {
                       )}
                     </div>
                   )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Sync Sales Now */}
+          <Card className="border-emerald-500/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <RefreshCw className="h-5 w-5 text-emerald-500" />
+                Sync Sales Now
+              </CardTitle>
+              <CardDescription>
+                Sync sales_normalised from Google Sheets (feeds Price Memory + Buy Range)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button 
+                onClick={handleSyncSales}
+                className="w-full gap-2"
+                variant="outline"
+                disabled={isSyncingSales}
+              >
+                {isSyncingSales ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {isSyncingSales ? 'Syncing...' : 'Sync Sales Now'}
+              </Button>
+              {syncSalesResult && (
+                <div className="text-xs text-muted-foreground border rounded p-2 bg-muted/50">
+                  <div>Records synced: <span className="font-medium text-emerald-500">{syncSalesResult.synced}</span></div>
                 </div>
               )}
             </CardContent>

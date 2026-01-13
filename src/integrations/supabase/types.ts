@@ -2927,6 +2927,29 @@ export type Database = {
           total_deals: number
         }[]
       }
+      get_buy_range: {
+        Args: {
+          p_current_price: number
+          p_km: number
+          p_make: string
+          p_model: string
+          p_region_id: string
+          p_variant_used: string
+          p_year: number
+        }
+        Returns: {
+          buy_high: number
+          buy_low: number
+          match_scope: string
+          median_price: number
+          position_label: string
+          position_note: string
+          q1_price: number
+          q3_price: number
+          sample_count: number
+          stretch_high: number
+        }[]
+      }
       get_buy_window_summary: {
         Args: never
         Returns: {
@@ -3043,6 +3066,27 @@ export type Database = {
           enabled_count: number
           region_id: string
           total_count: number
+        }[]
+      }
+      get_price_memory: {
+        Args: {
+          p_km: number
+          p_make: string
+          p_model: string
+          p_region_id: string
+          p_variant_used: string
+          p_year: number
+        }
+        Returns: {
+          avg_days_in_stock: number
+          last_days_in_stock: number
+          last_sale_date: string
+          last_sale_price: number
+          match_scope: string
+          median_price: number
+          q1_price: number
+          q3_price: number
+          sample_count: number
         }[]
       }
       get_top_drop_reasons: {
