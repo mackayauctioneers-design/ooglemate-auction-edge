@@ -184,3 +184,8 @@ schedule = "45 20 * * *"
 verify_jwt = false
 # Daily cron at 6:50am AEST (20:50 UTC) - alert if sales sync is stale
 schedule = "50 20 * * *"
+
+[functions.trigger-backfill-nightly]
+verify_jwt = false
+# Daily cron at 3:00am AEST (17:00 UTC previous day) - recompute proven exits + evaluate stale listings
+schedule = "0 17 * * *"
