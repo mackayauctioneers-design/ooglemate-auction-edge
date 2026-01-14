@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO, startOfDay, addDays } from 'date-fns';
 import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
-import { Loader2, Search, Calendar, MapPin, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Loader2, Search, Calendar, MapPin, AlertCircle } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,8 +12,14 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
-import { useAuctionProfitScores, useAuctionScoreCalculator } from '@/hooks/useAuctionProfitScore';
-import { ProfitScoreBadge, SimpleHeatIndicator } from '@/components/auction/ProfitScoreBadge';
+import { ProfitScoreBadge } from '@/components/auction/ProfitScoreBadge';
+import { 
+  HeatBadge, 
+  HeatStrip, 
+  getHeatCardClasses,
+  LocationWarningBadge,
+  LocationWarningMarker,
+} from '@/components/auction/AuctionHeatIndicator';
 
 const AEST_TIMEZONE = 'Australia/Sydney';
 const MAX_DAYS_AHEAD = 14;
@@ -259,27 +265,37 @@ export default function UpcomingAuctionsPage() {
                   {dayAuctions.map((auction) => {
                     const hasLots = auction.eligible_lots > 0;
                     const isUnknownLocation = auction.location === 'Unknown' || !auction.location;
+                    const heatGlow = getHeatCardClasses(auction.matching_lots);
                     
                     return (
                       <Card 
                         key={`${auction.auction_house}-${auction.auction_date}-${auction.location}`}
-                        className={`relative ${!hasLots ? 'opacity-60' : ''}`}
+                        className={`relative overflow-hidden ${!hasLots ? 'opacity-60' : ''} ${heatGlow}`}
                       >
-                        <CardContent className="p-3 sm:p-4 space-y-3">
+                        {/* Heat strip - left border indicator */}
+                        <HeatStrip relevantCount={auction.matching_lots} />
+                        
+                        {/* Unknown location corner marker */}
+                        <LocationWarningMarker location={auction.location} />
+                        
+                        <CardContent className="p-3 sm:p-4 pl-5 space-y-3">
                           <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <h3 className="font-semibold text-foreground text-sm sm:text-base">
+                            <div className="min-w-0 flex-1">
+                              <h3 className="font-semibold text-foreground text-sm sm:text-base truncate">
                                 {auction.auction_house}
                               </h3>
                               <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                                <MapPin className="h-3 w-3" />
-                                {auction.location || 'Unknown'}
-                                {isUnknownLocation && (
-                                  <AlertTriangle className="h-3 w-3 text-muted-foreground ml-1" />
-                                )}
+                                <MapPin className="h-3 w-3 flex-shrink-0" />
+                                <span className="truncate">{auction.location || 'Unknown'}</span>
                               </div>
+                              {/* Unknown location warning badge */}
+                              {isUnknownLocation && (
+                                <div className="mt-1.5">
+                                  <LocationWarningBadge location={auction.location} />
+                                </div>
+                              )}
                             </div>
-                            {/* Heat indicator - profit-weighted or simple count-based */}
+                            {/* Heat indicator - profit-weighted or tier-based */}
                             {profitScoringEnabled && auction.profit_score !== undefined ? (
                               <ProfitScoreBadge
                                 score={auction.profit_score}
@@ -289,13 +305,13 @@ export default function UpcomingAuctionsPage() {
                                 compact
                               />
                             ) : (
-                              <SimpleHeatIndicator matchingLots={auction.matching_lots} />
+                              <HeatBadge relevantCount={auction.matching_lots} />
                             )}
                           </div>
                           
                           <div className="flex flex-wrap items-center gap-2 text-sm">
                             <Badge variant="outline" className="text-xs">
-                              {auction.total_lots} total lots
+                              {auction.total_lots} total
                             </Badge>
                             <Badge variant="secondary" className="text-xs">
                               {auction.eligible_lots} eligible
@@ -320,7 +336,7 @@ export default function UpcomingAuctionsPage() {
                               </Button>
                             ) : (
                               <div className="flex-1 text-center text-sm text-muted-foreground py-2">
-                                No eligible lots for this auction
+                                No eligible lots
                               </div>
                             )}
                           </div>
