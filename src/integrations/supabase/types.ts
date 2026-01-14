@@ -925,6 +925,81 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_sales: {
+        Row: {
+          buy_price: number | null
+          created_at: string | null
+          data_source: string
+          dealer_id: string
+          dealer_name: string | null
+          fingerprint: string | null
+          fingerprint_confidence: number | null
+          fingerprint_version: number | null
+          gross_profit: number | null
+          id: string
+          import_batch_id: string | null
+          km: number | null
+          make: string
+          model: string
+          region_id: string | null
+          sell_price: number | null
+          sold_date: string
+          source_channel: string | null
+          state: string | null
+          updated_at: string | null
+          variant_raw: string | null
+          year: number
+        }
+        Insert: {
+          buy_price?: number | null
+          created_at?: string | null
+          data_source?: string
+          dealer_id: string
+          dealer_name?: string | null
+          fingerprint?: string | null
+          fingerprint_confidence?: number | null
+          fingerprint_version?: number | null
+          gross_profit?: number | null
+          id?: string
+          import_batch_id?: string | null
+          km?: number | null
+          make: string
+          model: string
+          region_id?: string | null
+          sell_price?: number | null
+          sold_date: string
+          source_channel?: string | null
+          state?: string | null
+          updated_at?: string | null
+          variant_raw?: string | null
+          year: number
+        }
+        Update: {
+          buy_price?: number | null
+          created_at?: string | null
+          data_source?: string
+          dealer_id?: string
+          dealer_name?: string | null
+          fingerprint?: string | null
+          fingerprint_confidence?: number | null
+          fingerprint_version?: number | null
+          gross_profit?: number | null
+          id?: string
+          import_batch_id?: string | null
+          km?: number | null
+          make?: string
+          model?: string
+          region_id?: string | null
+          sell_price?: number | null
+          sold_date?: string
+          source_channel?: string | null
+          state?: string | null
+          updated_at?: string | null
+          variant_raw?: string | null
+          year?: number
+        }
+        Relationships: []
+      }
       dealer_spec_matches: {
         Row: {
           asking_price: number | null
@@ -1378,8 +1453,12 @@ export type Database = {
         Row: {
           avg_days_to_exit: number | null
           avg_gross_profit: number | null
+          confidence_score: number | null
+          data_freshness_days: number | null
+          dominant_region: string | null
           fingerprint: string
           last_sale_date: string | null
+          last_sale_source: string | null
           last_updated: string
           median_days_to_exit: number | null
           median_gross_profit: number | null
@@ -1392,8 +1471,12 @@ export type Database = {
         Insert: {
           avg_days_to_exit?: number | null
           avg_gross_profit?: number | null
+          confidence_score?: number | null
+          data_freshness_days?: number | null
+          dominant_region?: string | null
           fingerprint: string
           last_sale_date?: string | null
+          last_sale_source?: string | null
           last_updated?: string
           median_days_to_exit?: number | null
           median_gross_profit?: number | null
@@ -1406,8 +1489,12 @@ export type Database = {
         Update: {
           avg_days_to_exit?: number | null
           avg_gross_profit?: number | null
+          confidence_score?: number | null
+          data_freshness_days?: number | null
+          dominant_region?: string | null
           fingerprint?: string
           last_sale_date?: string | null
+          last_sale_source?: string | null
           last_updated?: string
           median_days_to_exit?: number | null
           median_gross_profit?: number | null
@@ -1911,6 +1998,84 @@ export type Database = {
           },
         ]
       }
+      sales_import_batches: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          dealer_id: string
+          dealer_name: string | null
+          error_message: string | null
+          file_name: string | null
+          id: string
+          imported_by: string | null
+          imported_count: number | null
+          rejected_count: number | null
+          row_count: number | null
+          source_type: string
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          dealer_id: string
+          dealer_name?: string | null
+          error_message?: string | null
+          file_name?: string | null
+          id?: string
+          imported_by?: string | null
+          imported_count?: number | null
+          rejected_count?: number | null
+          row_count?: number | null
+          source_type?: string
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          dealer_id?: string
+          dealer_name?: string | null
+          error_message?: string | null
+          file_name?: string | null
+          id?: string
+          imported_by?: string | null
+          imported_count?: number | null
+          rejected_count?: number | null
+          row_count?: number | null
+          source_type?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      sales_import_mappings: {
+        Row: {
+          column_map: Json
+          created_at: string | null
+          dealer_id: string
+          dealer_name: string | null
+          id: string
+          last_used_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          column_map?: Json
+          created_at?: string | null
+          dealer_id: string
+          dealer_name?: string | null
+          id?: string
+          last_used_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          column_map?: Json
+          created_at?: string | null
+          dealer_id?: string
+          dealer_name?: string | null
+          id?: string
+          last_used_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       sales_normalised: {
         Row: {
           days_in_stock: number | null
@@ -2193,6 +2358,57 @@ export type Database = {
           notes?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      va_sales_tasks: {
+        Row: {
+          assigned_to: string | null
+          created_at: string | null
+          dealer_id: string
+          dealer_name: string
+          expected_frequency: string | null
+          id: string
+          last_data_received_at: string | null
+          next_due_at: string | null
+          notes: string | null
+          priority: number | null
+          rejection_reason: string | null
+          status: string
+          task_type: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string | null
+          dealer_id: string
+          dealer_name: string
+          expected_frequency?: string | null
+          id?: string
+          last_data_received_at?: string | null
+          next_due_at?: string | null
+          notes?: string | null
+          priority?: number | null
+          rejection_reason?: string | null
+          status?: string
+          task_type?: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string | null
+          dealer_id?: string
+          dealer_name?: string
+          expected_frequency?: string | null
+          id?: string
+          last_data_received_at?: string | null
+          next_due_at?: string | null
+          notes?: string | null
+          priority?: number | null
+          rejection_reason?: string | null
+          status?: string
+          task_type?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -3649,6 +3865,20 @@ export type Database = {
           alerts_updated: number
         }[]
       }
+      generate_sale_fingerprint: {
+        Args: {
+          p_km?: number
+          p_make: string
+          p_model: string
+          p_region_id?: string
+          p_variant_raw?: string
+          p_year: number
+        }
+        Returns: {
+          confidence: number
+          fingerprint: string
+        }[]
+      }
       generate_vehicle_fingerprint: {
         Args: {
           p_body?: string
@@ -3972,6 +4202,17 @@ export type Database = {
           watch_count: number
         }[]
       }
+      get_stale_dealers: {
+        Args: { p_days_threshold?: number }
+        Returns: {
+          days_stale: number
+          dealer_id: string
+          dealer_name: string
+          has_active_task: boolean
+          last_sale_date: string
+          total_sales: number
+        }[]
+      }
       get_today_actions: { Args: never; Returns: Json }
       get_top_drop_reasons: {
         Args: never
@@ -4027,6 +4268,25 @@ export type Database = {
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
+      }
+      get_va_sales_task_queue: {
+        Args: never
+        Returns: {
+          assigned_to: string
+          computed_priority: number
+          days_since_data: number
+          dealer_id: string
+          dealer_name: string
+          expected_frequency: string
+          id: string
+          is_overdue: boolean
+          last_data_received_at: string
+          next_due_at: string
+          notes: string
+          priority: number
+          status: string
+          task_type: string
+        }[]
       }
       has_role: {
         Args: {

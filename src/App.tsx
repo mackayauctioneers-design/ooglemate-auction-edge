@@ -39,6 +39,7 @@ import BenchmarkWatchlistPage from "./pages/operator/BenchmarkWatchlistPage";
 import AddAuctionSourcePage from "./pages/operator/AddAuctionSourcePage";
 import OperatorDealerSpecsPage from "./pages/operator/DealerSpecsPage";
 import FranchisePortalFeedsPage from "./pages/operator/FranchisePortalFeedsPage";
+import VASalesDataPage from "./pages/operator/VASalesDataPage";
 
 // Dealer spec pages
 import DealerSpecsListPage from "./pages/dealer/DealerSpecsPage";
@@ -134,7 +135,9 @@ const App = () => (
               <Route path="/operator/dealer-specs" element={
                 <RequireAdmin><OperatorDealerSpecsPage /></RequireAdmin>
               } />
-
+              <Route path="/operator/va-sales" element={
+                <OperatorGuard><VASalesDataPage /></OperatorGuard>
+              } />
               {/* === ADMIN TOOLS: Protected by RequireAdmin === */}
               <Route path="/admin-tools" element={
                 <RequireAdmin><NotFound /></RequireAdmin>
