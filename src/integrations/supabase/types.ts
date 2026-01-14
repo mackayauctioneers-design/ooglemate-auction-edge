@@ -1998,6 +1998,216 @@ export type Database = {
           },
         ]
       }
+      proven_exits: {
+        Row: {
+          computed_at: string
+          confidence_label: string | null
+          contributing_dealer_ids: string[] | null
+          data_sources: string[] | null
+          exit_method: string
+          exit_value: number
+          id: string
+          identity_id: string
+          km_band_used: string
+          newest_sale_date: string | null
+          oldest_sale_date: string | null
+          recency_weighted: boolean | null
+          region_scope: string
+          sale_recency_days: number | null
+          sample_size: number
+          updated_at: string
+        }
+        Insert: {
+          computed_at?: string
+          confidence_label?: string | null
+          contributing_dealer_ids?: string[] | null
+          data_sources?: string[] | null
+          exit_method?: string
+          exit_value: number
+          id?: string
+          identity_id: string
+          km_band_used: string
+          newest_sale_date?: string | null
+          oldest_sale_date?: string | null
+          recency_weighted?: boolean | null
+          region_scope?: string
+          sale_recency_days?: number | null
+          sample_size?: number
+          updated_at?: string
+        }
+        Update: {
+          computed_at?: string
+          confidence_label?: string | null
+          contributing_dealer_ids?: string[] | null
+          data_sources?: string[] | null
+          exit_method?: string
+          exit_value?: number
+          id?: string
+          identity_id?: string
+          km_band_used?: string
+          newest_sale_date?: string | null
+          oldest_sale_date?: string | null
+          recency_weighted?: boolean | null
+          region_scope?: string
+          sale_recency_days?: number | null
+          sample_size?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proven_exits_identity_id_fkey"
+            columns: ["identity_id"]
+            isOneToOne: true
+            referencedRelation: "vehicle_identities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      retail_listings: {
+        Row: {
+          asking_price: number
+          created_at: string
+          delisted_at: string | null
+          first_seen_at: string
+          id: string
+          identity_id: string | null
+          identity_mapped_at: string | null
+          km: number | null
+          last_seen_at: string
+          listing_url: string | null
+          make: string
+          model: string
+          postcode: string | null
+          price_history: Json | null
+          region_id: string | null
+          source: string
+          source_listing_id: string
+          state: string | null
+          suburb: string | null
+          updated_at: string
+          variant_family: string | null
+          variant_raw: string | null
+          year: number
+        }
+        Insert: {
+          asking_price: number
+          created_at?: string
+          delisted_at?: string | null
+          first_seen_at?: string
+          id?: string
+          identity_id?: string | null
+          identity_mapped_at?: string | null
+          km?: number | null
+          last_seen_at?: string
+          listing_url?: string | null
+          make: string
+          model: string
+          postcode?: string | null
+          price_history?: Json | null
+          region_id?: string | null
+          source: string
+          source_listing_id: string
+          state?: string | null
+          suburb?: string | null
+          updated_at?: string
+          variant_family?: string | null
+          variant_raw?: string | null
+          year: number
+        }
+        Update: {
+          asking_price?: number
+          created_at?: string
+          delisted_at?: string | null
+          first_seen_at?: string
+          id?: string
+          identity_id?: string | null
+          identity_mapped_at?: string | null
+          km?: number | null
+          last_seen_at?: string
+          listing_url?: string | null
+          make?: string
+          model?: string
+          postcode?: string | null
+          price_history?: Json | null
+          region_id?: string | null
+          source?: string
+          source_listing_id?: string
+          state?: string | null
+          suburb?: string | null
+          updated_at?: string
+          variant_family?: string | null
+          variant_raw?: string | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "retail_listings_identity_id_fkey"
+            columns: ["identity_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_identities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_evidence: {
+        Row: {
+          confidence_score: number | null
+          created_at: string
+          days_to_exit: number | null
+          dealer_id: string | null
+          dealer_name: string | null
+          exit_date: string
+          exit_price: number
+          gross_profit: number | null
+          id: string
+          identity_id: string
+          km_at_exit: number | null
+          region_scope: string | null
+          source_row_id: string
+          source_type: string
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string
+          days_to_exit?: number | null
+          dealer_id?: string | null
+          dealer_name?: string | null
+          exit_date: string
+          exit_price: number
+          gross_profit?: number | null
+          id?: string
+          identity_id: string
+          km_at_exit?: number | null
+          region_scope?: string | null
+          source_row_id: string
+          source_type: string
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string
+          days_to_exit?: number | null
+          dealer_id?: string | null
+          dealer_name?: string | null
+          exit_date?: string
+          exit_price?: number
+          gross_profit?: number | null
+          id?: string
+          identity_id?: string
+          km_at_exit?: number | null
+          region_scope?: string | null
+          source_row_id?: string
+          source_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_evidence_identity_id_fkey"
+            columns: ["identity_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_identities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_import_batches: {
         Row: {
           completed_at: string | null
@@ -2138,6 +2348,105 @@ export type Database = {
           year?: number | null
         }
         Relationships: []
+      }
+      sales_triggers: {
+        Row: {
+          acknowledged_at: string | null
+          asking_price: number
+          confidence_label: string
+          created_at: string
+          evaluation_id: string | null
+          expired_at: string | null
+          gap_dollars: number
+          gap_pct: number
+          id: string
+          identity_id: string
+          km: number | null
+          listing_id: string
+          listing_url: string | null
+          location: string | null
+          make: string
+          model: string
+          proven_exit_summary: string | null
+          proven_exit_value: number
+          sample_size: number
+          sent_at: string | null
+          target_dealer_ids: string[] | null
+          target_region_id: string | null
+          trigger_type: string
+          variant_family: string | null
+          year: number
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          asking_price: number
+          confidence_label: string
+          created_at?: string
+          evaluation_id?: string | null
+          expired_at?: string | null
+          gap_dollars: number
+          gap_pct: number
+          id?: string
+          identity_id: string
+          km?: number | null
+          listing_id: string
+          listing_url?: string | null
+          location?: string | null
+          make: string
+          model: string
+          proven_exit_summary?: string | null
+          proven_exit_value: number
+          sample_size: number
+          sent_at?: string | null
+          target_dealer_ids?: string[] | null
+          target_region_id?: string | null
+          trigger_type: string
+          variant_family?: string | null
+          year: number
+        }
+        Update: {
+          acknowledged_at?: string | null
+          asking_price?: number
+          confidence_label?: string
+          created_at?: string
+          evaluation_id?: string | null
+          expired_at?: string | null
+          gap_dollars?: number
+          gap_pct?: number
+          id?: string
+          identity_id?: string
+          km?: number | null
+          listing_id?: string
+          listing_url?: string | null
+          location?: string | null
+          make?: string
+          model?: string
+          proven_exit_summary?: string | null
+          proven_exit_value?: number
+          sample_size?: number
+          sent_at?: string | null
+          target_dealer_ids?: string[] | null
+          target_region_id?: string | null
+          trigger_type?: string
+          variant_family?: string | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_triggers_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "trigger_evaluations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_triggers_identity_id_fkey"
+            columns: ["identity_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_identities"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       trap_crawl_jobs: {
         Row: {
@@ -2306,6 +2615,143 @@ export type Database = {
           trap_slug?: string
         }
         Relationships: []
+      }
+      trigger_config: {
+        Row: {
+          active_from: string | null
+          active_to: string | null
+          created_at: string
+          exit_method: string | null
+          guardrail_max_gap: number | null
+          guardrail_type: string
+          guardrail_value_abs: number | null
+          guardrail_value_pct: number | null
+          id: string
+          is_provisional: boolean | null
+          max_sale_age_days_buy: number | null
+          max_sale_age_days_watch: number | null
+          min_confidence_buy: string | null
+          min_sample_size_buy: number | null
+          min_sample_size_watch: number | null
+          provisional_notes: string | null
+          version: string
+        }
+        Insert: {
+          active_from?: string | null
+          active_to?: string | null
+          created_at?: string
+          exit_method?: string | null
+          guardrail_max_gap?: number | null
+          guardrail_type?: string
+          guardrail_value_abs?: number | null
+          guardrail_value_pct?: number | null
+          id?: string
+          is_provisional?: boolean | null
+          max_sale_age_days_buy?: number | null
+          max_sale_age_days_watch?: number | null
+          min_confidence_buy?: string | null
+          min_sample_size_buy?: number | null
+          min_sample_size_watch?: number | null
+          provisional_notes?: string | null
+          version: string
+        }
+        Update: {
+          active_from?: string | null
+          active_to?: string | null
+          created_at?: string
+          exit_method?: string | null
+          guardrail_max_gap?: number | null
+          guardrail_type?: string
+          guardrail_value_abs?: number | null
+          guardrail_value_pct?: number | null
+          id?: string
+          is_provisional?: boolean | null
+          max_sale_age_days_buy?: number | null
+          max_sale_age_days_watch?: number | null
+          min_confidence_buy?: string | null
+          min_sample_size_buy?: number | null
+          min_sample_size_watch?: number | null
+          provisional_notes?: string | null
+          version?: string
+        }
+        Relationships: []
+      }
+      trigger_evaluations: {
+        Row: {
+          config_version: string
+          created_at: string
+          evaluated_at: string
+          gate_failures: string[] | null
+          guardrail_abs_used: number | null
+          guardrail_pct_used: number | null
+          id: string
+          identity_id: string
+          km_band_used: string | null
+          listing_id: string
+          listing_km: number | null
+          listing_price: number
+          listing_source: string
+          proven_exit_method: string | null
+          proven_exit_value: number | null
+          reasons: string[] | null
+          region_scope: string | null
+          result: string
+          sale_recency_days: number | null
+          sample_size: number | null
+        }
+        Insert: {
+          config_version: string
+          created_at?: string
+          evaluated_at?: string
+          gate_failures?: string[] | null
+          guardrail_abs_used?: number | null
+          guardrail_pct_used?: number | null
+          id?: string
+          identity_id: string
+          km_band_used?: string | null
+          listing_id: string
+          listing_km?: number | null
+          listing_price: number
+          listing_source: string
+          proven_exit_method?: string | null
+          proven_exit_value?: number | null
+          reasons?: string[] | null
+          region_scope?: string | null
+          result: string
+          sale_recency_days?: number | null
+          sample_size?: number | null
+        }
+        Update: {
+          config_version?: string
+          created_at?: string
+          evaluated_at?: string
+          gate_failures?: string[] | null
+          guardrail_abs_used?: number | null
+          guardrail_pct_used?: number | null
+          id?: string
+          identity_id?: string
+          km_band_used?: string | null
+          listing_id?: string
+          listing_km?: number | null
+          listing_price?: number
+          listing_source?: string
+          proven_exit_method?: string | null
+          proven_exit_value?: number | null
+          reasons?: string[] | null
+          region_scope?: string | null
+          result?: string
+          sale_recency_days?: number | null
+          sample_size?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trigger_evaluations_identity_id_fkey"
+            columns: ["identity_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_identities"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -2944,6 +3390,66 @@ export type Database = {
           status?: string
           tier?: string
           vehicle_summary?: string
+        }
+        Relationships: []
+      }
+      vehicle_identities: {
+        Row: {
+          created_at: string
+          drivetrain: string | null
+          evidence_count: number | null
+          fuel: string | null
+          id: string
+          identity_hash: string
+          km_band: string
+          last_evidence_at: string | null
+          listing_count: number | null
+          make: string
+          model: string
+          region_id: string
+          transmission: string | null
+          updated_at: string
+          variant_family: string | null
+          year_max: number
+          year_min: number
+        }
+        Insert: {
+          created_at?: string
+          drivetrain?: string | null
+          evidence_count?: number | null
+          fuel?: string | null
+          id?: string
+          identity_hash: string
+          km_band: string
+          last_evidence_at?: string | null
+          listing_count?: number | null
+          make: string
+          model: string
+          region_id?: string
+          transmission?: string | null
+          updated_at?: string
+          variant_family?: string | null
+          year_max: number
+          year_min: number
+        }
+        Update: {
+          created_at?: string
+          drivetrain?: string | null
+          evidence_count?: number | null
+          fuel?: string | null
+          id?: string
+          identity_hash?: string
+          km_band?: string
+          last_evidence_at?: string | null
+          listing_count?: number | null
+          make?: string
+          model?: string
+          region_id?: string
+          transmission?: string | null
+          updated_at?: string
+          variant_family?: string | null
+          year_max?: number
+          year_min?: number
         }
         Relationships: []
       }
