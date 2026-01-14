@@ -701,6 +701,87 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_outcomes: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          days_to_exit: number | null
+          dealer_id: string
+          dealer_name: string | null
+          drivetrain: string | null
+          fingerprint: string
+          fuel: string | null
+          gross_profit: number | null
+          id: string
+          km_band: string | null
+          make: string
+          model: string
+          purchase_price: number | null
+          region_id: string | null
+          sale_price: number | null
+          sold_date: string | null
+          source_channel: string | null
+          source_row_id: string | null
+          transmission: string | null
+          updated_at: string
+          variant_confidence: number | null
+          variant_family: string | null
+          year: number
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          days_to_exit?: number | null
+          dealer_id: string
+          dealer_name?: string | null
+          drivetrain?: string | null
+          fingerprint: string
+          fuel?: string | null
+          gross_profit?: number | null
+          id?: string
+          km_band?: string | null
+          make: string
+          model: string
+          purchase_price?: number | null
+          region_id?: string | null
+          sale_price?: number | null
+          sold_date?: string | null
+          source_channel?: string | null
+          source_row_id?: string | null
+          transmission?: string | null
+          updated_at?: string
+          variant_confidence?: number | null
+          variant_family?: string | null
+          year: number
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          days_to_exit?: number | null
+          dealer_id?: string
+          dealer_name?: string | null
+          drivetrain?: string | null
+          fingerprint?: string
+          fuel?: string | null
+          gross_profit?: number | null
+          id?: string
+          km_band?: string | null
+          make?: string
+          model?: string
+          purchase_price?: number | null
+          region_id?: string | null
+          sale_price?: number | null
+          sold_date?: string | null
+          source_channel?: string | null
+          source_row_id?: string | null
+          transmission?: string | null
+          updated_at?: string
+          variant_confidence?: number | null
+          variant_family?: string | null
+          year?: number
+        }
+        Relationships: []
+      }
       dealer_profile_user_links: {
         Row: {
           dealer_profile_id: string
@@ -1209,6 +1290,51 @@ export type Database = {
           variant_family?: string | null
           year_max?: number
           year_min?: number
+        }
+        Relationships: []
+      }
+      fingerprint_profit_stats: {
+        Row: {
+          avg_days_to_exit: number | null
+          avg_gross_profit: number | null
+          fingerprint: string
+          last_sale_date: string | null
+          last_updated: string
+          median_days_to_exit: number | null
+          median_gross_profit: number | null
+          p25_gross_profit: number | null
+          p75_gross_profit: number | null
+          region_id: string
+          sample_size: number
+          win_rate: number | null
+        }
+        Insert: {
+          avg_days_to_exit?: number | null
+          avg_gross_profit?: number | null
+          fingerprint: string
+          last_sale_date?: string | null
+          last_updated?: string
+          median_days_to_exit?: number | null
+          median_gross_profit?: number | null
+          p25_gross_profit?: number | null
+          p75_gross_profit?: number | null
+          region_id?: string
+          sample_size?: number
+          win_rate?: number | null
+        }
+        Update: {
+          avg_days_to_exit?: number | null
+          avg_gross_profit?: number | null
+          fingerprint?: string
+          last_sale_date?: string | null
+          last_updated?: string
+          median_days_to_exit?: number | null
+          median_gross_profit?: number | null
+          p25_gross_profit?: number | null
+          p75_gross_profit?: number | null
+          region_id?: string
+          sample_size?: number
+          win_rate?: number | null
         }
         Relationships: []
       }
@@ -3234,11 +3360,69 @@ export type Database = {
       }
     }
     Functions: {
+      backfill_dealer_outcomes_from_sales: {
+        Args: never
+        Returns: {
+          inserted: number
+          skipped: number
+        }[]
+      }
       backfill_fingerprints_v2: {
         Args: { batch_size?: number }
         Returns: {
           remaining_count: number
           updated_count: number
+        }[]
+      }
+      build_profit_fingerprint: {
+        Args: {
+          p_fuel: string
+          p_km_band: string
+          p_make: string
+          p_model: string
+          p_transmission: string
+          p_variant_family: string
+          p_year: number
+        }
+        Returns: string
+      }
+      calculate_auction_profit_score: {
+        Args: {
+          p_auction_date: string
+          p_auction_house: string
+          p_location: string
+          p_top_n?: number
+        }
+        Returns: {
+          auction_score: number
+          avg_median_gp: number
+          eligible_count: number
+          profit_dense_count: number
+          top_fingerprints: Json
+          total_sample_size: number
+        }[]
+      }
+      calculate_lot_profit_score: {
+        Args: {
+          p_exit_target_days?: number
+          p_fuel: string
+          p_gp_target?: number
+          p_km: number
+          p_location?: string
+          p_make: string
+          p_model: string
+          p_region_id: string
+          p_transmission: string
+          p_variant_family: string
+          p_year: number
+        }
+        Returns: {
+          confidence_label: string
+          geo_multiplier: number
+          lot_score: number
+          median_gp: number
+          sample_size: number
+          win_rate: number
         }[]
       }
       claim_next_job: {
@@ -3785,6 +3969,7 @@ export type Database = {
           km_band_min: number
         }[]
       }
+      km_to_profit_band: { Args: { p_km: number }; Returns: string }
       location_to_region: { Args: { p_location: string }; Returns: string }
       mark_spec_matches_slack_sent: {
         Args: { p_match_ids: string[] }
@@ -3805,6 +3990,12 @@ export type Database = {
         Returns: {
           records_upserted: number
           regions_processed: number
+        }[]
+      }
+      materialize_fingerprint_profit_stats: {
+        Args: never
+        Returns: {
+          fingerprints_updated: number
         }[]
       }
       reenable_auction_source: {

@@ -19,12 +19,13 @@ export type FeatureFlagValue = 'enabled' | 'disabled' | 'internal_only';
 export interface FeatureFlags {
   geoLiquidity: FeatureFlagValue;
   dealerDashboard: FeatureFlagValue;
-  // Add more feature flags here as needed
+  auctionProfitScoring: FeatureFlagValue;
 }
 
 const DEFAULT_FLAGS: FeatureFlags = {
-  geoLiquidity: 'internal_only', // Default: generate signals but only show to admins
-  dealerDashboard: 'internal_only', // Default: dealer dashboard only visible to admins initially
+  geoLiquidity: 'internal_only',
+  dealerDashboard: 'internal_only',
+  auctionProfitScoring: 'internal_only', // Profit-weighted auction scoring
 };
 
 // Cache for flag values to avoid repeated API calls
@@ -48,13 +49,14 @@ export function useFeatureFlags() {
       }
 
       try {
-        // Load feature flags from settings
         const geoLiquidityValue = await dataService.getSetting('feature_flag_geo_liquidity');
         const dealerDashboardValue = await dataService.getSetting('feature_flag_dealer_dashboard');
+        const auctionProfitScoringValue = await dataService.getSetting('feature_flag_auction_profit_scoring');
         
         const loadedFlags: FeatureFlags = {
           geoLiquidity: parseFlag(geoLiquidityValue) ?? DEFAULT_FLAGS.geoLiquidity,
           dealerDashboard: parseFlag(dealerDashboardValue) ?? DEFAULT_FLAGS.dealerDashboard,
+          auctionProfitScoring: parseFlag(auctionProfitScoringValue) ?? DEFAULT_FLAGS.auctionProfitScoring,
         };
 
         flagsCache = loadedFlags;
