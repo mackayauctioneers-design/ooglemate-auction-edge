@@ -289,6 +289,39 @@ export type Database = {
         }
         Relationships: []
       }
+      bob_chat_context_log: {
+        Row: {
+          created_at: string | null
+          dealer_id: string | null
+          filters: Json | null
+          id: string
+          page_summary: Json | null
+          route: string | null
+          selected_auction_event_id: string | null
+          selected_lot_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          dealer_id?: string | null
+          filters?: Json | null
+          id?: string
+          page_summary?: Json | null
+          route?: string | null
+          selected_auction_event_id?: string | null
+          selected_lot_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          dealer_id?: string | null
+          filters?: Json | null
+          id?: string
+          page_summary?: Json | null
+          route?: string | null
+          selected_auction_event_id?: string | null
+          selected_lot_id?: string | null
+        }
+        Relationships: []
+      }
       clearance_events: {
         Row: {
           clearance_type: string
@@ -779,6 +812,54 @@ export type Database = {
           variant_confidence?: number | null
           variant_family?: string | null
           year?: number
+        }
+        Relationships: []
+      }
+      dealer_profile: {
+        Row: {
+          created_at: string | null
+          dealer_id: string
+          exclude_salvage: boolean | null
+          exclude_segments: Json | null
+          exclude_stat_writeoff: boolean | null
+          exclude_wovr: boolean | null
+          geo_preferences: Json | null
+          output_style: Json | null
+          preferred_segments: Json | null
+          scoring_thresholds: Json | null
+          updated_at: string | null
+          year_max: number | null
+          year_min: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          dealer_id: string
+          exclude_salvage?: boolean | null
+          exclude_segments?: Json | null
+          exclude_stat_writeoff?: boolean | null
+          exclude_wovr?: boolean | null
+          geo_preferences?: Json | null
+          output_style?: Json | null
+          preferred_segments?: Json | null
+          scoring_thresholds?: Json | null
+          updated_at?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          dealer_id?: string
+          exclude_salvage?: boolean | null
+          exclude_segments?: Json | null
+          exclude_stat_writeoff?: boolean | null
+          exclude_wovr?: boolean | null
+          geo_preferences?: Json | null
+          output_style?: Json | null
+          preferred_segments?: Json | null
+          scoring_thresholds?: Json | null
+          updated_at?: string | null
+          year_max?: number | null
+          year_min?: number | null
         }
         Relationships: []
       }
@@ -4019,6 +4100,28 @@ export type Database = {
           regions_updated: number
         }[]
       }
+      rpc_explain_why_listed: {
+        Args: { p_dealer_id: string; p_lot_id: string }
+        Returns: Json
+      }
+      rpc_get_auction_lots: {
+        Args: {
+          p_auction_event_id: string
+          p_dealer_id: string
+          p_mode?: string
+        }
+        Returns: Json
+      }
+      rpc_get_dealer_profile: { Args: { p_dealer_id: string }; Returns: Json }
+      rpc_get_today_opportunities: {
+        Args: { p_dealer_id: string; p_filters?: Json }
+        Returns: Json
+      }
+      rpc_get_upcoming_auction_cards: {
+        Args: { p_dealer_id: string; p_filters?: Json }
+        Returns: Json
+      }
+      rpc_get_watchlist: { Args: { p_dealer_id: string }; Returns: Json }
       run_spec_matching_batch: {
         Args: { p_since_hours?: number }
         Returns: {
