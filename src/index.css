@@ -10,7 +10,76 @@
 
 @layer base {
   :root {
-    /* Pure black and white theme */
+    /* Pure white and black theme */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 4%;
+
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 4%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 4%;
+
+    /* Primary - Black */
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+
+    /* Secondary - Light gray */
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
+
+    /* Muted - Light grays */
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+
+    /* Accent - Light gray for hover states */
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 9%;
+
+    /* Destructive */
+    --destructive: 0 0% 30%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 30%;
+
+    --radius: 0.5rem;
+
+    /* Custom semantic colors - grayscale */
+    --action-buy: 0 0% 9%;
+    --action-buy-foreground: 0 0% 98%;
+    --action-watch: 0 0% 45%;
+    --action-watch-foreground: 0 0% 98%;
+    
+    /* Status colors - grayscale */
+    --status-passed: 0 0% 60%;
+    --status-sold: 0 0% 20%;
+    --status-listed: 0 0% 40%;
+    --status-withdrawn: 0 0% 70%;
+    
+    /* Confidence gradient stops - grayscale */
+    --confidence-low: 0 0% 70%;
+    --confidence-mid: 0 0% 45%;
+    --confidence-high: 0 0% 20%;
+
+    /* Shadows */
+    --shadow-glow: 0 0 30px hsl(0 0% 0% / 0.06);
+    --shadow-card: 0 4px 20px hsl(0 0% 0% / 0.08);
+
+    /* Sidebar */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 30%;
+    --sidebar-primary: 0 0% 9%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent-foreground: 0 0% 9%;
+    --sidebar-border: 0 0% 90%;
+    --sidebar-ring: 0 0% 30%;
+  }
+
+  .dark {
+    /* Dark mode - inverted */
     --background: 0 0% 4%;
     --foreground: 0 0% 98%;
 
@@ -20,23 +89,18 @@
     --popover: 0 0% 10%;
     --popover-foreground: 0 0% 98%;
 
-    /* Primary - White */
     --primary: 0 0% 98%;
     --primary-foreground: 0 0% 4%;
 
-    /* Secondary - Dark gray */
     --secondary: 0 0% 14%;
     --secondary-foreground: 0 0% 90%;
 
-    /* Muted - Mid grays */
     --muted: 0 0% 12%;
     --muted-foreground: 0 0% 55%;
 
-    /* Accent - Light gray for hover states */
     --accent: 0 0% 20%;
     --accent-foreground: 0 0% 98%;
 
-    /* Destructive - Keep slight red for errors */
     --destructive: 0 0% 45%;
     --destructive-foreground: 0 0% 98%;
 
@@ -44,30 +108,23 @@
     --input: 0 0% 14%;
     --ring: 0 0% 70%;
 
-    --radius: 0.5rem;
-
-    /* Custom semantic colors - grayscale */
     --action-buy: 0 0% 98%;
     --action-buy-foreground: 0 0% 4%;
     --action-watch: 0 0% 70%;
     --action-watch-foreground: 0 0% 4%;
-    
-    /* Status colors - grayscale */
+
     --status-passed: 0 0% 40%;
     --status-sold: 0 0% 85%;
     --status-listed: 0 0% 60%;
     --status-withdrawn: 0 0% 35%;
-    
-    /* Confidence gradient stops - grayscale */
+
     --confidence-low: 0 0% 35%;
     --confidence-mid: 0 0% 55%;
     --confidence-high: 0 0% 85%;
 
-    /* Shadows */
     --shadow-glow: 0 0 30px hsl(0 0% 100% / 0.08);
     --shadow-card: 0 4px 20px hsl(0 0% 0% / 0.5);
 
-    /* Sidebar */
     --sidebar-background: 0 0% 3%;
     --sidebar-foreground: 0 0% 75%;
     --sidebar-primary: 0 0% 98%;
@@ -76,10 +133,6 @@
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 0 0% 14%;
     --sidebar-ring: 0 0% 70%;
-  }
-
-  .dark {
-    /* Same as root for this dark-first design */
   }
 }
 
