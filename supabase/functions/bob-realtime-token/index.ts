@@ -7,72 +7,73 @@ const corsHeaders = {
 };
 
 // ============================================================================
-// BOB VOICE - NARRATOR ONLY
+// BOB VOICE - SITE-AWARE DEALER ASSISTANT
 // ============================================================================
-// Bob is NOT a valuer. Bob does NOT think. Bob does NOT decide.
-// Bob reads the number you give him like a bloke who's been doing this 20 years.
+// Bob can now answer questions about opportunities, auctions, and watchlists
+// using real-time data from the system via tools.
 // ============================================================================
 
-const BOB_SYSTEM_PROMPT = `You are Bob — a voice narrator ONLY.
+const BOB_SYSTEM_PROMPT = `You are Bob — a site-aware dealer assistant with an Aussie voice.
 
-=== KILL SWITCH: YOU CANNOT PRICE ===
+=== WHO YOU ARE ===
 
-Bob NEVER calculates or estimates prices.
-Bob ONLY receives structured pricing output from the OogleMate valuation engine.
-Bob converts that output into natural language.
-If no structured price is provided, Bob MUST refuse and request photos or escalate to Macca.
+You're a senior knocker who knows the system inside out.
+You sound natural, calm, confident, brief.
+Not an app. Not a chatbot. A bloke who's been doing this 20 years.
 
-=== CRITICAL: YOU MUST CALL THE TOOL ===
+=== YOUR CAPABILITIES ===
 
-When a dealer mentions ANY vehicle, you MUST:
-1. Call get_oanca_price with the vehicle details
-2. Read the "script" field from the tool result VERBATIM
-3. Say NOTHING else after the script
+You have access to these tools:
+1. get_oanca_price - Get pricing for a specific vehicle (ALWAYS use for pricing questions)
+2. get_today_opportunities - Find buying opportunities based on dealer profile
+3. get_upcoming_auctions - List upcoming auctions with heat ratings
+4. get_watchlist - Show what the dealer is currently watching
+5. explain_lot - Explain why a specific lot is recommended
 
-=== THE SCRIPT IS EVERYTHING ===
+=== WHEN TO USE TOOLS ===
 
-The tool returns a "script" field. This is the ONLY thing you say.
-- Read it word-for-word
-- Do NOT add words
-- Do NOT remove words  
-- Do NOT paraphrase
-- Do NOT explain anything
-- STOP TALKING after the script
+PRICING QUESTIONS (e.g. "what's a 2020 Hilux worth"):
+→ Call get_oanca_price with vehicle details
+→ Read the "script" field VERBATIM - word for word, nothing added
 
-=== WHAT YOU SOUND LIKE ===
+OPPORTUNITY QUESTIONS (e.g. "what should I buy today", "any deals"):
+→ Call get_today_opportunities
+→ Summarise the top 3-5 items naturally
+→ Mention the auction house and location
+→ Keep it brief - 30 seconds max
 
-You sound like a senior Aussie knocker on a phone call.
-Natural pace. Calm. Confident. Brief.
-Not an app. Not a chatbot. A bloke.
+AUCTION QUESTIONS (e.g. "what auctions are coming up", "anything hot"):
+→ Call get_upcoming_auctions  
+→ Highlight the hottest ones first
+→ Mention relevant lot counts
 
-=== BEFORE THE TOOL CALL ===
+WATCHLIST QUESTIONS (e.g. "what am I watching", "my list"):
+→ Call get_watchlist
+→ Summarise what they're tracking
 
-If they're just chatting (no vehicle), you can respond naturally:
-- "Yeah mate, what've you got for me?"
-- "Fire away."
-- "What are we looking at?"
+EXPLANATION QUESTIONS (e.g. "why is this here", "why this one"):
+→ Call explain_lot with the lot_id from context
+→ Explain the match logic naturally
 
-But the MOMENT a vehicle is mentioned → call the tool → read the script → STOP.
+=== RESPONSE STYLE ===
+
+For PRICING: Read the script EXACTLY. Don't add or change words.
+
+For EVERYTHING ELSE: Be natural and conversational.
+- "Righto, looking at your opportunities..."
+- "Yeah, you've got a few things coming up..."
+- "Your watchlist's got..."
+- Keep responses under 45 seconds
+- Be specific - mention actual numbers, locations, makes/models
+- If something's hot, say so: "This one's worth a look"
 
 === HARD RULES ===
 
-You MUST NOT:
-- Calculate prices
-- Estimate values
-- Use ranges
-- Smooth numbers
-- Reference market knowledge
-- Say "based on", "approximately", "around"
-- Explain WHY you can or cannot price
-- Keep talking after the script
-- Make up numbers under ANY circumstance
-
-You MUST:
-- Call the tool for ANY vehicle
-- Read the script VERBATIM
-- Stop talking after the script
-- Sound like a human, not a system
-- If the script says to escalate → say "I'll check with Macca" and STOP`;
+1. NEVER make up prices - always call get_oanca_price
+2. NEVER give generic advice - always call a tool first
+3. If a tool returns no data, say "Nothing matching right now" and move on
+4. Sound human, not robotic
+5. Keep it brief - dealers are busy`;
 
 
 // Daily Brief mode
@@ -80,16 +81,13 @@ const DAILY_BRIEF_INSTRUCTIONS = `
 
 DAILY BRIEF MODE:
 Deliver a short spoken brief (30-60 seconds max).
-Do NOT quote wholesale prices.
-Summarise opportunities only.
+Call get_today_opportunities first, then summarise.
 
 STRUCTURE:
-1. Greet dealer by name
+1. Greet dealer
 2. Summarise today's opportunities (max 3-5)
-3. Hand off: "I'll check with the boys."
-4. Stop talking.
-
-BRIEF:
+3. Mention any hot auctions
+4. Hand off naturally
 `;
 
 // Push notification mode
@@ -104,41 +102,79 @@ VEHICLE: {{VEHICLE}}
 CONTEXT: {{CONTEXT}}
 
 Speak the context in 15-30 seconds.
-If they ask for a price, call the tool first.
+If they ask for a price, call get_oanca_price first.
 `;
 
-// OANCA pricing tool - calls the backend engine
+// OANCA pricing tool
 const OANCA_TOOL = {
   type: "function",
   name: "get_oanca_price",
-  description: "MANDATORY for any vehicle query. Returns a 'script' field that you MUST read VERBATIM. The script contains the exact words to say - read them word-for-word, do not add or remove anything.",
+  description: "Get wholesale pricing for a vehicle. Returns a 'script' field that you MUST read VERBATIM.",
   parameters: {
     type: "object",
     properties: {
-      make: {
-        type: "string",
-        description: "Vehicle make (e.g., Toyota, Ford, Holden)"
-      },
-      model: {
-        type: "string",
-        description: "Vehicle model (e.g., Hilux, Ranger, Cruze)"
-      },
-      year: {
-        type: "integer",
-        description: "Vehicle year (e.g., 2015, 2020)"
-      },
-      km: {
-        type: "integer",
-        description: "Odometer reading in kilometers (optional)"
-      },
-      variant: {
-        type: "string",
-        description: "Variant or trim level if mentioned (optional)"
-      }
+      make: { type: "string", description: "Vehicle make (e.g., Toyota, Ford)" },
+      model: { type: "string", description: "Vehicle model (e.g., Hilux, Ranger)" },
+      year: { type: "integer", description: "Vehicle year" },
+      km: { type: "integer", description: "Odometer in km (optional)" },
+      variant: { type: "string", description: "Variant/trim (optional)" }
     },
     required: ["make", "model", "year"]
   }
 };
+
+// Site-aware tools
+const OPPORTUNITIES_TOOL = {
+  type: "function",
+  name: "get_today_opportunities",
+  description: "Find buying opportunities matching the dealer's profile. Call this when asked about deals, what to buy, or opportunities.",
+  parameters: {
+    type: "object",
+    properties: {
+      limit: { type: "integer", description: "Max results (default 5)" }
+    },
+    required: []
+  }
+};
+
+const AUCTIONS_TOOL = {
+  type: "function",
+  name: "get_upcoming_auctions",
+  description: "List upcoming auctions with heat ratings showing how many relevant lots. Call this for auction schedule questions.",
+  parameters: {
+    type: "object",
+    properties: {
+      days_ahead: { type: "integer", description: "Days to look ahead (default 7)" }
+    },
+    required: []
+  }
+};
+
+const WATCHLIST_TOOL = {
+  type: "function",
+  name: "get_watchlist",
+  description: "Get the dealer's current watchlist. Call this when they ask what they're watching or tracking.",
+  parameters: {
+    type: "object",
+    properties: {},
+    required: []
+  }
+};
+
+const EXPLAIN_LOT_TOOL = {
+  type: "function",
+  name: "explain_lot",
+  description: "Explain why a specific lot is recommended. Use when dealer asks 'why is this here' or 'why this one'.",
+  parameters: {
+    type: "object",
+    properties: {
+      lot_id: { type: "string", description: "The lot ID to explain" }
+    },
+    required: ["lot_id"]
+  }
+};
+
+const ALL_TOOLS = [OANCA_TOOL, OPPORTUNITIES_TOOL, AUCTIONS_TOOL, WATCHLIST_TOOL, EXPLAIN_LOT_TOOL];
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -147,7 +183,13 @@ serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { briefMode = false, briefContext = '', pushMode = false, pushContext = null } = body;
+    const { 
+      briefMode = false, 
+      briefContext = '', 
+      pushMode = false, 
+      pushContext = null,
+      siteContext = null // New: runtime context from client
+    } = body;
 
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     if (!OPENAI_API_KEY) {
@@ -161,19 +203,34 @@ serve(async (req) => {
     // Build system prompt based on mode
     let systemPrompt = BOB_SYSTEM_PROMPT;
     
+    // Add site context if available
+    if (siteContext) {
+      const contextLines: string[] = [];
+      if (siteContext.route) contextLines.push(`Current page: ${siteContext.route}`);
+      if (siteContext.dealer_id) contextLines.push(`Dealer ID: ${siteContext.dealer_id}`);
+      if (siteContext.selection?.lot_id) contextLines.push(`Selected lot: ${siteContext.selection.lot_id}`);
+      if (siteContext.page_summary?.eligible_lots_today) {
+        contextLines.push(`Eligible lots today: ${siteContext.page_summary.eligible_lots_today}`);
+      }
+      
+      if (contextLines.length > 0) {
+        systemPrompt += `\n\n=== CURRENT CONTEXT ===\n${contextLines.join('\n')}`;
+      }
+    }
+    
     if (pushMode && pushContext) {
       let pushInstructions = PUSH_CONTEXT_INSTRUCTIONS
         .replace('{{ALERT_TYPE}}', pushContext.alert_type || 'notification')
         .replace('{{VEHICLE}}', `${pushContext.vehicle?.year || ''} ${pushContext.vehicle?.make || ''} ${pushContext.vehicle?.model || ''}`.trim())
         .replace('{{CONTEXT}}', JSON.stringify(pushContext.context || {}));
       
-      systemPrompt = BOB_SYSTEM_PROMPT + pushInstructions;
+      systemPrompt += pushInstructions;
       console.log("[BOB-REALTIME] Creating session (PUSH MODE)");
     } else if (briefMode && briefContext) {
-      systemPrompt = BOB_SYSTEM_PROMPT + DAILY_BRIEF_INSTRUCTIONS + briefContext;
+      systemPrompt += DAILY_BRIEF_INSTRUCTIONS + briefContext;
       console.log("[BOB-REALTIME] Creating session (BRIEF MODE)");
     } else {
-      console.log("[BOB-REALTIME] Creating session (STANDARD MODE)");
+      console.log("[BOB-REALTIME] Creating session (SITE-AWARE MODE)");
     }
 
     const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
@@ -195,7 +252,7 @@ serve(async (req) => {
           prefix_padding_ms: 300,
           silence_duration_ms: 1200
         },
-        tools: [OANCA_TOOL],
+        tools: ALL_TOOLS,
         tool_choice: "auto"
       }),
     });
@@ -210,7 +267,7 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    console.log("[BOB-REALTIME] Session created with pricing tool");
+    console.log("[BOB-REALTIME] Session created with site-aware tools");
 
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
