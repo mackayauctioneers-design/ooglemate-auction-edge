@@ -17,7 +17,8 @@ import {
   Home,
   LayoutDashboard,
   Upload,
-  Target
+  Target,
+  FlaskConical
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -67,6 +68,7 @@ const operatorSections: NavSection[] = [
       { path: '/operator/fingerprints', label: 'Fingerprints Explorer', icon: Fingerprint },
       { path: '/operator/benchmark-gaps', label: 'Benchmark Gaps', icon: Target },
       { path: '/operator/benchmark-watchlist', label: 'Benchmark Watchlist', icon: Target },
+      { path: '/operator/trigger-qa', label: 'Trigger QA', icon: FlaskConical },
     ],
   },
   {
