@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { format, parseISO, startOfDay, addDays, isAfter, isBefore } from 'date-fns';
+import { format, parseISO, startOfDay, addDays } from 'date-fns';
 import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
-import { ExternalLink, Loader2, Search, Flame, Thermometer, Snowflake, Calendar, MapPin, AlertCircle } from 'lucide-react';
+import { Loader2, Search, Calendar, MapPin, AlertCircle, AlertTriangle } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,6 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFeatureFlags } from '@/hooks/useFeatureFlags';
+import { useAuctionProfitScores, useAuctionScoreCalculator } from '@/hooks/useAuctionProfitScore';
+import { ProfitScoreBadge, SimpleHeatIndicator } from '@/components/auction/ProfitScoreBadge';
 
 const AEST_TIMEZONE = 'Australia/Sydney';
 const MAX_DAYS_AHEAD = 14;
@@ -22,36 +25,20 @@ interface AuctionSummary {
   total_lots: number;
   eligible_lots: number;
   matching_lots: number;
-}
-
-type HeatLevel = 'hot' | 'warm' | 'cold';
-
-function getHeatLevel(matchingLots: number): HeatLevel {
-  if (matchingLots >= 8) return 'hot';
-  if (matchingLots >= 3) return 'warm';
-  return 'cold';
-}
-
-function HeatIndicator({ level, count }: { level: HeatLevel; count: number }) {
-  const config = {
-    hot: { icon: Flame, label: 'Hot', className: 'text-destructive' },
-    warm: { icon: Thermometer, label: 'Warm', className: 'text-amber-500' },
-    cold: { icon: Snowflake, label: 'Cold', className: 'text-muted-foreground' },
-  };
-  
-  const { icon: Icon, label, className } = config[level];
-  
-  return (
-    <div className={`flex items-center gap-1 ${className}`}>
-      <Icon className="h-4 w-4" />
-      <span className="text-xs font-medium">{count} relevant</span>
-    </div>
-  );
+  // Profit scoring fields (when feature enabled)
+  profit_score?: number;
+  profit_dense_count?: number;
+  sample_size?: number;
+  median_gp?: number | null;
+  fingerprints?: string[];
+  location_unknown?: boolean;
 }
 
 export default function UpcomingAuctionsPage() {
   const { dealerProfile } = useAuth();
   const navigate = useNavigate();
+  const { isFeatureVisible } = useFeatureFlags();
+  const profitScoringEnabled = isFeatureVisible('auctionProfitScoring');
   
   const [auctionHouseFilter, setAuctionHouseFilter] = useState<string>('all');
   const [locationFilter, setLocationFilter] = useState<string>('all');
@@ -270,8 +257,8 @@ export default function UpcomingAuctionsPage() {
                 
                 <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                   {dayAuctions.map((auction) => {
-                    const heat = getHeatLevel(auction.matching_lots);
                     const hasLots = auction.eligible_lots > 0;
+                    const isUnknownLocation = auction.location === 'Unknown' || !auction.location;
                     
                     return (
                       <Card 
@@ -287,9 +274,23 @@ export default function UpcomingAuctionsPage() {
                               <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
                                 <MapPin className="h-3 w-3" />
                                 {auction.location || 'Unknown'}
+                                {isUnknownLocation && (
+                                  <AlertTriangle className="h-3 w-3 text-muted-foreground ml-1" />
+                                )}
                               </div>
                             </div>
-                            <HeatIndicator level={heat} count={auction.matching_lots} />
+                            {/* Heat indicator - profit-weighted or simple count-based */}
+                            {profitScoringEnabled && auction.profit_score !== undefined ? (
+                              <ProfitScoreBadge
+                                score={auction.profit_score}
+                                profitDenseCount={auction.profit_dense_count || 0}
+                                sampleSize={auction.sample_size || 0}
+                                medianGp={auction.median_gp}
+                                compact
+                              />
+                            ) : (
+                              <SimpleHeatIndicator matchingLots={auction.matching_lots} />
+                            )}
                           </div>
                           
                           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -299,6 +300,11 @@ export default function UpcomingAuctionsPage() {
                             <Badge variant="secondary" className="text-xs">
                               {auction.eligible_lots} eligible
                             </Badge>
+                            {profitScoringEnabled && auction.profit_dense_count !== undefined && auction.profit_dense_count > 0 && (
+                              <Badge variant="default" className="text-xs">
+                                {auction.profit_dense_count} high-profit
+                              </Badge>
+                            )}
                           </div>
                           
                           <div className="flex gap-2">
