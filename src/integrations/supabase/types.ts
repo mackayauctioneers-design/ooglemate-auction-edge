@@ -2075,12 +2075,15 @@ export type Database = {
           identity_id: string | null
           identity_mapped_at: string | null
           km: number | null
+          last_evaluated_at: string | null
+          last_evaluation_result: string | null
           last_seen_at: string
           listing_url: string | null
           make: string
           model: string
           origin_entity: string | null
           postcode: string | null
+          price_changed_at: string | null
           price_history: Json | null
           region_id: string | null
           seller_name_raw: string | null
@@ -2108,12 +2111,15 @@ export type Database = {
           identity_id?: string | null
           identity_mapped_at?: string | null
           km?: number | null
+          last_evaluated_at?: string | null
+          last_evaluation_result?: string | null
           last_seen_at?: string
           listing_url?: string | null
           make: string
           model: string
           origin_entity?: string | null
           postcode?: string | null
+          price_changed_at?: string | null
           price_history?: Json | null
           region_id?: string | null
           seller_name_raw?: string | null
@@ -2141,12 +2147,15 @@ export type Database = {
           identity_id?: string | null
           identity_mapped_at?: string | null
           km?: number | null
+          last_evaluated_at?: string | null
+          last_evaluation_result?: string | null
           last_seen_at?: string
           listing_url?: string | null
           make?: string
           model?: string
           origin_entity?: string | null
           postcode?: string | null
+          price_changed_at?: string | null
           price_history?: Json | null
           region_id?: string | null
           seller_name_raw?: string | null
@@ -2467,6 +2476,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "sales_triggers_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "trigger_evaluations_recent"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "sales_triggers_identity_id_fkey"
             columns: ["identity_id"]
             isOneToOne: false
@@ -2708,6 +2724,8 @@ export type Database = {
           config_version: string
           created_at: string
           evaluated_at: string
+          gap_dollars: number | null
+          gap_pct: number | null
           gate_failures: string[] | null
           guardrail_abs_used: number | null
           guardrail_pct_used: number | null
@@ -2725,11 +2743,14 @@ export type Database = {
           result: string
           sale_recency_days: number | null
           sample_size: number | null
+          snapshot: Json | null
         }
         Insert: {
           config_version: string
           created_at?: string
           evaluated_at?: string
+          gap_dollars?: number | null
+          gap_pct?: number | null
           gate_failures?: string[] | null
           guardrail_abs_used?: number | null
           guardrail_pct_used?: number | null
@@ -2747,11 +2768,14 @@ export type Database = {
           result: string
           sale_recency_days?: number | null
           sample_size?: number | null
+          snapshot?: Json | null
         }
         Update: {
           config_version?: string
           created_at?: string
           evaluated_at?: string
+          gap_dollars?: number | null
+          gap_pct?: number | null
           gate_failures?: string[] | null
           guardrail_abs_used?: number | null
           guardrail_pct_used?: number | null
@@ -2769,6 +2793,7 @@ export type Database = {
           result?: string
           sale_recency_days?: number | null
           sample_size?: number | null
+          snapshot?: Json | null
         }
         Relationships: [
           {
@@ -3425,6 +3450,7 @@ export type Database = {
           created_at: string
           drivetrain: string | null
           evidence_count: number | null
+          evidence_updated_at: string | null
           fuel: string | null
           id: string
           identity_hash: string
@@ -3444,6 +3470,7 @@ export type Database = {
           created_at?: string
           drivetrain?: string | null
           evidence_count?: number | null
+          evidence_updated_at?: string | null
           fuel?: string | null
           id?: string
           identity_hash: string
@@ -3463,6 +3490,7 @@ export type Database = {
           created_at?: string
           drivetrain?: string | null
           evidence_count?: number | null
+          evidence_updated_at?: string | null
           fuel?: string | null
           id?: string
           identity_hash?: string
@@ -4213,6 +4241,73 @@ export type Database = {
         }
         Relationships: []
       }
+      trigger_dashboard_summary: {
+        Row: {
+          buy_evaluations_24h: number | null
+          buy_triggers_24h: number | null
+          evaluations_24h: number | null
+          ignore_evaluations_24h: number | null
+          proven_exits_updated_24h: number | null
+          triggers_emitted_24h: number | null
+          watch_evaluations_24h: number | null
+          watch_triggers_24h: number | null
+        }
+        Relationships: []
+      }
+      trigger_evaluations_recent: {
+        Row: {
+          asking_price: number | null
+          config_version: string | null
+          evaluated_at: string | null
+          gap_dollars: number | null
+          gap_pct: number | null
+          gate_failures: string[] | null
+          id: string | null
+          listing_id: string | null
+          make: string | null
+          model: string | null
+          proven_exit_value: number | null
+          reasons: string[] | null
+          result: string | null
+          year: number | null
+        }
+        Relationships: []
+      }
+      trigger_gate_failure_stats: {
+        Row: {
+          config_version: string | null
+          count: number | null
+          failure_type: string | null
+        }
+        Relationships: []
+      }
+      trigger_stats_by_result: {
+        Row: {
+          config_version: string | null
+          count: number | null
+          eval_date: string | null
+          result: string | null
+        }
+        Relationships: []
+      }
+      triggers_emitted_24h: {
+        Row: {
+          asking_price: number | null
+          config_version: string | null
+          created_at: string | null
+          gap_dollars: number | null
+          gap_pct: number | null
+          id: string | null
+          listing_id: string | null
+          make: string | null
+          model: string | null
+          proven_exit_used: number | null
+          sent_at: string | null
+          trigger_type: string | null
+          year: number | null
+        }
+        Relationships: []
+      }
       va_blocked_sources: {
         Row: {
           display_name: string | null
@@ -4445,9 +4540,7 @@ export type Database = {
       evaluate_and_emit_trigger: {
         Args: { p_config_version?: string; p_listing_id: string }
         Returns: {
-          confidence_label: string
           evaluation_id: string
-          gap_dollars: number
           result: string
           trigger_id: string
         }[]
@@ -4461,12 +4554,8 @@ export type Database = {
       evaluate_trigger: {
         Args: { p_config_version?: string; p_listing_id: string }
         Returns: {
-          confidence_label: string
           evaluation_id: string
-          gap_dollars: number
-          gap_pct: number
           gate_failures: string[]
-          proven_exit_value: number
           reasons: string[]
           result: string
         }[]
@@ -4683,6 +4772,12 @@ export type Database = {
           count: number
         }[]
       }
+      get_identities_needing_exit_recompute: {
+        Args: never
+        Returns: {
+          identity_id: string
+        }[]
+      }
       get_job_queue_stats: {
         Args: never
         Returns: {
@@ -4749,6 +4844,13 @@ export type Database = {
           sale_price: number
           variant_used: string
           year: number
+        }[]
+      }
+      get_listings_needing_evaluation: {
+        Args: { p_limit?: number; p_max_age_hours?: number }
+        Returns: {
+          listing_id: string
+          reason: string
         }[]
       }
       get_nsw_crawl_today: {
@@ -5037,6 +5139,15 @@ export type Database = {
           mispriced: number
           specs_evaluated: number
           strong_buys: number
+        }[]
+      }
+      run_trigger_backfill: {
+        Args: { p_batch_size?: number; p_config_version?: string }
+        Returns: {
+          buy_count: number
+          ignore_count: number
+          processed: number
+          watch_count: number
         }[]
       }
       seller_weight: { Args: { p_seller_type: string }; Returns: number }
