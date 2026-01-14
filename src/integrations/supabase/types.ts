@@ -2378,6 +2378,7 @@ export type Database = {
           acknowledged_at: string | null
           asking_price: number
           confidence_label: string
+          config_version: string | null
           created_at: string
           evaluation_id: string | null
           expired_at: string | null
@@ -2405,6 +2406,7 @@ export type Database = {
           acknowledged_at?: string | null
           asking_price: number
           confidence_label: string
+          config_version?: string | null
           created_at?: string
           evaluation_id?: string | null
           expired_at?: string | null
@@ -2432,6 +2434,7 @@ export type Database = {
           acknowledged_at?: string | null
           asking_price?: number
           confidence_label?: string
+          config_version?: string | null
           created_at?: string
           evaluation_id?: string | null
           expired_at?: string | null
@@ -4437,7 +4440,18 @@ export type Database = {
           reason: string
         }[]
       }
+      emit_sales_trigger: { Args: { p_evaluation_id: string }; Returns: string }
       escalate_stale_va_tasks: { Args: never; Returns: Json }
+      evaluate_and_emit_trigger: {
+        Args: { p_config_version?: string; p_listing_id: string }
+        Returns: {
+          confidence_label: string
+          evaluation_id: string
+          gap_dollars: number
+          result: string
+          trigger_id: string
+        }[]
+      }
       evaluate_dealer_spec_matches_for_listing: {
         Args: { p_listing_uuid: string }
         Returns: {
