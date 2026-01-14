@@ -4524,9 +4524,13 @@ export type Database = {
       emit_sales_trigger: { Args: { p_evaluation_id: string }; Returns: string }
       escalate_stale_va_tasks: { Args: never; Returns: Json }
       evaluate_and_emit_trigger: {
-        Args: { p_config_version?: string; p_listing_id: string }
+        Args: { p_config_version: string; p_listing_id: string }
         Returns: {
           evaluation_id: string
+          gap_dollars: number
+          gap_pct: number
+          gate_failures: string[]
+          reasons: string[]
           result: string
           trigger_id: string
         }[]
