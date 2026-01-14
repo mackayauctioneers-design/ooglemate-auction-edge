@@ -16,7 +16,7 @@ const STATES = ["nsw", "vic", "qld", "wa", "sa"];
 const PAGES = [1, 2, 3];
 const LIMIT_PER_PAGE = 40;
 const DELAY_MS = 2000;
-const TIME_BUDGET_MS = 45000; // 45 seconds
+const TIME_BUDGET_MS = 28000; // 28 seconds - exit cleanly before platform timeout
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -141,19 +141,13 @@ serve(async (req) => {
           }
         }
 
-        // Persist cursor after every batch
+        // Persist cursor position after every batch (totals updated only at end)
         await supabase
           .from("retail_seed_cursor")
           .update({
             make_idx: makeIdx,
             state_idx: stateIdx,
             page: page,
-            batches_completed: cursor.batches_completed + results.batches_run,
-            total_new: cursor.total_new + results.new_listings,
-            total_updated: cursor.total_updated + results.updated_listings,
-            total_evaluations: cursor.total_evaluations + results.evaluations,
-            total_errors: cursor.total_errors + results.errors,
-            last_error: results.error_samples.length > 0 ? results.error_samples[0] : null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", cursor.id);
@@ -190,7 +184,7 @@ serve(async (req) => {
       status: completed ? "done" : "running",
     };
 
-    // Update cursor with final state
+    // Update cursor with final state - totals updated ONCE at end with this invocation's deltas
     await supabase
       .from("retail_seed_cursor")
       .update({
