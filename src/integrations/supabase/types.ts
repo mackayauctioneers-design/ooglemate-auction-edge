@@ -2579,9 +2579,11 @@ export type Database = {
           proven_exit_value: number
           sample_size: number
           sent_at: string | null
+          sent_price: number | null
           target_dealer_ids: string[] | null
           target_region_id: string | null
           trigger_type: string
+          updated_at: string | null
           variant_family: string | null
           year: number
         }
@@ -2607,9 +2609,11 @@ export type Database = {
           proven_exit_value: number
           sample_size: number
           sent_at?: string | null
+          sent_price?: number | null
           target_dealer_ids?: string[] | null
           target_region_id?: string | null
           trigger_type: string
+          updated_at?: string | null
           variant_family?: string | null
           year: number
         }
@@ -2635,9 +2639,11 @@ export type Database = {
           proven_exit_value?: number
           sample_size?: number
           sent_at?: string | null
+          sent_price?: number | null
           target_dealer_ids?: string[] | null
           target_region_id?: string | null
           trigger_type?: string
+          updated_at?: string | null
           variant_family?: string | null
           year?: number
         }
@@ -2655,6 +2661,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "trigger_evaluations_recent"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_triggers_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "trigger_qa_recent"
+            referencedColumns: ["evaluation_id"]
           },
           {
             foreignKeyName: "sales_triggers_identity_id_fkey"
@@ -2845,13 +2858,19 @@ export type Database = {
           guardrail_value_pct: number | null
           id: string
           is_provisional: boolean | null
+          max_listing_age_days_buy: number | null
+          max_listing_age_days_watch: number | null
           max_sale_age_days_buy: number | null
           max_sale_age_days_watch: number | null
           min_confidence_buy: string | null
           min_sample_size_buy: number | null
           min_sample_size_watch: number | null
           provisional_notes: string | null
+          realert_cooldown_hours: number | null
+          realert_min_price_drop_pct: number | null
           version: string
+          watch_min_gap_abs: number | null
+          watch_min_gap_pct: number | null
         }
         Insert: {
           active_from?: string | null
@@ -2864,13 +2883,19 @@ export type Database = {
           guardrail_value_pct?: number | null
           id?: string
           is_provisional?: boolean | null
+          max_listing_age_days_buy?: number | null
+          max_listing_age_days_watch?: number | null
           max_sale_age_days_buy?: number | null
           max_sale_age_days_watch?: number | null
           min_confidence_buy?: string | null
           min_sample_size_buy?: number | null
           min_sample_size_watch?: number | null
           provisional_notes?: string | null
+          realert_cooldown_hours?: number | null
+          realert_min_price_drop_pct?: number | null
           version: string
+          watch_min_gap_abs?: number | null
+          watch_min_gap_pct?: number | null
         }
         Update: {
           active_from?: string | null
@@ -2883,18 +2908,25 @@ export type Database = {
           guardrail_value_pct?: number | null
           id?: string
           is_provisional?: boolean | null
+          max_listing_age_days_buy?: number | null
+          max_listing_age_days_watch?: number | null
           max_sale_age_days_buy?: number | null
           max_sale_age_days_watch?: number | null
           min_confidence_buy?: string | null
           min_sample_size_buy?: number | null
           min_sample_size_watch?: number | null
           provisional_notes?: string | null
+          realert_cooldown_hours?: number | null
+          realert_min_price_drop_pct?: number | null
           version?: string
+          watch_min_gap_abs?: number | null
+          watch_min_gap_pct?: number | null
         }
         Relationships: []
       }
       trigger_evaluations: {
         Row: {
+          confidence_label: string | null
           config_version: string
           created_at: string
           evaluated_at: string
@@ -2906,6 +2938,7 @@ export type Database = {
           id: string
           identity_id: string
           km_band_used: string | null
+          listing_age_days: number | null
           listing_id: string
           listing_km: number | null
           listing_price: number
@@ -2920,6 +2953,7 @@ export type Database = {
           snapshot: Json | null
         }
         Insert: {
+          confidence_label?: string | null
           config_version: string
           created_at?: string
           evaluated_at?: string
@@ -2931,6 +2965,7 @@ export type Database = {
           id?: string
           identity_id: string
           km_band_used?: string | null
+          listing_age_days?: number | null
           listing_id: string
           listing_km?: number | null
           listing_price: number
@@ -2945,6 +2980,7 @@ export type Database = {
           snapshot?: Json | null
         }
         Update: {
+          confidence_label?: string | null
           config_version?: string
           created_at?: string
           evaluated_at?: string
@@ -2956,6 +2992,7 @@ export type Database = {
           id?: string
           identity_id?: string
           km_band_used?: string | null
+          listing_age_days?: number | null
           listing_id?: string
           listing_km?: number | null
           listing_price?: number
@@ -4473,6 +4510,34 @@ export type Database = {
           config_version: string | null
           count: number | null
           failure_type: string | null
+        }
+        Relationships: []
+      }
+      trigger_qa_recent: {
+        Row: {
+          asking_price: number | null
+          confidence_label: string | null
+          evaluated_at: string | null
+          evaluation_id: string | null
+          first_seen_at: string | null
+          gap_dollars: number | null
+          gap_pct: number | null
+          gate_failures: string[] | null
+          km: number | null
+          listing_age_days: number | null
+          listing_id: string | null
+          listing_url: string | null
+          make: string | null
+          model: string | null
+          proven_exit_value: number | null
+          reasons: string[] | null
+          result: string | null
+          sale_recency_days: number | null
+          sample_size: number | null
+          snapshot: Json | null
+          source: string | null
+          variant_family: string | null
+          year: number | null
         }
         Relationships: []
       }
