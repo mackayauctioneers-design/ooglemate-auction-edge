@@ -169,8 +169,11 @@ serve(async (req) => {
         };
 
         // Start Apify run with waitForFinish=0 (returns immediately)
+        // For private actors, use ~username format
+        const apifyUsername = Deno.env.get("APIFY_USERNAME") || "affectionate_yepsen";
+        const actorPath = actorId.includes("/") ? actorId : `~${apifyUsername}/${actorId}`;
         const runResponse = await fetch(
-          `https://api.apify.com/v2/acts/${actorId}/runs?token=${apifyToken}&waitForFinish=0`,
+          `https://api.apify.com/v2/acts/${actorPath}/runs?token=${apifyToken}&waitForFinish=0`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
