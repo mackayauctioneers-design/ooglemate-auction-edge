@@ -6,13 +6,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Time budget to stay under 30s platform timeout
-const TIME_BUDGET_MS = 28000;
+// Time budget - enqueuing is fast, so we can do more
+const TIME_BUDGET_MS = 25000;
 const LOCK_DURATION_MS = 120000; // 2 minute lock
 
 // Seed configuration - targeting ~5k listings initially
 const MAKES_TO_SEED = ["Toyota", "Mazda", "Honda", "Hyundai", "Kia", "Mitsubishi", "Nissan", "Subaru", "Ford", "Holden"];
 const STATES_TO_SEED = ["nsw", "vic", "qld", "sa", "wa"];
+
+/**
+ * autotrader-seed: ENQUEUE ONLY
+ * 
+ * This function enqueues Apify runs for make/state combinations.
+ * It does NOT wait for results - just kicks off runs and tracks cursor.
+ * 
+ * Flow:
+ * 1. Read cursor position (make_idx, state_idx)
+ * 2. Enqueue Apify runs for remaining combos
+ * 3. Update cursor
+ * 4. Return immediately
+ * 
+ * autotrader-fetch handles the actual data fetching and upserting.
+ */
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -124,16 +139,13 @@ serve(async (req) => {
       batch_idx: cursor.batch_idx,
     };
 
-    // Process batches until time budget exhausted
-    let batchesRun = 0;
-    let runTotalNew = 0;
-    let runTotalUpdated = 0;
-    let runTotalEvals = 0;
-    let runTotalErrors = 0;
+    // Enqueue runs until time budget exhausted or done
+    let runsEnqueued = 0;
     let make_idx = cursor.make_idx;
     let state_idx = cursor.state_idx;
     let batch_idx = cursor.batch_idx;
     let isDone = false;
+    const enqueuedRuns: Array<{ make: string; state: string; run_id?: string }> = [];
 
     while (Date.now() - startTime < TIME_BUDGET_MS) {
       // Check if we've completed all combinations
@@ -145,45 +157,61 @@ serve(async (req) => {
       const make = MAKES_TO_SEED[make_idx];
       const state = STATES_TO_SEED[state_idx];
 
-      console.log(`Batch ${batchesRun + 1}: ${make} / ${state}`);
+      console.log(`Enqueuing: ${make} / ${state}`);
 
       try {
-        // Call autotrader-ingest with this make/state
-        const ingestUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/autotrader-ingest`;
-        const ingestResponse = await fetch(ingestUrl, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            search: make,
-            state: state,
-            year_min: 2016,
-            limit: 100,
-            run_mode: "seed",
-          }),
-        });
+        // Build Apify actor input
+        const actorInput = {
+          maxItems: 100,
+          yearMin: 2016,
+          search: make,
+          state: state.toLowerCase(),
+        };
 
-        const result = await ingestResponse.json();
+        // Start Apify run with waitForFinish=0 (returns immediately)
+        const runResponse = await fetch(
+          `https://api.apify.com/v2/acts/${actorId}/runs?token=${apifyToken}&waitForFinish=0`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(actorInput),
+          }
+        );
 
-        if (result.error) {
-          console.error(`Ingest error for ${make}/${state}:`, result.error);
-          runTotalErrors++;
+        if (!runResponse.ok) {
+          const err = await runResponse.text();
+          console.error(`Apify run start failed for ${make}/${state}: ${err}`);
+          enqueuedRuns.push({ make, state, run_id: undefined });
         } else {
-          runTotalNew += result.new_listings || 0;
-          runTotalUpdated += result.updated_listings || 0;
-          runTotalEvals += result.evaluations_triggered || 0;
-          runTotalErrors += result.errors || 0;
-          console.log(`${make}/${state}: ${result.new_listings} new, ${result.updated_listings} updated`);
+          const runData = await runResponse.json();
+          const runId = runData.data?.id;
+          const datasetId = runData.data?.defaultDatasetId;
+
+          if (runId) {
+            // Queue for processing
+            await supabase
+              .from("apify_runs_queue")
+              .insert({
+                source: "autotrader",
+                run_id: runId,
+                dataset_id: datasetId,
+                input: { search: make, state, year_min: 2016, limit: 100 },
+                status: "queued",
+              });
+
+            enqueuedRuns.push({ make, state, run_id: runId });
+            console.log(`Enqueued ${make}/${state}: run_id=${runId}`);
+          } else {
+            enqueuedRuns.push({ make, state, run_id: undefined });
+          }
         }
 
-        batchesRun++;
+        runsEnqueued++;
         batch_idx++;
 
       } catch (err) {
-        console.error(`Error processing ${make}/${state}:`, err);
-        runTotalErrors++;
+        console.error(`Error enqueuing ${make}/${state}:`, err);
+        enqueuedRuns.push({ make, state, run_id: undefined });
       }
 
       // Advance cursor
@@ -193,11 +221,11 @@ serve(async (req) => {
         make_idx++;
       }
 
-      // Small delay between Apify calls to avoid rate limits
-      await new Promise((r) => setTimeout(r, 2000));
+      // Small delay to avoid rate limits
+      await new Promise((r) => setTimeout(r, 500));
     }
 
-    // Update cursor with final state (update totals only once at end)
+    // Update cursor with final state
     const newStatus = isDone ? "done" : "running";
     await supabase
       .from("retail_seed_cursor_autotrader")
@@ -205,29 +233,21 @@ serve(async (req) => {
         make_idx,
         state_idx,
         batch_idx,
-        batches_completed: (cursor.batches_completed || 0) + batchesRun,
+        batches_completed: (cursor.batches_completed || 0) + runsEnqueued,
         status: newStatus,
         completed_at: isDone ? now.toISOString() : null,
         locked_until: null,
         lock_token: null,
         updated_at: now.toISOString(),
-        last_error: runTotalErrors > 0 ? `${runTotalErrors} errors this run` : null,
-        total_new: (cursor.total_new || 0) + runTotalNew,
-        total_updated: (cursor.total_updated || 0) + runTotalUpdated,
-        total_evaluations: (cursor.total_evaluations || 0) + runTotalEvals,
-        total_errors: (cursor.total_errors || 0) + runTotalErrors,
       })
       .eq("id", cursor.id);
 
     const results = {
       status: newStatus,
-      batches_run: batchesRun,
-      new_listings: runTotalNew,
-      updated_listings: runTotalUpdated,
-      evaluations: runTotalEvals,
-      errors: runTotalErrors,
+      runs_enqueued: runsEnqueued,
       cursor_before: cursorBefore,
       cursor_after: { make_idx, state_idx, batch_idx },
+      enqueued_runs: enqueuedRuns,
       elapsed_ms: Date.now() - startTime,
     };
 

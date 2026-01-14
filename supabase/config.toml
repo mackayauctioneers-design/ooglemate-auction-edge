@@ -208,10 +208,15 @@ verify_jwt = false
 
 [functions.autotrader-seed]
 verify_jwt = false
-# Every 5 minutes until autotrader cursor status=done
+# Every 5 minutes until autotrader cursor status=done - ENQUEUES runs only
 schedule = "*/5 * * * *"
+
+[functions.autotrader-fetch]
+verify_jwt = false
+# Every 2 minutes - drains apify_runs_queue, fetches completed datasets
+schedule = "*/2 * * * *"
 
 [functions.autotrader-ingest-cron]
 verify_jwt = false
-# Every 30 minutes during AU business hours (after seed complete)
+# Every 30 minutes during AU business hours (after seed complete) - maintenance
 schedule = "0,30 21,22,23,0,1,2,3,4,5,6,7,8,9,10 * * *"

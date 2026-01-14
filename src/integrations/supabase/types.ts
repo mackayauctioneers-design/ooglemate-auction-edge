@@ -109,6 +109,60 @@ export type Database = {
           },
         ]
       }
+      apify_runs_queue: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          dataset_id: string | null
+          id: string
+          input: Json
+          items_fetched: number | null
+          items_upserted: number | null
+          last_error: string | null
+          lock_token: string | null
+          locked_until: string | null
+          run_id: string | null
+          source: string
+          started_at: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          dataset_id?: string | null
+          id?: string
+          input: Json
+          items_fetched?: number | null
+          items_upserted?: number | null
+          last_error?: string | null
+          lock_token?: string | null
+          locked_until?: string | null
+          run_id?: string | null
+          source?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          dataset_id?: string | null
+          id?: string
+          input?: Json
+          items_fetched?: number | null
+          items_upserted?: number | null
+          last_error?: string | null
+          lock_token?: string | null
+          locked_until?: string | null
+          run_id?: string | null
+          source?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       auction_schedule_runs: {
         Row: {
           created: number | null
