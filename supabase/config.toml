@@ -187,5 +187,5 @@ schedule = "50 20 * * *"
 
 [functions.trigger-backfill-nightly]
 verify_jwt = false
-# Daily cron at 3:00am AEST (17:00 UTC previous day) - recompute proven exits + evaluate stale listings
+# Daily at 17:00 UTC - recompute proven exits + evaluate stale listings
 schedule = "0 17 * * *"
