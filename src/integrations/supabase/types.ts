@@ -4081,6 +4081,19 @@ export type Database = {
         }
         Relationships: []
       }
+      retail_ingest_stats: {
+        Row: {
+          active_listings_total: number | null
+          buy_triggers_today: number | null
+          evaluations_today: number | null
+          identity_mapping_pct: number | null
+          listings_scraped_today: number | null
+          listings_with_identity: number | null
+          triggers_today: number | null
+          watch_triggers_today: number | null
+        }
+        Relationships: []
+      }
       retail_origin_stats: {
         Row: {
           active_listings: number | null
@@ -4838,13 +4851,20 @@ export type Database = {
           year: number
         }[]
       }
-      get_listings_needing_evaluation: {
-        Args: { p_limit?: number; p_max_age_hours?: number }
-        Returns: {
-          listing_id: string
-          reason: string
-        }[]
-      }
+      get_listings_needing_evaluation:
+        | {
+            Args: { p_limit?: number }
+            Returns: {
+              listing_id: string
+            }[]
+          }
+        | {
+            Args: { p_limit?: number; p_max_age_hours?: number }
+            Returns: {
+              listing_id: string
+              reason: string
+            }[]
+          }
       get_nsw_crawl_today: {
         Args: never
         Returns: {
@@ -5056,6 +5076,10 @@ export type Database = {
         Args: { p_match_ids: string[] }
         Returns: number
       }
+      mark_stale_listings_delisted: {
+        Args: { p_stale_days?: number }
+        Returns: number
+      }
       match_dealer_specs_for_listing: {
         Args: { p_listing_id: string }
         Returns: {
@@ -5161,6 +5185,29 @@ export type Database = {
         Returns: {
           stage_counts: Json
           updated_count: number
+        }[]
+      }
+      upsert_retail_listing: {
+        Args: {
+          p_asking_price?: number
+          p_km?: number
+          p_listing_url: string
+          p_make: string
+          p_model: string
+          p_source: string
+          p_source_listing_id: string
+          p_state?: string
+          p_suburb?: string
+          p_variant_family?: string
+          p_variant_raw?: string
+          p_year: number
+        }
+        Returns: {
+          evaluation_result: string
+          identity_id: string
+          is_new: boolean
+          listing_id: string
+          price_changed: boolean
         }[]
       }
       year_to_band: {
