@@ -10,72 +10,72 @@
 
 @layer base {
   :root {
-    /* Dark slate background palette */
-    --background: 222 47% 6%;
-    --foreground: 210 40% 96%;
+    /* Pure black and white theme */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
 
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 96%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 222 47% 10%;
-    --popover-foreground: 210 40% 96%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 98%;
 
-    /* Primary - Emerald for BUY actions */
-    --primary: 160 84% 39%;
-    --primary-foreground: 0 0% 100%;
+    /* Primary - White */
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 4%;
 
-    /* Secondary - Slate for neutral UI */
-    --secondary: 215 28% 17%;
-    --secondary-foreground: 210 40% 90%;
+    /* Secondary - Dark gray */
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 0 0% 90%;
 
-    /* Muted - Subdued backgrounds */
-    --muted: 217 33% 12%;
-    --muted-foreground: 215 20% 55%;
+    /* Muted - Mid grays */
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 55%;
 
-    /* Accent - Soft blue for hover states */
-    --accent: 217 91% 60%;
-    --accent-foreground: 0 0% 100%;
+    /* Accent - Light gray for hover states */
+    --accent: 0 0% 20%;
+    --accent-foreground: 0 0% 98%;
 
-    /* Destructive - Red for errors */
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
+    /* Destructive - Keep slight red for errors */
+    --destructive: 0 0% 45%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 217 33% 18%;
-    --input: 217 33% 15%;
-    --ring: 160 84% 39%;
+    --border: 0 0% 18%;
+    --input: 0 0% 14%;
+    --ring: 0 0% 70%;
 
     --radius: 0.5rem;
 
-    /* Custom semantic colors */
-    --action-buy: 160 84% 39%;
-    --action-buy-foreground: 0 0% 100%;
-    --action-watch: 38 92% 50%;
-    --action-watch-foreground: 0 0% 10%;
+    /* Custom semantic colors - grayscale */
+    --action-buy: 0 0% 98%;
+    --action-buy-foreground: 0 0% 4%;
+    --action-watch: 0 0% 70%;
+    --action-watch-foreground: 0 0% 4%;
     
-    /* Status colors */
-    --status-passed: 280 70% 50%;
-    --status-sold: 160 84% 39%;
-    --status-listed: 217 91% 60%;
-    --status-withdrawn: 0 0% 50%;
+    /* Status colors - grayscale */
+    --status-passed: 0 0% 40%;
+    --status-sold: 0 0% 85%;
+    --status-listed: 0 0% 60%;
+    --status-withdrawn: 0 0% 35%;
     
-    /* Confidence gradient stops */
-    --confidence-low: 0 84% 60%;
-    --confidence-mid: 38 92% 50%;
-    --confidence-high: 160 84% 39%;
+    /* Confidence gradient stops - grayscale */
+    --confidence-low: 0 0% 35%;
+    --confidence-mid: 0 0% 55%;
+    --confidence-high: 0 0% 85%;
 
     /* Shadows */
-    --shadow-glow: 0 0 30px hsl(160 84% 39% / 0.15);
-    --shadow-card: 0 4px 20px hsl(0 0% 0% / 0.4);
+    --shadow-glow: 0 0 30px hsl(0 0% 100% / 0.08);
+    --shadow-card: 0 4px 20px hsl(0 0% 0% / 0.5);
 
     /* Sidebar */
-    --sidebar-background: 222 47% 5%;
-    --sidebar-foreground: 210 40% 80%;
-    --sidebar-primary: 160 84% 39%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 33% 15%;
-    --sidebar-accent-foreground: 210 40% 96%;
-    --sidebar-border: 217 33% 15%;
-    --sidebar-ring: 160 84% 39%;
+    --sidebar-background: 0 0% 3%;
+    --sidebar-foreground: 0 0% 75%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 0 0% 14%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 14%;
+    --sidebar-ring: 0 0% 70%;
   }
 
   .dark {
