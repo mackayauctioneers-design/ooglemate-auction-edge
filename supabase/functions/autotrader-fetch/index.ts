@@ -348,15 +348,23 @@ serve(async (req) => {
             break;
           }
 
-          // Save intermediate progress (in case we hit time budget)
-          await supabase
-            .from("apify_runs_queue")
-            .update({ 
-              items_fetched: offset,
-              items_upserted: (run.items_upserted || 0) + itemsUpsertedThisRun,
-              updated_at: new Date().toISOString()
-            })
-            .eq("id", run.id);
+          // Save intermediate progress atomically (in case we hit time budget)
+          await supabase.rpc("increment_apify_run_progress", {
+            p_id: run.id,
+            p_items_fetched: offset,
+            p_items_upserted_delta: itemsUpsertedThisRun,
+          });
+          // Reset local counter since we've persisted it
+          itemsUpsertedThisRun = 0;
+        }
+
+        // Persist any remaining upserted items atomically
+        if (itemsUpsertedThisRun > 0) {
+          await supabase.rpc("increment_apify_run_progress", {
+            p_id: run.id,
+            p_items_fetched: offset,
+            p_items_upserted_delta: itemsUpsertedThisRun,
+          });
         }
 
         // Update final state based on whether we finished
@@ -368,7 +376,6 @@ serve(async (req) => {
               status: "done",
               completed_at: new Date().toISOString(),
               items_fetched: offset,
-              items_upserted: (run.items_upserted || 0) + itemsUpsertedThisRun,
               locked_until: null,
               lock_token: null,
               updated_at: new Date().toISOString()
@@ -387,7 +394,6 @@ serve(async (req) => {
             .update({ 
               status: "fetching", // Stay in fetching state
               items_fetched: offset,
-              items_upserted: (run.items_upserted || 0) + itemsUpsertedThisRun,
               locked_until: null, // Release lock for next worker
               lock_token: null,
               updated_at: new Date().toISOString()

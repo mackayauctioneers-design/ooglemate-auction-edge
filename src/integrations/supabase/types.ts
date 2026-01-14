@@ -5219,6 +5219,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_apify_run_progress: {
+        Args: {
+          p_id: string
+          p_items_fetched: number
+          p_items_upserted_delta: number
+        }
+        Returns: undefined
+      }
       is_admin_or_internal: { Args: never; Returns: boolean }
       km_band_minmax: {
         Args: { p_km: number }
