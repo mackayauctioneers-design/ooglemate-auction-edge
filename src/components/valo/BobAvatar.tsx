@@ -5,6 +5,7 @@ import { Loader2, X, Volume2, Mic, MicOff, Bug } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useBobSiteContext } from '@/contexts/BobSiteContext';
 import bobAvatarVideo from '@/assets/bob-avatar.mp4';
 // ============================================================================
 // BOB: Voice-first AI using OpenAI Realtime API (WebRTC)
@@ -40,6 +41,7 @@ interface BobAvatarProps {
 
 export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief = false }: BobAvatarProps) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { getContextPayload } = useBobSiteContext();
   
   // Connection state
   const [isOpen, setIsOpen] = useState(false);
@@ -118,6 +120,9 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
         }
       }
 
+      // Get site context for site-aware tools
+      const siteContext = getContextPayload();
+
       // Get ephemeral token from edge function
       const { data, error: tokenError } = await supabase.functions.invoke('bob-realtime-token', {
         body: { 
@@ -125,6 +130,7 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
           briefContext,
           pushMode: !!withPushContext,
           pushContext: withPushContext,
+          siteContext, // Pass site context for site-aware tools
         },
       });
 
@@ -240,7 +246,45 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
       disconnect();
       setIsConnecting(false);
     }
-  }, [disconnect, dealerName, dealership]);
+  }, [disconnect, dealerName, dealership, getContextPayload]);
+
+  // Handle site-aware tool calls - call bob-site-tools edge function
+  const handleSiteToolCall = useCallback(async (tool: string, args: any) => {
+    console.log(`[SITE TOOL] Calling ${tool} with:`, args);
+    
+    try {
+      const context = getContextPayload();
+      
+      // Build params based on tool
+      const params: any = { ...args };
+      if (context?.dealer_id) {
+        params.dealer_id = context.dealer_id;
+      }
+      if (context?.filters) {
+        params.filters = context.filters;
+      }
+      if (tool === 'explain_why_listed' && args.lot_id) {
+        params.lot_id = args.lot_id;
+      } else if (tool === 'explain_why_listed' && context?.selection?.lot_id) {
+        params.lot_id = context.selection.lot_id;
+      }
+      
+      const { data, error } = await supabase.functions.invoke('bob-site-tools', {
+        body: { tool, params, context }
+      });
+      
+      if (error) {
+        console.error(`[SITE TOOL] ${tool} error:`, error);
+        return { error: error.message, message: "Having trouble checking that right now." };
+      }
+      
+      console.log(`[SITE TOOL] ${tool} result:`, data);
+      return data?.data || data || { message: "No data found." };
+    } catch (err) {
+      console.error(`[SITE TOOL] ${tool} exception:`, err);
+      return { error: 'Failed to fetch data', message: "Something went wrong checking that." };
+    }
+  }, [getContextPayload]);
 
   // Handle OANCA tool call - call the bob edge function for pricing
   const handleOancaToolCall = useCallback(async (callId: string, args: any) => {
@@ -400,40 +444,53 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
         break;
 
       // ============================================================
-      // OANCA TOOL CALL HANDLING - CRITICAL FOR UNIFIED PRICING
+      // TOOL CALL HANDLING - OANCA + SITE-AWARE TOOLS
       // ============================================================
       case 'response.function_call_arguments.done':
-        console.log("[OANCA TOOL] Function call received:", event);
+        console.log("[BOB TOOL] Function call received:", event.name);
         
-        if (event.name === 'get_oanca_price') {
-          try {
-            const args = JSON.parse(event.arguments);
-            console.log("[OANCA TOOL] Parsed args:", args);
-            
+        try {
+          const args = JSON.parse(event.arguments);
+          console.log(`[BOB TOOL] ${event.name} args:`, args);
+          
+          let result: any;
+          
+          if (event.name === 'get_oanca_price') {
             // Call OANCA via bob edge function
-            const result = await handleOancaToolCall(event.call_id, args);
-            
-            // Send tool result back to Realtime API
-            if (dcRef.current?.readyState === 'open') {
-              // Create conversation item with tool result
-              const toolResultEvent = {
-                type: 'conversation.item.create',
-                item: {
-                  type: 'function_call_output',
-                  call_id: event.call_id,
-                  output: JSON.stringify(result)
-                }
-              };
-              
-              dcRef.current.send(JSON.stringify(toolResultEvent));
-              console.log("[OANCA TOOL] Sent tool result to Realtime API");
-              
-              // Trigger response generation with the tool result
-              dcRef.current.send(JSON.stringify({ type: 'response.create' }));
-            }
-          } catch (parseError) {
-            console.error("[OANCA TOOL] Failed to parse arguments:", parseError);
+            result = await handleOancaToolCall(event.call_id, args);
+          } else if (event.name === 'get_today_opportunities') {
+            // Call site-aware tool via bob-site-tools
+            result = await handleSiteToolCall('get_today_opportunities', args);
+          } else if (event.name === 'get_upcoming_auctions') {
+            result = await handleSiteToolCall('get_upcoming_auction_cards', args);
+          } else if (event.name === 'get_watchlist') {
+            result = await handleSiteToolCall('get_watchlist', args);
+          } else if (event.name === 'explain_lot') {
+            result = await handleSiteToolCall('explain_why_listed', args);
+          } else {
+            console.warn(`[BOB TOOL] Unknown tool: ${event.name}`);
+            result = { error: `Unknown tool: ${event.name}` };
           }
+          
+          // Send tool result back to Realtime API
+          if (dcRef.current?.readyState === 'open') {
+            const toolResultEvent = {
+              type: 'conversation.item.create',
+              item: {
+                type: 'function_call_output',
+                call_id: event.call_id,
+                output: JSON.stringify(result)
+              }
+            };
+            
+            dcRef.current.send(JSON.stringify(toolResultEvent));
+            console.log(`[BOB TOOL] Sent ${event.name} result to Realtime API`);
+            
+            // Trigger response generation with the tool result
+            dcRef.current.send(JSON.stringify({ type: 'response.create' }));
+          }
+        } catch (parseError) {
+          console.error("[BOB TOOL] Failed to parse arguments:", parseError);
         }
         break;
 
