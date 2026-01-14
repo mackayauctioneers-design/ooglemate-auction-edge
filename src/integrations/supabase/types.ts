@@ -2067,6 +2067,8 @@ export type Database = {
         Row: {
           asking_price: number
           created_at: string
+          cross_post_confidence: number | null
+          cross_post_linked_at: string | null
           delisted_at: string | null
           first_seen_at: string
           id: string
@@ -2077,21 +2079,29 @@ export type Database = {
           listing_url: string | null
           make: string
           model: string
+          origin_entity: string | null
           postcode: string | null
           price_history: Json | null
           region_id: string | null
+          seller_name_raw: string | null
+          seller_phone_hash: string | null
+          seller_type: string | null
           source: string
+          source_chain: Json | null
           source_listing_id: string
           state: string | null
           suburb: string | null
           updated_at: string
           variant_family: string | null
           variant_raw: string | null
+          vehicle_instance_id: string | null
           year: number
         }
         Insert: {
           asking_price: number
           created_at?: string
+          cross_post_confidence?: number | null
+          cross_post_linked_at?: string | null
           delisted_at?: string | null
           first_seen_at?: string
           id?: string
@@ -2102,21 +2112,29 @@ export type Database = {
           listing_url?: string | null
           make: string
           model: string
+          origin_entity?: string | null
           postcode?: string | null
           price_history?: Json | null
           region_id?: string | null
+          seller_name_raw?: string | null
+          seller_phone_hash?: string | null
+          seller_type?: string | null
           source: string
+          source_chain?: Json | null
           source_listing_id: string
           state?: string | null
           suburb?: string | null
           updated_at?: string
           variant_family?: string | null
           variant_raw?: string | null
+          vehicle_instance_id?: string | null
           year: number
         }
         Update: {
           asking_price?: number
           created_at?: string
+          cross_post_confidence?: number | null
+          cross_post_linked_at?: string | null
           delisted_at?: string | null
           first_seen_at?: string
           id?: string
@@ -2127,16 +2145,22 @@ export type Database = {
           listing_url?: string | null
           make?: string
           model?: string
+          origin_entity?: string | null
           postcode?: string | null
           price_history?: Json | null
           region_id?: string | null
+          seller_name_raw?: string | null
+          seller_phone_hash?: string | null
+          seller_type?: string | null
           source?: string
+          source_chain?: Json | null
           source_listing_id?: string
           state?: string | null
           suburb?: string | null
           updated_at?: string
           variant_family?: string | null
           variant_raw?: string | null
+          vehicle_instance_id?: string | null
           year?: number
         }
         Relationships: [
@@ -3992,6 +4016,28 @@ export type Database = {
         }
         Relationships: []
       }
+      potential_cross_posts: {
+        Row: {
+          km_a: number | null
+          km_b: number | null
+          km_diff: number | null
+          listing_a_id: string | null
+          listing_b_id: string | null
+          make: string | null
+          match_confidence: number | null
+          model: string | null
+          origin_a: string | null
+          origin_b: string | null
+          price_a: number | null
+          price_b: number | null
+          price_diff: number | null
+          seller_phone_hash: string | null
+          source_a: string | null
+          source_b: string | null
+          year: number | null
+        }
+        Relationships: []
+      }
       regional_demand_21d: {
         Row: {
           cleared_count: number | null
@@ -4001,6 +4047,22 @@ export type Database = {
           median_days_to_clear: number | null
           model: string | null
           region_id: string | null
+        }
+        Relationships: []
+      }
+      retail_origin_stats: {
+        Row: {
+          active_listings: number | null
+          avg_per_day_7d: number | null
+          first_contribution: string | null
+          latest_contribution: string | null
+          listings_30d: number | null
+          listings_7d: number | null
+          origin_entity: string | null
+          seller_type: string | null
+          source_count: number | null
+          sources: string[] | null
+          total_listings: number | null
         }
         Relationships: []
       }
@@ -4863,6 +4925,10 @@ export type Database = {
         }[]
       }
       km_to_profit_band: { Args: { p_km: number }; Returns: string }
+      link_cross_posts: {
+        Args: { p_confidence?: number; p_listing_ids: string[] }
+        Returns: string
+      }
       location_to_region: { Args: { p_location: string }; Returns: string }
       map_listing_to_identity: {
         Args: {
