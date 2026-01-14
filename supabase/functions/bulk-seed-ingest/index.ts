@@ -88,11 +88,11 @@ serve(async (req) => {
       });
     }
 
-    // Acquire lock
+    // Acquire lock atomically - attempt update then verify we got it
     const lockToken = crypto.randomUUID();
     const lockUntil = new Date(now.getTime() + LOCK_DURATION_MS).toISOString();
     
-    const { error: lockError } = await supabase
+    await supabase
       .from("retail_seed_cursor")
       .update({ 
         locked_until: lockUntil, 
@@ -104,9 +104,26 @@ serve(async (req) => {
       .eq("id", cursor.id)
       .or(`locked_until.is.null,locked_until.lt.${now.toISOString()}`);
 
-    if (lockError) {
-      throw new Error(`Failed to acquire lock: ${lockError.message}`);
+    // Re-read to verify we actually got the lock (atomic check)
+    const { data: lockCheck, error: lockCheckError } = await supabase
+      .from("retail_seed_cursor")
+      .select("lock_token")
+      .eq("id", cursor.id)
+      .single();
+
+    if (lockCheckError || lockCheck?.lock_token !== lockToken) {
+      console.log(`Lock acquisition failed: another process got the lock`);
+      return new Response(JSON.stringify({ 
+        status: "lock_race", 
+        message: "Lost lock race to another invocation",
+        our_token: lockToken,
+        actual_token: lockCheck?.lock_token
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+
+    console.log(`Lock acquired: ${lockToken}`);
 
     const cursorBefore = {
       make_idx: cursor.make_idx,
