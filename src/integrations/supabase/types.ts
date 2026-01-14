@@ -2242,6 +2242,66 @@ export type Database = {
         }
         Relationships: []
       }
+      retail_seed_cursor_autotrader: {
+        Row: {
+          batch_idx: number
+          batches_completed: number | null
+          completed_at: string | null
+          id: string
+          last_done_log_at: string | null
+          last_error: string | null
+          lock_token: string | null
+          locked_until: string | null
+          make_idx: number
+          started_at: string | null
+          state_idx: number
+          status: string
+          total_errors: number | null
+          total_evaluations: number | null
+          total_new: number | null
+          total_updated: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          batch_idx?: number
+          batches_completed?: number | null
+          completed_at?: string | null
+          id?: string
+          last_done_log_at?: string | null
+          last_error?: string | null
+          lock_token?: string | null
+          locked_until?: string | null
+          make_idx?: number
+          started_at?: string | null
+          state_idx?: number
+          status?: string
+          total_errors?: number | null
+          total_evaluations?: number | null
+          total_new?: number | null
+          total_updated?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          batch_idx?: number
+          batches_completed?: number | null
+          completed_at?: string | null
+          id?: string
+          last_done_log_at?: string | null
+          last_error?: string | null
+          lock_token?: string | null
+          locked_until?: string | null
+          make_idx?: number
+          started_at?: string | null
+          state_idx?: number
+          status?: string
+          total_errors?: number | null
+          total_evaluations?: number | null
+          total_new?: number | null
+          total_updated?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       sales_evidence: {
         Row: {
           confidence_score: number | null
@@ -4144,8 +4204,16 @@ export type Database = {
       retail_ingest_stats: {
         Row: {
           active_listings_total: number | null
+          autotrader_active: number | null
+          autotrader_identity_pct: number | null
+          autotrader_today: number | null
+          autotrader_triggers_today: number | null
           buy_triggers_today: number | null
           evaluations_today: number | null
+          gumtree_active: number | null
+          gumtree_identity_pct: number | null
+          gumtree_today: number | null
+          gumtree_triggers_today: number | null
           identity_mapping_pct: number | null
           listings_scraped_today: number | null
           listings_with_identity: number | null
@@ -5136,10 +5204,12 @@ export type Database = {
         Args: { p_match_ids: string[] }
         Returns: number
       }
-      mark_stale_listings_delisted: {
-        Args: { p_stale_days?: number }
-        Returns: number
-      }
+      mark_stale_listings_delisted:
+        | { Args: { p_stale_days?: number }; Returns: number }
+        | {
+            Args: { p_source?: string; p_stale_days?: number }
+            Returns: number
+          }
       match_dealer_specs_for_listing: {
         Args: { p_listing_id: string }
         Returns: {
