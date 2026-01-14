@@ -103,6 +103,17 @@ function mapApifyItem(item: Record<string, unknown>): AutotraderListing | null {
  * 
  * Claims queued Apify runs, checks if complete, fetches datasets, upserts listings.
  * Runs repeatedly on schedule to drain the queue.
+ * 
+ * CRITICAL STATE MACHINE:
+ * - queued → running (Apify still processing)
+ * - running → fetching (Apify complete, fetching dataset)
+ * - fetching → fetching (partial progress, time budget exhausted)
+ * - fetching → done (all items fetched)
+ * - any → error (on failure)
+ * 
+ * A run is ONLY marked "done" when:
+ * - items.length === 0 (no more items)
+ * - items.length < batchSize (last page)
  */
 
 serve(async (req) => {
@@ -124,18 +135,16 @@ serve(async (req) => {
     }
 
     const now = new Date();
-    const lockToken = crypto.randomUUID();
-    const lockUntil = new Date(now.getTime() + LOCK_DURATION_MS).toISOString();
 
     let runsProcessed = 0;
     let totalNew = 0;
     let totalUpdated = 0;
     let totalErrors = 0;
-    const runResults: Array<{ run_id: string; status: string; items?: number }> = [];
+    const runResults: Array<{ run_id: string; status: string; items?: number; reason?: string }> = [];
 
     // Process runs until time budget exhausted
     while (Date.now() - startTime < TIME_BUDGET_MS) {
-      // Claim next queued or running run (running = Apify still processing)
+      // Claim next queued or running run
       const { data: runs, error: fetchError } = await supabase
         .from("apify_runs_queue")
         .select("*")
@@ -151,12 +160,16 @@ serve(async (req) => {
 
       const run = runs[0];
 
-      // Try to acquire lock
+      // Generate PER-RUN lock token (not reused across loop iterations)
+      const runLockToken = crypto.randomUUID();
+      const lockUntil = new Date(Date.now() + LOCK_DURATION_MS).toISOString();
+
+      // Try to acquire lock for this specific run
       const { error: lockError } = await supabase
         .from("apify_runs_queue")
         .update({ 
           locked_until: lockUntil, 
-          lock_token: lockToken,
+          lock_token: runLockToken,
           updated_at: now.toISOString()
         })
         .eq("id", run.id)
@@ -174,12 +187,12 @@ serve(async (req) => {
         .eq("id", run.id)
         .single();
 
-      if (lockCheck?.lock_token !== lockToken) {
+      if (lockCheck?.lock_token !== runLockToken) {
         console.log(`Lost lock race for run ${run.id}`);
         continue;
       }
 
-      console.log(`Processing run ${run.run_id} (status: ${run.status})`);
+      console.log(`Processing run ${run.run_id} (status: ${run.status}, lock: ${runLockToken})`);
 
       try {
         // Check Apify run status
@@ -193,7 +206,7 @@ serve(async (req) => {
         console.log(`Apify run ${run.run_id} status: ${apifyStatus}`);
 
         if (apifyStatus === "RUNNING" || apifyStatus === "READY") {
-          // Still running, update status and move on
+          // Still running, update status and release lock
           await supabase
             .from("apify_runs_queue")
             .update({ 
@@ -210,7 +223,7 @@ serve(async (req) => {
         }
 
         if (apifyStatus === "FAILED" || apifyStatus === "ABORTED" || apifyStatus === "TIMED-OUT") {
-          // Failed, mark as error
+          // Failed, mark as error and release lock
           await supabase
             .from("apify_runs_queue")
             .update({ 
@@ -223,18 +236,27 @@ serve(async (req) => {
             })
             .eq("id", run.id);
 
-          runResults.push({ run_id: run.run_id, status: "error" });
+          runResults.push({ run_id: run.run_id, status: "error", reason: apifyStatus });
           totalErrors++;
           continue;
         }
 
         if (apifyStatus !== "SUCCEEDED") {
-          // Unknown status, skip
+          // Unknown status, release lock and skip
+          await supabase
+            .from("apify_runs_queue")
+            .update({ 
+              locked_until: null,
+              lock_token: null,
+              updated_at: now.toISOString()
+            })
+            .eq("id", run.id);
+
           runResults.push({ run_id: run.run_id, status: `unknown_${apifyStatus}` });
           continue;
         }
 
-        // Update to fetching status
+        // Apify run succeeded - update to fetching status
         await supabase
           .from("apify_runs_queue")
           .update({ 
@@ -245,12 +267,17 @@ serve(async (req) => {
           .eq("id", run.id);
 
         // Fetch dataset items with pagination
+        // Start from where we left off (items_fetched tracks progress)
         let offset = run.items_fetched || 0;
         const batchSize = 100;
+        
+        // Track progress IN MEMORY for this run
+        let itemsFetchedThisRun = 0;
+        let itemsUpsertedThisRun = 0;
         let runNew = 0;
         let runUpdated = 0;
         let runErrors = 0;
-        let itemsThisRun = 0;
+        let isFinished = false;
 
         while (Date.now() - startTime < TIME_BUDGET_MS) {
           const datasetResponse = await fetch(
@@ -263,12 +290,15 @@ serve(async (req) => {
 
           const items = await datasetResponse.json();
           
+          // Check if we've reached the end
           if (!items || items.length === 0) {
-            // All items fetched
+            isFinished = true;
+            console.log(`Run ${run.run_id}: no more items at offset ${offset}, marking done`);
             break;
           }
 
           console.log(`Fetched ${items.length} items from offset ${offset}`);
+          itemsFetchedThisRun += items.length;
 
           // Map and upsert listings
           const listings = items
@@ -297,6 +327,7 @@ serve(async (req) => {
                 continue;
               }
 
+              itemsUpsertedThisRun++;
               const result = data?.[0] || data;
               if (result?.is_new) {
                 runNew++;
@@ -309,42 +340,67 @@ serve(async (req) => {
           }
 
           offset += items.length;
-          itemsThisRun += items.length;
 
-          // Update progress
+          // Check if this was the last page
+          if (items.length < batchSize) {
+            isFinished = true;
+            console.log(`Run ${run.run_id}: last page (${items.length} < ${batchSize}), marking done`);
+            break;
+          }
+
+          // Save intermediate progress (in case we hit time budget)
           await supabase
             .from("apify_runs_queue")
             .update({ 
               items_fetched: offset,
-              items_upserted: (run.items_upserted || 0) + listings.length,
-              updated_at: now.toISOString()
+              items_upserted: (run.items_upserted || 0) + itemsUpsertedThisRun,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", run.id);
+        }
+
+        // Update final state based on whether we finished
+        if (isFinished) {
+          // COMPLETED: Mark as done
+          await supabase
+            .from("apify_runs_queue")
+            .update({ 
+              status: "done",
+              completed_at: new Date().toISOString(),
+              items_fetched: offset,
+              items_upserted: (run.items_upserted || 0) + itemsUpsertedThisRun,
+              locked_until: null,
+              lock_token: null,
+              updated_at: new Date().toISOString()
             })
             .eq("id", run.id);
 
-          if (items.length < batchSize) {
-            // Last batch
-            break;
-          }
+          runResults.push({ 
+            run_id: run.run_id, 
+            status: "done", 
+            items: itemsFetchedThisRun 
+          });
+        } else {
+          // PARTIAL: Time budget exhausted, keep as fetching for next worker
+          await supabase
+            .from("apify_runs_queue")
+            .update({ 
+              status: "fetching", // Stay in fetching state
+              items_fetched: offset,
+              items_upserted: (run.items_upserted || 0) + itemsUpsertedThisRun,
+              locked_until: null, // Release lock for next worker
+              lock_token: null,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", run.id);
+
+          runResults.push({ 
+            run_id: run.run_id, 
+            status: "partial", 
+            items: itemsFetchedThisRun,
+            reason: `time_budget_at_offset_${offset}`
+          });
         }
-
-        // Mark run as done
-        await supabase
-          .from("apify_runs_queue")
-          .update({ 
-            status: "done",
-            completed_at: now.toISOString(),
-            items_fetched: offset,
-            locked_until: null,
-            lock_token: null,
-            updated_at: now.toISOString()
-          })
-          .eq("id", run.id);
-
-        runResults.push({ 
-          run_id: run.run_id, 
-          status: "done", 
-          items: itemsThisRun 
-        });
 
         totalNew += runNew;
         totalUpdated += runUpdated;
@@ -355,17 +411,19 @@ serve(async (req) => {
         const errorMsg = err instanceof Error ? err.message : String(err);
         console.error(`Error processing run ${run.run_id}:`, errorMsg);
 
+        // Release lock but keep status so we can retry
         await supabase
           .from("apify_runs_queue")
           .update({ 
             last_error: errorMsg,
             locked_until: null,
             lock_token: null,
-            updated_at: now.toISOString()
+            updated_at: new Date().toISOString()
           })
           .eq("id", run.id);
 
         totalErrors++;
+        runResults.push({ run_id: run.run_id, status: "error", reason: errorMsg });
       }
     }
 
