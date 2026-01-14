@@ -113,33 +113,3 @@ export function ProfitScoreBadge({
     </TooltipProvider>
   );
 }
-
-// Simple heat indicator for fallback (count-based)
-interface SimpleHeatIndicatorProps {
-  matchingLots: number;
-}
-
-export function SimpleHeatIndicator({ matchingLots }: SimpleHeatIndicatorProps) {
-  const getHeatLevel = (count: number) => {
-    if (count >= 8) return 'hot';
-    if (count >= 3) return 'warm';
-    return 'cold';
-  };
-
-  const heat = getHeatLevel(matchingLots);
-  
-  const config = {
-    hot: { icon: Flame, className: 'text-primary' },
-    warm: { icon: Thermometer, className: 'text-muted-foreground' },
-    cold: { icon: Snowflake, className: 'text-muted-foreground/60' },
-  };
-  
-  const { icon: Icon, className } = config[heat];
-  
-  return (
-    <div className={`flex items-center gap-1 ${className}`}>
-      <Icon className="h-4 w-4" />
-      <span className="text-xs font-medium">{matchingLots} relevant</span>
-    </div>
-  );
-}
