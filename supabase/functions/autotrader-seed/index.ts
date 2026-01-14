@@ -169,9 +169,11 @@ serve(async (req) => {
         };
 
         // Start Apify run with waitForFinish=0 (returns immediately)
-        // For private actors, use ~username format
+        // For private actors, we need username/actorId format
         const apifyUsername = Deno.env.get("APIFY_USERNAME") || "affectionate_yepsen";
-        const actorPath = actorId.includes("/") ? actorId : `~${apifyUsername}/${actorId}`;
+        // If actorId already has a slash, use as-is; otherwise prepend username
+        const actorPath = actorId.includes("/") ? actorId : `${apifyUsername}/${actorId}`;
+        console.log(`Calling Apify actor: ${actorPath}`);
         const runResponse = await fetch(
           `https://api.apify.com/v2/acts/${actorPath}/runs?token=${apifyToken}&waitForFinish=0`,
           {
