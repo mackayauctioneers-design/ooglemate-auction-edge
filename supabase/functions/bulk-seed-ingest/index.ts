@@ -17,6 +17,7 @@ const PAGES = [1, 2, 3];
 const LIMIT_PER_PAGE = 40;
 const DELAY_MS = 2000;
 const TIME_BUDGET_MS = 28000; // 28 seconds - exit cleanly before platform timeout
+const LOCK_DURATION_MS = 120000; // 2 minutes lock
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -45,8 +46,26 @@ serve(async (req) => {
       throw new Error(`Failed to read cursor: ${cursorError.message}`);
     }
 
-    // If already done, skip
+    // If already done, exit quickly (log once per day max)
     if (cursor.status === "done") {
+      const lastDoneLog = cursor.last_done_log_at ? new Date(cursor.last_done_log_at) : null;
+      const now = new Date();
+      const shouldLog = !lastDoneLog || (now.getTime() - lastDoneLog.getTime() > 24 * 60 * 60 * 1000);
+      
+      if (shouldLog) {
+        await supabase
+          .from("retail_seed_cursor")
+          .update({ last_done_log_at: now.toISOString() })
+          .eq("id", cursor.id);
+          
+        await supabase.from("cron_audit_log").insert({
+          cron_name: "bulk-seed-ingest",
+          success: true,
+          result: { status: "done", message: "Bulk seed completed, skipping (daily log)" },
+          run_date: now.toISOString().split("T")[0],
+        });
+      }
+      
       return new Response(JSON.stringify({ 
         status: "done", 
         message: "Bulk seed already completed",
@@ -56,20 +75,45 @@ serve(async (req) => {
       });
     }
 
+    // Check lock - prevent overlapping runs
+    const now = new Date();
+    if (cursor.locked_until && new Date(cursor.locked_until) > now) {
+      console.log(`Skipping: locked until ${cursor.locked_until}`);
+      return new Response(JSON.stringify({ 
+        status: "locked", 
+        message: `Another run in progress, locked until ${cursor.locked_until}`,
+        lock_token: cursor.lock_token
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Acquire lock
+    const lockToken = crypto.randomUUID();
+    const lockUntil = new Date(now.getTime() + LOCK_DURATION_MS).toISOString();
+    
+    const { error: lockError } = await supabase
+      .from("retail_seed_cursor")
+      .update({ 
+        locked_until: lockUntil, 
+        lock_token: lockToken,
+        status: cursor.status === "pending" ? "running" : cursor.status,
+        started_at: cursor.started_at || now.toISOString(),
+        updated_at: now.toISOString()
+      })
+      .eq("id", cursor.id)
+      .or(`locked_until.is.null,locked_until.lt.${now.toISOString()}`);
+
+    if (lockError) {
+      throw new Error(`Failed to acquire lock: ${lockError.message}`);
+    }
+
     const cursorBefore = {
       make_idx: cursor.make_idx,
       state_idx: cursor.state_idx,
       page: cursor.page,
       status: cursor.status,
     };
-
-    // Mark as running
-    if (cursor.status === "pending") {
-      await supabase
-        .from("retail_seed_cursor")
-        .update({ status: "running", started_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq("id", cursor.id);
-    }
 
     const results = {
       batches_run: 0,
@@ -86,7 +130,7 @@ serve(async (req) => {
     let completed = false;
 
     // Loop through combinations with time budget
-    outer: while (Date.now() - startTime < TIME_BUDGET_MS) {
+    while (Date.now() - startTime < TIME_BUDGET_MS) {
       // Check if we've completed all combinations
       if (makeIdx >= TOP_MAKES.length) {
         completed = true;
@@ -184,7 +228,7 @@ serve(async (req) => {
       status: completed ? "done" : "running",
     };
 
-    // Update cursor with final state - totals updated ONCE at end with this invocation's deltas
+    // Update cursor with final state and release lock
     await supabase
       .from("retail_seed_cursor")
       .update({
@@ -199,6 +243,8 @@ serve(async (req) => {
         total_evaluations: cursor.total_evaluations + results.evaluations,
         total_errors: cursor.total_errors + results.errors,
         last_error: results.error_samples.length > 0 ? results.error_samples[0] : null,
+        locked_until: null, // Release lock
+        lock_token: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", cursor.id);

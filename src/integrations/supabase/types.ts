@@ -2187,7 +2187,10 @@ export type Database = {
           batches_completed: number | null
           completed_at: string | null
           id: string
+          last_done_log_at: string | null
           last_error: string | null
+          lock_token: string | null
+          locked_until: string | null
           make_idx: number
           page: number
           started_at: string | null
@@ -2203,7 +2206,10 @@ export type Database = {
           batches_completed?: number | null
           completed_at?: string | null
           id?: string
+          last_done_log_at?: string | null
           last_error?: string | null
+          lock_token?: string | null
+          locked_until?: string | null
           make_idx?: number
           page?: number
           started_at?: string | null
@@ -2219,7 +2225,10 @@ export type Database = {
           batches_completed?: number | null
           completed_at?: string | null
           id?: string
+          last_done_log_at?: string | null
           last_error?: string | null
+          lock_token?: string | null
+          locked_until?: string | null
           make_idx?: number
           page?: number
           started_at?: string | null
