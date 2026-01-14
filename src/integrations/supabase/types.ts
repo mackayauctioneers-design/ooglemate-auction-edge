@@ -2182,6 +2182,57 @@ export type Database = {
           },
         ]
       }
+      retail_seed_cursor: {
+        Row: {
+          batches_completed: number | null
+          completed_at: string | null
+          id: string
+          last_error: string | null
+          make_idx: number
+          page: number
+          started_at: string | null
+          state_idx: number
+          status: string
+          total_errors: number | null
+          total_evaluations: number | null
+          total_new: number | null
+          total_updated: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          batches_completed?: number | null
+          completed_at?: string | null
+          id?: string
+          last_error?: string | null
+          make_idx?: number
+          page?: number
+          started_at?: string | null
+          state_idx?: number
+          status?: string
+          total_errors?: number | null
+          total_evaluations?: number | null
+          total_new?: number | null
+          total_updated?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          batches_completed?: number | null
+          completed_at?: string | null
+          id?: string
+          last_error?: string | null
+          make_idx?: number
+          page?: number
+          started_at?: string | null
+          state_idx?: number
+          status?: string
+          total_errors?: number | null
+          total_evaluations?: number | null
+          total_new?: number | null
+          total_updated?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       sales_evidence: {
         Row: {
           confidence_score: number | null
