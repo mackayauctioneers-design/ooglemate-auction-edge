@@ -4274,6 +4274,39 @@ export type Database = {
             }
             Returns: boolean
           }
+      compute_identity_hash: {
+        Args: {
+          p_drivetrain: string
+          p_fuel: string
+          p_km_band: string
+          p_make: string
+          p_model: string
+          p_region_id: string
+          p_transmission: string
+          p_variant_family: string
+          p_year_max: number
+          p_year_min: number
+        }
+        Returns: string
+      }
+      compute_proven_exit: {
+        Args: { p_identity_id: string }
+        Returns: {
+          confidence_label: string
+          contributing_dealer_ids: string[]
+          data_sources: string[]
+          exit_method: string
+          exit_value: number
+          identity_id: string
+          km_band_used: string
+          newest_sale_date: string
+          oldest_sale_date: string
+          recency_weighted: boolean
+          region_scope: string
+          sale_recency_days: number
+          sample_size: number
+        }[]
+      }
       create_auction_source: {
         Args: {
           p_display_name: string
@@ -4347,6 +4380,19 @@ export type Database = {
         Args: { p_listing_uuid: string }
         Returns: {
           alerts_created: number
+        }[]
+      }
+      evaluate_trigger: {
+        Args: { p_config_version?: string; p_listing_id: string }
+        Returns: {
+          confidence_label: string
+          evaluation_id: string
+          gap_dollars: number
+          gap_pct: number
+          gate_failures: string[]
+          proven_exit_value: number
+          reasons: string[]
+          result: string
         }[]
       }
       evaluate_watch_status: {
@@ -4818,6 +4864,20 @@ export type Database = {
       }
       km_to_profit_band: { Args: { p_km: number }; Returns: string }
       location_to_region: { Args: { p_location: string }; Returns: string }
+      map_listing_to_identity: {
+        Args: {
+          p_drivetrain?: string
+          p_fuel?: string
+          p_km?: number
+          p_make: string
+          p_model: string
+          p_region_id?: string
+          p_transmission?: string
+          p_variant_family?: string
+          p_year: number
+        }
+        Returns: string
+      }
       mark_spec_matches_slack_sent: {
         Args: { p_match_ids: string[] }
         Returns: number
