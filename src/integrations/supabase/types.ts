@@ -4451,21 +4451,7 @@ export type Database = {
       }
       compute_proven_exit: {
         Args: { p_identity_id: string }
-        Returns: {
-          confidence_label: string
-          contributing_dealer_ids: string[]
-          data_sources: string[]
-          exit_method: string
-          exit_value: number
-          identity_id: string
-          km_band_used: string
-          newest_sale_date: string
-          oldest_sale_date: string
-          recency_weighted: boolean
-          region_scope: string
-          sale_recency_days: number
-          sample_size: number
-        }[]
+        Returns: undefined
       }
       create_auction_source: {
         Args: {
@@ -4552,9 +4538,11 @@ export type Database = {
         }[]
       }
       evaluate_trigger: {
-        Args: { p_config_version?: string; p_listing_id: string }
+        Args: { p_config_version: string; p_listing_id: string }
         Returns: {
           evaluation_id: string
+          gap_dollars: number
+          gap_pct: number
           gate_failures: string[]
           reasons: string[]
           result: string
