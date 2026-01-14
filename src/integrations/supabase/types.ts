@@ -2575,11 +2575,13 @@ export type Database = {
           location: string | null
           make: string
           model: string
+          notify_reason: string | null
           proven_exit_summary: string | null
           proven_exit_value: number
           sample_size: number
           sent_at: string | null
           sent_price: number | null
+          should_notify: boolean
           target_dealer_ids: string[] | null
           target_region_id: string | null
           trigger_type: string
@@ -2605,11 +2607,13 @@ export type Database = {
           location?: string | null
           make: string
           model: string
+          notify_reason?: string | null
           proven_exit_summary?: string | null
           proven_exit_value: number
           sample_size: number
           sent_at?: string | null
           sent_price?: number | null
+          should_notify?: boolean
           target_dealer_ids?: string[] | null
           target_region_id?: string | null
           trigger_type: string
@@ -2635,11 +2639,13 @@ export type Database = {
           location?: string | null
           make?: string
           model?: string
+          notify_reason?: string | null
           proven_exit_summary?: string | null
           proven_exit_value?: number
           sample_size?: number
           sent_at?: string | null
           sent_price?: number | null
+          should_notify?: boolean
           target_dealer_ids?: string[] | null
           target_region_id?: string | null
           trigger_type?: string
@@ -4781,7 +4787,20 @@ export type Database = {
           reason: string
         }[]
       }
-      emit_sales_trigger: { Args: { p_evaluation_id: string }; Returns: string }
+      emit_sales_trigger:
+        | { Args: { p_evaluation_id: string }; Returns: string }
+        | {
+            Args: {
+              p_config_version: number
+              p_evaluation_id: string
+              p_gap_dollars: number
+              p_gap_pct: number
+              p_listing_id: string
+              p_proven_exit_value: number
+              p_trigger_type: string
+            }
+            Returns: string
+          }
       escalate_stale_va_tasks: { Args: never; Returns: Json }
       evaluate_and_emit_trigger: {
         Args: { p_config_version: string; p_listing_id: string }
