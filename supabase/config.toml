@@ -202,3 +202,16 @@ schedule = "0,30 21,22,23,0,1,2,3,4,5,6,7,8,9,10 * * *"
 verify_jwt = false
 # Every 5 minutes until cursor status=done
 schedule = "*/5 * * * *"
+
+[functions.autotrader-ingest]
+verify_jwt = false
+
+[functions.autotrader-seed]
+verify_jwt = false
+# Every 5 minutes until autotrader cursor status=done
+schedule = "*/5 * * * *"
+
+[functions.autotrader-ingest-cron]
+verify_jwt = false
+# Every 30 minutes during AU business hours (after seed complete)
+schedule = "0,30 21,22,23,0,1,2,3,4,5,6,7,8,9,10 * * *"
