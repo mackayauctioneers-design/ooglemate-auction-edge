@@ -149,16 +149,36 @@ serve(async (req) => {
 
     results.elapsed_ms = Date.now() - startTime;
 
-    // Log to audit - capture errors explicitly
-    const { error: auditError } = await supabase.from("cron_audit_log").insert({
+    // Build audit row with summary (avoid huge payloads)
+    const auditRow = {
       cron_name: "autotrader-api-cron",
       success: results.errors.length === 0,
-      result: results,
+      result: {
+        total_new: results.total_new,
+        total_updated: results.total_updated,
+        batches_completed: results.batches_completed,
+        elapsed_ms: results.elapsed_ms,
+        errors: results.errors.slice(0, 5),
+      },
       run_date: new Date().toISOString().split("T")[0],
-    });
+    };
+
+    // Log to audit
+    const { error: auditError } = await supabase.from("cron_audit_log").insert(auditRow);
     if (auditError) {
-      console.error("Audit log insert failed:", auditError.message, auditError.code);
+      console.error("AUDIT INSERT FAILED", auditError);
+      console.error("AUDIT ROW", JSON.stringify(auditRow).slice(0, 2000));
+    } else {
+      console.log("AUDIT INSERT OK");
     }
+
+    // Heartbeat - guaranteed signal
+    await supabase.from("cron_heartbeat").upsert({
+      cron_name: "autotrader-api-cron",
+      last_seen_at: new Date().toISOString(),
+      last_ok: results.errors.length === 0,
+      note: `new=${results.total_new} ms=${results.elapsed_ms}`,
+    });
 
     console.log(`Cron complete: ${results.total_new} new, ${results.elapsed_ms}ms`);
 
@@ -175,15 +195,25 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { error: auditError } = await supabase.from("cron_audit_log").insert({
+    const errorAuditRow = {
       cron_name: "autotrader-api-cron",
       success: false,
       error: errorMsg,
       run_date: new Date().toISOString().split("T")[0],
-    });
+    };
+    const { error: auditError } = await supabase.from("cron_audit_log").insert(errorAuditRow);
     if (auditError) {
-      console.error("Audit log insert failed (in catch):", auditError.message, auditError.code);
+      console.error("AUDIT INSERT FAILED (catch)", auditError);
+      console.error("AUDIT ROW", JSON.stringify(errorAuditRow));
     }
+
+    // Heartbeat even on error
+    await supabase.from("cron_heartbeat").upsert({
+      cron_name: "autotrader-api-cron",
+      last_seen_at: new Date().toISOString(),
+      last_ok: false,
+      note: `error: ${errorMsg.slice(0, 100)}`,
+    });
 
     return new Response(JSON.stringify({ error: errorMsg }), {
       status: 500,
