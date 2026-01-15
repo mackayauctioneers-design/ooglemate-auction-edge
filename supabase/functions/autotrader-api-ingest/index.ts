@@ -189,16 +189,22 @@ serve(async (req) => {
       }
 
       // Build API URL with EXACT DevTools params
-      // Build URL - start simple, add filters only if they work
+      // Build URL with EXACT DevTools params
       const params = new URLSearchParams();
       params.set("page", currentPage.toString());
       params.set("paginate", DEFAULT_PAGINATE.toString());
       params.set("sortBy", "listing_created");
       params.set("orderBy", "desc");
-      params.set("sourceCondition", "used");
+      params.set("sourceCondition", "1:Used"); // EXACT value from DevTools
+      params.set("ipLookup", "1");
+      params.set("sorting_variation", "smart_sort_3");
       if (year_min) params.set("yearFrom", year_min.toString());
       if (year_max) params.set("yearTo", year_max.toString());
-      // Skip make/state filters for now - need to discover correct param names
+      
+      // Filters - make works with lowercase
+      if (make) params.set("make", make.toLowerCase());
+      // State filter: try "state" (observed in _source field)
+      if (state) params.set("state", state.toLowerCase());
 
       const apiUrl = `${AUTOTRADER_API_BASE}?${params.toString()}`;
       console.log(`Fetching page ${currentPage}: ${apiUrl}`);
