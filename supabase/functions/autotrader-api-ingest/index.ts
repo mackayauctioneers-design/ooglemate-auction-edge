@@ -3,49 +3,50 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
 
-// AutoTrader API configuration
+// AutoTrader API configuration - using EXACT DevTools params
 const AUTOTRADER_API_BASE = "https://listings.platform.autotrader.com.au/api/v3/search";
-const PAGE_SIZE = 48; // AutoTrader's default page size
-const MAX_PAGES_PER_RUN = 10; // Limit pages per run to stay within time budget
+const DEFAULT_PAGINATE = 48; // AutoTrader's page size
+const MAX_PAGES_PER_RUN = 10;
+const TIME_BUDGET_MS = 28000; // 28s budget for edge function
 
-// The actual listing data is nested in _source
+// Internal secret for cron→ingest calls (not anon key abuse)
+const INTERNAL_SECRET = Deno.env.get("AUTOTRADER_INTERNAL_SECRET") || "autotrader-internal-v1";
+
 interface AutotraderApiSource {
   id: number;
   source_ref_id?: string;
-  manu_year?: number;        // Year is called manu_year
+  manu_year?: number;
   make?: string;
   model?: string;
   variant?: string;
   badge?: string;
   series?: string;
   transmission?: string;
-  fuel_type?: string;        // Snake case
+  fuel_type?: string;
   body_type?: string;
   odometer?: number;
   colour_body?: string;
   vin?: string;
   rego?: string;
   condition?: string;
-  is_driveaway?: number;
-  description?: string;
-  dealer_id?: number;
-  // Price fields
-  price_display?: number;
-  price_egc?: number;
-  price_drive_away?: number;
-  // Location
   state?: string;
   suburb?: string;
   postcode?: string;
-  // Seller
   seller_name?: string;
+  price?: {
+    advertised_price?: number;
+    driveaway_price?: number;
+    egc_price?: number;
+  };
+  price_display?: number;
   [key: string]: unknown;
 }
 
-interface AutotraderApiListing {
+interface AutotraderHit {
+  _id?: string;
   _score?: number;
   _source: AutotraderApiSource;
   sort?: unknown[];
@@ -67,13 +68,13 @@ interface ParsedListing {
   seller_name_raw?: string;
 }
 
-function parseApiListing(item: AutotraderApiListing): ParsedListing | null {
+function parseHit(hit: AutotraderHit): ParsedListing | null {
   try {
-    // Data is nested in _source
-    const source = item._source;
+    const source = hit._source;
     if (!source) return null;
-    
-    const listingId = source.id || source.source_ref_id;
+
+    // ID: prefer source.id, fallback to _id
+    const listingId = source.id?.toString() || hit._id || source.source_ref_id?.toString();
     if (!listingId) return null;
 
     // Year is called manu_year
@@ -84,31 +85,28 @@ function parseApiListing(item: AutotraderApiListing): ParsedListing | null {
     const model = (source.model || "").toString().toUpperCase().trim();
     if (!make || !model) return null;
 
-    // Price is nested in price object
-    const priceObj = source.price as Record<string, number> | undefined;
-    const price = priceObj?.advertised_price || priceObj?.driveaway_price || source.price_display || 0;
+    // Price: nested in price object → advertised_price or driveaway_price
+    const price = source.price?.advertised_price 
+      || source.price?.driveaway_price 
+      || source.price?.egc_price
+      || source.price_display 
+      || 0;
     if (price < 1000 || price > 500000) return null;
 
-    // Build variant from badge/variant/series
+    // Variant from badge/variant/series
     const variant = [source.badge, source.variant, source.series]
       .filter(Boolean)
       .map(v => String(v).toUpperCase().trim())
       .join(" ")
       .trim() || undefined;
 
-    // Extract odometer
     const km = typeof source.odometer === "number" ? source.odometer : undefined;
-
-    // Location
     const state = source.state?.toString().toUpperCase() || undefined;
     const suburb = source.suburb?.toString() || undefined;
 
-    // Build listing URL
-    const listingUrl = `https://www.autotrader.com.au/car/${listingId}`;
-
     return {
       source_listing_id: String(listingId),
-      listing_url: listingUrl,
+      listing_url: `https://www.autotrader.com.au/car/${listingId}`,
       year,
       make,
       model,
@@ -122,7 +120,7 @@ function parseApiListing(item: AutotraderApiListing): ParsedListing | null {
       seller_name_raw: source.seller_name || undefined,
     };
   } catch (err) {
-    console.error("Error parsing API listing:", err);
+    console.error("Error parsing hit:", err);
     return null;
   }
 }
@@ -133,7 +131,16 @@ serve(async (req) => {
   }
 
   const startTime = Date.now();
-  
+
+  // Check internal secret header (not anon key)
+  const internalSecret = req.headers.get("x-internal-secret");
+  if (internalSecret !== INTERNAL_SECRET) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -142,6 +149,7 @@ serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const {
+      cursor_id = null, // For cursor-based crawling
       make = null,
       model = null,
       state = null,
@@ -152,15 +160,20 @@ serve(async (req) => {
     } = body;
 
     const results = {
+      cursor_id,
+      make,
+      state,
       total_api_results: 0,
       pages_fetched: 0,
+      last_page_crawled: page_start - 1,
       raw_payloads_stored: 0,
+      new_raw_payloads: 0,
       new_listings: 0,
       updated_listings: 0,
       price_changes: 0,
       parse_errors: 0,
       api_errors: [] as string[],
-      sample_listings: [] as string[],
+      has_more: false,
       elapsed_ms: 0,
     };
 
@@ -168,21 +181,27 @@ serve(async (req) => {
     let hasMore = true;
 
     while (hasMore && currentPage < page_start + max_pages) {
-      // Build API query params
-      const params = new URLSearchParams({
-        page: currentPage.toString(),
-        pageSize: PAGE_SIZE.toString(),
-        sort: "price_asc",
-      });
+      // Check time budget
+      if (Date.now() - startTime > TIME_BUDGET_MS) {
+        console.log(`Time budget exhausted at page ${currentPage}`);
+        results.has_more = true;
+        break;
+      }
 
-      if (make) params.append("make", make);
-      if (model) params.append("model", model);
-      if (state) params.append("state", state.toUpperCase());
-      if (year_min) params.append("yearFrom", year_min.toString());
-      if (year_max) params.append("yearTo", year_max.toString());
+      // Build API URL with EXACT DevTools params
+      // Build URL - start simple, add filters only if they work
+      const params = new URLSearchParams();
+      params.set("page", currentPage.toString());
+      params.set("paginate", DEFAULT_PAGINATE.toString());
+      params.set("sortBy", "listing_created");
+      params.set("orderBy", "desc");
+      params.set("sourceCondition", "used");
+      if (year_min) params.set("yearFrom", year_min.toString());
+      if (year_max) params.set("yearTo", year_max.toString());
+      // Skip make/state filters for now - need to discover correct param names
 
       const apiUrl = `${AUTOTRADER_API_BASE}?${params.toString()}`;
-      console.log(`Fetching: ${apiUrl}`);
+      console.log(`Fetching page ${currentPage}: ${apiUrl}`);
 
       try {
         const response = await fetch(apiUrl, {
@@ -194,99 +213,76 @@ serve(async (req) => {
 
         if (!response.ok) {
           const errorText = await response.text();
-          results.api_errors.push(`Page ${currentPage}: ${response.status} - ${errorText.slice(0, 200)}`);
-          console.error(`API error page ${currentPage}:`, response.status);
+          results.api_errors.push(`Page ${currentPage}: ${response.status}`);
+          console.error(`API error page ${currentPage}: ${response.status} - ${errorText.slice(0, 200)}`);
           break;
         }
 
         const data = await response.json();
-        
-        // Debug: Log the actual response structure
-        const dataKeys = Object.keys(data);
-        console.log(`API response keys: ${dataKeys.join(", ")}`);
-        
-        // Try multiple possible response structures
-        let listings: AutotraderApiListing[] = [];
+
+        // Parse response - data is array of hits
+        let hits: AutotraderHit[] = [];
         let totalResults = 0;
-        
+
         if (Array.isArray(data)) {
-          // Direct array response
-          listings = data;
-          totalResults = data.length;
-        } else if (data.results && Array.isArray(data.results)) {
-          listings = data.results;
-          totalResults = data.totalResults || data.total || data.count || listings.length;
-        } else if (data.listings && Array.isArray(data.listings)) {
-          listings = data.listings;
-          totalResults = data.totalResults || data.total || listings.length;
+          hits = data;
+          totalResults = data.length; // No total in array response
         } else if (data.data && Array.isArray(data.data)) {
-          listings = data.data;
-          totalResults = data.totalResults || data.total || listings.length;
-        } else if (data.items && Array.isArray(data.items)) {
-          listings = data.items;
-          totalResults = data.totalItems || data.total || listings.length;
-        }
-        
-        // If still no listings, log first 500 chars of response
-        if (listings.length === 0) {
-          console.log(`No listings found. Response sample: ${JSON.stringify(data).slice(0, 500)}`);
-        } else if (currentPage === page_start) {
-          // Log first listing structure for debugging
-          const first = listings[0];
-          console.log(`Sample listing keys: ${Object.keys(first).join(", ")}`);
-          console.log(`Sample listing: ${JSON.stringify(first).slice(0, 800)}`);
+          hits = data.data;
+          totalResults = data.total || data.totalResults || hits.length;
+        } else if (data.results && Array.isArray(data.results)) {
+          hits = data.results;
+          totalResults = data.total || data.totalResults || hits.length;
         }
 
-        console.log(`Page ${currentPage}: ${listings.length} listings (total: ${totalResults})`);
+        if (hits.length === 0) {
+          console.log(`No hits on page ${currentPage}. Response sample: ${JSON.stringify(data).slice(0, 300)}`);
+          hasMore = false;
+          break;
+        }
 
         if (currentPage === page_start) {
-          results.total_api_results = totalResults;
+          results.total_api_results = totalResults || hits.length * 10; // Estimate if no total
+          console.log(`First page: ${hits.length} hits, estimated total: ${results.total_api_results}`);
         }
 
+        console.log(`Page ${currentPage}: ${hits.length} hits`);
         results.pages_fetched++;
+        results.last_page_crawled = currentPage;
 
-        // Process each listing
-        for (const item of listings) {
+        // Process each hit
+        for (const hit of hits) {
           try {
-            const source = item._source;
+            const source = hit._source;
             if (!source) continue;
-            
-            const listingId = source.id?.toString() || source.source_ref_id?.toString();
+
+            const listingId = source.id?.toString() || hit._id || source.source_ref_id?.toString();
             if (!listingId) continue;
-            
-            const price = source.price_display || source.price_egc || source.price_drive_away || 0;
 
-            // Store raw payload for lifecycle tracking
-            const { error: rawError } = await supabase
-              .from("autotrader_raw_payloads")
-              .upsert({
-                source_listing_id: listingId,
-                payload: source,
-                price_at_first_seen: price,
-                price_at_last_seen: price,
-                last_seen_at: new Date().toISOString(),
-                times_seen: 1,
-              }, {
-                onConflict: "source_listing_id",
-                ignoreDuplicates: false,
-              });
+            const price = source.price?.advertised_price 
+              || source.price?.driveaway_price 
+              || source.price_display 
+              || 0;
 
-            // If exists, update the times_seen and last_seen
-            if (!rawError) {
-              await supabase
-                .from("autotrader_raw_payloads")
-                .update({
-                  last_seen_at: new Date().toISOString(),
-                  price_at_last_seen: price,
-                  payload: source,
-                })
-                .eq("source_listing_id", listingId);
-              
-              results.raw_payloads_stored++;
+            // Atomic raw payload upsert with times_seen increment
+            const { data: rawResult, error: rawError } = await supabase.rpc("autotrader_raw_seen", {
+              p_source_listing_id: listingId,
+              p_payload: source,
+              p_price: price,
+            });
+
+            if (rawError) {
+              console.error(`Raw upsert error for ${listingId}:`, rawError.message);
+              continue;
+            }
+
+            results.raw_payloads_stored++;
+            if (rawResult?.[0]?.is_new || rawResult?.is_new) {
+              results.new_raw_payloads++;
             }
 
             // Parse and upsert to retail_listings
-            const parsed = parseApiListing(item);
+            const parsed = parseHit(hit);
             if (!parsed) {
               results.parse_errors++;
               continue;
@@ -313,34 +309,22 @@ serve(async (req) => {
             }
 
             const result = upsertResult?.[0] || upsertResult;
-            if (result?.is_new) {
-              results.new_listings++;
-              if (results.sample_listings.length < 5) {
-                results.sample_listings.push(
-                  `${parsed.year} ${parsed.make} ${parsed.model} @ $${parsed.asking_price}`
-                );
-              }
-            } else {
-              results.updated_listings++;
-            }
+            if (result?.is_new) results.new_listings++;
+            else results.updated_listings++;
             if (result?.price_changed) results.price_changes++;
 
           } catch (err) {
-            console.error("Error processing listing:", err);
+            console.error("Error processing hit:", err);
             results.parse_errors++;
           }
         }
 
         // Check if more pages
-        hasMore = listings.length === PAGE_SIZE && 
-                  currentPage * PAGE_SIZE < totalResults;
-        currentPage++;
-
-        // Time budget check (50s max for edge function)
-        if (Date.now() - startTime > 50000) {
-          console.log("Time budget exhausted, stopping pagination");
-          break;
+        hasMore = hits.length === DEFAULT_PAGINATE;
+        if (hasMore) {
+          results.has_more = true;
         }
+        currentPage++;
 
       } catch (fetchErr) {
         const errMsg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
@@ -352,6 +336,17 @@ serve(async (req) => {
 
     results.elapsed_ms = Date.now() - startTime;
 
+    // Update cursor if provided
+    if (cursor_id) {
+      await supabase.rpc("update_autotrader_crawl_cursor", {
+        p_cursor_id: cursor_id,
+        p_page_crawled: results.last_page_crawled,
+        p_listings_found: results.raw_payloads_stored,
+        p_has_more: results.has_more,
+        p_error: results.api_errors.length > 0 ? results.api_errors.join("; ") : null,
+      });
+    }
+
     // Log to audit
     await supabase.from("cron_audit_log").insert({
       cron_name: "autotrader-api-ingest",
@@ -360,7 +355,7 @@ serve(async (req) => {
       run_date: new Date().toISOString().split("T")[0],
     });
 
-    console.log("AutoTrader API ingest complete:", JSON.stringify(results, null, 2));
+    console.log("AutoTrader API ingest complete:", JSON.stringify(results));
 
     return new Response(JSON.stringify({ success: true, ...results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -369,18 +364,6 @@ serve(async (req) => {
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("AutoTrader API ingest error:", errorMsg);
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-
-    await supabase.from("cron_audit_log").insert({
-      cron_name: "autotrader-api-ingest",
-      success: false,
-      error: errorMsg,
-      run_date: new Date().toISOString().split("T")[0],
-    });
 
     return new Response(JSON.stringify({ error: errorMsg }), {
       status: 500,
