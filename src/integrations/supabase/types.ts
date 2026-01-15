@@ -2243,6 +2243,87 @@ export type Database = {
           },
         ]
       }
+      retail_listing_events: {
+        Row: {
+          created_at: string
+          days_live: number | null
+          event_at: string
+          event_date: string
+          event_type: string
+          id: number
+          lat: number | null
+          lga: string | null
+          listing_id: string
+          lng: number | null
+          make: string | null
+          meta: Json | null
+          model: string | null
+          postcode: string | null
+          price: number | null
+          run_id: string | null
+          sa2: string | null
+          sa3: string | null
+          sa4: string | null
+          source: string
+          source_listing_id: string
+          state: string | null
+          suburb: string | null
+          year: number | null
+        }
+        Insert: {
+          created_at?: string
+          days_live?: number | null
+          event_at?: string
+          event_date?: string
+          event_type: string
+          id?: number
+          lat?: number | null
+          lga?: string | null
+          listing_id: string
+          lng?: number | null
+          make?: string | null
+          meta?: Json | null
+          model?: string | null
+          postcode?: string | null
+          price?: number | null
+          run_id?: string | null
+          sa2?: string | null
+          sa3?: string | null
+          sa4?: string | null
+          source: string
+          source_listing_id: string
+          state?: string | null
+          suburb?: string | null
+          year?: number | null
+        }
+        Update: {
+          created_at?: string
+          days_live?: number | null
+          event_at?: string
+          event_date?: string
+          event_type?: string
+          id?: number
+          lat?: number | null
+          lga?: string | null
+          listing_id?: string
+          lng?: number | null
+          make?: string | null
+          meta?: Json | null
+          model?: string | null
+          postcode?: string | null
+          price?: number | null
+          run_id?: string | null
+          sa2?: string | null
+          sa3?: string | null
+          sa4?: string | null
+          source?: string
+          source_listing_id?: string
+          state?: string | null
+          suburb?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       retail_listings: {
         Row: {
           anomaly_sold_returned: boolean
@@ -2263,10 +2344,13 @@ export type Database = {
           last_price_changed_at: string | null
           last_seen_at: string
           last_seen_run_id: string | null
+          lat: number | null
+          lga: string | null
           lifecycle_status: string | null
           linked_from_listing_id: string | null
           linked_reason: string | null
           listing_url: string | null
+          lng: number | null
           make: string
           model: string
           origin_entity: string | null
@@ -2275,8 +2359,12 @@ export type Database = {
           price_changed_at: string | null
           price_history: Json | null
           region_id: string | null
+          region_raw: string | null
           relisted_at: string | null
           risk_flags: string[]
+          sa2: string | null
+          sa3: string | null
+          sa4: string | null
           seller_name_raw: string | null
           seller_phone_hash: string | null
           seller_type: string | null
@@ -2313,10 +2401,13 @@ export type Database = {
           last_price_changed_at?: string | null
           last_seen_at?: string
           last_seen_run_id?: string | null
+          lat?: number | null
+          lga?: string | null
           lifecycle_status?: string | null
           linked_from_listing_id?: string | null
           linked_reason?: string | null
           listing_url?: string | null
+          lng?: number | null
           make: string
           model: string
           origin_entity?: string | null
@@ -2325,8 +2416,12 @@ export type Database = {
           price_changed_at?: string | null
           price_history?: Json | null
           region_id?: string | null
+          region_raw?: string | null
           relisted_at?: string | null
           risk_flags?: string[]
+          sa2?: string | null
+          sa3?: string | null
+          sa4?: string | null
           seller_name_raw?: string | null
           seller_phone_hash?: string | null
           seller_type?: string | null
@@ -2363,10 +2458,13 @@ export type Database = {
           last_price_changed_at?: string | null
           last_seen_at?: string
           last_seen_run_id?: string | null
+          lat?: number | null
+          lga?: string | null
           lifecycle_status?: string | null
           linked_from_listing_id?: string | null
           linked_reason?: string | null
           listing_url?: string | null
+          lng?: number | null
           make?: string
           model?: string
           origin_entity?: string | null
@@ -2375,8 +2473,12 @@ export type Database = {
           price_changed_at?: string | null
           price_history?: Json | null
           region_id?: string | null
+          region_raw?: string | null
           relisted_at?: string | null
           risk_flags?: string[]
+          sa2?: string | null
+          sa3?: string | null
+          sa4?: string | null
           seller_name_raw?: string | null
           seller_phone_hash?: string | null
           seller_type?: string | null
@@ -4507,6 +4609,37 @@ export type Database = {
           variant_used: string | null
           watch_confidence: string | null
           year: number | null
+        }
+        Relationships: []
+      }
+      model_strength_by_region: {
+        Row: {
+          avg_days_live: number | null
+          avg_price: number | null
+          delists_last_30d: number | null
+          delists_last_7d: number | null
+          make: string | null
+          median_days_live: number | null
+          model: string | null
+          sa3: string | null
+          state: string | null
+          total_delists: number | null
+        }
+        Relationships: []
+      }
+      offmarket_heatmap_30d: {
+        Row: {
+          avg_days_live: number | null
+          delist_count: number | null
+          earliest_delist: string | null
+          latest_delist: string | null
+          lga: string | null
+          make: string | null
+          model: string | null
+          sa2: string | null
+          sa3: string | null
+          state: string | null
+          suburb: string | null
         }
         Relationships: []
       }
