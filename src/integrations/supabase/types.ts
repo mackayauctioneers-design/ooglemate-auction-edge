@@ -1964,6 +1964,36 @@ export type Database = {
           },
         ]
       }
+      listing_price_history: {
+        Row: {
+          currency: string | null
+          id: number
+          observed_at: string
+          price: number
+          run_id: string | null
+          source: string
+          source_listing_id: string
+        }
+        Insert: {
+          currency?: string | null
+          id?: number
+          observed_at?: string
+          price: number
+          run_id?: string | null
+          source: string
+          source_listing_id: string
+        }
+        Update: {
+          currency?: string | null
+          id?: number
+          observed_at?: string
+          price?: number
+          run_id?: string | null
+          source?: string
+          source_listing_id?: string
+        }
+        Relationships: []
+      }
       listing_snapshots: {
         Row: {
           asking_price: number | null
@@ -2227,6 +2257,8 @@ export type Database = {
           km: number | null
           last_evaluated_at: string | null
           last_evaluation_result: string | null
+          last_price: number | null
+          last_price_changed_at: string | null
           last_seen_at: string
           last_seen_run_id: string | null
           lifecycle_status: string | null
@@ -2235,6 +2267,7 @@ export type Database = {
           model: string
           origin_entity: string | null
           postcode: string | null
+          price_change_count: number | null
           price_changed_at: string | null
           price_history: Json | null
           region_id: string | null
@@ -2267,6 +2300,8 @@ export type Database = {
           km?: number | null
           last_evaluated_at?: string | null
           last_evaluation_result?: string | null
+          last_price?: number | null
+          last_price_changed_at?: string | null
           last_seen_at?: string
           last_seen_run_id?: string | null
           lifecycle_status?: string | null
@@ -2275,6 +2310,7 @@ export type Database = {
           model: string
           origin_entity?: string | null
           postcode?: string | null
+          price_change_count?: number | null
           price_changed_at?: string | null
           price_history?: Json | null
           region_id?: string | null
@@ -2307,6 +2343,8 @@ export type Database = {
           km?: number | null
           last_evaluated_at?: string | null
           last_evaluation_result?: string | null
+          last_price?: number | null
+          last_price_changed_at?: string | null
           last_seen_at?: string
           last_seen_run_id?: string | null
           lifecycle_status?: string | null
@@ -2315,6 +2353,7 @@ export type Database = {
           model?: string
           origin_entity?: string | null
           postcode?: string | null
+          price_change_count?: number | null
           price_changed_at?: string | null
           price_history?: Json | null
           region_id?: string | null
