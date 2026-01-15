@@ -2284,6 +2284,7 @@ export type Database = {
           source: string
           source_chain: Json | null
           source_listing_id: string
+          source_type: string | null
           state: string | null
           suburb: string | null
           times_seen: number | null
@@ -2333,6 +2334,7 @@ export type Database = {
           source: string
           source_chain?: Json | null
           source_listing_id: string
+          source_type?: string | null
           state?: string | null
           suburb?: string | null
           times_seen?: number | null
@@ -2382,6 +2384,7 @@ export type Database = {
           source?: string
           source_chain?: Json | null
           source_listing_id?: string
+          source_type?: string | null
           state?: string | null
           suburb?: string | null
           times_seen?: number | null
@@ -2848,6 +2851,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      source_registry: {
+        Row: {
+          created_at: string
+          notes: string | null
+          source: string
+          source_type: string
+          supports_identity_relist: boolean
+          supports_price_history: boolean
+        }
+        Insert: {
+          created_at?: string
+          notes?: string | null
+          source: string
+          source_type: string
+          supports_identity_relist?: boolean
+          supports_price_history?: boolean
+        }
+        Update: {
+          created_at?: string
+          notes?: string | null
+          source?: string
+          source_type?: string
+          supports_identity_relist?: boolean
+          supports_price_history?: boolean
+        }
+        Relationships: []
       }
       source_runs: {
         Row: {
@@ -3925,6 +3955,7 @@ export type Database = {
       }
       vehicle_listings: {
         Row: {
+          anomaly_sold_returned: boolean | null
           asking_price: number | null
           assigned_at: string | null
           assigned_by: string | null
@@ -3941,6 +3972,7 @@ export type Database = {
           dealer_url: string | null
           drivetrain: string | null
           event_id: string | null
+          exclude_from_alerts: boolean | null
           excluded_keyword: string | null
           excluded_reason: string | null
           external_id: string | null
@@ -3959,6 +3991,8 @@ export type Database = {
           last_ingested_at: string | null
           last_seen_at: string
           lifecycle_state: string
+          linked_from_listing_id: string | null
+          linked_reason: string | null
           listed_date_raw: string | null
           listing_id: string
           listing_url: string | null
@@ -3970,9 +4004,11 @@ export type Database = {
           pass_count: number
           relist_count: number
           reserve: number | null
+          risk_flags: string[] | null
           seller_confidence: string | null
           seller_reasons: string[] | null
           seller_type: string
+          sold_returned_at: string | null
           sold_returned_flagged_at: string | null
           sold_returned_reason: string | null
           sold_returned_suspected: boolean
@@ -3994,6 +4030,7 @@ export type Database = {
           year: number
         }
         Insert: {
+          anomaly_sold_returned?: boolean | null
           asking_price?: number | null
           assigned_at?: string | null
           assigned_by?: string | null
@@ -4010,6 +4047,7 @@ export type Database = {
           dealer_url?: string | null
           drivetrain?: string | null
           event_id?: string | null
+          exclude_from_alerts?: boolean | null
           excluded_keyword?: string | null
           excluded_reason?: string | null
           external_id?: string | null
@@ -4028,6 +4066,8 @@ export type Database = {
           last_ingested_at?: string | null
           last_seen_at?: string
           lifecycle_state?: string
+          linked_from_listing_id?: string | null
+          linked_reason?: string | null
           listed_date_raw?: string | null
           listing_id: string
           listing_url?: string | null
@@ -4039,9 +4079,11 @@ export type Database = {
           pass_count?: number
           relist_count?: number
           reserve?: number | null
+          risk_flags?: string[] | null
           seller_confidence?: string | null
           seller_reasons?: string[] | null
           seller_type?: string
+          sold_returned_at?: string | null
           sold_returned_flagged_at?: string | null
           sold_returned_reason?: string | null
           sold_returned_suspected?: boolean
@@ -4063,6 +4105,7 @@ export type Database = {
           year: number
         }
         Update: {
+          anomaly_sold_returned?: boolean | null
           asking_price?: number | null
           assigned_at?: string | null
           assigned_by?: string | null
@@ -4079,6 +4122,7 @@ export type Database = {
           dealer_url?: string | null
           drivetrain?: string | null
           event_id?: string | null
+          exclude_from_alerts?: boolean | null
           excluded_keyword?: string | null
           excluded_reason?: string | null
           external_id?: string | null
@@ -4097,6 +4141,8 @@ export type Database = {
           last_ingested_at?: string | null
           last_seen_at?: string
           lifecycle_state?: string
+          linked_from_listing_id?: string | null
+          linked_reason?: string | null
           listed_date_raw?: string | null
           listing_id?: string
           listing_url?: string | null
@@ -4108,9 +4154,11 @@ export type Database = {
           pass_count?: number
           relist_count?: number
           reserve?: number | null
+          risk_flags?: string[] | null
           seller_confidence?: string | null
           seller_reasons?: string[] | null
           seller_type?: string
+          sold_returned_at?: string | null
           sold_returned_flagged_at?: string | null
           sold_returned_reason?: string | null
           sold_returned_suspected?: boolean
