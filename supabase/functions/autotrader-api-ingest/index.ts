@@ -1,19 +1,51 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
+// No CORS for internal-only function
+const internalHeaders = {
+  "Content-Type": "application/json",
 };
 
-// AutoTrader API configuration - using EXACT DevTools params
+// AutoTrader API configuration
 const AUTOTRADER_API_BASE = "https://listings.platform.autotrader.com.au/api/v3/search";
-const DEFAULT_PAGINATE = 48; // AutoTrader's page size
+const DEFAULT_PAGINATE = 48;
 const MAX_PAGES_PER_RUN = 10;
-const TIME_BUDGET_MS = 28000; // 28s budget for edge function
+const MAX_LISTINGS_PER_RUN = 200; // Hard cap to prevent runaway
+const TIME_BUDGET_MS = 28000;
+const RETRY_DELAY_MS = 500;
 
-// Internal secret for cron→ingest calls (not anon key abuse)
-const INTERNAL_SECRET = Deno.env.get("AUTOTRADER_INTERNAL_SECRET") || "autotrader-internal-v1";
+// Internal secret - MUST be set in env for production
+const INTERNAL_SECRET = Deno.env.get("AUTOTRADER_INTERNAL_SECRET");
+if (!INTERNAL_SECRET) {
+  console.warn("WARNING: AUTOTRADER_INTERNAL_SECRET not set, using fallback");
+}
+const SECRET = INTERNAL_SECRET || "autotrader-internal-v1";
+
+// Retry helper with jitter
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 1): Promise<Response> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok || response.status < 500) {
+        return response;
+      }
+      // 5xx error - retry
+      if (attempt < maxRetries) {
+        const jitter = Math.random() * 300;
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS + jitter));
+      }
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < maxRetries) {
+        const jitter = Math.random() * 300;
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS + jitter));
+      }
+    }
+  }
+  throw lastError;
+}
 
 interface AutotraderApiSource {
   id: number;
@@ -127,17 +159,17 @@ function parseHit(hit: AutotraderHit): ParsedListing | null {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: internalHeaders });
   }
 
   const startTime = Date.now();
 
-  // Check internal secret header (not anon key)
+  // Check internal secret header
   const internalSecret = req.headers.get("x-internal-secret");
-  if (internalSecret !== INTERNAL_SECRET) {
+  if (internalSecret !== SECRET) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: internalHeaders,
     });
   }
 
@@ -210,7 +242,7 @@ serve(async (req) => {
       console.log(`Fetching page ${currentPage}: ${apiUrl}`);
 
       try {
-        const response = await fetch(apiUrl, {
+        const response = await fetchWithRetry(apiUrl, {
           headers: {
             "Accept": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -232,7 +264,7 @@ serve(async (req) => {
 
         if (Array.isArray(data)) {
           hits = data;
-          totalResults = data.length; // No total in array response
+          totalResults = data.length;
         } else if (data.data && Array.isArray(data.data)) {
           hits = data.data;
           totalResults = data.total || data.totalResults || hits.length;
@@ -242,13 +274,13 @@ serve(async (req) => {
         }
 
         if (hits.length === 0) {
-          console.log(`No hits on page ${currentPage}. Response sample: ${JSON.stringify(data).slice(0, 300)}`);
+          console.log(`No hits on page ${currentPage}`);
           hasMore = false;
           break;
         }
 
         if (currentPage === page_start) {
-          results.total_api_results = totalResults || hits.length * 10; // Estimate if no total
+          results.total_api_results = totalResults || hits.length * 10;
           console.log(`First page: ${hits.length} hits, estimated total: ${results.total_api_results}`);
         }
 
@@ -256,8 +288,16 @@ serve(async (req) => {
         results.pages_fetched++;
         results.last_page_crawled = currentPage;
 
-        // Process each hit
+        // Process each hit with MAX_LISTINGS_PER_RUN cap
         for (const hit of hits) {
+          // Hard cap check
+          if (results.raw_payloads_stored >= MAX_LISTINGS_PER_RUN) {
+            console.log(`Hit MAX_LISTINGS_PER_RUN (${MAX_LISTINGS_PER_RUN}), stopping`);
+            results.has_more = true;
+            hasMore = false;
+            break;
+          }
+
           try {
             const source = hit._source;
             if (!source) continue;
@@ -270,10 +310,10 @@ serve(async (req) => {
               || source.price_display 
               || 0;
 
-            // Atomic raw payload upsert with times_seen increment
+            // Store full hit (not just _source) for metadata like _score, _id
             const { data: rawResult, error: rawError } = await supabase.rpc("autotrader_raw_seen", {
               p_source_listing_id: listingId,
-              p_payload: source,
+              p_payload: hit, // Full hit including _source, _score, _id
               p_price: price,
             });
 
@@ -364,7 +404,7 @@ serve(async (req) => {
     console.log("AutoTrader API ingest complete:", JSON.stringify(results));
 
     return new Response(JSON.stringify({ success: true, ...results }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: internalHeaders,
     });
 
   } catch (err) {
@@ -373,7 +413,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ error: errorMsg }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: internalHeaders,
     });
   }
 });
