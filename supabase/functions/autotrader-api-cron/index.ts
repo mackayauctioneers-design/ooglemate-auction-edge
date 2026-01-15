@@ -6,8 +6,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Internal secret for cron→ingest calls (matches ingest function)
-const INTERNAL_SECRET = Deno.env.get("AUTOTRADER_INTERNAL_SECRET") || "autotrader-internal-v1";
+// Internal secret for cron→ingest calls - MUST be set in env
+const INTERNAL_SECRET = Deno.env.get("AUTOTRADER_INTERNAL_SECRET");
+if (!INTERNAL_SECRET) {
+  throw new Error("AUTOTRADER_INTERNAL_SECRET not set - cannot run cron");
+}
 
 // Thin scheduler: 1 batch, 3 pages, run every 5 minutes
 const BATCHES_PER_RUN = 1;

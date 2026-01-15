@@ -17,9 +17,8 @@ const RETRY_DELAY_MS = 500;
 // Internal secret - MUST be set in env for production
 const INTERNAL_SECRET = Deno.env.get("AUTOTRADER_INTERNAL_SECRET");
 if (!INTERNAL_SECRET) {
-  console.warn("WARNING: AUTOTRADER_INTERNAL_SECRET not set, using fallback");
+  throw new Error("AUTOTRADER_INTERNAL_SECRET not set - cannot accept requests");
 }
-const SECRET = INTERNAL_SECRET || "autotrader-internal-v1";
 
 // Retry helper with jitter
 async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 1): Promise<Response> {
@@ -166,7 +165,7 @@ serve(async (req) => {
 
   // Check internal secret header
   const internalSecret = req.headers.get("x-internal-secret");
-  if (internalSecret !== SECRET) {
+  if (internalSecret !== INTERNAL_SECRET) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: internalHeaders,
