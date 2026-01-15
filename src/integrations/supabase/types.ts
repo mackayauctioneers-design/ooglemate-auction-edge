@@ -343,6 +343,48 @@ export type Database = {
         }
         Relationships: []
       }
+      autotrader_crawl_cursor: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          last_listings_found: number | null
+          last_page_crawled: number
+          last_run_at: string | null
+          make: string
+          state: string
+          status: string
+          total_pages_estimated: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          last_listings_found?: number | null
+          last_page_crawled?: number
+          last_run_at?: string | null
+          make: string
+          state: string
+          status?: string
+          total_pages_estimated?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          last_listings_found?: number | null
+          last_page_crawled?: number
+          last_run_at?: string | null
+          make?: string
+          state?: string
+          status?: string
+          total_pages_estimated?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       autotrader_raw_payloads: {
         Row: {
           first_seen_at: string
@@ -4622,6 +4664,13 @@ export type Database = {
       }
     }
     Functions: {
+      autotrader_raw_seen: {
+        Args: { p_payload: Json; p_price: number; p_source_listing_id: string }
+        Returns: {
+          is_new: boolean
+          times_seen_now: number
+        }[]
+      }
       backfill_dealer_outcomes_from_sales: {
         Args: never
         Returns: {
@@ -4685,6 +4734,15 @@ export type Database = {
           median_gp: number
           sample_size: number
           win_rate: number
+        }[]
+      }
+      claim_autotrader_crawl_batch: {
+        Args: { p_batch_size?: number }
+        Returns: {
+          cursor_id: string
+          make: string
+          next_page: number
+          state: string
         }[]
       }
       claim_next_job: {
@@ -5495,6 +5553,16 @@ export type Database = {
           stage_counts: Json
           updated_count: number
         }[]
+      }
+      update_autotrader_crawl_cursor: {
+        Args: {
+          p_cursor_id: string
+          p_error?: string
+          p_has_more: boolean
+          p_listings_found: number
+          p_page_crawled: number
+        }
+        Returns: undefined
       }
       upsert_retail_listing: {
         Args: {
