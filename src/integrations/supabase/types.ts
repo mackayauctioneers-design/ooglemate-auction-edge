@@ -558,6 +558,27 @@ export type Database = {
         }
         Relationships: []
       }
+      cron_heartbeat: {
+        Row: {
+          cron_name: string
+          last_ok: boolean
+          last_seen_at: string
+          note: string | null
+        }
+        Insert: {
+          cron_name: string
+          last_ok?: boolean
+          last_seen_at?: string
+          note?: string | null
+        }
+        Update: {
+          cron_name?: string
+          last_ok?: boolean
+          last_seen_at?: string
+          note?: string | null
+        }
+        Relationships: []
+      }
       dealer_fingerprints: {
         Row: {
           created_at: string
