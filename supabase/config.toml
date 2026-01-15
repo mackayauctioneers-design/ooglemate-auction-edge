@@ -220,3 +220,16 @@ schedule = "*/2 * * * *"
 verify_jwt = false
 # Every 30 minutes during AU business hours (after seed complete) - maintenance
 schedule = "0,30 21,22,23,0,1,2,3,4,5,6,7,8,9,10 * * *"
+
+[functions.autotrader-api-cron]
+verify_jwt = false
+# Every 5 minutes - direct API ingestion, round-robin through cursors
+schedule = "*/5 * * * *"
+
+[functions.autotrader-api-ingest]
+verify_jwt = false
+
+[functions.autotrader-stale-sweep]
+verify_jwt = false
+# Daily at 02:00 AEST (16:00 UTC) - mark unseen listings as delisted
+schedule = "0 16 * * *"
