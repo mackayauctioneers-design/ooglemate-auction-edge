@@ -2245,11 +2245,13 @@ export type Database = {
       }
       retail_listings: {
         Row: {
+          anomaly_sold_returned: boolean
           asking_price: number
           created_at: string
           cross_post_confidence: number | null
           cross_post_linked_at: string | null
           delisted_at: string | null
+          exclude_from_alerts: boolean
           first_seen_at: string
           id: string
           identity_id: string | null
@@ -2272,9 +2274,11 @@ export type Database = {
           price_history: Json | null
           region_id: string | null
           relisted_at: string | null
+          risk_flags: string[]
           seller_name_raw: string | null
           seller_phone_hash: string | null
           seller_type: string | null
+          sold_returned_at: string | null
           source: string
           source_chain: Json | null
           source_listing_id: string
@@ -2288,11 +2292,13 @@ export type Database = {
           year: number
         }
         Insert: {
+          anomaly_sold_returned?: boolean
           asking_price: number
           created_at?: string
           cross_post_confidence?: number | null
           cross_post_linked_at?: string | null
           delisted_at?: string | null
+          exclude_from_alerts?: boolean
           first_seen_at?: string
           id?: string
           identity_id?: string | null
@@ -2315,9 +2321,11 @@ export type Database = {
           price_history?: Json | null
           region_id?: string | null
           relisted_at?: string | null
+          risk_flags?: string[]
           seller_name_raw?: string | null
           seller_phone_hash?: string | null
           seller_type?: string | null
+          sold_returned_at?: string | null
           source: string
           source_chain?: Json | null
           source_listing_id: string
@@ -2331,11 +2339,13 @@ export type Database = {
           year: number
         }
         Update: {
+          anomaly_sold_returned?: boolean
           asking_price?: number
           created_at?: string
           cross_post_confidence?: number | null
           cross_post_linked_at?: string | null
           delisted_at?: string | null
+          exclude_from_alerts?: boolean
           first_seen_at?: string
           id?: string
           identity_id?: string | null
@@ -2358,9 +2368,11 @@ export type Database = {
           price_history?: Json | null
           region_id?: string | null
           relisted_at?: string | null
+          risk_flags?: string[]
           seller_name_raw?: string | null
           seller_phone_hash?: string | null
           seller_type?: string | null
+          sold_returned_at?: string | null
           source?: string
           source_chain?: Json | null
           source_listing_id?: string
@@ -5677,55 +5689,24 @@ export type Database = {
         }
         Returns: undefined
       }
-      upsert_retail_listing:
-        | {
-            Args: {
-              p_asking_price?: number
-              p_km?: number
-              p_listing_url: string
-              p_make: string
-              p_model: string
-              p_source: string
-              p_source_listing_id: string
-              p_state?: string
-              p_suburb?: string
-              p_variant_family?: string
-              p_variant_raw?: string
-              p_year: number
-            }
-            Returns: {
-              evaluation_result: string
-              identity_id: string
-              is_new: boolean
-              listing_id: string
-              price_changed: boolean
-            }[]
-          }
-        | {
-            Args: {
-              p_asking_price?: number
-              p_km?: number
-              p_listing_url: string
-              p_make: string
-              p_model: string
-              p_run_id?: string
-              p_source: string
-              p_source_listing_id: string
-              p_state?: string
-              p_suburb?: string
-              p_variant_family?: string
-              p_variant_raw?: string
-              p_year: number
-            }
-            Returns: {
-              evaluation_result: string
-              identity_id: string
-              is_new: boolean
-              listing_id: string
-              price_changed: boolean
-              was_relisted: boolean
-            }[]
-          }
+      upsert_retail_listing: {
+        Args: {
+          p_asking_price?: number
+          p_km?: number
+          p_listing_url: string
+          p_make: string
+          p_model: string
+          p_run_id?: string
+          p_source: string
+          p_source_listing_id: string
+          p_state?: string
+          p_suburb?: string
+          p_variant_family?: string
+          p_variant_raw?: string
+          p_year: number
+        }
+        Returns: Json
+      }
       year_to_band: {
         Args: { p_year: number }
         Returns: {
