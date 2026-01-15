@@ -160,12 +160,13 @@ serve(async (req) => {
       console.log(`Enqueuing: ${make} / ${state}`);
 
       try {
-        // Build Apify actor input
+        // Build Autotrader search URL for this make/state
+        const searchUrl = `https://www.autotrader.com.au/cars/${make.toLowerCase()}?state=${state.toLowerCase()}&yearfrom=2016`;
+        
+        // Build Apify actor input with start_urls
         const actorInput = {
+          start_urls: [{ url: searchUrl }],
           maxItems: 100,
-          yearMin: 2016,
-          search: make,
-          state: state.toLowerCase(),
         };
 
         // Start Apify run with waitForFinish=0 (returns immediately)
