@@ -343,6 +343,39 @@ export type Database = {
         }
         Relationships: []
       }
+      autotrader_raw_payloads: {
+        Row: {
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          payload: Json
+          price_at_first_seen: number | null
+          price_at_last_seen: number | null
+          source_listing_id: string
+          times_seen: number
+        }
+        Insert: {
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          payload: Json
+          price_at_first_seen?: number | null
+          price_at_last_seen?: number | null
+          source_listing_id: string
+          times_seen?: number
+        }
+        Update: {
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          payload?: Json
+          price_at_first_seen?: number | null
+          price_at_last_seen?: number | null
+          source_listing_id?: string
+          times_seen?: number
+        }
+        Relationships: []
+      }
       bob_chat_context_log: {
         Row: {
           created_at: string | null
