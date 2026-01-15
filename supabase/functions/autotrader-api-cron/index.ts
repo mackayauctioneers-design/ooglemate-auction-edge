@@ -34,11 +34,27 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 
+    // Create source_run for this cron tick (lifecycle tracking)
+    const { data: runData, error: runError } = await supabase
+      .from("source_runs")
+      .insert({ source: "autotrader", meta: { trigger: "cron" } })
+      .select("run_id")
+      .single();
+
+    const runId = runData?.run_id ?? null;
+    if (runError) {
+      console.error("Failed to create source_run:", runError.message);
+    } else {
+      console.log(`Created source_run: ${runId}`);
+    }
+
     const results = {
+      run_id: runId,
       batches_claimed: 0,
       batches_completed: 0,
       total_new: 0,
       total_updated: 0,
+      total_relisted: 0,
       total_raw_stored: 0,
       errors: [] as string[],
       batches: [] as { 
@@ -48,6 +64,7 @@ serve(async (req) => {
         page: number;
         new: number; 
         updated: number;
+        relisted: number;
         has_more: boolean;
       }[],
       elapsed_ms: 0,
@@ -65,6 +82,13 @@ serve(async (req) => {
 
     if (!claimedBatches || claimedBatches.length === 0) {
       console.log("No batches available to claim");
+      // Update source_run as finished with 0 records
+      if (runId) {
+        await supabase.from("source_runs").update({ 
+          finished_at: new Date().toISOString(),
+          listings_processed: 0,
+        }).eq("run_id", runId);
+      }
       return new Response(JSON.stringify({ 
         success: true, 
         message: "No batches to process",
@@ -88,7 +112,7 @@ serve(async (req) => {
       try {
         console.log(`Processing: ${batch.make} in ${batch.state}, page ${batch.next_page}`);
 
-        // Call ingest function with internal secret
+        // Call ingest function with internal secret + run_id for lifecycle tracking
         const response = await fetch(`${supabaseUrl}/functions/v1/autotrader-api-ingest`, {
           method: "POST",
           headers: {
@@ -102,6 +126,7 @@ serve(async (req) => {
             year_min: 2016,
             page_start: batch.next_page,
             max_pages: PAGES_PER_BATCH,
+            run_id: runId, // Lifecycle tracking
           }),
         });
 
@@ -126,6 +151,7 @@ serve(async (req) => {
         results.batches_completed++;
         results.total_new += data.new_listings || 0;
         results.total_updated += data.updated_listings || 0;
+        results.total_relisted += data.relisted_listings || 0;
         results.total_raw_stored += data.raw_payloads_stored || 0;
 
         results.batches.push({
@@ -135,10 +161,11 @@ serve(async (req) => {
           page: batch.next_page,
           new: data.new_listings || 0,
           updated: data.updated_listings || 0,
+          relisted: data.relisted_listings || 0,
           has_more: data.has_more || false,
         });
 
-        console.log(`${batch.make}/${batch.state} p${batch.next_page}: ${data.new_listings} new, has_more: ${data.has_more}`);
+        console.log(`${batch.make}/${batch.state} p${batch.next_page}: ${data.new_listings} new, ${data.relisted_listings || 0} relisted, has_more: ${data.has_more}`);
 
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -149,13 +176,31 @@ serve(async (req) => {
 
     results.elapsed_ms = Date.now() - startTime;
 
+    // Finalize source_run with counts
+    if (runId) {
+      await supabase.from("source_runs").update({
+        finished_at: new Date().toISOString(),
+        listings_processed: results.total_raw_stored,
+        listings_new: results.total_new,
+        listings_updated: results.total_updated,
+        meta: { 
+          trigger: "cron", 
+          relisted: results.total_relisted,
+          batches: results.batches_completed,
+          elapsed_ms: results.elapsed_ms,
+        },
+      }).eq("run_id", runId);
+    }
+
     // Build audit row with summary (avoid huge payloads)
     const auditRow = {
       cron_name: "autotrader-api-cron",
       success: results.errors.length === 0,
       result: {
+        run_id: runId,
         total_new: results.total_new,
         total_updated: results.total_updated,
+        total_relisted: results.total_relisted,
         batches_completed: results.batches_completed,
         elapsed_ms: results.elapsed_ms,
         errors: results.errors.slice(0, 5),
@@ -177,10 +222,10 @@ serve(async (req) => {
       cron_name: "autotrader-api-cron",
       last_seen_at: new Date().toISOString(),
       last_ok: results.errors.length === 0,
-      note: `new=${results.total_new} ms=${results.elapsed_ms}`,
+      note: `new=${results.total_new} relisted=${results.total_relisted} ms=${results.elapsed_ms}`,
     });
 
-    console.log(`Cron complete: ${results.total_new} new, ${results.elapsed_ms}ms`);
+    console.log(`Cron complete: ${results.total_new} new, ${results.total_relisted} relisted, ${results.elapsed_ms}ms`);
 
     return new Response(JSON.stringify({ success: true, ...results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

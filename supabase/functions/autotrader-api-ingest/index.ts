@@ -188,10 +188,12 @@ serve(async (req) => {
       year_max = null,
       page_start = 1,
       max_pages = MAX_PAGES_PER_RUN,
+      run_id = null, // Lifecycle tracking
     } = body;
 
     const results = {
       cursor_id,
+      run_id,
       make,
       state,
       total_api_results: 0,
@@ -201,6 +203,7 @@ serve(async (req) => {
       new_raw_payloads: 0,
       new_listings: 0,
       updated_listings: 0,
+      relisted_listings: 0,
       price_changes: 0,
       parse_errors: 0,
       api_errors: [] as string[],
@@ -326,7 +329,7 @@ serve(async (req) => {
               results.new_raw_payloads++;
             }
 
-            // Parse and upsert to retail_listings
+            // Parse and upsert to retail_listings with run_id for lifecycle tracking
             const parsed = parseHit(hit);
             if (!parsed) {
               results.parse_errors++;
@@ -346,6 +349,7 @@ serve(async (req) => {
               p_asking_price: parsed.asking_price,
               p_state: parsed.state || null,
               p_suburb: parsed.suburb || null,
+              p_run_id: run_id, // Lifecycle tracking
             });
 
             if (upsertError) {
@@ -357,6 +361,7 @@ serve(async (req) => {
             if (result?.is_new) results.new_listings++;
             else results.updated_listings++;
             if (result?.price_changed) results.price_changes++;
+            if (result?.was_relisted) results.relisted_listings++;
 
           } catch (err) {
             console.error("Error processing hit:", err);
