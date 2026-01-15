@@ -2228,6 +2228,8 @@ export type Database = {
           last_evaluated_at: string | null
           last_evaluation_result: string | null
           last_seen_at: string
+          last_seen_run_id: string | null
+          lifecycle_status: string | null
           listing_url: string | null
           make: string
           model: string
@@ -2236,6 +2238,7 @@ export type Database = {
           price_changed_at: string | null
           price_history: Json | null
           region_id: string | null
+          relisted_at: string | null
           seller_name_raw: string | null
           seller_phone_hash: string | null
           seller_type: string | null
@@ -2244,6 +2247,7 @@ export type Database = {
           source_listing_id: string
           state: string | null
           suburb: string | null
+          times_seen: number | null
           updated_at: string
           variant_family: string | null
           variant_raw: string | null
@@ -2264,6 +2268,8 @@ export type Database = {
           last_evaluated_at?: string | null
           last_evaluation_result?: string | null
           last_seen_at?: string
+          last_seen_run_id?: string | null
+          lifecycle_status?: string | null
           listing_url?: string | null
           make: string
           model: string
@@ -2272,6 +2278,7 @@ export type Database = {
           price_changed_at?: string | null
           price_history?: Json | null
           region_id?: string | null
+          relisted_at?: string | null
           seller_name_raw?: string | null
           seller_phone_hash?: string | null
           seller_type?: string | null
@@ -2280,6 +2287,7 @@ export type Database = {
           source_listing_id: string
           state?: string | null
           suburb?: string | null
+          times_seen?: number | null
           updated_at?: string
           variant_family?: string | null
           variant_raw?: string | null
@@ -2300,6 +2308,8 @@ export type Database = {
           last_evaluated_at?: string | null
           last_evaluation_result?: string | null
           last_seen_at?: string
+          last_seen_run_id?: string | null
+          lifecycle_status?: string | null
           listing_url?: string | null
           make?: string
           model?: string
@@ -2308,6 +2318,7 @@ export type Database = {
           price_changed_at?: string | null
           price_history?: Json | null
           region_id?: string | null
+          relisted_at?: string | null
           seller_name_raw?: string | null
           seller_phone_hash?: string | null
           seller_type?: string | null
@@ -2316,6 +2327,7 @@ export type Database = {
           source_listing_id?: string
           state?: string | null
           suburb?: string | null
+          times_seen?: number | null
           updated_at?: string
           variant_family?: string | null
           variant_raw?: string | null
@@ -2779,6 +2791,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      source_runs: {
+        Row: {
+          finished_at: string | null
+          listings_new: number | null
+          listings_processed: number | null
+          listings_updated: number | null
+          meta: Json | null
+          run_id: string
+          source: string
+          started_at: string
+        }
+        Insert: {
+          finished_at?: string | null
+          listings_new?: number | null
+          listings_processed?: number | null
+          listings_updated?: number | null
+          meta?: Json | null
+          run_id?: string
+          source: string
+          started_at?: string
+        }
+        Update: {
+          finished_at?: string | null
+          listings_new?: number | null
+          listings_processed?: number | null
+          listings_updated?: number | null
+          meta?: Json | null
+          run_id?: string
+          source?: string
+          started_at?: string
+        }
+        Relationships: []
       }
       trap_crawl_jobs: {
         Row: {
@@ -5458,11 +5503,19 @@ export type Database = {
         }
         Returns: string
       }
+      mark_listings_delisted: {
+        Args: { p_source: string; p_stale_interval?: unknown }
+        Returns: number
+      }
       mark_spec_matches_slack_sent: {
         Args: { p_match_ids: string[] }
         Returns: number
       }
       mark_stale_listings_delisted:
+        | {
+            Args: { p_source?: string; p_stale_days?: number }
+            Returns: number
+          }
         | { Args: { p_stale_days?: number }; Returns: number }
         | {
             Args: { p_source?: string; p_stale_days?: number }
@@ -5585,29 +5638,55 @@ export type Database = {
         }
         Returns: undefined
       }
-      upsert_retail_listing: {
-        Args: {
-          p_asking_price?: number
-          p_km?: number
-          p_listing_url: string
-          p_make: string
-          p_model: string
-          p_source: string
-          p_source_listing_id: string
-          p_state?: string
-          p_suburb?: string
-          p_variant_family?: string
-          p_variant_raw?: string
-          p_year: number
-        }
-        Returns: {
-          evaluation_result: string
-          identity_id: string
-          is_new: boolean
-          listing_id: string
-          price_changed: boolean
-        }[]
-      }
+      upsert_retail_listing:
+        | {
+            Args: {
+              p_asking_price?: number
+              p_km?: number
+              p_listing_url: string
+              p_make: string
+              p_model: string
+              p_source: string
+              p_source_listing_id: string
+              p_state?: string
+              p_suburb?: string
+              p_variant_family?: string
+              p_variant_raw?: string
+              p_year: number
+            }
+            Returns: {
+              evaluation_result: string
+              identity_id: string
+              is_new: boolean
+              listing_id: string
+              price_changed: boolean
+            }[]
+          }
+        | {
+            Args: {
+              p_asking_price?: number
+              p_km?: number
+              p_listing_url: string
+              p_make: string
+              p_model: string
+              p_run_id?: string
+              p_source: string
+              p_source_listing_id: string
+              p_state?: string
+              p_suburb?: string
+              p_variant_family?: string
+              p_variant_raw?: string
+              p_year: number
+            }
+            Returns: {
+              evaluation_result: string
+              identity_id: string
+              is_new: boolean
+              listing_id: string
+              price_changed: boolean
+              was_relisted: boolean
+            }[]
+          }
       year_to_band: {
         Args: { p_year: number }
         Returns: {
