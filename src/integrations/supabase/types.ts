@@ -2956,26 +2956,41 @@ export type Database = {
       }
       source_registry: {
         Row: {
+          base_url: string | null
           created_at: string
+          enabled: boolean
+          geo_required: boolean
+          ingest_lane: string | null
           notes: string | null
           source: string
           source_type: string
+          stale_days: number
           supports_identity_relist: boolean
           supports_price_history: boolean
         }
         Insert: {
+          base_url?: string | null
           created_at?: string
+          enabled?: boolean
+          geo_required?: boolean
+          ingest_lane?: string | null
           notes?: string | null
           source: string
           source_type: string
+          stale_days?: number
           supports_identity_relist?: boolean
           supports_price_history?: boolean
         }
         Update: {
+          base_url?: string | null
           created_at?: string
+          enabled?: boolean
+          geo_required?: boolean
+          ingest_lane?: string | null
           notes?: string | null
           source?: string
           source_type?: string
+          stale_days?: number
           supports_identity_relist?: boolean
           supports_price_history?: boolean
         }
