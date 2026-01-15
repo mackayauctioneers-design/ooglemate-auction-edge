@@ -2264,6 +2264,8 @@ export type Database = {
           last_seen_at: string
           last_seen_run_id: string | null
           lifecycle_status: string | null
+          linked_from_listing_id: string | null
+          linked_reason: string | null
           listing_url: string | null
           make: string
           model: string
@@ -2311,6 +2313,8 @@ export type Database = {
           last_seen_at?: string
           last_seen_run_id?: string | null
           lifecycle_status?: string | null
+          linked_from_listing_id?: string | null
+          linked_reason?: string | null
           listing_url?: string | null
           make: string
           model: string
@@ -2358,6 +2362,8 @@ export type Database = {
           last_seen_at?: string
           last_seen_run_id?: string | null
           lifecycle_status?: string | null
+          linked_from_listing_id?: string | null
+          linked_reason?: string | null
           listing_url?: string | null
           make?: string
           model?: string
@@ -4853,6 +4859,15 @@ export type Database = {
           win_rate: number
         }[]
       }
+      check_identity_linked_sold_returned: {
+        Args: {
+          p_identity_id: string
+          p_listing_id: string
+          p_source: string
+          p_window_days?: number
+        }
+        Returns: Json
+      }
       claim_autotrader_crawl_batch: {
         Args: { p_batch_size?: number }
         Returns: {
@@ -5047,6 +5062,21 @@ export type Database = {
           new_status: string
           should_avoid: boolean
           watch_confidence: string
+        }[]
+      }
+      find_recent_delisted_by_identity: {
+        Args: {
+          p_exclude_listing_id: string
+          p_identity_id: string
+          p_source: string
+          p_window_days?: number
+        }
+        Returns: {
+          anomaly_sold_returned: boolean
+          delisted_at: string
+          listing_id: string
+          risk_flags: string[]
+          source_listing_id: string
         }[]
       }
       flag_stale_buy_windows: { Args: never; Returns: Json }
