@@ -18,6 +18,8 @@ const PAGES_PER_BATCH = 3;
 const TIME_BUDGET_MS = 20000; // 20s safety margin
 
 serve(async (req) => {
+  console.log("CRON TICK autotrader-api-cron", new Date().toISOString());
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
