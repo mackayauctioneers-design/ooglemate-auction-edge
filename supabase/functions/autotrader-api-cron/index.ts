@@ -149,13 +149,16 @@ serve(async (req) => {
 
     results.elapsed_ms = Date.now() - startTime;
 
-    // Log to audit
-    await supabase.from("cron_audit_log").insert({
+    // Log to audit - capture errors explicitly
+    const { error: auditError } = await supabase.from("cron_audit_log").insert({
       cron_name: "autotrader-api-cron",
       success: results.errors.length === 0,
       result: results,
       run_date: new Date().toISOString().split("T")[0],
     });
+    if (auditError) {
+      console.error("Audit log insert failed:", auditError.message, auditError.code);
+    }
 
     console.log(`Cron complete: ${results.total_new} new, ${results.elapsed_ms}ms`);
 
@@ -172,12 +175,15 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    await supabase.from("cron_audit_log").insert({
+    const { error: auditError } = await supabase.from("cron_audit_log").insert({
       cron_name: "autotrader-api-cron",
       success: false,
       error: errorMsg,
       run_date: new Date().toISOString().split("T")[0],
     });
+    if (auditError) {
+      console.error("Audit log insert failed (in catch):", auditError.message, auditError.code);
+    }
 
     return new Response(JSON.stringify({ error: errorMsg }), {
       status: 500,
