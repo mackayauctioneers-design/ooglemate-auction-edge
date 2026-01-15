@@ -8,13 +8,18 @@ const corsHeaders = {
 
 // Internal secret for cron→ingest calls (matches ingest function)
 const INTERNAL_SECRET = Deno.env.get("AUTOTRADER_INTERNAL_SECRET") || "autotrader-internal-v1";
-const BATCHES_PER_RUN = 5;
-const PAGES_PER_BATCH = 5;
+
+// Thin scheduler: 1 batch, 3 pages, run every 5 minutes
+const BATCHES_PER_RUN = 1;
+const PAGES_PER_BATCH = 3;
+const TIME_BUDGET_MS = 20000; // 20s safety margin
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const startTime = Date.now();
 
   try {
     const supabase = createClient(
@@ -40,6 +45,7 @@ serve(async (req) => {
         updated: number;
         has_more: boolean;
       }[],
+      elapsed_ms: 0,
     };
 
     // Claim batches atomically using cursor table
@@ -64,14 +70,20 @@ serve(async (req) => {
     }
 
     results.batches_claimed = claimedBatches.length;
-    console.log(`Claimed ${claimedBatches.length} batches:`, claimedBatches);
+    console.log(`Claimed ${claimedBatches.length} batches`);
 
-    // Process each claimed batch
+    // Process each claimed batch (should be just 1)
     for (const batch of claimedBatches) {
+      // Time budget check
+      if (Date.now() - startTime > TIME_BUDGET_MS) {
+        console.log("Time budget exhausted, stopping");
+        break;
+      }
+
       try {
         console.log(`Processing: ${batch.make} in ${batch.state}, page ${batch.next_page}`);
 
-        // Call ingest function with internal secret (not anon key)
+        // Call ingest function with internal secret
         const response = await fetch(`${supabaseUrl}/functions/v1/autotrader-api-ingest`, {
           method: "POST",
           headers: {
@@ -90,9 +102,9 @@ serve(async (req) => {
 
         if (!response.ok) {
           const errorText = await response.text();
-          const errMsg = `${batch.make}/${batch.state}: ${response.status} - ${errorText.slice(0, 100)}`;
+          const errMsg = `${batch.make}/${batch.state}: ${response.status}`;
           results.errors.push(errMsg);
-          console.error(errMsg);
+          console.error(errMsg, errorText.slice(0, 100));
 
           // Update cursor with error
           await supabase.rpc("update_autotrader_crawl_cursor", {
@@ -121,24 +133,16 @@ serve(async (req) => {
           has_more: data.has_more || false,
         });
 
-        console.log(`${batch.make}/${batch.state} p${batch.next_page}: ${data.new_listings} new, ${data.updated_listings} updated, has_more: ${data.has_more}`);
+        console.log(`${batch.make}/${batch.state} p${batch.next_page}: ${data.new_listings} new, has_more: ${data.has_more}`);
 
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         results.errors.push(`${batch.make}/${batch.state}: ${errMsg}`);
-        console.error(`Error processing ${batch.make}/${batch.state}:`, errMsg);
+        console.error(`Error:`, errMsg);
       }
     }
 
-    // Mark stale listings as delisted (not seen in 3 days)
-    const { error: staleError } = await supabase.rpc("mark_stale_listings_delisted", {
-      p_source: "autotrader",
-      p_stale_days: 3,
-    });
-
-    if (staleError) {
-      console.warn("Stale listings cleanup error:", staleError.message);
-    }
+    results.elapsed_ms = Date.now() - startTime;
 
     // Log to audit
     await supabase.from("cron_audit_log").insert({
@@ -148,7 +152,7 @@ serve(async (req) => {
       run_date: new Date().toISOString().split("T")[0],
     });
 
-    console.log("AutoTrader API cron complete:", JSON.stringify(results));
+    console.log(`Cron complete: ${results.total_new} new, ${results.elapsed_ms}ms`);
 
     return new Response(JSON.stringify({ success: true, ...results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -156,7 +160,7 @@ serve(async (req) => {
 
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("AutoTrader API cron error:", errorMsg);
+    console.error("Cron error:", errorMsg);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
