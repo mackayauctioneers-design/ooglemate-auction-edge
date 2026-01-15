@@ -48,14 +48,17 @@ serve(async (req) => {
       errors: [] as string[],
     };
 
-    // Pick 3 random make/state combinations per run to spread load
+    // Pick 5 random make/state/page combinations per run to maximize coverage
     const shuffledMakes = [...MAKES_TO_CRAWL].sort(() => Math.random() - 0.5);
     const shuffledStates = [...STATES].sort(() => Math.random() - 0.5);
+    const pages = [1, 1, 1, 2, 2]; // Weight page 1 more heavily
     
     const batchesToRun = [
-      { make: shuffledMakes[0], state: shuffledStates[0] },
-      { make: shuffledMakes[1], state: shuffledStates[1] },
-      { make: shuffledMakes[2], state: shuffledStates[2] },
+      { make: shuffledMakes[0], state: shuffledStates[0], page: pages[0] },
+      { make: shuffledMakes[1], state: shuffledStates[1], page: pages[1] },
+      { make: shuffledMakes[2], state: shuffledStates[2], page: pages[2] },
+      { make: shuffledMakes[3], state: shuffledStates[3 % STATES.length], page: pages[3] },
+      { make: shuffledMakes[4], state: shuffledStates[4 % STATES.length], page: pages[4] },
     ];
 
     for (const batch of batchesToRun) {
@@ -71,8 +74,9 @@ serve(async (req) => {
           body: JSON.stringify({
             make: batch.make,
             state: batch.state,
+            page: batch.page || 1,
             year_min: 2016,
-            limit: 30,
+            limit: 40,
           }),
         });
 
