@@ -119,6 +119,49 @@ export default {
           "0%": { transform: "rotate(0deg)" },
           "100%": { transform: "rotate(360deg)" },
         },
+        // Wing Mark Animations (new symmetrical design)
+        "wing-left": {
+          "0%, 100%": { transform: "scaleX(1) rotate(0deg)" },
+          "50%": { transform: "scaleX(1.03) rotate(-2deg)" },
+        },
+        "wing-right": {
+          "0%, 100%": { transform: "scaleX(1) rotate(0deg)" },
+          "50%": { transform: "scaleX(1.03) rotate(2deg)" },
+        },
+        "wing-left-fast": {
+          "0%, 100%": { transform: "scaleX(1) rotate(0deg)" },
+          "25%": { transform: "scaleX(1.05) rotate(-3deg)" },
+          "75%": { transform: "scaleX(0.97) rotate(1deg)" },
+        },
+        "wing-right-fast": {
+          "0%, 100%": { transform: "scaleX(1) rotate(0deg)" },
+          "25%": { transform: "scaleX(1.05) rotate(3deg)" },
+          "75%": { transform: "scaleX(0.97) rotate(-1deg)" },
+        },
+        "wing-dive-left": {
+          "0%": { transform: "rotate(0deg) translateY(0)" },
+          "100%": { transform: "rotate(15deg) translateY(3px)" },
+        },
+        "wing-dive-right": {
+          "0%": { transform: "rotate(0deg) translateY(0)" },
+          "100%": { transform: "rotate(-15deg) translateY(3px)" },
+        },
+        "wing-strike": {
+          "0%": { transform: "scale(1)" },
+          "30%": { transform: "scale(1.15)" },
+          "60%": { transform: "scale(0.95)" },
+          "100%": { transform: "scale(1)" },
+        },
+        "tail-dive": {
+          "0%": { transform: "translateY(0) scaleY(1)" },
+          "100%": { transform: "translateY(5px) scaleY(1.1)" },
+        },
+        "tail-strike": {
+          "0%": { transform: "scale(1)" },
+          "40%": { transform: "scale(1.2)" },
+          "100%": { transform: "scale(1)" },
+        },
+        // Legacy wing animations (kept for compatibility)
         "wing-flap-left": {
           "0%, 100%": { transform: "rotate(0deg)" },
           "50%": { transform: "rotate(-8deg)" },
@@ -159,6 +202,17 @@ export default {
         "kiting-strike": "kiting-strike 0.5s ease-out",
         "kiting-flash": "kiting-flash 0.4s ease-out forwards",
         "kiting-radar": "kiting-radar 2s linear infinite",
+        // Wing Mark animations
+        "wing-left": "wing-left 2.5s ease-in-out infinite",
+        "wing-right": "wing-right 2.5s ease-in-out infinite",
+        "wing-left-fast": "wing-left-fast 1s ease-in-out infinite",
+        "wing-right-fast": "wing-right-fast 1s ease-in-out infinite",
+        "wing-dive-left": "wing-dive-left 0.4s ease-out forwards",
+        "wing-dive-right": "wing-dive-right 0.4s ease-out forwards",
+        "wing-strike": "wing-strike 0.5s ease-out",
+        "tail-dive": "tail-dive 0.4s ease-out forwards",
+        "tail-strike": "tail-strike 0.5s ease-out",
+        // Legacy wing animations
         "wing-flap-left": "wing-flap-left 2s ease-in-out infinite",
         "wing-flap-right": "wing-flap-right 2s ease-in-out infinite",
         "wing-flap-left-fast": "wing-flap-left-fast 0.8s ease-in-out infinite",
