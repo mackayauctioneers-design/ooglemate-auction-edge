@@ -120,6 +120,39 @@ export default function HuntDetailPage() {
     }
   });
 
+  // Outward hunt mutation
+  const runOutwardMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('outward-hunt', {
+        body: { hunt_id: huntId }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['hunt-alerts', huntId] });
+      toast.success(`Outward search: ${data.candidates_found || 0} candidates, ${data.alerts_emitted || 0} alerts`);
+    },
+    onError: (error) => {
+      toast.error(`Outward search failed: ${error.message}`);
+    }
+  });
+
+  // Toggle outward enabled
+  const toggleOutwardMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const { error } = await (supabase as any)
+        .from('sale_hunts')
+        .update({ outward_enabled: enabled })
+        .eq('id', huntId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hunt', huntId] });
+      toast.success('Outward search settings updated');
+    }
+  });
+
   const acknowledgeAlertMutation = useMutation({
     mutationFn: async (alertId: string) => {
       const { error } = await (supabase as any)
@@ -182,11 +215,14 @@ export default function HuntDetailPage() {
       <div className="space-y-6">
         {/* Header */}
         <HuntHeader
-          hunt={hunt}
+          hunt={hunt as any}
           onUpdateStatus={(status) => updateStatusMutation.mutate(status)}
           onRunScan={() => runScanMutation.mutate()}
+          onRunOutwardScan={() => runOutwardMutation.mutate()}
+          onToggleOutward={(enabled) => toggleOutwardMutation.mutate(enabled)}
           isRunningScans={runScanMutation.isPending}
           isUpdatingStatus={updateStatusMutation.isPending}
+          isRunningOutward={runOutwardMutation.isPending}
         />
 
         {/* Guardrails Banner */}
