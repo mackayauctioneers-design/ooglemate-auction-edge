@@ -23,6 +23,9 @@ import NotFound from "./pages/NotFound";
 import VAIntakePage from "./pages/VAIntakePage";
 import LogSalePage from "./pages/LogSalePage";
 import VATasksPage from "./pages/VATasksPage";
+import HuntsPage from "./pages/HuntsPage";
+import HuntDetailPage from "./pages/HuntDetailPage";
+import HuntAlertsPage from "./pages/HuntAlertsPage";
 
 // Operator pages
 import OperatorDashboardPage from "./pages/operator/OperatorDashboardPage";
@@ -80,6 +83,11 @@ const App = () => (
               <Route path="/log-sale" element={<LogSalePage />} />
               <Route path="/help" element={<HelpPage />} />
               <Route path="/auth" element={<AuthPage />} />
+              
+              {/* Hunts */}
+              <Route path="/hunts" element={<HuntsPage />} />
+              <Route path="/hunts/:huntId" element={<HuntDetailPage />} />
+              <Route path="/hunt-alerts" element={<HuntAlertsPage />} />
               
               {/* Dealer Specs */}
               <Route path="/dealer/specs" element={<DealerSpecsListPage />} />
