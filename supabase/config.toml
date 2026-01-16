@@ -190,6 +190,11 @@ verify_jwt = false
 # Daily at 17:00 UTC - recompute proven exits + evaluate stale listings
 schedule = "0 17 * * *"
 
+[functions.gumtree-cookie-refresh]
+verify_jwt = false
+# Every 6 hours - refresh Gumtree session cookies for JSON API
+schedule = "0 */6 * * *"
+
 [functions.gumtree-ingest]
 verify_jwt = false
 
