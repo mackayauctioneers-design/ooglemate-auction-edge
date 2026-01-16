@@ -90,11 +90,82 @@ export default {
           "0%": { backgroundPosition: "-200% 0" },
           "100%": { backgroundPosition: "200% 0" },
         },
+        // Kiting Mode Animations
+        "kiting-hover": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-3px)" },
+        },
+        "kiting-scan": {
+          "0%, 100%": { transform: "translateY(0) scale(1)" },
+          "25%": { transform: "translateY(-2px) scale(1.02)" },
+          "75%": { transform: "translateY(2px) scale(0.98)" },
+        },
+        "kiting-dive": {
+          "0%": { transform: "translateY(0) rotate(0deg)" },
+          "50%": { transform: "translateY(8px) rotate(15deg)" },
+          "100%": { transform: "translateY(4px) rotate(5deg)" },
+        },
+        "kiting-strike": {
+          "0%": { transform: "translateY(0) scale(1)" },
+          "20%": { transform: "translateY(12px) scale(1.1)" },
+          "40%": { transform: "translateY(6px) scale(1.05)" },
+          "100%": { transform: "translateY(0) scale(1)" },
+        },
+        "kiting-flash": {
+          "0%": { opacity: "0.8" },
+          "100%": { opacity: "0" },
+        },
+        "kiting-radar": {
+          "0%": { transform: "rotate(0deg)" },
+          "100%": { transform: "rotate(360deg)" },
+        },
+        "wing-flap-left": {
+          "0%, 100%": { transform: "rotate(0deg)" },
+          "50%": { transform: "rotate(-8deg)" },
+        },
+        "wing-flap-right": {
+          "0%, 100%": { transform: "rotate(0deg)" },
+          "50%": { transform: "rotate(8deg)" },
+        },
+        "wing-flap-left-fast": {
+          "0%, 100%": { transform: "rotate(0deg)" },
+          "50%": { transform: "rotate(-12deg)" },
+        },
+        "wing-flap-right-fast": {
+          "0%, 100%": { transform: "rotate(0deg)" },
+          "50%": { transform: "rotate(12deg)" },
+        },
+        "wing-tuck-left": {
+          "0%": { transform: "rotate(0deg)" },
+          "100%": { transform: "rotate(20deg) translateY(5px)" },
+        },
+        "wing-tuck-right": {
+          "0%": { transform: "rotate(0deg)" },
+          "100%": { transform: "rotate(-20deg) translateY(5px)" },
+        },
+        "kiting-body-dive": {
+          "0%": { transform: "translateY(0) rotate(0deg)" },
+          "100%": { transform: "translateY(6px) rotate(25deg)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "shimmer": "shimmer 2s linear infinite",
+        // Kiting Mode Animations
+        "kiting-hover": "kiting-hover 3s ease-in-out infinite",
+        "kiting-scan": "kiting-scan 1.5s ease-in-out infinite",
+        "kiting-dive": "kiting-dive 0.6s ease-out forwards",
+        "kiting-strike": "kiting-strike 0.5s ease-out",
+        "kiting-flash": "kiting-flash 0.4s ease-out forwards",
+        "kiting-radar": "kiting-radar 2s linear infinite",
+        "wing-flap-left": "wing-flap-left 2s ease-in-out infinite",
+        "wing-flap-right": "wing-flap-right 2s ease-in-out infinite",
+        "wing-flap-left-fast": "wing-flap-left-fast 0.8s ease-in-out infinite",
+        "wing-flap-right-fast": "wing-flap-right-fast 0.8s ease-in-out infinite",
+        "wing-tuck-left": "wing-tuck-left 0.3s ease-out forwards",
+        "wing-tuck-right": "wing-tuck-right 0.3s ease-out forwards",
+        "kiting-body-dive": "kiting-body-dive 0.4s ease-out forwards",
       },
       boxShadow: {
         glow: "0 0 30px hsl(var(--primary) / 0.15)",
