@@ -1,7 +1,5 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { 
   ArrowLeft, 
   Play, 
@@ -10,12 +8,13 @@ import {
   Clock,
   Zap,
   Globe,
-  Loader2
+  Loader2,
+  Radio
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import type { SaleHunt, HuntStatus } from "@/types/hunts";
-import { KitingIndicator, KitingStateText } from "@/components/kiting";
+import { KitingIndicator } from "@/components/kiting";
 import { deriveHuntKitingState } from "@/hooks/useKitingState";
 
 interface HuntHeaderProps {
@@ -23,7 +22,6 @@ interface HuntHeaderProps {
   onUpdateStatus: (status: HuntStatus) => void;
   onRunScan: () => void;
   onRunOutwardScan?: () => void;
-  onToggleOutward?: (enabled: boolean) => void;
   isRunningScans: boolean;
   isUpdatingStatus: boolean;
   isRunningOutward?: boolean;
@@ -41,12 +39,21 @@ function getStatusColor(status: HuntStatus): string {
   }
 }
 
+// Coverage sources - what we actually scan
+const COVERAGE_SOURCES = [
+  "Autotrader",
+  "Drive", 
+  "Gumtree",
+  "Pickles",
+  "Manheim",
+  "dealer sites"
+];
+
 export function HuntHeader({ 
   hunt, 
   onUpdateStatus, 
   onRunScan,
   onRunOutwardScan,
-  onToggleOutward,
   isRunningScans,
   isUpdatingStatus,
   isRunningOutward,
@@ -132,30 +139,23 @@ export function HuntHeader({
                 Expires: {format(new Date(hunt.expires_at), "MMM d, yyyy")}
               </div>
             )}
-            
-            {/* Outward Hunt indicator */}
-            {hunt.outward_enabled && (
-              <Badge variant="secondary" className="text-xs bg-purple-500/10 text-purple-600">
-                <Globe className="h-3 w-3 mr-1" />
-                Outward Search
-              </Badge>
-            )}
           </div>
           
-          {/* Outward Hunt Toggle */}
-          {onToggleOutward && (
-            <div className="flex items-center gap-3 pl-[52px] pt-2">
-              <Switch
-                id="outward-enabled"
-                checked={hunt.outward_enabled || false}
-                onCheckedChange={onToggleOutward}
-              />
-              <Label htmlFor="outward-enabled" className="text-sm cursor-pointer">
-                <span className="font-medium">Outward Hunt</span>
-                <span className="text-muted-foreground ml-1">— Search Lloyds, Grays, and other auction sites</span>
-              </Label>
+          {/* Coverage Row - replaces outward toggle */}
+          <div className="flex items-start gap-2 pl-[52px] pt-3 border-t border-border mt-3">
+            <Radio className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+            <div>
+              <div className="text-sm font-medium text-foreground">
+                Coverage: Marketplaces + auctions + dealer sites
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                {COVERAGE_SOURCES.join(" • ")} • +more
+              </div>
+              <div className="text-xs text-muted-foreground/70 mt-1">
+                We scan your configured outlets continuously while this hunt is active.
+              </div>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Action buttons */}
@@ -170,7 +170,7 @@ export function HuntHeader({
                 <Play className="h-4 w-4 mr-2" />
                 {isRunningScans ? "Scanning..." : "Run Scan Now"}
               </Button>
-              {hunt.outward_enabled && onRunOutwardScan && (
+              {onRunOutwardScan && (
                 <Button 
                   onClick={onRunOutwardScan}
                   disabled={isRunningOutward}
