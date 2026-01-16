@@ -13,14 +13,20 @@ import {
   Play, 
   Pause, 
   CheckCircle,
-  ExternalLink,
-  TrendingUp,
-  TrendingDown,
   AlertCircle,
   Clock
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { toast } from "sonner";
+import { HuntAlertCardCompact } from "@/components/hunts/HuntAlertCard";
+import type { 
+  SaleHunt, 
+  HuntMatch, 
+  HuntScan, 
+  HuntAlert,
+  HuntStatus,
+  MatchDecision
+} from "@/types/hunts";
 
 export default function HuntDetailPage() {
   const { huntId } = useParams();
@@ -36,7 +42,7 @@ export default function HuntDetailPage() {
         .eq('id', huntId)
         .single();
       if (error) throw error;
-      return data;
+      return data as SaleHunt;
     },
     enabled: !!huntId
   });
@@ -51,7 +57,7 @@ export default function HuntDetailPage() {
         .order('match_score', { ascending: false })
         .limit(100);
       if (error) throw error;
-      return data as any[];
+      return data as HuntMatch[];
     },
     enabled: !!huntId
   });
@@ -66,7 +72,7 @@ export default function HuntDetailPage() {
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
-      return data as any[];
+      return data as HuntAlert[];
     },
     enabled: !!huntId
   });
@@ -81,13 +87,13 @@ export default function HuntDetailPage() {
         .order('started_at', { ascending: false })
         .limit(20);
       if (error) throw error;
-      return data as any[];
+      return data as HuntScan[];
     },
     enabled: !!huntId
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async (status: string) => {
+    mutationFn: async (status: HuntStatus) => {
       const { error } = await (supabase as any)
         .from('sale_hunts')
         .update({ status })
@@ -150,7 +156,7 @@ export default function HuntDetailPage() {
     );
   }
 
-  const getDecisionColor = (decision: string) => {
+  const getDecisionColor = (decision: MatchDecision) => {
     switch (decision) {
       case 'buy': return 'bg-emerald-500/10 text-emerald-500';
       case 'watch': return 'bg-amber-500/10 text-amber-500';
@@ -319,73 +325,14 @@ export default function HuntDetailPage() {
                 </CardContent>
               </Card>
             ) : (
-              alerts.map((alert) => {
-                const payload = alert.payload as Record<string, unknown>;
-                return (
-                  <Card key={alert.id} className={alert.acknowledged_at ? 'opacity-60' : ''}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Badge className={
-                            alert.alert_type === 'BUY' 
-                              ? 'bg-emerald-500 text-white' 
-                              : 'bg-amber-500 text-white'
-                          }>
-                            {alert.alert_type}
-                          </Badge>
-                          <div>
-                            <div className="font-medium">
-                              {String(payload?.year ?? '')} {String(payload?.make ?? '')} {String(payload?.model ?? '')}
-                              {payload?.variant && ` ${String(payload.variant)}`}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {payload?.km && `${(Number(payload.km) / 1000).toFixed(0)}k km • `}
-                              ${Number(payload?.asking_price ?? 0).toLocaleString()}
-                              {payload?.gap_dollars && (
-                                <span className="text-emerald-500 ml-2">
-                                  <TrendingDown className="h-3 w-3 inline" />
-                                  ${Number(payload.gap_dollars).toLocaleString()} below ({Number(payload.gap_pct ?? 0).toFixed(1)}%)
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <div className="text-right text-sm">
-                            <div className="text-muted-foreground">
-                              Score: {Number(payload?.match_score ?? 0).toFixed(1)}/10
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
-                            </div>
-                          </div>
-
-                          {payload.listing_url && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => window.open(payload.listing_url as string, '_blank')}
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                          )}
-
-                          {!alert.acknowledged_at && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => acknowledgeAlertMutation.mutate(alert.id)}
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })
+              alerts.map((alert) => (
+                <HuntAlertCardCompact
+                  key={alert.id}
+                  alert={alert}
+                  onAcknowledge={(id) => acknowledgeAlertMutation.mutate(id)}
+                  isAcknowledging={acknowledgeAlertMutation.isPending}
+                />
+              ))
             )}
           </TabsContent>
 
@@ -426,7 +373,7 @@ export default function HuntDetailPage() {
                       </td>
                       <td className="p-3">
                         <div className="flex flex-wrap gap-1">
-                          {match.reasons?.slice(0, 3).map((r: string, i: number) => (
+                          {match.reasons?.slice(0, 3).map((r, i) => (
                             <Badge key={i} variant="outline" className="text-xs">
                               {r}
                             </Badge>
@@ -454,15 +401,20 @@ export default function HuntDetailPage() {
                         {scan.status}
                       </Badge>
                       <div className="text-sm">
-                        <span className="text-muted-foreground">Checked:</span> {scan.candidates_checked}
-                        <span className="mx-2">•</span>
-                        <span className="text-muted-foreground">Matches:</span> {scan.matches_found}
-                        <span className="mx-2">•</span>
-                        <span className="text-muted-foreground">Alerts:</span> {scan.alerts_emitted}
+                        {scan.candidates_checked ?? 0} checked • 
+                        {scan.matches_found ?? 0} matches • 
+                        {scan.alerts_emitted ?? 0} alerts
                       </div>
                     </div>
-                    <div className="text-sm text-muted-foreground">
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                      <Clock className="h-4 w-4" />
                       {formatDistanceToNow(new Date(scan.started_at), { addSuffix: true })}
+                      {scan.error && (
+                        <div className="flex items-center gap-1 text-destructive">
+                          <AlertCircle className="h-4 w-4" />
+                          <span className="text-xs truncate max-w-[200px]">{scan.error}</span>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
