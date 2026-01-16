@@ -13,6 +13,7 @@ import {
   TrendingUp, Clock, Info, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { KitingWingMarkVideo } from '@/components/kiting';
 import { parseHuntAlertPayload, type HuntAlertPayload } from '@/types/hunts';
 
 interface UnifiedAlert {
@@ -144,14 +145,14 @@ export default function UnifiedAlertsPage() {
     <AppLayout>
       <div className="p-6 space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-            <Bell className="h-6 w-6 text-primary" />
-            Alerts Inbox
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Unified view of Kiting Mode BUY and WATCH alerts
-          </p>
+        <div className="flex items-center gap-3">
+          <KitingWingMarkVideo size={48} />
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Alerts Inbox</h1>
+            <p className="text-muted-foreground mt-1">
+              Unified view of Kiting Mode BUY and WATCH alerts
+            </p>
+          </div>
         </div>
 
         {/* Stats */}

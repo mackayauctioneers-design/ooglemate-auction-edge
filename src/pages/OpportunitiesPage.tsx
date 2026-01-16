@@ -10,6 +10,7 @@ import { KitingLiveStrip, HuntOpportunityCard, WatchlistMovementCard } from '@/c
 import { useHomeDashboard } from '@/hooks/useHomeDashboard';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { KitingWingMarkVideo } from '@/components/kiting';
 
 export default function OpportunitiesPage() {
   const { isAdmin, currentUser, dealerProfile } = useAuth();
@@ -108,11 +109,14 @@ export default function OpportunitiesPage() {
       <div className="p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Today's Opportunities</h1>
-            <p className="text-muted-foreground mt-1">
-              {filteredOpportunities.length + huntOpportunities.length} vehicles matching your criteria
-            </p>
+          <div className="flex items-center gap-3">
+            <KitingWingMarkVideo size={48} />
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Today's Opportunities</h1>
+              <p className="text-muted-foreground mt-1">
+                {filteredOpportunities.length + huntOpportunities.length} vehicles matching your criteria
+              </p>
+            </div>
           </div>
           {dealerProfile && (
             <Link to="/log-sale">

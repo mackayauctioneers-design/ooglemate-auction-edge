@@ -4,6 +4,7 @@ import { NetworkValuationCard } from '@/components/valuation/NetworkValuationCar
 import { ManualFingerprintForm } from '@/components/fingerprints/ManualFingerprintForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Fingerprint } from 'lucide-react';
+import { KitingWingMarkVideo } from '@/components/kiting';
 
 export default function ValuationPage() {
   useEffect(() => {
@@ -15,11 +16,14 @@ export default function ValuationPage() {
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Valuation</h1>
-            <p className="text-muted-foreground">
-              Get market insights based on network sales data
-            </p>
+          <div className="flex items-center gap-3">
+            <KitingWingMarkVideo size={48} />
+            <div>
+              <h1 className="text-3xl font-bold">Valuation</h1>
+              <p className="text-muted-foreground">
+                Get market insights based on network sales data
+              </p>
+            </div>
           </div>
           <ManualFingerprintForm />
         </div>

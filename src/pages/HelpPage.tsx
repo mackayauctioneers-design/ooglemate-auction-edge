@@ -11,6 +11,7 @@ import {
   Users,
   Zap
 } from 'lucide-react';
+import { KitingWingMarkVideo } from '@/components/kiting';
 
 export default function HelpPage() {
   const steps = [
@@ -51,11 +52,14 @@ export default function HelpPage() {
   return (
     <AppLayout>
       <div className="p-6 max-w-4xl mx-auto space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">How to Use OogleMate</h1>
-          <p className="text-muted-foreground mt-1">
-            Your auction intelligence system for finding the best wholesale opportunities
-          </p>
+        <div className="flex items-center gap-3">
+          <KitingWingMarkVideo size={48} />
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">How to Use OogleMate</h1>
+            <p className="text-muted-foreground mt-1">
+              Your auction intelligence system for finding the best wholesale opportunities
+            </p>
+          </div>
         </div>
 
         {/* Workflow Steps */}
