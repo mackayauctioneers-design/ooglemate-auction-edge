@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Target, 
   Play, 
   Pause, 
   Clock, 
@@ -18,7 +17,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { KitingIndicatorCompact } from "@/components/kiting";
+import { KitingIndicatorCompact, KitingWingMarkVideo } from "@/components/kiting";
 import { deriveHuntKitingState } from "@/hooks/useKitingState";
 
 interface Hunt {
@@ -177,14 +176,14 @@ export default function HuntsPage() {
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Target className="h-6 w-6 text-primary" />
-              Active Hunts
-            </h1>
-            <p className="text-muted-foreground">
-              Automatic searches based on your sales
-            </p>
+          <div className="flex items-center gap-3">
+            <KitingWingMarkVideo size={48} />
+            <div>
+              <h1 className="text-2xl font-bold">Active Hunts</h1>
+              <p className="text-muted-foreground">
+                Automatic searches based on your sales
+              </p>
+            </div>
           </div>
           
           <div className="flex gap-2">
@@ -210,7 +209,7 @@ export default function HuntsPage() {
         ) : !hunts?.length ? (
           <Card className="py-12">
             <CardContent className="flex flex-col items-center justify-center text-center">
-              <Target className="h-12 w-12 text-muted-foreground mb-4" />
+              <KitingWingMarkVideo size={64} className="mb-4 opacity-50" />
               <h3 className="text-lg font-medium">No hunts found</h3>
               <p className="text-muted-foreground max-w-md mt-1">
                 Hunts are automatically created when you upload sales. 
