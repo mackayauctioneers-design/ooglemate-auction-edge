@@ -16,6 +16,7 @@ import {
 import { format, formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import type { SaleHunt, HuntStatus } from "@/types/hunts";
+import { KitingIndicator } from "@/components/kiting";
 
 interface HuntHeaderProps {
   hunt: SaleHunt & { outward_enabled?: boolean; outward_sources?: string[] };
@@ -61,11 +62,13 @@ export function HuntHeader({
       {/* Title section */}
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
         <div className="space-y-2">
-          {/* Title with icon */}
+          {/* Title with animated indicator */}
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Target className="h-5 w-5 text-primary" />
-            </div>
+            <KitingIndicator 
+              state={isRunningScans ? 'scanning' : hunt.status === 'active' ? 'hovering' : 'idle'} 
+              size="lg" 
+              showLabel={false} 
+            />
             <div>
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Kiting Mode — Active Hunt
