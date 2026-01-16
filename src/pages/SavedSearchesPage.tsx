@@ -50,6 +50,7 @@ import { googleSheetsService } from '@/services/googleSheetsService';
 import { supabase } from '@/integrations/supabase/client';
 import { SavedSearch, AuctionLot, SavedSearchRunLog } from '@/types';
 import { Plus, Pencil, Trash2, Play, Loader2, ExternalLink, Clock, RefreshCw, PlayCircle, AlertCircle, CheckCircle2, XCircle, FileText } from 'lucide-react';
+import { KitingWingMarkVideo } from '@/components/kiting';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -461,11 +462,14 @@ export default function SavedSearchesPage() {
       <div className="container max-w-7xl py-8 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Saved Searches</h1>
-            <p className="text-muted-foreground">
-              Manage automated search URLs for auction ingestion
-            </p>
+          <div className="flex items-center gap-3">
+            <KitingWingMarkVideo size={48} />
+            <div>
+              <h1 className="text-2xl font-semibold">Saved Searches</h1>
+              <p className="text-muted-foreground">
+                Manage automated search URLs for auction ingestion
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button 

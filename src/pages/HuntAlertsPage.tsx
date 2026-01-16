@@ -13,6 +13,7 @@ import {
   CheckCircle,
   Filter
 } from "lucide-react";
+import { KitingWingMarkVideo } from '@/components/kiting';
 import { useNavigate } from "react-router-dom";
 import { HuntAlertCard } from "@/components/hunts/HuntAlertCard";
 import type { HuntAlert, AlertType } from "@/types/hunts";
@@ -113,19 +114,21 @@ export default function HuntAlertsPage() {
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Bell className="h-6 w-6 text-primary" />
-              Hunt Alerts
-              {unackedCount > 0 && (
-                <Badge className="bg-primary text-primary-foreground">
-                  {unackedCount} new
-                </Badge>
-              )}
-            </h1>
-            <p className="text-muted-foreground">
-              BUY and WATCH opportunities from your active hunts
-            </p>
+          <div className="flex items-center gap-3">
+            <KitingWingMarkVideo size={48} />
+            <div>
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                Hunt Alerts
+                {unackedCount > 0 && (
+                  <Badge className="bg-primary text-primary-foreground">
+                    {unackedCount} new
+                  </Badge>
+                )}
+              </h1>
+              <p className="text-muted-foreground">
+                BUY and WATCH opportunities from your active hunts
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">

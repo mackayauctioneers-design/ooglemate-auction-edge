@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffect } from 'react';
+import { KitingWingMarkVideo } from '@/components/kiting';
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -90,8 +91,8 @@ export default function AuthPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-primary text-primary-foreground font-bold text-xl mx-auto mb-2">
-            O
+          <div className="flex items-center justify-center mx-auto mb-2">
+            <KitingWingMarkVideo size={64} />
           </div>
           <CardTitle>Sign In to OogleMate</CardTitle>
           <CardDescription>Access your dealer account and auction tools</CardDescription>

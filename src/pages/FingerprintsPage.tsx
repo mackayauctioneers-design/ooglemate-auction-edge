@@ -34,6 +34,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { format, differenceInDays } from 'date-fns';
 import { Fingerprint, XCircle, Clock, Users, RefreshCw } from 'lucide-react';
+import { KitingWingMarkVideo } from '@/components/kiting';
 
 export default function FingerprintsPage() {
   const { isAdmin } = useAuth();
@@ -193,14 +194,16 @@ export default function FingerprintsPage() {
     <AppLayout>
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-              <Fingerprint className="h-6 w-6 text-primary" />
-              Sale Fingerprints
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Manage active fingerprints for matching auction opportunities
-            </p>
+          <div className="flex items-center gap-3">
+            <KitingWingMarkVideo size={48} />
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">
+                Sale Fingerprints
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                Manage active fingerprints for matching auction opportunities
+              </p>
+            </div>
           </div>
           
           {/* Bulk actions */}
