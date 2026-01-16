@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { ExternalLink, Target, Crosshair, Loader2, Clock, AlertCircle, RefreshCw, Info, AlertTriangle } from 'lucide-react';
+import { KitingWingMarkVideo } from '@/components/kiting';
 import { getAuctionListingUrl, getSessionWarningTooltip, isSessionBasedAuctionHouse } from '@/utils/auctionLinkHandler';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -928,13 +929,16 @@ export default function MatchesPage() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Matches</h1>
-            <p className="text-muted-foreground">
-              {isAdmin 
-                ? 'Live matches between active fingerprints and current listings'
-                : 'Your matched opportunities based on saved preferences'}
-            </p>
+          <div className="flex items-center gap-3">
+            <KitingWingMarkVideo size={48} />
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Matches</h1>
+              <p className="text-muted-foreground">
+                {isAdmin 
+                  ? 'Live matches between active fingerprints and current listings'
+                  : 'Your matched opportunities based on saved preferences'}
+              </p>
+            </div>
           </div>
           
           {/* Admin controls */}

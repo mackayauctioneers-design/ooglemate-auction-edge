@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { format, parseISO, addDays, isAfter, isBefore, startOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { Search, Plus, Upload, Loader2, ExternalLink, FlaskConical, Clock, FileSpreadsheet, Ban, X, Bug, RotateCcw, AlertTriangle } from 'lucide-react';
+import { KitingWingMarkVideo } from '@/components/kiting';
 import { getAuctionListingUrl, getSessionWarningTooltip, isSessionBasedAuctionHouse } from '@/utils/auctionLinkHandler';
 import { toast } from 'sonner';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -292,14 +293,17 @@ export default function SearchLotsPage() {
       <div className="p-4 sm:p-6 space-y-4">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Search Lots</h1>
-            <p className="text-sm text-muted-foreground">
-              {filteredLots.length} lots found
-              {isAdmin && excludedCount > 0 && (
-                <span className="ml-2 text-destructive">({excludedCount} excluded)</span>
-              )}
-            </p>
+          <div className="flex items-center gap-3">
+            <KitingWingMarkVideo size={48} />
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground">Search Lots</h1>
+              <p className="text-sm text-muted-foreground">
+                {filteredLots.length} lots found
+                {isAdmin && excludedCount > 0 && (
+                  <span className="ml-2 text-destructive">({excludedCount} excluded)</span>
+                )}
+              </p>
+            </div>
           </div>
           {isAdmin && (
             <div className="flex gap-2">

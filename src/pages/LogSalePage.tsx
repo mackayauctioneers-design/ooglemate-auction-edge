@@ -26,7 +26,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
 import { DealerLinkPrompt } from '@/components/dealer/DealerLinkPrompt';
-import { KitingIndicator } from '@/components/kiting';
+import { KitingIndicator, KitingWingMarkVideo } from '@/components/kiting';
 
 export default function LogSalePage() {
   const navigate = useNavigate();
@@ -326,14 +326,14 @@ export default function LogSalePage() {
     <AppLayout>
       <div className="p-6 max-w-5xl mx-auto">
         <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-              <FileText className="h-6 w-6 text-primary" />
-              Sales Log
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Log sales and automatically sync fingerprints for matching
-            </p>
+          <div className="flex items-center gap-3">
+            <KitingWingMarkVideo size={48} />
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Sales Log</h1>
+              <p className="text-muted-foreground mt-1">
+                Log sales and automatically sync fingerprints for matching
+              </p>
+            </div>
           </div>
           <Button 
             variant="outline" 

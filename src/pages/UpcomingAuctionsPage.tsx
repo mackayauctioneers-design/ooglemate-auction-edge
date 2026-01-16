@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format, parseISO, startOfDay, addDays } from 'date-fns';
 import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { Loader2, Search, Calendar, MapPin, AlertCircle } from 'lucide-react';
+import { KitingWingMarkVideo } from '@/components/kiting';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -192,11 +193,14 @@ export default function UpcomingAuctionsPage() {
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Upcoming Auctions</h1>
-            <p className="text-sm text-muted-foreground">
-              Next {MAX_DAYS_AHEAD} days • {filteredAuctions.length} auction{filteredAuctions.length !== 1 ? 's' : ''} found
-            </p>
+          <div className="flex items-center gap-3">
+            <KitingWingMarkVideo size={48} />
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground">Upcoming Auctions</h1>
+              <p className="text-sm text-muted-foreground">
+                Next {MAX_DAYS_AHEAD} days • {filteredAuctions.length} auction{filteredAuctions.length !== 1 ? 's' : ''} found
+              </p>
+            </div>
           </div>
         </div>
 
