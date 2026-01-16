@@ -232,7 +232,6 @@ export default function HuntDetailPage() {
           onUpdateStatus={(status) => updateStatusMutation.mutate(status)}
           onRunScan={() => runScanMutation.mutate()}
           onRunOutwardScan={() => runOutwardMutation.mutate()}
-          onToggleOutward={(enabled) => toggleOutwardMutation.mutate(enabled)}
           isRunningScans={runScanMutation.isPending}
           isUpdatingStatus={updateStatusMutation.isPending}
           isRunningOutward={runOutwardMutation.isPending}
