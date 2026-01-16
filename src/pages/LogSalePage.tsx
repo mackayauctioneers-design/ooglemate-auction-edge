@@ -61,7 +61,22 @@ export default function LogSalePage() {
     shared_opt_in: false,
     buy_price: '',
     sell_price: '',
+    // LC79 Precision Pack fields
+    engine_code: '',
+    cab_type: '',
   });
+
+  // Detect if current vehicle is LandCruiser 70/79 series
+  const isLC79Series = 
+    formData.make.toUpperCase() === 'TOYOTA' && 
+    (formData.model.toUpperCase().includes('LANDCRUISER') || formData.model.toUpperCase().includes('LAND CRUISER')) &&
+    (formData.variant_normalised.toUpperCase().includes('79') || 
+     formData.variant_normalised.toUpperCase().includes('78') || 
+     formData.variant_normalised.toUpperCase().includes('76') ||
+     formData.variant_normalised.toUpperCase().includes('70') ||
+     formData.model.toUpperCase().includes('79') ||
+     formData.model.toUpperCase().includes('78') ||
+     formData.model.toUpperCase().includes('76'));
 
   const loadData = async () => {
     const [dealerList, sales] = await Promise.all([
@@ -225,6 +240,20 @@ export default function LogSalePage() {
       const dealerName = dealerProfile!.dealer_name;
       
       // 1. Insert into dealer_sales (triggers auto hunt creation)
+      // Map engine_code to engine_litres and cylinders
+      let engineLitres: number | null = null;
+      let cylinders: number | null = null;
+      if (formData.engine_code === 'VDJ') {
+        engineLitres = 4.5;
+        cylinders = 8;
+      } else if (formData.engine_code === 'GDJ') {
+        engineLitres = 2.8;
+        cylinders = 4;
+      } else if (formData.engine_code === 'GRJ') {
+        engineLitres = 4.0;
+        cylinders = 6;
+      }
+
       const { data: insertedSale, error: insertError } = await (supabase as any)
         .from('dealer_sales')
         .insert({
@@ -239,6 +268,11 @@ export default function LogSalePage() {
           buy_price: formData.buy_price ? parseFloat(formData.buy_price) : null,
           sell_price: formData.sell_price ? parseFloat(formData.sell_price) : null,
           data_source: 'DEALER_UPLOAD',
+          // LC79 Precision Pack fields
+          engine_code: formData.engine_code || null,
+          cab_type: formData.cab_type || null,
+          engine_litres: engineLitres,
+          cylinders: cylinders,
         })
         .select('id')
         .single();
@@ -296,6 +330,8 @@ export default function LogSalePage() {
           shared_opt_in: false,
           buy_price: '',
           sell_price: '',
+          engine_code: '',
+          cab_type: '',
         });
       }
     } catch (error) {
@@ -553,6 +589,56 @@ export default function LogSalePage() {
                     </Select>
                   </div>
                 </div>
+
+                {/* LC79 Precision Pack - Engine & Cab Type (conditional) */}
+                {isLC79Series && (
+                  <div className="space-y-4 p-4 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                    <div className="flex items-center gap-2 text-sm font-medium text-amber-600">
+                      <AlertTriangle className="h-4 w-4" />
+                      LandCruiser 70/79 Series - Precision Matching
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      These fields ensure we only match the <strong>exact engine and cab configuration</strong> you sold. V8 won't match 4cyl, dual cab won't match single.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="engine_code">Engine *</Label>
+                        <Select
+                          value={formData.engine_code}
+                          onValueChange={(v) => updateField('engine_code', v)}
+                        >
+                          <SelectTrigger className="bg-input">
+                            <SelectValue placeholder="Select engine" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="VDJ">V8 Diesel (4.5L VDJ)</SelectItem>
+                            <SelectItem value="GDJ">4cyl Diesel (2.8L GDJ)</SelectItem>
+                            <SelectItem value="GRJ">V6 Petrol (4.0L GRJ)</SelectItem>
+                            <SelectItem value="UNKNOWN">Unknown / Any</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="cab_type">Cab Type *</Label>
+                        <Select
+                          value={formData.cab_type}
+                          onValueChange={(v) => updateField('cab_type', v)}
+                        >
+                          <SelectTrigger className="bg-input">
+                            <SelectValue placeholder="Select cab type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="SINGLE">Single Cab</SelectItem>
+                            <SelectItem value="DUAL">Dual Cab</SelectItem>
+                            <SelectItem value="EXTRA">Extra Cab</SelectItem>
+                            <SelectItem value="UNKNOWN">Unknown / Any</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Prices (optional) */}
                 <div className="space-y-4">
