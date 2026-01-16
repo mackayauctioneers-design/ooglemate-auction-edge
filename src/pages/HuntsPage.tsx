@@ -12,13 +12,14 @@ import {
   Play, 
   Pause, 
   Clock, 
-  TrendingUp,
   AlertCircle,
   ChevronRight
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { KitingIndicatorCompact } from "@/components/kiting";
+import { deriveHuntKitingState } from "@/hooks/useKitingState";
 
 interface Hunt {
   id: string;
@@ -42,6 +43,9 @@ interface Hunt {
 interface HuntWithStats extends Hunt {
   matches_24h: number;
   alerts_24h: number;
+  last_alert_at: string | null;
+  last_match_at: string | null;
+  latest_scan_status: string | null;
 }
 
 export default function HuntsPage() {
@@ -70,12 +74,12 @@ export default function HuntsPage() {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Get match/alert counts for each hunt
+      // Get match/alert counts and latest timestamps for each hunt
       const huntsWithStats: HuntWithStats[] = await Promise.all(
         (data || []).map(async (hunt: Hunt) => {
           const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
           
-          const [matchesRes, alertsRes] = await Promise.all([
+          const [matchesRes, alertsRes, latestAlertRes, latestMatchRes, latestScanRes] = await Promise.all([
             (supabase as any)
               .from('hunt_matches')
               .select('id', { count: 'exact', head: true })
@@ -85,13 +89,40 @@ export default function HuntsPage() {
               .from('hunt_alerts')
               .select('id', { count: 'exact', head: true })
               .eq('hunt_id', hunt.id)
-              .gte('created_at', since24h)
+              .gte('created_at', since24h),
+            // Get latest alert timestamp
+            (supabase as any)
+              .from('hunt_alerts')
+              .select('created_at')
+              .eq('hunt_id', hunt.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .single(),
+            // Get latest match timestamp
+            (supabase as any)
+              .from('hunt_matches')
+              .select('matched_at')
+              .eq('hunt_id', hunt.id)
+              .order('matched_at', { ascending: false })
+              .limit(1)
+              .single(),
+            // Get latest scan status
+            (supabase as any)
+              .from('hunt_scans')
+              .select('status')
+              .eq('hunt_id', hunt.id)
+              .order('started_at', { ascending: false })
+              .limit(1)
+              .single()
           ]);
 
           return {
             ...hunt,
             matches_24h: matchesRes.count || 0,
-            alerts_24h: alertsRes.count || 0
+            alerts_24h: alertsRes.count || 0,
+            last_alert_at: latestAlertRes.data?.created_at || null,
+            last_match_at: latestMatchRes.data?.matched_at || null,
+            latest_scan_status: latestScanRes.data?.status || null,
           };
         })
       );
@@ -202,6 +233,17 @@ export default function HuntsPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3">
+                        {/* Kiting state indicator */}
+                        <KitingIndicatorCompact 
+                          state={deriveHuntKitingState(
+                            hunt.status,
+                            hunt.last_scan_at,
+                            hunt.last_alert_at,
+                            hunt.last_match_at,
+                            hunt.latest_scan_status
+                          )}
+                          showText={false}
+                        />
                         <Badge className={getStatusColor(hunt.status)}>
                           {hunt.status}
                         </Badge>
@@ -223,10 +265,11 @@ export default function HuntsPage() {
                           <Clock className="h-3 w-3" />
                           Every {hunt.scan_interval_minutes}m
                         </span>
-                        <span>
-                          Sources: {hunt.sources_enabled.join(', ')}
-                          {hunt.include_private && ' +private'}
-                        </span>
+                        {hunt.last_scan_at && (
+                          <span className="text-xs">
+                            Last scan: {formatDistanceToNow(new Date(hunt.last_scan_at), { addSuffix: true })}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -283,11 +326,6 @@ export default function HuntsPage() {
                     </div>
                   </div>
 
-                  {hunt.last_scan_at && (
-                    <div className="text-xs text-muted-foreground mt-2">
-                      Last scan: {formatDistanceToNow(new Date(hunt.last_scan_at), { addSuffix: true })}
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             ))}

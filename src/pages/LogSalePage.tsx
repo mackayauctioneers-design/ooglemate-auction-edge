@@ -17,7 +17,7 @@ import { dataService } from '@/services/dataService';
 import { supabase } from '@/integrations/supabase/client';
 import { Dealer, SaleLog } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { FileText, Save, Calendar, Car, Upload, Clock, DollarSign, Target, AlertTriangle } from 'lucide-react';
+import { FileText, Save, Calendar, Car, Upload, Clock, DollarSign, Target, AlertTriangle, Zap } from 'lucide-react';
 import { format } from 'date-fns';
 import { SalesCsvImport } from '@/components/sales/SalesCsvImport';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -26,6 +26,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
 import { DealerLinkPrompt } from '@/components/dealer/DealerLinkPrompt';
+import { KitingIndicator } from '@/components/kiting';
 
 export default function LogSalePage() {
   const navigate = useNavigate();
@@ -41,6 +42,7 @@ export default function LogSalePage() {
   const [salesDealerFilter, setSalesDealerFilter] = useState<string>('all');
   const [failedHuntSaleId, setFailedHuntSaleId] = useState<string | null>(null);
   const [isArmingHunt, setIsArmingHunt] = useState(false);
+  const [kitingEngaged, setKitingEngaged] = useState(false);
   
   // Check if user has a linked dealer profile
   const isDealerLinked = !!dealerProfile?.dealer_profile_id;
@@ -112,10 +114,14 @@ export default function LogSalePage() {
       const { data: huntId } = await (supabase as any).rpc('get_hunt_for_sale', { p_sale_id: saleId });
       
       if (huntId) {
+        // Show engaging animation briefly before redirect
+        setKitingEngaged(true);
         toast({
           title: "✅ Kiting Mode engaged",
           description: "Hunting for replicas now. Redirecting to hunt...",
         });
+        // Small delay to show the animation
+        await new Promise(resolve => setTimeout(resolve, 800));
         navigate(`/hunts/${huntId}`);
         return true;
       }
@@ -131,10 +137,12 @@ export default function LogSalePage() {
     });
     
     if (!error && fallbackHuntId) {
+      setKitingEngaged(true);
       toast({
         title: "✅ Kiting Mode engaged",
         description: "Hunt auto-armed successfully. Redirecting...",
       });
+      await new Promise(resolve => setTimeout(resolve, 800));
       navigate(`/hunts/${fallbackHuntId}`);
       return true;
     }
@@ -337,8 +345,23 @@ export default function LogSalePage() {
           </Button>
         </div>
 
+        {/* Kiting Mode Engagement Animation */}
+        {kitingEngaged && (
+          <div className="mb-6 p-6 rounded-lg bg-primary/10 border border-primary/20 animate-fade-in">
+            <div className="flex items-center gap-4">
+              <KitingIndicator state="scanning" size="lg" showLabel={false} />
+              <div>
+                <h3 className="text-lg font-semibold text-primary">Kiting Mode Engaged</h3>
+                <p className="text-sm text-muted-foreground">
+                  Hunting for replicas of your sale. Redirecting to hunt...
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Dealer Link Prompt - show if user not linked */}
-        {user && !isDealerLinked && (
+        {user && !isDealerLinked && !kitingEngaged && (
           <div className="mb-6">
             <DealerLinkPrompt />
           </div>

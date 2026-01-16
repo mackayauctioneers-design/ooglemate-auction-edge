@@ -4,7 +4,6 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { 
   ArrowLeft, 
-  Target, 
   Play, 
   Pause, 
   CheckCircle, 
@@ -16,7 +15,8 @@ import {
 import { format, formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import type { SaleHunt, HuntStatus } from "@/types/hunts";
-import { KitingIndicator } from "@/components/kiting";
+import { KitingIndicator, KitingStateText } from "@/components/kiting";
+import { deriveHuntKitingState } from "@/hooks/useKitingState";
 
 interface HuntHeaderProps {
   hunt: SaleHunt & { outward_enabled?: boolean; outward_sources?: string[] };
@@ -27,6 +27,8 @@ interface HuntHeaderProps {
   isRunningScans: boolean;
   isUpdatingStatus: boolean;
   isRunningOutward?: boolean;
+  lastAlertAt?: string | null;
+  lastMatchAt?: string | null;
 }
 
 function getStatusColor(status: HuntStatus): string {
@@ -47,9 +49,20 @@ export function HuntHeader({
   onToggleOutward,
   isRunningScans,
   isUpdatingStatus,
-  isRunningOutward
+  isRunningOutward,
+  lastAlertAt,
+  lastMatchAt
 }: HuntHeaderProps) {
   const navigate = useNavigate();
+  
+  // Derive kiting state from real data
+  const kitingState = deriveHuntKitingState(
+    hunt.status,
+    hunt.last_scan_at,
+    lastAlertAt || null,
+    lastMatchAt || null,
+    isRunningScans ? 'running' : null
+  );
 
   return (
     <div className="space-y-4">
@@ -65,7 +78,7 @@ export function HuntHeader({
           {/* Title with animated indicator */}
           <div className="flex items-center gap-3">
             <KitingIndicator 
-              state={isRunningScans ? 'scanning' : hunt.status === 'active' ? 'hovering' : 'idle'} 
+              state={kitingState} 
               size="lg" 
               showLabel={false} 
             />
