@@ -6,6 +6,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+/**
+ * Gumtree Ingestion - Hybrid Lanes (JSON opportunistic, Firecrawl primary)
+ * 
+ * Supports two seller types:
+ * - gumtree_dealer (forsaleby=delr)
+ * - gumtree_private (forsaleby=ownr)
+ */
+
+type SellerType = 'dealer' | 'private';
+
 interface GumtreeAdData {
   id: string;
   title?: string;
@@ -50,10 +60,14 @@ interface ParsedListing {
   suburb?: string;
 }
 
-interface SessionSecret {
-  cookie_header: string;
-  user_agent: string;
-  expires_at: string | null;
+// Get source name based on seller type
+function getSourceName(sellerType: SellerType): string {
+  return sellerType === 'dealer' ? 'gumtree_dealer' : 'gumtree_private';
+}
+
+// Get forsaleby parameter based on seller type
+function getForSaleBy(sellerType: SellerType): string {
+  return sellerType === 'dealer' ? 'delr' : 'ownr';
 }
 
 // Parse listings from JSON API response
@@ -157,7 +171,6 @@ function parseGumtreeMarkdown(markdown: string, yearMin: number): ParsedListing[
   return listings;
 }
 
-// Try JSON API with stored cookies
 /**
  * Validate JSON API results meet quality criteria
  */
@@ -182,16 +195,18 @@ function validateJsonResults(results: GumtreeAdData[], yearMin: number): { valid
   return { valid: true };
 }
 
+// Try JSON API with stored cookies (opportunistic - failures expected)
 // deno-lint-ignore no-explicit-any
 async function tryJsonApi(
   supabase: any,
   page: number,
   yearMin: number,
   make: string | null,
-  state: string | null
+  state: string | null,
+  sellerType: SellerType
 ): Promise<{ success: boolean; listings: ParsedListing[]; status: number; error?: string; usedCookie: boolean; totalAvailable?: number }> {
   try {
-    // Load session secrets - use explicit typing to avoid 'never' issues
+    // Load session secrets
     const { data: sessionData, error: sessionError } = await supabase
       .from("http_session_secrets")
       .select("cookie_header, user_agent, expires_at, last_error")
@@ -203,13 +218,14 @@ async function tryJsonApi(
     // Check if we have valid, unexpired cookies
     const now = new Date();
     const hasValidCookie = session?.cookie_header && 
-      session.cookie_header.length > 20 &&
+      session.cookie_header.length > 100 && // Stricter: need substantial cookie
       (!session.expires_at || new Date(session.expires_at) > now) &&
       !session.last_error;
 
     if (!hasValidCookie) {
       const reason = sessionError?.message || 
         (!session?.cookie_header ? "No cookie stored" : 
+         session.cookie_header.length <= 100 ? "Cookie too short" :
          session.last_error ? `Previous error: ${session.last_error}` :
          session.expires_at && new Date(session.expires_at) <= now ? "Cookie expired" : "Unknown");
       console.log(`JSON lane skipped: ${reason}`);
@@ -217,6 +233,7 @@ async function tryJsonApi(
     }
 
     const userAgent = session.user_agent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36";
+    const forSaleBy = getForSaleBy(sellerType);
 
     // Build search parameters
     const params = new URLSearchParams({
@@ -228,7 +245,7 @@ async function tryJsonApi(
       "attributeMap[cars.caryear_i_FROM]": String(yearMin),
       "attributeMap[cars.caryear_i_TO]": "2025",
       "attributeMap[cars.carmileageinkms_i_TO]": "150000",
-      "attributeMap[cars.forsaleby_s]": "delr",
+      "attributeMap[cars.forsaleby_s]": forSaleBy,
     });
 
     if (make) {
@@ -239,9 +256,9 @@ async function tryJsonApi(
     }
 
     const url = `https://www.gumtree.com.au/ws/search.json?${params.toString()}`;
-    const referer = `https://www.gumtree.com.au/s-cars-vans-utes/caryear-${yearMin}__2025/c18320?carmileageinkms=__150000&forsaleby=delr&sort=date&view=gallery`;
+    const referer = `https://www.gumtree.com.au/s-cars-vans-utes/caryear-${yearMin}__2025/c18320?carmileageinkms=__150000&forsaleby=${forSaleBy}&sort=date&view=gallery`;
 
-    console.log(`JSON API attempt with cookie (${session.cookie_header.length} chars)`);
+    console.log(`JSON API attempt [${sellerType}] with cookie (${session.cookie_header.length} chars)`);
 
     const res = await fetch(url, {
       method: "GET",
@@ -258,7 +275,7 @@ async function tryJsonApi(
       const errorText = await res.text().catch(() => "");
       console.log(`JSON API failed: ${res.status} - ${errorText.slice(0, 100)}`);
       
-      // Mark cookie as bad if we get 403
+      // Mark cookie as bad if we get 403/429
       if (res.status === 403 || res.status === 429) {
         // deno-lint-ignore no-explicit-any
         await (supabase as any)
@@ -282,7 +299,6 @@ async function tryJsonApi(
     if (!validation.valid) {
       console.log(`JSON API validation failed: ${validation.reason}`);
       
-      // Mark cookie as suspect
       // deno-lint-ignore no-explicit-any
       await (supabase as any)
         .from("http_session_secrets")
@@ -295,7 +311,7 @@ async function tryJsonApi(
     }
 
     const listings = parseJsonResponse(data, yearMin);
-    console.log(`JSON API success: ${listings.length} valid listings from ${results.length} results`);
+    console.log(`JSON API success [${sellerType}]: ${listings.length} valid listings from ${results.length} results`);
 
     // Clear any previous errors on success
     // deno-lint-ignore no-explicit-any
@@ -312,14 +328,16 @@ async function tryJsonApi(
   }
 }
 
-// Firecrawl fallback
+// Firecrawl (primary lane)
 async function tryFirecrawl(
   firecrawlKey: string,
   page: number,
   yearMin: number,
+  sellerType: SellerType,
   make?: string,
   state?: string
 ): Promise<{ success: boolean; listings: ParsedListing[]; error?: string }> {
+  const forSaleBy = getForSaleBy(sellerType);
   let searchUrl = "https://www.gumtree.com.au/s-cars-vans-utes";
   const pathParts: string[] = [];
   const queryParams = new URLSearchParams();
@@ -329,8 +347,13 @@ async function tryFirecrawl(
   
   searchUrl += pathParts.length > 0 ? `/${pathParts.join('/')}/c18320` : "/c18320";
   queryParams.append("caryearfrom1", yearMin.toString());
+  queryParams.append("forsaleby", forSaleBy);
+  queryParams.append("carmileageinkms", "__150000");
+  queryParams.append("sort", "date");
   if (page > 1) queryParams.append("page", page.toString());
   searchUrl += `?${queryParams.toString()}`;
+
+  console.log(`Firecrawl [${sellerType}]: ${searchUrl}`);
 
   try {
     const scrapeResponse = await fetch("https://api.firecrawl.dev/v1/scrape", {
@@ -375,57 +398,88 @@ serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const { 
+      seller_type = 'dealer', // 'dealer' or 'private'
       make = null, 
       state = null,
       page = 1,
-      page_size = 24,
       year_min = 2016,
-      year_max = 2025,
-      km_max = 150000,
-      limit = 50 
+      limit = 50,
+      prefer_firecrawl = true, // Default: Firecrawl primary, JSON opportunistic
     } = body;
 
+    const sellerType: SellerType = seller_type === 'private' ? 'private' : 'dealer';
+    const sourceName = getSourceName(sellerType);
+    
     let listings: ParsedListing[] = [];
-    let lane: 'json' | 'firecrawl' = 'json';
+    let lane: 'json' | 'firecrawl' = 'firecrawl';
     let jsonApiStatus: number | undefined;
     let jsonApiError: string | undefined;
     let usedCookie = false;
 
-    // Try JSON API first (supabase handles cookie loading internally)
-    console.log(`Trying Gumtree JSON API: page=${page}`);
-    const jsonResult = await tryJsonApi(supabase, page, year_min, make, state);
-    usedCookie = jsonResult.usedCookie;
-    
-    if (jsonResult.success && jsonResult.listings.length > 0) {
-      listings = jsonResult.listings;
-      lane = 'json';
-      console.log(`JSON API success: ${listings.length} listings (total available: ${jsonResult.totalAvailable})`);
-    } else {
-      // Log JSON failure details
-      jsonApiStatus = jsonResult.status;
-      jsonApiError = jsonResult.error;
-      console.log(`JSON API failed: status=${jsonApiStatus}, error=${jsonApiError}`);
+    const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
+
+    if (prefer_firecrawl && firecrawlKey) {
+      // Primary: Firecrawl
+      console.log(`Gumtree [${sellerType}] - Primary lane: Firecrawl`);
+      const firecrawlResult = await tryFirecrawl(firecrawlKey, page, year_min, sellerType, make, state);
       
-      // Fallback to Firecrawl
-      const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
-      if (firecrawlKey) {
-        console.log("Falling back to Firecrawl...");
-        const firecrawlResult = await tryFirecrawl(firecrawlKey, page, year_min, make, state);
-        
-        if (firecrawlResult.success) {
-          listings = firecrawlResult.listings;
-          lane = 'firecrawl';
-          console.log(`Firecrawl success: ${listings.length} listings`);
-        } else {
-          throw new Error(`Both lanes failed. JSON: ${jsonApiError}. Firecrawl: ${firecrawlResult.error}`);
-        }
+      if (firecrawlResult.success && firecrawlResult.listings.length > 0) {
+        listings = firecrawlResult.listings;
+        lane = 'firecrawl';
       } else {
-        throw new Error(`JSON API failed (${jsonApiStatus}): ${jsonApiError}. No FIRECRAWL_API_KEY for fallback.`);
+        // Fallback to JSON if Firecrawl fails
+        console.log(`Firecrawl failed: ${firecrawlResult.error}. Trying JSON lane...`);
+        const jsonResult = await tryJsonApi(supabase, page, year_min, make, state, sellerType);
+        usedCookie = jsonResult.usedCookie;
+        jsonApiStatus = jsonResult.status;
+        jsonApiError = jsonResult.error;
+        
+        if (jsonResult.success && jsonResult.listings.length > 0) {
+          listings = jsonResult.listings;
+          lane = 'json';
+        } else {
+          throw new Error(`Both lanes failed. Firecrawl: ${firecrawlResult.error}. JSON: ${jsonApiError}`);
+        }
+      }
+    } else {
+      // JSON-first mode (legacy or no Firecrawl key)
+      console.log(`Gumtree [${sellerType}] - Trying JSON API first`);
+      const jsonResult = await tryJsonApi(supabase, page, year_min, make, state, sellerType);
+      usedCookie = jsonResult.usedCookie;
+      
+      if (jsonResult.success && jsonResult.listings.length > 0) {
+        listings = jsonResult.listings;
+        lane = 'json';
+      } else {
+        jsonApiStatus = jsonResult.status;
+        jsonApiError = jsonResult.error;
+        
+        if (firecrawlKey) {
+          const firecrawlResult = await tryFirecrawl(firecrawlKey, page, year_min, sellerType, make, state);
+          if (firecrawlResult.success) {
+            listings = firecrawlResult.listings;
+            lane = 'firecrawl';
+          } else {
+            throw new Error(`Both lanes failed. JSON: ${jsonApiError}. Firecrawl: ${firecrawlResult.error}`);
+          }
+        } else {
+          throw new Error(`JSON API failed: ${jsonApiError}. No FIRECRAWL_API_KEY.`);
+        }
       }
     }
 
+    // Create source run for lifecycle tracking
+    const runId = crypto.randomUUID();
+    await supabase.from("source_runs").insert({
+      run_id: runId,
+      source: sourceName,
+      started_at: new Date().toISOString(),
+    }).single();
+
     // Upsert listings
     const results = {
+      source: sourceName,
+      seller_type: sellerType,
       lane,
       used_cookie: usedCookie,
       json_api_status: jsonApiStatus,
@@ -441,7 +495,7 @@ serve(async (req) => {
     for (const listing of listings.slice(0, limit)) {
       try {
         const { data, error } = await supabase.rpc("upsert_retail_listing", {
-          p_source: "gumtree",
+          p_source: sourceName,
           p_source_listing_id: listing.source_listing_id,
           p_listing_url: listing.listing_url,
           p_year: listing.year,
@@ -453,6 +507,7 @@ serve(async (req) => {
           p_asking_price: listing.asking_price,
           p_state: listing.state,
           p_suburb: listing.suburb || null,
+          p_run_id: runId,
         });
 
         if (error) {
@@ -477,14 +532,23 @@ serve(async (req) => {
       }
     }
 
+    // Update source run with results
+    await supabase.from("source_runs").update({
+      finished_at: new Date().toISOString(),
+      listings_processed: results.total_found,
+      listings_new: results.new_listings,
+      listings_updated: results.updated_listings,
+    }).eq("run_id", runId);
+
+    // Log to audit
     await supabase.from("cron_audit_log").insert({
-      cron_name: "gumtree-ingest",
+      cron_name: `gumtree-ingest-${sellerType}`,
       success: true,
       result: results,
       run_date: new Date().toISOString().split("T")[0],
     });
 
-    console.log("Gumtree ingest complete:", results);
+    console.log(`Gumtree [${sellerType}] ingest complete:`, results);
 
     return new Response(JSON.stringify({ success: true, ...results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
