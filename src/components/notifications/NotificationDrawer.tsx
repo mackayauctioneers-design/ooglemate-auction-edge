@@ -9,8 +9,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { dataService } from '@/services/dataService';
-import { AlertLog } from '@/types';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { supabase } from '@/integrations/supabase/client';
+import { parseHuntAlertPayload } from '@/types/hunts';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import { 
@@ -20,9 +21,27 @@ import {
   Eye,
   ChevronRight,
   Loader2,
-  CheckCheck
+  CheckCheck,
+  Target
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+interface HuntAlertItem {
+  id: string;
+  hunt_id: string;
+  alert_type: 'BUY' | 'WATCH';
+  created_at: string;
+  acknowledged_at: string | null;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  variant: string | null;
+  asking_price: number | null;
+  gap_dollars: number | null;
+  gap_pct: number | null;
+  source: string | null;
+  listing_url: string | null;
+}
 
 interface NotificationDrawerProps {
   open: boolean;
@@ -32,37 +51,49 @@ interface NotificationDrawerProps {
 
 export function NotificationDrawer({ open, onOpenChange, onRefresh }: NotificationDrawerProps) {
   const navigate = useNavigate();
-  const { isAdmin, currentUser } = useAuth();
-  const [alerts, setAlerts] = useState<AlertLog[]>([]);
+  const { isAdmin } = useAuth();
+  const [huntAlerts, setHuntAlerts] = useState<HuntAlertItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isMarkingAll, setIsMarkingAll] = useState(false);
+  const [activeTab, setActiveTab] = useState<'buy' | 'watch'>('buy');
 
-  const loadAlerts = async () => {
+  const loadHuntAlerts = async () => {
     setIsLoading(true);
     try {
-      const allAlerts = await dataService.getAlerts();
-      
-      // Filter to BUY alerts only (Watch→Buy)
-      let filtered = allAlerts.filter(a => a.action_change === 'Watch→Buy');
-      
-      // Filter by dealer if not admin
-      if (!isAdmin) {
-        filtered = filtered.filter(a => a.dealer_name === currentUser?.dealer_name);
-      }
-      
-      // Sort by created_at descending, new first
-      filtered.sort((a, b) => {
-        // New alerts first
-        if (a.status === 'new' && b.status !== 'new') return -1;
-        if (a.status !== 'new' && b.status === 'new') return 1;
-        // Then by date
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      // Fetch hunt_alerts from Supabase
+      const { data, error } = await supabase
+        .from('hunt_alerts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      // Parse payloads
+      const parsed: HuntAlertItem[] = (data || []).map(row => {
+        const result = parseHuntAlertPayload(row.payload);
+        const payload = result.success ? result.data : {};
+        
+        return {
+          id: row.id,
+          hunt_id: row.hunt_id,
+          alert_type: row.alert_type as 'BUY' | 'WATCH',
+          created_at: row.created_at,
+          acknowledged_at: row.acknowledged_at,
+          year: payload.year ?? null,
+          make: payload.make ?? null,
+          model: payload.model ?? null,
+          variant: payload.variant ?? null,
+          asking_price: payload.asking_price ?? null,
+          gap_dollars: payload.gap_dollars ?? null,
+          gap_pct: payload.gap_pct ?? null,
+          source: payload.source ?? null,
+          listing_url: payload.listing_url ?? null,
+        };
       });
-      
-      // Only show the 20 most recent
-      setAlerts(filtered.slice(0, 20));
+
+      setHuntAlerts(parsed);
     } catch (error) {
-      console.error('Failed to load alerts:', error);
+      console.error('Failed to load hunt alerts:', error);
     } finally {
       setIsLoading(false);
     }
@@ -70,55 +101,59 @@ export function NotificationDrawer({ open, onOpenChange, onRefresh }: Notificati
 
   useEffect(() => {
     if (open) {
-      loadAlerts();
+      loadHuntAlerts();
     }
-  }, [open, isAdmin, currentUser]);
-
-  const handleMarkRead = async (alertId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await dataService.markAlertRead(alertId);
-      await loadAlerts();
-      onRefresh();
-    } catch (error) {
-      console.error('Failed to mark as read:', error);
-      toast.error('Failed to update');
-    }
-  };
+  }, [open]);
 
   const handleAcknowledge = async (alertId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await dataService.acknowledgeAlert(alertId);
-      await loadAlerts();
+      await supabase
+        .from('hunt_alerts')
+        .update({ acknowledged_at: new Date().toISOString() })
+        .eq('id', alertId);
+      
+      await loadHuntAlerts();
       onRefresh();
+      toast.success('Alert acknowledged');
     } catch (error) {
       console.error('Failed to acknowledge:', error);
       toast.error('Failed to update');
     }
   };
 
-  const handleMarkAllRead = async () => {
-    setIsMarkingAll(true);
+  const handleMarkAllAcknowledged = async () => {
     try {
-      const dealerName = isAdmin ? undefined : currentUser?.dealer_name;
-      const count = await dataService.markAllBuyAlertsRead(dealerName);
-      await loadAlerts();
+      const unackIds = huntAlerts
+        .filter(a => !a.acknowledged_at && a.alert_type === (activeTab === 'buy' ? 'BUY' : 'WATCH'))
+        .map(a => a.id);
+      
+      if (unackIds.length === 0) return;
+      
+      await supabase
+        .from('hunt_alerts')
+        .update({ acknowledged_at: new Date().toISOString() })
+        .in('id', unackIds);
+      
+      await loadHuntAlerts();
       onRefresh();
-      toast.success(`Marked ${count} alert${count !== 1 ? 's' : ''} as read`);
+      toast.success(`Acknowledged ${unackIds.length} alerts`);
     } catch (error) {
-      console.error('Failed to mark all as read:', error);
+      console.error('Failed to mark all:', error);
       toast.error('Failed to update');
-    } finally {
-      setIsMarkingAll(false);
     }
   };
 
-  const handleOpenListing = (link: string | undefined, e: React.MouseEvent) => {
+  const handleOpenListing = (url: string | null, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (link) {
-      window.open(link, '_blank');
+    if (url) {
+      window.open(url, '_blank');
     }
+  };
+
+  const handleViewHunt = (huntId: string) => {
+    onOpenChange(false);
+    navigate(`/hunts/${huntId}`);
   };
 
   const handleViewAll = () => {
@@ -126,158 +161,173 @@ export function NotificationDrawer({ open, onOpenChange, onRefresh }: Notificati
     navigate('/alerts');
   };
 
-  const newCount = alerts.filter(a => a.status === 'new').length;
+  const buyAlerts = huntAlerts.filter(a => a.alert_type === 'BUY');
+  const watchAlerts = huntAlerts.filter(a => a.alert_type === 'WATCH');
+  const currentAlerts = activeTab === 'buy' ? buyAlerts : watchAlerts;
+  
+  const unackBuyCount = buyAlerts.filter(a => !a.acknowledged_at).length;
+  const unackWatchCount = watchAlerts.filter(a => !a.acknowledged_at).length;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md p-0">
         <SheetHeader className="p-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5 text-primary" />
-            BUY Alerts
-            {newCount > 0 && (
-              <Badge variant="default" className="ml-2">
-                {newCount} new
-              </Badge>
-            )}
+            <Target className="h-5 w-5 text-primary" />
+            Kiting Mode Alerts
           </SheetTitle>
-          {newCount > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-2"
-              onClick={handleMarkAllRead}
-              disabled={isMarkingAll}
-            >
-              <CheckCheck className="h-4 w-4 mr-1" />
-              Mark all BUY alerts read
-            </Button>
-          )}
         </SheetHeader>
 
-        <ScrollArea className="h-[calc(100vh-10rem)]">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : alerts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-              <Bell className="h-10 w-10 text-muted-foreground mb-3" />
-              <p className="text-sm text-muted-foreground">
-                No BUY alerts yet
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Alerts appear when lots move from Watch to Buy
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {alerts.map((alert) => (
-                <div 
-                  key={alert.alert_id}
-                  className={`p-4 hover:bg-muted/50 transition-colors ${
-                    alert.status === 'new' ? 'bg-action-buy/5' : ''
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-1 ${
-                      alert.status === 'new' ? 'text-action-buy' : 'text-muted-foreground'
-                    }`}>
-                      {alert.status === 'acknowledged' ? (
-                        <CheckCircle className="h-4 w-4" />
-                      ) : (
-                        <Bell className="h-4 w-4" />
-                      )}
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="buy" className="text-xs">
-                          BUY NOW
-                        </Badge>
-                        {alert.status === 'new' && (
-                          <span className="text-xs text-action-buy font-medium">New</span>
-                        )}
-                      </div>
-                      
-                      <p className="font-medium text-sm mt-1 truncate">
-                        {alert.lot_year} {alert.lot_make} {alert.lot_model} {alert.lot_variant}
-                      </p>
-                      
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                        <span>{alert.auction_house}</span>
-                        {alert.auction_datetime && (
-                          <>
-                            <span>•</span>
-                            <span>{format(new Date(alert.auction_datetime), 'dd MMM')}</span>
-                          </>
-                        )}
-                        {alert.estimated_margin && (
-                          <>
-                            <span>•</span>
-                            <span className="text-primary font-medium">
-                              ${alert.estimated_margin.toLocaleString()}
-                            </span>
-                          </>
-                        )}
-                      </div>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'buy' | 'watch')} className="flex flex-col h-[calc(100vh-8rem)]">
+          <TabsList className="mx-4 mt-2">
+            <TabsTrigger value="buy" className="flex-1 gap-1">
+              <Target className="h-3.5 w-3.5" />
+              BUY
+              {unackBuyCount > 0 && (
+                <Badge variant="default" className="ml-1 h-5 min-w-5 px-1.5 bg-green-600">
+                  {unackBuyCount}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="watch" className="flex-1 gap-1">
+              <Eye className="h-3.5 w-3.5" />
+              WATCH
+              {unackWatchCount > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1.5">
+                  {unackWatchCount}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
 
-                      {alert.why_flagged && alert.why_flagged.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {alert.why_flagged.slice(0, 3).map((flag, i) => (
-                            <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
-                              {flag}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2 mt-3">
-                        {alert.link && (
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={(e) => handleOpenListing(alert.link, e)}
-                          >
-                            <ExternalLink className="h-3 w-3 mr-1" />
-                            Open
-                          </Button>
-                        )}
-                        {alert.status === 'new' && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={(e) => handleMarkRead(alert.alert_id, e)}
-                          >
-                            <Eye className="h-3 w-3 mr-1" />
-                            Read
-                          </Button>
-                        )}
-                        {alert.status !== 'acknowledged' && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={(e) => handleAcknowledge(alert.alert_id, e)}
-                          >
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Ack
-                          </Button>
-                        )}
-                      </div>
-
-                      <p className="text-[10px] text-muted-foreground mt-2">
-                        {alert.created_at && format(new Date(alert.created_at), 'dd MMM yyyy HH:mm')}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+          {(activeTab === 'buy' ? unackBuyCount : unackWatchCount) > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mx-4 mt-2 justify-start"
+              onClick={handleMarkAllAcknowledged}
+            >
+              <CheckCheck className="h-4 w-4 mr-1" />
+              Acknowledge all {activeTab.toUpperCase()}
+            </Button>
           )}
-        </ScrollArea>
+
+          <ScrollArea className="flex-1">
+            <TabsContent value={activeTab} className="mt-0">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : currentAlerts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                  {activeTab === 'buy' ? (
+                    <Target className="h-10 w-10 text-muted-foreground mb-3" />
+                  ) : (
+                    <Eye className="h-10 w-10 text-muted-foreground mb-3" />
+                  )}
+                  <p className="text-sm text-muted-foreground">
+                    No {activeTab.toUpperCase()} alerts yet
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Alerts appear when Kiting Mode finds matches
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {currentAlerts.map((alert) => (
+                    <div 
+                      key={alert.id}
+                      className={`p-4 hover:bg-muted/50 transition-colors cursor-pointer ${
+                        !alert.acknowledged_at ? (alert.alert_type === 'BUY' ? 'bg-green-500/5' : 'bg-yellow-500/5') : ''
+                      }`}
+                      onClick={() => handleViewHunt(alert.hunt_id)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-1 ${
+                          alert.alert_type === 'BUY' ? 'text-green-500' : 'text-yellow-500'
+                        }`}>
+                          {alert.acknowledged_at ? (
+                            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <Target className="h-4 w-4" />
+                          )}
+                        </div>
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Badge 
+                              variant={alert.alert_type === 'BUY' ? 'default' : 'secondary'}
+                              className={alert.alert_type === 'BUY' ? 'bg-green-600' : 'bg-yellow-600'}
+                            >
+                              {alert.alert_type}
+                            </Badge>
+                            {!alert.acknowledged_at && (
+                              <span className={`text-xs font-medium ${
+                                alert.alert_type === 'BUY' ? 'text-green-500' : 'text-yellow-500'
+                              }`}>
+                                New
+                              </span>
+                            )}
+                            {alert.source && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {alert.source}
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          <p className="font-medium text-sm mt-1 truncate">
+                            {alert.year} {alert.make} {alert.model}
+                            {alert.variant && <span className="text-muted-foreground font-normal"> {alert.variant}</span>}
+                          </p>
+                          
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                            {alert.asking_price && (
+                              <span>${alert.asking_price.toLocaleString()}</span>
+                            )}
+                            {alert.gap_dollars && alert.gap_pct && (
+                              <span className={alert.alert_type === 'BUY' ? 'text-green-500 font-medium' : 'text-yellow-500 font-medium'}>
+                                +${alert.gap_dollars.toLocaleString()} ({alert.gap_pct.toFixed(1)}%)
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 mt-3">
+                            {alert.listing_url && (
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={(e) => handleOpenListing(alert.listing_url, e)}
+                              >
+                                <ExternalLink className="h-3 w-3 mr-1" />
+                                Open
+                              </Button>
+                            )}
+                            {!alert.acknowledged_at && (
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={(e) => handleAcknowledge(alert.id, e)}
+                              >
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Ack
+                              </Button>
+                            )}
+                          </div>
+
+                          <p className="text-[10px] text-muted-foreground mt-2">
+                            {format(new Date(alert.created_at), 'dd MMM yyyy HH:mm')}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </ScrollArea>
+        </Tabs>
 
         <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-border bg-background">
           <Button 
