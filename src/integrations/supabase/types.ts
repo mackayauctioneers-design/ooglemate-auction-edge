@@ -1863,6 +1863,147 @@ export type Database = {
         }
         Relationships: []
       }
+      hunt_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          alert_type: string
+          created_at: string
+          hunt_id: string
+          id: string
+          listing_id: string
+          payload: Json
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          alert_type: string
+          created_at?: string
+          hunt_id: string
+          id?: string
+          listing_id: string
+          payload: Json
+        }
+        Update: {
+          acknowledged_at?: string | null
+          alert_type?: string
+          created_at?: string
+          hunt_id?: string
+          id?: string
+          listing_id?: string
+          payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hunt_alerts_hunt_id_fkey"
+            columns: ["hunt_id"]
+            isOneToOne: false
+            referencedRelation: "sale_hunts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hunt_matches: {
+        Row: {
+          asking_price: number | null
+          confidence_label: string
+          decision: string
+          gap_dollars: number | null
+          gap_pct: number | null
+          hunt_id: string
+          id: string
+          listing_id: string
+          match_score: number
+          matched_at: string
+          proven_exit_value: number | null
+          reasons: string[] | null
+        }
+        Insert: {
+          asking_price?: number | null
+          confidence_label: string
+          decision: string
+          gap_dollars?: number | null
+          gap_pct?: number | null
+          hunt_id: string
+          id?: string
+          listing_id: string
+          match_score: number
+          matched_at?: string
+          proven_exit_value?: number | null
+          reasons?: string[] | null
+        }
+        Update: {
+          asking_price?: number | null
+          confidence_label?: string
+          decision?: string
+          gap_dollars?: number | null
+          gap_pct?: number | null
+          hunt_id?: string
+          id?: string
+          listing_id?: string
+          match_score?: number
+          matched_at?: string
+          proven_exit_value?: number | null
+          reasons?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hunt_matches_hunt_id_fkey"
+            columns: ["hunt_id"]
+            isOneToOne: false
+            referencedRelation: "sale_hunts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hunt_scans: {
+        Row: {
+          alerts_emitted: number | null
+          candidates_checked: number | null
+          completed_at: string | null
+          error: string | null
+          hunt_id: string
+          id: string
+          matches_found: number | null
+          metadata: Json | null
+          source: string | null
+          started_at: string
+          status: string
+        }
+        Insert: {
+          alerts_emitted?: number | null
+          candidates_checked?: number | null
+          completed_at?: string | null
+          error?: string | null
+          hunt_id: string
+          id?: string
+          matches_found?: number | null
+          metadata?: Json | null
+          source?: string | null
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          alerts_emitted?: number | null
+          candidates_checked?: number | null
+          completed_at?: string | null
+          error?: string | null
+          hunt_id?: string
+          id?: string
+          matches_found?: number | null
+          metadata?: Json | null
+          source?: string | null
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hunt_scans_hunt_id_fkey"
+            columns: ["hunt_id"]
+            isOneToOne: false
+            referencedRelation: "sale_hunts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ingestion_runs: {
         Row: {
           completed_at: string | null
@@ -2653,6 +2794,114 @@ export type Database = {
           total_new?: number | null
           total_updated?: number | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      sale_hunts: {
+        Row: {
+          created_at: string
+          dealer_id: string
+          drivetrain: string | null
+          expires_at: string | null
+          fuel: string | null
+          geo_mode: string
+          id: string
+          include_private: boolean
+          km: number | null
+          km_band: string | null
+          km_tolerance_pct: number
+          last_scan_at: string | null
+          make: string
+          max_listing_age_days_buy: number
+          max_listing_age_days_watch: number
+          min_gap_abs_buy: number
+          min_gap_abs_watch: number
+          min_gap_pct_buy: number
+          min_gap_pct_watch: number
+          model: string
+          notes: string | null
+          priority: number
+          proven_exit_method: string
+          proven_exit_value: number | null
+          radius_km: number | null
+          scan_interval_minutes: number
+          source_sale_id: string | null
+          sources_enabled: string[]
+          states: string[] | null
+          status: string
+          transmission: string | null
+          variant_family: string | null
+          year: number
+        }
+        Insert: {
+          created_at?: string
+          dealer_id: string
+          drivetrain?: string | null
+          expires_at?: string | null
+          fuel?: string | null
+          geo_mode?: string
+          id?: string
+          include_private?: boolean
+          km?: number | null
+          km_band?: string | null
+          km_tolerance_pct?: number
+          last_scan_at?: string | null
+          make: string
+          max_listing_age_days_buy?: number
+          max_listing_age_days_watch?: number
+          min_gap_abs_buy?: number
+          min_gap_abs_watch?: number
+          min_gap_pct_buy?: number
+          min_gap_pct_watch?: number
+          model: string
+          notes?: string | null
+          priority?: number
+          proven_exit_method?: string
+          proven_exit_value?: number | null
+          radius_km?: number | null
+          scan_interval_minutes?: number
+          source_sale_id?: string | null
+          sources_enabled?: string[]
+          states?: string[] | null
+          status?: string
+          transmission?: string | null
+          variant_family?: string | null
+          year: number
+        }
+        Update: {
+          created_at?: string
+          dealer_id?: string
+          drivetrain?: string | null
+          expires_at?: string | null
+          fuel?: string | null
+          geo_mode?: string
+          id?: string
+          include_private?: boolean
+          km?: number | null
+          km_band?: string | null
+          km_tolerance_pct?: number
+          last_scan_at?: string | null
+          make?: string
+          max_listing_age_days_buy?: number
+          max_listing_age_days_watch?: number
+          min_gap_abs_buy?: number
+          min_gap_abs_watch?: number
+          min_gap_pct_buy?: number
+          min_gap_pct_watch?: number
+          model?: string
+          notes?: string | null
+          priority?: number
+          proven_exit_method?: string
+          proven_exit_value?: number | null
+          radius_km?: number | null
+          scan_interval_minutes?: number
+          source_sale_id?: string | null
+          sources_enabled?: string[]
+          states?: string[] | null
+          status?: string
+          transmission?: string | null
+          variant_family?: string | null
+          year?: number
         }
         Relationships: []
       }
@@ -5491,6 +5740,31 @@ export type Database = {
           dealer_profile_id: string
           org_id: string
           region_id: string
+        }[]
+      }
+      get_due_hunt_scans: {
+        Args: { p_limit?: number }
+        Returns: {
+          dealer_id: string
+          geo_mode: string
+          hunt_id: string
+          include_private: boolean
+          km: number
+          km_tolerance_pct: number
+          make: string
+          max_listing_age_days_buy: number
+          max_listing_age_days_watch: number
+          min_gap_abs_buy: number
+          min_gap_abs_watch: number
+          min_gap_pct_buy: number
+          min_gap_pct_watch: number
+          model: string
+          proven_exit_value: number
+          scan_interval_minutes: number
+          sources_enabled: string[]
+          states: string[]
+          variant_family: string
+          year: number
         }[]
       }
       get_fingerprint_v2_adoption: {

@@ -242,3 +242,11 @@ verify_jwt = false
 verify_jwt = false
 # Daily at 02:00 AEST (16:00 UTC) - mark unseen listings as delisted
 schedule = "0 16 * * *"
+
+[functions.run-hunt-scan]
+verify_jwt = false
+
+[functions.hunt-scan-cron]
+verify_jwt = false
+# Every 15 minutes - process due hunt scans
+schedule = "*/15 * * * *"
