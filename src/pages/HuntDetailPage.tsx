@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, Clock, Info, Trophy } from "lucide-react";
+import { AlertCircle, Clock, ExternalLink, Info, Trophy } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { HuntHeader } from "@/components/hunts/HuntHeader";
@@ -50,12 +50,15 @@ export default function HuntDetailPage() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('hunt_matches')
-        .select('*')
+        .select('*, retail_listings!inner(listing_url)')
         .eq('hunt_id', huntId)
         .order('match_score', { ascending: false })
         .limit(100);
       if (error) throw error;
-      return data as HuntMatch[];
+      return (data || []).map((m: any) => ({
+        ...m,
+        listing_url: m.retail_listings?.listing_url || null
+      })) as (HuntMatch & { listing_url?: string | null })[];
     },
     enabled: !!huntId
   });
@@ -410,12 +413,13 @@ export default function HuntDetailPage() {
                     <th className="p-3 text-left font-medium">Gap</th>
                     <th className="p-3 text-left font-medium">Matched</th>
                     <th className="p-3 text-left font-medium">Reasons</th>
+                    <th className="p-3 text-left font-medium">Link</th>
                   </tr>
                 </thead>
                 <tbody>
                   {matches.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                      <td colSpan={7} className="p-8 text-center text-muted-foreground">
                         No matches found yet
                       </td>
                     </tr>
@@ -449,6 +453,20 @@ export default function HuntDetailPage() {
                               </Badge>
                             ))}
                           </div>
+                        </td>
+                        <td className="p-3">
+                          {(match as any).listing_url ? (
+                            <a
+                              href={(match as any).listing_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-primary hover:underline"
+                            >
+                              View <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
                       </tr>
                     ))
