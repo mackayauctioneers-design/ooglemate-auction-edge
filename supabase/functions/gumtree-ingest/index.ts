@@ -158,83 +158,157 @@ function parseGumtreeMarkdown(markdown: string, yearMin: number): ParsedListing[
 }
 
 // Try JSON API with stored cookies
-async function tryJsonApi(
-  page: number, 
-  yearMin: number, 
-  yearMax: number, 
-  kmMax: number, 
-  pageSize: number,
-  session: SessionSecret | null
-): Promise<{ 
-  success: boolean; 
-  listings: ParsedListing[]; 
-  status?: number;
-  errorPreview?: string;
-  totalAvailable?: number;
-  usedCookie: boolean;
-}> {
-  const params = new URLSearchParams({
-    "attributeMap[cars.carmileageinkms_i_TO]": kmMax.toString(),
-    "attributeMap[cars.caryear_i_FROM]": yearMin.toString(),
-    "attributeMap[cars.caryear_i_TO]": yearMax.toString(),
-    "attributeMap[cars.forsaleby_s]": "delr",
-    "categoryId": "18320",
-    "categoryName": "Cars, Vans & Utes",
-    "defaultRadius": "10",
-    "locationId": "0",
-    "locationStr": "Australia",
-    "pageNum": page.toString(),
-    "pageSize": pageSize.toString(),
-    "previousCategoryId": "18320",
-    "radius": "0",
-    "searchView": "GALLERY",
-    "sortByName": "date",
-  });
-
-  const url = `https://www.gumtree.com.au/ws/search.json?${params.toString()}`;
-  const referer = `https://www.gumtree.com.au/s-cars-vans-utes/caryear-${yearMin}__${yearMax}/c18320?carmileageinkms=__${kmMax}&forsaleby=delr&sort=date&view=gallery`;
-  
-  // Build headers - use stored session if available
-  const headers: Record<string, string> = {
-    "accept": "application/json",
-    "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
-    "referer": referer,
-    "x-requested-with": "XMLHttpRequest",
-    "user-agent": session?.user_agent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
-  };
-  
-  // Add cookie if we have a valid session
-  const usedCookie = !!(session?.cookie_header && session.cookie_header.length > 0);
-  if (usedCookie) {
-    headers["cookie"] = session.cookie_header;
+/**
+ * Validate JSON API results meet quality criteria
+ */
+function validateJsonResults(results: GumtreeAdData[], yearMin: number): { valid: boolean; reason?: string } {
+  if (!Array.isArray(results) || results.length < 5) {
+    return { valid: false, reason: `Only ${results?.length || 0} results (need ≥5)` };
   }
-  
-  try {
-    const response = await fetch(url, { method: "GET", headers });
 
-    if (!response.ok) {
-      const body = await response.text();
-      return { 
-        success: false, 
-        listings: [], 
-        status: response.status,
-        errorPreview: body.slice(0, 200),
-        usedCookie,
-      };
+  // Check years are within expected range
+  let validYears = 0;
+  for (const item of results.slice(0, 10)) {
+    const year = item.mainAttributes?.caryear_i;
+    if (year && year >= yearMin && year <= 2026) {
+      validYears++;
+    }
+  }
+
+  if (validYears < 3) {
+    return { valid: false, reason: `Year validation failed (${validYears}/10 valid)` };
+  }
+
+  return { valid: true };
+}
+
+// deno-lint-ignore no-explicit-any
+async function tryJsonApi(
+  supabase: any,
+  page: number,
+  yearMin: number,
+  make: string | null,
+  state: string | null
+): Promise<{ success: boolean; listings: ParsedListing[]; status: number; error?: string; usedCookie: boolean; totalAvailable?: number }> {
+  try {
+    // Load session secrets - use explicit typing to avoid 'never' issues
+    const { data: sessionData, error: sessionError } = await supabase
+      .from("http_session_secrets")
+      .select("cookie_header, user_agent, expires_at, last_error")
+      .eq("site", "gumtree")
+      .maybeSingle();
+
+    const session = sessionData as { cookie_header: string; user_agent: string; expires_at: string | null; last_error: string | null } | null;
+
+    // Check if we have valid, unexpired cookies
+    const now = new Date();
+    const hasValidCookie = session?.cookie_header && 
+      session.cookie_header.length > 20 &&
+      (!session.expires_at || new Date(session.expires_at) > now) &&
+      !session.last_error;
+
+    if (!hasValidCookie) {
+      const reason = sessionError?.message || 
+        (!session?.cookie_header ? "No cookie stored" : 
+         session.last_error ? `Previous error: ${session.last_error}` :
+         session.expires_at && new Date(session.expires_at) <= now ? "Cookie expired" : "Unknown");
+      console.log(`JSON lane skipped: ${reason}`);
+      return { success: false, listings: [], status: 0, error: reason, usedCookie: false };
     }
 
-    const jsonData: GumtreeJsonResponse = await response.json();
-    const listings = parseJsonResponse(jsonData, yearMin);
-    const totalAvailable = jsonData.data?.results?.paging?.totalResultCount || 0;
-    
-    return { success: true, listings, totalAvailable, usedCookie };
+    const userAgent = session.user_agent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36";
+
+    // Build search parameters
+    const params = new URLSearchParams({
+      "categoryId": "18320",
+      "pageNum": String(page),
+      "pageSize": "48",
+      "sortByName": "date",
+      "locationId": "0",
+      "attributeMap[cars.caryear_i_FROM]": String(yearMin),
+      "attributeMap[cars.caryear_i_TO]": "2025",
+      "attributeMap[cars.carmileageinkms_i_TO]": "150000",
+      "attributeMap[cars.forsaleby_s]": "delr",
+    });
+
+    if (make) {
+      params.set("attributeMap[cars.carmake_s]", make.toLowerCase());
+    }
+    if (state) {
+      params.set("attributeMap[cars.carstate_s]", state.toLowerCase());
+    }
+
+    const url = `https://www.gumtree.com.au/ws/search.json?${params.toString()}`;
+    const referer = `https://www.gumtree.com.au/s-cars-vans-utes/caryear-${yearMin}__2025/c18320?carmileageinkms=__150000&forsaleby=delr&sort=date&view=gallery`;
+
+    console.log(`JSON API attempt with cookie (${session.cookie_header.length} chars)`);
+
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        "accept": "application/json",
+        "referer": referer,
+        "x-requested-with": "XMLHttpRequest",
+        "user-agent": userAgent,
+        "cookie": session.cookie_header,
+      },
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => "");
+      console.log(`JSON API failed: ${res.status} - ${errorText.slice(0, 100)}`);
+      
+      // Mark cookie as bad if we get 403
+      if (res.status === 403 || res.status === 429) {
+        // deno-lint-ignore no-explicit-any
+        await (supabase as any)
+          .from("http_session_secrets")
+          .update({ 
+            last_error: `HTTP ${res.status} at ${new Date().toISOString()}`,
+            expires_at: new Date().toISOString()
+          })
+          .eq("site", "gumtree");
+      }
+      
+      return { success: false, listings: [], status: res.status, error: errorText.slice(0, 200), usedCookie: true };
+    }
+
+    const data: GumtreeJsonResponse = await res.json();
+    const results = data?.data?.results?.results || [];
+    const totalAvailable = data?.data?.results?.paging?.totalResultCount || 0;
+
+    // Validate results quality
+    const validation = validateJsonResults(results, yearMin);
+    if (!validation.valid) {
+      console.log(`JSON API validation failed: ${validation.reason}`);
+      
+      // Mark cookie as suspect
+      // deno-lint-ignore no-explicit-any
+      await (supabase as any)
+        .from("http_session_secrets")
+        .update({ 
+          last_error: `Validation failed: ${validation.reason} at ${new Date().toISOString()}`,
+        })
+        .eq("site", "gumtree");
+      
+      return { success: false, listings: [], status: res.status, error: validation.reason, usedCookie: true };
+    }
+
+    const listings = parseJsonResponse(data, yearMin);
+    console.log(`JSON API success: ${listings.length} valid listings from ${results.length} results`);
+
+    // Clear any previous errors on success
+    // deno-lint-ignore no-explicit-any
+    await (supabase as any)
+      .from("http_session_secrets")
+      .update({ last_error: null })
+      .eq("site", "gumtree");
+
+    return { success: true, listings, status: res.status, usedCookie: true, totalAvailable };
+
   } catch (err) {
-    return { 
-      success: false, 
-      listings: [], 
-      errorPreview: err instanceof Error ? err.message : String(err),
-      usedCookie,
-    };
+    console.error("JSON API error:", err);
+    return { success: false, listings: [], status: 0, error: err instanceof Error ? err.message : String(err), usedCookie: false };
   }
 }
 
@@ -311,34 +385,15 @@ serve(async (req) => {
       limit = 50 
     } = body;
 
-    // Load session cookie if available
-    let session: SessionSecret | null = null;
-    const { data: sessionRow } = await supabase
-      .from("http_session_secrets")
-      .select("cookie_header, user_agent, expires_at")
-      .eq("site", "gumtree")
-      .maybeSingle();
-    
-    if (sessionRow) {
-      // Check if expired
-      const isExpired = sessionRow.expires_at && new Date(sessionRow.expires_at) < new Date();
-      if (!isExpired && sessionRow.cookie_header) {
-        session = sessionRow as SessionSecret;
-        console.log(`Loaded Gumtree session cookie (${session.cookie_header.length} chars)`);
-      } else {
-        console.log(`Gumtree session expired or empty`);
-      }
-    }
-
     let listings: ParsedListing[] = [];
     let lane: 'json' | 'firecrawl' = 'json';
     let jsonApiStatus: number | undefined;
     let jsonApiError: string | undefined;
     let usedCookie = false;
 
-    // Try JSON API first (with cookie if available)
-    console.log(`Trying Gumtree JSON API: page=${page}, hasCookie=${!!session}`);
-    const jsonResult = await tryJsonApi(page, year_min, year_max, km_max, page_size, session);
+    // Try JSON API first (supabase handles cookie loading internally)
+    console.log(`Trying Gumtree JSON API: page=${page}`);
+    const jsonResult = await tryJsonApi(supabase, page, year_min, make, state);
     usedCookie = jsonResult.usedCookie;
     
     if (jsonResult.success && jsonResult.listings.length > 0) {
@@ -348,8 +403,8 @@ serve(async (req) => {
     } else {
       // Log JSON failure details
       jsonApiStatus = jsonResult.status;
-      jsonApiError = jsonResult.errorPreview;
-      console.log(`JSON API failed: status=${jsonApiStatus}, preview=${jsonApiError}`);
+      jsonApiError = jsonResult.error;
+      console.log(`JSON API failed: status=${jsonApiStatus}, error=${jsonApiError}`);
       
       // Fallback to Firecrawl
       const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");

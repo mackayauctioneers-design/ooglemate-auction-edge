@@ -86,6 +86,10 @@ schedule = "15 0 * * *"
 [functions.manheim-ingest]
 verify_jwt = false
 
+[functions.gumtree-cookie-refresh-apify]
+verify_jwt = false
+schedule = "0 */6 * * *"
+
 [functions.feeding-mode-report]
 verify_jwt = false
 
