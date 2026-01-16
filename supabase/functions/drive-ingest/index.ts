@@ -6,82 +6,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// GraphQL endpoint for Drive.com.au
 const DRIVE_GRAPHQL_ENDPOINT = "https://drive-carsforsale-prod.graphcdn.app/";
 
-// Note: Drive.com.au uses a specific GraphQL schema
-// The query below is a minimal working version - may need exact query from browser cURL
-const DRIVE_QUERY = `query DEALER_LISTINGS {
-  listings(
-    where: { stockType: { in: ["used"] }, year: { gte: 2016 } }
-    pageNo: 0
-    sort: { order: [["createdAt", "DESC"]] }
-    priceHistory: false
-  ) {
-    pageInfo {
-      hasNextPage
-      totalResults
-    }
+// Exact working query - removed unused priceHistory variable
+const DRIVE_QUERY = `query DEALER_LISTINGS($where: WhereOptionsDealerListing = {}, $pageNo: Int! = 0, $sort: SortInput = {order: [["recommended","DESC"]]}) {
+  listings: DealerListings(where: $where, paginate: {page: $pageNo, pageSize: 30}, sort: $sort) {
+    pageInfo { hasNextPage pageCount currentPage pageItemCount itemCount }
     results {
       id
+      stockType
       year
-      makeName
-      modelName
+      makeDescription
+      familyDescription
       description
       odometer
-      priceDriveAway
-      priceExcludingGovtCharges
+      priceIgc
+      priceEgc
       createdAt
-      region {
-        state
-      }
-      dealer {
-        suburb
-        postcode
-      }
+      Region { state name }
+      Dealer { suburb state postcode }
     }
   }
 }`;
-
-interface DriveListing {
-  id: string;
-  year: number;
-  makeName: string;
-  modelName: string;
-  description?: string;
-  odometer?: number;
-  priceDriveAway?: number;
-  priceExcludingGovtCharges?: number;
-  createdAt?: string;
-  stockType?: string;
-  region?: { state?: string };
-  dealer?: { suburb?: string; postcode?: string };
-}
-
-interface DriveResponse {
-  data?: {
-    listings?: {
-      pageInfo?: {
-        hasNextPage?: boolean;
-        totalResults?: number;
-      };
-      results?: DriveListing[];
-    };
-  };
-  errors?: Array<{ message: string }>;
-}
-
-function buildListingUrl(id: string): string {
-  // Drive listing URLs follow pattern: /cars-for-sale/dealer-listing/{id}
-  return `https://www.drive.com.au/cars-for-sale/dealer-listing/${id}`;
-}
-
-function parsePrice(listing: DriveListing): number | null {
-  // Prefer drive-away price, fallback to ex-govt charges
-  const price = listing.priceDriveAway ?? listing.priceExcludingGovtCharges;
-  if (!price || price < 1000 || price > 500000) return null;
-  return Math.round(price);
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -136,7 +82,7 @@ serve(async (req) => {
     while (hasNextPage && pageNo < page_start + max_pages) {
       console.log(`Fetching page ${pageNo}...`);
 
-      const graphqlPayload = {
+      const payload = {
         operationName: "DEALER_LISTINGS",
         variables: {
           where: {
@@ -146,7 +92,6 @@ serve(async (req) => {
           },
           pageNo,
           sort: { order: [["createdAt", "DESC"]] },
-          priceHistory: false,
         },
         query: DRIVE_QUERY,
       };
@@ -154,28 +99,40 @@ serve(async (req) => {
       const response = await fetch(DRIVE_GRAPHQL_ENDPOINT, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "User-Agent": "OogleMate/1.0",
+          "content-type": "application/json",
+          "accept": "*/*",
+          "origin": "https://www.drive.com.au",
+          "referer": "https://www.drive.com.au/cars-for-sale/search/used/",
+          "user-agent": "Mozilla/5.0",
         },
-        body: JSON.stringify(graphqlPayload),
+        body: JSON.stringify(payload),
       });
 
+      const responseText = await response.text();
+      
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Drive API error ${response.status}: ${errorText.slice(0, 200)}`);
+        console.error(`Drive API error ${response.status}: ${responseText.slice(0, 300)}`);
+        throw new Error(`Drive API error ${response.status}: ${responseText.slice(0, 200)}`);
       }
 
-      const data: DriveResponse = await response.json();
+      let data: any;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        console.error(`Failed to parse response: ${responseText.slice(0, 300)}`);
+        throw new Error("Invalid JSON response from Drive API");
+      }
 
       if (data.errors && data.errors.length > 0) {
-        throw new Error(`GraphQL errors: ${data.errors.map(e => e.message).join(", ")}`);
+        console.error(`GraphQL errors: ${JSON.stringify(data.errors).slice(0, 300)}`);
+        throw new Error(`GraphQL errors: ${data.errors.map((e: any) => e.message).join(", ")}`);
       }
 
+      // Response uses aliased field "listings" from "DealerListings"
       const listings = data.data?.listings?.results || [];
       const pageInfo = data.data?.listings?.pageInfo;
 
-      console.log(`Page ${pageNo}: ${listings.length} listings, hasNextPage: ${pageInfo?.hasNextPage}`);
+      console.log(`Page ${pageNo}: ${listings.length} listings, hasNextPage: ${pageInfo?.hasNextPage}, total: ${pageInfo?.itemCount}`);
 
       results.pages_fetched++;
       results.total_found += listings.length;
@@ -183,25 +140,31 @@ serve(async (req) => {
       // Process each listing
       for (const listing of listings) {
         try {
-          const price = parsePrice(listing);
-          if (!price) {
+          // Prefer priceIgc (inc govt charges), fallback to priceEgc
+          const price = listing.priceIgc ?? listing.priceEgc;
+          if (!price || price < 1000 || price > 500000) {
             results.errors++;
             continue;
           }
 
+          const make = (listing.makeDescription || "UNKNOWN").toUpperCase();
+          const model = (listing.familyDescription || "UNKNOWN").toUpperCase();
+          const state = listing.Region?.state?.toUpperCase() || listing.Dealer?.state?.toUpperCase() || null;
+          const suburb = listing.Dealer?.suburb || null;
+
           const { data: upsertResult, error: upsertError } = await supabase.rpc("upsert_retail_listing", {
             p_source: "drive",
-            p_source_listing_id: listing.id,
-            p_listing_url: buildListingUrl(listing.id),
+            p_source_listing_id: String(listing.id),
+            p_listing_url: listing.id ? `https://www.drive.com.au/cars-for-sale/dealer-listing/${listing.id}` : null,
             p_year: listing.year,
-            p_make: listing.makeName?.toUpperCase() || "UNKNOWN",
-            p_model: listing.modelName?.toUpperCase() || "UNKNOWN",
+            p_make: make,
+            p_model: model,
             p_variant_raw: listing.description || null,
             p_variant_family: null,
             p_km: listing.odometer || null,
-            p_asking_price: price,
-            p_state: listing.region?.state?.toUpperCase() || null,
-            p_suburb: listing.dealer?.suburb || null,
+            p_asking_price: Math.round(price),
+            p_state: state,
+            p_suburb: suburb,
             p_run_id: run_id,
           });
 
@@ -215,9 +178,7 @@ serve(async (req) => {
           if (result?.is_new) {
             results.new_listings++;
             if (results.sample_listings.length < 5) {
-              results.sample_listings.push(
-                `${listing.year} ${listing.makeName} ${listing.modelName} @ $${price}`
-              );
+              results.sample_listings.push(`${listing.year} ${make} ${model} @ $${Math.round(price)}`);
             }
           } else {
             results.updated_listings++;
@@ -232,7 +193,7 @@ serve(async (req) => {
       hasNextPage = pageInfo?.hasNextPage ?? false;
       pageNo++;
 
-      // Small delay between pages to be polite
+      // Small delay between pages
       if (hasNextPage && pageNo < page_start + max_pages) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
