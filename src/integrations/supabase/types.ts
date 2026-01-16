@@ -6029,6 +6029,7 @@ export type Database = {
           count: number
         }[]
       }
+      get_home_dashboard: { Args: { p_dealer_id: string }; Returns: Json }
       get_hunt_for_sale: { Args: { p_sale_id: string }; Returns: string }
       get_identities_needing_exit_recompute: {
         Args: never
