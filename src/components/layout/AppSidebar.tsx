@@ -15,7 +15,9 @@ import {
   MapPin,
   Settings,
   Store,
-  ClipboardList
+  ClipboardList,
+  Bell,
+  Target
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,6 +37,8 @@ import { AuthModal } from '@/components/auth/AuthModal';
 const dealerNavItems = [
   { path: '/valo', label: 'Ask Bob', icon: Sparkles, highlight: true },
   { path: '/', label: "Today's Opportunities", icon: BarChart3 },
+  { path: '/alerts', label: 'Alerts Inbox', icon: Bell },
+  { path: '/hunts', label: 'Kiting Mode', icon: Target },
   { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
   { path: '/search-lots', label: 'Search Lots', icon: Search },
   { path: '/trap-inventory', label: 'Trap Inventory', icon: Store, adminOnly: true },

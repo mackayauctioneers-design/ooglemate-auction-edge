@@ -26,6 +26,7 @@ import VATasksPage from "./pages/VATasksPage";
 import HuntsPage from "./pages/HuntsPage";
 import HuntDetailPage from "./pages/HuntDetailPage";
 import HuntAlertsPage from "./pages/HuntAlertsPage";
+import UnifiedAlertsPage from "./pages/UnifiedAlertsPage";
 
 // Operator pages
 import OperatorDashboardPage from "./pages/operator/OperatorDashboardPage";
@@ -88,6 +89,7 @@ const App = () => (
               <Route path="/hunts" element={<HuntsPage />} />
               <Route path="/hunts/:huntId" element={<HuntDetailPage />} />
               <Route path="/hunt-alerts" element={<HuntAlertsPage />} />
+              <Route path="/alerts" element={<UnifiedAlertsPage />} />
               
               {/* Dealer Specs */}
               <Route path="/dealer/specs" element={<DealerSpecsListPage />} />
