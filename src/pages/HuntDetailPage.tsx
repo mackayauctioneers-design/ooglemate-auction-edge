@@ -4,21 +4,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  ArrowLeft,
-  Target, 
-  Play, 
-  Pause, 
-  CheckCircle,
-  AlertCircle,
-  Clock
-} from "lucide-react";
-import { formatDistanceToNow, format } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { AlertCircle, Clock, Info } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { HuntAlertCardCompact } from "@/components/hunts/HuntAlertCard";
+import { HuntHeader } from "@/components/hunts/HuntHeader";
+import { HuntKPICards } from "@/components/hunts/HuntKPICards";
+import { HuntAlertCardEnhanced } from "@/components/hunts/HuntAlertCardEnhanced";
 import type { 
   SaleHunt, 
   HuntMatch, 
@@ -47,7 +41,7 @@ export default function HuntDetailPage() {
     enabled: !!huntId
   });
 
-  const { data: matches } = useQuery({
+  const { data: matches = [] } = useQuery({
     queryKey: ['hunt-matches', huntId],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
@@ -62,7 +56,7 @@ export default function HuntDetailPage() {
     enabled: !!huntId
   });
 
-  const { data: alerts } = useQuery({
+  const { data: alerts = [] } = useQuery({
     queryKey: ['hunt-alerts', huntId],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
@@ -77,7 +71,7 @@ export default function HuntDetailPage() {
     enabled: !!huntId
   });
 
-  const { data: scans } = useQuery({
+  const { data: scans = [] } = useQuery({
     queryKey: ['hunt-scans', huntId],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
@@ -118,7 +112,11 @@ export default function HuntDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['hunt-matches', huntId] });
       queryClient.invalidateQueries({ queryKey: ['hunt-alerts', huntId] });
       queryClient.invalidateQueries({ queryKey: ['hunt-scans', huntId] });
-      toast.success(`Scan complete: ${data.results?.[0]?.matches || 0} matches`);
+      queryClient.invalidateQueries({ queryKey: ['hunt', huntId] });
+      toast.success(`Scan complete: ${data.results?.[0]?.matches || 0} matches, ${data.results?.[0]?.alerts || 0} alerts`);
+    },
+    onError: (error) => {
+      toast.error(`Scan failed: ${error.message}`);
     }
   });
 
@@ -138,7 +136,16 @@ export default function HuntDetailPage() {
   if (huntLoading) {
     return (
       <AppLayout>
-        <Skeleton className="h-96 w-full" />
+        <div className="space-y-6">
+          <Skeleton className="h-32 w-full" />
+          <div className="grid grid-cols-4 gap-4">
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
+          </div>
+          <Skeleton className="h-96 w-full" />
+        </div>
       </AppLayout>
     );
   }
@@ -156,10 +163,15 @@ export default function HuntDetailPage() {
     );
   }
 
+  // Separate alerts by type
+  const buyAlerts = alerts.filter(a => a.alert_type === 'BUY' && !a.acknowledged_at);
+  const watchAlerts = alerts.filter(a => a.alert_type === 'WATCH' && !a.acknowledged_at);
+  const allAlerts = alerts;
+
   const getDecisionColor = (decision: MatchDecision) => {
     switch (decision) {
-      case 'buy': return 'bg-emerald-500/10 text-emerald-500';
-      case 'watch': return 'bg-amber-500/10 text-amber-500';
+      case 'buy': return 'bg-emerald-500/10 text-emerald-600';
+      case 'watch': return 'bg-amber-500/10 text-amber-600';
       case 'ignore': return 'bg-muted text-muted-foreground';
       default: return 'bg-muted';
     }
@@ -168,167 +180,96 @@ export default function HuntDetailPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/hunts')}>
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Button>
-        </div>
-
         {/* Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <Target className="h-6 w-6 text-primary" />
-              <h1 className="text-2xl font-bold">
-                {hunt.year} {hunt.make} {hunt.model}
-              </h1>
-              <Badge className={
-                hunt.status === 'active' ? 'bg-emerald-500/10 text-emerald-500' :
-                hunt.status === 'paused' ? 'bg-amber-500/10 text-amber-500' :
-                'bg-muted'
-              }>
-                {hunt.status}
-              </Badge>
+        <HuntHeader
+          hunt={hunt}
+          onUpdateStatus={(status) => updateStatusMutation.mutate(status)}
+          onRunScan={() => runScanMutation.mutate()}
+          isRunningScans={runScanMutation.isPending}
+          isUpdatingStatus={updateStatusMutation.isPending}
+        />
+
+        {/* Guardrails Banner */}
+        <div className="p-4 rounded-lg bg-muted/50 border">
+          <div className="flex items-start gap-3">
+            <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <div className="font-medium mb-1">How to read these alerts</div>
+              <div className="text-muted-foreground space-y-1">
+                <div><span className="font-medium text-emerald-600">BUY</span> = High-confidence strike opportunity. Always verify photos, condition, and spec before bidding.</div>
+                <div><span className="font-medium text-amber-600">WATCH</span> = Worth monitoring. May need price movement or more evidence to become a BUY.</div>
+              </div>
             </div>
-            {hunt.variant_family && (
-              <p className="text-muted-foreground mt-1">{hunt.variant_family}</p>
-            )}
-          </div>
-
-          <div className="flex gap-2">
-            {hunt.status === 'active' && (
-              <>
-                <Button onClick={() => runScanMutation.mutate()} disabled={runScanMutation.isPending}>
-                  <Play className="h-4 w-4 mr-2" />
-                  Run Scan Now
-                </Button>
-                <Button variant="outline" onClick={() => updateStatusMutation.mutate('paused')}>
-                  <Pause className="h-4 w-4 mr-2" />
-                  Pause
-                </Button>
-              </>
-            )}
-            {hunt.status === 'paused' && (
-              <Button onClick={() => updateStatusMutation.mutate('active')}>
-                <Play className="h-4 w-4 mr-2" />
-                Resume
-              </Button>
-            )}
-            {hunt.status !== 'done' && (
-              <Button variant="outline" onClick={() => updateStatusMutation.mutate('done')}>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Mark Done
-              </Button>
-            )}
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold">{matches?.length || 0}</div>
-              <div className="text-sm text-muted-foreground">Total Matches</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-emerald-500">
-                {matches?.filter(m => m.decision === 'buy').length || 0}
-              </div>
-              <div className="text-sm text-muted-foreground">BUY Candidates</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-amber-500">
-                {matches?.filter(m => m.decision === 'watch').length || 0}
-              </div>
-              <div className="text-sm text-muted-foreground">WATCH Candidates</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold">
-                {scans?.length || 0}
-              </div>
-              <div className="text-sm text-muted-foreground">Scans Run</div>
-            </CardContent>
-          </Card>
-        </div>
+        {/* KPI Cards */}
+        <HuntKPICards 
+          alerts={alerts} 
+          matches={matches}
+        />
 
-        {/* Hunt Config */}
+        {/* Hunt Configuration (collapsible summary) */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Hunt Configuration</CardTitle>
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm font-medium">Hunt Configuration</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-4 gap-4 text-sm">
+          <CardContent className="pb-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <span className="text-muted-foreground">KM Target:</span>
-                <span className="ml-2">{hunt.km ? `${(hunt.km / 1000).toFixed(0)}k (±${hunt.km_tolerance_pct}%)` : 'Any'}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Sources:</span>
-                <span className="ml-2">{hunt.sources_enabled.join(', ')}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Scan Interval:</span>
-                <span className="ml-2">{hunt.scan_interval_minutes} min</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Expires:</span>
-                <span className="ml-2">
-                  {hunt.expires_at ? format(new Date(hunt.expires_at), 'MMM d, yyyy') : 'Never'}
-                </span>
+                <span className="ml-2 font-medium">{hunt.km ? `${(hunt.km / 1000).toFixed(0)}k (±${hunt.km_tolerance_pct}%)` : 'Any'}</span>
               </div>
               <div>
                 <span className="text-muted-foreground">BUY Gap:</span>
-                <span className="ml-2">${hunt.min_gap_abs_buy} / {hunt.min_gap_pct_buy}%</span>
+                <span className="ml-2 font-medium">${hunt.min_gap_abs_buy} / {hunt.min_gap_pct_buy}%</span>
               </div>
               <div>
                 <span className="text-muted-foreground">WATCH Gap:</span>
-                <span className="ml-2">${hunt.min_gap_abs_watch} / {hunt.min_gap_pct_watch}%</span>
+                <span className="ml-2 font-medium">${hunt.min_gap_abs_watch} / {hunt.min_gap_pct_watch}%</span>
               </div>
               <div>
-                <span className="text-muted-foreground">BUY Age:</span>
-                <span className="ml-2">≤{hunt.max_listing_age_days_buy} days</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">WATCH Age:</span>
-                <span className="ml-2">≤{hunt.max_listing_age_days_watch} days</span>
+                <span className="text-muted-foreground">Max Age (BUY):</span>
+                <span className="ml-2 font-medium">≤{hunt.max_listing_age_days_buy} days</span>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Tabs */}
-        <Tabs defaultValue="alerts">
+        {/* Alert Tabs */}
+        <Tabs defaultValue="buy">
           <TabsList>
-            <TabsTrigger value="alerts">
-              Alerts ({alerts?.length || 0})
+            <TabsTrigger value="buy" className="data-[state=active]:text-emerald-600">
+              BUY ({buyAlerts.length})
+            </TabsTrigger>
+            <TabsTrigger value="watch" className="data-[state=active]:text-amber-600">
+              WATCH ({watchAlerts.length})
+            </TabsTrigger>
+            <TabsTrigger value="all">
+              All ({allAlerts.length})
             </TabsTrigger>
             <TabsTrigger value="matches">
-              All Matches ({matches?.length || 0})
+              Matches ({matches.length})
             </TabsTrigger>
             <TabsTrigger value="scans">
-              Scan History
+              Scans ({scans.length})
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="alerts" className="space-y-3 mt-4">
-            {!alerts?.length ? (
+          {/* BUY Alerts */}
+          <TabsContent value="buy" className="space-y-3 mt-4">
+            {buyAlerts.length === 0 ? (
               <Card className="py-8">
                 <CardContent className="text-center text-muted-foreground">
-                  No alerts yet. Run a scan to find matches.
+                  No BUY alerts yet. Run a scan to find opportunities.
                 </CardContent>
               </Card>
             ) : (
-              alerts.map((alert) => (
-                <HuntAlertCardCompact
+              buyAlerts.map((alert) => (
+                <HuntAlertCardEnhanced
                   key={alert.id}
                   alert={alert}
+                  hunt={hunt}
                   onAcknowledge={(id) => acknowledgeAlertMutation.mutate(id)}
                   isAcknowledging={acknowledgeAlertMutation.isPending}
                 />
@@ -336,89 +277,151 @@ export default function HuntDetailPage() {
             )}
           </TabsContent>
 
+          {/* WATCH Alerts */}
+          <TabsContent value="watch" className="space-y-3 mt-4">
+            {watchAlerts.length === 0 ? (
+              <Card className="py-8">
+                <CardContent className="text-center text-muted-foreground">
+                  No WATCH alerts yet.
+                </CardContent>
+              </Card>
+            ) : (
+              watchAlerts.map((alert) => (
+                <HuntAlertCardEnhanced
+                  key={alert.id}
+                  alert={alert}
+                  hunt={hunt}
+                  onAcknowledge={(id) => acknowledgeAlertMutation.mutate(id)}
+                  isAcknowledging={acknowledgeAlertMutation.isPending}
+                />
+              ))
+            )}
+          </TabsContent>
+
+          {/* All Alerts */}
+          <TabsContent value="all" className="space-y-3 mt-4">
+            {allAlerts.length === 0 ? (
+              <Card className="py-8">
+                <CardContent className="text-center text-muted-foreground">
+                  No alerts yet. Run a scan to find matches.
+                </CardContent>
+              </Card>
+            ) : (
+              allAlerts.map((alert) => (
+                <HuntAlertCardEnhanced
+                  key={alert.id}
+                  alert={alert}
+                  hunt={hunt}
+                  onAcknowledge={(id) => acknowledgeAlertMutation.mutate(id)}
+                  isAcknowledging={acknowledgeAlertMutation.isPending}
+                />
+              ))
+            )}
+          </TabsContent>
+
+          {/* Matches Table */}
           <TabsContent value="matches" className="mt-4">
-            <div className="rounded-lg border">
+            <div className="rounded-lg border overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
-                    <th className="p-3 text-left">Score</th>
-                    <th className="p-3 text-left">Decision</th>
-                    <th className="p-3 text-left">Price</th>
-                    <th className="p-3 text-left">Gap</th>
-                    <th className="p-3 text-left">Matched</th>
-                    <th className="p-3 text-left">Reasons</th>
+                    <th className="p-3 text-left font-medium">Score</th>
+                    <th className="p-3 text-left font-medium">Decision</th>
+                    <th className="p-3 text-left font-medium">Price</th>
+                    <th className="p-3 text-left font-medium">Gap</th>
+                    <th className="p-3 text-left font-medium">Matched</th>
+                    <th className="p-3 text-left font-medium">Reasons</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {matches?.map((match) => (
-                    <tr key={match.id} className="border-t">
-                      <td className="p-3 font-medium">{match.match_score.toFixed(1)}</td>
-                      <td className="p-3">
-                        <Badge className={getDecisionColor(match.decision)}>
-                          {match.decision}
-                        </Badge>
-                      </td>
-                      <td className="p-3">
-                        ${match.asking_price?.toLocaleString() || '?'}
-                      </td>
-                      <td className="p-3">
-                        {match.gap_dollars !== null ? (
-                          <span className={match.gap_dollars > 0 ? 'text-emerald-500' : 'text-destructive'}>
-                            ${match.gap_dollars?.toLocaleString()} ({match.gap_pct?.toFixed(1)}%)
-                          </span>
-                        ) : '—'}
-                      </td>
-                      <td className="p-3 text-muted-foreground">
-                        {formatDistanceToNow(new Date(match.matched_at), { addSuffix: true })}
-                      </td>
-                      <td className="p-3">
-                        <div className="flex flex-wrap gap-1">
-                          {match.reasons?.slice(0, 3).map((r, i) => (
-                            <Badge key={i} variant="outline" className="text-xs">
-                              {r}
-                            </Badge>
-                          ))}
-                        </div>
+                  {matches.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                        No matches found yet
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    matches.map((match) => (
+                      <tr key={match.id} className="border-t hover:bg-muted/30">
+                        <td className="p-3 font-medium">{match.match_score.toFixed(1)}</td>
+                        <td className="p-3">
+                          <Badge className={getDecisionColor(match.decision)}>
+                            {match.decision}
+                          </Badge>
+                        </td>
+                        <td className="p-3">
+                          ${match.asking_price?.toLocaleString() || '?'}
+                        </td>
+                        <td className="p-3">
+                          {match.gap_dollars !== null ? (
+                            <span className={match.gap_dollars > 0 ? 'text-emerald-600' : 'text-destructive'}>
+                              ${match.gap_dollars?.toLocaleString()} ({match.gap_pct?.toFixed(1)}%)
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="p-3 text-muted-foreground">
+                          {formatDistanceToNow(new Date(match.matched_at), { addSuffix: true })}
+                        </td>
+                        <td className="p-3">
+                          <div className="flex flex-wrap gap-1">
+                            {match.reasons?.slice(0, 3).map((r, i) => (
+                              <Badge key={i} variant="outline" className="text-xs">
+                                {r}
+                              </Badge>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </TabsContent>
 
+          {/* Scan History */}
           <TabsContent value="scans" className="mt-4">
             <div className="space-y-2">
-              {scans?.map((scan) => (
-                <Card key={scan.id}>
-                  <CardContent className="p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Badge className={
-                        scan.status === 'ok' ? 'bg-emerald-500/10 text-emerald-500' :
-                        scan.status === 'error' ? 'bg-destructive/10 text-destructive' :
-                        'bg-muted'
-                      }>
-                        {scan.status}
-                      </Badge>
-                      <div className="text-sm">
-                        {scan.candidates_checked ?? 0} checked • 
-                        {scan.matches_found ?? 0} matches • 
-                        {scan.alerts_emitted ?? 0} alerts
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                      <Clock className="h-4 w-4" />
-                      {formatDistanceToNow(new Date(scan.started_at), { addSuffix: true })}
-                      {scan.error && (
-                        <div className="flex items-center gap-1 text-destructive">
-                          <AlertCircle className="h-4 w-4" />
-                          <span className="text-xs truncate max-w-[200px]">{scan.error}</span>
-                        </div>
-                      )}
-                    </div>
+              {scans.length === 0 ? (
+                <Card className="py-8">
+                  <CardContent className="text-center text-muted-foreground">
+                    No scans run yet
                   </CardContent>
                 </Card>
-              ))}
+              ) : (
+                scans.map((scan) => (
+                  <Card key={scan.id}>
+                    <CardContent className="p-3 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Badge className={
+                          scan.status === 'ok' ? 'bg-emerald-500/10 text-emerald-600' :
+                          scan.status === 'error' ? 'bg-destructive/10 text-destructive' :
+                          'bg-amber-500/10 text-amber-600'
+                        }>
+                          {scan.status}
+                        </Badge>
+                        <div className="text-sm">
+                          <span className="font-medium">{scan.candidates_checked ?? 0}</span> checked • 
+                          <span className="font-medium ml-1">{scan.matches_found ?? 0}</span> matches • 
+                          <span className="font-medium ml-1">{scan.alerts_emitted ?? 0}</span> alerts
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          {formatDistanceToNow(new Date(scan.started_at), { addSuffix: true })}
+                        </div>
+                        {scan.error && (
+                          <div className="flex items-center gap-1 text-destructive">
+                            <AlertCircle className="h-4 w-4" />
+                            <span className="text-xs truncate max-w-[200px]">{scan.error}</span>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
             </div>
           </TabsContent>
         </Tabs>
