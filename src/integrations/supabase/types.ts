@@ -5674,6 +5674,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      create_hunt_from_sale: { Args: { p_sale_id: string }; Returns: string }
       derive_clearance_events: {
         Args: { p_stale_hours?: number }
         Returns: {
@@ -6028,6 +6029,7 @@ export type Database = {
           count: number
         }[]
       }
+      get_hunt_for_sale: { Args: { p_sale_id: string }; Returns: string }
       get_identities_needing_exit_recompute: {
         Args: never
         Returns: {

@@ -14,14 +14,16 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { dataService } from '@/services/dataService';
+import { supabase } from '@/integrations/supabase/client';
 import { Dealer, SaleLog } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { FileText, Save, Calendar, Car, Upload, Clock, DollarSign } from 'lucide-react';
+import { FileText, Save, Calendar, Car, Upload, Clock, DollarSign, Target, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { SalesCsvImport } from '@/components/sales/SalesCsvImport';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function LogSalePage() {
   const navigate = useNavigate();
@@ -33,6 +35,8 @@ export default function LogSalePage() {
   const [recentSales, setRecentSales] = useState<SaleLog[]>([]);
   const [loadingSales, setLoadingSales] = useState(true);
   const [salesDealerFilter, setSalesDealerFilter] = useState<string>('all');
+  const [failedHuntSaleId, setFailedHuntSaleId] = useState<string | null>(null);
+  const [isArmingHunt, setIsArmingHunt] = useState(false);
   
   const [formData, setFormData] = useState({
     dealer_name: '',
@@ -83,6 +87,61 @@ export default function LogSalePage() {
     }));
   }, [searchParams]);
 
+  // Helper to verify hunt was created and redirect
+  const verifyHuntAndRedirect = async (saleId: string): Promise<boolean> => {
+    // Poll for hunt creation (trigger may have slight delay)
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { data: huntId } = await (supabase as any).rpc('get_hunt_for_sale', { p_sale_id: saleId });
+      
+      if (huntId) {
+        toast({
+          title: "✅ Kiting Mode engaged",
+          description: "Hunting for replicas now. Redirecting to hunt...",
+        });
+        navigate(`/hunts/${huntId}`);
+        return true;
+      }
+      
+      // Wait 500ms before next attempt
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    return false;
+  };
+
+  // Manual fallback to arm Kiting Mode
+  const handleArmKitingMode = async () => {
+    if (!failedHuntSaleId) return;
+    
+    setIsArmingHunt(true);
+    try {
+      const { data: huntId, error } = await (supabase as any).rpc('create_hunt_from_sale', { 
+        p_sale_id: failedHuntSaleId 
+      });
+      
+      if (error) throw error;
+      
+      if (huntId) {
+        toast({
+          title: "✅ Kiting Mode engaged",
+          description: "Hunt armed successfully. Redirecting...",
+        });
+        setFailedHuntSaleId(null);
+        navigate(`/hunts/${huntId}`);
+      } else {
+        throw new Error('Failed to create hunt');
+      }
+    } catch (error) {
+      toast({
+        title: "Failed to arm Kiting Mode",
+        description: "Please try again or contact support.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsArmingHunt(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -95,30 +154,49 @@ export default function LogSalePage() {
       return;
     }
 
+    // Sell price is required for Kiting Mode
+    if (!formData.sell_price) {
+      toast({
+        title: "Sell price required",
+        description: "Enter a sell price to activate Kiting Mode (proven exit value).",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
+    setFailedHuntSaleId(null);
     
     try {
       const dealer = dealers.find(d => d.dealer_name === formData.dealer_name);
       
-      // 1. Add to Sales_Log
-      await dataService.addSaleLog({
-        dealer_name: formData.dealer_name,
-        dealer_whatsapp: dealer?.whatsapp || '',
-        deposit_date: formData.sale_date,
-        make: formData.make,
-        model: formData.model,
-        variant_normalised: formData.variant_normalised,
-        year: formData.year,
-        km: formData.sale_km,
-        engine: formData.engine,
-        drivetrain: formData.drivetrain,
-        transmission: formData.transmission,
-        buy_price: formData.buy_price ? parseFloat(formData.buy_price) : undefined,
-        sell_price: formData.sell_price ? parseFloat(formData.sell_price) : undefined,
-        source: 'Manual',
-      });
+      // 1. Insert into dealer_sales (triggers auto hunt creation)
+      // Use dealer name as ID if no dealer_id available (legacy support)
+      const dealerId = (dealer as any)?.dealer_id || (dealer as any)?.id || formData.dealer_name;
+      
+      const { data: insertedSale, error: insertError } = await (supabase as any)
+        .from('dealer_sales')
+        .insert({
+          dealer_id: dealerId,
+          dealer_name: formData.dealer_name,
+          sold_date: formData.sale_date,
+          make: formData.make.toUpperCase(),
+          model: formData.model.toUpperCase(),
+          variant_raw: formData.variant_normalised,
+          year: formData.year,
+          km: formData.sale_km,
+          buy_price: formData.buy_price ? parseFloat(formData.buy_price) : null,
+          sell_price: formData.sell_price ? parseFloat(formData.sell_price) : null,
+          data_source: 'manual',
+        })
+        .select('id')
+        .single();
+      
+      if (insertError) throw insertError;
+      
+      const saleId = insertedSale.id;
 
-      // 2. Upsert fingerprint (updates existing or creates new)
+      // 2. Also sync to legacy systems (fingerprints)
       await dataService.upsertFingerprint({
         dealer_name: formData.dealer_name,
         dealer_whatsapp: dealer?.whatsapp || '',
@@ -134,32 +212,43 @@ export default function LogSalePage() {
         shared_opt_in: formData.shared_opt_in ? 'Y' : 'N',
       });
 
-      toast({
-        title: "Sale logged successfully",
-        description: `Logged ${formData.year} ${formData.make} ${formData.model}. Fingerprint synced.`,
-      });
+      // 3. Verify hunt was created and redirect
+      const huntCreated = await verifyHuntAndRedirect(saleId);
+      
+      if (!huntCreated) {
+        // Hunt didn't create - show fallback
+        setFailedHuntSaleId(saleId);
+        toast({
+          title: "Sale saved",
+          description: "Sale logged but hunt failed to arm. Click 'Arm Kiting Mode' to retry.",
+          variant: "destructive",
+        });
+      }
 
       // Refresh recent sales
       const sales = await dataService.getSalesLog(50);
       setRecentSales(sales);
 
-      // Reset form
-      setFormData({
-        dealer_name: formData.dealer_name, // Keep dealer selected
-        sale_date: format(new Date(), 'yyyy-MM-dd'),
-        make: '',
-        model: '',
-        variant_normalised: '',
-        year: new Date().getFullYear(),
-        sale_km: 0,
-        engine: '',
-        drivetrain: '',
-        transmission: '',
-        shared_opt_in: false,
-        buy_price: '',
-        sell_price: '',
-      });
+      // Reset form (only if hunt was created)
+      if (huntCreated) {
+        setFormData({
+          dealer_name: formData.dealer_name, // Keep dealer selected
+          sale_date: format(new Date(), 'yyyy-MM-dd'),
+          make: '',
+          model: '',
+          variant_normalised: '',
+          year: new Date().getFullYear(),
+          sale_km: 0,
+          engine: '',
+          drivetrain: '',
+          transmission: '',
+          shared_opt_in: false,
+          buy_price: '',
+          sell_price: '',
+        });
+      }
     } catch (error) {
+      console.error('Sale submission error:', error);
       toast({
         title: "Failed to log sale",
         description: "Please try again.",
@@ -444,6 +533,34 @@ export default function LogSalePage() {
                   />
                 </div>
 
+                {/* Kiting Mode Info */}
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800">
+                  <Target className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <p className="text-sm text-emerald-700 dark:text-emerald-400">
+                    Uploading a sale with sell price activates <span className="font-semibold">Kiting Mode™</span> automatically.
+                  </p>
+                </div>
+
+                {/* Failed Hunt Fallback */}
+                {failedHuntSaleId && (
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription className="flex items-center justify-between">
+                      <span>Sale saved, but hunt failed to arm.</span>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={handleArmKitingMode}
+                        disabled={isArmingHunt}
+                        className="ml-4"
+                      >
+                        <Target className="h-4 w-4 mr-2" />
+                        {isArmingHunt ? 'Arming...' : 'Arm Kiting Mode'}
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 {/* Submit */}
                 <div className="flex justify-end gap-3 pt-4 border-t border-border">
                   <Button
@@ -460,7 +577,7 @@ export default function LogSalePage() {
                     className="gap-2"
                   >
                     <Save className="h-4 w-4" />
-                    {isSubmitting ? 'Saving...' : 'Log Sale'}
+                    {isSubmitting ? 'Engaging Kiting Mode...' : 'Log Sale & Hunt'}
                   </Button>
                 </div>
               </CardContent>
