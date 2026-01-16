@@ -238,7 +238,7 @@ export default function LogSalePage() {
           km: formData.sale_km,
           buy_price: formData.buy_price ? parseFloat(formData.buy_price) : null,
           sell_price: formData.sell_price ? parseFloat(formData.sell_price) : null,
-          data_source: 'manual',
+          data_source: 'DEALER_UPLOAD',
         })
         .select('id')
         .single();
