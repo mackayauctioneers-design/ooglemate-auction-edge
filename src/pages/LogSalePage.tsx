@@ -87,10 +87,14 @@ export default function LogSalePage() {
     }));
   }, [searchParams]);
 
+  // Polling config (explicit)
+  const POLL_MAX_ATTEMPTS = 6;
+  const POLL_DELAY_MS = 400;
+
   // Helper to verify hunt was created and redirect
   const verifyHuntAndRedirect = async (saleId: string): Promise<boolean> => {
     // Poll for hunt creation (trigger may have slight delay)
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
       const { data: huntId } = await (supabase as any).rpc('get_hunt_for_sale', { p_sale_id: saleId });
       
       if (huntId) {
@@ -102,10 +106,26 @@ export default function LogSalePage() {
         return true;
       }
       
-      // Wait 500ms before next attempt
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait before next attempt
+      await new Promise(resolve => setTimeout(resolve, POLL_DELAY_MS));
     }
     
+    // Auto-arm fallback: try to create hunt once before showing manual button
+    console.log('[KitingMode] Polling failed, attempting auto-arm...');
+    const { data: fallbackHuntId, error } = await (supabase as any).rpc('create_hunt_from_sale', { 
+      p_sale_id: saleId 
+    });
+    
+    if (!error && fallbackHuntId) {
+      toast({
+        title: "✅ Kiting Mode engaged",
+        description: "Hunt auto-armed successfully. Redirecting...",
+      });
+      navigate(`/hunts/${fallbackHuntId}`);
+      return true;
+    }
+    
+    console.warn('[KitingMode] Auto-arm failed:', error);
     return false;
   };
 
@@ -170,10 +190,23 @@ export default function LogSalePage() {
     try {
       const dealer = dealers.find(d => d.dealer_name === formData.dealer_name);
       
-      // 1. Insert into dealer_sales (triggers auto hunt creation)
-      // Use dealer name as ID if no dealer_id available (legacy support)
-      const dealerId = (dealer as any)?.dealer_id || (dealer as any)?.id || formData.dealer_name;
+      // CRITICAL: dealer_id must be a real UUID, not a string fallback
+      const dealerId = (dealer as any)?.dealer_id || (dealer as any)?.id;
       
+      // UUID validation regex
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      
+      if (!dealerId || !uuidRegex.test(dealerId)) {
+        toast({
+          title: "Dealer not linked",
+          description: "Select a valid dealer profile to activate Kiting Mode. Contact support if your dealer is missing.",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // 1. Insert into dealer_sales (triggers auto hunt creation)
       const { data: insertedSale, error: insertError } = await (supabase as any)
         .from('dealer_sales')
         .insert({
