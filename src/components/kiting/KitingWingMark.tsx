@@ -11,7 +11,8 @@ interface KitingWingMarkProps {
 /**
  * Kiting Wing Mark SVG
  * 
- * Symmetrical raptor wings with central tail element.
+ * Sharp angular raptor wings with central tail element.
+ * Based on the Karugul wing emblem design.
  * Uses currentColor for theming (default: #1F2933 dark charcoal)
  * Supports dynamic color via CSS fill: currentColor
  * 
@@ -32,9 +33,9 @@ export function KitingWingMark({
   
   return (
     <svg
-      viewBox="0 0 100 60"
+      viewBox="0 0 120 80"
       width={size}
-      height={size * 0.6}
+      height={size * 0.67}
       className={cn(
         'transition-colors duration-300',
         'motion-reduce:animate-none motion-reduce:transform-none',
@@ -44,87 +45,62 @@ export function KitingWingMark({
       aria-label={`Kiting Mode: ${state}`}
       role="img"
     >
-      {/* Left Wing */}
+      {/* Left Wing - Sharp angular design */}
       <g 
         className={cn(
-          'origin-[50%_100%] transition-transform',
+          'origin-[60px_65px] transition-transform',
           animated && isActive && !isDiving && 'animate-wing-left',
           animated && isScanning && 'animate-wing-left-fast',
           animated && isDiving && 'animate-wing-dive-left',
           animated && isStrike && 'animate-wing-strike'
         )}
       >
-        {/* Main wing shape */}
-        <path d="M50 55 
-          C45 50, 35 40, 20 35
-          C15 33, 8 32, 2 32
-          C1 31, 0 30, 0 29
-          C0 28, 1 27, 3 27
-          C10 26, 18 24, 25 20
-          C32 16, 38 12, 42 8
-          C44 6, 46 5, 48 5
-          C49 5, 50 6, 50 8
-          C50 15, 50 30, 50 55
-          Z" 
-        />
-        {/* Wing feather details */}
+        {/* Primary wing feathers */}
+        <path d="M60 65 L0 25 L8 30 L15 28 L22 32 L28 30 L35 35 L42 33 L48 40 L55 45 L60 55 Z" />
+        {/* Secondary wing layer for depth */}
         <path 
-          d="M15 30 L25 25 M10 31 L18 28 M22 28 L30 22 M28 24 L35 18 M34 20 L40 14"
-          stroke="currentColor"
-          strokeWidth="0.8"
-          fill="none"
-          opacity="0.3"
-          className="motion-reduce:hidden"
+          d="M60 60 L25 38 L32 40 L40 42 L48 46 L55 52 L60 58 Z" 
+          opacity="0.7"
         />
       </g>
 
-      {/* Right Wing (mirrored) */}
+      {/* Right Wing - Mirrored sharp angular design */}
       <g 
         className={cn(
-          'origin-[50%_100%] transition-transform',
+          'origin-[60px_65px] transition-transform',
           animated && isActive && !isDiving && 'animate-wing-right',
           animated && isScanning && 'animate-wing-right-fast',
           animated && isDiving && 'animate-wing-dive-right',
           animated && isStrike && 'animate-wing-strike'
         )}
       >
-        {/* Main wing shape */}
-        <path d="M50 55 
-          C55 50, 65 40, 80 35
-          C85 33, 92 32, 98 32
-          C99 31, 100 30, 100 29
-          C100 28, 99 27, 97 27
-          C90 26, 82 24, 75 20
-          C68 16, 62 12, 58 8
-          C56 6, 54 5, 52 5
-          C51 5, 50 6, 50 8
-          C50 15, 50 30, 50 55
-          Z" 
-        />
-        {/* Wing feather details */}
+        {/* Primary wing feathers */}
+        <path d="M60 65 L120 25 L112 30 L105 28 L98 32 L92 30 L85 35 L78 33 L72 40 L65 45 L60 55 Z" />
+        {/* Secondary wing layer for depth */}
         <path 
-          d="M85 30 L75 25 M90 31 L82 28 M78 28 L70 22 M72 24 L65 18 M66 20 L60 14"
-          stroke="currentColor"
-          strokeWidth="0.8"
-          fill="none"
-          opacity="0.3"
-          className="motion-reduce:hidden"
+          d="M60 60 L95 38 L88 40 L80 42 L72 46 L65 52 L60 58 Z" 
+          opacity="0.7"
         />
       </g>
 
-      {/* Center Tail/Body */}
+      {/* Center Tail */}
       <path 
         className={cn(
-          'origin-[50%_30%] transition-transform',
+          'origin-[60px_55px] transition-transform',
           animated && isDiving && 'animate-tail-dive',
           animated && isStrike && 'animate-tail-strike'
         )}
-        d="M50 8
-          C48 12, 47 20, 47 30
-          C47 38, 48 48, 50 60
-          C52 48, 53 38, 53 30
-          C53 20, 52 12, 50 8
-          Z"
+        d="M56 55 L60 80 L64 55 L62 45 L60 42 L58 45 Z"
+      />
+      
+      {/* Tail accent lines */}
+      <path 
+        d="M58 50 L60 75 M62 50 L60 75"
+        stroke="currentColor"
+        strokeWidth="0.5"
+        fill="none"
+        opacity="0.3"
+        className="motion-reduce:hidden"
       />
     </svg>
   );
@@ -132,10 +108,12 @@ export function KitingWingMark({
 
 /**
  * Static export for favicon/app icon use
- * No animations, pure SVG string
+ * Clean SVG string - no animations
  */
-export const KITING_WING_MARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60" fill="currentColor">
-  <path d="M50 55 C45 50, 35 40, 20 35 C15 33, 8 32, 2 32 C1 31, 0 30, 0 29 C0 28, 1 27, 3 27 C10 26, 18 24, 25 20 C32 16, 38 12, 42 8 C44 6, 46 5, 48 5 C49 5, 50 6, 50 8 C50 15, 50 30, 50 55 Z"/>
-  <path d="M50 55 C55 50, 65 40, 80 35 C85 33, 92 32, 98 32 C99 31, 100 30, 100 29 C100 28, 99 27, 97 27 C90 26, 82 24, 75 20 C68 16, 62 12, 58 8 C56 6, 54 5, 52 5 C51 5, 50 6, 50 8 C50 15, 50 30, 50 55 Z"/>
-  <path d="M50 8 C48 12, 47 20, 47 30 C47 38, 48 48, 50 60 C52 48, 53 38, 53 30 C53 20, 52 12, 50 8 Z"/>
+export const KITING_WING_MARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80" fill="currentColor">
+  <path d="M60 65 L0 25 L8 30 L15 28 L22 32 L28 30 L35 35 L42 33 L48 40 L55 45 L60 55 Z"/>
+  <path d="M60 60 L25 38 L32 40 L40 42 L48 46 L55 52 L60 58 Z" opacity="0.7"/>
+  <path d="M60 65 L120 25 L112 30 L105 28 L98 32 L92 30 L85 35 L78 33 L72 40 L65 45 L60 55 Z"/>
+  <path d="M60 60 L95 38 L88 40 L80 42 L72 46 L65 52 L60 58 Z" opacity="0.7"/>
+  <path d="M56 55 L60 80 L64 55 L62 45 L60 42 L58 45 Z"/>
 </svg>`;
