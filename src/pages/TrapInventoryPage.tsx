@@ -9,6 +9,7 @@ import { TrapInventoryDrawer } from '@/components/trap-inventory/TrapInventoryDr
 import { PresenceStatsCard } from '@/components/trap-inventory/PresenceStatsCard';
 import { Button } from '@/components/ui/button';
 import { Loader2, Store, Download, Phone } from 'lucide-react';
+import { KitingWingMarkVideo } from '@/components/kiting';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -569,14 +570,16 @@ export default function TrapInventoryPage() {
       <AppLayout>
         <div className="p-6 space-y-6">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <Store className="h-6 w-6" />
-                Trap Inventory
-              </h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                Monitor retail stock vs benchmark – identify mispriced wholesale opportunities
-              </p>
+            <div className="flex items-center gap-3">
+              <KitingWingMarkVideo size={48} />
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">
+                  Trap Inventory
+                </h1>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Monitor retail stock vs benchmark – identify mispriced wholesale opportunities
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-4">
               <div className="text-right text-sm text-muted-foreground space-y-0.5">

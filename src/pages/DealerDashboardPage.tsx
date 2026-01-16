@@ -6,6 +6,7 @@ import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { TrendingUp, TrendingDown, Minus, Flame, Snowflake, Target, Car, MapPin } from 'lucide-react';
+import { KitingWingMarkVideo } from '@/components/kiting';
 import { SpecMatchesCard } from '@/components/dealer/SpecMatchesCard';
 
 // ============================================================================
@@ -341,7 +342,8 @@ export default function DealerDashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
+          <KitingWingMarkVideo size={48} />
           <h1 className="text-2xl font-bold">Dealer Dashboard</h1>
           <Badge variant="outline" className="text-xs">
             <MapPin className="h-3 w-3 mr-1" />

@@ -29,6 +29,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import { Bell, CheckCircle, Eye, EyeOff, ExternalLink, Filter, CheckCheck, Clock, AlertTriangle } from 'lucide-react';
+import { KitingWingMarkVideo } from '@/components/kiting';
 import { toast } from 'sonner';
 import { getAuctionListingUrl, getOpenButtonLabel, isSessionBasedAuctionHouse } from '@/utils/auctionLinkHandler';
 
@@ -156,14 +157,16 @@ export default function AlertsPage() {
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-            <Bell className="h-6 w-6 text-primary" />
-            {isAdmin ? 'All Alerts' : 'My Alerts'}
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            In-app notifications for Watch → Buy transitions
-          </p>
+        <div className="flex items-center gap-3">
+          <KitingWingMarkVideo size={48} />
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">
+              {isAdmin ? 'All Alerts' : 'My Alerts'}
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              In-app notifications for Watch → Buy transitions
+            </p>
+          </div>
         </div>
 
         {/* Stats Cards */}
