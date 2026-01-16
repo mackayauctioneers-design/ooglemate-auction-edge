@@ -2284,6 +2284,52 @@ export type Database = {
         }
         Relationships: []
       }
+      listing_classify_queue: {
+        Row: {
+          error: string | null
+          id: string
+          listing_id: string
+          processed_at: string | null
+          queued_at: string | null
+        }
+        Insert: {
+          error?: string | null
+          id?: string
+          listing_id: string
+          processed_at?: string | null
+          queued_at?: string | null
+        }
+        Update: {
+          error?: string | null
+          id?: string
+          listing_id?: string
+          processed_at?: string | null
+          queued_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_classify_queue_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: true
+            referencedRelation: "potential_cross_posts"
+            referencedColumns: ["listing_a_id"]
+          },
+          {
+            foreignKeyName: "listing_classify_queue_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: true
+            referencedRelation: "potential_cross_posts"
+            referencedColumns: ["listing_b_id"]
+          },
+          {
+            foreignKeyName: "listing_classify_queue_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: true
+            referencedRelation: "retail_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       listing_events: {
         Row: {
           created_at: string
@@ -2491,6 +2537,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      model_taxonomy: {
+        Row: {
+          badge_tiers: Json
+          body_types_allowed: string[] | null
+          created_at: string | null
+          engine_families_allowed: string[] | null
+          id: string
+          make: string
+          model_root: string
+          notes: string | null
+          series_family: string
+          updated_at: string | null
+        }
+        Insert: {
+          badge_tiers?: Json
+          body_types_allowed?: string[] | null
+          created_at?: string | null
+          engine_families_allowed?: string[] | null
+          id?: string
+          make: string
+          model_root: string
+          notes?: string | null
+          series_family: string
+          updated_at?: string | null
+        }
+        Update: {
+          badge_tiers?: Json
+          body_types_allowed?: string[] | null
+          created_at?: string | null
+          engine_families_allowed?: string[] | null
+          id?: string
+          make?: string
+          model_root?: string
+          notes?: string | null
+          series_family?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       pipeline_runs: {
         Row: {
@@ -2740,10 +2825,15 @@ export type Database = {
         Row: {
           anomaly_sold_returned: boolean
           asking_price: number
+          badge: string | null
+          badge_tier: number | null
+          body_type: string | null
+          classified_at: string | null
           created_at: string
           cross_post_confidence: number | null
           cross_post_linked_at: string | null
           delisted_at: string | null
+          engine_family: string | null
           exclude_from_alerts: boolean
           first_seen_at: string
           id: string
@@ -2765,6 +2855,7 @@ export type Database = {
           lng: number | null
           make: string
           model: string
+          model_root: string | null
           origin_entity: string | null
           postcode: string | null
           price_change_count: number | null
@@ -2780,6 +2871,7 @@ export type Database = {
           seller_name_raw: string | null
           seller_phone_hash: string | null
           seller_type: string | null
+          series_family: string | null
           sold_returned_at: string | null
           source: string
           source_chain: Json | null
@@ -2789,18 +2881,26 @@ export type Database = {
           suburb: string | null
           times_seen: number | null
           updated_at: string
+          variant_confidence: string | null
           variant_family: string | null
           variant_raw: string | null
+          variant_reasons: string[] | null
+          variant_source: string | null
           vehicle_instance_id: string | null
           year: number
         }
         Insert: {
           anomaly_sold_returned?: boolean
           asking_price: number
+          badge?: string | null
+          badge_tier?: number | null
+          body_type?: string | null
+          classified_at?: string | null
           created_at?: string
           cross_post_confidence?: number | null
           cross_post_linked_at?: string | null
           delisted_at?: string | null
+          engine_family?: string | null
           exclude_from_alerts?: boolean
           first_seen_at?: string
           id?: string
@@ -2822,6 +2922,7 @@ export type Database = {
           lng?: number | null
           make: string
           model: string
+          model_root?: string | null
           origin_entity?: string | null
           postcode?: string | null
           price_change_count?: number | null
@@ -2837,6 +2938,7 @@ export type Database = {
           seller_name_raw?: string | null
           seller_phone_hash?: string | null
           seller_type?: string | null
+          series_family?: string | null
           sold_returned_at?: string | null
           source: string
           source_chain?: Json | null
@@ -2846,18 +2948,26 @@ export type Database = {
           suburb?: string | null
           times_seen?: number | null
           updated_at?: string
+          variant_confidence?: string | null
           variant_family?: string | null
           variant_raw?: string | null
+          variant_reasons?: string[] | null
+          variant_source?: string | null
           vehicle_instance_id?: string | null
           year: number
         }
         Update: {
           anomaly_sold_returned?: boolean
           asking_price?: number
+          badge?: string | null
+          badge_tier?: number | null
+          body_type?: string | null
+          classified_at?: string | null
           created_at?: string
           cross_post_confidence?: number | null
           cross_post_linked_at?: string | null
           delisted_at?: string | null
+          engine_family?: string | null
           exclude_from_alerts?: boolean
           first_seen_at?: string
           id?: string
@@ -2879,6 +2989,7 @@ export type Database = {
           lng?: number | null
           make?: string
           model?: string
+          model_root?: string | null
           origin_entity?: string | null
           postcode?: string | null
           price_change_count?: number | null
@@ -2894,6 +3005,7 @@ export type Database = {
           seller_name_raw?: string | null
           seller_phone_hash?: string | null
           seller_type?: string | null
+          series_family?: string | null
           sold_returned_at?: string | null
           source?: string
           source_chain?: Json | null
@@ -2903,8 +3015,11 @@ export type Database = {
           suburb?: string | null
           times_seen?: number | null
           updated_at?: string
+          variant_confidence?: string | null
           variant_family?: string | null
           variant_raw?: string | null
+          variant_reasons?: string[] | null
+          variant_source?: string | null
           vehicle_instance_id?: string | null
           year?: number
         }
@@ -3040,9 +3155,13 @@ export type Database = {
       }
       sale_hunts: {
         Row: {
+          badge: string | null
+          badge_tier: number | null
+          body_type: string | null
           created_at: string
           dealer_id: string
           drivetrain: string | null
+          engine_family: string | null
           expires_at: string | null
           fuel: string | null
           geo_mode: string
@@ -3060,6 +3179,7 @@ export type Database = {
           min_gap_pct_buy: number
           min_gap_pct_watch: number
           model: string
+          model_root: string | null
           notes: string | null
           outward_enabled: boolean | null
           outward_sources: string[] | null
@@ -3068,18 +3188,26 @@ export type Database = {
           proven_exit_value: number | null
           radius_km: number | null
           scan_interval_minutes: number
+          series_family: string | null
           source_sale_id: string | null
           sources_enabled: string[]
           states: string[] | null
           status: string
           transmission: string | null
+          variant_confidence: string | null
           variant_family: string | null
+          variant_reasons: string[] | null
+          variant_source: string | null
           year: number
         }
         Insert: {
+          badge?: string | null
+          badge_tier?: number | null
+          body_type?: string | null
           created_at?: string
           dealer_id: string
           drivetrain?: string | null
+          engine_family?: string | null
           expires_at?: string | null
           fuel?: string | null
           geo_mode?: string
@@ -3097,6 +3225,7 @@ export type Database = {
           min_gap_pct_buy?: number
           min_gap_pct_watch?: number
           model: string
+          model_root?: string | null
           notes?: string | null
           outward_enabled?: boolean | null
           outward_sources?: string[] | null
@@ -3105,18 +3234,26 @@ export type Database = {
           proven_exit_value?: number | null
           radius_km?: number | null
           scan_interval_minutes?: number
+          series_family?: string | null
           source_sale_id?: string | null
           sources_enabled?: string[]
           states?: string[] | null
           status?: string
           transmission?: string | null
+          variant_confidence?: string | null
           variant_family?: string | null
+          variant_reasons?: string[] | null
+          variant_source?: string | null
           year: number
         }
         Update: {
+          badge?: string | null
+          badge_tier?: number | null
+          body_type?: string | null
           created_at?: string
           dealer_id?: string
           drivetrain?: string | null
+          engine_family?: string | null
           expires_at?: string | null
           fuel?: string | null
           geo_mode?: string
@@ -3134,6 +3271,7 @@ export type Database = {
           min_gap_pct_buy?: number
           min_gap_pct_watch?: number
           model?: string
+          model_root?: string | null
           notes?: string | null
           outward_enabled?: boolean | null
           outward_sources?: string[] | null
@@ -3142,12 +3280,16 @@ export type Database = {
           proven_exit_value?: number | null
           radius_km?: number | null
           scan_interval_minutes?: number
+          series_family?: string | null
           source_sale_id?: string | null
           sources_enabled?: string[]
           states?: string[] | null
           status?: string
           transmission?: string | null
+          variant_confidence?: string | null
           variant_family?: string | null
+          variant_reasons?: string[] | null
+          variant_source?: string | null
           year?: number
         }
         Relationships: []
@@ -4530,6 +4672,140 @@ export type Database = {
           status?: string
           tier?: string
           vehicle_summary?: string
+        }
+        Relationships: []
+      }
+      variant_audit: {
+        Row: {
+          classified_at: string | null
+          confidence: string | null
+          hunt_id: string | null
+          id: string
+          listing_id: string | null
+          output_badge: string | null
+          output_badge_tier: number | null
+          output_body_type: string | null
+          output_engine_family: string | null
+          output_model_root: string | null
+          output_series_family: string | null
+          raw_title: string | null
+          raw_url: string | null
+          raw_variant: string | null
+          reasons: string[] | null
+          rules_applied: string[] | null
+        }
+        Insert: {
+          classified_at?: string | null
+          confidence?: string | null
+          hunt_id?: string | null
+          id?: string
+          listing_id?: string | null
+          output_badge?: string | null
+          output_badge_tier?: number | null
+          output_body_type?: string | null
+          output_engine_family?: string | null
+          output_model_root?: string | null
+          output_series_family?: string | null
+          raw_title?: string | null
+          raw_url?: string | null
+          raw_variant?: string | null
+          reasons?: string[] | null
+          rules_applied?: string[] | null
+        }
+        Update: {
+          classified_at?: string | null
+          confidence?: string | null
+          hunt_id?: string | null
+          id?: string
+          listing_id?: string | null
+          output_badge?: string | null
+          output_badge_tier?: number | null
+          output_body_type?: string | null
+          output_engine_family?: string | null
+          output_model_root?: string | null
+          output_series_family?: string | null
+          raw_title?: string | null
+          raw_url?: string | null
+          raw_variant?: string | null
+          reasons?: string[] | null
+          rules_applied?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variant_audit_hunt_id_fkey"
+            columns: ["hunt_id"]
+            isOneToOne: false
+            referencedRelation: "sale_hunts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variant_audit_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "potential_cross_posts"
+            referencedColumns: ["listing_a_id"]
+          },
+          {
+            foreignKeyName: "variant_audit_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "potential_cross_posts"
+            referencedColumns: ["listing_b_id"]
+          },
+          {
+            foreignKeyName: "variant_audit_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "retail_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      variant_rules: {
+        Row: {
+          apply_to: string
+          confidence: string | null
+          created_at: string | null
+          enabled: boolean | null
+          id: string
+          make: string
+          model_root: string
+          notes: string | null
+          pattern: string
+          priority: number | null
+          rule_type: string
+          set_json: Json
+          updated_at: string | null
+        }
+        Insert: {
+          apply_to?: string
+          confidence?: string | null
+          created_at?: string | null
+          enabled?: boolean | null
+          id?: string
+          make: string
+          model_root: string
+          notes?: string | null
+          pattern: string
+          priority?: number | null
+          rule_type: string
+          set_json?: Json
+          updated_at?: string | null
+        }
+        Update: {
+          apply_to?: string
+          confidence?: string | null
+          created_at?: string | null
+          enabled?: boolean | null
+          id?: string
+          make?: string
+          model_root?: string
+          notes?: string | null
+          pattern?: string
+          priority?: number | null
+          rule_type?: string
+          set_json?: Json
+          updated_at?: string | null
         }
         Relationships: []
       }
