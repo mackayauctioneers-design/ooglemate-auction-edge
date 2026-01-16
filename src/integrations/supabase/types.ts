@@ -1958,6 +1958,92 @@ export type Database = {
           },
         ]
       }
+      hunt_external_candidates: {
+        Row: {
+          alert_emitted: boolean | null
+          asking_price: number | null
+          confidence: string | null
+          created_at: string | null
+          decision: string | null
+          dedup_key: string
+          discovered_at: string | null
+          expired_at: string | null
+          extraction_error: string | null
+          hunt_id: string
+          id: string
+          km: number | null
+          location: string | null
+          make: string | null
+          match_score: number | null
+          model: string | null
+          raw_snippet: string | null
+          scored_at: string | null
+          source_name: string
+          source_url: string
+          title: string | null
+          variant_raw: string | null
+          year: number | null
+        }
+        Insert: {
+          alert_emitted?: boolean | null
+          asking_price?: number | null
+          confidence?: string | null
+          created_at?: string | null
+          decision?: string | null
+          dedup_key: string
+          discovered_at?: string | null
+          expired_at?: string | null
+          extraction_error?: string | null
+          hunt_id: string
+          id?: string
+          km?: number | null
+          location?: string | null
+          make?: string | null
+          match_score?: number | null
+          model?: string | null
+          raw_snippet?: string | null
+          scored_at?: string | null
+          source_name: string
+          source_url: string
+          title?: string | null
+          variant_raw?: string | null
+          year?: number | null
+        }
+        Update: {
+          alert_emitted?: boolean | null
+          asking_price?: number | null
+          confidence?: string | null
+          created_at?: string | null
+          decision?: string | null
+          dedup_key?: string
+          discovered_at?: string | null
+          expired_at?: string | null
+          extraction_error?: string | null
+          hunt_id?: string
+          id?: string
+          km?: number | null
+          location?: string | null
+          make?: string | null
+          match_score?: number | null
+          model?: string | null
+          raw_snippet?: string | null
+          scored_at?: string | null
+          source_name?: string
+          source_url?: string
+          title?: string | null
+          variant_raw?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hunt_external_candidates_hunt_id_fkey"
+            columns: ["hunt_id"]
+            isOneToOne: false
+            referencedRelation: "sale_hunts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hunt_matches: {
         Row: {
           asking_price: number | null
@@ -2060,6 +2146,104 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      hunt_search_tasks: {
+        Row: {
+          candidates_found: number | null
+          completed_at: string | null
+          created_at: string | null
+          error: string | null
+          hunt_id: string
+          id: string
+          search_query: string | null
+          source_name: string
+          started_at: string | null
+          status: string | null
+        }
+        Insert: {
+          candidates_found?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          error?: string | null
+          hunt_id: string
+          id?: string
+          search_query?: string | null
+          source_name: string
+          started_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          candidates_found?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          error?: string | null
+          hunt_id?: string
+          id?: string
+          search_query?: string | null
+          source_name?: string
+          started_at?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hunt_search_tasks_hunt_id_fkey"
+            columns: ["hunt_id"]
+            isOneToOne: false
+            referencedRelation: "sale_hunts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hunt_web_sources: {
+        Row: {
+          base_url: string
+          created_at: string | null
+          display_name: string
+          enabled: boolean | null
+          id: string
+          last_searched_at: string | null
+          name: string
+          notes: string | null
+          parser_type: string
+          priority: number | null
+          rate_limit_per_hour: number | null
+          search_url_template: string | null
+          source_type: string
+          updated_at: string | null
+        }
+        Insert: {
+          base_url: string
+          created_at?: string | null
+          display_name: string
+          enabled?: boolean | null
+          id?: string
+          last_searched_at?: string | null
+          name: string
+          notes?: string | null
+          parser_type?: string
+          priority?: number | null
+          rate_limit_per_hour?: number | null
+          search_url_template?: string | null
+          source_type?: string
+          updated_at?: string | null
+        }
+        Update: {
+          base_url?: string
+          created_at?: string | null
+          display_name?: string
+          enabled?: boolean | null
+          id?: string
+          last_searched_at?: string | null
+          name?: string
+          notes?: string | null
+          parser_type?: string
+          priority?: number | null
+          rate_limit_per_hour?: number | null
+          search_url_template?: string | null
+          source_type?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       ingestion_runs: {
         Row: {
@@ -2877,6 +3061,8 @@ export type Database = {
           min_gap_pct_watch: number
           model: string
           notes: string | null
+          outward_enabled: boolean | null
+          outward_sources: string[] | null
           priority: number
           proven_exit_method: string
           proven_exit_value: number | null
@@ -2912,6 +3098,8 @@ export type Database = {
           min_gap_pct_watch?: number
           model: string
           notes?: string | null
+          outward_enabled?: boolean | null
+          outward_sources?: string[] | null
           priority?: number
           proven_exit_method?: string
           proven_exit_value?: number | null
@@ -2947,6 +3135,8 @@ export type Database = {
           min_gap_pct_watch?: number
           model?: string
           notes?: string | null
+          outward_enabled?: boolean | null
+          outward_sources?: string[] | null
           priority?: number
           proven_exit_method?: string
           proven_exit_value?: number | null

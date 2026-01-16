@@ -1,5 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { 
   ArrowLeft, 
   Target, 
@@ -7,18 +9,23 @@ import {
   Pause, 
   CheckCircle, 
   Clock,
-  Zap
+  Zap,
+  Globe,
+  Loader2
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import type { SaleHunt, HuntStatus } from "@/types/hunts";
 
 interface HuntHeaderProps {
-  hunt: SaleHunt;
+  hunt: SaleHunt & { outward_enabled?: boolean; outward_sources?: string[] };
   onUpdateStatus: (status: HuntStatus) => void;
   onRunScan: () => void;
+  onRunOutwardScan?: () => void;
+  onToggleOutward?: (enabled: boolean) => void;
   isRunningScans: boolean;
   isUpdatingStatus: boolean;
+  isRunningOutward?: boolean;
 }
 
 function getStatusColor(status: HuntStatus): string {
@@ -35,8 +42,11 @@ export function HuntHeader({
   hunt, 
   onUpdateStatus, 
   onRunScan,
+  onRunOutwardScan,
+  onToggleOutward,
   isRunningScans,
-  isUpdatingStatus
+  isUpdatingStatus,
+  isRunningOutward
 }: HuntHeaderProps) {
   const navigate = useNavigate();
 
@@ -100,7 +110,30 @@ export function HuntHeader({
                 Expires: {format(new Date(hunt.expires_at), "MMM d, yyyy")}
               </div>
             )}
+            
+            {/* Outward Hunt indicator */}
+            {hunt.outward_enabled && (
+              <Badge variant="secondary" className="text-xs bg-purple-500/10 text-purple-600">
+                <Globe className="h-3 w-3 mr-1" />
+                Outward Search
+              </Badge>
+            )}
           </div>
+          
+          {/* Outward Hunt Toggle */}
+          {onToggleOutward && (
+            <div className="flex items-center gap-3 pl-[52px] pt-2">
+              <Switch
+                id="outward-enabled"
+                checked={hunt.outward_enabled || false}
+                onCheckedChange={onToggleOutward}
+              />
+              <Label htmlFor="outward-enabled" className="text-sm cursor-pointer">
+                <span className="font-medium">Outward Hunt</span>
+                <span className="text-muted-foreground ml-1">— Search Lloyds, Grays, and other auction sites</span>
+              </Label>
+            </div>
+          )}
         </div>
 
         {/* Action buttons */}
@@ -115,6 +148,17 @@ export function HuntHeader({
                 <Play className="h-4 w-4 mr-2" />
                 {isRunningScans ? "Scanning..." : "Run Scan Now"}
               </Button>
+              {hunt.outward_enabled && onRunOutwardScan && (
+                <Button 
+                  onClick={onRunOutwardScan}
+                  disabled={isRunningOutward}
+                  variant="secondary"
+                  className="bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
+                >
+                  <Globe className="h-4 w-4 mr-2" />
+                  {isRunningOutward ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Searching...</> : "Search Web"}
+                </Button>
+              )}
               <Button 
                 variant="outline" 
                 onClick={() => onUpdateStatus("paused")}
