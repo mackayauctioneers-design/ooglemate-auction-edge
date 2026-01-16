@@ -6672,6 +6672,8 @@ export type Database = {
           regions_updated: number
         }[]
       }
+      rpc_classify_hunt: { Args: { p_hunt_id: string }; Returns: Json }
+      rpc_classify_listing: { Args: { p_listing_id: string }; Returns: Json }
       rpc_explain_why_listed: {
         Args: { p_dealer_id: string; p_lot_id: string }
         Returns: Json
