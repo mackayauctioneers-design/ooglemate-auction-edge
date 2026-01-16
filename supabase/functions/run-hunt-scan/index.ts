@@ -86,6 +86,87 @@ interface MatchResult {
   gap_pct: number | null;
   proven_exit_value: number | null;
   rejection_reason?: string;
+  lane: string;
+  priority_score: number;
+}
+
+// Source lane mapping cache
+interface LaneMapping {
+  lane: string;
+  lane_bonus: number;
+}
+
+const DEFAULT_LANE_MAPPING: LaneMapping = { lane: 'CLASSIFIED', lane_bonus: 0 };
+
+// Fetch source lane mappings from DB
+async function getSourceLaneMappings(supabase: any): Promise<Map<string, LaneMapping>> {
+  const { data } = await supabase
+    .from('source_lane_map')
+    .select('source, lane, lane_bonus');
+  
+  const map = new Map<string, LaneMapping>();
+  for (const row of data || []) {
+    map.set(row.source.toLowerCase(), { lane: row.lane, lane_bonus: row.lane_bonus });
+  }
+  return map;
+}
+
+// Compute priority score for a match
+function computePriorityScore(
+  matchScore: number,
+  gapPct: number | null,
+  laneBonus: number,
+  lane: string,
+  listingAgeDays: number,
+  hasKm: boolean,
+  isRetailAPlus: boolean
+): number {
+  // Base: match_score * 10
+  let score = matchScore * 10;
+  
+  // Gap contribution
+  score += (gapPct || 0) * 2;
+  
+  // Lane bonus from map
+  score += laneBonus;
+  
+  // Buyability bonus by lane
+  const buyabilityBonus: Record<string, number> = {
+    'AUCTION': 10,
+    'DEALER_SITE': 5,
+    'RETAIL': 0,
+    'CLASSIFIED': 0
+  };
+  score += buyabilityBonus[lane] || 0;
+  
+  // Age penalty
+  score -= listingAgeDays * 2;
+  
+  // Retail A+ override: +50 if exceptional retail match
+  if (isRetailAPlus) {
+    score += 50;
+  }
+  
+  return Math.round(score * 100) / 100;
+}
+
+// Check if match qualifies for Retail A+ override
+function isRetailAPlusMatch(
+  lane: string,
+  matchScore: number,
+  gapPct: number | null,
+  listingAgeDays: number,
+  hasKm: boolean,
+  gatesPassed: boolean
+): boolean {
+  return (
+    lane === 'RETAIL' &&
+    matchScore >= 8.5 &&
+    (gapPct || 0) >= 8 &&
+    listingAgeDays <= 3 &&
+    hasKm &&
+    gatesPassed
+  );
 }
 
 // Hard gate types for Badge Authority Layer + LC79 Precision Pack
@@ -449,6 +530,9 @@ Deno.serve(async (req) => {
       }
 
       try {
+        // Fetch source lane mappings
+        const laneMappings = await getSourceLaneMappings(supabase);
+        
         // Build sources array
         const sources = [...hunt.sources_enabled];
         if (hunt.include_private && !sources.includes('gumtree_private')) {
@@ -553,7 +637,33 @@ Deno.serve(async (req) => {
             .maybeSingle();
 
           if (!existingMatch) {
-            // Insert new match
+            // Compute lane and priority score
+            const sourceLower = (classifiedListing.source || '').toLowerCase();
+            const laneMapping = laneMappings.get(sourceLower) || DEFAULT_LANE_MAPPING;
+            const lane = laneMapping.lane;
+            const hasKm = classifiedListing.km !== null;
+            const gatesPassed = gateResult.passed && !gateResult.downgrade_to_watch;
+            
+            const retailAPlus = isRetailAPlusMatch(
+              lane,
+              score,
+              gap_pct,
+              listingAgeDays,
+              hasKm,
+              gatesPassed
+            );
+            
+            const priority_score = computePriorityScore(
+              score,
+              gap_pct,
+              laneMapping.lane_bonus,
+              lane,
+              listingAgeDays,
+              hasKm,
+              retailAPlus
+            );
+
+            // Insert new match with lane and priority_score
             await supabase.from('hunt_matches').insert({
               hunt_id: hunt.id,
               listing_id: listing.id,
@@ -564,7 +674,9 @@ Deno.serve(async (req) => {
               proven_exit_value: provenExitValue,
               gap_dollars,
               gap_pct,
-              decision
+              decision,
+              lane,
+              priority_score
             });
 
             matches.push({
@@ -576,7 +688,9 @@ Deno.serve(async (req) => {
               gap_dollars,
               gap_pct,
               proven_exit_value: provenExitValue,
-              rejection_reason: gateResult.rejection_reason
+              rejection_reason: gateResult.rejection_reason,
+              lane,
+              priority_score
             });
 
             // Create alert if BUY or WATCH (no alerts for gate-rejected)

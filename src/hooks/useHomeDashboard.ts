@@ -25,6 +25,9 @@ export interface HuntOpportunity {
   why: string[] | null;
   alert_id: string;
   hunt_id: string;
+  // Prioritisation fields
+  lane: string | null;
+  priority_score: number | null;
 }
 
 export interface KitingLive {

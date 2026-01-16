@@ -91,6 +91,9 @@ export interface HuntMatch {
   gap_pct: number | null;
   decision: MatchDecision;
   matched_at: string;
+  // Prioritisation fields
+  lane: string | null;
+  priority_score: number | null;
 }
 
 // ============================================================
