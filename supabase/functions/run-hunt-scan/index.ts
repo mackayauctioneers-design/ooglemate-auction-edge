@@ -30,6 +30,13 @@ interface Hunt {
   geo_mode: string;
   max_listing_age_days_buy: number;
   max_listing_age_days_watch: number;
+  // Badge Authority Layer fields
+  model_root: string | null;
+  series_family: string | null;
+  badge: string | null;
+  badge_tier: number | null;
+  body_type: string | null;
+  engine_family: string | null;
 }
 
 interface Listing {
@@ -49,6 +56,14 @@ interface Listing {
   first_seen_at: string;
   listing_url: string | null;
   dealer_name: string | null;
+  // Badge Authority Layer fields
+  model_root: string | null;
+  series_family: string | null;
+  badge: string | null;
+  badge_tier: number | null;
+  body_type: string | null;
+  engine_family: string | null;
+  variant_confidence: string | null;
 }
 
 interface MatchResult {
@@ -60,6 +75,49 @@ interface MatchResult {
   gap_dollars: number | null;
   gap_pct: number | null;
   proven_exit_value: number | null;
+  rejection_reason?: string;
+}
+
+// Hard gate types for Badge Authority Layer
+type RejectionReason = 'SERIES_MISMATCH' | 'BODY_MISMATCH' | 'ENGINE_MISMATCH' | 'BADGE_TIER_MISMATCH';
+
+interface GateResult {
+  passed: boolean;
+  rejection_reason?: RejectionReason;
+  downgrade_to_watch?: boolean;
+}
+
+// ============================================
+// Badge Authority Layer - Hard Gates
+// ============================================
+function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
+  // Gate A: Series mismatch - IGNORE immediately
+  if (hunt.series_family && listing.series_family && 
+      hunt.series_family !== listing.series_family) {
+    return { passed: false, rejection_reason: 'SERIES_MISMATCH' };
+  }
+  
+  // Gate B: Body type mismatch - IGNORE immediately
+  if (hunt.body_type && listing.body_type && 
+      hunt.body_type !== listing.body_type) {
+    return { passed: false, rejection_reason: 'BODY_MISMATCH' };
+  }
+  
+  // Gate C: Engine mismatch - IGNORE immediately
+  if (hunt.engine_family && listing.engine_family && 
+      hunt.engine_family !== listing.engine_family) {
+    return { passed: false, rejection_reason: 'ENGINE_MISMATCH' };
+  }
+  
+  // Gate D: Badge tier mismatch > 1 - downgrade BUY to WATCH
+  if (hunt.badge_tier && listing.badge_tier) {
+    const tierDiff = Math.abs(hunt.badge_tier - listing.badge_tier);
+    if (tierDiff > 1) {
+      return { passed: true, downgrade_to_watch: true, rejection_reason: 'BADGE_TIER_MISMATCH' };
+    }
+  }
+  
+  return { passed: true };
 }
 
 // Scoring weights (total max ~10)
@@ -100,6 +158,27 @@ function scoreMatch(hunt: Hunt, listing: Listing): { score: number; reasons: str
   } else if (!hunt.variant_family) {
     score += 0.3; // No variant specified, partial credit
     reasons.push('variant_unknown');
+  }
+  
+  // Series family match bonus (Badge Authority Layer)
+  if (hunt.series_family && listing.series_family && 
+      hunt.series_family === listing.series_family) {
+    score += 0.5;
+    reasons.push('series_family_match');
+  }
+  
+  // Engine family match bonus
+  if (hunt.engine_family && listing.engine_family && 
+      hunt.engine_family === listing.engine_family) {
+    score += 0.3;
+    reasons.push('engine_family_match');
+  }
+  
+  // Body type match bonus
+  if (hunt.body_type && listing.body_type && 
+      hunt.body_type === listing.body_type) {
+    score += 0.2;
+    reasons.push('body_type_match');
   }
   
   // Fuel/Trans/Drivetrain match (0-0.5)
@@ -213,7 +292,8 @@ function makeDecision(
   listing: Listing,
   score: number,
   provenExitValue: number | null,
-  listingAgeDays: number
+  listingAgeDays: number,
+  gateResult: GateResult
 ): { decision: 'buy' | 'watch' | 'ignore' | 'no_evidence'; gap_dollars: number | null; gap_pct: number | null } {
   // No evidence case
   if (!provenExitValue || !listing.asking_price) {
@@ -230,7 +310,8 @@ function makeDecision(
     gap_dollars >= hunt.min_gap_abs_buy &&
     gap_pct >= hunt.min_gap_pct_buy &&
     listing.km !== null && // Must have km for BUY
-    (listing.source || '').toLowerCase() !== 'gumtree_private'; // No private for BUY
+    (listing.source || '').toLowerCase() !== 'gumtree_private' && // No private for BUY
+    !gateResult.downgrade_to_watch; // Badge tier gate check
   
   if (canBuy) {
     return { decision: 'buy', gap_dollars, gap_pct };
@@ -247,6 +328,45 @@ function makeDecision(
   }
   
   return { decision: 'ignore', gap_dollars, gap_pct };
+}
+
+// Ensure listing is classified before matching
+async function ensureListingClassified(supabase: any, listingId: string): Promise<void> {
+  const { data } = await supabase
+    .from('retail_listings')
+    .select('series_family, classified_at')
+    .eq('id', listingId)
+    .single();
+  
+  if (!data?.classified_at) {
+    // Call classification RPC
+    await supabase.rpc('rpc_classify_listing', { p_listing_id: listingId });
+  }
+}
+
+// Ensure hunt is classified
+async function ensureHuntClassified(supabase: any, huntId: string): Promise<Hunt> {
+  const { data: hunt, error } = await supabase
+    .from('sale_hunts')
+    .select('*')
+    .eq('id', huntId)
+    .single();
+  
+  if (error) throw error;
+  
+  if (!hunt.series_family && hunt.make === 'TOYOTA') {
+    // Classify the hunt
+    await supabase.rpc('rpc_classify_hunt', { p_hunt_id: huntId });
+    // Refetch
+    const { data: refreshedHunt } = await supabase
+      .from('sale_hunts')
+      .select('*')
+      .eq('id', huntId)
+      .single();
+    return refreshedHunt;
+  }
+  
+  return hunt;
 }
 
 Deno.serve(async (req) => {
@@ -276,18 +396,12 @@ Deno.serve(async (req) => {
       if (error) throw error;
       huntsToScan = dueHunts || [];
     } else if (hunt_id) {
-      // Get specific hunt
-      const { data: hunt, error } = await supabase
-        .from('sale_hunts')
-        .select('*')
-        .eq('id', hunt_id)
-        .single();
-      
-      if (error) throw error;
+      // Get specific hunt (with classification)
+      const hunt = await ensureHuntClassified(supabase, hunt_id);
       if (hunt) huntsToScan = [hunt];
     }
 
-    const results: { hunt_id: string; matches: number; alerts: number }[] = [];
+    const results: { hunt_id: string; matches: number; alerts: number; rejected: number }[] = [];
 
     for (const hunt of huntsToScan) {
       // Create scan record
@@ -320,7 +434,7 @@ Deno.serve(async (req) => {
           .from('retail_listings')
           .select('*')
           .ilike('make', makeUpper)
-          .ilike('model', `${modelUpper}%`) // Allow model prefix match (e.g., COROLLA matches COROLLA CROSS)
+          .ilike('model', `${modelUpper}%`) // Allow model prefix match
           .gte('year', hunt.year - 1)
           .lte('year', hunt.year + 1)
           .is('delisted_at', null)
@@ -340,16 +454,64 @@ Deno.serve(async (req) => {
 
         const matches: MatchResult[] = [];
         let alertsEmitted = 0;
+        let rejectedCount = 0;
 
         for (const listing of (candidates || [])) {
-          const { score, reasons } = scoreMatch(hunt, listing);
+          // Ensure listing is classified (inline for candidates, not bulk)
+          await ensureListingClassified(supabase, listing.id);
+          
+          // Refetch listing with classification fields
+          const { data: classifiedListing } = await supabase
+            .from('retail_listings')
+            .select('*')
+            .eq('id', listing.id)
+            .single();
+          
+          if (!classifiedListing) continue;
+          
+          // ============================================
+          // BADGE AUTHORITY LAYER - HARD GATES
+          // Apply BEFORE scoring to reject early
+          // ============================================
+          const gateResult = applyHardGates(hunt, classifiedListing);
+          
+          if (!gateResult.passed) {
+            // Store IGNORE match with rejection reason
+            const { data: existingIgnore } = await supabase
+              .from('hunt_matches')
+              .select('id')
+              .eq('hunt_id', hunt.id)
+              .eq('listing_id', listing.id)
+              .maybeSingle();
+            
+            if (!existingIgnore) {
+              await supabase.from('hunt_matches').insert({
+                hunt_id: hunt.id,
+                listing_id: listing.id,
+                match_score: 0,
+                confidence_label: 'low',
+                reasons: [gateResult.rejection_reason],
+                asking_price: classifiedListing.asking_price,
+                decision: 'ignore'
+              });
+              rejectedCount++;
+            }
+            continue; // Skip to next listing - hard gate failed
+          }
+          
+          const { score, reasons } = scoreMatch(hunt, classifiedListing);
           
           // Only process if above minimum threshold
           if (score < 6.0) continue;
           
-          const provenExitValue = await getProvenExitValue(supabase, hunt, listing);
-          const listingAgeDays = Math.floor((Date.now() - new Date(listing.first_seen_at).getTime()) / (24 * 60 * 60 * 1000));
-          const { decision, gap_dollars, gap_pct } = makeDecision(hunt, listing, score, provenExitValue, listingAgeDays);
+          // Add gate warning to reasons if downgraded
+          const finalReasons = gateResult.downgrade_to_watch 
+            ? [...reasons, gateResult.rejection_reason!]
+            : reasons;
+          
+          const provenExitValue = await getProvenExitValue(supabase, hunt, classifiedListing);
+          const listingAgeDays = Math.floor((Date.now() - new Date(classifiedListing.first_seen_at).getTime()) / (24 * 60 * 60 * 1000));
+          const { decision, gap_dollars, gap_pct } = makeDecision(hunt, classifiedListing, score, provenExitValue, listingAgeDays, gateResult);
           
           const confidence = getConfidence(score);
 
@@ -368,8 +530,8 @@ Deno.serve(async (req) => {
               listing_id: listing.id,
               match_score: score,
               confidence_label: confidence,
-              reasons,
-              asking_price: listing.asking_price,
+              reasons: finalReasons,
+              asking_price: classifiedListing.asking_price,
               proven_exit_value: provenExitValue,
               gap_dollars,
               gap_pct,
@@ -377,17 +539,18 @@ Deno.serve(async (req) => {
             });
 
             matches.push({
-              listing,
+              listing: classifiedListing,
               score,
-              reasons,
+              reasons: finalReasons,
               confidence,
               decision,
               gap_dollars,
               gap_pct,
-              proven_exit_value: provenExitValue
+              proven_exit_value: provenExitValue,
+              rejection_reason: gateResult.rejection_reason
             });
 
-            // Create alert if BUY or WATCH
+            // Create alert if BUY or WATCH (no alerts for gate-rejected)
             if (decision === 'buy' || decision === 'watch') {
               // Check if already alerted recently
               const { data: recentAlert } = await supabase
@@ -404,19 +567,25 @@ Deno.serve(async (req) => {
                   listing_id: listing.id,
                   alert_type: decision === 'buy' ? 'BUY' : 'WATCH',
                   payload: {
-                    year: listing.year,
-                    make: listing.make,
-                    model: listing.model,
-                    variant: listing.variant,
-                    km: listing.km,
-                    asking_price: listing.asking_price,
+                    year: classifiedListing.year,
+                    make: classifiedListing.make,
+                    model: classifiedListing.model,
+                    variant: classifiedListing.variant,
+                    km: classifiedListing.km,
+                    asking_price: classifiedListing.asking_price,
                     proven_exit_value: provenExitValue,
                     gap_dollars,
                     gap_pct,
-                    source: listing.source,
-                    listing_url: listing.listing_url,
+                    source: classifiedListing.source,
+                    listing_url: classifiedListing.listing_url,
                     match_score: score,
-                    reasons
+                    reasons: finalReasons,
+                    // Badge Authority Layer fields
+                    series_family: classifiedListing.series_family,
+                    body_type: classifiedListing.body_type,
+                    engine_family: classifiedListing.engine_family,
+                    badge: classifiedListing.badge,
+                    variant_confidence: classifiedListing.variant_confidence
                   }
                 });
                 alertsEmitted++;
@@ -436,6 +605,7 @@ Deno.serve(async (req) => {
             alerts_emitted: alertsEmitted,
             metadata: {
               sources_scanned: sources,
+              rejected_by_gates: rejectedCount,
               scores: matches.map(m => ({ score: m.score, decision: m.decision }))
             }
           })
@@ -450,7 +620,8 @@ Deno.serve(async (req) => {
         results.push({
           hunt_id: hunt.id,
           matches: matches.length,
-          alerts: alertsEmitted
+          alerts: alertsEmitted,
+          rejected: rejectedCount
         });
 
       } catch (err) {
