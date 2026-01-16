@@ -884,6 +884,45 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_notification_settings: {
+        Row: {
+          created_at: string | null
+          dealer_id: string
+          email: string | null
+          notify_buy: boolean | null
+          notify_watch: boolean | null
+          phone: string | null
+          quiet_hours_end: number | null
+          quiet_hours_start: number | null
+          slack_webhook_url: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          dealer_id: string
+          email?: string | null
+          notify_buy?: boolean | null
+          notify_watch?: boolean | null
+          phone?: string | null
+          quiet_hours_end?: number | null
+          quiet_hours_start?: number | null
+          slack_webhook_url?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          dealer_id?: string
+          email?: string | null
+          notify_buy?: boolean | null
+          notify_watch?: boolean | null
+          phone?: string | null
+          quiet_hours_end?: number | null
+          quiet_hours_start?: number | null
+          slack_webhook_url?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       dealer_outcomes: {
         Row: {
           confidence: number | null
@@ -1870,8 +1909,14 @@ export type Database = {
           created_at: string
           hunt_id: string
           id: string
+          last_notification_error: string | null
           listing_id: string
+          notification_attempts: number | null
+          notification_channel: string | null
+          notify_reason: string | null
           payload: Json
+          sent_at: string | null
+          should_notify: boolean | null
         }
         Insert: {
           acknowledged_at?: string | null
@@ -1879,8 +1924,14 @@ export type Database = {
           created_at?: string
           hunt_id: string
           id?: string
+          last_notification_error?: string | null
           listing_id: string
+          notification_attempts?: number | null
+          notification_channel?: string | null
+          notify_reason?: string | null
           payload: Json
+          sent_at?: string | null
+          should_notify?: boolean | null
         }
         Update: {
           acknowledged_at?: string | null
@@ -1888,8 +1939,14 @@ export type Database = {
           created_at?: string
           hunt_id?: string
           id?: string
+          last_notification_error?: string | null
           listing_id?: string
+          notification_attempts?: number | null
+          notification_channel?: string | null
+          notify_reason?: string | null
           payload?: Json
+          sent_at?: string | null
+          should_notify?: boolean | null
         }
         Relationships: [
           {
