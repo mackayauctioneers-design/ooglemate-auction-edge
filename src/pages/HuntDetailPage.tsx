@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,12 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, Clock, Info } from "lucide-react";
+import { AlertCircle, Clock, Info, Trophy } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { HuntHeader } from "@/components/hunts/HuntHeader";
 import { HuntKPICards } from "@/components/hunts/HuntKPICards";
 import { HuntAlertCardEnhanced } from "@/components/hunts/HuntAlertCardEnhanced";
+import { ProofOfHuntModal } from "@/components/hunts/ProofOfHuntModal";
 import type { 
   SaleHunt, 
   HuntMatch, 
@@ -26,6 +28,8 @@ export default function HuntDetailPage() {
   const { huntId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [proofModalOpen, setProofModalOpen] = useState(false);
+  const [selectedStrike, setSelectedStrike] = useState<HuntAlert | null>(null);
 
   const { data: hunt, isLoading: huntLoading } = useQuery({
     queryKey: ['hunt', huntId],
@@ -199,7 +203,16 @@ export default function HuntDetailPage() {
   // Separate alerts by type
   const buyAlerts = alerts.filter(a => a.alert_type === 'BUY' && !a.acknowledged_at);
   const watchAlerts = alerts.filter(a => a.alert_type === 'WATCH' && !a.acknowledged_at);
+  const acknowledgedBuyAlerts = alerts.filter(a => a.alert_type === 'BUY' && a.acknowledged_at);
   const allAlerts = alerts;
+
+  // Get the most recent acknowledged BUY alert for "proof" feature
+  const latestStrike = acknowledgedBuyAlerts.length > 0 ? acknowledgedBuyAlerts[0] : null;
+
+  const handleViewProof = (alert: HuntAlert) => {
+    setSelectedStrike(alert);
+    setProofModalOpen(true);
+  };
 
   const getDecisionColor = (decision: MatchDecision) => {
     switch (decision) {
@@ -224,6 +237,35 @@ export default function HuntDetailPage() {
           isUpdatingStatus={updateStatusMutation.isPending}
           isRunningOutward={runOutwardMutation.isPending}
         />
+
+        {/* Strike Success Banner (when there's an acknowledged BUY) */}
+        {latestStrike && (
+          <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                  <Trophy className="h-5 w-5 text-emerald-600" />
+                </div>
+                <div>
+                  <div className="font-semibold text-emerald-700 dark:text-emerald-400">
+                    Kiting Mode Strike!
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    This hunt found a successful match
+                  </div>
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                onClick={() => handleViewProof(latestStrike)}
+              >
+                <Trophy className="h-4 w-4 mr-2" />
+                View Proof
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Guardrails Banner */}
         <div className="p-4 rounded-lg bg-muted/50 border">
@@ -462,6 +504,17 @@ export default function HuntDetailPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Proof of Hunt Modal */}
+      {selectedStrike && hunt && (
+        <ProofOfHuntModal
+          open={proofModalOpen}
+          onOpenChange={setProofModalOpen}
+          hunt={hunt}
+          strikeAlert={selectedStrike}
+          scans={scans}
+        />
+      )}
     </AppLayout>
   );
 }
