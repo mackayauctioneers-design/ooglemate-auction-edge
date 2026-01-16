@@ -335,16 +335,16 @@ export default function HuntDetailPage() {
                           </Badge>
                           <div>
                             <div className="font-medium">
-                              {payload.year} {payload.make} {payload.model}
-                              {payload.variant && ` ${payload.variant}`}
+                              {String(payload?.year ?? '')} {String(payload?.make ?? '')} {String(payload?.model ?? '')}
+                              {payload?.variant && ` ${String(payload.variant)}`}
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {payload.km && `${((payload.km as number) / 1000).toFixed(0)}k km • `}
-                              ${(payload.asking_price as number)?.toLocaleString()}
-                              {payload.gap_dollars && (
+                              {payload?.km && `${(Number(payload.km) / 1000).toFixed(0)}k km • `}
+                              ${Number(payload?.asking_price ?? 0).toLocaleString()}
+                              {payload?.gap_dollars && (
                                 <span className="text-emerald-500 ml-2">
                                   <TrendingDown className="h-3 w-3 inline" />
-                                  ${(payload.gap_dollars as number)?.toLocaleString()} below ({(payload.gap_pct as number)?.toFixed(1)}%)
+                                  ${Number(payload.gap_dollars).toLocaleString()} below ({Number(payload.gap_pct ?? 0).toFixed(1)}%)
                                 </span>
                               )}
                             </div>
@@ -354,7 +354,7 @@ export default function HuntDetailPage() {
                         <div className="flex items-center gap-3">
                           <div className="text-right text-sm">
                             <div className="text-muted-foreground">
-                              Score: {(payload.match_score as number)?.toFixed(1)}/10
+                              Score: {Number(payload?.match_score ?? 0).toFixed(1)}/10
                             </div>
                             <div className="text-xs text-muted-foreground">
                               {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}

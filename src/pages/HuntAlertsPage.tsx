@@ -198,8 +198,8 @@ export default function HuntAlertsPage() {
               </Card>
             ) : (
               <div className="space-y-3">
-                {alerts.map((alert) => {
-                  const payload = alert.payload;
+              {alerts.map((alert) => {
+                  const payload = alert.payload as Record<string, unknown> | null;
                   return (
                     <Card 
                       key={alert.id} 
@@ -220,32 +220,32 @@ export default function HuntAlertsPage() {
                             
                             <div>
                               <div className="font-semibold text-lg">
-                                {payload.year} {payload.make} {payload.model}
-                                {payload.variant && (
+                                {String(payload?.year ?? '')} {String(payload?.make ?? '')} {String(payload?.model ?? '')}
+                                {payload?.variant && (
                                   <span className="text-muted-foreground ml-2">
-                                    {payload.variant as string}
+                                    {String(payload.variant)}
                                   </span>
                                 )}
                               </div>
                               
                               <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                                {payload.km && (
-                                  <span>{((payload.km as number) / 1000).toFixed(0)}k km</span>
+                                {payload?.km && (
+                                  <span>{(Number(payload.km) / 1000).toFixed(0)}k km</span>
                                 )}
                                 <span className="font-medium text-foreground">
-                                  ${(payload.asking_price as number)?.toLocaleString()}
+                                  ${Number(payload?.asking_price ?? 0).toLocaleString()}
                                 </span>
-                                {payload.gap_dollars && (
+                                {payload?.gap_dollars && (
                                   <span className="flex items-center text-emerald-500">
                                     <TrendingDown className="h-4 w-4 mr-1" />
-                                    ${(payload.gap_dollars as number)?.toLocaleString()} below 
-                                    ({(payload.gap_pct as number)?.toFixed(1)}%)
+                                    ${Number(payload.gap_dollars).toLocaleString()} below 
+                                    ({Number(payload.gap_pct ?? 0).toFixed(1)}%)
                                   </span>
                                 )}
-                                <span>Score: {(payload.match_score as number)?.toFixed(1)}/10</span>
-                                {payload.source && (
+                                <span>Score: {Number(payload?.match_score ?? 0).toFixed(1)}/10</span>
+                                {payload?.source && (
                                   <Badge variant="outline" className="text-xs">
-                                    {payload.source as string}
+                                    {String(payload.source)}
                                   </Badge>
                                 )}
                               </div>
