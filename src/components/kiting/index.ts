@@ -1,2 +1,2 @@
-export { KitingIndicator, KitingIndicatorCompact } from './KitingIndicator';
+export { KitingIndicator, KitingIndicatorCompact, KitingStateText } from './KitingIndicator';
 export type { KitingState } from './KitingIndicator';

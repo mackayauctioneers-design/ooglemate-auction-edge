@@ -236,6 +236,8 @@ export default function HuntDetailPage() {
           isRunningScans={runScanMutation.isPending}
           isUpdatingStatus={updateStatusMutation.isPending}
           isRunningOutward={runOutwardMutation.isPending}
+          lastAlertAt={alerts[0]?.created_at}
+          lastMatchAt={matches[0]?.matched_at}
         />
 
         {/* Strike Success Banner (when there's an acknowledged BUY) */}
