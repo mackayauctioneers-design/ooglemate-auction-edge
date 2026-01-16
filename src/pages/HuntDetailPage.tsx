@@ -24,6 +24,88 @@ import type {
   MatchDecision
 } from "@/types/hunts";
 
+// Reusable Match Table component
+function MatchTable({ 
+  matches, 
+  getDecisionColor, 
+  getLaneColor 
+}: { 
+  matches: (HuntMatch & { listing_url?: string | null; source?: string | null })[]; 
+  getDecisionColor: (decision: MatchDecision) => string;
+  getLaneColor: (lane: string | null) => string;
+}) {
+  return (
+    <div className="rounded-lg border overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50">
+          <tr>
+            <th className="p-3 text-left font-medium">Lane</th>
+            <th className="p-3 text-left font-medium">Score</th>
+            <th className="p-3 text-left font-medium">Priority</th>
+            <th className="p-3 text-left font-medium">Price</th>
+            <th className="p-3 text-left font-medium">Gap</th>
+            <th className="p-3 text-left font-medium">Matched</th>
+            <th className="p-3 text-left font-medium">Reasons</th>
+            <th className="p-3 text-left font-medium">Link</th>
+          </tr>
+        </thead>
+        <tbody>
+          {matches.map((match) => (
+            <tr key={match.id} className="border-t hover:bg-muted/30">
+              <td className="p-3">
+                <Badge variant="outline" className={getLaneColor(match.lane)}>
+                  {match.lane || '—'}
+                </Badge>
+              </td>
+              <td className="p-3 font-medium">{match.match_score.toFixed(1)}</td>
+              <td className="p-3 text-muted-foreground text-xs">
+                {match.priority_score?.toFixed(0) || '—'}
+              </td>
+              <td className="p-3">
+                ${match.asking_price?.toLocaleString() || '?'}
+              </td>
+              <td className="p-3">
+                {match.gap_dollars !== null ? (
+                  <span className={match.gap_dollars > 0 ? 'text-emerald-600' : 'text-destructive'}>
+                    ${match.gap_dollars?.toLocaleString()} ({match.gap_pct?.toFixed(1)}%)
+                  </span>
+                ) : '—'}
+              </td>
+              <td className="p-3 text-muted-foreground">
+                {formatDistanceToNow(new Date(match.matched_at), { addSuffix: true })}
+              </td>
+              <td className="p-3">
+                <div className="flex flex-wrap gap-1">
+                  {match.reasons?.slice(0, 3).map((r, i) => (
+                    <Badge key={i} variant="outline" className="text-xs">
+                      {r}
+                    </Badge>
+                  ))}
+                </div>
+              </td>
+              <td className="p-3">
+                {match.listing_url ? (
+                  <a
+                    href={match.listing_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    View <ExternalLink className="h-3 w-3" />
+                  </a>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+
 export default function HuntDetailPage() {
   const { huntId } = useParams();
   const navigate = useNavigate();
@@ -50,15 +132,29 @@ export default function HuntDetailPage() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('hunt_matches')
-        .select('*, retail_listings!inner(listing_url)')
+        .select('*, retail_listings!inner(listing_url, source)')
         .eq('hunt_id', huntId)
-        .order('match_score', { ascending: false })
-        .limit(100);
+        .limit(200);
       if (error) throw error;
-      return (data || []).map((m: any) => ({
+      
+      // Map and sort by priority
+      const mapped = (data || []).map((m: any) => ({
         ...m,
-        listing_url: m.retail_listings?.listing_url || null
-      })) as (HuntMatch & { listing_url?: string | null })[];
+        listing_url: m.retail_listings?.listing_url || null,
+        source: m.retail_listings?.source || null
+      })) as (HuntMatch & { listing_url?: string | null; source?: string | null })[];
+      
+      // Sort: BUY first, then WATCH, then IGNORE, each by priority_score desc
+      const decisionOrder: Record<string, number> = { buy: 1, watch: 2, ignore: 3, no_evidence: 4 };
+      return mapped.sort((a, b) => {
+        const aOrder = decisionOrder[a.decision] || 5;
+        const bOrder = decisionOrder[b.decision] || 5;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        // Within same decision, sort by priority_score desc
+        const aScore = a.priority_score || 0;
+        const bScore = b.priority_score || 0;
+        return bScore - aScore;
+      });
     },
     enabled: !!huntId
   });
@@ -225,6 +321,22 @@ export default function HuntDetailPage() {
       default: return 'bg-muted';
     }
   };
+
+  const getLaneColor = (lane: string | null) => {
+    switch (lane) {
+      case 'AUCTION': return 'bg-violet-500/10 text-violet-600 border-violet-200';
+      case 'RETAIL': return 'bg-blue-500/10 text-blue-600 border-blue-200';
+      case 'DEALER_SITE': return 'bg-cyan-500/10 text-cyan-600 border-cyan-200';
+      case 'CLASSIFIED': return 'bg-slate-500/10 text-slate-600 border-slate-200';
+      default: return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  // Bucket matches for display
+  const buyNowMatches = matches.filter(m => m.decision === 'buy');
+  const auctionEdgeMatches = matches.filter(m => m.lane === 'AUCTION' && m.decision === 'watch');
+  const otherWatchMatches = matches.filter(m => m.decision === 'watch' && m.lane !== 'AUCTION');
+  const ignoreMatches = matches.filter(m => m.decision === 'ignore');
 
   return (
     <AppLayout>
@@ -401,79 +513,60 @@ export default function HuntDetailPage() {
             )}
           </TabsContent>
 
-          {/* Matches Table */}
-          <TabsContent value="matches" className="mt-4">
-            <div className="rounded-lg border overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="p-3 text-left font-medium">Score</th>
-                    <th className="p-3 text-left font-medium">Decision</th>
-                    <th className="p-3 text-left font-medium">Price</th>
-                    <th className="p-3 text-left font-medium">Gap</th>
-                    <th className="p-3 text-left font-medium">Matched</th>
-                    <th className="p-3 text-left font-medium">Reasons</th>
-                    <th className="p-3 text-left font-medium">Link</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matches.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                        No matches found yet
-                      </td>
-                    </tr>
-                  ) : (
-                    matches.map((match) => (
-                      <tr key={match.id} className="border-t hover:bg-muted/30">
-                        <td className="p-3 font-medium">{match.match_score.toFixed(1)}</td>
-                        <td className="p-3">
-                          <Badge className={getDecisionColor(match.decision)}>
-                            {match.decision}
-                          </Badge>
-                        </td>
-                        <td className="p-3">
-                          ${match.asking_price?.toLocaleString() || '?'}
-                        </td>
-                        <td className="p-3">
-                          {match.gap_dollars !== null ? (
-                            <span className={match.gap_dollars > 0 ? 'text-emerald-600' : 'text-destructive'}>
-                              ${match.gap_dollars?.toLocaleString()} ({match.gap_pct?.toFixed(1)}%)
-                            </span>
-                          ) : '—'}
-                        </td>
-                        <td className="p-3 text-muted-foreground">
-                          {formatDistanceToNow(new Date(match.matched_at), { addSuffix: true })}
-                        </td>
-                        <td className="p-3">
-                          <div className="flex flex-wrap gap-1">
-                            {match.reasons?.slice(0, 3).map((r, i) => (
-                              <Badge key={i} variant="outline" className="text-xs">
-                                {r}
-                              </Badge>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          {(match as any).listing_url ? (
-                            <a
-                              href={(match as any).listing_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-primary hover:underline"
-                            >
-                              View <ExternalLink className="h-3 w-3" />
-                            </a>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+          {/* Matches - Bucketed Display */}
+          <TabsContent value="matches" className="mt-4 space-y-6">
+            {matches.length === 0 ? (
+              <Card className="py-8">
+                <CardContent className="text-center text-muted-foreground">
+                  No matches found yet. Run a scan to find opportunities.
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Buy Now (Strike) Section */}
+                {buyNowMatches.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-emerald-600 mb-3 flex items-center gap-2">
+                      <Trophy className="h-4 w-4" />
+                      Buy Now (Strike) ({buyNowMatches.length})
+                    </h3>
+                    <MatchTable matches={buyNowMatches} getDecisionColor={getDecisionColor} getLaneColor={getLaneColor} />
+                  </div>
+                )}
+
+                {/* Auction Edge Section */}
+                {auctionEdgeMatches.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-violet-600 mb-3 flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      Auction Edge ({auctionEdgeMatches.length})
+                    </h3>
+                    <MatchTable matches={auctionEdgeMatches} getDecisionColor={getDecisionColor} getLaneColor={getLaneColor} />
+                  </div>
+                )}
+
+                {/* Other Replicas Section */}
+                {otherWatchMatches.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-amber-600 mb-3 flex items-center gap-2">
+                      <Info className="h-4 w-4" />
+                      Other Replicas ({otherWatchMatches.length})
+                    </h3>
+                    <MatchTable matches={otherWatchMatches} getDecisionColor={getDecisionColor} getLaneColor={getLaneColor} />
+                  </div>
+                )}
+
+                {/* Ignored/Rejected (collapsed by default) */}
+                {ignoreMatches.length > 0 && (
+                  <details className="group">
+                    <summary className="text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground mb-3">
+                      Show Rejected ({ignoreMatches.length})
+                    </summary>
+                    <MatchTable matches={ignoreMatches} getDecisionColor={getDecisionColor} getLaneColor={getLaneColor} />
+                  </details>
+                )}
+              </>
+            )}
           </TabsContent>
 
           {/* Scan History */}
