@@ -11,22 +11,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Bell,
   CheckCircle,
-  ExternalLink,
-  TrendingDown,
-  Target,
   Filter
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
+import { HuntAlertCard } from "@/components/hunts/HuntAlertCard";
+import type { HuntAlert, AlertType } from "@/types/hunts";
 
-interface HuntAlert {
-  id: string;
-  hunt_id: string;
-  listing_id: string;
-  alert_type: string;
-  created_at: string;
-  acknowledged_at: string | null;
-  payload: Record<string, unknown>;
+interface HuntAlertWithHunt extends HuntAlert {
   hunt?: {
     year: number;
     make: string;
@@ -38,7 +29,7 @@ export default function HuntAlertsPage() {
   const { dealerProfile } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<'all' | 'BUY' | 'WATCH'>('all');
+  const [filter, setFilter] = useState<'all' | AlertType>('all');
   const [showAcknowledged, setShowAcknowledged] = useState(false);
 
   const dealerId = (dealerProfile as { id?: string })?.id;
@@ -80,7 +71,7 @@ export default function HuntAlertsPage() {
       return (data || []).map((alert: any) => ({
         ...alert,
         hunt: huntMap[alert.hunt_id]
-      })) as HuntAlert[];
+      })) as HuntAlertWithHunt[];
     },
     enabled: !!dealerId
   });
@@ -198,103 +189,15 @@ export default function HuntAlertsPage() {
               </Card>
             ) : (
               <div className="space-y-3">
-              {alerts.map((alert) => {
-                  const payload = alert.payload as Record<string, unknown> | null;
-                  return (
-                    <Card 
-                      key={alert.id} 
-                      className={`transition-all ${
-                        alert.acknowledged_at ? 'opacity-60' : ''
-                      } hover:bg-accent/50`}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <Badge className={
-                              alert.alert_type === 'BUY' 
-                                ? 'bg-emerald-500 text-white text-lg px-3 py-1' 
-                                : 'bg-amber-500 text-white text-lg px-3 py-1'
-                            }>
-                              {alert.alert_type}
-                            </Badge>
-                            
-                            <div>
-                              <div className="font-semibold text-lg">
-                                {String(payload?.year ?? '')} {String(payload?.make ?? '')} {String(payload?.model ?? '')}
-                                {payload?.variant && (
-                                  <span className="text-muted-foreground ml-2">
-                                    {String(payload.variant)}
-                                  </span>
-                                )}
-                              </div>
-                              
-                              <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                                {payload?.km && (
-                                  <span>{(Number(payload.km) / 1000).toFixed(0)}k km</span>
-                                )}
-                                <span className="font-medium text-foreground">
-                                  ${Number(payload?.asking_price ?? 0).toLocaleString()}
-                                </span>
-                                {payload?.gap_dollars && (
-                                  <span className="flex items-center text-emerald-500">
-                                    <TrendingDown className="h-4 w-4 mr-1" />
-                                    ${Number(payload.gap_dollars).toLocaleString()} below 
-                                    ({Number(payload.gap_pct ?? 0).toFixed(1)}%)
-                                  </span>
-                                )}
-                                <span>Score: {Number(payload?.match_score ?? 0).toFixed(1)}/10</span>
-                                {payload?.source && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {String(payload.source)}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-4">
-                            <div className="text-right">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-xs text-muted-foreground"
-                                onClick={() => navigate(`/hunts/${alert.hunt_id}`)}
-                              >
-                                <Target className="h-3 w-3 mr-1" />
-                                {alert.hunt?.year} {alert.hunt?.make} {alert.hunt?.model}
-                              </Button>
-                              <div className="text-xs text-muted-foreground">
-                                {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
-                              </div>
-                            </div>
-
-                            <div className="flex gap-2">
-                              {payload.listing_url && (
-                                <Button
-                                  size="sm"
-                                  onClick={() => window.open(payload.listing_url as string, '_blank')}
-                                >
-                                  <ExternalLink className="h-4 w-4 mr-1" />
-                                  View
-                                </Button>
-                              )}
-
-                              {!alert.acknowledged_at && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => acknowledgeAlertMutation.mutate(alert.id)}
-                                >
-                                  <CheckCircle className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                {alerts.map((alert) => (
+                  <HuntAlertCard
+                    key={alert.id}
+                    alert={alert}
+                    onAcknowledge={(id) => acknowledgeAlertMutation.mutate(id)}
+                    isAcknowledging={acknowledgeAlertMutation.isPending}
+                    showHuntLink={true}
+                  />
+                ))}
               </div>
             )}
           </TabsContent>
