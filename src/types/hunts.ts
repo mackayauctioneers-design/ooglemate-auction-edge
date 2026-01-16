@@ -11,30 +11,30 @@ export type MatchDecision = "buy" | "watch" | "ignore" | "no_evidence";
 // ============================================================
 
 export const HuntAlertPayloadSchema = z.object({
-  // Vehicle identity
-  year: z.number().int().nullable(),
-  make: z.string().nullable(),
-  model: z.string().nullable(),
-  variant: z.string().nullable().optional(),
-  km: z.number().nullable().optional(),
+  // Vehicle identity - allow null/undefined gracefully
+  year: z.union([z.number().int(), z.null()]).optional(),
+  make: z.union([z.string(), z.null()]).optional(),
+  model: z.union([z.string(), z.null()]).optional(),
+  variant: z.union([z.string(), z.null()]).optional(),
+  km: z.union([z.number(), z.null()]).optional(),
 
   // Pricing
-  asking_price: z.number().nullable(),
-  proven_exit_value: z.number().nullable().optional(),
+  asking_price: z.union([z.number(), z.null()]).optional(),
+  proven_exit_value: z.union([z.number(), z.null()]).optional(),
 
   // Gap analysis
-  gap_dollars: z.number().nullable().optional(),
-  gap_pct: z.number().nullable().optional(),
+  gap_dollars: z.union([z.number(), z.null()]).optional(),
+  gap_pct: z.union([z.number(), z.null()]).optional(),
 
   // Matching metadata
-  match_score: z.number().nullable().optional(),
+  match_score: z.union([z.number(), z.null()]).optional(),
   reasons: z.array(z.string()).optional(),
 
   // Source info
-  source: z.string().nullable().optional(),
-  listing_url: z.string().nullable().optional(),
-  state: z.string().nullable().optional(),
-  suburb: z.string().nullable().optional(),
+  source: z.union([z.string(), z.null()]).optional(),
+  listing_url: z.union([z.string(), z.null()]).optional(),
+  state: z.union([z.string(), z.null()]).optional(),
+  suburb: z.union([z.string(), z.null()]).optional(),
 });
 
 export type HuntAlertPayload = z.infer<typeof HuntAlertPayloadSchema>;

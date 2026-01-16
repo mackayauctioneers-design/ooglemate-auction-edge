@@ -185,7 +185,7 @@ function getConfidence(score: number): 'high' | 'medium' | 'low' {
 }
 
 async function getProvenExitValue(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   hunt: Hunt,
   listing: Listing
 ): Promise<number | null> {
@@ -205,7 +205,7 @@ async function getProvenExitValue(
     .limit(1)
     .maybeSingle();
   
-  return data?.exit_value || null;
+  return (data as { exit_value?: number } | null)?.exit_value || null;
 }
 
 function makeDecision(
