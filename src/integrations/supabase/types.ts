@@ -1833,6 +1833,36 @@ export type Database = {
         }
         Relationships: []
       }
+      http_session_secrets: {
+        Row: {
+          cookie_header: string
+          expires_at: string | null
+          last_error: string | null
+          last_status: number | null
+          site: string
+          updated_at: string
+          user_agent: string
+        }
+        Insert: {
+          cookie_header: string
+          expires_at?: string | null
+          last_error?: string | null
+          last_status?: number | null
+          site: string
+          updated_at?: string
+          user_agent: string
+        }
+        Update: {
+          cookie_header?: string
+          expires_at?: string | null
+          last_error?: string | null
+          last_status?: number | null
+          site?: string
+          updated_at?: string
+          user_agent?: string
+        }
+        Relationships: []
+      }
       ingestion_runs: {
         Row: {
           completed_at: string | null

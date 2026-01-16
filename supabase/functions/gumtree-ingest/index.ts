@@ -50,6 +50,12 @@ interface ParsedListing {
   suburb?: string;
 }
 
+interface SessionSecret {
+  cookie_header: string;
+  user_agent: string;
+  expires_at: string | null;
+}
+
 // Parse listings from JSON API response
 function parseJsonResponse(data: GumtreeJsonResponse, yearMin: number): ParsedListing[] {
   const listings: ParsedListing[] = [];
@@ -151,13 +157,21 @@ function parseGumtreeMarkdown(markdown: string, yearMin: number): ParsedListing[
   return listings;
 }
 
-// Try JSON API first
-async function tryJsonApi(page: number, yearMin: number, yearMax: number, kmMax: number, pageSize: number): Promise<{ 
+// Try JSON API with stored cookies
+async function tryJsonApi(
+  page: number, 
+  yearMin: number, 
+  yearMax: number, 
+  kmMax: number, 
+  pageSize: number,
+  session: SessionSecret | null
+): Promise<{ 
   success: boolean; 
   listings: ParsedListing[]; 
   status?: number;
   errorPreview?: string;
   totalAvailable?: number;
+  usedCookie: boolean;
 }> {
   const params = new URLSearchParams({
     "attributeMap[cars.carmileageinkms_i_TO]": kmMax.toString(),
@@ -178,18 +192,25 @@ async function tryJsonApi(page: number, yearMin: number, yearMax: number, kmMax:
   });
 
   const url = `https://www.gumtree.com.au/ws/search.json?${params.toString()}`;
+  const referer = `https://www.gumtree.com.au/s-cars-vans-utes/caryear-${yearMin}__${yearMax}/c18320?carmileageinkms=__${kmMax}&forsaleby=delr&sort=date&view=gallery`;
+  
+  // Build headers - use stored session if available
+  const headers: Record<string, string> = {
+    "accept": "application/json",
+    "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
+    "referer": referer,
+    "x-requested-with": "XMLHttpRequest",
+    "user-agent": session?.user_agent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+  };
+  
+  // Add cookie if we have a valid session
+  const usedCookie = !!(session?.cookie_header && session.cookie_header.length > 0);
+  if (usedCookie) {
+    headers["cookie"] = session.cookie_header;
+  }
   
   try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "accept": "application/json",
-        "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
-        "referer": `https://www.gumtree.com.au/s-cars-vans-utes/caryear-${yearMin}__${yearMax}/c18320?carmileageinkms=__${kmMax}&forsaleby=delr&sort=date&view=gallery`,
-        "x-requested-with": "XMLHttpRequest",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
-      },
-    });
+    const response = await fetch(url, { method: "GET", headers });
 
     if (!response.ok) {
       const body = await response.text();
@@ -198,6 +219,7 @@ async function tryJsonApi(page: number, yearMin: number, yearMax: number, kmMax:
         listings: [], 
         status: response.status,
         errorPreview: body.slice(0, 200),
+        usedCookie,
       };
     }
 
@@ -205,12 +227,13 @@ async function tryJsonApi(page: number, yearMin: number, yearMax: number, kmMax:
     const listings = parseJsonResponse(jsonData, yearMin);
     const totalAvailable = jsonData.data?.results?.paging?.totalResultCount || 0;
     
-    return { success: true, listings, totalAvailable };
+    return { success: true, listings, totalAvailable, usedCookie };
   } catch (err) {
     return { 
       success: false, 
       listings: [], 
       errorPreview: err instanceof Error ? err.message : String(err),
+      usedCookie,
     };
   }
 }
@@ -288,14 +311,35 @@ serve(async (req) => {
       limit = 50 
     } = body;
 
+    // Load session cookie if available
+    let session: SessionSecret | null = null;
+    const { data: sessionRow } = await supabase
+      .from("http_session_secrets")
+      .select("cookie_header, user_agent, expires_at")
+      .eq("site", "gumtree")
+      .maybeSingle();
+    
+    if (sessionRow) {
+      // Check if expired
+      const isExpired = sessionRow.expires_at && new Date(sessionRow.expires_at) < new Date();
+      if (!isExpired && sessionRow.cookie_header) {
+        session = sessionRow as SessionSecret;
+        console.log(`Loaded Gumtree session cookie (${session.cookie_header.length} chars)`);
+      } else {
+        console.log(`Gumtree session expired or empty`);
+      }
+    }
+
     let listings: ParsedListing[] = [];
     let lane: 'json' | 'firecrawl' = 'json';
     let jsonApiStatus: number | undefined;
     let jsonApiError: string | undefined;
+    let usedCookie = false;
 
-    // Try JSON API first
-    console.log(`Trying Gumtree JSON API: page=${page}`);
-    const jsonResult = await tryJsonApi(page, year_min, year_max, km_max, page_size);
+    // Try JSON API first (with cookie if available)
+    console.log(`Trying Gumtree JSON API: page=${page}, hasCookie=${!!session}`);
+    const jsonResult = await tryJsonApi(page, year_min, year_max, km_max, page_size, session);
+    usedCookie = jsonResult.usedCookie;
     
     if (jsonResult.success && jsonResult.listings.length > 0) {
       listings = jsonResult.listings;
@@ -328,6 +372,7 @@ serve(async (req) => {
     // Upsert listings
     const results = {
       lane,
+      used_cookie: usedCookie,
       json_api_status: jsonApiStatus,
       json_api_error: jsonApiError,
       total_found: listings.length,
