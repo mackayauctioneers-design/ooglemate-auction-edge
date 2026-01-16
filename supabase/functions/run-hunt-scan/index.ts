@@ -312,20 +312,29 @@ Deno.serve(async (req) => {
           sources.push('gumtree_private');
         }
 
-        // Query retail_listings for candidates
+        // Query retail_listings for candidates (case-insensitive match)
+        const makeUpper = hunt.make.toUpperCase();
+        const modelUpper = hunt.model.toUpperCase();
+        
         let query = supabase
           .from('retail_listings')
           .select('*')
-          .eq('make', hunt.make)
-          .eq('model', hunt.model)
+          .ilike('make', makeUpper)
+          .ilike('model', `${modelUpper}%`) // Allow model prefix match (e.g., COROLLA matches COROLLA CROSS)
           .gte('year', hunt.year - 1)
           .lte('year', hunt.year + 1)
           .is('delisted_at', null)
-          .in('source', sources)
           .gte('first_seen_at', new Date(Date.now() - hunt.max_listing_age_days_watch * 24 * 60 * 60 * 1000).toISOString())
           .limit(500);
-
-        const { data: candidates, error: candErr } = await query;
+        
+        // Filter sources client-side to handle case variations
+        const { data: rawCandidates, error: candErr } = await query;
+        
+        // Filter by source (case-insensitive)
+        const sourcesLower = sources.map(s => s.toLowerCase());
+        const candidates = (rawCandidates || []).filter(c => 
+          sourcesLower.includes((c.source || '').toLowerCase())
+        );
         
         if (candErr) throw candErr;
 
