@@ -2065,11 +2065,9 @@ export type Database = {
           gap_pct: number | null
           hunt_id: string
           id: string
-          lane: string | null
           listing_id: string
           match_score: number
           matched_at: string
-          priority_score: number | null
           proven_exit_value: number | null
           reasons: string[] | null
         }
@@ -2081,11 +2079,9 @@ export type Database = {
           gap_pct?: number | null
           hunt_id: string
           id?: string
-          lane?: string | null
           listing_id: string
           match_score: number
           matched_at?: string
-          priority_score?: number | null
           proven_exit_value?: number | null
           reasons?: string[] | null
         }
@@ -2097,11 +2093,9 @@ export type Database = {
           gap_pct?: number | null
           hunt_id?: string
           id?: string
-          lane?: string | null
           listing_id?: string
           match_score?: number
           matched_at?: string
-          priority_score?: number | null
           proven_exit_value?: number | null
           reasons?: string[] | null
         }
@@ -3672,27 +3666,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      source_lane_map: {
-        Row: {
-          lane: string
-          lane_bonus: number
-          notes: string | null
-          source: string
-        }
-        Insert: {
-          lane: string
-          lane_bonus?: number
-          notes?: string | null
-          source: string
-        }
-        Update: {
-          lane?: string
-          lane_bonus?: number
-          notes?: string | null
-          source?: string
-        }
-        Relationships: []
       }
       source_registry: {
         Row: {
@@ -5458,68 +5431,6 @@ export type Database = {
           year_min: number | null
         }
         Relationships: []
-      }
-      hunt_matches_ranked: {
-        Row: {
-          asking_price: number | null
-          confidence_label: string | null
-          decision: string | null
-          decision_rank: number | null
-          gap_dollars: number | null
-          gap_pct: number | null
-          hunt_id: string | null
-          id: string | null
-          lane: string | null
-          listing_id: string | null
-          match_score: number | null
-          matched_at: string | null
-          priority_score: number | null
-          proven_exit_value: number | null
-          reasons: string[] | null
-        }
-        Insert: {
-          asking_price?: number | null
-          confidence_label?: string | null
-          decision?: string | null
-          decision_rank?: never
-          gap_dollars?: number | null
-          gap_pct?: number | null
-          hunt_id?: string | null
-          id?: string | null
-          lane?: string | null
-          listing_id?: string | null
-          match_score?: number | null
-          matched_at?: string | null
-          priority_score?: number | null
-          proven_exit_value?: number | null
-          reasons?: string[] | null
-        }
-        Update: {
-          asking_price?: number | null
-          confidence_label?: string | null
-          decision?: string | null
-          decision_rank?: never
-          gap_dollars?: number | null
-          gap_pct?: number | null
-          hunt_id?: string | null
-          id?: string | null
-          lane?: string | null
-          listing_id?: string | null
-          match_score?: number | null
-          matched_at?: string | null
-          priority_score?: number | null
-          proven_exit_value?: number | null
-          reasons?: string[] | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "hunt_matches_hunt_id_fkey"
-            columns: ["hunt_id"]
-            isOneToOne: false
-            referencedRelation: "sale_hunts"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       listing_presence_by_run: {
         Row: {
