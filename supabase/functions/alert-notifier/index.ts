@@ -9,7 +9,11 @@ const corsHeaders = {
 /**
  * Alert Notifier - Sends Kiting Mode BUY/WATCH alerts to dealers
  * Runs every 5 minutes via cron
- * Channels: email (primary), Slack (optional)
+ * 
+ * Notification flow:
+ * 1. Find pending hunt_alerts
+ * 2. Send browser push via push-send edge function
+ * 3. Mark as sent
  */
 
 interface HuntAlertRow {
@@ -41,9 +45,6 @@ interface HuntAlertRow {
 
 interface DealerSettings {
   dealer_id: string;
-  email: string | null;
-  phone: string | null;
-  slack_webhook_url: string | null;
   notify_buy: boolean;
   notify_watch: boolean;
   quiet_hours_start: number | null;
@@ -67,106 +68,11 @@ function isWithinQuietHours(start: number | null, end: number | null): boolean {
   const aestHour = (now.getUTCHours() + 10) % 24;
   
   if (start <= end) {
-    // Simple range (e.g., 22:00 - 07:00 wraps around midnight)
     return aestHour >= start && aestHour < end;
   } else {
     // Wraps around midnight
     return aestHour >= start || aestHour < end;
   }
-}
-
-// Format alert for email
-function formatEmailHtml(alert: HuntAlertRow): string {
-  const p = alert.payload;
-  const vehicle = `${p.year || ''} ${p.make || ''} ${p.model || ''} ${p.variant || ''}`.trim();
-  const km = p.km ? `${(p.km / 1000).toFixed(0)}k km` : 'KM unknown';
-  const askingPrice = p.asking_price ? `$${p.asking_price.toLocaleString()}` : '-';
-  const exitValue = p.proven_exit_value ? `$${p.proven_exit_value.toLocaleString()}` : '-';
-  const gap = p.gap_dollars ? `+$${p.gap_dollars.toLocaleString()} (${(p.gap_pct || 0).toFixed(1)}%)` : '-';
-  const source = p.source || 'unknown';
-  const location = [p.suburb, p.state].filter(Boolean).join(', ') || 'Location unknown';
-  const reasons = p.reasons?.slice(0, 2).join(' • ') || '';
-  
-  const alertColor = alert.alert_type === 'BUY' ? '#22c55e' : '#f59e0b';
-  const alertLabel = alert.alert_type === 'BUY' ? '🎯 BUY ALERT' : '👀 WATCH ALERT';
-  
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 24px;">
-  <div style="max-width: 480px; margin: 0 auto; background: #1e293b; border-radius: 12px; overflow: hidden;">
-    <div style="background: ${alertColor}; color: white; padding: 16px 20px; font-weight: 600; font-size: 18px;">
-      ${alertLabel}
-    </div>
-    <div style="padding: 20px;">
-      <h2 style="margin: 0 0 8px; font-size: 20px; color: #f8fafc;">${vehicle}</h2>
-      <p style="margin: 0 0 16px; color: #94a3b8; font-size: 14px;">${km} • ${source} • ${location}</p>
-      
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr>
-          <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #94a3b8;">Asking Price</td>
-          <td style="padding: 8px 0; border-bottom: 1px solid #334155; text-align: right; font-weight: 600;">${askingPrice}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #94a3b8;">Proven Exit</td>
-          <td style="padding: 8px 0; border-bottom: 1px solid #334155; text-align: right; font-weight: 600;">${exitValue}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; color: #94a3b8;">Gap</td>
-          <td style="padding: 8px 0; text-align: right; font-weight: 600; color: ${alertColor};">${gap}</td>
-        </tr>
-      </table>
-      
-      ${reasons ? `<p style="margin: 16px 0 0; padding: 12px; background: #0f172a; border-radius: 8px; font-size: 13px; color: #94a3b8;">${reasons}</p>` : ''}
-      
-      ${p.listing_url ? `
-      <a href="${p.listing_url}" target="_blank" style="display: block; margin-top: 20px; padding: 14px; background: ${alertColor}; color: white; text-align: center; text-decoration: none; border-radius: 8px; font-weight: 600;">
-        View Listing →
-      </a>
-      ` : ''}
-    </div>
-    <div style="padding: 16px 20px; border-top: 1px solid #334155; font-size: 12px; color: #64748b;">
-      Kiting Mode Alert • Sent automatically
-    </div>
-  </div>
-</body>
-</html>
-  `;
-}
-
-// Format alert for Slack
-function formatSlackMessage(alert: HuntAlertRow): object {
-  const p = alert.payload;
-  const vehicle = `${p.year || ''} ${p.make || ''} ${p.model || ''} ${p.variant || ''}`.trim();
-  const km = p.km ? `${(p.km / 1000).toFixed(0)}k km` : 'KM unknown';
-  const askingPrice = p.asking_price ? `$${p.asking_price.toLocaleString()}` : '-';
-  const gap = p.gap_dollars ? `+$${p.gap_dollars.toLocaleString()} (${(p.gap_pct || 0).toFixed(1)}%)` : '-';
-  const emoji = alert.alert_type === 'BUY' ? '🎯' : '👀';
-  
-  return {
-    text: `${emoji} *${alert.alert_type} ALERT*: ${vehicle}`,
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `${emoji} *${alert.alert_type} ALERT*\n*${vehicle}*\n${km} • ${p.source || 'unknown'}\n\nAsking: ${askingPrice} | Gap: ${gap}`
-        }
-      },
-      ...(p.listing_url ? [{
-        type: "actions",
-        elements: [{
-          type: "button",
-          text: { type: "plain_text", text: "View Listing" },
-          url: p.listing_url
-        }]
-      }] : [])
-    ]
-  };
 }
 
 serve(async (req) => {
@@ -177,13 +83,9 @@ serve(async (req) => {
   const startTime = Date.now();
   
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-
-    // Email sending via fetch to Resend API (no npm import needed)
-    const resendKey = Deno.env.get("RESEND_API_KEY");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Fetch pending alerts (limit 50 per run)
     const { data: pendingAlerts, error: alertsError } = await supabase
@@ -231,7 +133,7 @@ serve(async (req) => {
     const settingsMap = new Map<string, DealerSettings>();
     dealerSettings?.forEach(s => settingsMap.set(s.dealer_id, s));
 
-    // Also get dealer profiles for email fallback
+    // Also get dealer profiles for dealer name (needed for push-send)
     const { data: dealerProfiles } = await supabase
       .from("dealer_profiles")
       .select("id, dealer_name")
@@ -283,60 +185,51 @@ serve(async (req) => {
         continue;
       }
 
-      // Try to send notification
+      // Build notification message
+      const p = alert.payload;
+      const vehicle = `${p.year || ''} ${p.make || ''} ${p.model || ''}`.trim();
+      const gap = p.gap_dollars ? `+$${p.gap_dollars.toLocaleString()}` : '';
+      const emoji = alert.alert_type === 'BUY' ? '🎯' : '👀';
+      
+      // Send browser push via push-send function
       let sentVia: string | null = null;
       let lastError: string | null = null;
 
-      // Priority 1: Email via Resend API
-      if (resendKey && settings?.email) {
-        try {
-          const vehicle = `${alert.payload.year || ''} ${alert.payload.make || ''} ${alert.payload.model || ''}`.trim();
-          const subject = `${alert.alert_type === 'BUY' ? '🎯' : '👀'} ${alert.alert_type} Alert: ${vehicle}`;
-          
-          const emailRes = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${resendKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              from: "Kiting Mode <alerts@resend.dev>",
-              to: [settings.email],
-              subject,
-              html: formatEmailHtml(alert),
-            }),
-          });
-          
-          if (emailRes.ok) {
-            sentVia = "email";
-          } else {
-            const emailErr = await emailRes.json();
-            lastError = emailErr.message || `Email API error: ${emailRes.status}`;
-            console.error(`Email failed for ${alert.id}:`, lastError);
-          }
-        } catch (err) {
-          lastError = err instanceof Error ? err.message : String(err);
-          console.error(`Email failed for ${alert.id}:`, lastError);
-        }
-      }
+      try {
+        const pushRes = await fetch(`${supabaseUrl}/functions/v1/push-send`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            dealer_name: profile?.dealer_name,
+            title: `${emoji} ${alert.alert_type}: ${vehicle}`,
+            body: `${p.asking_price ? '$' + p.asking_price.toLocaleString() : ''} ${gap} • ${p.source || 'Kiting Mode'}`,
+            url: `/hunts/${alert.hunt_id}`,
+            alertId: alert.id,
+            force: false, // Respect quiet hours in push-send too
+          }),
+        });
 
-      // Priority 2: Slack webhook
-      if (!sentVia && settings?.slack_webhook_url) {
-        try {
-          const res = await fetch(settings.slack_webhook_url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(formatSlackMessage(alert)),
-          });
-          if (res.ok) {
-            sentVia = "slack";
+        if (pushRes.ok) {
+          const result = await pushRes.json();
+          if (result.sent > 0) {
+            sentVia = "browser_push";
+          } else if (result.queued) {
+            // Queued for quiet hours - don't mark as sent yet
+            console.log(`Alert ${alert.id} queued for quiet hours`);
+            skipped++;
+            continue;
           } else {
-            lastError = `Slack webhook error: ${res.status}`;
+            lastError = "No push subscriptions found";
           }
-        } catch (err) {
-          lastError = err instanceof Error ? err.message : String(err);
-          console.error(`Slack failed for ${alert.id}:`, lastError);
+        } else {
+          lastError = `Push API error: ${pushRes.status}`;
         }
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        console.error(`Push failed for ${alert.id}:`, lastError);
       }
 
       // Update alert status
@@ -349,15 +242,6 @@ serve(async (req) => {
           })
           .eq("id", alert.id);
         sent++;
-      } else if (!settings?.email && !settings?.slack_webhook_url) {
-        // No channels configured - mark as skipped
-        await supabase.from("hunt_alerts")
-          .update({ 
-            should_notify: false,
-            notify_reason: "No notification channels configured"
-          })
-          .eq("id", alert.id);
-        skipped++;
       } else {
         // Increment attempt counter
         await supabase.from("hunt_alerts")
@@ -366,8 +250,21 @@ serve(async (req) => {
             last_notification_error: lastError
           })
           .eq("id", alert.id);
-        failed++;
-        if (lastError) errors.push(lastError);
+        
+        // If no subscriptions, just mark as complete (in-app is always available)
+        if (lastError === "No push subscriptions found") {
+          await supabase.from("hunt_alerts")
+            .update({ 
+              sent_at: new Date().toISOString(),
+              notification_channel: "in_app_only",
+              notify_reason: "No push subscription, in-app available"
+            })
+            .eq("id", alert.id);
+          sent++;
+        } else {
+          failed++;
+          if (lastError) errors.push(lastError);
+        }
       }
     }
 

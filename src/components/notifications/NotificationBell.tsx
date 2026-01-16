@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Bell, CheckCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { dataService } from '@/services/dataService';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { NotificationDrawer } from './NotificationDrawer';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { toast } from 'sonner';
 
 export function NotificationBell() {
-  const { isAdmin, currentUser } = useAuth();
+  const { isAdmin } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMarkingAll, setIsMarkingAll] = useState(false);
@@ -18,9 +18,15 @@ export function NotificationBell() {
 
   const loadUnreadCount = async () => {
     try {
-      const dealerName = isAdmin ? undefined : currentUser?.dealer_name;
-      const count = await dataService.getUnreadAlertCount(dealerName);
-      setUnreadCount(count);
+      // Count unacknowledged BUY alerts from hunt_alerts
+      const { count, error } = await supabase
+        .from('hunt_alerts')
+        .select('*', { count: 'exact', head: true })
+        .eq('alert_type', 'BUY')
+        .is('acknowledged_at', null);
+      
+      if (error) throw error;
+      setUnreadCount(count || 0);
     } catch (error) {
       console.error('Failed to load unread count:', error);
     }
@@ -31,7 +37,7 @@ export function NotificationBell() {
     // Refresh count every 30 seconds
     const interval = setInterval(loadUnreadCount, 30000);
     return () => clearInterval(interval);
-  }, [isAdmin, currentUser]);
+  }, []);
 
   const handleDrawerClose = () => {
     setIsDrawerOpen(false);
@@ -42,13 +48,19 @@ export function NotificationBell() {
     e.stopPropagation();
     setIsMarkingAll(true);
     try {
-      const dealerName = isAdmin ? undefined : currentUser?.dealer_name;
-      const count = await dataService.markAllBuyAlertsRead(dealerName);
+      const { error } = await supabase
+        .from('hunt_alerts')
+        .update({ acknowledged_at: new Date().toISOString() })
+        .eq('alert_type', 'BUY')
+        .is('acknowledged_at', null);
+      
+      if (error) throw error;
+      
       setUnreadCount(0);
-      toast.success(`Marked ${count} alert${count !== 1 ? 's' : ''} as read`);
+      toast.success('All BUY alerts acknowledged');
     } catch (error) {
       console.error('Failed to mark all as read:', error);
-      toast.error('Failed to mark alerts as read');
+      toast.error('Failed to acknowledge alerts');
     } finally {
       setIsMarkingAll(false);
     }
