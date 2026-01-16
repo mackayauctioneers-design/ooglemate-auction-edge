@@ -24,11 +24,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useAuth } from '@/contexts/AuthContext';
+import { DealerLinkPrompt } from '@/components/dealer/DealerLinkPrompt';
 
 export default function LogSalePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
+  const { dealerProfile, user } = useAuth();
+  
   const [dealers, setDealers] = useState<Dealer[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
@@ -37,6 +41,9 @@ export default function LogSalePage() {
   const [salesDealerFilter, setSalesDealerFilter] = useState<string>('all');
   const [failedHuntSaleId, setFailedHuntSaleId] = useState<string | null>(null);
   const [isArmingHunt, setIsArmingHunt] = useState(false);
+  
+  // Check if user has a linked dealer profile
+  const isDealerLinked = !!dealerProfile?.dealer_profile_id;
   
   const [formData, setFormData] = useState({
     dealer_name: '',
@@ -67,6 +74,13 @@ export default function LogSalePage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Pre-fill dealer name from linked profile
+  useEffect(() => {
+    if (dealerProfile?.dealer_name && !formData.dealer_name) {
+      setFormData(prev => ({ ...prev, dealer_name: dealerProfile.dealer_name }));
+    }
+  }, [dealerProfile?.dealer_name]);
 
   // Prefill form from URL params (from Benchmark Gaps panel)
   useEffect(() => {
@@ -188,30 +202,26 @@ export default function LogSalePage() {
     setFailedHuntSaleId(null);
     
     try {
-      const dealer = dealers.find(d => d.dealer_name === formData.dealer_name);
-      
-      // CRITICAL: dealer_id must be a real UUID, not a string fallback
-      const dealerId = (dealer as any)?.dealer_id || (dealer as any)?.id;
-      
-      // UUID validation regex
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-      
-      if (!dealerId || !uuidRegex.test(dealerId)) {
+      // Use the linked dealer profile - this is the authoritative source
+      if (!isDealerLinked) {
         toast({
-          title: "Dealer not linked",
-          description: "Select a valid dealer profile to activate Kiting Mode. Contact support if your dealer is missing.",
+          title: "Dealer profile required",
+          description: "Link your account to a dealer profile to activate Kiting Mode.",
           variant: "destructive",
         });
         setIsSubmitting(false);
         return;
       }
       
+      const dealerId = dealerProfile!.dealer_profile_id;
+      const dealerName = dealerProfile!.dealer_name;
+      
       // 1. Insert into dealer_sales (triggers auto hunt creation)
       const { data: insertedSale, error: insertError } = await (supabase as any)
         .from('dealer_sales')
         .insert({
           dealer_id: dealerId,
-          dealer_name: formData.dealer_name,
+          dealer_name: dealerName,
           sold_date: formData.sale_date,
           make: formData.make.toUpperCase(),
           model: formData.model.toUpperCase(),
@@ -231,8 +241,8 @@ export default function LogSalePage() {
 
       // 2. Also sync to legacy systems (fingerprints)
       await dataService.upsertFingerprint({
-        dealer_name: formData.dealer_name,
-        dealer_whatsapp: dealer?.whatsapp || '',
+        dealer_name: dealerName,
+        dealer_whatsapp: '',
         sale_date: formData.sale_date,
         make: formData.make,
         model: formData.model,
@@ -327,36 +337,38 @@ export default function LogSalePage() {
           </Button>
         </div>
 
+        {/* Dealer Link Prompt - show if user not linked */}
+        {user && !isDealerLinked && (
+          <div className="mb-6">
+            <DealerLinkPrompt />
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Log Sale Form */}
           <form onSubmit={handleSubmit}>
-            <Card className="bg-card border-border">
+            <Card className={`bg-card border-border ${!isDealerLinked ? 'opacity-60 pointer-events-none' : ''}`}>
               <CardHeader>
                 <CardTitle className="text-lg">Log New Sale</CardTitle>
                 <CardDescription>
-                  Enter vehicle details. Fingerprint will be active for 120 days.
+                  {isDealerLinked 
+                    ? `Logging as ${dealerProfile?.dealer_name}. Fingerprint will be active for 120 days.`
+                    : 'Link your dealer profile above to enable sales logging.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Dealer and Date */}
+                {/* Dealer display (read-only when linked) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="dealer">Dealer *</Label>
+                    <Label htmlFor="dealer">Dealer</Label>
                     <Input
                       id="dealer"
-                      value={formData.dealer_name}
-                      onChange={(e) => updateField('dealer_name', e.target.value)}
-                      placeholder="Type or select dealer"
-                      list="dealer-list"
-                      className="bg-input"
+                      value={dealerProfile?.dealer_name || formData.dealer_name}
+                      readOnly={isDealerLinked}
+                      onChange={(e) => !isDealerLinked && updateField('dealer_name', e.target.value)}
+                      placeholder={isDealerLinked ? '' : "Link dealer profile above"}
+                      className={`bg-input ${isDealerLinked ? 'bg-muted cursor-not-allowed' : ''}`}
                     />
-                    <datalist id="dealer-list">
-                      {dealers
-                        .filter(dealer => dealer.dealer_name && dealer.dealer_name.trim() !== '')
-                        .map(dealer => (
-                          <option key={dealer.dealer_name} value={dealer.dealer_name} />
-                        ))}
-                    </datalist>
                   </div>
 
                   <div className="space-y-2">
@@ -606,11 +618,15 @@ export default function LogSalePage() {
                   <Button
                     type="submit"
                     variant="action"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !isDealerLinked}
                     className="gap-2"
                   >
                     <Save className="h-4 w-4" />
-                    {isSubmitting ? 'Engaging Kiting Mode...' : 'Log Sale & Hunt'}
+                    {!isDealerLinked 
+                      ? 'Link Dealer First' 
+                      : isSubmitting 
+                        ? 'Engaging Kiting Mode...' 
+                        : 'Log Sale & Hunt'}
                   </Button>
                 </div>
               </CardContent>
