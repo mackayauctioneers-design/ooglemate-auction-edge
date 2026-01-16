@@ -1117,10 +1117,14 @@ export type Database = {
       dealer_sales: {
         Row: {
           buy_price: number | null
+          cab_type: string | null
           created_at: string | null
+          cylinders: number | null
           data_source: string
           dealer_id: string
           dealer_name: string | null
+          engine_code: string | null
+          engine_litres: number | null
           fingerprint: string | null
           fingerprint_confidence: number | null
           fingerprint_version: number | null
@@ -1141,10 +1145,14 @@ export type Database = {
         }
         Insert: {
           buy_price?: number | null
+          cab_type?: string | null
           created_at?: string | null
+          cylinders?: number | null
           data_source?: string
           dealer_id: string
           dealer_name?: string | null
+          engine_code?: string | null
+          engine_litres?: number | null
           fingerprint?: string | null
           fingerprint_confidence?: number | null
           fingerprint_version?: number | null
@@ -1165,10 +1173,14 @@ export type Database = {
         }
         Update: {
           buy_price?: number | null
+          cab_type?: string | null
           created_at?: string | null
+          cylinders?: number | null
           data_source?: string
           dealer_id?: string
           dealer_name?: string | null
+          engine_code?: string | null
+          engine_litres?: number | null
           fingerprint?: string | null
           fingerprint_confidence?: number | null
           fingerprint_version?: number | null
@@ -2828,12 +2840,19 @@ export type Database = {
           badge: string | null
           badge_tier: number | null
           body_type: string | null
+          cab_confidence: string | null
+          cab_reasons: string[] | null
+          cab_source: string | null
+          cab_type: string | null
           classified_at: string | null
           created_at: string
           cross_post_confidence: number | null
           cross_post_linked_at: string | null
+          cylinders: number | null
           delisted_at: string | null
+          engine_code: string | null
           engine_family: string | null
+          engine_litres: number | null
           exclude_from_alerts: boolean
           first_seen_at: string
           id: string
@@ -2895,12 +2914,19 @@ export type Database = {
           badge?: string | null
           badge_tier?: number | null
           body_type?: string | null
+          cab_confidence?: string | null
+          cab_reasons?: string[] | null
+          cab_source?: string | null
+          cab_type?: string | null
           classified_at?: string | null
           created_at?: string
           cross_post_confidence?: number | null
           cross_post_linked_at?: string | null
+          cylinders?: number | null
           delisted_at?: string | null
+          engine_code?: string | null
           engine_family?: string | null
+          engine_litres?: number | null
           exclude_from_alerts?: boolean
           first_seen_at?: string
           id?: string
@@ -2962,12 +2988,19 @@ export type Database = {
           badge?: string | null
           badge_tier?: number | null
           body_type?: string | null
+          cab_confidence?: string | null
+          cab_reasons?: string[] | null
+          cab_source?: string | null
+          cab_type?: string | null
           classified_at?: string | null
           created_at?: string
           cross_post_confidence?: number | null
           cross_post_linked_at?: string | null
+          cylinders?: number | null
           delisted_at?: string | null
+          engine_code?: string | null
           engine_family?: string | null
+          engine_litres?: number | null
           exclude_from_alerts?: boolean
           first_seen_at?: string
           id?: string
@@ -3158,10 +3191,14 @@ export type Database = {
           badge: string | null
           badge_tier: number | null
           body_type: string | null
+          cab_type: string | null
           created_at: string
+          cylinders: number | null
           dealer_id: string
           drivetrain: string | null
+          engine_code: string | null
           engine_family: string | null
+          engine_litres: number | null
           expires_at: string | null
           fuel: string | null
           geo_mode: string
@@ -3204,10 +3241,14 @@ export type Database = {
           badge?: string | null
           badge_tier?: number | null
           body_type?: string | null
+          cab_type?: string | null
           created_at?: string
+          cylinders?: number | null
           dealer_id: string
           drivetrain?: string | null
+          engine_code?: string | null
           engine_family?: string | null
+          engine_litres?: number | null
           expires_at?: string | null
           fuel?: string | null
           geo_mode?: string
@@ -3250,10 +3291,14 @@ export type Database = {
           badge?: string | null
           badge_tier?: number | null
           body_type?: string | null
+          cab_type?: string | null
           created_at?: string
+          cylinders?: number | null
           dealer_id?: string
           drivetrain?: string | null
+          engine_code?: string | null
           engine_family?: string | null
+          engine_litres?: number | null
           expires_at?: string | null
           fuel?: string | null
           geo_mode?: string

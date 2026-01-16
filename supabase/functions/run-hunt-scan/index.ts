@@ -37,6 +37,11 @@ interface Hunt {
   badge_tier: number | null;
   body_type: string | null;
   engine_family: string | null;
+  // LC79 Precision Pack fields
+  cab_type: string | null;
+  engine_code: string | null;
+  engine_litres: number | null;
+  cylinders: number | null;
 }
 
 interface Listing {
@@ -64,6 +69,11 @@ interface Listing {
   body_type: string | null;
   engine_family: string | null;
   variant_confidence: string | null;
+  // LC79 Precision Pack fields
+  cab_type: string | null;
+  engine_code: string | null;
+  engine_litres: number | null;
+  cylinders: number | null;
 }
 
 interface MatchResult {
@@ -78,13 +88,14 @@ interface MatchResult {
   rejection_reason?: string;
 }
 
-// Hard gate types for Badge Authority Layer
-type RejectionReason = 'SERIES_MISMATCH' | 'BODY_MISMATCH' | 'ENGINE_MISMATCH' | 'BADGE_TIER_MISMATCH';
+// Hard gate types for Badge Authority Layer + LC79 Precision Pack
+type RejectionReason = 'SERIES_MISMATCH' | 'BODY_MISMATCH' | 'ENGINE_MISMATCH' | 'BADGE_TIER_MISMATCH' | 'CAB_MISMATCH';
 
 interface GateResult {
   passed: boolean;
   rejection_reason?: RejectionReason;
   downgrade_to_watch?: boolean;
+  downgrade_reason?: string;
 }
 
 // ============================================
@@ -103,13 +114,31 @@ function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
     return { passed: false, rejection_reason: 'BODY_MISMATCH' };
   }
   
-  // Gate C: Engine mismatch - IGNORE immediately
+  // Gate C: Engine mismatch - IGNORE immediately (or downgrade if listing unknown)
   if (hunt.engine_family && listing.engine_family && 
       hunt.engine_family !== listing.engine_family) {
     return { passed: false, rejection_reason: 'ENGINE_MISMATCH' };
   }
+  // If hunt requires specific engine but listing is UNKNOWN - block BUY, allow WATCH
+  if (hunt.engine_family && hunt.engine_code && 
+      (!listing.engine_family || listing.engine_code === 'UNKNOWN')) {
+    return { passed: true, downgrade_to_watch: true, downgrade_reason: 'ENGINE_UNKNOWN_NEEDS_VERIFY' };
+  }
   
-  // Gate D: Badge tier mismatch > 1 - downgrade BUY to WATCH
+  // Gate D: Cab type mismatch (LC79 Precision Pack)
+  const lockedCabTypes = ['SINGLE', 'DUAL', 'EXTRA'];
+  if (hunt.cab_type && lockedCabTypes.includes(hunt.cab_type) &&
+      listing.cab_type && lockedCabTypes.includes(listing.cab_type) &&
+      hunt.cab_type !== listing.cab_type) {
+    return { passed: false, rejection_reason: 'CAB_MISMATCH' };
+  }
+  // If hunt requires specific cab but listing is UNKNOWN - block BUY, allow WATCH
+  if (hunt.cab_type && lockedCabTypes.includes(hunt.cab_type) &&
+      (!listing.cab_type || listing.cab_type === 'UNKNOWN')) {
+    return { passed: true, downgrade_to_watch: true, downgrade_reason: 'CAB_UNKNOWN_NEEDS_VERIFY' };
+  }
+  
+  // Gate E: Badge tier mismatch > 1 - downgrade BUY to WATCH
   if (hunt.badge_tier && listing.badge_tier) {
     const tierDiff = Math.abs(hunt.badge_tier - listing.badge_tier);
     if (tierDiff > 1) {
