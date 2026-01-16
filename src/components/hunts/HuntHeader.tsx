@@ -73,6 +73,12 @@ export function HuntHeader({
               <h1 className="text-2xl font-bold">
                 {hunt.year} {hunt.make} {hunt.model}
               </h1>
+              {/* Cause → effect explanation */}
+              {hunt.source_sale_id && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  Kiting Mode is active because you logged a sale.
+                </p>
+              )}
             </div>
             <Badge variant="outline" className={`ml-2 ${getStatusColor(hunt.status)}`}>
               {hunt.status}
