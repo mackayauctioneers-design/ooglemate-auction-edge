@@ -524,8 +524,8 @@ serve(async (req) => {
             // Score and decide
             const { score, decision, reasons } = scoreAndDecide(candidate, classification, hunt as Hunt);
             
-            // Upsert to outward_candidates
-            const { error: upsertError } = await supabase
+            // Upsert to outward_candidates and get the ID
+            const { data: upsertedCandidate, error: upsertError } = await supabase
               .from('outward_candidates')
               .upsert({
                 hunt_id,
@@ -534,6 +534,7 @@ serve(async (req) => {
                 title: candidate.title,
                 snippet: candidate.snippet,
                 provider: 'firecrawl',
+                source: 'outward_web',
                 extracted: {
                   year: candidate.year,
                   make: candidate.make,
@@ -547,57 +548,54 @@ serve(async (req) => {
                 decision,
                 reasons,
                 alert_emitted: false,
-              }, { onConflict: 'hunt_id,url' });
+              }, { onConflict: 'hunt_id,url' })
+              .select('id, alert_emitted')
+              .single();
             
-            if (!upsertError) {
+            if (!upsertError && upsertedCandidate) {
               results.candidates_created++;
               
               // Emit alert for BUY/WATCH
-              if (decision === 'BUY' || decision === 'WATCH') {
-                // Check if already alerted
-                const { data: existing } = await supabase
-                  .from('outward_candidates')
-                  .select('alert_emitted')
-                  .eq('hunt_id', hunt_id)
-                  .eq('url', candidate.url)
-                  .single();
+              if ((decision === 'BUY' || decision === 'WATCH') && !upsertedCandidate.alert_emitted) {
+                const alertPayload = {
+                  year: candidate.year,
+                  make: candidate.make,
+                  model: candidate.model,
+                  variant: candidate.variant_raw,
+                  km: candidate.km,
+                  asking_price: candidate.asking_price,
+                  proven_exit_value: hunt.proven_exit_value,
+                  gap_dollars: hunt.proven_exit_value && candidate.asking_price 
+                    ? hunt.proven_exit_value - candidate.asking_price 
+                    : null,
+                  gap_pct: hunt.proven_exit_value && candidate.asking_price 
+                    ? ((hunt.proven_exit_value - candidate.asking_price) / hunt.proven_exit_value) * 100 
+                    : null,
+                  match_score: score,
+                  source: `Web Discovery (${candidate.domain})`,
+                  source_type: 'outward',
+                  listing_url: candidate.url,
+                  classification,
+                  reasons,
+                };
                 
-                if (!existing?.alert_emitted) {
-                  const alertPayload = {
-                    year: candidate.year,
-                    make: candidate.make,
-                    model: candidate.model,
-                    variant: candidate.variant_raw,
-                    km: candidate.km,
-                    asking_price: candidate.asking_price,
-                    proven_exit_value: hunt.proven_exit_value,
-                    gap_dollars: hunt.proven_exit_value && candidate.asking_price 
-                      ? hunt.proven_exit_value - candidate.asking_price 
-                      : null,
-                    gap_pct: hunt.proven_exit_value && candidate.asking_price 
-                      ? ((hunt.proven_exit_value - candidate.asking_price) / hunt.proven_exit_value) * 100 
-                      : null,
-                    match_score: score,
-                    source: `Web Discovery (${candidate.domain})`,
-                    listing_url: candidate.url,
-                    classification,
-                    reasons,
-                  };
-                  
-                  await supabase.from('hunt_alerts').insert({
-                    hunt_id,
-                    listing_id: candidate.url,
-                    alert_type: decision,
-                    payload: alertPayload,
-                  });
-                  
+                // Use the outward_candidate UUID as the listing_id
+                const { error: alertErr } = await supabase.from('hunt_alerts').insert({
+                  hunt_id,
+                  listing_id: upsertedCandidate.id,  // Use the actual UUID
+                  alert_type: decision,
+                  payload: alertPayload,
+                });
+                
+                if (!alertErr) {
                   await supabase
                     .from('outward_candidates')
                     .update({ alert_emitted: true })
-                    .eq('hunt_id', hunt_id)
-                    .eq('url', candidate.url);
+                    .eq('id', upsertedCandidate.id);
                   
                   results.alerts_emitted++;
+                } else {
+                  console.error('Failed to insert alert:', alertErr.message);
                 }
               }
             }
