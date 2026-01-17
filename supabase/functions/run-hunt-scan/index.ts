@@ -60,6 +60,7 @@ interface Listing {
   make: string | null;
   model: string | null;
   variant: string | null;
+  variant_raw: string | null; // Raw variant from source
   variant_family: string | null;
   fuel: string | null;
   transmission: string | null;
@@ -178,15 +179,18 @@ function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
     // (e.g., "N PREMIUM" incorrectly stored as "PREMIUM")
     let listingBadge: string | null = null;
     
-    // Extract from variant_raw - IMPORTANT: Order matters - compound badges FIRST
-    if (listing.variant) {
-      const variantUpper = listing.variant.toUpperCase();
+    // Extract from variant_raw (or variant) - IMPORTANT: Order matters - compound badges FIRST
+    const variantText = listing.variant_raw || listing.variant;
+    if (variantText) {
+      const variantUpper = variantText.toUpperCase();
       // Compound badges first (most specific), then simple badges
       const badges = [
         // Hyundai i30 compound badges (order matters!)
         'N LINE PREMIUM', 'N-LINE PREMIUM', 'N LINE PRM',  // N Line with Premium package
         'N PREMIUM',                                        // i30 N with Premium trim
         'N LINE', 'N-LINE',                                 // N Line (sport appearance)
+        'HEV',                                              // Hybrid Electric Vehicle
+        'BEV',                                              // Battery Electric Vehicle
         'PREMIUM',                                          // Regular Premium
         'ELITE',                                            // Elite
         'ACTIVE',                                           // Active
@@ -477,7 +481,7 @@ function makeDecision(
   listingAgeDays: number,
   gateResult: GateResult
 ): { decision: 'buy' | 'watch' | 'ignore' | 'no_evidence'; gap_dollars: number | null; gap_pct: number | null } {
-  // No evidence case
+  // No evidence case - still show as WATCH so user sees cheapest available
   if (!provenExitValue || !listing.asking_price) {
     return { decision: 'no_evidence', gap_dollars: null, gap_pct: null };
   }
@@ -485,7 +489,7 @@ function makeDecision(
   const gap_dollars = provenExitValue - listing.asking_price;
   const gap_pct = (gap_dollars / provenExitValue) * 100;
   
-  // Check BUY criteria
+  // Check BUY criteria - strict thresholds
   const canBuy = 
     score >= 7.5 &&
     listingAgeDays <= hunt.max_listing_age_days_buy &&
@@ -499,16 +503,19 @@ function makeDecision(
     return { decision: 'buy', gap_dollars, gap_pct };
   }
   
-  // Check WATCH criteria
+  // CRITICAL: Never ignore just because of price!
+  // The user wants to see the "cheapest, closest" match even if overpriced
+  // WATCH is the fallback for anything that passes hard gates
+  // Only apply age filter very loosely for WATCH
   const canWatch = 
-    score >= 6.5 &&
-    listingAgeDays <= hunt.max_listing_age_days_watch &&
-    (gap_dollars >= hunt.min_gap_abs_watch || gap_pct >= hunt.min_gap_pct_watch);
+    score >= 5.0 && // Lower threshold
+    listingAgeDays <= Math.max(hunt.max_listing_age_days_watch, 30); // More lenient age
   
   if (canWatch) {
     return { decision: 'watch', gap_dollars, gap_pct };
   }
   
+  // Only IGNORE for very stale listings or very low match scores
   return { decision: 'ignore', gap_dollars, gap_pct };
 }
 
