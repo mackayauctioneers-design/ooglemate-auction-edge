@@ -46,6 +46,7 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
     
     // LC79 Precision Pack
     engine_code: hunt.engine_code || '',
+    engine_family: hunt.engine_family || '',
     cab_type: hunt.cab_type || '',
     series_family: hunt.series_family || '',
     
@@ -91,6 +92,7 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
       badge: hunt.badge || '',
       body_type: hunt.body_type || '',
       engine_code: hunt.engine_code || '',
+      engine_family: hunt.engine_family || '',
       cab_type: hunt.cab_type || '',
       series_family: hunt.series_family || '',
       fuel: hunt.fuel || '',
@@ -133,6 +135,7 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
         badge: formData.badge.toUpperCase() || null,
         body_type: formData.body_type.toUpperCase() || null,
         engine_code: formData.engine_code.toUpperCase() || null,
+        engine_family: formData.engine_family.toUpperCase() || null,
         cab_type: formData.cab_type.toUpperCase() || null,
         series_family: formData.series_family.toUpperCase() || null,
         fuel: formData.fuel || null,
@@ -175,6 +178,9 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
 
   const cabTypeOptions = ['SINGLE', 'DUAL', 'EXTRA', 'UNKNOWN'];
   const engineCodeOptions = ['1VD-FTV', '1GD-FTV', '2GD-FTV', '1GR-FE', '2TR-FE', 'UNKNOWN'];
+  const engineFamilyOptions = ['V8_DIESEL', 'I4_DIESEL', 'V6_DIESEL', 'V6_PETROL', 'V8_PETROL'];
+  const seriesFamilyOptions = ['LC70', 'LC200', 'LC300', 'PRADO', 'N80', 'GUN126'];
+  const bodyTypeOptions = ['CAB_CHASSIS', 'UTE', 'WAGON', 'DUAL_CAB', 'SINGLE_CAB'];
   const fuelOptions = ['Diesel', 'Petrol', 'Hybrid', 'Electric'];
   const transmissionOptions = ['Manual', 'Automatic'];
   const drivetrainOptions = ['4WD', 'AWD', '2WD', 'FWD', 'RWD'];
@@ -271,15 +277,48 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
                   </p>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="series_family">Series Family</Label>
-                <Input
-                  id="series_family"
-                  value={formData.series_family}
-                  onChange={(e) => updateField('series_family', e.target.value)}
-                  placeholder="e.g. LC79, N80, GUN126"
-                  className="bg-input uppercase"
-                />
+              
+              {/* Series & Body - Critical for hard gates */}
+              <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                <div className="text-sm font-medium text-primary mb-3">
+                  🔒 Hard Gate Criteria (critical for filtering)
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="series_family">Series Family</Label>
+                    <Select value={formData.series_family} onValueChange={(v) => updateField('series_family', v)}>
+                      <SelectTrigger className="bg-input">
+                        <SelectValue placeholder="Select series" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Not specified (broad match)</SelectItem>
+                        {seriesFamilyOptions.map(opt => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      e.g. LC70 blocks LC300 wagons
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="body_type">Body Type</Label>
+                    <Select value={formData.body_type} onValueChange={(v) => updateField('body_type', v)}>
+                      <SelectTrigger className="bg-input">
+                        <SelectValue placeholder="Select body" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Not specified</SelectItem>
+                        {bodyTypeOptions.map(opt => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      CAB_CHASSIS for tray builds
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* LC79 Precision Pack */}
@@ -287,7 +326,22 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
                 <div className="text-sm font-medium text-amber-700 dark:text-amber-400 mb-3">
                   LC79 Precision Pack (for 70 Series)
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="engine_family">Engine Family</Label>
+                    <Select value={formData.engine_family || ''} onValueChange={(v) => updateField('engine_family', v)}>
+                      <SelectTrigger className="bg-input">
+                        <SelectValue placeholder="Any" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Not specified</SelectItem>
+                        {engineFamilyOptions.map(opt => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">V8 vs 4cyl gate</p>
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="engine_code">Engine Code</Label>
                     <Select value={formData.engine_code} onValueChange={(v) => updateField('engine_code', v)}>
