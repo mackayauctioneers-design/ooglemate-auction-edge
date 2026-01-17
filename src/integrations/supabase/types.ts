@@ -3223,6 +3223,9 @@ export type Database = {
           min_gap_pct_watch: number
           model: string
           model_root: string | null
+          must_have_mode: string | null
+          must_have_raw: string | null
+          must_have_tokens: string[] | null
           notes: string | null
           outward_enabled: boolean | null
           outward_sources: string[] | null
@@ -3273,6 +3276,9 @@ export type Database = {
           min_gap_pct_watch?: number
           model: string
           model_root?: string | null
+          must_have_mode?: string | null
+          must_have_raw?: string | null
+          must_have_tokens?: string[] | null
           notes?: string | null
           outward_enabled?: boolean | null
           outward_sources?: string[] | null
@@ -3323,6 +3329,9 @@ export type Database = {
           min_gap_pct_watch?: number
           model?: string
           model_root?: string | null
+          must_have_mode?: string | null
+          must_have_raw?: string | null
+          must_have_tokens?: string[] | null
           notes?: string | null
           outward_enabled?: boolean | null
           outward_sources?: string[] | null

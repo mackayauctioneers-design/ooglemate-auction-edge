@@ -64,6 +64,9 @@ export default function LogSalePage() {
     // LC79 Precision Pack fields
     engine_code: '',
     cab_type: '',
+    // Must-have keywords for picky buyers
+    must_have_raw: '',
+    must_have_mode: 'soft' as 'soft' | 'strict',
   });
 
   // Detect if current vehicle is variant-critical (engine/cab matters for matching)
@@ -135,12 +138,29 @@ export default function LogSalePage() {
   const POLL_DELAY_MS = 400;
 
   // Helper to verify hunt was created and redirect
-  const verifyHuntAndRedirect = async (saleId: string): Promise<boolean> => {
+  const verifyHuntAndRedirect = async (
+    saleId: string, 
+    mustHaveRaw?: string,
+    mustHaveTokens?: string[],
+    mustHaveMode?: 'soft' | 'strict'
+  ): Promise<boolean> => {
     // Poll for hunt creation (trigger may have slight delay)
     for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
       const { data: huntId } = await (supabase as any).rpc('get_hunt_for_sale', { p_sale_id: saleId });
       
       if (huntId) {
+        // Update hunt with must-have keywords if provided
+        if (mustHaveTokens && mustHaveTokens.length > 0) {
+          await (supabase as any)
+            .from('sale_hunts')
+            .update({
+              must_have_raw: mustHaveRaw,
+              must_have_tokens: mustHaveTokens,
+              must_have_mode: mustHaveMode || 'soft'
+            })
+            .eq('id', huntId);
+        }
+        
         // Show engaging animation briefly before redirect
         setKitingEngaged(true);
         toast({
@@ -164,6 +184,18 @@ export default function LogSalePage() {
     });
     
     if (!error && fallbackHuntId) {
+      // Update hunt with must-have keywords if provided
+      if (mustHaveTokens && mustHaveTokens.length > 0) {
+        await (supabase as any)
+          .from('sale_hunts')
+          .update({
+            must_have_raw: mustHaveRaw,
+            must_have_tokens: mustHaveTokens,
+            must_have_mode: mustHaveMode || 'soft'
+          })
+          .eq('id', fallbackHuntId);
+      }
+      
       setKitingEngaged(true);
       toast({
         title: "✅ Kiting Mode engaged",
@@ -292,6 +324,25 @@ export default function LogSalePage() {
       if (insertError) throw insertError;
       
       const saleId = insertedSale.id;
+      
+      // Helper function to normalize must-have tokens
+      const normalizeMustHaveTokens = (raw: string): string[] => {
+        if (!raw.trim()) return [];
+        const synonymMap: Record<string, string> = {
+          'NORWELL': 'NORWELD',
+          'NORWELD TRAY': 'NORWELD',
+          'ALLOY TRAY': 'ALLOY',
+          'STEEL TRAY': 'STEEL',
+        };
+        return raw
+          .split(/[,\n]+/)
+          .map(t => t.trim().toUpperCase())
+          .filter(Boolean)
+          .map(t => synonymMap[t] || t);
+      };
+      
+      // If must-have keywords provided, update the hunt after it's created
+      const mustHaveTokens = normalizeMustHaveTokens(formData.must_have_raw);
 
       // 2. Also sync to legacy systems (fingerprints)
       await dataService.upsertFingerprint({
@@ -309,8 +360,13 @@ export default function LogSalePage() {
         shared_opt_in: formData.shared_opt_in ? 'Y' : 'N',
       });
 
-      // 3. Verify hunt was created and redirect
-      const huntCreated = await verifyHuntAndRedirect(saleId);
+      // 3. Verify hunt was created and redirect (pass must-have data)
+      const huntCreated = await verifyHuntAndRedirect(
+        saleId,
+        formData.must_have_raw,
+        mustHaveTokens,
+        formData.must_have_mode
+      );
       
       if (!huntCreated) {
         // Hunt didn't create - show fallback
@@ -344,6 +400,8 @@ export default function LogSalePage() {
           sell_price: '',
           engine_code: '',
           cab_type: '',
+          must_have_raw: '',
+          must_have_mode: 'soft',
         });
       }
     } catch (error) {
@@ -722,6 +780,54 @@ export default function LogSalePage() {
                     checked={formData.shared_opt_in}
                     onCheckedChange={(v) => updateField('shared_opt_in', v)}
                   />
+                </div>
+
+                {/* Buyer Must-Have Keywords */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Target className="h-4 w-4 text-primary" />
+                    Buyer Must-Have (optional)
+                  </div>
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Input
+                        id="must_have_raw"
+                        value={formData.must_have_raw}
+                        onChange={(e) => updateField('must_have_raw', e.target.value)}
+                        placeholder="e.g. Norweld tray, ARB bar, sunroof"
+                        className="bg-input"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Keywords the buyer requires. Separate with commas.
+                      </p>
+                    </div>
+                    
+                    {/* Mode selector - only show if text entered */}
+                    {formData.must_have_raw.trim() && (
+                      <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/30 border border-border">
+                        <div className="flex-1">
+                          <Label className="font-medium text-sm">Match mode</Label>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {formData.must_have_mode === 'strict' 
+                              ? 'Keywords MUST appear in listing — otherwise excluded'
+                              : 'Keywords boost score but don\'t block matches'}
+                          </p>
+                        </div>
+                        <Select
+                          value={formData.must_have_mode}
+                          onValueChange={(v) => updateField('must_have_mode', v as 'soft' | 'strict')}
+                        >
+                          <SelectTrigger className="w-[140px] bg-input">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="soft">Soft (boost)</SelectItem>
+                            <SelectItem value="strict">Strict (must match)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Kiting Mode Info */}

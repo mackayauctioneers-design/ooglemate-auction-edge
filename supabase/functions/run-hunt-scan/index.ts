@@ -42,6 +42,10 @@ interface Hunt {
   engine_code: string | null;
   engine_litres: number | null;
   cylinders: number | null;
+  // Must-have keywords for picky buyers
+  must_have_raw: string | null;
+  must_have_tokens: string[] | null;
+  must_have_mode: 'soft' | 'strict' | null;
 }
 
 interface Listing {
@@ -74,6 +78,9 @@ interface Listing {
   engine_code: string | null;
   engine_litres: number | null;
   cylinders: number | null;
+  // Text fields for must-have matching
+  title: string | null;
+  description: string | null;
 }
 
 interface MatchResult {
@@ -88,14 +95,61 @@ interface MatchResult {
   rejection_reason?: string;
 }
 
-// Hard gate types for Badge Authority Layer + LC79 Precision Pack
-type RejectionReason = 'SERIES_MISMATCH' | 'BODY_MISMATCH' | 'ENGINE_MISMATCH' | 'BADGE_TIER_MISMATCH' | 'CAB_MISMATCH';
+// Hard gate types for Badge Authority Layer + LC79 Precision Pack + Must-have keywords
+type RejectionReason = 'SERIES_MISMATCH' | 'BODY_MISMATCH' | 'ENGINE_MISMATCH' | 'BADGE_TIER_MISMATCH' | 'CAB_MISMATCH' | 'MISSING_REQUIRED_TOKEN';
 
 interface GateResult {
   passed: boolean;
   rejection_reason?: RejectionReason;
   downgrade_to_watch?: boolean;
   downgrade_reason?: string;
+  missing_token?: string;
+}
+
+// ============================================
+// Must-Have Token Matching
+// ============================================
+interface MustHaveResult {
+  passed: boolean;
+  matched_tokens: string[];
+  missing_tokens: string[];
+  score_bonus: number;
+}
+
+function checkMustHaveTokens(hunt: Hunt, listing: Listing): MustHaveResult {
+  const tokens = hunt.must_have_tokens || [];
+  if (tokens.length === 0) {
+    return { passed: true, matched_tokens: [], missing_tokens: [], score_bonus: 0 };
+  }
+  
+  // Build listing text blob from all available text fields
+  const textBlob = [
+    listing.title || '',
+    listing.description || '',
+    listing.variant || '',
+    listing.dealer_name || ''
+  ].join(' ').toUpperCase();
+  
+  const matched_tokens: string[] = [];
+  const missing_tokens: string[] = [];
+  
+  for (const token of tokens) {
+    if (textBlob.includes(token)) {
+      matched_tokens.push(token);
+    } else {
+      missing_tokens.push(token);
+    }
+  }
+  
+  // Score bonus: 0.3 per matched token (up to 1.5 max)
+  const score_bonus = Math.min(matched_tokens.length * 0.3, 1.5);
+  
+  return {
+    passed: missing_tokens.length === 0,
+    matched_tokens,
+    missing_tokens,
+    score_bonus
+  };
 }
 
 // ============================================
@@ -528,7 +582,44 @@ Deno.serve(async (req) => {
             continue; // Skip to next listing - hard gate failed
           }
           
-          const { score, reasons } = scoreMatch(hunt, classifiedListing);
+          // ============================================
+          // MUST-HAVE KEYWORD MATCHING
+          // ============================================
+          const mustHaveResult = checkMustHaveTokens(hunt, classifiedListing);
+          
+          // In strict mode, missing tokens = IGNORE
+          if (hunt.must_have_mode === 'strict' && !mustHaveResult.passed) {
+            const { data: existingIgnore } = await supabase
+              .from('hunt_matches')
+              .select('id')
+              .eq('hunt_id', hunt.id)
+              .eq('listing_id', listing.id)
+              .maybeSingle();
+            
+            if (!existingIgnore) {
+              await supabase.from('hunt_matches').insert({
+                hunt_id: hunt.id,
+                listing_id: listing.id,
+                match_score: 0,
+                confidence_label: 'low',
+                reasons: [`missing_required_token:${mustHaveResult.missing_tokens[0]}`],
+                asking_price: classifiedListing.asking_price,
+                decision: 'ignore'
+              });
+              rejectedCount++;
+            }
+            continue; // Skip - strict mode and missing token
+          }
+          
+          let { score, reasons } = scoreMatch(hunt, classifiedListing);
+          
+          // Add must-have bonus in soft mode (or matched tokens in strict)
+          if (mustHaveResult.matched_tokens.length > 0) {
+            score += mustHaveResult.score_bonus;
+            for (const token of mustHaveResult.matched_tokens) {
+              reasons.push(`must_have:${token.toLowerCase()}`);
+            }
+          }
           
           // Only process if above minimum threshold
           if (score < 6.0) continue;

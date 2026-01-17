@@ -192,4 +192,9 @@ export interface SaleHunt {
   last_scan_at: string | null;
   scan_interval_minutes: number;
   notes: string | null;
+  
+  // Must-have keywords for picky buyers
+  must_have_raw: string | null;
+  must_have_tokens: string[] | null;
+  must_have_mode: 'soft' | 'strict' | null;
 }
