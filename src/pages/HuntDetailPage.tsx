@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, Clock, ExternalLink, Info, Trophy } from "lucide-react";
+import { AlertCircle, Clock, ExternalLink, Info, Pencil, Trophy } from "lucide-react";
+import { EditHuntDrawer } from "@/components/hunts/EditHuntDrawer";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { HuntHeader } from "@/components/hunts/HuntHeader";
@@ -30,6 +31,7 @@ export default function HuntDetailPage() {
   const queryClient = useQueryClient();
   const [proofModalOpen, setProofModalOpen] = useState(false);
   const [selectedStrike, setSelectedStrike] = useState<HuntAlert | null>(null);
+  const [editDrawerOpen, setEditDrawerOpen] = useState(false);
 
   const { data: hunt, isLoading: huntLoading } = useQuery({
     queryKey: ['hunt', huntId],
@@ -393,8 +395,17 @@ export default function HuntDetailPage() {
 
         {/* Hunt Configuration (collapsible summary) */}
         <Card>
-          <CardHeader className="py-3">
+          <CardHeader className="py-3 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-medium">Hunt Configuration</CardTitle>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setEditDrawerOpen(true)}
+              className="h-8 gap-1"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </Button>
           </CardHeader>
           <CardContent className="pb-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -658,6 +669,15 @@ export default function HuntDetailPage() {
           hunt={hunt}
           strikeAlert={selectedStrike}
           scans={scans}
+        />
+      )}
+
+      {/* Edit Hunt Drawer */}
+      {hunt && (
+        <EditHuntDrawer
+          open={editDrawerOpen}
+          onOpenChange={setEditDrawerOpen}
+          hunt={hunt}
         />
       )}
     </AppLayout>
