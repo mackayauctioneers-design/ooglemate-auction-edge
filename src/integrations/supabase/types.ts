@@ -2113,6 +2113,27 @@ export type Database = {
             referencedRelation: "sale_hunts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "hunt_matches_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "potential_cross_posts"
+            referencedColumns: ["listing_a_id"]
+          },
+          {
+            foreignKeyName: "hunt_matches_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "potential_cross_posts"
+            referencedColumns: ["listing_b_id"]
+          },
+          {
+            foreignKeyName: "hunt_matches_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "retail_listings"
+            referencedColumns: ["id"]
+          },
         ]
       }
       hunt_scans: {
@@ -5532,6 +5553,27 @@ export type Database = {
             columns: ["hunt_id"]
             isOneToOne: false
             referencedRelation: "sale_hunts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunt_matches_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "potential_cross_posts"
+            referencedColumns: ["listing_a_id"]
+          },
+          {
+            foreignKeyName: "hunt_matches_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "potential_cross_posts"
+            referencedColumns: ["listing_b_id"]
+          },
+          {
+            foreignKeyName: "hunt_matches_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "retail_listings"
             referencedColumns: ["id"]
           },
         ]
