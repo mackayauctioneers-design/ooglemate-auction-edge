@@ -560,20 +560,21 @@ function scoreAndDecide(
   // Cap score
   score = Math.min(10, Math.max(0, score));
   
-  // Decision logic
+  // Decision logic - NEVER ignore just because of price
+  // The user wants to see the "cheapest, closest" match even if overpriced
   const canBuy = 
     score >= 7.0 &&
     gap_dollars >= hunt.min_gap_abs_buy &&
     gap_pct >= hunt.min_gap_pct_buy &&
     candidate.confidence !== 'low';
   
-  const canWatch =
-    score >= 5.5 &&
-    (gap_dollars >= hunt.min_gap_abs_watch || gap_pct >= hunt.min_gap_pct_watch);
+  // WATCH is the fallback for anything that passes hard gates
+  // Price doesn't disqualify - we want to show "best available" even if overpriced
+  const canWatch = score >= 5.0; // Lower threshold - show more results
   
   if (canBuy) return { score, decision: 'BUY', reasons };
   if (canWatch) return { score, decision: 'WATCH', reasons };
-  return { score, decision: 'IGNORE', reasons };
+  return { score, decision: 'IGNORE', reasons }; // Only for very low scores (wrong make/model)
 }
 
 serve(async (req) => {
