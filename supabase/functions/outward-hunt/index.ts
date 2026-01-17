@@ -219,6 +219,20 @@ function extractCandidate(
     return null;
   }
   
+  // CRITICAL: Exclude Prado if hunting LandCruiser, and vice versa
+  // They share "LandCruiser" in name but are completely different vehicles
+  if (huntModelLower === 'landcruiser') {
+    if (textLower.includes('prado') || textLower.includes('land cruiser prado')) {
+      return null; // Skip Prado results when hunting for LandCruiser
+    }
+  }
+  if (huntModelLower === 'prado' || huntModelLower === 'landcruiser prado') {
+    // For Prado hunts, require "prado" in the text
+    if (!textLower.includes('prado')) {
+      return null;
+    }
+  }
+  
   // Extract price
   const priceMatch = fullText.match(/\$\s*([\d,]+)/);
   let asking_price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null;
