@@ -7380,10 +7380,12 @@ export type Database = {
           p_offset?: number
         }
         Returns: {
+          blocked_reason: string
           decision: string
           domain: string
           final_score: number
           id: string
+          id_kit: Json
           is_cheapest: boolean
           km: number
           location: string
@@ -7394,7 +7396,9 @@ export type Database = {
           price_score: number
           rank_position: number
           reasons: string[]
+          requires_manual_check: boolean
           source: string
+          source_listing_id: string
           source_type: string
           title: string
           url: string
