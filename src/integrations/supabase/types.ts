@@ -2236,6 +2236,7 @@ export type Database = {
       hunt_unified_candidates: {
         Row: {
           alert_emitted: boolean | null
+          blocked_reason: string | null
           classification: Json | null
           created_at: string | null
           decision: string | null
@@ -2245,6 +2246,7 @@ export type Database = {
           final_score: number | null
           hunt_id: string
           id: string
+          id_kit: Json | null
           is_cheapest: boolean | null
           km: number | null
           location: string | null
@@ -2255,6 +2257,7 @@ export type Database = {
           price_score: number | null
           rank_position: number | null
           reasons: string[] | null
+          requires_manual_check: boolean | null
           source: string
           source_listing_id: string | null
           source_type: string
@@ -2266,6 +2269,7 @@ export type Database = {
         }
         Insert: {
           alert_emitted?: boolean | null
+          blocked_reason?: string | null
           classification?: Json | null
           created_at?: string | null
           decision?: string | null
@@ -2275,6 +2279,7 @@ export type Database = {
           final_score?: number | null
           hunt_id: string
           id?: string
+          id_kit?: Json | null
           is_cheapest?: boolean | null
           km?: number | null
           location?: string | null
@@ -2285,6 +2290,7 @@ export type Database = {
           price_score?: number | null
           rank_position?: number | null
           reasons?: string[] | null
+          requires_manual_check?: boolean | null
           source: string
           source_listing_id?: string | null
           source_type: string
@@ -2296,6 +2302,7 @@ export type Database = {
         }
         Update: {
           alert_emitted?: boolean | null
+          blocked_reason?: string | null
           classification?: Json | null
           created_at?: string | null
           decision?: string | null
@@ -2305,6 +2312,7 @@ export type Database = {
           final_score?: number | null
           hunt_id?: string
           id?: string
+          id_kit?: Json | null
           is_cheapest?: boolean | null
           km?: number | null
           location?: string | null
@@ -2315,6 +2323,7 @@ export type Database = {
           price_score?: number | null
           rank_position?: number | null
           reasons?: string[] | null
+          requires_manual_check?: boolean | null
           source?: string
           source_listing_id?: string | null
           source_type?: string
@@ -2791,6 +2800,7 @@ export type Database = {
       outward_candidates: {
         Row: {
           alert_emitted: boolean | null
+          blocked_reason: string | null
           classification: Json | null
           created_at: string
           decision: string | null
@@ -2798,10 +2808,12 @@ export type Database = {
           extracted: Json | null
           hunt_id: string
           id: string
+          id_kit: Json | null
           match_score: number | null
           provider: string
           published_at: string | null
           reasons: string[] | null
+          requires_manual_check: boolean | null
           snippet: string | null
           source: string
           title: string | null
@@ -2809,6 +2821,7 @@ export type Database = {
         }
         Insert: {
           alert_emitted?: boolean | null
+          blocked_reason?: string | null
           classification?: Json | null
           created_at?: string
           decision?: string | null
@@ -2816,10 +2829,12 @@ export type Database = {
           extracted?: Json | null
           hunt_id: string
           id?: string
+          id_kit?: Json | null
           match_score?: number | null
           provider?: string
           published_at?: string | null
           reasons?: string[] | null
+          requires_manual_check?: boolean | null
           snippet?: string | null
           source?: string
           title?: string | null
@@ -2827,6 +2842,7 @@ export type Database = {
         }
         Update: {
           alert_emitted?: boolean | null
+          blocked_reason?: string | null
           classification?: Json | null
           created_at?: string
           decision?: string | null
@@ -2834,10 +2850,12 @@ export type Database = {
           extracted?: Json | null
           hunt_id?: string
           id?: string
+          id_kit?: Json | null
           match_score?: number | null
           provider?: string
           published_at?: string | null
           reasons?: string[] | null
+          requires_manual_check?: boolean | null
           snippet?: string | null
           source?: string
           title?: string | null

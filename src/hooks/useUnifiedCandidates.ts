@@ -82,6 +82,10 @@ export function useUnifiedCandidates({
         reasons: row.reasons,
         is_cheapest: row.is_cheapest,
         rank_position: row.rank_position,
+        // ID Kit fields for blocked sources
+        blocked_reason: row.blocked_reason,
+        id_kit: row.id_kit,
+        requires_manual_check: row.requires_manual_check,
       }));
 
       return {

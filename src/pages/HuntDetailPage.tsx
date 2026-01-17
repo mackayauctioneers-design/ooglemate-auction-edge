@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, Clock, ExternalLink, Globe, Info, Pencil, Trophy, TrendingDown, Zap } from "lucide-react";
+import { AlertCircle, AlertTriangle, Clock, ExternalLink, Globe, Info, Pencil, Trophy, TrendingDown, Zap } from "lucide-react";
 import { EditHuntDrawer } from "@/components/hunts/EditHuntDrawer";
+import { CarsalesIdKitModal } from "@/components/hunts/CarsalesIdKitModal";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { HuntHeader } from "@/components/hunts/HuntHeader";
@@ -640,18 +641,39 @@ export default function HuntDetailPage() {
                           </div>
                         </td>
                         <td className="p-3">
-                          {candidate.url && !candidate.url.startsWith('internal://') ? (
-                            <a
-                              href={candidate.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-primary hover:underline"
-                            >
-                              View <ExternalLink className="h-3 w-3" />
-                            </a>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {candidate.requires_manual_check && (
+                              <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-600 border-amber-200">
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                Manual
+                              </Badge>
+                            )}
+                            {candidate.requires_manual_check ? (
+                              <CarsalesIdKitModal
+                                title={candidate.title || `${candidate.year} ${candidate.make} ${candidate.model}`}
+                                domain={candidate.domain || ''}
+                                idKit={candidate.id_kit}
+                                year={candidate.year}
+                                make={candidate.make}
+                                model={candidate.model}
+                                variant={candidate.variant_raw}
+                                km={candidate.km}
+                                price={candidate.price}
+                                location={candidate.location}
+                              />
+                            ) : candidate.url && !candidate.url.startsWith('internal://') ? (
+                              <a
+                                href={candidate.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-primary hover:underline"
+                              >
+                                View <ExternalLink className="h-3 w-3" />
+                              </a>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
