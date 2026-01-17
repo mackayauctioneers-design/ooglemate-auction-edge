@@ -2369,6 +2369,48 @@ export type Database = {
           },
         ]
       }
+      listing_enrichment_queue: {
+        Row: {
+          attempts: number | null
+          created_at: string | null
+          id: string
+          last_error: string | null
+          listing_id: string
+          lock_token: string | null
+          locked_until: string | null
+          priority: number | null
+          source: string
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          attempts?: number | null
+          created_at?: string | null
+          id?: string
+          last_error?: string | null
+          listing_id: string
+          lock_token?: string | null
+          locked_until?: string | null
+          priority?: number | null
+          source: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          attempts?: number | null
+          created_at?: string | null
+          id?: string
+          last_error?: string | null
+          listing_id?: string
+          lock_token?: string | null
+          locked_until?: string | null
+          priority?: number | null
+          source?: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       listing_events: {
         Row: {
           created_at: string
@@ -3022,11 +3064,18 @@ export type Database = {
           cylinders: number | null
           delisted_at: string | null
           description: string | null
+          drivetrain: string | null
           engine_code: string | null
           engine_family: string | null
           engine_litres: number | null
+          engine_size_l: number | null
+          enriched_at: string | null
+          enrichment_errors: string | null
+          enrichment_source: string | null
+          enrichment_status: string | null
           exclude_from_alerts: boolean
           first_seen_at: string
+          fuel_type: string | null
           id: string
           identity_id: string | null
           identity_mapped_at: string | null
@@ -3062,6 +3111,7 @@ export type Database = {
           seller_name_raw: string | null
           seller_phone_hash: string | null
           seller_type: string | null
+          series_code: string | null
           series_family: string | null
           sold_returned_at: string | null
           source: string
@@ -3072,6 +3122,7 @@ export type Database = {
           suburb: string | null
           times_seen: number | null
           title: string | null
+          transmission: string | null
           updated_at: string
           variant_confidence: string | null
           variant_family: string | null
@@ -3098,11 +3149,18 @@ export type Database = {
           cylinders?: number | null
           delisted_at?: string | null
           description?: string | null
+          drivetrain?: string | null
           engine_code?: string | null
           engine_family?: string | null
           engine_litres?: number | null
+          engine_size_l?: number | null
+          enriched_at?: string | null
+          enrichment_errors?: string | null
+          enrichment_source?: string | null
+          enrichment_status?: string | null
           exclude_from_alerts?: boolean
           first_seen_at?: string
+          fuel_type?: string | null
           id?: string
           identity_id?: string | null
           identity_mapped_at?: string | null
@@ -3138,6 +3196,7 @@ export type Database = {
           seller_name_raw?: string | null
           seller_phone_hash?: string | null
           seller_type?: string | null
+          series_code?: string | null
           series_family?: string | null
           sold_returned_at?: string | null
           source: string
@@ -3148,6 +3207,7 @@ export type Database = {
           suburb?: string | null
           times_seen?: number | null
           title?: string | null
+          transmission?: string | null
           updated_at?: string
           variant_confidence?: string | null
           variant_family?: string | null
@@ -3174,11 +3234,18 @@ export type Database = {
           cylinders?: number | null
           delisted_at?: string | null
           description?: string | null
+          drivetrain?: string | null
           engine_code?: string | null
           engine_family?: string | null
           engine_litres?: number | null
+          engine_size_l?: number | null
+          enriched_at?: string | null
+          enrichment_errors?: string | null
+          enrichment_source?: string | null
+          enrichment_status?: string | null
           exclude_from_alerts?: boolean
           first_seen_at?: string
+          fuel_type?: string | null
           id?: string
           identity_id?: string | null
           identity_mapped_at?: string | null
@@ -3214,6 +3281,7 @@ export type Database = {
           seller_name_raw?: string | null
           seller_phone_hash?: string | null
           seller_type?: string | null
+          series_code?: string | null
           series_family?: string | null
           sold_returned_at?: string | null
           source?: string
@@ -3224,6 +3292,7 @@ export type Database = {
           suburb?: string | null
           times_seen?: number | null
           title?: string | null
+          transmission?: string | null
           updated_at?: string
           variant_confidence?: string | null
           variant_family?: string | null
@@ -3406,6 +3475,10 @@ export type Database = {
           proven_exit_method: string
           proven_exit_value: number | null
           radius_km: number | null
+          required_badge: string | null
+          required_body_type: string | null
+          required_engine_family: string | null
+          required_engine_size_l: number | null
           scan_interval_minutes: number
           series_family: string | null
           source_sale_id: string | null
@@ -3461,6 +3534,10 @@ export type Database = {
           proven_exit_method?: string
           proven_exit_value?: number | null
           radius_km?: number | null
+          required_badge?: string | null
+          required_body_type?: string | null
+          required_engine_family?: string | null
+          required_engine_size_l?: number | null
           scan_interval_minutes?: number
           series_family?: string | null
           source_sale_id?: string | null
@@ -3516,6 +3593,10 @@ export type Database = {
           proven_exit_method?: string
           proven_exit_value?: number | null
           radius_km?: number | null
+          required_badge?: string | null
+          required_body_type?: string | null
+          required_engine_family?: string | null
+          required_engine_size_l?: number | null
           scan_interval_minutes?: number
           series_family?: string | null
           source_sale_id?: string | null
@@ -5018,6 +5099,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      variant_extraction_rules: {
+        Row: {
+          created_at: string | null
+          enabled: boolean | null
+          field_name: string
+          field_value: string
+          id: string
+          make: string | null
+          model: string | null
+          pattern: string
+          priority: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          enabled?: boolean | null
+          field_name: string
+          field_value: string
+          id?: string
+          make?: string | null
+          model?: string | null
+          pattern: string
+          priority?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          enabled?: boolean | null
+          field_name?: string
+          field_value?: string
+          id?: string
+          make?: string | null
+          model?: string | null
+          pattern?: string
+          priority?: number | null
+        }
+        Relationships: []
       }
       variant_rules: {
         Row: {
