@@ -176,7 +176,7 @@ function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
       return { passed: false, rejection_reason: 'BADGE_TIER_MISMATCH' };
     }
   }
-  // If required badge but listing unknown - downgrade to WATCH
+  // If required badge but listing unknown - downgrade to WATCH, needs enrichment
   if (hunt.required_badge && !listing.badge) {
     return { passed: true, downgrade_to_watch: true, downgrade_reason: 'BADGE_UNKNOWN_NEEDS_VERIFY' };
   }
@@ -187,7 +187,7 @@ function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
       return { passed: false, rejection_reason: 'BODY_MISMATCH' };
     }
   }
-  // If required body but listing unknown - downgrade to WATCH
+  // If required body but listing unknown - downgrade to WATCH, needs enrichment
   if (hunt.required_body_type && !listing.body_type) {
     return { passed: true, downgrade_to_watch: true, downgrade_reason: 'BODY_UNKNOWN_NEEDS_VERIFY' };
   }
@@ -198,7 +198,7 @@ function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
       return { passed: false, rejection_reason: 'ENGINE_MISMATCH' };
     }
   }
-  // If required engine but listing unknown - downgrade to WATCH
+  // If required engine but listing unknown - downgrade to WATCH, needs enrichment
   if (hunt.required_engine_family && !listing.engine_family) {
     return { passed: true, downgrade_to_watch: true, downgrade_reason: 'ENGINE_UNKNOWN_NEEDS_VERIFY' };
   }
@@ -252,6 +252,16 @@ function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
   }
   
   return { passed: true };
+}
+
+// Check if listing needs deep enrichment (has required fields missing)
+function needsDeepEnrichment(hunt: Hunt, listing: Listing): boolean {
+  if (hunt.required_badge && !listing.badge) return true;
+  if (hunt.required_body_type && !listing.body_type) return true;
+  if (hunt.required_engine_family && !listing.engine_family) return true;
+  if (hunt.engine_family && !listing.engine_family) return true;
+  if (hunt.cab_type && !listing.cab_type) return true;
+  return false;
 }
 
 // Scoring weights (total max ~10)
@@ -644,6 +654,26 @@ Deno.serve(async (req) => {
           // Apply BEFORE scoring to reject early
           // ============================================
           const gateResult = applyHardGates(hunt, listing);
+          
+          // ============================================
+          // DEEP ENRICHMENT: Enqueue listings with unknown required fields
+          // Priority 10 = will be scraped with Firecrawl
+          // ============================================
+          if (needsDeepEnrichment(hunt, listing)) {
+            // Enqueue for deep enrichment (high priority)
+            await supabase.from('listing_enrichment_queue').upsert({
+              listing_id: listing.id,
+              source: listing.source || 'unknown',
+              priority: 10,  // High priority = will be scraped
+              status: 'queued',
+              attempts: 0,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }, {
+              onConflict: 'listing_id',
+              ignoreDuplicates: false,
+            });
+          }
           
           if (!gateResult.passed) {
             // Store IGNORE match with rejection reason
