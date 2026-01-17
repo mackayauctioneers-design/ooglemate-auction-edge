@@ -99,6 +99,13 @@ export interface HuntMatch {
 // Hunt Scan (for type safety in UI)
 // ============================================================
 
+export interface HuntScanMetadata {
+  sources_scanned?: string[];
+  rejected_by_gates?: number;
+  rejection_reasons?: Record<string, number>; // e.g. { "SERIES_MISMATCH": 5, "ENGINE_MISMATCH": 3 }
+  scores?: Array<{ score: number; decision: string }>;
+}
+
 export interface HuntScan {
   id: string;
   hunt_id: string;
@@ -110,6 +117,7 @@ export interface HuntScan {
   candidates_checked: number | null;
   matches_found: number | null;
   alerts_emitted: number | null;
+  metadata?: HuntScanMetadata | null;
 }
 
 // ============================================================

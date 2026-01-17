@@ -61,6 +61,8 @@ export default function LogSalePage() {
     shared_opt_in: false,
     buy_price: '',
     sell_price: '',
+    // Universal body type for all vehicles
+    body_type: '',
     // LC79 Precision Pack fields
     engine_code: '',
     cab_type: '',
@@ -142,22 +144,32 @@ export default function LogSalePage() {
     saleId: string, 
     mustHaveRaw?: string,
     mustHaveTokens?: string[],
-    mustHaveMode?: 'soft' | 'strict'
+    mustHaveMode?: 'soft' | 'strict',
+    bodyType?: string
   ): Promise<boolean> => {
     // Poll for hunt creation (trigger may have slight delay)
     for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
       const { data: huntId } = await (supabase as any).rpc('get_hunt_for_sale', { p_sale_id: saleId });
       
       if (huntId) {
-        // Update hunt with must-have keywords if provided
+        // Build update payload
+        const updatePayload: Record<string, unknown> = {};
+        
         if (mustHaveTokens && mustHaveTokens.length > 0) {
+          updatePayload.must_have_raw = mustHaveRaw;
+          updatePayload.must_have_tokens = mustHaveTokens;
+          updatePayload.must_have_mode = mustHaveMode || 'soft';
+        }
+        
+        if (bodyType) {
+          updatePayload.body_type = bodyType.toUpperCase();
+        }
+        
+        // Update hunt with additional fields if any
+        if (Object.keys(updatePayload).length > 0) {
           await (supabase as any)
             .from('sale_hunts')
-            .update({
-              must_have_raw: mustHaveRaw,
-              must_have_tokens: mustHaveTokens,
-              must_have_mode: mustHaveMode || 'soft'
-            })
+            .update(updatePayload)
             .eq('id', huntId);
         }
         
@@ -184,15 +196,23 @@ export default function LogSalePage() {
     });
     
     if (!error && fallbackHuntId) {
-      // Update hunt with must-have keywords if provided
+      // Build update payload
+      const updatePayload: Record<string, unknown> = {};
+      
       if (mustHaveTokens && mustHaveTokens.length > 0) {
+        updatePayload.must_have_raw = mustHaveRaw;
+        updatePayload.must_have_tokens = mustHaveTokens;
+        updatePayload.must_have_mode = mustHaveMode || 'soft';
+      }
+      
+      if (bodyType) {
+        updatePayload.body_type = bodyType.toUpperCase();
+      }
+      
+      if (Object.keys(updatePayload).length > 0) {
         await (supabase as any)
           .from('sale_hunts')
-          .update({
-            must_have_raw: mustHaveRaw,
-            must_have_tokens: mustHaveTokens,
-            must_have_mode: mustHaveMode || 'soft'
-          })
+          .update(updatePayload)
           .eq('id', fallbackHuntId);
       }
       
@@ -360,12 +380,13 @@ export default function LogSalePage() {
         shared_opt_in: formData.shared_opt_in ? 'Y' : 'N',
       });
 
-      // 3. Verify hunt was created and redirect (pass must-have data)
+      // 3. Verify hunt was created and redirect (pass must-have data and body type)
       const huntCreated = await verifyHuntAndRedirect(
         saleId,
         formData.must_have_raw,
         mustHaveTokens,
-        formData.must_have_mode
+        formData.must_have_mode,
+        formData.body_type
       );
       
       if (!huntCreated) {
@@ -398,6 +419,7 @@ export default function LogSalePage() {
           shared_opt_in: false,
           buy_price: '',
           sell_price: '',
+          body_type: '',
           engine_code: '',
           cab_type: '',
           must_have_raw: '',
@@ -658,6 +680,36 @@ export default function LogSalePage() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                {/* Body Type - Universal for all vehicles */}
+                <div className="space-y-2">
+                  <Label htmlFor="body_type">Body Type (optional)</Label>
+                  <Select
+                    value={formData.body_type}
+                    onValueChange={(v) => updateField('body_type', v)}
+                  >
+                    <SelectTrigger className="bg-input">
+                      <SelectValue placeholder="Select body type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Not specified</SelectItem>
+                      <SelectItem value="SEDAN">Sedan</SelectItem>
+                      <SelectItem value="HATCH">Hatchback</SelectItem>
+                      <SelectItem value="WAGON">Wagon</SelectItem>
+                      <SelectItem value="SUV">SUV</SelectItem>
+                      <SelectItem value="UTE">Ute</SelectItem>
+                      <SelectItem value="SINGLE_CAB">Single Cab Ute</SelectItem>
+                      <SelectItem value="DUAL_CAB">Dual Cab Ute</SelectItem>
+                      <SelectItem value="EXTRA_CAB">Extra Cab Ute</SelectItem>
+                      <SelectItem value="VAN">Van</SelectItem>
+                      <SelectItem value="COUPE">Coupe</SelectItem>
+                      <SelectItem value="CONVERTIBLE">Convertible</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Helps Kiting Mode avoid mismatches (e.g. sedan vs hatch, single vs dual cab)
+                  </p>
                 </div>
 
                 {/* Variant-Critical Fields - Engine & Cab Type (conditional) */}

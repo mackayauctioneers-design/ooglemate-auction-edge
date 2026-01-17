@@ -615,7 +615,7 @@ export default function HuntDetailPage() {
 
           {/* Scan History */}
           <TabsContent value="scans" className="mt-4">
-            <div className="space-y-2">
+            <div className="space-y-3">
               {scans.length === 0 ? (
                 <Card className="py-8">
                   <CardContent className="text-center text-muted-foreground">
@@ -623,38 +623,81 @@ export default function HuntDetailPage() {
                   </CardContent>
                 </Card>
               ) : (
-                scans.map((scan) => (
-                  <Card key={scan.id}>
-                    <CardContent className="p-3 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Badge className={
-                          scan.status === 'ok' ? 'bg-emerald-500/10 text-emerald-600' :
-                          scan.status === 'error' ? 'bg-destructive/10 text-destructive' :
-                          'bg-amber-500/10 text-amber-600'
-                        }>
-                          {scan.status}
-                        </Badge>
-                        <div className="text-sm">
-                          <span className="font-medium">{scan.candidates_checked ?? 0}</span> checked • 
-                          <span className="font-medium ml-1">{scan.matches_found ?? 0}</span> matches • 
-                          <span className="font-medium ml-1">{scan.alerts_emitted ?? 0}</span> alerts
+                scans.map((scan) => {
+                  const metadata = (scan as any).metadata as { 
+                    sources_scanned?: string[]; 
+                    rejected_by_gates?: number;
+                    rejection_reasons?: Record<string, number>;
+                  } | null;
+                  
+                  return (
+                    <Card key={scan.id}>
+                      <CardContent className="p-4 space-y-3">
+                        {/* Top row - status and time */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <Badge className={
+                              scan.status === 'ok' ? 'bg-emerald-500/10 text-emerald-600' :
+                              scan.status === 'error' ? 'bg-destructive/10 text-destructive' :
+                              'bg-amber-500/10 text-amber-600'
+                            }>
+                              {scan.status}
+                            </Badge>
+                            <div className="text-sm">
+                              <span className="font-medium">{scan.candidates_checked ?? 0}</span> checked • 
+                              <span className="font-medium ml-1">{scan.matches_found ?? 0}</span> matches • 
+                              <span className="font-medium ml-1">{scan.alerts_emitted ?? 0}</span> alerts
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Clock className="h-4 w-4" />
+                            {formatDistanceToNow(new Date(scan.started_at), { addSuffix: true })}
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-4 w-4" />
-                          {formatDistanceToNow(new Date(scan.started_at), { addSuffix: true })}
-                        </div>
-                        {scan.error && (
-                          <div className="flex items-center gap-1 text-destructive">
-                            <AlertCircle className="h-4 w-4" />
-                            <span className="text-xs truncate max-w-[200px]">{scan.error}</span>
+                        
+                        {/* Sources scanned row */}
+                        {metadata?.sources_scanned && metadata.sources_scanned.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="text-muted-foreground">Sources:</span>
+                            {metadata.sources_scanned.map(src => (
+                              <Badge key={src} variant="secondary" className="text-xs capitalize">
+                                {src.replace('_', ' ')}
+                              </Badge>
+                            ))}
                           </div>
                         )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
+                        
+                        {/* Near-misses / rejections row */}
+                        {metadata?.rejected_by_gates && metadata.rejected_by_gates > 0 && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded p-2">
+                            <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
+                            <span>
+                              <span className="font-medium text-foreground">{metadata.rejected_by_gates}</span> near-misses rejected
+                              {metadata.rejection_reasons && Object.keys(metadata.rejection_reasons).length > 0 && (
+                                <span className="ml-1">
+                                  ({Object.entries(metadata.rejection_reasons).map(([reason, count], i) => (
+                                    <span key={reason}>
+                                      {i > 0 && ', '}
+                                      {count} {reason.toLowerCase().replace(/_/g, ' ')}
+                                    </span>
+                                  ))})
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        )}
+                        
+                        {/* Error row */}
+                        {scan.error && (
+                          <div className="flex items-center gap-2 text-xs text-destructive">
+                            <AlertCircle className="h-3.5 w-3.5" />
+                            <span className="truncate">{scan.error}</span>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })
               )}
             </div>
           </TabsContent>
