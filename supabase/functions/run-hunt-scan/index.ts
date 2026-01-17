@@ -106,7 +106,7 @@ interface MatchResult {
 }
 
 // Hard gate types for Badge Authority Layer + LC79 Precision Pack + Must-have keywords
-type RejectionReason = 'SERIES_MISMATCH' | 'BODY_MISMATCH' | 'ENGINE_MISMATCH' | 'BADGE_TIER_MISMATCH' | 'CAB_MISMATCH' | 'MISSING_REQUIRED_TOKEN';
+type RejectionReason = 'SERIES_MISMATCH' | 'BODY_MISMATCH' | 'ENGINE_MISMATCH' | 'BADGE_MISMATCH' | 'BADGE_TIER_MISMATCH' | 'CAB_MISMATCH' | 'MISSING_REQUIRED_TOKEN';
 
 interface GateResult {
   passed: boolean;
@@ -167,19 +167,56 @@ function checkMustHaveTokens(hunt: Hunt, listing: Listing): MustHaveResult {
 // ============================================
 function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
   // ============================================
-  // NEW: Enrichment-based hard gates (required_* fields)
-  // These take priority as they come from sale log
+  // Badge matching - check required_badge first, then legacy badge field
   // ============================================
   
-  // Gate: Required badge mismatch - REJECT if listing has different badge
-  if (hunt.required_badge && listing.badge) {
-    if (listing.badge.toUpperCase() !== hunt.required_badge.toUpperCase()) {
-      return { passed: false, rejection_reason: 'BADGE_TIER_MISMATCH' };
+  // Determine which badge to enforce (required_badge takes priority, then legacy badge)
+  const huntBadge = hunt.required_badge || hunt.badge;
+  
+  if (huntBadge) {
+    // ALWAYS extract badge from variant_raw - stored badge field may be wrong
+    // (e.g., "N PREMIUM" incorrectly stored as "PREMIUM")
+    let listingBadge: string | null = null;
+    
+    // Extract from variant_raw - IMPORTANT: Order matters - compound badges FIRST
+    if (listing.variant) {
+      const variantUpper = listing.variant.toUpperCase();
+      // Compound badges first (most specific), then simple badges
+      const badges = [
+        // Hyundai i30 compound badges (order matters!)
+        'N LINE PREMIUM', 'N-LINE PREMIUM', 'N LINE PRM',  // N Line with Premium package
+        'N PREMIUM',                                        // i30 N with Premium trim
+        'N LINE', 'N-LINE',                                 // N Line (sport appearance)
+        'PREMIUM',                                          // Regular Premium
+        'ELITE',                                            // Elite
+        'ACTIVE',                                           // Active
+        // Toyota badges
+        'GXL', 'GX', 'VX', 'SAHARA', 'SR5', 'SR', 'WORKMATE',
+        // Ford badges
+        'WILDTRAK', 'XLT', 'ROGUE', 'RUGGED',
+        // Generic
+        'BASE'
+      ];
+      for (const b of badges) {
+        if (variantUpper.includes(b)) {
+          listingBadge = b.replace(/-/g, ' ').replace(' PRM', ' PREMIUM'); // Normalize
+          break;
+        }
+      }
     }
-  }
-  // If required badge but listing unknown - downgrade to WATCH, needs enrichment
-  if (hunt.required_badge && !listing.badge) {
-    return { passed: true, downgrade_to_watch: true, downgrade_reason: 'BADGE_UNKNOWN_NEEDS_VERIFY' };
+    
+    if (listingBadge) {
+      // Normalize for comparison
+      const huntBadgeNorm = huntBadge.toUpperCase().replace(/-/g, ' ').trim();
+      const listingBadgeNorm = listingBadge.toUpperCase().replace(/-/g, ' ').trim();
+      
+      if (listingBadgeNorm !== huntBadgeNorm) {
+        return { passed: false, rejection_reason: 'BADGE_MISMATCH' };
+      }
+    } else {
+      // Badge required but listing badge unknown - downgrade to WATCH
+      return { passed: true, downgrade_to_watch: true, downgrade_reason: 'BADGE_UNKNOWN_NEEDS_VERIFY' };
+    }
   }
   
   // Gate: Required body type mismatch - REJECT immediately
