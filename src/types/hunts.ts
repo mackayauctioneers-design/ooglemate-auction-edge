@@ -83,6 +83,7 @@ export interface HuntMatch {
   hunt_id: string;
   listing_id: string;
   match_score: number;
+  priority_score: number | null;
   confidence_label: ConfidenceLabel | null;
   reasons: string[] | null;
   asking_price: number | null;
@@ -91,6 +92,7 @@ export interface HuntMatch {
   gap_pct: number | null;
   decision: MatchDecision;
   matched_at: string;
+  lane: string | null;
 }
 
 // ============================================================
@@ -143,6 +145,20 @@ export interface SaleHunt {
   fuel: string | null;
   transmission: string | null;
   drivetrain: string | null;
+  
+  // Badge Authority Layer fields
+  model_root: string | null;
+  series_family: string | null;
+  badge: string | null;
+  badge_tier: number | null;
+  body_type: string | null;
+  engine_family: string | null;
+  
+  // LC79 Precision Pack fields
+  cab_type: string | null;
+  engine_code: string | null;
+  engine_litres: number | null;
+  cylinders: number | null;
   
   // KM targeting
   km: number | null;
