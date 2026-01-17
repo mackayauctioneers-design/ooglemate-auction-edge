@@ -221,6 +221,28 @@ export interface SaleHunt {
 // Unified Candidate (merged internal + outward)
 // ============================================================
 
+export interface IdKit {
+  vin?: string | null;
+  rego?: string | null;
+  stock_no?: string | null;
+  year?: number | null;
+  make?: string | null;
+  model?: string | null;
+  badge?: string | null;
+  variant?: string | null;
+  km?: number | null;
+  price?: number | null;
+  location?: string | null;
+  state?: string | null;
+  colour?: string | null;
+  body?: string | null;
+  cab?: string | null;
+  engine?: string | null;
+  how_to_find?: string;
+  photo_clues?: string[];
+  search_string?: string;
+}
+
 export interface UnifiedCandidate {
   id: string;
   hunt_id: string;
@@ -244,4 +266,8 @@ export interface UnifiedCandidate {
   reasons: string[] | null;
   is_cheapest?: boolean;
   rank_position?: number;
+  // ID Kit for blocked sources
+  blocked_reason?: string | null;
+  id_kit?: IdKit | null;
+  requires_manual_check?: boolean;
 }

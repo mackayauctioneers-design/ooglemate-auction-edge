@@ -43,6 +43,28 @@ interface Hunt {
   must_have_mode: string | null;
 }
 
+interface IdKit {
+  vin: string | null;
+  rego: string | null;
+  stock_no: string | null;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  badge: string | null;
+  variant: string | null;
+  km: number | null;
+  price: number | null;
+  location: string | null;
+  state: string | null;
+  colour: string | null;
+  body: string | null;
+  cab: string | null;
+  engine: string | null;
+  how_to_find: string;
+  photo_clues: string[];
+  search_string: string;
+}
+
 interface ExtractedCandidate {
   url: string;
   domain: string;
@@ -58,6 +80,10 @@ interface ExtractedCandidate {
   engine_markers: string[];
   cab_markers: string[];
   confidence: 'high' | 'medium' | 'low';
+  // ID Kit fields for blocked sources
+  id_kit: IdKit;
+  blocked_reason: string | null;
+  requires_manual_check: boolean;
 }
 
 interface ClassificationResult {
@@ -185,6 +211,120 @@ function applyHardGates(
   return rejectReasons;
 }
 
+// Sites that block direct access
+const BLOCKED_DOMAINS = ['carsales.com.au', 'carsales.com'];
+
+// Extract VIN from text (17 character alphanumeric, no I/O/Q)
+function extractVin(text: string): string | null {
+  const vinMatch = text.match(/\b[A-HJ-NPR-Z0-9]{17}\b/i);
+  return vinMatch ? vinMatch[0].toUpperCase() : null;
+}
+
+// Extract Australian registration plate from text
+function extractRego(text: string): string | null {
+  // Common AU formats: ABC123, ABC12A, 123ABC, 1ABC23, etc.
+  // Also capture "rego:" or "registration:" prefixes
+  const regoPatterns = [
+    /(?:rego|registration|plate)[:\s]*([A-Z0-9]{1,3}[\s-]?[A-Z0-9]{2,4})/i,
+    /\b([A-Z]{2,3}[\s-]?[0-9]{2,3}[\s-]?[A-Z0-9]{0,3})\b/i,
+    /\b([0-9]{1,3}[\s-]?[A-Z]{2,3}[\s-]?[0-9]{0,3})\b/i,
+  ];
+  
+  for (const pattern of regoPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const rego = match[1].replace(/[\s-]/g, '').toUpperCase();
+      // Validate: 4-7 characters, alphanumeric
+      if (rego.length >= 4 && rego.length <= 7 && /^[A-Z0-9]+$/.test(rego)) {
+        return rego;
+      }
+    }
+  }
+  return null;
+}
+
+// Extract stock number from text
+function extractStockNo(text: string): string | null {
+  const stockPatterns = [
+    /(?:stock\s*(?:no|number|#|id))[:\s]*([A-Z0-9-]+)/i,
+    /(?:stk)[:\s]*([A-Z0-9-]+)/i,
+  ];
+  
+  for (const pattern of stockPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1].length >= 3 && match[1].length <= 20) {
+      return match[1].toUpperCase();
+    }
+  }
+  return null;
+}
+
+// Extract location/state from text
+function extractLocation(text: string): { location: string | null; state: string | null } {
+  const states = ['NSW', 'VIC', 'QLD', 'SA', 'WA', 'TAS', 'NT', 'ACT'];
+  const stateMatch = text.match(new RegExp(`\\b(${states.join('|')})\\b`, 'i'));
+  const state = stateMatch ? stateMatch[1].toUpperCase() : null;
+  
+  // Try to find suburb/city before state
+  const locationPatterns = [
+    /(?:located?\s*(?:in|at)?|location)[:\s]*([A-Za-z\s]+?)(?:,|\s+(?:NSW|VIC|QLD|SA|WA|TAS|NT|ACT))/i,
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*,?\s*(?:NSW|VIC|QLD|SA|WA|TAS|NT|ACT)/i,
+  ];
+  
+  for (const pattern of locationPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const loc = match[1].trim();
+      if (loc.length >= 3 && loc.length <= 30) {
+        return { location: loc, state };
+      }
+    }
+  }
+  
+  return { location: null, state };
+}
+
+// Extract colour from text
+function extractColour(text: string): string | null {
+  const colours = ['white', 'black', 'silver', 'grey', 'gray', 'blue', 'red', 'green', 
+                   'bronze', 'gold', 'brown', 'beige', 'orange', 'yellow', 'burgundy'];
+  for (const colour of colours) {
+    if (text.toLowerCase().includes(colour)) {
+      return colour.charAt(0).toUpperCase() + colour.slice(1);
+    }
+  }
+  return null;
+}
+
+// Extract photo clues from text
+function extractPhotoClues(text: string): string[] {
+  const clues: string[] = [];
+  const textUpper = text.toUpperCase();
+  
+  // Tray/accessories
+  if (/NORWELD/i.test(text)) clues.push('Norweld tray');
+  if (/BULLBAR|BULL\s*BAR/i.test(text)) clues.push('Bullbar');
+  if (/SNORKEL/i.test(text)) clues.push('Snorkel');
+  if (/WINCH/i.test(text)) clues.push('Winch');
+  if (/CANOPY/i.test(text)) clues.push('Canopy');
+  if (/TRAY/i.test(text)) clues.push('Tray');
+  if (/TOOLBOX/i.test(text)) clues.push('Toolbox');
+  if (/ROOF\s*RACK/i.test(text)) clues.push('Roof rack');
+  if (/LIFT\s*KIT|LIFTED/i.test(text)) clues.push('Lifted');
+  
+  // Cab/body
+  if (textUpper.includes('DUAL CAB')) clues.push('Dual cab');
+  if (textUpper.includes('SINGLE CAB')) clues.push('Single cab');
+  if (textUpper.includes('UTE')) clues.push('Ute');
+  if (textUpper.includes('WAGON')) clues.push('Wagon');
+  
+  // Colour
+  const colour = extractColour(text);
+  if (colour) clues.push(colour);
+  
+  return clues;
+}
+
 // Extract candidate data from search result
 function extractCandidate(
   result: { url: string; title?: string; description?: string; markdown?: string },
@@ -200,6 +340,9 @@ function extractCandidate(
       url.includes('/about') || url.includes('/contact') || url.includes('/help')) {
     return null;
   }
+  
+  const domain = extractDomain(url);
+  const isBlocked = BLOCKED_DOMAINS.some(d => domain.includes(d));
   
   // Extract year
   const yearMatch = fullText.match(/\b(20[1-2][0-9])\b/);
@@ -265,9 +408,69 @@ function extractCandidate(
     confidence = 'medium';
   }
   
+  // Extract ID Kit fields
+  const vin = extractVin(fullText);
+  const rego = extractRego(fullText);
+  const stock_no = extractStockNo(fullText);
+  const { location, state } = extractLocation(fullText);
+  const colour = extractColour(fullText);
+  const photo_clues = extractPhotoClues(fullText);
+  
+  // Detect badge
+  const badges = ['WORKMATE', 'GXL', 'GX', 'VX', 'SAHARA', 'SR5', 'SR', 'WILDTRAK', 'XLT', 'ROGUE', 'RUGGED'];
+  let badge: string | null = null;
+  for (const b of badges) {
+    if (fullText.toUpperCase().includes(b)) {
+      badge = b;
+      break;
+    }
+  }
+  
+  // Detect body/cab
+  let body: string | null = null;
+  if (fullText.toUpperCase().includes('CAB CHASSIS') || fullText.toUpperCase().includes('TRAY') || fullText.toUpperCase().includes('UTE')) {
+    body = 'CAB_CHASSIS';
+  } else if (fullText.toUpperCase().includes('WAGON') || fullText.toUpperCase().includes('SUV')) {
+    body = 'WAGON';
+  }
+  
+  let cab: string | null = cabMarkers[0] || null;
+  
+  // Build search string
+  const searchParts: string[] = [];
+  if (year) searchParts.push(String(year));
+  if (hunt.make) searchParts.push(hunt.make);
+  if (hunt.model) searchParts.push(hunt.model);
+  if (badge) searchParts.push(badge);
+  if (km) searchParts.push(`${km.toLocaleString()}km`);
+  if (location) searchParts.push(location);
+  if (state) searchParts.push(state);
+  
+  const id_kit: IdKit = {
+    vin,
+    rego,
+    stock_no,
+    year,
+    make: textLower.includes(huntMakeLower) ? hunt.make : null,
+    model: textLower.includes(huntModelLower) ? hunt.model : null,
+    badge,
+    variant: null,
+    km,
+    price: asking_price,
+    location,
+    state,
+    colour,
+    body,
+    cab,
+    engine: engineMarkers[0] || null,
+    how_to_find: vin ? 'Search by VIN' : rego ? 'Search by Rego' : 'Search by filters',
+    photo_clues,
+    search_string: searchParts.join(' '),
+  };
+  
   return {
     url,
-    domain: extractDomain(url),
+    domain,
     title: title.slice(0, 200),
     snippet: snippet.slice(0, 500),
     year,
@@ -276,10 +479,13 @@ function extractCandidate(
     variant_raw: null,
     km,
     asking_price,
-    location: null,
+    location,
     engine_markers: engineMarkers,
     cab_markers: cabMarkers,
     confidence,
+    id_kit,
+    blocked_reason: isBlocked ? 'anti-scraping' : null,
+    requires_manual_check: isBlocked,
   };
 }
 
@@ -530,6 +736,10 @@ serve(async (req) => {
                   match_score: 0,
                   decision: 'IGNORE',
                   reasons: rejectReasons,
+                  // ID Kit fields for blocked sources
+                  id_kit: candidate.id_kit,
+                  blocked_reason: candidate.blocked_reason,
+                  requires_manual_check: candidate.requires_manual_check,
                 }, { onConflict: 'hunt_id,url' });
               
               continue;
@@ -562,6 +772,10 @@ serve(async (req) => {
                 decision,
                 reasons,
                 alert_emitted: false,
+                // ID Kit fields for blocked sources
+                id_kit: candidate.id_kit,
+                blocked_reason: candidate.blocked_reason,
+                requires_manual_check: candidate.requires_manual_check,
               }, { onConflict: 'hunt_id,url' })
               .select('id, alert_emitted')
               .single();
