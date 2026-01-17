@@ -8,6 +8,7 @@ const corsHeaders = {
 interface Hunt {
   id: string;
   dealer_id: string;
+  status: string;
   year: number;
   make: string;
   model: string;
@@ -828,6 +829,45 @@ Deno.serve(async (req) => {
           .from('sale_hunts')
           .update({ last_scan_at: new Date().toISOString() })
           .eq('id', hunt.id);
+
+        // ============================================
+        // TRIGGER OUTWARD HUNT (Web Discovery)
+        // Always run outward search for active hunts
+        // ============================================
+        if (hunt.status === 'active') {
+          try {
+            const funcUrl = `${supabaseUrl}/functions/v1/outward-hunt`;
+            await fetch(funcUrl, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ hunt_id: hunt.id, max_results: 15 }),
+            });
+            console.log(`Triggered outward hunt for ${hunt.id}`);
+          } catch (outwardErr) {
+            console.warn(`Failed to trigger outward hunt: ${outwardErr}`);
+          }
+        }
+
+        // ============================================
+        // BUILD UNIFIED CANDIDATES
+        // Merge internal + outward into single ranked list
+        // ============================================
+        try {
+          const { data: unifiedResult, error: unifiedErr } = await supabase.rpc(
+            'rpc_build_unified_candidates',
+            { p_hunt_id: hunt.id }
+          );
+          if (unifiedErr) {
+            console.warn(`Failed to build unified candidates: ${unifiedErr.message}`);
+          } else {
+            console.log(`Unified candidates built:`, unifiedResult);
+          }
+        } catch (unifyErr) {
+          console.warn(`Unified build error: ${unifyErr}`);
+        }
 
         results.push({
           hunt_id: hunt.id,

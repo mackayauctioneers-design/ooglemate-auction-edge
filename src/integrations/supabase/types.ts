@@ -2233,6 +2233,101 @@ export type Database = {
           },
         ]
       }
+      hunt_unified_candidates: {
+        Row: {
+          alert_emitted: boolean | null
+          classification: Json | null
+          created_at: string | null
+          decision: string | null
+          domain: string | null
+          effective_price: number | null
+          extracted: Json | null
+          final_score: number | null
+          hunt_id: string
+          id: string
+          km: number | null
+          location: string | null
+          make: string | null
+          match_score: number | null
+          model: string | null
+          price: number | null
+          price_score: number | null
+          reasons: string[] | null
+          source: string
+          source_listing_id: string | null
+          source_type: string
+          title: string | null
+          updated_at: string | null
+          url: string
+          variant_raw: string | null
+          year: number | null
+        }
+        Insert: {
+          alert_emitted?: boolean | null
+          classification?: Json | null
+          created_at?: string | null
+          decision?: string | null
+          domain?: string | null
+          effective_price?: number | null
+          extracted?: Json | null
+          final_score?: number | null
+          hunt_id: string
+          id?: string
+          km?: number | null
+          location?: string | null
+          make?: string | null
+          match_score?: number | null
+          model?: string | null
+          price?: number | null
+          price_score?: number | null
+          reasons?: string[] | null
+          source: string
+          source_listing_id?: string | null
+          source_type: string
+          title?: string | null
+          updated_at?: string | null
+          url: string
+          variant_raw?: string | null
+          year?: number | null
+        }
+        Update: {
+          alert_emitted?: boolean | null
+          classification?: Json | null
+          created_at?: string | null
+          decision?: string | null
+          domain?: string | null
+          effective_price?: number | null
+          extracted?: Json | null
+          final_score?: number | null
+          hunt_id?: string
+          id?: string
+          km?: number | null
+          location?: string | null
+          make?: string | null
+          match_score?: number | null
+          model?: string | null
+          price?: number | null
+          price_score?: number | null
+          reasons?: string[] | null
+          source?: string
+          source_listing_id?: string | null
+          source_type?: string
+          title?: string | null
+          updated_at?: string | null
+          url?: string
+          variant_raw?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hunt_unified_candidates_hunt_id_fkey"
+            columns: ["hunt_id"]
+            isOneToOne: false
+            referencedRelation: "sale_hunts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hunt_web_sources: {
         Row: {
           base_url: string
@@ -3458,6 +3553,7 @@ export type Database = {
           make: string
           max_listing_age_days_buy: number
           max_listing_age_days_watch: number
+          max_outward_age_days: number | null
           min_gap_abs_buy: number
           min_gap_abs_watch: number
           min_gap_pct_buy: number
@@ -3471,6 +3567,7 @@ export type Database = {
           outward_enabled: boolean | null
           outward_interval_minutes: number | null
           outward_sources: string[] | null
+          outward_weight: number | null
           priority: number
           proven_exit_method: string
           proven_exit_value: number | null
@@ -3481,10 +3578,12 @@ export type Database = {
           required_engine_size_l: number | null
           scan_interval_minutes: number
           series_family: string | null
+          sort_mode: string | null
           source_sale_id: string | null
           sources_enabled: string[]
           states: string[] | null
           status: string
+          strict_must_have: boolean | null
           transmission: string | null
           variant_confidence: string | null
           variant_family: string | null
@@ -3517,6 +3616,7 @@ export type Database = {
           make: string
           max_listing_age_days_buy?: number
           max_listing_age_days_watch?: number
+          max_outward_age_days?: number | null
           min_gap_abs_buy?: number
           min_gap_abs_watch?: number
           min_gap_pct_buy?: number
@@ -3530,6 +3630,7 @@ export type Database = {
           outward_enabled?: boolean | null
           outward_interval_minutes?: number | null
           outward_sources?: string[] | null
+          outward_weight?: number | null
           priority?: number
           proven_exit_method?: string
           proven_exit_value?: number | null
@@ -3540,10 +3641,12 @@ export type Database = {
           required_engine_size_l?: number | null
           scan_interval_minutes?: number
           series_family?: string | null
+          sort_mode?: string | null
           source_sale_id?: string | null
           sources_enabled?: string[]
           states?: string[] | null
           status?: string
+          strict_must_have?: boolean | null
           transmission?: string | null
           variant_confidence?: string | null
           variant_family?: string | null
@@ -3576,6 +3679,7 @@ export type Database = {
           make?: string
           max_listing_age_days_buy?: number
           max_listing_age_days_watch?: number
+          max_outward_age_days?: number | null
           min_gap_abs_buy?: number
           min_gap_abs_watch?: number
           min_gap_pct_buy?: number
@@ -3589,6 +3693,7 @@ export type Database = {
           outward_enabled?: boolean | null
           outward_interval_minutes?: number | null
           outward_sources?: string[] | null
+          outward_weight?: number | null
           priority?: number
           proven_exit_method?: string
           proven_exit_value?: number | null
@@ -3599,10 +3704,12 @@ export type Database = {
           required_engine_size_l?: number | null
           scan_interval_minutes?: number
           series_family?: string | null
+          sort_mode?: string | null
           source_sale_id?: string | null
           sources_enabled?: string[]
           states?: string[] | null
           status?: string
+          strict_must_have?: boolean | null
           transmission?: string | null
           variant_confidence?: string | null
           variant_family?: string | null
@@ -7131,6 +7238,10 @@ export type Database = {
         }[]
       }
       rpc_build_outward_queries: { Args: { p_hunt_id: string }; Returns: Json }
+      rpc_build_unified_candidates: {
+        Args: { p_hunt_id: string }
+        Returns: Json
+      }
       rpc_classify_hunt: { Args: { p_hunt_id: string }; Returns: Json }
       rpc_classify_listing: { Args: { p_listing_id: string }; Returns: Json }
       rpc_explain_why_listed: {
@@ -7149,6 +7260,36 @@ export type Database = {
       rpc_get_today_opportunities: {
         Args: { p_dealer_id: string; p_filters?: Json }
         Returns: Json
+      }
+      rpc_get_unified_candidates: {
+        Args: {
+          p_decision_filter?: string
+          p_hunt_id: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: {
+          decision: string
+          domain: string
+          final_score: number
+          id: string
+          is_cheapest: boolean
+          km: number
+          location: string
+          make: string
+          match_score: number
+          model: string
+          price: number
+          price_score: number
+          rank_position: number
+          reasons: string[]
+          source: string
+          source_type: string
+          title: string
+          url: string
+          variant_raw: string
+          year: number
+        }[]
       }
       rpc_get_upcoming_auction_cards: {
         Args: { p_dealer_id: string; p_filters?: Json }

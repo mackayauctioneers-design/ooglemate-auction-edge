@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, Clock, ExternalLink, Info, Pencil, Trophy } from "lucide-react";
+import { AlertCircle, Clock, ExternalLink, Globe, Info, Pencil, Trophy, TrendingDown, Zap } from "lucide-react";
 import { EditHuntDrawer } from "@/components/hunts/EditHuntDrawer";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -16,13 +16,15 @@ import { HuntHeader } from "@/components/hunts/HuntHeader";
 import { HuntKPICards } from "@/components/hunts/HuntKPICards";
 import { HuntAlertCardEnhanced } from "@/components/hunts/HuntAlertCardEnhanced";
 import { ProofOfHuntModal } from "@/components/hunts/ProofOfHuntModal";
+import { useUnifiedCandidates } from "@/hooks/useUnifiedCandidates";
 import type { 
   SaleHunt, 
   HuntMatch, 
   HuntScan, 
   HuntAlert,
   HuntStatus,
-  MatchDecision
+  MatchDecision,
+  UnifiedCandidate
 } from "@/types/hunts";
 
 export default function HuntDetailPage() {
@@ -47,6 +49,14 @@ export default function HuntDetailPage() {
     enabled: !!huntId
   });
 
+  // Unified candidates - the "Cheapest On The Internet" ranking
+  const { data: unifiedData, isLoading: unifiedLoading } = useUnifiedCandidates({
+    huntId: huntId || '',
+    limit: 100,
+    enabled: !!huntId
+  });
+  
+  // Also keep legacy matches for rejection tab
   const { data: matches = [] } = useQuery({
     queryKey: ['hunt-matches', huntId],
     queryFn: async () => {
@@ -58,33 +68,11 @@ export default function HuntDetailPage() {
         .limit(100);
       if (error) throw error;
       
-      // Sort: Auction first, then by decision (buy > watch > ignore), then by score
-      const sorted = (data || []).map((m: any) => ({
+      return (data || []).map((m: any) => ({
         ...m,
         listing_url: m.retail_listings?.listing_url || null,
         source: m.retail_listings?.source || null
-      })).sort((a: any, b: any) => {
-        // Lane priority: auction > retail
-        const aIsAuction = ['pickles', 'manheim', 'grays', 'lloyds', 'auction'].some(
-          s => (a.source || '').toLowerCase().includes(s)
-        );
-        const bIsAuction = ['pickles', 'manheim', 'grays', 'lloyds', 'auction'].some(
-          s => (b.source || '').toLowerCase().includes(s)
-        );
-        if (aIsAuction && !bIsAuction) return -1;
-        if (!aIsAuction && bIsAuction) return 1;
-        
-        // Decision priority: buy > watch > ignore
-        const decisionOrder = { buy: 0, watch: 1, ignore: 2, no_evidence: 3 };
-        const aOrder = decisionOrder[a.decision as keyof typeof decisionOrder] ?? 3;
-        const bOrder = decisionOrder[b.decision as keyof typeof decisionOrder] ?? 3;
-        if (aOrder !== bOrder) return aOrder - bOrder;
-        
-        // Finally by priority_score or match_score
-        return (b.priority_score || b.match_score) - (a.priority_score || a.match_score);
-      });
-      
-      return sorted as (HuntMatch & { listing_url?: string | null; source?: string | null })[];
+      })) as (HuntMatch & { listing_url?: string | null; source?: string | null })[];
     },
     enabled: !!huntId
   });
@@ -561,87 +549,110 @@ export default function HuntDetailPage() {
             )}
           </TabsContent>
 
-          {/* Valid Matches Table (BUY/WATCH only) */}
+          {/* Unified Candidates - Cheapest First Ranking */}
           <TabsContent value="matches" className="mt-4">
+            <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+              <Globe className="h-4 w-4" />
+              <span>Coverage: Marketplaces + Auctions + Dealer Sites • Ranked by Best Buy (cheapest first)</span>
+              {unifiedData?.cheapestPrice && (
+                <Badge variant="outline" className="ml-auto bg-emerald-500/10 text-emerald-600">
+                  <TrendingDown className="h-3 w-3 mr-1" />
+                  From ${unifiedData.cheapestPrice.toLocaleString()}
+                </Badge>
+              )}
+            </div>
             <div className="rounded-lg border overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
-                    <th className="p-3 text-left font-medium">Lane</th>
+                    <th className="p-3 text-left font-medium">#</th>
+                    <th className="p-3 text-left font-medium">Source</th>
+                    <th className="p-3 text-left font-medium">Price</th>
                     <th className="p-3 text-left font-medium">Score</th>
                     <th className="p-3 text-left font-medium">Decision</th>
-                    <th className="p-3 text-left font-medium">Price</th>
-                    <th className="p-3 text-left font-medium">Gap</th>
-                    <th className="p-3 text-left font-medium">Reasons</th>
+                    <th className="p-3 text-left font-medium">Details</th>
                     <th className="p-3 text-left font-medium">Link</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {matches.filter(m => m.decision !== 'ignore').length === 0 ? (
+                  {unifiedLoading ? (
                     <tr>
                       <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                        No valid matches found yet. Check the Rejected tab to see what was filtered out.
+                        Loading unified candidates...
+                      </td>
+                    </tr>
+                  ) : (unifiedData?.candidates || []).length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                        No matches found yet. Run a scan to search marketplaces and auctions.
                       </td>
                     </tr>
                   ) : (
-                    matches.filter(m => m.decision !== 'ignore').map((match) => {
-                      const source = (match as any).source || match.lane || '';
-                      const isAuction = ['pickles', 'manheim', 'grays', 'lloyds', 'auction'].some(
-                        s => source.toLowerCase().includes(s)
-                      );
-                      
-                      return (
-                        <tr key={match.id} className="border-t hover:bg-muted/30">
-                          <td className="p-3">
+                    (unifiedData?.candidates || []).map((candidate) => (
+                      <tr key={candidate.id} className={`border-t hover:bg-muted/30 ${candidate.is_cheapest ? 'bg-emerald-50/50' : ''}`}>
+                        <td className="p-3 font-mono text-xs text-muted-foreground">
+                          {candidate.rank_position}
+                        </td>
+                        <td className="p-3">
+                          <div className="flex items-center gap-2">
                             <Badge 
                               variant="outline" 
-                              className={isAuction ? 'bg-purple-500/10 text-purple-600 border-purple-200' : 'bg-blue-500/10 text-blue-600 border-blue-200'}
+                              className={candidate.source_type === 'outward' 
+                                ? 'bg-amber-500/10 text-amber-600 border-amber-200' 
+                                : 'bg-blue-500/10 text-blue-600 border-blue-200'}
                             >
-                              {isAuction ? 'Auction' : 'Retail'}
+                              {candidate.source_type === 'outward' ? (
+                                <><Globe className="h-3 w-3 mr-1" />Web</>
+                              ) : (
+                                candidate.source?.replace('_', ' ')
+                              )}
                             </Badge>
-                          </td>
-                          <td className="p-3 font-medium">{match.match_score.toFixed(1)}</td>
-                          <td className="p-3">
-                            <Badge className={getDecisionColor(match.decision)}>
-                              {match.decision}
-                            </Badge>
-                          </td>
-                          <td className="p-3">
-                            ${match.asking_price?.toLocaleString() || '?'}
-                          </td>
-                          <td className="p-3">
-                            {match.gap_dollars !== null ? (
-                              <span className={match.gap_dollars > 0 ? 'text-emerald-600' : 'text-destructive'}>
-                                ${match.gap_dollars?.toLocaleString()} ({match.gap_pct?.toFixed(1)}%)
-                              </span>
-                            ) : '—'}
-                          </td>
-                          <td className="p-3">
-                            <div className="flex flex-wrap gap-1">
-                              {(match.reasons || []).slice(0, 3).filter(Boolean).map((r, i) => (
-                                <Badge key={i} variant="outline" className="text-xs">
-                                  {r}
-                                </Badge>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            {(match as any).listing_url ? (
-                              <a
-                                href={(match as any).listing_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-primary hover:underline"
-                              >
-                                View <ExternalLink className="h-3 w-3" />
-                              </a>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
+                            <span className="text-xs text-muted-foreground">{candidate.domain}</span>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex items-center gap-1">
+                            {candidate.is_cheapest && <Zap className="h-4 w-4 text-amber-500" />}
+                            <span className={candidate.is_cheapest ? 'font-bold text-emerald-600' : ''}>
+                              {candidate.price ? `$${candidate.price.toLocaleString()}` : '—'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <div className="text-xs">
+                            <span className="font-medium">{candidate.final_score?.toFixed(1)}</span>
+                            <span className="text-muted-foreground ml-1">
+                              (M:{candidate.match_score?.toFixed(1)} P:{candidate.price_score?.toFixed(1)})
+                            </span>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <Badge className={getDecisionColor(candidate.decision.toLowerCase() as MatchDecision)}>
+                            {candidate.decision}
+                          </Badge>
+                        </td>
+                        <td className="p-3">
+                          <div className="text-xs">
+                            <div>{candidate.year} {candidate.make} {candidate.model}</div>
+                            {candidate.km && <div className="text-muted-foreground">{candidate.km.toLocaleString()} km</div>}
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          {candidate.url && !candidate.url.startsWith('internal://') ? (
+                            <a
+                              href={candidate.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-primary hover:underline"
+                            >
+                              View <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>

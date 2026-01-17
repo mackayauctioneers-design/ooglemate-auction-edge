@@ -209,4 +209,39 @@ export interface SaleHunt {
   must_have_raw: string | null;
   must_have_tokens: string[] | null;
   must_have_mode: 'soft' | 'strict' | null;
+  
+  // NEW: Unified Ranking V2
+  strict_must_have: boolean;
+  max_outward_age_days: number;
+  sort_mode: 'best_buy' | 'best_match';
+  outward_weight: number;
+}
+
+// ============================================================
+// Unified Candidate (merged internal + outward)
+// ============================================================
+
+export interface UnifiedCandidate {
+  id: string;
+  hunt_id: string;
+  source_type: 'internal' | 'outward';
+  source: string;
+  source_listing_id: string | null;
+  url: string;
+  title: string | null;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  variant_raw: string | null;
+  km: number | null;
+  price: number | null;
+  location: string | null;
+  domain: string | null;
+  match_score: number;
+  price_score: number;
+  final_score: number;
+  decision: 'BUY' | 'WATCH' | 'IGNORE';
+  reasons: string[] | null;
+  is_cheapest?: boolean;
+  rank_position?: number;
 }
