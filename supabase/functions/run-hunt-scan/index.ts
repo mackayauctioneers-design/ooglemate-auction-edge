@@ -492,6 +492,19 @@ Deno.serve(async (req) => {
       }
 
       try {
+        // ============================================
+        // REBUILD MODE: Delete stale matches before scanning
+        // This ensures only current scan results are shown
+        // ============================================
+        const { error: deleteMatchErr } = await supabase
+          .from('hunt_matches')
+          .delete()
+          .eq('hunt_id', hunt.id);
+        
+        if (deleteMatchErr) {
+          console.warn(`Failed to delete old matches for hunt ${hunt.id}:`, deleteMatchErr);
+        }
+        
         // Build sources array
         const sources = [...hunt.sources_enabled];
         if (hunt.include_private && !sources.includes('gumtree_private')) {
@@ -526,16 +539,45 @@ Deno.serve(async (req) => {
 
         console.log(`Found ${candidates.length} candidates for hunt ${hunt.id}`);
 
+        // ============================================
+        // BATCH CLASSIFY unclassified TOYOTA LANDCRUISER listings
+        // This populates series_family, body_type, cab_type, engine_family
+        // ============================================
+        if (makeUpper === 'TOYOTA' && modelUpper.includes('LANDCRUISER')) {
+          const unclassifiedIds = candidates
+            .filter((c: Listing) => !c.series_family && !c.cab_type)
+            .map((c: Listing) => c.id);
+          
+          if (unclassifiedIds.length > 0) {
+            console.log(`Classifying ${unclassifiedIds.length} unclassified Toyota LandCruiser listings...`);
+            
+            // Batch classify in groups of 20 to avoid timeout
+            const batchSize = 20;
+            for (let i = 0; i < Math.min(unclassifiedIds.length, 100); i += batchSize) {
+              const batch = unclassifiedIds.slice(i, i + batchSize);
+              await Promise.all(batch.map((listingId: string) =>
+                supabase.rpc('rpc_classify_listing', { p_listing_id: listingId })
+              ));
+            }
+            
+            // Refetch candidates with updated classification
+            const { data: refreshedCandidates } = await query;
+            const refreshedFiltered = (refreshedCandidates || []).filter((c: any) => 
+              sourcesLower.includes((c.source || '').toLowerCase())
+            );
+            // Replace candidates array with refreshed data
+            candidates.length = 0;
+            candidates.push(...refreshedFiltered);
+            console.log(`Classification complete, ${candidates.length} candidates after refresh`);
+          }
+        }
+
         const matches: MatchResult[] = [];
         let alertsEmitted = 0;
         let rejectedCount = 0;
 
-        // Get existing matches for this hunt to avoid duplicates (batch query)
-        const { data: existingMatches } = await supabase
-          .from('hunt_matches')
-          .select('listing_id')
-          .eq('hunt_id', hunt.id);
-        const existingListingIds = new Set((existingMatches || []).map((m: any) => m.listing_id));
+        // Since we delete matches at start, existingListingIds is empty
+        const existingListingIds = new Set<string>();
 
         for (const listing of (candidates || [])) {
           // Use listing directly - classification should be done in a separate batch process
