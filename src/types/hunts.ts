@@ -28,7 +28,7 @@ export const HuntAlertPayloadSchema = z.object({
 
   // Matching metadata
   match_score: z.union([z.number(), z.null()]).optional(),
-  reasons: z.array(z.string()).optional(),
+  reasons: z.array(z.union([z.string(), z.null()])).optional(),
 
   // Source info
   source: z.union([z.string(), z.null()]).optional(),
