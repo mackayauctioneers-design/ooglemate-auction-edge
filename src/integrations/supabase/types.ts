@@ -2616,6 +2616,150 @@ export type Database = {
         }
         Relationships: []
       }
+      outward_candidate_links: {
+        Row: {
+          candidate_id: string
+          id: string
+          linked_at: string
+          retail_listing_id: string | null
+        }
+        Insert: {
+          candidate_id: string
+          id?: string
+          linked_at?: string
+          retail_listing_id?: string | null
+        }
+        Update: {
+          candidate_id?: string
+          id?: string
+          linked_at?: string
+          retail_listing_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outward_candidate_links_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "outward_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outward_candidates: {
+        Row: {
+          alert_emitted: boolean | null
+          classification: Json | null
+          created_at: string
+          decision: string | null
+          domain: string | null
+          extracted: Json | null
+          hunt_id: string
+          id: string
+          match_score: number | null
+          provider: string
+          published_at: string | null
+          reasons: string[] | null
+          snippet: string | null
+          source: string
+          title: string | null
+          url: string
+        }
+        Insert: {
+          alert_emitted?: boolean | null
+          classification?: Json | null
+          created_at?: string
+          decision?: string | null
+          domain?: string | null
+          extracted?: Json | null
+          hunt_id: string
+          id?: string
+          match_score?: number | null
+          provider?: string
+          published_at?: string | null
+          reasons?: string[] | null
+          snippet?: string | null
+          source?: string
+          title?: string | null
+          url: string
+        }
+        Update: {
+          alert_emitted?: boolean | null
+          classification?: Json | null
+          created_at?: string
+          decision?: string | null
+          domain?: string | null
+          extracted?: Json | null
+          hunt_id?: string
+          id?: string
+          match_score?: number | null
+          provider?: string
+          published_at?: string | null
+          reasons?: string[] | null
+          snippet?: string | null
+          source?: string
+          title?: string | null
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outward_candidates_hunt_id_fkey"
+            columns: ["hunt_id"]
+            isOneToOne: false
+            referencedRelation: "sale_hunts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outward_hunt_runs: {
+        Row: {
+          candidates_created: number | null
+          dealer_id: string | null
+          error: string | null
+          finished_at: string | null
+          hunt_id: string
+          id: string
+          provider: string
+          queries: Json
+          results_found: number | null
+          started_at: string
+          status: string
+        }
+        Insert: {
+          candidates_created?: number | null
+          dealer_id?: string | null
+          error?: string | null
+          finished_at?: string | null
+          hunt_id: string
+          id?: string
+          provider?: string
+          queries?: Json
+          results_found?: number | null
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          candidates_created?: number | null
+          dealer_id?: string | null
+          error?: string | null
+          finished_at?: string | null
+          hunt_id?: string
+          id?: string
+          provider?: string
+          queries?: Json
+          results_found?: number | null
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outward_hunt_runs_hunt_id_fkey"
+            columns: ["hunt_id"]
+            isOneToOne: false
+            referencedRelation: "sale_hunts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pipeline_runs: {
         Row: {
           completed_at: string | null
@@ -3240,6 +3384,7 @@ export type Database = {
           km: number | null
           km_band: string | null
           km_tolerance_pct: number
+          last_outward_scan_at: string | null
           last_scan_at: string | null
           make: string
           max_listing_age_days_buy: number
@@ -3255,6 +3400,7 @@ export type Database = {
           must_have_tokens: string[] | null
           notes: string | null
           outward_enabled: boolean | null
+          outward_interval_minutes: number | null
           outward_sources: string[] | null
           priority: number
           proven_exit_method: string
@@ -3293,6 +3439,7 @@ export type Database = {
           km?: number | null
           km_band?: string | null
           km_tolerance_pct?: number
+          last_outward_scan_at?: string | null
           last_scan_at?: string | null
           make: string
           max_listing_age_days_buy?: number
@@ -3308,6 +3455,7 @@ export type Database = {
           must_have_tokens?: string[] | null
           notes?: string | null
           outward_enabled?: boolean | null
+          outward_interval_minutes?: number | null
           outward_sources?: string[] | null
           priority?: number
           proven_exit_method?: string
@@ -3346,6 +3494,7 @@ export type Database = {
           km?: number | null
           km_band?: string | null
           km_tolerance_pct?: number
+          last_outward_scan_at?: string | null
           last_scan_at?: string | null
           make?: string
           max_listing_age_days_buy?: number
@@ -3361,6 +3510,7 @@ export type Database = {
           must_have_tokens?: string[] | null
           notes?: string | null
           outward_enabled?: boolean | null
+          outward_interval_minutes?: number | null
           outward_sources?: string[] | null
           priority?: number
           proven_exit_method?: string
@@ -6863,6 +7013,7 @@ export type Database = {
           regions_updated: number
         }[]
       }
+      rpc_build_outward_queries: { Args: { p_hunt_id: string }; Returns: Json }
       rpc_classify_hunt: { Args: { p_hunt_id: string }; Returns: Json }
       rpc_classify_listing: { Args: { p_listing_id: string }; Returns: Json }
       rpc_explain_why_listed: {

@@ -904,11 +904,11 @@ export default function LogSalePage() {
                   />
                 </div>
 
-                {/* Buyer Must-Have Keywords */}
+                {/* What Matters? - Intent keywords for web discovery */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                     <Target className="h-4 w-4 text-primary" />
-                    Buyer Must-Have (optional)
+                    What matters? (optional)
                   </div>
                   <div className="space-y-3">
                     <div className="space-y-2">
@@ -916,11 +916,11 @@ export default function LogSalePage() {
                         id="must_have_raw"
                         value={formData.must_have_raw}
                         onChange={(e) => updateField('must_have_raw', e.target.value)}
-                        placeholder="e.g. Norweld tray, ARB bar, sunroof"
+                        placeholder="e.g. V8 only, dual cab, Norweld tray, GVM upgrade, diff locks"
                         className="bg-input"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Keywords the buyer requires. Separate with commas.
+                        Tell us what the buyer requires. This feeds our AI search across the web.
                       </p>
                     </div>
                     
