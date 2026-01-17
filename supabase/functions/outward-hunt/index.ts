@@ -113,10 +113,35 @@ function extractDomain(url: string): string {
 }
 
 // =====================================================
+// BLOCKED DOMAINS - never return results from these
+// =====================================================
+const JUNK_DOMAINS = [
+  'youtube.com', 'youtu.be',
+  'reddit.com', 'twitter.com', 'x.com',
+  'facebook.com', // except marketplace which we handle separately
+  'instagram.com', 'tiktok.com',
+  'wikipedia.org', 'whirlpool.net.au',
+  'caradvice.com.au', // editorial
+  'motoring.com.au', // editorial
+  'norweld.com.au', // accessory, not listings
+  'arb.com.au', // accessory
+  'ironman4x4.com', // accessory
+];
+
+function isJunkDomain(domain: string): boolean {
+  return JUNK_DOMAINS.some(junk => domain.includes(junk));
+}
+
+// =====================================================
 // URL PAGE-TYPE CLASSIFIER - Section C1
 // =====================================================
-function classifyUrlPageType(url: string): { page_type: 'listing' | 'article' | 'search' | 'category' | 'login' | 'other'; reject_reason: string | null } {
+function classifyUrlPageType(url: string, domain: string): { page_type: 'listing' | 'article' | 'search' | 'category' | 'login' | 'other'; reject_reason: string | null } {
   const urlLower = url.toLowerCase();
+  
+  // Block junk domains entirely
+  if (isJunkDomain(domain)) {
+    return { page_type: 'other', reject_reason: 'BLOCKED_DOMAIN' };
+  }
   
   // Non-listing URL patterns - reject these
   const articlePatterns = [
@@ -127,19 +152,21 @@ function classifyUrlPageType(url: string): { page_type: 'listing' | 'article' | 
     '/faq/', '/sitemap/', '/media/', '/press/', '/stories/', '/features/',
     '/insights/', '/resources/', '/tips/', '/how-to/', '/what-is/',
     '/best-', '/top-', '/vs-', '/advice/', '/editorial/',
+    '/canopies/', '/ute-canopies/', '/ute-trays/', // accessory pages
   ];
   
   for (const pattern of articlePatterns) {
     if (urlLower.includes(pattern)) {
       const type = pattern.includes('login') || pattern.includes('signin') ? 'login' :
-                   pattern.includes('search') ? 'search' :
                    pattern.includes('category') ? 'category' : 'article';
       return { page_type: type, reject_reason: 'NON_LISTING_PAGE' };
     }
   }
   
-  // Search/listing pages - still need verification
-  if (urlLower.includes('/search') || urlLower.includes('?q=') || urlLower.includes('&q=')) {
+  // Search results pages - only reject if they're definitely search aggregators, not listing detail pages
+  // Don't reject URLs that have numeric IDs (likely individual listings)
+  const hasListingId = /\/\d{6,}/.test(urlLower) || /[a-z0-9]{20,}/i.test(urlLower);
+  if (!hasListingId && (urlLower.includes('/search/') || urlLower.includes('/search?') || urlLower.includes('?q=') || urlLower.includes('&q='))) {
     return { page_type: 'search', reject_reason: 'SEARCH_RESULTS_PAGE' };
   }
   
@@ -162,11 +189,16 @@ function isVerifiedListingUrl(url: string, domain: string): { is_listing: boolea
     return { is_listing: true, listing_kind: 'retail_listing' };
   }
   
-  // Drive - classified listings (not news)
-  if (domain.includes('drive.com.au') && 
-      urlLower.includes('/cars-for-sale/') && 
-      (urlLower.includes('/dealer-') || urlLower.includes('/private-') || /\/\d+$/.test(urlLower))) {
-    return { is_listing: true, listing_kind: 'dealer_stock' };
+  // Drive - classified listings (car detail pages with numeric IDs)
+  if (domain.includes('drive.com.au') && urlLower.includes('/cars-for-sale/')) {
+    // Match /cars-for-sale/car/123456 pattern
+    if (/\/cars-for-sale\/car\/\d+/.test(urlLower)) {
+      return { is_listing: true, listing_kind: 'retail_listing' };
+    }
+    // Match dealer or private listings
+    if (urlLower.includes('/dealer-') || urlLower.includes('/private-')) {
+      return { is_listing: true, listing_kind: 'dealer_stock' };
+    }
   }
   
   // Carsales - listing pages
@@ -174,9 +206,17 @@ function isVerifiedListingUrl(url: string, domain: string): { is_listing: boolea
     return { is_listing: true, listing_kind: 'retail_listing' };
   }
   
-  // Pickles - auction lots
-  if (domain.includes('pickles.com.au') && (urlLower.includes('/lots/') || urlLower.includes('/lot/') || urlLower.includes('/item/'))) {
-    return { is_listing: true, listing_kind: 'auction_lot' };
+  // CarsForSale.com.au - detail pages
+  if (domain.includes('carsforsale.com.au') && urlLower.includes('/cars/details/')) {
+    return { is_listing: true, listing_kind: 'retail_listing' };
+  }
+  
+  // Pickles - auction lots (individual lot pages only)
+  if (domain.includes('pickles.com.au')) {
+    // Match /lots/123456 or /item/123456 patterns
+    if (/\/(lots?|item)\/\d+/.test(urlLower)) {
+      return { is_listing: true, listing_kind: 'auction_lot' };
+    }
   }
   
   // Manheim - auction lots
@@ -194,14 +234,32 @@ function isVerifiedListingUrl(url: string, domain: string): { is_listing: boolea
     return { is_listing: true, listing_kind: 'auction_lot' };
   }
   
-  // Facebook Marketplace
+  // Facebook Marketplace - individual item pages only
   if (domain.includes('facebook.com') && urlLower.includes('/marketplace/item/')) {
     return { is_listing: true, listing_kind: 'retail_listing' };
   }
   
-  // Generic dealer sites - check for listing patterns
-  if (urlLower.includes('/stock/') || urlLower.includes('/inventory/') || urlLower.includes('/vehicles/')) {
-    return { is_listing: true, listing_kind: 'dealer_stock' };
+  // Toyota dealer sites - vehicle inventory detail pages
+  if (domain.includes('toyota.com.au') || domain.includes('toyota')) {
+    if (urlLower.includes('/vehicle-inventory/details/') || urlLower.includes('/used-vehicle/')) {
+      return { is_listing: true, listing_kind: 'dealer_stock' };
+    }
+  }
+  
+  // Generic dealer sites - check for listing patterns with IDs
+  const dealerPatterns = [
+    /\/stock\/[a-z0-9-]+/i,
+    /\/inventory\/[a-z0-9-]+/i,
+    /\/vehicles?\/[a-z0-9-]+/i,
+    /\/vehicle-inventory\/details\/[a-z0-9-]+/i,
+    /\/used-vehicle\/[a-z0-9-]+/i,
+    /\/car\/[a-z0-9-]+/i,
+  ];
+  
+  for (const pattern of dealerPatterns) {
+    if (pattern.test(urlLower)) {
+      return { is_listing: true, listing_kind: 'dealer_stock' };
+    }
   }
   
   // Default - not confirmed as listing
@@ -450,7 +508,7 @@ function extractCandidate(
   const domain = extractDomain(url);
   
   // Step 1: URL page-type classification
-  const { page_type, reject_reason: urlRejectReason } = classifyUrlPageType(url);
+  const { page_type, reject_reason: urlRejectReason } = classifyUrlPageType(url, domain);
   
   // Step 2: Check if verified listing URL
   const { is_listing, listing_kind } = isVerifiedListingUrl(url, domain);
