@@ -1983,18 +1983,27 @@ export type Database = {
           extraction_error: string | null
           hunt_id: string
           id: string
+          is_listing: boolean
           km: number | null
+          km_verified: boolean
+          listing_kind: string | null
           location: string | null
           make: string | null
           match_score: number | null
           model: string | null
+          page_type: string | null
+          price_verified: boolean
           raw_snippet: string | null
+          reject_reason: string | null
           scored_at: string | null
           source_name: string
           source_url: string
           title: string | null
           variant_raw: string | null
+          verified_at: string | null
+          verified_fields: Json
           year: number | null
+          year_verified: boolean
         }
         Insert: {
           alert_emitted?: boolean | null
@@ -2008,18 +2017,27 @@ export type Database = {
           extraction_error?: string | null
           hunt_id: string
           id?: string
+          is_listing?: boolean
           km?: number | null
+          km_verified?: boolean
+          listing_kind?: string | null
           location?: string | null
           make?: string | null
           match_score?: number | null
           model?: string | null
+          page_type?: string | null
+          price_verified?: boolean
           raw_snippet?: string | null
+          reject_reason?: string | null
           scored_at?: string | null
           source_name: string
           source_url: string
           title?: string | null
           variant_raw?: string | null
+          verified_at?: string | null
+          verified_fields?: Json
           year?: number | null
+          year_verified?: boolean
         }
         Update: {
           alert_emitted?: boolean | null
@@ -2033,18 +2051,27 @@ export type Database = {
           extraction_error?: string | null
           hunt_id?: string
           id?: string
+          is_listing?: boolean
           km?: number | null
+          km_verified?: boolean
+          listing_kind?: string | null
           location?: string | null
           make?: string | null
           match_score?: number | null
           model?: string | null
+          page_type?: string | null
+          price_verified?: boolean
           raw_snippet?: string | null
+          reject_reason?: string | null
           scored_at?: string | null
           source_name?: string
           source_url?: string
           title?: string | null
           variant_raw?: string | null
+          verified_at?: string | null
+          verified_fields?: Json
           year?: number | null
+          year_verified?: boolean
         }
         Relationships: [
           {
@@ -2793,6 +2820,66 @@ export type Database = {
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "outward_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outward_candidate_scrape_queue: {
+        Row: {
+          attempts: number
+          candidate_id: string
+          candidate_url: string
+          created_at: string | null
+          hunt_id: string
+          id: string
+          last_error: string | null
+          lock_token: string | null
+          locked_until: string | null
+          priority: number
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          attempts?: number
+          candidate_id: string
+          candidate_url: string
+          created_at?: string | null
+          hunt_id: string
+          id?: string
+          last_error?: string | null
+          lock_token?: string | null
+          locked_until?: string | null
+          priority?: number
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          attempts?: number
+          candidate_id?: string
+          candidate_url?: string
+          created_at?: string | null
+          hunt_id?: string
+          id?: string
+          last_error?: string | null
+          lock_token?: string | null
+          locked_until?: string | null
+          priority?: number
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outward_candidate_scrape_queue_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "hunt_external_candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outward_candidate_scrape_queue_hunt_id_fkey"
+            columns: ["hunt_id"]
+            isOneToOne: false
+            referencedRelation: "sale_hunts"
             referencedColumns: ["id"]
           },
         ]
