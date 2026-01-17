@@ -759,7 +759,7 @@ export default function LogSalePage() {
                       <SelectValue placeholder="Select body type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Not specified</SelectItem>
+                      <SelectItem value="UNSPECIFIED">Not specified</SelectItem>
                       <SelectItem value="SEDAN">Sedan</SelectItem>
                       <SelectItem value="HATCH">Hatchback</SelectItem>
                       <SelectItem value="WAGON">Wagon</SelectItem>
