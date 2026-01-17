@@ -171,20 +171,7 @@ export default function HuntDetailPage() {
     }
   });
 
-  // Toggle outward enabled
-  const toggleOutwardMutation = useMutation({
-    mutationFn: async (enabled: boolean) => {
-      const { error } = await (supabase as any)
-        .from('sale_hunts')
-        .update({ outward_enabled: enabled })
-        .eq('id', huntId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['hunt', huntId] });
-      toast.success('Outward search settings updated');
-    }
-  });
+  // Kiting Mode is always active - no toggle needed
 
   const acknowledgeAlertMutation = useMutation({
     mutationFn: async (alertId: string) => {
@@ -461,22 +448,22 @@ export default function HuntDetailPage() {
             </p>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                ✓ Web Discovery
+              </Badge>
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                ✓ Auctions
+              </Badge>
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                ✓ Dealer Networks
+              </Badge>
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
                 ✓ Autotrader
               </Badge>
               <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
-                ✓ Web Discovery
+                ✓ Drive
               </Badge>
-              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-200">
-                Pickles
-              </Badge>
-              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-200">
-                Manheim
-              </Badge>
-              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-200">
-                Grays
-              </Badge>
-              <Badge variant="outline" className="text-muted-foreground border-muted">
-                Lloyds
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                ✓ Gumtree
               </Badge>
             </div>
             {hunt.last_outward_scan_at && (
