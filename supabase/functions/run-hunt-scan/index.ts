@@ -413,19 +413,8 @@ function makeDecision(
   return { decision: 'ignore', gap_dollars, gap_pct };
 }
 
-// Ensure listing is classified before matching
-async function ensureListingClassified(supabase: any, listingId: string): Promise<void> {
-  const { data } = await supabase
-    .from('retail_listings')
-    .select('series_family, classified_at')
-    .eq('id', listingId)
-    .single();
-  
-  if (!data?.classified_at) {
-    // Call classification RPC
-    await supabase.rpc('rpc_classify_listing', { p_listing_id: listingId });
-  }
-}
+// NOTE: Classification is now done in a separate batch process
+// We skip inline classification to avoid timeout issues
 
 // Ensure hunt is classified
 async function ensureHuntClassified(supabase: any, huntId: string): Promise<Hunt> {
@@ -535,83 +524,72 @@ Deno.serve(async (req) => {
         
         if (candErr) throw candErr;
 
+        console.log(`Found ${candidates.length} candidates for hunt ${hunt.id}`);
+
         const matches: MatchResult[] = [];
         let alertsEmitted = 0;
         let rejectedCount = 0;
 
+        // Get existing matches for this hunt to avoid duplicates (batch query)
+        const { data: existingMatches } = await supabase
+          .from('hunt_matches')
+          .select('listing_id')
+          .eq('hunt_id', hunt.id);
+        const existingListingIds = new Set((existingMatches || []).map((m: any) => m.listing_id));
+
         for (const listing of (candidates || [])) {
-          // Ensure listing is classified (inline for candidates, not bulk)
-          await ensureListingClassified(supabase, listing.id);
+          // Use listing directly - classification should be done in a separate batch process
+          // This avoids N+1 queries and timeout issues
           
-          // Refetch listing with classification fields
-          const { data: classifiedListing } = await supabase
-            .from('retail_listings')
-            .select('*')
-            .eq('id', listing.id)
-            .single();
-          
-          if (!classifiedListing) continue;
+          // Skip if already matched
+          if (existingListingIds.has(listing.id)) {
+            continue;
+          }
           
           // ============================================
           // BADGE AUTHORITY LAYER - HARD GATES
           // Apply BEFORE scoring to reject early
           // ============================================
-          const gateResult = applyHardGates(hunt, classifiedListing);
+          const gateResult = applyHardGates(hunt, listing);
           
           if (!gateResult.passed) {
             // Store IGNORE match with rejection reason
-            const { data: existingIgnore } = await supabase
-              .from('hunt_matches')
-              .select('id')
-              .eq('hunt_id', hunt.id)
-              .eq('listing_id', listing.id)
-              .maybeSingle();
-            
-            if (!existingIgnore) {
-              await supabase.from('hunt_matches').insert({
-                hunt_id: hunt.id,
-                listing_id: listing.id,
-                match_score: 0,
-                confidence_label: 'low',
-                reasons: [gateResult.rejection_reason],
-                asking_price: classifiedListing.asking_price,
-                decision: 'ignore'
-              });
-              rejectedCount++;
-            }
+            await supabase.from('hunt_matches').insert({
+              hunt_id: hunt.id,
+              listing_id: listing.id,
+              match_score: 0,
+              confidence_label: 'low',
+              reasons: [gateResult.rejection_reason],
+              asking_price: listing.asking_price,
+              decision: 'ignore'
+            });
+            existingListingIds.add(listing.id);
+            rejectedCount++;
             continue; // Skip to next listing - hard gate failed
           }
           
           // ============================================
           // MUST-HAVE KEYWORD MATCHING
           // ============================================
-          const mustHaveResult = checkMustHaveTokens(hunt, classifiedListing);
+          const mustHaveResult = checkMustHaveTokens(hunt, listing);
           
           // In strict mode, missing tokens = IGNORE
           if (hunt.must_have_mode === 'strict' && !mustHaveResult.passed) {
-            const { data: existingIgnore } = await supabase
-              .from('hunt_matches')
-              .select('id')
-              .eq('hunt_id', hunt.id)
-              .eq('listing_id', listing.id)
-              .maybeSingle();
-            
-            if (!existingIgnore) {
-              await supabase.from('hunt_matches').insert({
-                hunt_id: hunt.id,
-                listing_id: listing.id,
-                match_score: 0,
-                confidence_label: 'low',
-                reasons: [`missing_required_token:${mustHaveResult.missing_tokens[0]}`],
-                asking_price: classifiedListing.asking_price,
-                decision: 'ignore'
-              });
-              rejectedCount++;
-            }
+            await supabase.from('hunt_matches').insert({
+              hunt_id: hunt.id,
+              listing_id: listing.id,
+              match_score: 0,
+              confidence_label: 'low',
+              reasons: [`missing_required_token:${mustHaveResult.missing_tokens[0]}`],
+              asking_price: listing.asking_price,
+              decision: 'ignore'
+            });
+            existingListingIds.add(listing.id);
+            rejectedCount++;
             continue; // Skip - strict mode and missing token
           }
           
-          let { score, reasons } = scoreMatch(hunt, classifiedListing);
+          let { score, reasons } = scoreMatch(hunt, listing);
           
           // Add must-have bonus in soft mode (or matched tokens in strict)
           if (mustHaveResult.matched_tokens.length > 0) {
@@ -629,87 +607,78 @@ Deno.serve(async (req) => {
             ? [...reasons, gateResult.rejection_reason!]
             : reasons;
           
-          const provenExitValue = await getProvenExitValue(supabase, hunt, classifiedListing);
-          const listingAgeDays = Math.floor((Date.now() - new Date(classifiedListing.first_seen_at).getTime()) / (24 * 60 * 60 * 1000));
-          const { decision, gap_dollars, gap_pct } = makeDecision(hunt, classifiedListing, score, provenExitValue, listingAgeDays, gateResult);
+          const provenExitValue = await getProvenExitValue(supabase, hunt, listing);
+          const listingAgeDays = Math.floor((Date.now() - new Date(listing.first_seen_at).getTime()) / (24 * 60 * 60 * 1000));
+          const { decision, gap_dollars, gap_pct } = makeDecision(hunt, listing, score, provenExitValue, listingAgeDays, gateResult);
           
           const confidence = getConfidence(score);
 
-          // Check for existing match to dedupe
-          const { data: existingMatch } = await supabase
-            .from('hunt_matches')
-            .select('id')
-            .eq('hunt_id', hunt.id)
-            .eq('listing_id', listing.id)
-            .maybeSingle();
+          // Insert new match
+          await supabase.from('hunt_matches').insert({
+            hunt_id: hunt.id,
+            listing_id: listing.id,
+            match_score: score,
+            confidence_label: confidence,
+            reasons: finalReasons,
+            asking_price: listing.asking_price,
+            proven_exit_value: provenExitValue,
+            gap_dollars,
+            gap_pct,
+            decision
+          });
+          existingListingIds.add(listing.id);
 
-          if (!existingMatch) {
-            // Insert new match
-            await supabase.from('hunt_matches').insert({
-              hunt_id: hunt.id,
-              listing_id: listing.id,
-              match_score: score,
-              confidence_label: confidence,
-              reasons: finalReasons,
-              asking_price: classifiedListing.asking_price,
-              proven_exit_value: provenExitValue,
-              gap_dollars,
-              gap_pct,
-              decision
-            });
+          matches.push({
+            listing,
+            score,
+            reasons: finalReasons,
+            confidence,
+            decision,
+            gap_dollars,
+            gap_pct,
+            proven_exit_value: provenExitValue,
+            rejection_reason: gateResult.rejection_reason
+          });
 
-            matches.push({
-              listing: classifiedListing,
-              score,
-              reasons: finalReasons,
-              confidence,
-              decision,
-              gap_dollars,
-              gap_pct,
-              proven_exit_value: provenExitValue,
-              rejection_reason: gateResult.rejection_reason
-            });
+          // Create alert if BUY or WATCH (no alerts for gate-rejected)
+          if (decision === 'buy' || decision === 'watch') {
+            // Check if already alerted recently
+            const { data: recentAlert } = await supabase
+              .from('hunt_alerts')
+              .select('id')
+              .eq('hunt_id', hunt.id)
+              .eq('listing_id', listing.id)
+              .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+              .maybeSingle();
 
-            // Create alert if BUY or WATCH (no alerts for gate-rejected)
-            if (decision === 'buy' || decision === 'watch') {
-              // Check if already alerted recently
-              const { data: recentAlert } = await supabase
-                .from('hunt_alerts')
-                .select('id')
-                .eq('hunt_id', hunt.id)
-                .eq('listing_id', listing.id)
-                .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-                .maybeSingle();
-
-              if (!recentAlert) {
-                await supabase.from('hunt_alerts').insert({
-                  hunt_id: hunt.id,
-                  listing_id: listing.id,
-                  alert_type: decision === 'buy' ? 'BUY' : 'WATCH',
-                  payload: {
-                    year: classifiedListing.year,
-                    make: classifiedListing.make,
-                    model: classifiedListing.model,
-                    variant: classifiedListing.variant,
-                    km: classifiedListing.km,
-                    asking_price: classifiedListing.asking_price,
-                    proven_exit_value: provenExitValue,
-                    gap_dollars,
-                    gap_pct,
-                    source: classifiedListing.source,
-                    listing_url: classifiedListing.listing_url,
-                    match_score: score,
-                    reasons: finalReasons,
-                    // Badge Authority Layer fields
-                    series_family: classifiedListing.series_family,
-                    body_type: classifiedListing.body_type,
-                    engine_family: classifiedListing.engine_family,
-                    badge: classifiedListing.badge,
-                    variant_confidence: classifiedListing.variant_confidence
-                  }
-                });
-                alertsEmitted++;
-              }
+            if (!recentAlert) {
+              await supabase.from('hunt_alerts').insert({
+                hunt_id: hunt.id,
+                listing_id: listing.id,
+                alert_type: decision === 'buy' ? 'BUY' : 'WATCH',
+                payload: {
+                  year: listing.year,
+                  make: listing.make,
+                  model: listing.model,
+                  variant: listing.variant,
+                  km: listing.km,
+                  asking_price: listing.asking_price,
+                  proven_exit_value: provenExitValue,
+                  gap_dollars,
+                  gap_pct,
+                  source: listing.source,
+                  listing_url: listing.listing_url,
+                  match_score: score,
+                  reasons: finalReasons,
+                  // Badge Authority Layer fields
+                  series_family: listing.series_family,
+                  body_type: listing.body_type,
+                  engine_family: listing.engine_family,
+                  badge: listing.badge,
+                  variant_confidence: listing.variant_confidence
+                }
+              });
+              alertsEmitted++;
             }
           }
         }
