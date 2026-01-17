@@ -46,6 +46,11 @@ interface Hunt {
   must_have_raw: string | null;
   must_have_tokens: string[] | null;
   must_have_mode: 'soft' | 'strict' | null;
+  // New required fields for enrichment-based hard gates
+  required_badge: string | null;
+  required_body_type: string | null;
+  required_engine_family: string | null;
+  required_engine_size_l: number | null;
 }
 
 interface Listing {
@@ -81,6 +86,10 @@ interface Listing {
   // Text fields for must-have matching
   title: string | null;
   description: string | null;
+  // Enrichment fields
+  engine_size_l: number | null;
+  fuel_type: string | null;
+  enrichment_status: string | null;
 }
 
 interface MatchResult {
@@ -153,28 +162,70 @@ function checkMustHaveTokens(hunt: Hunt, listing: Listing): MustHaveResult {
 }
 
 // ============================================
-// Badge Authority Layer - Hard Gates
+// Badge Authority Layer - Hard Gates (with Enrichment Support)
 // ============================================
 function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
+  // ============================================
+  // NEW: Enrichment-based hard gates (required_* fields)
+  // These take priority as they come from sale log
+  // ============================================
+  
+  // Gate: Required badge mismatch - REJECT if listing has different badge
+  if (hunt.required_badge && listing.badge) {
+    if (listing.badge.toUpperCase() !== hunt.required_badge.toUpperCase()) {
+      return { passed: false, rejection_reason: 'BADGE_TIER_MISMATCH' };
+    }
+  }
+  // If required badge but listing unknown - downgrade to WATCH
+  if (hunt.required_badge && !listing.badge) {
+    return { passed: true, downgrade_to_watch: true, downgrade_reason: 'BADGE_UNKNOWN_NEEDS_VERIFY' };
+  }
+  
+  // Gate: Required body type mismatch - REJECT immediately
+  if (hunt.required_body_type && listing.body_type) {
+    if (listing.body_type.toUpperCase() !== hunt.required_body_type.toUpperCase()) {
+      return { passed: false, rejection_reason: 'BODY_MISMATCH' };
+    }
+  }
+  // If required body but listing unknown - downgrade to WATCH
+  if (hunt.required_body_type && !listing.body_type) {
+    return { passed: true, downgrade_to_watch: true, downgrade_reason: 'BODY_UNKNOWN_NEEDS_VERIFY' };
+  }
+  
+  // Gate: Required engine family mismatch - REJECT immediately
+  if (hunt.required_engine_family && listing.engine_family) {
+    if (listing.engine_family.toUpperCase() !== hunt.required_engine_family.toUpperCase()) {
+      return { passed: false, rejection_reason: 'ENGINE_MISMATCH' };
+    }
+  }
+  // If required engine but listing unknown - downgrade to WATCH
+  if (hunt.required_engine_family && !listing.engine_family) {
+    return { passed: true, downgrade_to_watch: true, downgrade_reason: 'ENGINE_UNKNOWN_NEEDS_VERIFY' };
+  }
+  
+  // ============================================
+  // Legacy gates (for backward compatibility)
+  // ============================================
+  
   // Gate A: Series mismatch - IGNORE immediately
   if (hunt.series_family && listing.series_family && 
       hunt.series_family !== listing.series_family) {
     return { passed: false, rejection_reason: 'SERIES_MISMATCH' };
   }
   
-  // Gate B: Body type mismatch - IGNORE immediately
-  if (hunt.body_type && listing.body_type && 
+  // Gate B: Body type mismatch (legacy) - IGNORE immediately
+  if (!hunt.required_body_type && hunt.body_type && listing.body_type && 
       hunt.body_type !== listing.body_type) {
     return { passed: false, rejection_reason: 'BODY_MISMATCH' };
   }
   
-  // Gate C: Engine mismatch - IGNORE immediately (or downgrade if listing unknown)
-  if (hunt.engine_family && listing.engine_family && 
+  // Gate C: Engine mismatch (legacy) - IGNORE immediately (or downgrade if listing unknown)
+  if (!hunt.required_engine_family && hunt.engine_family && listing.engine_family && 
       hunt.engine_family !== listing.engine_family) {
     return { passed: false, rejection_reason: 'ENGINE_MISMATCH' };
   }
   // If hunt requires specific engine but listing is UNKNOWN - block BUY, allow WATCH
-  if (hunt.engine_family && hunt.engine_code && 
+  if (!hunt.required_engine_family && hunt.engine_family && hunt.engine_code && 
       (!listing.engine_family || listing.engine_code === 'UNKNOWN')) {
     return { passed: true, downgrade_to_watch: true, downgrade_reason: 'ENGINE_UNKNOWN_NEEDS_VERIFY' };
   }
