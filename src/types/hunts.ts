@@ -201,6 +201,10 @@ export interface SaleHunt {
   scan_interval_minutes: number;
   notes: string | null;
   
+  // Outward Hunt (Web Discovery)
+  last_outward_scan_at: string | null;
+  outward_interval_minutes: number | null;
+  
   // Must-have keywords for picky buyers
   must_have_raw: string | null;
   must_have_tokens: string[] | null;

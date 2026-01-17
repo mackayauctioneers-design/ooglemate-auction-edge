@@ -443,26 +443,48 @@ export default function HuntDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Coverage Status */}
-        <Card>
+        {/* Kiting Mode Status - Web Discovery */}
+        <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
           <CardHeader className="py-3">
-            <CardTitle className="text-sm font-medium">Coverage</CardTitle>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <svg className="h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 2a10 10 0 0 1 7.07 17.07"/>
+                <path d="M2 12h4m12 0h4"/>
+              </svg>
+              Kiting Mode Active
+            </CardTitle>
           </CardHeader>
-          <CardContent className="pb-4">
+          <CardContent className="pb-4 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Scanning auctions, dealer networks, and the wider web for replicas.
+            </p>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
-                Autotrader (active)
+                ✓ Autotrader
+              </Badge>
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                ✓ Web Discovery
+              </Badge>
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-200">
+                Pickles
+              </Badge>
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-200">
+                Manheim
+              </Badge>
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-200">
+                Grays
               </Badge>
               <Badge variant="outline" className="text-muted-foreground border-muted">
-                Drive (rolling in)
-              </Badge>
-              <Badge variant="outline" className="text-muted-foreground border-muted">
-                Gumtree (rolling in)
-              </Badge>
-              <Badge variant="outline" className="text-muted-foreground border-muted">
-                Auctions (coming)
+                Lloyds
               </Badge>
             </div>
+            {hunt.last_outward_scan_at && (
+              <div className="text-xs text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Last web scan: {formatDistanceToNow(new Date(hunt.last_outward_scan_at), { addSuffix: true })}
+              </div>
+            )}
           </CardContent>
         </Card>
 
