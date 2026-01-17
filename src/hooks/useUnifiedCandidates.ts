@@ -8,6 +8,8 @@ interface UseUnifiedCandidatesOptions {
   offset?: number;
   decisionFilter?: 'BUY' | 'WATCH' | null;
   enabled?: boolean;
+  staleTime?: number;
+  refetchOnMount?: boolean | 'always';
 }
 
 interface UnifiedCandidatesResult {
@@ -22,6 +24,8 @@ export function useUnifiedCandidates({
   offset = 0,
   decisionFilter = null,
   enabled = true,
+  staleTime = 0,
+  refetchOnMount = 'always',
 }: UseUnifiedCandidatesOptions) {
   return useQuery<UnifiedCandidatesResult>({
     queryKey: ['unified-candidates', huntId, limit, offset, decisionFilter],
@@ -95,7 +99,8 @@ export function useUnifiedCandidates({
       };
     },
     enabled: enabled && !!huntId,
-    staleTime: 30000, // 30 seconds
+    staleTime,
+    refetchOnMount,
   });
 }
 
