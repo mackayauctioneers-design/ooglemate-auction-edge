@@ -735,11 +735,11 @@ export default function LogSalePage() {
                   </div>
                 )}
 
-                {/* Prices (optional) */}
+                {/* Prices */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                     <DollarSign className="h-4 w-4 text-primary" />
-                    Pricing (optional)
+                    Pricing
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -754,7 +754,9 @@ export default function LogSalePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="sell_price">Sell Price</Label>
+                      <Label htmlFor="sell_price" className="flex items-center gap-1">
+                        Sell Price <span className="text-destructive">*</span>
+                      </Label>
                       <Input
                         id="sell_price"
                         type="number"
@@ -762,7 +764,9 @@ export default function LogSalePage() {
                         onChange={(e) => updateField('sell_price', e.target.value)}
                         placeholder="e.g. 42000"
                         className="bg-input mono"
+                        required
                       />
+                      <p className="text-xs text-muted-foreground">Required for Kiting Mode</p>
                     </div>
                   </div>
                 </div>
