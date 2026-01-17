@@ -232,12 +232,12 @@ export function ManualFingerprintForm({ onSuccess }: ManualFingerprintFormProps)
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-2">
               <Label htmlFor="engine">Engine</Label>
-              <Select value={engine} onValueChange={setEngine}>
+              <Select value={engine || '__none__'} onValueChange={(v) => setEngine(v === '__none__' ? '' : v)}>
                 <SelectTrigger id="engine">
                   <SelectValue placeholder="Any" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any</SelectItem>
+                  <SelectItem value="__none__">Any</SelectItem>
                   <SelectItem value="Diesel">Diesel</SelectItem>
                   <SelectItem value="Petrol">Petrol</SelectItem>
                   <SelectItem value="Hybrid">Hybrid</SelectItem>
@@ -247,12 +247,12 @@ export function ManualFingerprintForm({ onSuccess }: ManualFingerprintFormProps)
             </div>
             <div className="space-y-2">
               <Label htmlFor="drivetrain">Drivetrain</Label>
-              <Select value={drivetrain} onValueChange={setDrivetrain}>
+              <Select value={drivetrain || '__none__'} onValueChange={(v) => setDrivetrain(v === '__none__' ? '' : v)}>
                 <SelectTrigger id="drivetrain">
                   <SelectValue placeholder="Any" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any</SelectItem>
+                  <SelectItem value="__none__">Any</SelectItem>
                   <SelectItem value="4x4">4x4</SelectItem>
                   <SelectItem value="4x2">4x2</SelectItem>
                   <SelectItem value="AWD">AWD</SelectItem>
@@ -261,12 +261,12 @@ export function ManualFingerprintForm({ onSuccess }: ManualFingerprintFormProps)
             </div>
             <div className="space-y-2">
               <Label htmlFor="transmission">Trans</Label>
-              <Select value={transmission} onValueChange={setTransmission}>
+              <Select value={transmission || '__none__'} onValueChange={(v) => setTransmission(v === '__none__' ? '' : v)}>
                 <SelectTrigger id="transmission">
                   <SelectValue placeholder="Any" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any</SelectItem>
+                  <SelectItem value="__none__">Any</SelectItem>
                   <SelectItem value="Automatic">Auto</SelectItem>
                   <SelectItem value="Manual">Manual</SelectItem>
                 </SelectContent>

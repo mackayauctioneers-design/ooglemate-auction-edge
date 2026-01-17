@@ -286,12 +286,12 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="series_family">Series Family</Label>
-                    <Select value={formData.series_family} onValueChange={(v) => updateField('series_family', v)}>
+                    <Select value={formData.series_family || '__none__'} onValueChange={(v) => updateField('series_family', v === '__none__' ? '' : v)}>
                       <SelectTrigger className="bg-input">
                         <SelectValue placeholder="Select series" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Not specified (broad match)</SelectItem>
+                        <SelectItem value="__none__">Not specified (broad match)</SelectItem>
                         {seriesFamilyOptions.map(opt => (
                           <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                         ))}
@@ -303,12 +303,12 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="body_type">Body Type</Label>
-                    <Select value={formData.body_type} onValueChange={(v) => updateField('body_type', v)}>
+                    <Select value={formData.body_type || '__none__'} onValueChange={(v) => updateField('body_type', v === '__none__' ? '' : v)}>
                       <SelectTrigger className="bg-input">
                         <SelectValue placeholder="Select body" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Not specified</SelectItem>
+                        <SelectItem value="__none__">Not specified</SelectItem>
                         {bodyTypeOptions.map(opt => (
                           <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                         ))}
@@ -329,12 +329,12 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="engine_family">Engine Family</Label>
-                    <Select value={formData.engine_family || ''} onValueChange={(v) => updateField('engine_family', v)}>
+                    <Select value={formData.engine_family || '__none__'} onValueChange={(v) => updateField('engine_family', v === '__none__' ? '' : v)}>
                       <SelectTrigger className="bg-input">
                         <SelectValue placeholder="Any" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Not specified</SelectItem>
+                        <SelectItem value="__none__">Not specified</SelectItem>
                         {engineFamilyOptions.map(opt => (
                           <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                         ))}
@@ -344,12 +344,12 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="engine_code">Engine Code</Label>
-                    <Select value={formData.engine_code} onValueChange={(v) => updateField('engine_code', v)}>
+                    <Select value={formData.engine_code || '__none__'} onValueChange={(v) => updateField('engine_code', v === '__none__' ? '' : v)}>
                       <SelectTrigger className="bg-input">
                         <SelectValue placeholder="Select engine" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Not specified</SelectItem>
+                        <SelectItem value="__none__">Not specified</SelectItem>
                         {engineCodeOptions.map(opt => (
                           <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                         ))}
@@ -358,12 +358,12 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="cab_type">Cab Type</Label>
-                    <Select value={formData.cab_type} onValueChange={(v) => updateField('cab_type', v)}>
+                    <Select value={formData.cab_type || '__none__'} onValueChange={(v) => updateField('cab_type', v === '__none__' ? '' : v)}>
                       <SelectTrigger className="bg-input">
                         <SelectValue placeholder="Select cab" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Not specified</SelectItem>
+                        <SelectItem value="__none__">Not specified</SelectItem>
                         {cabTypeOptions.map(opt => (
                           <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                         ))}
@@ -377,12 +377,12 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="fuel">Fuel</Label>
-                  <Select value={formData.fuel} onValueChange={(v) => updateField('fuel', v)}>
+                  <Select value={formData.fuel || '__none__'} onValueChange={(v) => updateField('fuel', v === '__none__' ? '' : v)}>
                     <SelectTrigger className="bg-input">
                       <SelectValue placeholder="Any" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any</SelectItem>
+                      <SelectItem value="__none__">Any</SelectItem>
                       {fuelOptions.map(opt => (
                         <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                       ))}
@@ -391,12 +391,12 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="transmission">Transmission</Label>
-                  <Select value={formData.transmission} onValueChange={(v) => updateField('transmission', v)}>
+                  <Select value={formData.transmission || '__none__'} onValueChange={(v) => updateField('transmission', v === '__none__' ? '' : v)}>
                     <SelectTrigger className="bg-input">
                       <SelectValue placeholder="Any" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any</SelectItem>
+                      <SelectItem value="__none__">Any</SelectItem>
                       {transmissionOptions.map(opt => (
                         <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                       ))}
@@ -405,12 +405,12 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="drivetrain">Drivetrain</Label>
-                  <Select value={formData.drivetrain} onValueChange={(v) => updateField('drivetrain', v)}>
+                  <Select value={formData.drivetrain || '__none__'} onValueChange={(v) => updateField('drivetrain', v === '__none__' ? '' : v)}>
                     <SelectTrigger className="bg-input">
                       <SelectValue placeholder="Any" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any</SelectItem>
+                      <SelectItem value="__none__">Any</SelectItem>
                       {drivetrainOptions.map(opt => (
                         <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                       ))}
