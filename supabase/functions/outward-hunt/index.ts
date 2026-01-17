@@ -7,17 +7,18 @@ const corsHeaders = {
 };
 
 /**
- * Outward Hunt v2 - Firecrawl-Powered Web Discovery
+ * Outward Hunt v1.2 - Listing-Only + Cheapest-First + Scrape-to-Verify
  * 
- * When a dealer logs a sale, this searches the ENTIRE internet for replicas.
- * Uses Firecrawl search API - not site-limited, not just our feeds.
+ * Stage 1: Search the web for real vehicle listings
+ * Stage 2: Queue verified listings for scrape verification
+ * Stage 3: Rank by cheapest-first after verification
  * 
  * Flow:
- * 1. Build intelligent search queries from hunt fingerprint
- * 2. Run Firecrawl web search for each query
- * 3. Extract & classify candidates
- * 4. Apply hard gates (series/engine/cab/body)
- * 5. Emit BUY/WATCH alerts
+ * 1. Build intelligent search queries with listing-intent tokens
+ * 2. Run Firecrawl web search
+ * 3. Classify URLs (listing vs article)
+ * 4. Enqueue listings for scrape verification
+ * 5. Let scrape-worker verify and rank by price
  */
 
 interface Hunt {
@@ -82,6 +83,11 @@ interface ExtractedCandidate {
   engine_markers: string[];
   cab_markers: string[];
   confidence: 'high' | 'medium' | 'low';
+  // Listing classification
+  is_listing: boolean;
+  listing_kind: 'retail_listing' | 'auction_lot' | 'dealer_stock' | 'unknown' | null;
+  page_type: 'listing' | 'article' | 'search' | 'category' | 'login' | 'other';
+  reject_reason: string | null;
   // ID Kit fields for blocked sources
   id_kit: IdKit;
   blocked_reason: string | null;
@@ -105,6 +111,108 @@ function extractDomain(url: string): string {
     return 'unknown';
   }
 }
+
+// =====================================================
+// URL PAGE-TYPE CLASSIFIER - Section C1
+// =====================================================
+function classifyUrlPageType(url: string): { page_type: 'listing' | 'article' | 'search' | 'category' | 'login' | 'other'; reject_reason: string | null } {
+  const urlLower = url.toLowerCase();
+  
+  // Non-listing URL patterns - reject these
+  const articlePatterns = [
+    '/news/', '/blog/', '/article/', '/review/', '/reviews/', '/guide/', '/guides/',
+    '/car-guide/', '/price-and-specs/', '/compare/', '/comparison/', '/insurance/',
+    '/finance/', '/about/', '/help/', '/contact/', '/privacy/', '/terms/',
+    '/category/', '/login/', '/signin/', '/signup/', '/register/',
+    '/faq/', '/sitemap/', '/media/', '/press/', '/stories/', '/features/',
+    '/insights/', '/resources/', '/tips/', '/how-to/', '/what-is/',
+    '/best-', '/top-', '/vs-', '/advice/', '/editorial/',
+  ];
+  
+  for (const pattern of articlePatterns) {
+    if (urlLower.includes(pattern)) {
+      const type = pattern.includes('login') || pattern.includes('signin') ? 'login' :
+                   pattern.includes('search') ? 'search' :
+                   pattern.includes('category') ? 'category' : 'article';
+      return { page_type: type, reject_reason: 'NON_LISTING_PAGE' };
+    }
+  }
+  
+  // Search/listing pages - still need verification
+  if (urlLower.includes('/search') || urlLower.includes('?q=') || urlLower.includes('&q=')) {
+    return { page_type: 'search', reject_reason: 'SEARCH_RESULTS_PAGE' };
+  }
+  
+  return { page_type: 'other', reject_reason: null };
+}
+
+// =====================================================
+// LISTING ACCEPT PATTERNS - Section C2
+// =====================================================
+function isVerifiedListingUrl(url: string, domain: string): { is_listing: boolean; listing_kind: 'retail_listing' | 'auction_lot' | 'dealer_stock' | 'unknown' | null } {
+  const urlLower = url.toLowerCase();
+  
+  // Gumtree - classified ads
+  if (domain.includes('gumtree.com.au') && urlLower.includes('/s-ad/')) {
+    return { is_listing: true, listing_kind: 'retail_listing' };
+  }
+  
+  // Autotrader AU - car listings
+  if (domain.includes('autotrader.com.au') && (urlLower.includes('/car/') || urlLower.includes('/detail/'))) {
+    return { is_listing: true, listing_kind: 'retail_listing' };
+  }
+  
+  // Drive - classified listings (not news)
+  if (domain.includes('drive.com.au') && 
+      urlLower.includes('/cars-for-sale/') && 
+      (urlLower.includes('/dealer-') || urlLower.includes('/private-') || /\/\d+$/.test(urlLower))) {
+    return { is_listing: true, listing_kind: 'dealer_stock' };
+  }
+  
+  // Carsales - listing pages
+  if (domain.includes('carsales.com.au') && (urlLower.includes('/cars/') || urlLower.includes('/car-details/'))) {
+    return { is_listing: true, listing_kind: 'retail_listing' };
+  }
+  
+  // Pickles - auction lots
+  if (domain.includes('pickles.com.au') && (urlLower.includes('/lots/') || urlLower.includes('/lot/') || urlLower.includes('/item/'))) {
+    return { is_listing: true, listing_kind: 'auction_lot' };
+  }
+  
+  // Manheim - auction lots
+  if (domain.includes('manheim.com.au') && (urlLower.includes('/auction') || urlLower.includes('/lot') || urlLower.includes('/vehicle'))) {
+    return { is_listing: true, listing_kind: 'auction_lot' };
+  }
+  
+  // Lloyds Auctions
+  if (domain.includes('lloydsauctions.com.au') && (urlLower.includes('/lot') || urlLower.includes('/auction') || urlLower.includes('/item'))) {
+    return { is_listing: true, listing_kind: 'auction_lot' };
+  }
+  
+  // Grays - auction lots
+  if (domain.includes('grays.com') && (urlLower.includes('/auction') || urlLower.includes('/lot') || urlLower.includes('/item'))) {
+    return { is_listing: true, listing_kind: 'auction_lot' };
+  }
+  
+  // Facebook Marketplace
+  if (domain.includes('facebook.com') && urlLower.includes('/marketplace/item/')) {
+    return { is_listing: true, listing_kind: 'retail_listing' };
+  }
+  
+  // Generic dealer sites - check for listing patterns
+  if (urlLower.includes('/stock/') || urlLower.includes('/inventory/') || urlLower.includes('/vehicles/')) {
+    return { is_listing: true, listing_kind: 'dealer_stock' };
+  }
+  
+  // Default - not confirmed as listing
+  return { is_listing: false, listing_kind: null };
+}
+
+// Sites that block direct access
+const BLOCKED_DOMAINS = ['carsales.com.au', 'carsales.com'];
+
+// Auction domains get higher priority
+const AUCTION_DOMAINS = ['pickles.com.au', 'manheim.com.au', 'grays.com', 'lloydsauctions.com.au'];
 
 // Classify candidate based on text analysis
 function classifyCandidate(text: string, hunt: Hunt): ClassificationResult {
@@ -175,7 +283,6 @@ function applyHardGates(
   candidateText: string
 ): string[] {
   const rejectReasons: string[] = [];
-  const upper = candidateText.toUpperCase();
   
   // Series mismatch
   if (hunt.series_family && classification.series_family && 
@@ -203,6 +310,7 @@ function applyHardGates(
   
   // Must-have tokens (strict mode)
   if (hunt.must_have_mode === 'strict' && hunt.must_have_tokens && hunt.must_have_tokens.length > 0) {
+    const upper = candidateText.toUpperCase();
     for (const token of hunt.must_have_tokens) {
       if (!upper.includes(token.toUpperCase())) {
         rejectReasons.push(`MISSING_REQUIRED_TOKEN:${token}`);
@@ -213,9 +321,6 @@ function applyHardGates(
   return rejectReasons;
 }
 
-// Sites that block direct access
-const BLOCKED_DOMAINS = ['carsales.com.au', 'carsales.com'];
-
 // Extract VIN from text (17 character alphanumeric, no I/O/Q)
 function extractVin(text: string): string | null {
   const vinMatch = text.match(/\b[A-HJ-NPR-Z0-9]{17}\b/i);
@@ -224,8 +329,6 @@ function extractVin(text: string): string | null {
 
 // Extract Australian registration plate from text
 function extractRego(text: string): string | null {
-  // Common AU formats: ABC123, ABC12A, 123ABC, 1ABC23, etc.
-  // Also capture "rego:" or "registration:" prefixes
   const regoPatterns = [
     /(?:rego|registration|plate)[:\s]*([A-Z0-9]{1,3}[\s-]?[A-Z0-9]{2,4})/i,
     /\b([A-Z]{2,3}[\s-]?[0-9]{2,3}[\s-]?[A-Z0-9]{0,3})\b/i,
@@ -236,7 +339,6 @@ function extractRego(text: string): string | null {
     const match = text.match(pattern);
     if (match) {
       const rego = match[1].replace(/[\s-]/g, '').toUpperCase();
-      // Validate: 4-7 characters, alphanumeric
       if (rego.length >= 4 && rego.length <= 7 && /^[A-Z0-9]+$/.test(rego)) {
         return rego;
       }
@@ -267,7 +369,6 @@ function extractLocation(text: string): { location: string | null; state: string
   const stateMatch = text.match(new RegExp(`\\b(${states.join('|')})\\b`, 'i'));
   const state = stateMatch ? stateMatch[1].toUpperCase() : null;
   
-  // Try to find suburb/city before state
   const locationPatterns = [
     /(?:located?\s*(?:in|at)?|location)[:\s]*([A-Za-z\s]+?)(?:,|\s+(?:NSW|VIC|QLD|SA|WA|TAS|NT|ACT))/i,
     /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*,?\s*(?:NSW|VIC|QLD|SA|WA|TAS|NT|ACT)/i,
@@ -303,7 +404,6 @@ function extractPhotoClues(text: string): string[] {
   const clues: string[] = [];
   const textUpper = text.toUpperCase();
   
-  // Tray/accessories
   if (/NORWELD/i.test(text)) clues.push('Norweld tray');
   if (/BULLBAR|BULL\s*BAR/i.test(text)) clues.push('Bullbar');
   if (/SNORKEL/i.test(text)) clues.push('Snorkel');
@@ -314,17 +414,28 @@ function extractPhotoClues(text: string): string[] {
   if (/ROOF\s*RACK/i.test(text)) clues.push('Roof rack');
   if (/LIFT\s*KIT|LIFTED/i.test(text)) clues.push('Lifted');
   
-  // Cab/body
   if (textUpper.includes('DUAL CAB')) clues.push('Dual cab');
   if (textUpper.includes('SINGLE CAB')) clues.push('Single cab');
   if (textUpper.includes('UTE')) clues.push('Ute');
   if (textUpper.includes('WAGON')) clues.push('Wagon');
   
-  // Colour
   const colour = extractColour(text);
   if (colour) clues.push(colour);
   
   return clues;
+}
+
+// Check title for editorial indicators
+function isEditorialTitle(title: string): boolean {
+  const titleLower = title.toLowerCase();
+  const editorialIndicators = [
+    'price and specs', 'review:', 'first drive', 'best used cars',
+    'buying guide', 'comparison test', 'vs ', ' vs.', 'what to know',
+    'everything you need', 'full review', 'test drive', 'road test',
+    'how to buy', 'things to know', 'should you buy', 'news:',
+    'revealed:', 'updated:', 'new model', 'facelift', 'upgrade',
+  ];
+  return editorialIndicators.some(indicator => titleLower.includes(indicator));
 }
 
 // Extract candidate data from search result
@@ -336,58 +447,63 @@ function extractCandidate(
   const title = result.title || '';
   const snippet = result.description || result.markdown?.slice(0, 500) || '';
   const fullText = `${title} ${snippet}`;
-  
-  // Skip non-listing pages - CRITICAL: filter out editorial/news/blog content
-  const nonListingPatterns = [
-    '/search', '/login', '/category', '/about', '/contact', '/help',
-    // Editorial content - NOT actual listings
-    '/news/', '/blog/', '/article/', '/review/', '/guide/', '/advice/',
-    '/insights/', '/resources/', '/tips/', '/how-to/', '/what-is/',
-    '/best-', '/top-', '/compare/', '/comparison/', '/vs-',
-    // News/media sections
-    '/media/', '/press/', '/stories/', '/features/',
-    // General info pages
-    '/faq', '/terms', '/privacy', '/sitemap',
-  ];
-  
-  const urlLower = url.toLowerCase();
-  for (const pattern of nonListingPatterns) {
-    if (urlLower.includes(pattern)) {
-      console.log(`Skipping non-listing URL: ${url} (matched: ${pattern})`);
-      return null;
-    }
-  }
-  
-  // Also check title for news/editorial indicators
-  const titleLower = title.toLowerCase();
-  const editorialIndicators = [
-    'price and specs', 'review:', 'first drive', 'best used cars',
-    'buying guide', 'comparison test', 'vs ', ' vs.', 'what to know',
-    'everything you need', 'full review', 'test drive', 'road test',
-  ];
-  for (const indicator of editorialIndicators) {
-    if (titleLower.includes(indicator)) {
-      console.log(`Skipping editorial content: ${title} (matched: ${indicator})`);
-      return null;
-    }
-  }
-  
   const domain = extractDomain(url);
+  
+  // Step 1: URL page-type classification
+  const { page_type, reject_reason: urlRejectReason } = classifyUrlPageType(url);
+  
+  // Step 2: Check if verified listing URL
+  const { is_listing, listing_kind } = isVerifiedListingUrl(url, domain);
+  
+  // Step 3: Title editorial check
+  if (isEditorialTitle(title)) {
+    console.log(`Skipping editorial: ${title.slice(0, 60)}...`);
+    return {
+      url,
+      domain,
+      title: title.slice(0, 200),
+      snippet: snippet.slice(0, 500),
+      year: null,
+      make: null,
+      model: null,
+      variant_raw: null,
+      km: null,
+      asking_price: null,
+      location: null,
+      engine_markers: [],
+      cab_markers: [],
+      confidence: 'low',
+      is_listing: false,
+      listing_kind: null,
+      page_type: 'article',
+      reject_reason: 'EDITORIAL_CONTENT',
+      id_kit: {
+        vin: null, rego: null, stock_no: null, year: null, make: null, model: null,
+        badge: null, variant: null, km: null, price: null, location: null, state: null,
+        colour: null, body: null, cab: null, engine: null, how_to_find: 'N/A',
+        photo_clues: [], search_string: '',
+      },
+      blocked_reason: null,
+      requires_manual_check: false,
+    };
+  }
+  
+  // If URL is non-listing, mark it but still return for logging
+  const finalRejectReason = urlRejectReason || (page_type === 'article' ? 'ARTICLE_PAGE' : null);
+  
   const isBlocked = BLOCKED_DOMAINS.some(d => domain.includes(d));
   
   // Extract year
   const yearMatch = fullText.match(/\b(20[1-2][0-9])\b/);
   const year = yearMatch ? parseInt(yearMatch[1], 10) : null;
   
-  // STRICT YEAR GATE: Only accept years within the hunt's specified range
-  // If hunt specifies year_min/year_max, use those; otherwise use exact hunt.year
+  // STRICT YEAR GATE
   const huntYearMin = hunt.year_min ?? hunt.year;
   const huntYearMax = hunt.year_max ?? hunt.year;
   
   if (year) {
-    // Allow 1-year buffer on each side (e.g., 2024 hunt shows 2023-2025)
     if (year < huntYearMin - 1 || year > huntYearMax + 1) {
-      console.log(`Skipping year mismatch: found ${year}, hunt range ${huntYearMin}-${huntYearMax}`);
+      console.log(`Year mismatch: found ${year}, hunt range ${huntYearMin}-${huntYearMax}`);
       return null;
     }
   }
@@ -401,15 +517,13 @@ function extractCandidate(
     return null;
   }
   
-  // CRITICAL: Exclude Prado if hunting LandCruiser, and vice versa
-  // They share "LandCruiser" in name but are completely different vehicles
+  // Exclude Prado if hunting LandCruiser
   if (huntModelLower === 'landcruiser') {
     if (textLower.includes('prado') || textLower.includes('land cruiser prado')) {
-      return null; // Skip Prado results when hunting for LandCruiser
+      return null;
     }
   }
   if (huntModelLower === 'prado' || huntModelLower === 'landcruiser prado') {
-    // For Prado hunts, require "prado" in the text
     if (!textLower.includes('prado')) {
       return null;
     }
@@ -419,7 +533,6 @@ function extractCandidate(
   const priceMatch = fullText.match(/\$\s*([\d,]+)/);
   let asking_price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null;
   
-  // Skip unrealistic prices
   if (asking_price && (asking_price < 5000 || asking_price > 500000)) {
     asking_price = null;
   }
@@ -473,7 +586,7 @@ function extractCandidate(
     body = 'WAGON';
   }
   
-  let cab: string | null = cabMarkers[0] || null;
+  const cab: string | null = cabMarkers[0] || null;
   
   // Build search string
   const searchParts: string[] = [];
@@ -522,6 +635,10 @@ function extractCandidate(
     engine_markers: engineMarkers,
     cab_markers: cabMarkers,
     confidence,
+    is_listing,
+    listing_kind,
+    page_type,
+    reject_reason: finalRejectReason,
     id_kit,
     blocked_reason: isBlocked ? 'anti-scraping' : null,
     requires_manual_check: isBlocked,
@@ -591,29 +708,37 @@ function scoreAndDecide(
   }
   
   // Source boost for auctions
-  if (['pickles.com.au', 'manheim.com.au', 'grays.com', 'lloydsauctions.com.au'].includes(candidate.domain)) {
+  if (AUCTION_DOMAINS.some(d => candidate.domain.includes(d))) {
     score += 0.5;
     reasons.push('auction_source');
+  }
+  
+  // is_listing boost
+  if (candidate.is_listing) {
+    score += 1.0;
+    reasons.push('verified_listing');
   }
   
   // Cap score
   score = Math.min(10, Math.max(0, score));
   
-  // Decision logic - NEVER ignore just because of price
-  // The user wants to see the "cheapest, closest" match even if overpriced
+  // Decision logic
+  // For non-listings, can only be IGNORE
+  if (!candidate.is_listing) {
+    return { score, decision: 'IGNORE', reasons: [...reasons, 'not_verified_listing'] };
+  }
+  
   const canBuy = 
     score >= 7.0 &&
     gap_dollars >= hunt.min_gap_abs_buy &&
     gap_pct >= hunt.min_gap_pct_buy &&
     candidate.confidence !== 'low';
   
-  // WATCH is the fallback for anything that passes hard gates
-  // Price doesn't disqualify - we want to show "best available" even if overpriced
-  const canWatch = score >= 5.0; // Lower threshold - show more results
+  const canWatch = score >= 5.0;
   
   if (canBuy) return { score, decision: 'BUY', reasons };
   if (canWatch) return { score, decision: 'WATCH', reasons };
-  return { score, decision: 'IGNORE', reasons }; // Only for very low scores (wrong make/model)
+  return { score, decision: 'IGNORE', reasons };
 }
 
 serve(async (req) => {
@@ -659,14 +784,47 @@ serve(async (req) => {
       console.log('No queries generated, using fallback');
     }
     
-    const searchQueries: string[] = queries || [
-      `${hunt.year} ${hunt.make} ${hunt.model} for sale Australia`
-    ];
+    // Build enhanced queries with listing-intent tokens
+    const baseQueries: string[] = queries || [];
     
-    console.log(`Outward hunt for ${hunt_id}: ${searchQueries.length} queries`);
+    // Add mandatory listing-intent queries
+    const enhancedQueries: string[] = [];
+    
+    // Keep first 2 original queries
+    enhancedQueries.push(...baseQueries.slice(0, 2));
+    
+    // Add AU-specific site-targeted queries
+    const yearStr = hunt.year || '';
+    const make = hunt.make || '';
+    const model = hunt.model || '';
+    const mustHaves = (hunt.must_have_tokens || []).slice(0, 2).join(' ');
+    
+    // Hard negative tokens to append
+    const negTokens = '-review -reviews -news -guide -guides -specs -pricing -facelift -best -top -article -blog -press -comparison -compare -insurance';
+    
+    // Site-specific queries for Australian car sites
+    enhancedQueries.push(
+      `site:autotrader.com.au ${yearStr} ${make} ${model} ${mustHaves} for sale ${negTokens}`.trim(),
+      `site:gumtree.com.au ${yearStr} ${make} ${model} ${mustHaves} car for sale ${negTokens}`.trim(),
+      `site:pickles.com.au ${make} ${model} auction lot ${negTokens}`.trim(),
+      `site:manheim.com.au ${make} ${model} auction ${negTokens}`.trim(),
+      `site:lloydsauctions.com.au ${make} ${model} auction ${negTokens}`.trim(),
+      `site:grays.com ${make} ${model} auctions ${negTokens}`.trim(),
+    );
+    
+    // Generic listing queries
+    enhancedQueries.push(
+      `"${yearStr} ${make} ${model}" "for sale" Australia ${mustHaves} ${negTokens}`.trim(),
+      `${yearStr} ${make} ${model} used car dealer Australia ${negTokens}`.trim(),
+    );
+    
+    // Dedupe and limit
+    const searchQueries = [...new Set(enhancedQueries)].slice(0, 8);
+    
+    console.log(`Outward hunt v1.2 for ${hunt_id}: ${searchQueries.length} queries`);
     
     // Create run record
-    const { data: run, error: runError } = await supabase
+    const { data: run } = await supabase
       .from('outward_hunt_runs')
       .insert({
         hunt_id,
@@ -678,26 +836,25 @@ serve(async (req) => {
       .select()
       .single();
     
-    if (runError) {
-      console.error('Failed to create run record:', runError);
-    }
-    
     const results = {
       queries_run: 0,
       results_found: 0,
+      listings_found: 0,
+      articles_skipped: 0,
       candidates_created: 0,
       candidates_rejected: 0,
+      queued_for_scrape: 0,
       alerts_emitted: 0,
       reject_reasons: {} as Record<string, number>,
       errors: [] as string[],
     };
     
-    // Run Firecrawl search for each query (limit to first 4 for speed)
-    const queriesToRun = searchQueries.slice(0, 4);
+    // Run Firecrawl search for each query
+    const queriesToRun = searchQueries.slice(0, 6);
     
     for (const query of queriesToRun) {
       try {
-        console.log(`Searching: ${query}`);
+        console.log(`Searching: ${query.slice(0, 80)}...`);
         
         const searchRes = await fetch("https://api.firecrawl.dev/v1/search", {
           method: "POST",
@@ -729,58 +886,68 @@ serve(async (req) => {
         const searchResults = searchData.data || [];
         results.results_found += searchResults.length;
         
-        console.log(`Query "${query.slice(0, 50)}..." returned ${searchResults.length} results`);
+        console.log(`Query returned ${searchResults.length} results`);
         
         // Process each search result
         for (const result of searchResults) {
           try {
-            // Extract candidate
             const candidate = extractCandidate(result, hunt as Hunt);
             if (!candidate) continue;
             
             const fullText = `${candidate.title} ${candidate.snippet}`;
-            
-            // Classify
             const classification = classifyCandidate(fullText, hunt as Hunt);
+            
+            // Track listing vs article
+            if (candidate.is_listing) {
+              results.listings_found++;
+            } else if (candidate.page_type === 'article') {
+              results.articles_skipped++;
+            }
             
             // Apply hard gates
             const rejectReasons = applyHardGates(classification, hunt as Hunt, fullText);
             
-            // Track rejection reasons
             for (const reason of rejectReasons) {
               const key = reason.split(':')[0];
               results.reject_reasons[key] = (results.reject_reasons[key] || 0) + 1;
             }
             
-            if (rejectReasons.length > 0) {
+            // Combine reject reasons
+            const allRejectReasons = candidate.reject_reason 
+              ? [...rejectReasons, candidate.reject_reason] 
+              : rejectReasons;
+            
+            if (allRejectReasons.length > 0 && !candidate.is_listing) {
               results.candidates_rejected++;
               
-              // Still save to outward_candidates but as IGNORE
+              // Save rejected candidate
               await supabase
-                .from('outward_candidates')
+                .from('hunt_external_candidates')
                 .upsert({
                   hunt_id,
-                  url: candidate.url,
-                  domain: candidate.domain,
+                  source_url: candidate.url,
+                  source_name: candidate.domain,
+                  dedup_key: candidate.url,
                   title: candidate.title,
-                  snippet: candidate.snippet,
-                  provider: 'firecrawl',
-                  extracted: {
-                    year: candidate.year,
-                    make: candidate.make,
-                    model: candidate.model,
-                    km: candidate.km,
-                    asking_price: candidate.asking_price,
-                  },
-                  classification,
-                  match_score: 0,
+                  raw_snippet: candidate.snippet,
+                  year: candidate.year,
+                  make: candidate.make,
+                  model: candidate.model,
+                  km: candidate.km,
+                  asking_price: candidate.asking_price,
+                  location: candidate.location,
+                  confidence: candidate.confidence,
                   decision: 'IGNORE',
-                  reasons: rejectReasons,
-                  // ID Kit fields for blocked sources
-                  id_kit: candidate.id_kit,
-                  blocked_reason: candidate.blocked_reason,
-                  requires_manual_check: candidate.requires_manual_check,
-                }, { onConflict: 'hunt_id,url' });
+                  // New v1.2 fields
+                  is_listing: false,
+                  listing_kind: candidate.listing_kind,
+                  page_type: candidate.page_type,
+                  reject_reason: allRejectReasons[0],
+                  price_verified: false,
+                  km_verified: false,
+                  year_verified: false,
+                  verified_fields: {},
+                }, { onConflict: 'dedup_key' });
               
               continue;
             }
@@ -788,43 +955,72 @@ serve(async (req) => {
             // Score and decide
             const { score, decision, reasons } = scoreAndDecide(candidate, classification, hunt as Hunt);
             
-            // Upsert to outward_candidates and get the ID
+            // Upsert to hunt_external_candidates
             const { data: upsertedCandidate, error: upsertError } = await supabase
-              .from('outward_candidates')
+              .from('hunt_external_candidates')
               .upsert({
                 hunt_id,
-                url: candidate.url,
-                domain: candidate.domain,
+                source_url: candidate.url,
+                source_name: candidate.domain,
+                dedup_key: candidate.url,
                 title: candidate.title,
-                snippet: candidate.snippet,
-                provider: 'firecrawl',
-                source: 'outward_web',
-                extracted: {
-                  year: candidate.year,
-                  make: candidate.make,
-                  model: candidate.model,
-                  km: candidate.km,
-                  asking_price: candidate.asking_price,
-                  confidence: candidate.confidence,
-                },
-                classification,
+                raw_snippet: candidate.snippet,
+                year: candidate.year,
+                make: candidate.make,
+                model: candidate.model,
+                variant_raw: candidate.variant_raw,
+                km: candidate.km,
+                asking_price: candidate.asking_price,
+                location: candidate.location,
+                confidence: candidate.confidence,
                 match_score: score,
                 decision,
-                reasons,
                 alert_emitted: false,
-                // ID Kit fields for blocked sources
-                id_kit: candidate.id_kit,
-                blocked_reason: candidate.blocked_reason,
-                requires_manual_check: candidate.requires_manual_check,
-              }, { onConflict: 'hunt_id,url' })
+                // New v1.2 fields
+                is_listing: candidate.is_listing,
+                listing_kind: candidate.listing_kind,
+                page_type: candidate.page_type,
+                reject_reason: null,
+                price_verified: false,
+                km_verified: false,
+                year_verified: false,
+                verified_fields: {
+                  asking_price: candidate.asking_price,
+                  km: candidate.km,
+                  year: candidate.year,
+                },
+              }, { onConflict: 'dedup_key' })
               .select('id, alert_emitted')
               .single();
             
             if (!upsertError && upsertedCandidate) {
               results.candidates_created++;
               
-              // Emit alert for BUY/WATCH
-              if ((decision === 'BUY' || decision === 'WATCH') && !upsertedCandidate.alert_emitted) {
+              // Queue for scrape verification if it's a verified listing
+              if (candidate.is_listing) {
+                const priority = AUCTION_DOMAINS.some(d => candidate.domain.includes(d)) ? 8 : 10;
+                const mustHaveBoost = (hunt.must_have_tokens || []).some((t: string) => 
+                  fullText.toUpperCase().includes(t.toUpperCase())
+                ) ? 2 : 0;
+                
+                await supabase
+                  .from('outward_candidate_scrape_queue')
+                  .upsert({
+                    hunt_id,
+                    candidate_id: upsertedCandidate.id,
+                    candidate_url: candidate.url,
+                    status: 'queued',
+                    priority: priority + mustHaveBoost,
+                  }, { onConflict: 'hunt_id,candidate_url' })
+                  .then(res => {
+                    if (!res.error) results.queued_for_scrape++;
+                  });
+              }
+              
+              // Emit alert for BUY/WATCH on verified listings
+              if ((decision === 'BUY' || decision === 'WATCH') && 
+                  candidate.is_listing && 
+                  !upsertedCandidate.alert_emitted) {
                 const alertPayload = {
                   year: candidate.year,
                   make: candidate.make,
@@ -845,25 +1041,24 @@ serve(async (req) => {
                   listing_url: candidate.url,
                   classification,
                   reasons,
+                  is_verified_listing: candidate.is_listing,
+                  listing_kind: candidate.listing_kind,
                 };
                 
-                // Use the outward_candidate UUID as the listing_id
                 const { error: alertErr } = await supabase.from('hunt_alerts').insert({
                   hunt_id,
-                  listing_id: upsertedCandidate.id,  // Use the actual UUID
+                  listing_id: upsertedCandidate.id,
                   alert_type: decision,
                   payload: alertPayload,
                 });
                 
                 if (!alertErr) {
                   await supabase
-                    .from('outward_candidates')
+                    .from('hunt_external_candidates')
                     .update({ alert_emitted: true })
                     .eq('id', upsertedCandidate.id);
                   
                   results.alerts_emitted++;
-                } else {
-                  console.error('Failed to insert alert:', alertErr.message);
                 }
               }
             }
@@ -898,10 +1093,7 @@ serve(async (req) => {
       .update({ last_outward_scan_at: new Date().toISOString() })
       .eq('id', hunt_id);
     
-    // ============================================
-    // BUILD UNIFIED CANDIDATES after outward search
-    // This merges outward candidates with internal matches
-    // ============================================
+    // Build unified candidates after outward search
     try {
       const { data: unifiedResult, error: unifiedErr } = await supabase.rpc(
         'rpc_build_unified_candidates',
@@ -916,10 +1108,11 @@ serve(async (req) => {
       console.warn(`Unified build error: ${unifyErr}`);
     }
     
-    console.log('Outward hunt complete:', results);
+    console.log('Outward hunt v1.2 complete:', results);
     
     return new Response(JSON.stringify({
       success: true,
+      version: '1.2',
       ...results,
       duration_ms: Date.now() - startTime,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
