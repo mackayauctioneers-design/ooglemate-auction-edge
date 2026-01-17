@@ -41,6 +41,7 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
     make: hunt.make,
     model: hunt.model,
     variant_family: hunt.variant_family || '',
+    badge: hunt.badge || '',
     body_type: hunt.body_type || '',
     
     // LC79 Precision Pack
@@ -87,6 +88,7 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
       make: hunt.make,
       model: hunt.model,
       variant_family: hunt.variant_family || '',
+      badge: hunt.badge || '',
       body_type: hunt.body_type || '',
       engine_code: hunt.engine_code || '',
       cab_type: hunt.cab_type || '',
@@ -128,6 +130,7 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
         make: formData.make.toUpperCase(),
         model: formData.model.toUpperCase(),
         variant_family: formData.variant_family || null,
+        badge: formData.badge.toUpperCase() || null,
         body_type: formData.body_type.toUpperCase() || null,
         engine_code: formData.engine_code.toUpperCase() || null,
         cab_type: formData.cab_type.toUpperCase() || null,
@@ -245,7 +248,7 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="variant_family">Variant / Badge</Label>
+                  <Label htmlFor="variant_family">Variant</Label>
                   <Input
                     id="variant_family"
                     value={formData.variant_family}
@@ -255,15 +258,28 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="series_family">Series Family</Label>
+                  <Label htmlFor="badge">Trim / Badge</Label>
                   <Input
-                    id="series_family"
-                    value={formData.series_family}
-                    onChange={(e) => updateField('series_family', e.target.value)}
-                    placeholder="e.g. LC79, N80, GUN126"
+                    id="badge"
+                    value={formData.badge}
+                    onChange={(e) => updateField('badge', e.target.value)}
+                    placeholder="e.g. Premium, Elite, N Line"
                     className="bg-input uppercase"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    BUY requires exact badge match if set
+                  </p>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="series_family">Series Family</Label>
+                <Input
+                  id="series_family"
+                  value={formData.series_family}
+                  onChange={(e) => updateField('series_family', e.target.value)}
+                  placeholder="e.g. LC79, N80, GUN126"
+                  className="bg-input uppercase"
+                />
               </div>
 
               {/* LC79 Precision Pack */}
