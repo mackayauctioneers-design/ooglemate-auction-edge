@@ -2245,6 +2245,7 @@ export type Database = {
           final_score: number | null
           hunt_id: string
           id: string
+          is_cheapest: boolean | null
           km: number | null
           location: string | null
           make: string | null
@@ -2252,6 +2253,7 @@ export type Database = {
           model: string | null
           price: number | null
           price_score: number | null
+          rank_position: number | null
           reasons: string[] | null
           source: string
           source_listing_id: string | null
@@ -2273,6 +2275,7 @@ export type Database = {
           final_score?: number | null
           hunt_id: string
           id?: string
+          is_cheapest?: boolean | null
           km?: number | null
           location?: string | null
           make?: string | null
@@ -2280,6 +2283,7 @@ export type Database = {
           model?: string | null
           price?: number | null
           price_score?: number | null
+          rank_position?: number | null
           reasons?: string[] | null
           source: string
           source_listing_id?: string | null
@@ -2301,6 +2305,7 @@ export type Database = {
           final_score?: number | null
           hunt_id?: string
           id?: string
+          is_cheapest?: boolean | null
           km?: number | null
           location?: string | null
           make?: string | null
@@ -2308,6 +2313,7 @@ export type Database = {
           model?: string | null
           price?: number | null
           price_score?: number | null
+          rank_position?: number | null
           reasons?: string[] | null
           source?: string
           source_listing_id?: string | null
