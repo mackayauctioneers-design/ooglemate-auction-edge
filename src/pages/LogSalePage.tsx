@@ -61,6 +61,8 @@ export default function LogSalePage() {
     shared_opt_in: false,
     buy_price: '',
     sell_price: '',
+    // Trim/Badge for precision matching
+    badge: '',
     // Universal body type for all vehicles
     body_type: '',
     // LC79 Precision Pack fields
@@ -70,6 +72,38 @@ export default function LogSalePage() {
     must_have_raw: '',
     must_have_mode: 'soft' as 'soft' | 'strict',
   });
+
+  // Common badge patterns to auto-extract from variant/description
+  const BADGE_PATTERNS = [
+    'PREMIUM', 'ELITE', 'N LINE', 'N-LINE', 'ST-LINE', 'ST LINE',
+    'GXL', 'VX', 'SAHARA', 'WORKMATE', 'GX',
+    'SR5', 'SR', 'ROGUE', 'RUGGED', 'RUGGED X',
+    'WILDTRAK', 'XLT', 'XL', 'XLS', 'XLT+',
+    'GR', 'TRD', 'GT', 'RS', 'R-SPEC', 'R SPEC',
+    'SPORT', 'LUXURY', 'TITANIUM', 'TREND', 'AMBIENTE',
+    'ACTIVE', 'HIGHLANDER', 'KAKADU', 'PRADO',
+  ];
+
+  // Auto-extract badge from variant text
+  const extractBadgeFromText = (text: string): string | null => {
+    const upper = text.toUpperCase();
+    for (const pattern of BADGE_PATTERNS) {
+      if (upper.includes(pattern)) {
+        return pattern.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+    }
+    return null;
+  };
+
+  // Auto-populate badge when variant changes (if badge is empty)
+  useEffect(() => {
+    if (!formData.badge && formData.variant_normalised) {
+      const extracted = extractBadgeFromText(formData.variant_normalised);
+      if (extracted) {
+        setFormData(prev => ({ ...prev, badge: extracted }));
+      }
+    }
+  }, [formData.variant_normalised]);
 
   // Detect if current vehicle is variant-critical (engine/cab matters for matching)
   const makeUpper = formData.make.toUpperCase();
@@ -145,7 +179,8 @@ export default function LogSalePage() {
     mustHaveRaw?: string,
     mustHaveTokens?: string[],
     mustHaveMode?: 'soft' | 'strict',
-    bodyType?: string
+    bodyType?: string,
+    badge?: string
   ): Promise<boolean> => {
     // Poll for hunt creation (trigger may have slight delay)
     for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
@@ -163,6 +198,10 @@ export default function LogSalePage() {
         
         if (bodyType) {
           updatePayload.body_type = bodyType.toUpperCase();
+        }
+        
+        if (badge) {
+          updatePayload.badge = badge.toUpperCase();
         }
         
         // Update hunt with additional fields if any
@@ -207,6 +246,10 @@ export default function LogSalePage() {
       
       if (bodyType) {
         updatePayload.body_type = bodyType.toUpperCase();
+      }
+      
+      if (badge) {
+        updatePayload.badge = badge.toUpperCase();
       }
       
       if (Object.keys(updatePayload).length > 0) {
@@ -380,13 +423,14 @@ export default function LogSalePage() {
         shared_opt_in: formData.shared_opt_in ? 'Y' : 'N',
       });
 
-      // 3. Verify hunt was created and redirect (pass must-have data and body type)
+      // 3. Verify hunt was created and redirect (pass must-have data, body type, and badge)
       const huntCreated = await verifyHuntAndRedirect(
         saleId,
         formData.must_have_raw,
         mustHaveTokens,
         formData.must_have_mode,
-        formData.body_type
+        formData.body_type,
+        formData.badge
       );
       
       if (!huntCreated) {
@@ -419,6 +463,7 @@ export default function LogSalePage() {
           shared_opt_in: false,
           buy_price: '',
           sell_price: '',
+          badge: '',
           body_type: '',
           engine_code: '',
           cab_type: '',
@@ -594,6 +639,27 @@ export default function LogSalePage() {
                         className="bg-input"
                       />
                     </div>
+                  </div>
+                  
+                  {/* Trim/Badge field - optional but helps precision */}
+                  <div className="space-y-2">
+                    <Label htmlFor="badge">Trim / Badge (optional)</Label>
+                    <Input
+                      id="badge"
+                      value={formData.badge}
+                      onChange={(e) => updateField('badge', e.target.value)}
+                      placeholder="e.g. Premium, Elite, GXL, Workmate, N Line"
+                      className="bg-input"
+                      list="badge-list"
+                    />
+                    <datalist id="badge-list">
+                      {BADGE_PATTERNS.slice(0, 20).map(b => (
+                        <option key={b} value={b.replace(/-/g, ' ')} />
+                      ))}
+                    </datalist>
+                    <p className="text-xs text-muted-foreground">
+                      Leaving this blank still works, but matches may be broader.
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

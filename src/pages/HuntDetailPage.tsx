@@ -317,81 +317,95 @@ export default function HuntDetailPage() {
           matches={matches}
         />
 
-        {/* Critical Match Criteria - Trust Layer */}
-        {(hunt.engine_code || hunt.cab_type || hunt.series_family || (hunt.must_have_tokens && hunt.must_have_tokens.length > 0)) && (
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader className="py-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-primary" />
-                Critical Match Criteria (Hard Gates)
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-4">
-              <div className="flex flex-wrap gap-4 text-sm">
-                {hunt.series_family && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Series:</span>
-                    <Badge variant="outline" className="font-mono">{hunt.series_family}</Badge>
-                  </div>
-                )}
-                {hunt.engine_code && hunt.engine_code !== 'UNKNOWN' && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Engine:</span>
-                    <Badge variant="outline" className="font-mono">{hunt.engine_code}</Badge>
-                  </div>
-                )}
-                {hunt.cab_type && hunt.cab_type !== 'UNKNOWN' && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Cab/Body:</span>
-                    <Badge variant="outline" className="font-mono">{hunt.cab_type}</Badge>
-                  </div>
-                )}
-                {hunt.must_have_tokens && hunt.must_have_tokens.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Must-Have:</span>
-                    <div className="flex flex-wrap gap-1">
-                      {hunt.must_have_tokens.map((token) => (
-                        <Badge 
-                          key={token} 
-                          variant="outline" 
-                          className={`font-mono ${hunt.must_have_mode === 'strict' ? 'border-amber-500 text-amber-600' : ''}`}
-                        >
-                          {token.toLowerCase()}
-                        </Badge>
-                      ))}
-                    </div>
-                    {hunt.must_have_mode === 'strict' && (
-                      <Badge className="bg-amber-500/10 text-amber-600 border-amber-200">Strict</Badge>
-                    )}
-                  </div>
-                )}
+        {/* Match Criteria Status - Trust Builder */}
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-primary" />
+              Match Criteria
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-4">
+            {/* Status indicators */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+              <div className="flex items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${hunt.engine_code && hunt.engine_code !== 'UNKNOWN' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                <span className="text-muted-foreground">Engine:</span>
+                <span className="font-medium">
+                  {hunt.engine_code && hunt.engine_code !== 'UNKNOWN' 
+                    ? <span className="text-emerald-600">✓ {hunt.engine_code}</span>
+                    : <span className="text-amber-600">⚠ unknown</span>
+                  }
+                </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {hunt.must_have_mode === 'strict' 
-                  ? 'Listings that don\'t match these criteria (including must-have keywords) are automatically rejected.'
-                  : 'Listings that don\'t match these criteria are automatically rejected or downgraded.'}
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Trust Warning - when variant data missing */}
-        {!hunt.engine_code && !hunt.cab_type && hunt.series_family?.includes('LC') && (
-          <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-200 dark:border-amber-800">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <div className="font-medium text-amber-700 dark:text-amber-400">
-                  Engine / Cab type not specified
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  Some matches may be hidden or downgraded to WATCH to avoid incorrect alerts. 
-                  Edit the source sale to add engine and cab details.
-                </div>
+              <div className="flex items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${hunt.body_type || hunt.cab_type ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                <span className="text-muted-foreground">Body:</span>
+                <span className="font-medium">
+                  {(hunt.body_type || hunt.cab_type) 
+                    ? <span className="text-emerald-600">✓ {hunt.body_type || hunt.cab_type}</span>
+                    : <span className="text-amber-600">⚠ unknown</span>
+                  }
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${hunt.badge ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`} />
+                <span className="text-muted-foreground">Badge:</span>
+                <span className="font-medium">
+                  {hunt.badge 
+                    ? <span className="text-emerald-600">✓ {hunt.badge}</span>
+                    : <span className="text-muted-foreground">— not set</span>
+                  }
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${hunt.series_family ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`} />
+                <span className="text-muted-foreground">Series:</span>
+                <span className="font-medium">
+                  {hunt.series_family 
+                    ? <span className="text-emerald-600">✓ {hunt.series_family}</span>
+                    : <span className="text-muted-foreground">— auto</span>
+                  }
+                </span>
               </div>
             </div>
-          </div>
-        )}
+            
+            {/* Warning if missing critical data */}
+            {(!hunt.engine_code || hunt.engine_code === 'UNKNOWN') && (!hunt.body_type && !hunt.cab_type) && (
+              <div className="p-2 rounded bg-amber-500/10 border border-amber-200 text-xs text-amber-700 dark:text-amber-400 mb-3">
+                ⚠ Engine and body not specified — BUY alerts blocked, only WATCH allowed.
+              </div>
+            )}
+            
+            {/* Badge not set warning */}
+            {!hunt.badge && (
+              <div className="p-2 rounded bg-muted text-xs text-muted-foreground mb-3">
+                Badge not specified — matches are broader. Add a badge for precision matching.
+              </div>
+            )}
+            
+            {/* Must-have tokens */}
+            {hunt.must_have_tokens && hunt.must_have_tokens.length > 0 && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Must-Have:</span>
+                <div className="flex flex-wrap gap-1">
+                  {hunt.must_have_tokens.map((token) => (
+                    <Badge 
+                      key={token} 
+                      variant="outline" 
+                      className={`font-mono text-xs ${hunt.must_have_mode === 'strict' ? 'border-amber-500 text-amber-600' : ''}`}
+                    >
+                      {token.toLowerCase()}
+                    </Badge>
+                  ))}
+                </div>
+                {hunt.must_have_mode === 'strict' && (
+                  <Badge className="bg-amber-500/10 text-amber-600 border-amber-200 text-xs">Strict</Badge>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Hunt Configuration (collapsible summary) */}
         <Card>
