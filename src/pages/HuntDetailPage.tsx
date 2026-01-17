@@ -51,10 +51,12 @@ export default function HuntDetailPage() {
   });
 
   // Unified candidates - the "Cheapest On The Internet" ranking
-  const { data: unifiedData, isLoading: unifiedLoading } = useUnifiedCandidates({
+  const { data: unifiedData, isLoading: unifiedLoading, refetch: refetchUnified } = useUnifiedCandidates({
     huntId: huntId || '',
     limit: 100,
-    enabled: !!huntId
+    enabled: !!huntId,
+    staleTime: 0,
+    refetchOnMount: true
   });
   
   // Also keep legacy matches for rejection tab
@@ -90,7 +92,9 @@ export default function HuntDetailPage() {
       if (error) throw error;
       return data as HuntAlert[];
     },
-    enabled: !!huntId
+    enabled: !!huntId,
+    staleTime: 0,
+    refetchOnMount: 'always'
   });
 
   const { data: scans = [] } = useQuery({
