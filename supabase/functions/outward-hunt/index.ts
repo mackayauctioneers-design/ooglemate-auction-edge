@@ -632,6 +632,24 @@ serve(async (req) => {
       .update({ last_outward_scan_at: new Date().toISOString() })
       .eq('id', hunt_id);
     
+    // ============================================
+    // BUILD UNIFIED CANDIDATES after outward search
+    // This merges outward candidates with internal matches
+    // ============================================
+    try {
+      const { data: unifiedResult, error: unifiedErr } = await supabase.rpc(
+        'rpc_build_unified_candidates',
+        { p_hunt_id: hunt_id }
+      );
+      if (unifiedErr) {
+        console.warn(`Failed to build unified candidates: ${unifiedErr.message}`);
+      } else {
+        console.log(`Unified candidates built after outward:`, unifiedResult);
+      }
+    } catch (unifyErr) {
+      console.warn(`Unified build error: ${unifyErr}`);
+    }
+    
     console.log('Outward hunt complete:', results);
     
     return new Response(JSON.stringify({
