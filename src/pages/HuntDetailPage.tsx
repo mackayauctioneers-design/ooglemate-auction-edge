@@ -557,8 +557,8 @@ export default function HuntDetailPage() {
                       );
                       
                       // Check for rejection reasons in reasons array
-                      const hasRejection = match.reasons?.some(r => 
-                        r.includes('MISMATCH') || r.includes('NEEDS_VERIFY')
+                      const hasRejection = (match.reasons || []).some(r => 
+                        r && (r.includes('MISMATCH') || r.includes('NEEDS_VERIFY'))
                       );
                       
                       return (
@@ -589,9 +589,9 @@ export default function HuntDetailPage() {
                           </td>
                           <td className="p-3">
                             <div className="flex flex-wrap gap-1">
-                              {match.reasons?.slice(0, 3).map((r, i) => {
+                              {(match.reasons || []).slice(0, 3).filter(Boolean).map((r, i) => {
                                 // Color rejection reasons differently
-                                const isRejection = r.includes('MISMATCH') || r.includes('NEEDS_VERIFY');
+                                const isRejection = r && (r.includes('MISMATCH') || r.includes('NEEDS_VERIFY'));
                                 return (
                                   <Badge 
                                     key={i} 
