@@ -2856,6 +2856,7 @@ export type Database = {
           cross_post_linked_at: string | null
           cylinders: number | null
           delisted_at: string | null
+          description: string | null
           engine_code: string | null
           engine_family: string | null
           engine_litres: number | null
@@ -2905,6 +2906,7 @@ export type Database = {
           state: string | null
           suburb: string | null
           times_seen: number | null
+          title: string | null
           updated_at: string
           variant_confidence: string | null
           variant_family: string | null
@@ -2930,6 +2932,7 @@ export type Database = {
           cross_post_linked_at?: string | null
           cylinders?: number | null
           delisted_at?: string | null
+          description?: string | null
           engine_code?: string | null
           engine_family?: string | null
           engine_litres?: number | null
@@ -2979,6 +2982,7 @@ export type Database = {
           state?: string | null
           suburb?: string | null
           times_seen?: number | null
+          title?: string | null
           updated_at?: string
           variant_confidence?: string | null
           variant_family?: string | null
@@ -3004,6 +3008,7 @@ export type Database = {
           cross_post_linked_at?: string | null
           cylinders?: number | null
           delisted_at?: string | null
+          description?: string | null
           engine_code?: string | null
           engine_family?: string | null
           engine_litres?: number | null
@@ -3053,6 +3058,7 @@ export type Database = {
           state?: string | null
           suburb?: string | null
           times_seen?: number | null
+          title?: string | null
           updated_at?: string
           variant_confidence?: string | null
           variant_family?: string | null
