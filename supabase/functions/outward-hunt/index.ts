@@ -26,6 +26,8 @@ interface Hunt {
   make: string;
   model: string;
   year: number;
+  year_min: number | null;
+  year_max: number | null;
   variant_family: string | null;
   series_family: string | null;
   engine_code: string | null;
@@ -377,9 +379,17 @@ function extractCandidate(
   const yearMatch = fullText.match(/\b(20[1-2][0-9])\b/);
   const year = yearMatch ? parseInt(yearMatch[1], 10) : null;
   
-  // Skip if year too far from hunt year
-  if (year && Math.abs(year - hunt.year) > 3) {
-    return null;
+  // STRICT YEAR GATE: Only accept years within the hunt's specified range
+  // If hunt specifies year_min/year_max, use those; otherwise use exact hunt.year
+  const huntYearMin = hunt.year_min ?? hunt.year;
+  const huntYearMax = hunt.year_max ?? hunt.year;
+  
+  if (year) {
+    // Allow 1-year buffer on each side (e.g., 2024 hunt shows 2023-2025)
+    if (year < huntYearMin - 1 || year > huntYearMax + 1) {
+      console.log(`Skipping year mismatch: found ${year}, hunt range ${huntYearMin}-${huntYearMax}`);
+      return null;
+    }
   }
   
   // Check if make/model mentioned
