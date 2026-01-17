@@ -160,7 +160,7 @@ async function enrichListing(
   // Fetch listing
   const { data: listing, error: listingError } = await supabase
     .from('retail_listings')
-    .select('id, make, model, variant, title, description, listing_url, source')
+    .select('id, make, model, variant_raw, title, description, listing_url, source')
     .eq('id', listingId)
     .single();
   
@@ -184,7 +184,7 @@ async function enrichListing(
   const textBlob = [
     listing.title || '',
     listing.description || '',
-    listing.variant || '',
+    listing.variant_raw || '',
     listing.listing_url || '',
   ].join(' ');
   
@@ -365,8 +365,30 @@ Deno.serve(async (req) => {
     const now = new Date();
     const lockUntil = new Date(now.getTime() + LOCK_DURATION_MS);
     
-    // Claim jobs from queue
-    const { data: claimedJobs, error: claimError } = await supabase
+    // Step 1: Find queued jobs that are available
+    const { data: availableJobs, error: findError } = await supabase
+      .from('listing_enrichment_queue')
+      .select('id, listing_id, source, attempts')
+      .eq('status', 'queued')
+      .lt('attempts', MAX_RETRIES)
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: true })
+      .limit(max_items);
+    
+    if (findError) {
+      throw new Error(`Failed to find jobs: ${findError.message}`);
+    }
+    
+    if (!availableJobs || availableJobs.length === 0) {
+      return new Response(
+        JSON.stringify({ success: true, message: 'No jobs to process', results }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Step 2: Claim jobs by updating their status
+    const jobIds = availableJobs.map(j => j.id);
+    const { error: claimError } = await supabase
       .from('listing_enrichment_queue')
       .update({
         status: 'processing',
@@ -374,24 +396,14 @@ Deno.serve(async (req) => {
         locked_until: lockUntil.toISOString(),
         updated_at: now.toISOString(),
       })
-      .eq('status', 'queued')
-      .lt('attempts', MAX_RETRIES)
-      .or(`locked_until.is.null,locked_until.lt.${now.toISOString()}`)
-      .order('priority', { ascending: false })
-      .order('created_at', { ascending: true })
-      .limit(max_items)
-      .select('id, listing_id, source, attempts');
+      .in('id', jobIds)
+      .eq('status', 'queued'); // Only update if still queued
     
     if (claimError) {
-      throw new Error(`Failed to claim jobs: ${claimError.message}`);
+      console.error('Claim error:', claimError);
     }
     
-    if (!claimedJobs || claimedJobs.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, message: 'No jobs to process', results }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    const claimedJobs = availableJobs;
     
     console.log(`Claimed ${claimedJobs.length} enrichment jobs`);
     
