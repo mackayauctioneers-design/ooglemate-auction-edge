@@ -443,9 +443,32 @@ export default function HuntDetailPage() {
           </CardContent>
         </Card>
 
+        {/* Coverage Status */}
+        <Card>
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm font-medium">Coverage</CardTitle>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                Autotrader (active)
+              </Badge>
+              <Badge variant="outline" className="text-muted-foreground border-muted">
+                Drive (rolling in)
+              </Badge>
+              <Badge variant="outline" className="text-muted-foreground border-muted">
+                Gumtree (rolling in)
+              </Badge>
+              <Badge variant="outline" className="text-muted-foreground border-muted">
+                Auctions (coming)
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Alert Tabs */}
         <Tabs defaultValue="buy">
-          <TabsList>
+          <TabsList className="flex-wrap">
             <TabsTrigger value="buy" className="data-[state=active]:text-emerald-600">
               BUY ({buyAlerts.length})
             </TabsTrigger>
@@ -453,10 +476,13 @@ export default function HuntDetailPage() {
               WATCH ({watchAlerts.length})
             </TabsTrigger>
             <TabsTrigger value="all">
-              All ({allAlerts.length})
+              All Alerts ({allAlerts.length})
             </TabsTrigger>
             <TabsTrigger value="matches">
-              Matches ({matches.length})
+              Valid Matches ({matches.filter(m => m.decision !== 'ignore').length})
+            </TabsTrigger>
+            <TabsTrigger value="rejections" className="text-muted-foreground">
+              Rejected ({matches.filter(m => m.decision === 'ignore').length})
             </TabsTrigger>
             <TabsTrigger value="scans">
               Scans ({scans.length})
@@ -526,7 +552,7 @@ export default function HuntDetailPage() {
             )}
           </TabsContent>
 
-          {/* Matches Table */}
+          {/* Valid Matches Table (BUY/WATCH only) */}
           <TabsContent value="matches" className="mt-4">
             <div className="rounded-lg border overflow-x-auto">
               <table className="w-full text-sm">
@@ -542,27 +568,21 @@ export default function HuntDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {matches.length === 0 ? (
+                  {matches.filter(m => m.decision !== 'ignore').length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                        No matches found yet
+                        No valid matches found yet. Check the Rejected tab to see what was filtered out.
                       </td>
                     </tr>
                   ) : (
-                    matches.map((match) => {
-                      // Determine if this is an auction source
+                    matches.filter(m => m.decision !== 'ignore').map((match) => {
                       const source = (match as any).source || match.lane || '';
                       const isAuction = ['pickles', 'manheim', 'grays', 'lloyds', 'auction'].some(
                         s => source.toLowerCase().includes(s)
                       );
                       
-                      // Check for rejection reasons in reasons array
-                      const hasRejection = (match.reasons || []).some(r => 
-                        r && (r.includes('MISMATCH') || r.includes('NEEDS_VERIFY'))
-                      );
-                      
                       return (
-                        <tr key={match.id} className={`border-t hover:bg-muted/30 ${hasRejection ? 'opacity-60' : ''}`}>
+                        <tr key={match.id} className="border-t hover:bg-muted/30">
                           <td className="p-3">
                             <Badge 
                               variant="outline" 
@@ -589,20 +609,70 @@ export default function HuntDetailPage() {
                           </td>
                           <td className="p-3">
                             <div className="flex flex-wrap gap-1">
-                              {(match.reasons || []).slice(0, 3).filter(Boolean).map((r, i) => {
-                                // Color rejection reasons differently
-                                const isRejection = r && (r.includes('MISMATCH') || r.includes('NEEDS_VERIFY'));
-                                return (
-                                  <Badge 
-                                    key={i} 
-                                    variant="outline" 
-                                    className={`text-xs ${isRejection ? 'bg-destructive/10 text-destructive border-destructive/30' : ''}`}
-                                  >
-                                    {r}
-                                  </Badge>
-                                );
-                              })}
+                              {(match.reasons || []).slice(0, 3).filter(Boolean).map((r, i) => (
+                                <Badge key={i} variant="outline" className="text-xs">
+                                  {r}
+                                </Badge>
+                              ))}
                             </div>
+                          </td>
+                          <td className="p-3">
+                            {(match as any).listing_url ? (
+                              <a
+                                href={(match as any).listing_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-primary hover:underline"
+                              >
+                                View <ExternalLink className="h-3 w-3" />
+                              </a>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TabsContent>
+
+          {/* Rejected Matches (Audit Trail) */}
+          <TabsContent value="rejections" className="mt-4">
+            <div className="mb-3 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+              These listings were evaluated but rejected by hard gates (series/body/engine mismatch) or missing required keywords.
+            </div>
+            <div className="rounded-lg border overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="p-3 text-left font-medium">Rejection Reason</th>
+                    <th className="p-3 text-left font-medium">Price</th>
+                    <th className="p-3 text-left font-medium">Link</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {matches.filter(m => m.decision === 'ignore').length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="p-8 text-center text-muted-foreground">
+                        No rejected matches. Gates are being applied correctly.
+                      </td>
+                    </tr>
+                  ) : (
+                    matches.filter(m => m.decision === 'ignore').map((match) => {
+                      const rejectionReason = (match.reasons || []).filter(Boolean)[0] || 'Unknown';
+                      
+                      return (
+                        <tr key={match.id} className="border-t hover:bg-muted/30 opacity-60">
+                          <td className="p-3">
+                            <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
+                              {rejectionReason}
+                            </Badge>
+                          </td>
+                          <td className="p-3">
+                            ${match.asking_price?.toLocaleString() || '?'}
                           </td>
                           <td className="p-3">
                             {(match as any).listing_url ? (
