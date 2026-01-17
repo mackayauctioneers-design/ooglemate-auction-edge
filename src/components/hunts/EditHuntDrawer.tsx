@@ -41,6 +41,7 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
     make: hunt.make,
     model: hunt.model,
     variant_family: hunt.variant_family || '',
+    body_type: hunt.body_type || '',
     
     // LC79 Precision Pack
     engine_code: hunt.engine_code || '',
@@ -86,6 +87,7 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
       make: hunt.make,
       model: hunt.model,
       variant_family: hunt.variant_family || '',
+      body_type: hunt.body_type || '',
       engine_code: hunt.engine_code || '',
       cab_type: hunt.cab_type || '',
       series_family: hunt.series_family || '',
@@ -126,6 +128,7 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
         make: formData.make.toUpperCase(),
         model: formData.model.toUpperCase(),
         variant_family: formData.variant_family || null,
+        body_type: formData.body_type.toUpperCase() || null,
         engine_code: formData.engine_code.toUpperCase() || null,
         cab_type: formData.cab_type.toUpperCase() || null,
         series_family: formData.series_family.toUpperCase() || null,
