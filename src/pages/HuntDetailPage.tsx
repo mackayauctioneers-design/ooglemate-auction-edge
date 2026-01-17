@@ -316,7 +316,7 @@ export default function HuntDetailPage() {
         />
 
         {/* Critical Match Criteria - Trust Layer */}
-        {(hunt.engine_code || hunt.cab_type || hunt.series_family) && (
+        {(hunt.engine_code || hunt.cab_type || hunt.series_family || (hunt.must_have_tokens && hunt.must_have_tokens.length > 0)) && (
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader className="py-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -344,9 +344,30 @@ export default function HuntDetailPage() {
                     <Badge variant="outline" className="font-mono">{hunt.cab_type}</Badge>
                   </div>
                 )}
+                {hunt.must_have_tokens && hunt.must_have_tokens.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Must-Have:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {hunt.must_have_tokens.map((token) => (
+                        <Badge 
+                          key={token} 
+                          variant="outline" 
+                          className={`font-mono ${hunt.must_have_mode === 'strict' ? 'border-amber-500 text-amber-600' : ''}`}
+                        >
+                          {token.toLowerCase()}
+                        </Badge>
+                      ))}
+                    </div>
+                    {hunt.must_have_mode === 'strict' && (
+                      <Badge className="bg-amber-500/10 text-amber-600 border-amber-200">Strict</Badge>
+                    )}
+                  </div>
+                )}
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Listings that don't match these criteria are automatically rejected or downgraded.
+                {hunt.must_have_mode === 'strict' 
+                  ? 'Listings that don\'t match these criteria (including must-have keywords) are automatically rejected.'
+                  : 'Listings that don\'t match these criteria are automatically rejected or downgraded.'}
               </p>
             </CardContent>
           </Card>
