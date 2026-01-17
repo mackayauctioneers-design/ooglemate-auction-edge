@@ -335,10 +335,39 @@ function extractCandidate(
   const snippet = result.description || result.markdown?.slice(0, 500) || '';
   const fullText = `${title} ${snippet}`;
   
-  // Skip non-listing pages
-  if (url.includes('/search') || url.includes('/login') || url.includes('/category') || 
-      url.includes('/about') || url.includes('/contact') || url.includes('/help')) {
-    return null;
+  // Skip non-listing pages - CRITICAL: filter out editorial/news/blog content
+  const nonListingPatterns = [
+    '/search', '/login', '/category', '/about', '/contact', '/help',
+    // Editorial content - NOT actual listings
+    '/news/', '/blog/', '/article/', '/review/', '/guide/', '/advice/',
+    '/insights/', '/resources/', '/tips/', '/how-to/', '/what-is/',
+    '/best-', '/top-', '/compare/', '/comparison/', '/vs-',
+    // News/media sections
+    '/media/', '/press/', '/stories/', '/features/',
+    // General info pages
+    '/faq', '/terms', '/privacy', '/sitemap',
+  ];
+  
+  const urlLower = url.toLowerCase();
+  for (const pattern of nonListingPatterns) {
+    if (urlLower.includes(pattern)) {
+      console.log(`Skipping non-listing URL: ${url} (matched: ${pattern})`);
+      return null;
+    }
+  }
+  
+  // Also check title for news/editorial indicators
+  const titleLower = title.toLowerCase();
+  const editorialIndicators = [
+    'price and specs', 'review:', 'first drive', 'best used cars',
+    'buying guide', 'comparison test', 'vs ', ' vs.', 'what to know',
+    'everything you need', 'full review', 'test drive', 'road test',
+  ];
+  for (const indicator of editorialIndicators) {
+    if (titleLower.includes(indicator)) {
+      console.log(`Skipping editorial content: ${title} (matched: ${indicator})`);
+      return null;
+    }
   }
   
   const domain = extractDomain(url);
