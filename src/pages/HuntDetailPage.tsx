@@ -134,6 +134,7 @@ export default function HuntDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['hunt-alerts', huntId] });
       queryClient.invalidateQueries({ queryKey: ['hunt-scans', huntId] });
       queryClient.invalidateQueries({ queryKey: ['hunt', huntId] });
+      queryClient.invalidateQueries({ queryKey: ['unified-candidates', huntId] });
       toast.success(`Scan complete: ${data.results?.[0]?.matches || 0} matches, ${data.results?.[0]?.alerts || 0} alerts`);
     },
     onError: (error) => {
@@ -152,6 +153,7 @@ export default function HuntDetailPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['hunt-alerts', huntId] });
+      queryClient.invalidateQueries({ queryKey: ['unified-candidates', huntId] });
       toast.success(`Outward search: ${data.candidates_found || 0} candidates, ${data.alerts_emitted || 0} alerts`);
     },
     onError: (error) => {
