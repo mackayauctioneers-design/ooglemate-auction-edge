@@ -39,15 +39,8 @@ function getStatusColor(status: HuntStatus): string {
   }
 }
 
-// Coverage sources - what we actually scan
-const COVERAGE_SOURCES = [
-  "Autotrader",
-  "Drive", 
-  "Gumtree",
-  "Pickles",
-  "Manheim",
-  "dealer sites"
-];
+// Coverage message - intentionally vague to avoid over-promising
+const COVERAGE_MESSAGE = "Marketplaces + auctions + dealer sites";
 
 export function HuntHeader({ 
   hunt, 
@@ -146,13 +139,10 @@ export function HuntHeader({
             <Radio className="h-4 w-4 text-primary mt-0.5 shrink-0" />
             <div>
               <div className="text-sm font-medium text-foreground">
-                Coverage: Marketplaces + auctions + dealer sites
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                {COVERAGE_SOURCES.join(" • ")} • +more
+                Coverage: {COVERAGE_MESSAGE}
               </div>
               <div className="text-xs text-muted-foreground/70 mt-1">
-                We scan your configured outlets continuously while this hunt is active.
+                Kiting Mode™ is active — scanning all major outlets.
               </div>
             </div>
           </div>

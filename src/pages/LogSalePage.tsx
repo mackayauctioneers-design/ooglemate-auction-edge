@@ -66,17 +66,29 @@ export default function LogSalePage() {
     cab_type: '',
   });
 
-  // Detect if current vehicle is LandCruiser 70/79 series
+  // Detect if current vehicle is variant-critical (engine/cab matters for matching)
+  const makeUpper = formData.make.toUpperCase();
+  const modelUpper = formData.model.toUpperCase();
+  const variantUpper = formData.variant_normalised.toUpperCase();
+  
+  // LandCruiser 70/79/78/76 Series
   const isLC79Series = 
-    formData.make.toUpperCase() === 'TOYOTA' && 
-    (formData.model.toUpperCase().includes('LANDCRUISER') || formData.model.toUpperCase().includes('LAND CRUISER')) &&
-    (formData.variant_normalised.toUpperCase().includes('79') || 
-     formData.variant_normalised.toUpperCase().includes('78') || 
-     formData.variant_normalised.toUpperCase().includes('76') ||
-     formData.variant_normalised.toUpperCase().includes('70') ||
-     formData.model.toUpperCase().includes('79') ||
-     formData.model.toUpperCase().includes('78') ||
-     formData.model.toUpperCase().includes('76'));
+    makeUpper === 'TOYOTA' && 
+    (modelUpper.includes('LANDCRUISER') || modelUpper.includes('LAND CRUISER')) &&
+    (variantUpper.includes('79') || variantUpper.includes('78') || 
+     variantUpper.includes('76') || variantUpper.includes('70') ||
+     modelUpper.includes('79') || modelUpper.includes('78') || modelUpper.includes('76'));
+  
+  // Nissan Patrol Y61/GU
+  const isPatrolY61 = 
+    makeUpper === 'NISSAN' && 
+    modelUpper.includes('PATROL') &&
+    (variantUpper.includes('4.2') || variantUpper.includes('Y61') || 
+     variantUpper.includes('GU') || variantUpper.includes('DX') ||
+     variantUpper.includes('ST') || variantUpper.includes('TI'));
+  
+  // Combined flag for showing variant-critical fields
+  const isVariantCritical = isLC79Series || isPatrolY61;
 
   const loadData = async () => {
     const [dealerList, sales] = await Promise.all([
@@ -590,19 +602,24 @@ export default function LogSalePage() {
                   </div>
                 </div>
 
-                {/* LC79 Precision Pack - Engine & Cab Type (conditional) */}
-                {isLC79Series && (
+                {/* Variant-Critical Fields - Engine & Cab Type (conditional) */}
+                {isVariantCritical && (
                   <div className="space-y-4 p-4 rounded-lg border border-amber-500/30 bg-amber-500/5">
                     <div className="flex items-center gap-2 text-sm font-medium text-amber-600">
                       <AlertTriangle className="h-4 w-4" />
-                      LandCruiser 70/79 Series - Precision Matching
+                      {isLC79Series ? 'LandCruiser 70/79 Series' : 'Nissan Patrol'} — Precision Matching
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      These fields ensure we only match the <strong>exact engine and cab configuration</strong> you sold. V8 won't match 4cyl, dual cab won't match single.
+                      Providing engine and cab helps Kiting Mode avoid incorrect matches.
+                      {!formData.engine_code && !formData.cab_type && (
+                        <span className="block mt-1 text-amber-600">
+                          Without this info, some matches may be hidden or downgraded to WATCH only.
+                        </span>
+                      )}
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="engine_code">Engine *</Label>
+                        <Label htmlFor="engine_code">Engine (recommended)</Label>
                         <Select
                           value={formData.engine_code}
                           onValueChange={(v) => updateField('engine_code', v)}
@@ -611,28 +628,48 @@ export default function LogSalePage() {
                             <SelectValue placeholder="Select engine" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="VDJ">V8 Diesel (4.5L VDJ)</SelectItem>
-                            <SelectItem value="GDJ">4cyl Diesel (2.8L GDJ)</SelectItem>
-                            <SelectItem value="GRJ">V6 Petrol (4.0L GRJ)</SelectItem>
-                            <SelectItem value="UNKNOWN">Unknown / Any</SelectItem>
+                            {isLC79Series ? (
+                              <>
+                                <SelectItem value="VDJ">V8 Diesel (4.5L)</SelectItem>
+                                <SelectItem value="GDJ">4cyl Diesel (2.8L)</SelectItem>
+                                <SelectItem value="GRJ">V6 Petrol (4.0L)</SelectItem>
+                              </>
+                            ) : (
+                              <>
+                                <SelectItem value="TD42">4.2L Diesel (TD42)</SelectItem>
+                                <SelectItem value="ZD30">3.0L Diesel (ZD30)</SelectItem>
+                                <SelectItem value="TB48">4.8L Petrol (TB48)</SelectItem>
+                              </>
+                            )}
+                            <SelectItem value="UNKNOWN">Unknown</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="cab_type">Cab Type *</Label>
+                        <Label htmlFor="cab_type">Cab / Body (recommended)</Label>
                         <Select
                           value={formData.cab_type}
                           onValueChange={(v) => updateField('cab_type', v)}
                         >
                           <SelectTrigger className="bg-input">
-                            <SelectValue placeholder="Select cab type" />
+                            <SelectValue placeholder="Select cab/body type" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="SINGLE">Single Cab</SelectItem>
-                            <SelectItem value="DUAL">Dual Cab</SelectItem>
-                            <SelectItem value="EXTRA">Extra Cab</SelectItem>
-                            <SelectItem value="UNKNOWN">Unknown / Any</SelectItem>
+                            {isLC79Series ? (
+                              <>
+                                <SelectItem value="SINGLE">Single Cab</SelectItem>
+                                <SelectItem value="DUAL">Dual Cab</SelectItem>
+                                <SelectItem value="EXTRA">Extra Cab</SelectItem>
+                              </>
+                            ) : (
+                              <>
+                                <SelectItem value="WAGON">Wagon</SelectItem>
+                                <SelectItem value="UTE">Ute</SelectItem>
+                                <SelectItem value="CAB_CHASSIS">Cab Chassis</SelectItem>
+                              </>
+                            )}
+                            <SelectItem value="UNKNOWN">Unknown</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -688,11 +725,18 @@ export default function LogSalePage() {
                 </div>
 
                 {/* Kiting Mode Info */}
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800">
-                  <Target className="h-4 w-4 text-emerald-600 shrink-0" />
-                  <p className="text-sm text-emerald-700 dark:text-emerald-400">
-                    Uploading a sale with sell price activates <span className="font-semibold">Kiting Mode™</span> automatically.
-                  </p>
+                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800">
+                  <div className="flex items-start gap-2">
+                    <Target className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="text-sm text-emerald-700 dark:text-emerald-400">
+                      <p className="font-medium">
+                        Logging a sale automatically activates Kiting Mode™
+                      </p>
+                      <p className="text-xs mt-1 text-emerald-600/80 dark:text-emerald-500/80">
+                        All major outlets are continuously scanned (auctions + retail).
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Failed Hunt Fallback */}
