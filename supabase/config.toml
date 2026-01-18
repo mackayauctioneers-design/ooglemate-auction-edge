@@ -250,3 +250,12 @@ verify_jwt = false
 verify_jwt = false
 # Every 15 minutes - process due hunt scans
 schedule = "*/15 * * * *"
+
+[functions.pickles-outward-crawl]
+verify_jwt = false
+
+[functions.outward-hunt]
+verify_jwt = false
+
+[functions.build-unified-candidates]
+verify_jwt = false
