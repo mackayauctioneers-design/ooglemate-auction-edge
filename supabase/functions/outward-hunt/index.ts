@@ -427,8 +427,9 @@ function isJunkDomain(domain: string): boolean {
 }
 
 // =====================================================
-// URL PAGE-TYPE CLASSIFIER - Section C1 (ENHANCED)
-// More aggressive at rejecting articles/blogs/reviews
+// URL PAGE-TYPE CLASSIFIER - Section C1 (ENHANCED v2)
+// AGGRESSIVE rejection of search/category/spec/editorial pages
+// Only accepts DETAIL pages with individual listing IDs
 // =====================================================
 function classifyUrlPageType(url: string, domain: string): { page_type: 'listing' | 'article' | 'search' | 'category' | 'login' | 'other'; reject_reason: string | null } {
   const urlLower = url.toLowerCase();
@@ -438,34 +439,60 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
     return { page_type: 'other', reject_reason: 'BLOCKED_DOMAIN' };
   }
   
+  // CRITICAL: Search/category/results page patterns - HARD REJECT
+  // These are the main culprits returning broad grids instead of individual listings
+  const searchPatterns = [
+    '/search', '/results', '/filter', '/browse', '/find-',
+    '/cars/', '/vehicles/', // Broad category pages (NOT individual listings)
+    '?make=', '?model=', '?year=', '?keyword=', '?q=', '&q=',
+    '?sort=', '&sort=', '?page=', '&page=', '?offset=',
+    '/category/', '/categories/', '/listings/', '/all-',
+    '/used-cars?', '/pre-owned?', '/inventory?', // Query-based listing pages
+  ];
+  
+  // Check if URL looks like a DETAIL page (has individual listing ID)
+  const detailPatterns = [
+    /\/car\/\d{5,}/,           // Carsales detail: /car/123456
+    /\/s-ad\/\d{6,}/,          // Gumtree ad: /s-ad/1234567890
+    /\/lot\/\d{4,}/,           // Auction lot: /lot/12345
+    /\/details?\/[a-z0-9-]+/i, // Generic detail: /detail/abc-123
+    /\/stock\/[a-z0-9-]+/i,    // Dealer stock: /stock/ABC123
+    /\/item\/[a-z0-9-]+/i,     // Item page: /item/12345
+    /\/vehicle\/[a-z0-9-]+/i,  // Vehicle page: /vehicle/abc-123
+    /SSE-AD-\d+/i,             // Carsales SSE-AD-xxxxx
+    /OAG-AD-\d+/i,             // AutoTrader OAG-AD-xxxxx
+  ];
+  
+  const isDetailPage = detailPatterns.some(p => p.test(urlLower));
+  
+  // If it matches search pattern but NOT a detail page -> REJECT
+  for (const pattern of searchPatterns) {
+    if (urlLower.includes(pattern) && !isDetailPage) {
+      return { page_type: 'search', reject_reason: 'SEARCH_OR_CATEGORY_PAGE' };
+    }
+  }
+  
   // Non-listing URL patterns - reject these (EXPANDED list)
   const articlePatterns = [
     '/news/', '/blog/', '/article/', '/review/', '/reviews/', '/guide/', '/guides/',
     '/car-guide/', '/price-and-specs/', '/compare/', '/comparison/', '/insurance/',
     '/finance/', '/about/', '/help/', '/contact/', '/privacy/', '/terms/',
-    '/category/', '/login/', '/signin/', '/signup/', '/register/',
+    '/login/', '/signin/', '/signup/', '/register/',
     '/faq/', '/sitemap/', '/media/', '/press/', '/stories/', '/features/',
     '/insights/', '/resources/', '/tips/', '/how-to/', '/what-is/',
     '/best-', '/top-', '/vs-', '/advice/', '/editorial/',
     '/canopies/', '/ute-canopies/', '/ute-trays/', // accessory pages
     '/buying-guide/', '/ownership/', '/expert-reviews/',
     '/car-news/', '/news-and-reviews/', '/new-car/',  // Drive.com.au news sections
-    '/prices/', '/pricing/', '/specifications/',
+    '/prices/', '/pricing/', '/specifications/', '/specs/', '/towing-capacity/',
+    '/warranty/', '/service/', '/parts/', '/accessories/',
   ];
   
   for (const pattern of articlePatterns) {
     if (urlLower.includes(pattern)) {
-      const type = pattern.includes('login') || pattern.includes('signin') ? 'login' :
-                   pattern.includes('category') ? 'category' : 'article';
+      const type = pattern.includes('login') || pattern.includes('signin') ? 'login' : 'article';
       return { page_type: type, reject_reason: 'NON_LISTING_PAGE' };
     }
-  }
-  
-  // Search results pages - only reject if they're definitely search aggregators, not listing detail pages
-  // Don't reject URLs that have numeric IDs (likely individual listings)
-  const hasListingId = /\/\d{6,}/.test(urlLower) || /[a-z0-9]{20,}/i.test(urlLower);
-  if (!hasListingId && (urlLower.includes('/search/') || urlLower.includes('/search?') || urlLower.includes('?q=') || urlLower.includes('&q='))) {
-    return { page_type: 'search', reject_reason: 'SEARCH_RESULTS_PAGE' };
   }
   
   return { page_type: 'other', reject_reason: null };
@@ -482,9 +509,17 @@ function isVerifiedListingUrl(url: string, domain: string): { is_listing: boolea
     return { is_listing: true, listing_kind: 'retail_listing' };
   }
   
-  // Autotrader AU - car listings
-  if (domain.includes('autotrader.com.au') && (urlLower.includes('/car/') || urlLower.includes('/detail/'))) {
-    return { is_listing: true, listing_kind: 'retail_listing' };
+  // Autotrader AU - STRICT: car listings with numeric ID only, reject spec/towing pages
+  if (domain.includes('autotrader.com.au')) {
+    // Reject spec/towing/capacity pages
+    if (/\/(towing|specs|specifications|capacity|price)/.test(urlLower)) {
+      return { is_listing: false, listing_kind: null };
+    }
+    // Accept /car/ or /detail/ with ID
+    if (/\/(car|detail)\/[a-z0-9-]{6,}/i.test(urlLower)) {
+      return { is_listing: true, listing_kind: 'retail_listing' };
+    }
+    return { is_listing: false, listing_kind: null };
   }
   
   // Drive - classified listings (car detail pages with numeric IDs)
@@ -509,27 +544,40 @@ function isVerifiedListingUrl(url: string, domain: string): { is_listing: boolea
     return { is_listing: true, listing_kind: 'retail_listing' };
   }
   
-  // Pickles - auction lots (individual lot pages only)
+  // Pickles - auction lots (individual lot pages only - require numeric ID)
   if (domain.includes('pickles.com.au')) {
-    // Match /lots/123456 or /item/123456 patterns
-    if (/\/(lots?|item)\/\d+/.test(urlLower)) {
+    // Match /lots/123456 or /item/123456 patterns (must have numeric ID)
+    if (/\/(lots?|item)\/\d{4,}/.test(urlLower)) {
       return { is_listing: true, listing_kind: 'auction_lot' };
     }
+    // Reject /products/ and /used/ search pages
+    return { is_listing: false, listing_kind: null };
   }
   
-  // Manheim - auction lots
-  if (domain.includes('manheim.com.au') && (urlLower.includes('/auction') || urlLower.includes('/lot') || urlLower.includes('/vehicle'))) {
-    return { is_listing: true, listing_kind: 'auction_lot' };
+  // Manheim - auction lots (require specific lot/vehicle ID patterns)
+  if (domain.includes('manheim.com.au')) {
+    if (/\/(lot|vehicle)\/[a-z0-9-]{6,}/i.test(urlLower)) {
+      return { is_listing: true, listing_kind: 'auction_lot' };
+    }
+    return { is_listing: false, listing_kind: null };
   }
   
-  // Lloyds Auctions
-  if (domain.includes('lloydsauctions.com.au') && (urlLower.includes('/lot') || urlLower.includes('/auction') || urlLower.includes('/item'))) {
-    return { is_listing: true, listing_kind: 'auction_lot' };
+  // Lloyds Auctions (require lot/item ID)
+  if (domain.includes('lloydsauctions.com.au')) {
+    if (/\/(lot|item|auction)\/\d{4,}/.test(urlLower)) {
+      return { is_listing: true, listing_kind: 'auction_lot' };
+    }
+    return { is_listing: false, listing_kind: null };
   }
   
-  // Grays - auction lots
-  if (domain.includes('grays.com') && (urlLower.includes('/auction') || urlLower.includes('/lot') || urlLower.includes('/item'))) {
-    return { is_listing: true, listing_kind: 'auction_lot' };
+  // Grays - STRICT: Only accept /lot/ with numeric ID, reject /items/ and /products/
+  if (domain.includes('grays.com')) {
+    // Only accept /lot/123456 pattern (individual auction lots)
+    if (/\/lot\/\d{4,}/.test(urlLower)) {
+      return { is_listing: true, listing_kind: 'auction_lot' };
+    }
+    // Reject /items/, /products/, /auctions/ which are search/category pages
+    return { is_listing: false, listing_kind: null };
   }
   
   // Facebook Marketplace - individual item pages only
@@ -1256,52 +1304,63 @@ serve(async (req) => {
     // Build enhanced queries with listing-intent tokens
     const baseQueries: string[] = queries || [];
     
-    // AUCTION-FIRST query strategy
-    // Priority: Auctions (Tier 1) > Marketplaces (Tier 2) > Generic
+    // DETAIL-FIRST query strategy v2
+    // Targets individual listing pages, not search/category grids
     const enhancedQueries: string[] = [];
     
     // AU-specific site-targeted queries
-    const yearStr = hunt.year || '';
+    const yearStr = hunt.year ? String(hunt.year) : '';
     const make = hunt.make || '';
     const model = hunt.model || '';
     const badge = hunt.badge || '';
+    const seriesFamily = hunt.series_family || '';
+    const engineFamily = hunt.engine_family || '';
     const mustHaves = (hunt.must_have_tokens || []).slice(0, 2).join(' ');
     
-    // Hard negative tokens to append - STRONGER filtering
-    const negTokens = '-review -reviews -news -guide -guides -specs -pricing -facelift -best -top -article -blog -press -comparison -compare -insurance -"price and specs" -"buying guide" -caradvice -motoring';
+    // Build spec tokens for tighter matching
+    const specTokens: string[] = [];
+    if (badge) specTokens.push(badge);
+    if (seriesFamily) specTokens.push(seriesFamily.replace('LC', '')); // e.g., LC79 -> 79
+    if (engineFamily === 'V8_DIESEL') specTokens.push('V8');
+    if (engineFamily === 'I4_DIESEL') specTokens.push('2.8');
+    if (mustHaves) specTokens.push(mustHaves);
+    const specStr = specTokens.join(' ');
+    
+    // Hard negative tokens - AGGRESSIVE filtering of non-listing content
+    const negTokens = '-review -reviews -news -guide -guides -specs -pricing -facelift -best -top -article -blog -press -comparison -compare -insurance -"price and specs" -"buying guide" -caradvice -motoring -specifications -towing -capacity -ownership -"car news" -"what to know"';
     
     // ==========================================
-    // TIER 1: AUCTION SITES FIRST (query order matters!)
+    // TIER 1: AUCTION DETAIL PAGES (lot/ pattern required)
     // ==========================================
     enhancedQueries.push(
-      `site:pickles.com.au ${yearStr} ${make} ${model} ${badge} auction lot for sale ${negTokens}`.trim(),
-      `site:manheim.com.au ${yearStr} ${make} ${model} ${badge} auction ${negTokens}`.trim(),
-      `site:lloydsauctions.com.au ${make} ${model} auction lot ${negTokens}`.trim(),
-      `site:grays.com ${make} ${model} auctions ${negTokens}`.trim(),
+      `site:pickles.com.au inurl:lot ${yearStr} ${make} ${model} ${specStr} ${negTokens}`.trim(),
+      `site:manheim.com.au inurl:vehicle ${yearStr} ${make} ${model} ${specStr} ${negTokens}`.trim(),
+      `site:grays.com inurl:lot ${make} ${model} ${specStr} ${negTokens}`.trim(),
+      `site:lloydsauctions.com.au inurl:lot ${make} ${model} ${negTokens}`.trim(),
     );
     
     // ==========================================
-    // TIER 2: MARKETPLACE SITES
+    // TIER 2: MARKETPLACE DETAIL PAGES (require /car/ or /s-ad/ patterns)
     // ==========================================
     enhancedQueries.push(
-      `site:carsales.com.au ${yearStr} ${make} ${model} ${badge} ${mustHaves} for sale ${negTokens}`.trim(),
-      `site:autotrader.com.au ${yearStr} ${make} ${model} ${badge} ${mustHaves} for sale ${negTokens}`.trim(),
-      `site:gumtree.com.au ${yearStr} ${make} ${model} ${mustHaves} car for sale ${negTokens}`.trim(),
+      `site:carsales.com.au inurl:SSE-AD ${yearStr} ${make} ${model} ${specStr} ${negTokens}`.trim(),
+      `site:autotrader.com.au inurl:car ${yearStr} ${make} ${model} ${specStr} for sale ${negTokens}`.trim(),
+      `site:gumtree.com.au inurl:s-ad ${yearStr} ${make} ${model} ${specStr} ${negTokens}`.trim(),
     );
     
     // ==========================================
-    // TIER 3: GENERIC LISTING QUERIES (with must-have tokens)
+    // TIER 3: DEALER STOCK DETAIL PAGES (require /stock/ or /detail/ patterns)
     // ==========================================
-    if (mustHaves) {
+    if (specStr) {
       enhancedQueries.push(
-        `"${yearStr} ${make} ${model}" "${mustHaves}" "for sale" Australia ${negTokens}`.trim(),
+        `inurl:stock OR inurl:detail "${yearStr} ${make} ${model}" "${specStr}" for sale Australia ${negTokens}`.trim(),
       );
     }
     enhancedQueries.push(
-      `"${yearStr} ${make} ${model}" "$" "km" Australia for sale ${negTokens}`.trim(),
+      `inurl:vehicle "${yearStr} ${make} ${model}" "$" "km" for sale Australia ${negTokens}`.trim(),
     );
     
-    // Keep any original queries that weren't site-specific
+    // Keep any original queries that weren't site-specific (fallback)
     for (const q of baseQueries) {
       if (!q.includes('site:') && !enhancedQueries.includes(q)) {
         enhancedQueries.push(q);
@@ -1363,6 +1422,8 @@ serve(async (req) => {
             country: "AU",
             scrapeOptions: {
               formats: ["markdown"],
+              onlyMainContent: true,
+              waitFor: 4000,  // Wait for JS to load on dynamic pages
             },
           }),
         });
