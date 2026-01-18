@@ -259,3 +259,8 @@ verify_jwt = false
 
 [functions.build-unified-candidates]
 verify_jwt = false
+
+[functions.dealer-outbound-crawl]
+verify_jwt = false
+# Daily cron at 11:00am AEST (01:00 UTC) - crawl dealer sites after retail ingest
+schedule = "0 1 * * *"

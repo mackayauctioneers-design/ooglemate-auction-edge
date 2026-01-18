@@ -923,6 +923,57 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_outbound_sources: {
+        Row: {
+          consecutive_failures: number
+          created_at: string
+          dealer_domain: string
+          dealer_name: string
+          dealer_slug: string
+          enabled: boolean
+          id: string
+          inventory_path: string
+          last_crawl_at: string | null
+          last_crawl_count: number | null
+          last_crawl_error: string | null
+          notes: string | null
+          priority: string
+          updated_at: string
+        }
+        Insert: {
+          consecutive_failures?: number
+          created_at?: string
+          dealer_domain: string
+          dealer_name: string
+          dealer_slug: string
+          enabled?: boolean
+          id?: string
+          inventory_path?: string
+          last_crawl_at?: string | null
+          last_crawl_count?: number | null
+          last_crawl_error?: string | null
+          notes?: string | null
+          priority?: string
+          updated_at?: string
+        }
+        Update: {
+          consecutive_failures?: number
+          created_at?: string
+          dealer_domain?: string
+          dealer_name?: string
+          dealer_slug?: string
+          enabled?: boolean
+          id?: string
+          inventory_path?: string
+          last_crawl_at?: string | null
+          last_crawl_count?: number | null
+          last_crawl_error?: string | null
+          notes?: string | null
+          priority?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       dealer_outcomes: {
         Row: {
           confidence: number | null
@@ -3829,6 +3880,7 @@ export type Database = {
           criteria_version: number
           cylinders: number | null
           dealer_id: string
+          dealer_outbound_enabled: boolean
           drivetrain: string | null
           engine_code: string | null
           engine_family: string | null
@@ -3895,6 +3947,7 @@ export type Database = {
           criteria_version?: number
           cylinders?: number | null
           dealer_id: string
+          dealer_outbound_enabled?: boolean
           drivetrain?: string | null
           engine_code?: string | null
           engine_family?: string | null
@@ -3961,6 +4014,7 @@ export type Database = {
           criteria_version?: number
           cylinders?: number | null
           dealer_id?: string
+          dealer_outbound_enabled?: boolean
           drivetrain?: string | null
           engine_code?: string | null
           engine_family?: string | null
