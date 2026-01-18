@@ -7855,6 +7855,45 @@ export type Database = {
       }
       rpc_get_candidate_counts: { Args: { p_hunt_id: string }; Returns: Json }
       rpc_get_dealer_profile: { Args: { p_dealer_id: string }; Returns: Json }
+      rpc_get_live_matches: {
+        Args: { p_hunt_id: string; p_limit?: number; p_offset?: number }
+        Returns: {
+          badge: string
+          blocked_reason: string
+          body_type: string
+          cab_type: string
+          created_at: string
+          criteria_version: number
+          decision: string
+          dna_score: number
+          engine_family: string
+          hunt_id: string
+          id: string
+          is_cheapest: boolean
+          km: number
+          listing_intent: string
+          listing_intent_reason: string
+          location: string
+          make: string
+          model: string
+          price: number
+          rank_position: number
+          series_family: string
+          source: string
+          source_class: string
+          source_tier: number
+          source_type: string
+          title: string
+          url: string
+          variant_raw: string
+          verified: boolean
+          year: number
+        }[]
+      }
+      rpc_get_live_matches_count: {
+        Args: { p_hunt_id: string }
+        Returns: number
+      }
       rpc_get_today_opportunities: {
         Args: { p_dealer_id: string; p_filters?: Json }
         Returns: Json
