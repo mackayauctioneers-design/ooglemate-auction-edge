@@ -16,7 +16,8 @@ export interface LiveMatch {
   km: number | null;
   price: number | null;
   location: string | null;
-  decision: 'BUY' | 'WATCH' | 'UNVERIFIED';
+  decision: 'BUY' | 'WATCH' | 'DISCOVERED' | 'UNVERIFIED';
+  candidate_stage: string | null;
   source_tier: number | null;
   source_class: string | null;
   rank_position: number | null;
@@ -87,7 +88,8 @@ export function useLiveMatches({
         km: row.km,
         price: row.price,
         location: row.location,
-        decision: row.decision as 'BUY' | 'WATCH' | 'UNVERIFIED',
+        decision: row.decision as 'BUY' | 'WATCH' | 'DISCOVERED' | 'UNVERIFIED',
+        candidate_stage: row.candidate_stage,
         source_tier: row.source_tier,
         source_class: row.source_class,
         rank_position: row.rank_position,

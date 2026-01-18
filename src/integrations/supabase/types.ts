@@ -2338,6 +2338,7 @@ export type Database = {
           blocked_reason: string | null
           body_type: string | null
           cab_type: string | null
+          candidate_stage: string | null
           classification: Json | null
           created_at: string | null
           criteria_version: number
@@ -2393,6 +2394,7 @@ export type Database = {
           blocked_reason?: string | null
           body_type?: string | null
           cab_type?: string | null
+          candidate_stage?: string | null
           classification?: Json | null
           created_at?: string | null
           criteria_version?: number
@@ -2448,6 +2450,7 @@ export type Database = {
           blocked_reason?: string | null
           body_type?: string | null
           cab_type?: string | null
+          candidate_stage?: string | null
           classification?: Json | null
           created_at?: string | null
           criteria_version?: number
@@ -7859,6 +7862,7 @@ export type Database = {
       rpc_classify_hunt: { Args: { p_hunt_id: string }; Returns: Json }
       rpc_classify_listing: { Args: { p_listing_id: string }; Returns: Json }
       rpc_compute_rank_score: { Args: { p_hunt_id: string }; Returns: Json }
+      rpc_evaluate_candidates: { Args: { p_hunt_id: string }; Returns: Json }
       rpc_explain_why_listed: {
         Args: { p_dealer_id: string; p_lot_id: string }
         Returns: Json
@@ -7880,6 +7884,7 @@ export type Database = {
           blocked_reason: string
           body_type: string
           cab_type: string
+          candidate_stage: string
           created_at: string
           criteria_version: number
           decision: string
@@ -7916,61 +7921,96 @@ export type Database = {
         Args: { p_dealer_id: string; p_filters?: Json }
         Returns: Json
       }
-      rpc_get_unified_candidates: {
-        Args: {
-          p_decision_filter?: string
-          p_exclude_ignore?: boolean
-          p_hunt_id: string
-          p_limit?: number
-          p_offset?: number
-          p_source_filter?: string
-        }
-        Returns: {
-          asking_price: number
-          badge: string
-          blocked_reason: string
-          body_type: string
-          cab_type: string
-          created_at: string
-          criteria_version: number
-          decision: string
-          dna_score: number
-          domain: string
-          effective_price: number
-          engine_family: string
-          final_score: number
-          gap_dollars: number
-          gap_pct: number
-          hunt_id: string
-          id: string
-          id_kit: Json
-          is_cheapest: boolean
-          km: number
-          location: string
-          make: string
-          match_score: number
-          model: string
-          price: number
-          price_score: number
-          rank_position: number
-          rank_score: number
-          reasons: string[]
-          requires_manual_check: boolean
-          series_family: string
-          sort_reason: string[]
-          source: string
-          source_class: string
-          source_listing_id: string
-          source_name: string
-          source_tier: number
-          source_type: string
-          title: string
-          url: string
-          variant: string
-          verified: boolean
-          year: number
-        }[]
-      }
+      rpc_get_unified_candidates:
+        | {
+            Args: {
+              p_decision_filter?: string
+              p_hunt_id: string
+              p_limit?: number
+              p_offset?: number
+              p_source_filter?: string
+            }
+            Returns: {
+              blocked_reason: string
+              candidate_stage: string
+              created_at: string
+              criteria_version: number
+              decision: string
+              dna_score: number
+              hunt_id: string
+              id: string
+              km: number
+              location: string
+              make: string
+              model: string
+              price: number
+              rank_position: number
+              source: string
+              source_class: string
+              source_tier: number
+              source_type: string
+              title: string
+              url: string
+              variant_raw: string
+              verified: boolean
+              year: number
+            }[]
+          }
+        | {
+            Args: {
+              p_decision_filter?: string
+              p_exclude_ignore?: boolean
+              p_hunt_id: string
+              p_limit?: number
+              p_offset?: number
+              p_source_filter?: string
+            }
+            Returns: {
+              asking_price: number
+              badge: string
+              blocked_reason: string
+              body_type: string
+              cab_type: string
+              created_at: string
+              criteria_version: number
+              decision: string
+              dna_score: number
+              domain: string
+              effective_price: number
+              engine_family: string
+              final_score: number
+              gap_dollars: number
+              gap_pct: number
+              hunt_id: string
+              id: string
+              id_kit: Json
+              is_cheapest: boolean
+              km: number
+              location: string
+              make: string
+              match_score: number
+              model: string
+              price: number
+              price_score: number
+              rank_position: number
+              rank_score: number
+              reasons: string[]
+              requires_manual_check: boolean
+              series_family: string
+              sort_reason: string[]
+              source: string
+              source_class: string
+              source_listing_id: string
+              source_name: string
+              source_tier: number
+              source_type: string
+              title: string
+              url: string
+              variant: string
+              verified: boolean
+              year: number
+            }[]
+          }
       rpc_get_unified_candidates_count: {
         Args: {
           p_decision_filter?: string
