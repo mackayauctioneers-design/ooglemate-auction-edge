@@ -7436,48 +7436,57 @@ export type Database = {
         Args: { p_dealer_id: string; p_filters?: Json }
         Returns: Json
       }
-      rpc_get_unified_candidates: {
-        Args: {
-          p_decision_filter?: string
-          p_hunt_id: string
-          p_limit?: number
-          p_offset?: number
-          p_source_filter?: string
-        }
-        Returns: {
-          asking_price: number
-          confidence: string
-          criteria_version: number
-          decision: string
-          dna_score: number
-          effective_price: number
-          final_score: number
-          first_seen_at: string
-          gap_dollars: number
-          gap_pct: number
-          hunt_id: string
-          id: string
-          is_verified: boolean
-          km: number
-          listing_url: string
-          location: string
-          make: string
-          model: string
-          price_score: number
-          rank_score: number
-          reasons: string[]
-          sort_reason: string[]
-          source_class: string
-          source_listing_id: string
-          source_name: string
-          source_tier: number
-          source_type: string
-          title: string
-          url: string
-          variant: string
-          year: number
-        }[]
-      }
+      rpc_get_unified_candidates:
+        | {
+            Args: {
+              p_decision_filter?: string
+              p_hunt_id: string
+              p_limit?: number
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_decision_filter?: string
+              p_hunt_id: string
+              p_limit?: number
+              p_offset?: number
+              p_source_filter?: string
+            }
+            Returns: {
+              asking_price: number
+              confidence: string
+              criteria_version: number
+              decision: string
+              dna_score: number
+              effective_price: number
+              final_score: number
+              first_seen_at: string
+              gap_dollars: number
+              gap_pct: number
+              hunt_id: string
+              id: string
+              is_verified: boolean
+              km: number
+              listing_url: string
+              location: string
+              make: string
+              model: string
+              price_score: number
+              rank_score: number
+              reasons: string[]
+              sort_reason: string[]
+              source_class: string
+              source_listing_id: string
+              source_name: string
+              source_tier: number
+              source_type: string
+              title: string
+              url: string
+              variant: string
+              year: number
+            }[]
+          }
       rpc_get_unified_candidates_count: {
         Args: {
           p_decision_filter?: string
