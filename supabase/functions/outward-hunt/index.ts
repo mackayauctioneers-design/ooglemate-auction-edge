@@ -978,7 +978,7 @@ serve(async (req) => {
             if (allRejectReasons.length > 0 && !candidate.is_listing) {
               results.candidates_rejected++;
               
-              // Save rejected candidate
+              // Save rejected candidate with criteria_version
               await supabase
                 .from('hunt_external_candidates')
                 .upsert({
@@ -1005,6 +1005,9 @@ serve(async (req) => {
                   km_verified: false,
                   year_verified: false,
                   verified_fields: {},
+                  // CRITICAL: Set criteria_version for version alignment
+                  criteria_version: hunt.criteria_version,
+                  is_stale: false,
                 }, { onConflict: 'dedup_key' });
               
               continue;
@@ -1013,7 +1016,7 @@ serve(async (req) => {
             // Score and decide
             const { score, decision, reasons } = scoreAndDecide(candidate, classification, hunt as Hunt);
             
-            // Upsert to hunt_external_candidates
+            // Upsert to hunt_external_candidates with criteria_version
             const { data: upsertedCandidate, error: upsertError } = await supabase
               .from('hunt_external_candidates')
               .upsert({
@@ -1047,6 +1050,9 @@ serve(async (req) => {
                   km: candidate.km,
                   year: candidate.year,
                 },
+                // CRITICAL: Set criteria_version for version alignment
+                criteria_version: hunt.criteria_version,
+                is_stale: false,
               }, { onConflict: 'dedup_key' })
               .select('id, alert_emitted')
               .single();
