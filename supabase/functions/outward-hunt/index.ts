@@ -1330,8 +1330,9 @@ serve(async (req) => {
     // Build enhanced queries with listing-intent tokens
     const baseQueries: string[] = queries || [];
     
-    // DETAIL-FIRST query strategy v3
-    // Targets individual listing pages, not search/category grids
+    // SIMPLIFIED query strategy v4
+    // Firecrawl search API doesn't support Google operators (inurl:, year ranges)
+    // Use simple site: + keywords instead
     const enhancedQueries: string[] = [];
     
     // AU-specific site-targeted queries
@@ -1342,11 +1343,10 @@ serve(async (req) => {
     const engineFamily = hunt.engine_family || '';
     const mustHaves = (hunt.must_have_tokens || []).slice(0, 2).join(' ');
     
-    // Build year range string (e.g., "2023..2025")
+    // Use individual year for better results
     const huntYear = hunt.year || new Date().getFullYear();
     const yearMin = hunt.year_min ?? (huntYear - 1);
     const yearMax = hunt.year_max ?? (huntYear + 1);
-    const yearRange = `${yearMin}..${yearMax}`;
     
     // Build spec tokens for tighter matching
     const specTokens: string[] = [];
@@ -1358,37 +1358,38 @@ serve(async (req) => {
     if (mustHaves) specTokens.push(mustHaves);
     const specStr = specTokens.join(' ');
     
-    // Hard negative tokens - AGGRESSIVE filtering
-    const negTokens = '-blog -news -review -guide -comparison -towing -specs -capacity -insurance -price-list -finance -warranty -about -contact -privacy -terms -best -top -article -editorial -ownership -"price and specs" -"buying guide" -caradvice -motoring';
+    // Simpler negatives (Firecrawl-compatible)
+    const negTokens = '-review -news -blog -specs -guide';
+    
+    // Build year list (e.g., "2023 OR 2024 OR 2025")
+    const years: number[] = [];
+    for (let y = yearMin; y <= yearMax; y++) years.push(y);
+    const yearStr = years.join(' ');
     
     // ==========================================
-    // TIER 1: AUCTION DETAIL PAGES (lot/details/vehicle required)
+    // TIER 1: AUCTION SITES (simple site: queries)
     // ==========================================
     enhancedQueries.push(
-      `site:pickles.com.au inurl:details ${yearRange} ${make} ${model} ${specStr} ${negTokens}`.trim(),
-      `site:manheim.com.au inurl:vehicle ${yearRange} ${make} ${model} ${specStr} ${negTokens}`.trim(),
-      `site:grays.com inurl:lot ${make} ${model} ${specStr} ${negTokens}`.trim(),
+      `site:pickles.com.au ${make} ${model} ${specStr} ${yearStr} ${negTokens}`.trim(),
+      `site:manheim.com.au ${make} ${model} ${specStr} ${yearStr} ${negTokens}`.trim(),
+      `site:grays.com ${make} ${model} ${specStr} ${negTokens}`.trim(),
     );
     
     // ==========================================
-    // TIER 2: MARKETPLACE DETAIL PAGES (require detail/ad patterns)
+    // TIER 2: MAJOR MARKETPLACES
     // ==========================================
     enhancedQueries.push(
-      `site:carsales.com.au inurl:SSE-AD ${yearRange} ${make} ${model} ${specStr} ${negTokens}`.trim(),
-      `site:autotrader.com.au inurl:car ${yearRange} ${make} ${model} ${specStr} ${negTokens}`.trim(),
-      `site:gumtree.com.au inurl:s-ad ${yearRange} ${make} ${model} ${specStr} ${negTokens}`.trim(),
+      `site:carsales.com.au ${yearStr} ${make} ${model} ${specStr} ${negTokens}`.trim(),
+      `site:autotrader.com.au ${yearStr} ${make} ${model} ${specStr} ${negTokens}`.trim(),
+      `site:gumtree.com.au ${yearStr} ${make} ${model} ${specStr} ${negTokens}`.trim(),
     );
     
     // ==========================================
-    // TIER 3: DEALER STOCK DETAIL PAGES (require /stock/ or /detail/ patterns)
+    // TIER 3: BROADER SEARCH (for sale Australia)
     // ==========================================
-    if (specStr) {
-      enhancedQueries.push(
-        `inurl:stock OR inurl:detail "${yearRange} ${make} ${model}" "${specStr}" for sale Australia ${negTokens}`.trim(),
-      );
-    }
     enhancedQueries.push(
-      `inurl:vehicle "${yearRange} ${make} ${model}" "$" "km" for sale Australia ${negTokens}`.trim(),
+      `${yearStr} ${make} ${model} ${specStr} for sale Australia auction ${negTokens}`.trim(),
+      `${yearStr} ${make} ${model} ${specStr} "$" "km" for sale Australia ${negTokens}`.trim(),
     );
     
     // Keep any original queries that weren't site-specific (fallback)
