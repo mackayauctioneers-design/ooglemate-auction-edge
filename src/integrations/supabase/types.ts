@@ -2307,8 +2307,10 @@ export type Database = {
           price: number | null
           price_score: number | null
           rank_position: number | null
+          rank_score: number | null
           reasons: string[] | null
           requires_manual_check: boolean | null
+          sort_reason: string[] | null
           source: string
           source_class: string | null
           source_listing_id: string | null
@@ -2345,8 +2347,10 @@ export type Database = {
           price?: number | null
           price_score?: number | null
           rank_position?: number | null
+          rank_score?: number | null
           reasons?: string[] | null
           requires_manual_check?: boolean | null
+          sort_reason?: string[] | null
           source: string
           source_class?: string | null
           source_listing_id?: string | null
@@ -2383,8 +2387,10 @@ export type Database = {
           price?: number | null
           price_score?: number | null
           rank_position?: number | null
+          rank_score?: number | null
           reasons?: string[] | null
           requires_manual_check?: boolean | null
+          sort_reason?: string[] | null
           source?: string
           source_class?: string | null
           source_listing_id?: string | null
@@ -7406,6 +7412,7 @@ export type Database = {
       }
       rpc_classify_hunt: { Args: { p_hunt_id: string }; Returns: Json }
       rpc_classify_listing: { Args: { p_listing_id: string }; Returns: Json }
+      rpc_compute_rank_score: { Args: { p_hunt_id: string }; Returns: Json }
       rpc_explain_why_listed: {
         Args: { p_dealer_id: string; p_lot_id: string }
         Returns: Json
@@ -7451,7 +7458,9 @@ export type Database = {
           make: string
           model: string
           price_score: number
+          rank_score: number
           reasons: string[]
+          sort_reason: string[]
           source_class: string
           source_listing_id: string
           source_name: string

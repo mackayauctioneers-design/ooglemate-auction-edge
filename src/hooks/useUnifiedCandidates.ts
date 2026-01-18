@@ -94,6 +94,7 @@ export function useUnifiedCandidates({
         domain: row.domain,
         // DNA-first ranking fields
         dna_score: row.dna_score || row.match_score || 0,
+        rank_score: row.rank_score || 0, // NEW: Combined ranking score
         match_score: row.match_score || row.dna_score,
         price_score: row.price_score,
         final_score: row.final_score,
@@ -111,6 +112,7 @@ export function useUnifiedCandidates({
         first_seen_at: row.first_seen_at,
         // Debug info
         reasons: row.reasons || [],
+        sort_reason: row.sort_reason || [], // NEW: Deterministic audit trail
         // Status
         is_verified: row.is_verified,
         is_cheapest: row.is_cheapest,

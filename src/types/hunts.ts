@@ -270,6 +270,7 @@ export interface UnifiedCandidate {
   
   // DNA-first ranking fields
   dna_score: number;
+  rank_score?: number; // NEW: Combined tier + DNA + gap + km + recency score
   match_score?: number;
   price_score?: number;
   final_score?: number;
@@ -290,6 +291,7 @@ export interface UnifiedCandidate {
   
   // Debug info (mandatory for operator trust)
   reasons: string[] | null;
+  sort_reason?: string[]; // NEW: Deterministic audit trail for ranking
   
   // Status
   is_verified?: boolean;
