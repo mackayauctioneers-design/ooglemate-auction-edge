@@ -1114,6 +1114,8 @@ serve(async (req) => {
                   listing_id: upsertedCandidate.id,
                   alert_type: decision,
                   payload: alertPayload,
+                  criteria_version: hunt.criteria_version || 1,
+                  is_stale: false,
                 });
                 
                 if (!alertErr) {
