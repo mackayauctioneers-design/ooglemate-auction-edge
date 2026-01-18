@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, AlertTriangle, Check, Clock, ExternalLink, Globe, Info, Pencil, Trophy, TrendingDown, Zap } from "lucide-react";
+import { AlertCircle, AlertTriangle, Bell, Check, Clock, ExternalLink, Globe, Info, Pencil, Trophy, TrendingDown, Zap } from "lucide-react";
+import { Link } from "react-router-dom";
 import { EditHuntDrawer } from "@/components/hunts/EditHuntDrawer";
 import { CarsalesIdKitModal } from "@/components/hunts/CarsalesIdKitModal";
 import { formatDistanceToNow } from "date-fns";
@@ -405,6 +406,18 @@ export default function HuntDetailPage() {
           lastAlertAt={alerts[0]?.created_at}
           lastMatchAt={matches[0]?.matched_at}
         />
+
+        {/* Link to Hunt Alerts */}
+        {alerts.length > 0 && (
+          <div className="flex items-center justify-end">
+            <Link to="/hunt-alerts">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Bell className="h-4 w-4" />
+                View All Alerts ({alerts.filter(a => !a.acknowledged_at).length} new)
+              </Button>
+            </Link>
+          </div>
+        )}
 
         {/* Strike Success Banner */}
         {latestStrike && (
