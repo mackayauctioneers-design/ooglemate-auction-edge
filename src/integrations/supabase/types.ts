@@ -7169,6 +7169,27 @@ export type Database = {
         }
         Returns: Json
       }
+      fn_compute_identity_score: {
+        Args: {
+          p_cand_badge: string
+          p_cand_body: string
+          p_cand_cab: string
+          p_cand_engine: string
+          p_cand_km: number
+          p_cand_series: string
+          p_cand_text: string
+          p_cand_year: number
+          p_hunt_badge: string
+          p_hunt_body: string
+          p_hunt_cab: string
+          p_hunt_engine: string
+          p_hunt_km: number
+          p_hunt_must_tokens: string[]
+          p_hunt_series: string
+          p_hunt_year: number
+        }
+        Returns: number
+      }
       fn_compute_outward_dna_score:
         | {
             Args: {
@@ -7832,6 +7853,7 @@ export type Database = {
         }
         Returns: Json
       }
+      rpc_get_candidate_counts: { Args: { p_hunt_id: string }; Returns: Json }
       rpc_get_dealer_profile: { Args: { p_dealer_id: string }; Returns: Json }
       rpc_get_today_opportunities: {
         Args: { p_dealer_id: string; p_filters?: Json }
@@ -7873,6 +7895,51 @@ export type Database = {
               source_type: string
               updated_at: string
               url: string
+              verified: boolean
+              year: number
+            }[]
+          }
+        | {
+            Args: {
+              p_decision_filter?: string
+              p_exclude_ignore?: boolean
+              p_hunt_id: string
+              p_limit?: number
+              p_offset?: number
+              p_source_filter?: string
+            }
+            Returns: {
+              badge: string
+              blocked_reason: string
+              body_type: string
+              cab_type: string
+              created_at: string
+              criteria_version: number
+              decision: string
+              dna_score: number
+              engine_family: string
+              hunt_id: string
+              id: string
+              identity_confidence: number
+              identity_key: string
+              is_cheapest: boolean
+              km: number
+              listing_intent: string
+              listing_intent_reason: string
+              location: string
+              make: string
+              match_score: number
+              model: string
+              price: number
+              rank_position: number
+              series_family: string
+              source: string
+              source_class: string
+              source_tier: number
+              source_type: string
+              title: string
+              url: string
+              variant_raw: string
               verified: boolean
               year: number
             }[]
