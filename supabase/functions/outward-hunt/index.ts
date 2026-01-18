@@ -427,7 +427,8 @@ function isJunkDomain(domain: string): boolean {
 }
 
 // =====================================================
-// URL PAGE-TYPE CLASSIFIER - Section C1
+// URL PAGE-TYPE CLASSIFIER - Section C1 (ENHANCED)
+// More aggressive at rejecting articles/blogs/reviews
 // =====================================================
 function classifyUrlPageType(url: string, domain: string): { page_type: 'listing' | 'article' | 'search' | 'category' | 'login' | 'other'; reject_reason: string | null } {
   const urlLower = url.toLowerCase();
@@ -437,7 +438,7 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
     return { page_type: 'other', reject_reason: 'BLOCKED_DOMAIN' };
   }
   
-  // Non-listing URL patterns - reject these
+  // Non-listing URL patterns - reject these (EXPANDED list)
   const articlePatterns = [
     '/news/', '/blog/', '/article/', '/review/', '/reviews/', '/guide/', '/guides/',
     '/car-guide/', '/price-and-specs/', '/compare/', '/comparison/', '/insurance/',
@@ -447,6 +448,9 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
     '/insights/', '/resources/', '/tips/', '/how-to/', '/what-is/',
     '/best-', '/top-', '/vs-', '/advice/', '/editorial/',
     '/canopies/', '/ute-canopies/', '/ute-trays/', // accessory pages
+    '/buying-guide/', '/ownership/', '/expert-reviews/',
+    '/car-news/', '/news-and-reviews/', '/new-car/',  // Drive.com.au news sections
+    '/prices/', '/pricing/', '/specifications/',
   ];
   
   for (const pattern of articlePatterns) {
@@ -1252,39 +1256,59 @@ serve(async (req) => {
     // Build enhanced queries with listing-intent tokens
     const baseQueries: string[] = queries || [];
     
-    // Add mandatory listing-intent queries
+    // AUCTION-FIRST query strategy
+    // Priority: Auctions (Tier 1) > Marketplaces (Tier 2) > Generic
     const enhancedQueries: string[] = [];
     
-    // Keep first 2 original queries
-    enhancedQueries.push(...baseQueries.slice(0, 2));
-    
-    // Add AU-specific site-targeted queries
+    // AU-specific site-targeted queries
     const yearStr = hunt.year || '';
     const make = hunt.make || '';
     const model = hunt.model || '';
+    const badge = hunt.badge || '';
     const mustHaves = (hunt.must_have_tokens || []).slice(0, 2).join(' ');
     
-    // Hard negative tokens to append
-    const negTokens = '-review -reviews -news -guide -guides -specs -pricing -facelift -best -top -article -blog -press -comparison -compare -insurance';
+    // Hard negative tokens to append - STRONGER filtering
+    const negTokens = '-review -reviews -news -guide -guides -specs -pricing -facelift -best -top -article -blog -press -comparison -compare -insurance -"price and specs" -"buying guide" -caradvice -motoring';
     
-    // Site-specific queries for Australian car sites
+    // ==========================================
+    // TIER 1: AUCTION SITES FIRST (query order matters!)
+    // ==========================================
     enhancedQueries.push(
-      `site:carsales.com.au ${yearStr} ${make} ${model} ${mustHaves} for sale ${negTokens}`.trim(),  // Carsales first!
-      `site:autotrader.com.au ${yearStr} ${make} ${model} ${mustHaves} for sale ${negTokens}`.trim(),
-      `site:gumtree.com.au ${yearStr} ${make} ${model} ${mustHaves} car for sale ${negTokens}`.trim(),
-      `site:pickles.com.au ${make} ${model} auction lot ${negTokens}`.trim(),
-      `site:manheim.com.au ${make} ${model} auction ${negTokens}`.trim(),
-      `site:lloydsauctions.com.au ${make} ${model} auction ${negTokens}`.trim(),
+      `site:pickles.com.au ${yearStr} ${make} ${model} ${badge} auction lot for sale ${negTokens}`.trim(),
+      `site:manheim.com.au ${yearStr} ${make} ${model} ${badge} auction ${negTokens}`.trim(),
+      `site:lloydsauctions.com.au ${make} ${model} auction lot ${negTokens}`.trim(),
       `site:grays.com ${make} ${model} auctions ${negTokens}`.trim(),
     );
     
-    // Generic listing queries
+    // ==========================================
+    // TIER 2: MARKETPLACE SITES
+    // ==========================================
     enhancedQueries.push(
-      `"${yearStr} ${make} ${model}" "for sale" Australia ${mustHaves} ${negTokens}`.trim(),
-      `${yearStr} ${make} ${model} used car dealer Australia ${negTokens}`.trim(),
+      `site:carsales.com.au ${yearStr} ${make} ${model} ${badge} ${mustHaves} for sale ${negTokens}`.trim(),
+      `site:autotrader.com.au ${yearStr} ${make} ${model} ${badge} ${mustHaves} for sale ${negTokens}`.trim(),
+      `site:gumtree.com.au ${yearStr} ${make} ${model} ${mustHaves} car for sale ${negTokens}`.trim(),
     );
     
-    // Dedupe and limit
+    // ==========================================
+    // TIER 3: GENERIC LISTING QUERIES (with must-have tokens)
+    // ==========================================
+    if (mustHaves) {
+      enhancedQueries.push(
+        `"${yearStr} ${make} ${model}" "${mustHaves}" "for sale" Australia ${negTokens}`.trim(),
+      );
+    }
+    enhancedQueries.push(
+      `"${yearStr} ${make} ${model}" "$" "km" Australia for sale ${negTokens}`.trim(),
+    );
+    
+    // Keep any original queries that weren't site-specific
+    for (const q of baseQueries) {
+      if (!q.includes('site:') && !enhancedQueries.includes(q)) {
+        enhancedQueries.push(q);
+      }
+    }
+    
+    // Dedupe and limit to 8 queries max
     const searchQueries = [...new Set(enhancedQueries)].slice(0, 8);
     
     console.log(`Outward hunt v1.2 for ${hunt_id}: ${searchQueries.length} queries`);
