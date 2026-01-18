@@ -462,6 +462,7 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
     /\/inventory\/[a-z0-9-]+/i,   // Inventory detail: /inventory/12345
     /\/listing\/[a-z0-9-]+/i,     // Listing page: /listing/abc-123
     /\/item\/[a-z0-9-]+/i,        // Item page: /item/12345
+    /\/ad\/[a-z0-9-]+/i,          // Dealer ad page: /ad/12345 or /ad/hyundai-i30
     /SSE-AD-\d+/i,                // Carsales SSE-AD-xxxxx
     /OAG-AD-\d+/i,                // AutoTrader OAG-AD-xxxxx
   ];
@@ -1454,6 +1455,7 @@ serve(async (req) => {
               onlyMainContent: true,
               waitFor: 4000,  // Wait for JS to load on dynamic pages
             },
+            timeout: 30000,  // 30s timeout for JS-heavy pages
           }),
         });
         
