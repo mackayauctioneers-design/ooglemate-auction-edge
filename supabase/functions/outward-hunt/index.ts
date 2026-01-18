@@ -1440,17 +1440,26 @@ serve(async (req) => {
                   score = Math.min(10, Math.max(0, score));
                   const decision = score >= 7.0 ? 'BUY' : score >= 5.0 ? 'WATCH' : 'IGNORE';
                   
-                  // UNIQUE DEDUP KEY for Carsales cards
-                  const dedupKey = `carsales:${card.external_id}`;
+                  // Use canonical_id for proper dedupe
+                  const canonicalId = `carsales:${card.external_id}`;
+                  const cardUrl = card.details_url || `${resultUrl}#card=${card.external_id}`;
                   
-                  // Upsert Carsales card as candidate
+                  // Get source_tier from DB function
+                  const { data: tierData } = await supabase.rpc('fn_source_tier', { 
+                    p_url: cardUrl, 
+                    p_source_name: 'carsales.com.au' 
+                  });
+                  const sourceTier = tierData ?? 2;
+                  
+                  // Upsert Carsales card as candidate with canonical_id
                   const { data: upsertedCard, error: upsertErr } = await supabase
                     .from('hunt_external_candidates')
                     .upsert({
                       hunt_id,
-                      source_url: card.details_url || `${resultUrl}#card=${card.external_id}`,
+                      source_url: cardUrl,
                       source_name: 'carsales.com.au',
-                      dedup_key: dedupKey,  // UNIQUE per card, not per page!
+                      canonical_id: canonicalId,
+                      dedup_key: canonicalId,  // Keep for backwards compat
                       title: card.title,
                       raw_snippet: card.raw_snippet,
                       year: card.year,
@@ -1476,10 +1485,10 @@ serve(async (req) => {
                       },
                       criteria_version: hunt.criteria_version,
                       is_stale: false,
-                      // Mark as requiring manual check (Carsales blocks scraping)
-                      ext_listing_intent: 'listing',
-                      ext_listing_intent_reason: 'CARSALES_CARD_EXTRACTED',
-                    }, { onConflict: 'dedup_key' })
+                      listing_intent: 'listing',
+                      listing_intent_reason: 'CARSALES_CARD_EXTRACTED',
+                      source_tier: sourceTier,
+                    }, { onConflict: 'hunt_id,criteria_version,canonical_id' })
                     .select('id, alert_emitted')
                     .single();
                   
@@ -1572,14 +1581,32 @@ serve(async (req) => {
             if (shouldReject) {
               results.candidates_rejected++;
               
-              // Save rejected candidate with criteria_version
+              // Use canonical_id for proper dedupe
+              const { data: canonicalData } = await supabase.rpc('fn_canonical_listing_id', { p_url: candidate.url });
+              const canonicalId = canonicalData || `${candidate.domain}:${btoa(candidate.url).slice(0, 32)}`;
+              
+              const { data: tierData } = await supabase.rpc('fn_source_tier', { 
+                p_url: candidate.url, 
+                p_source_name: candidate.domain 
+              });
+              const sourceTier = tierData ?? 3;
+              
+              const { data: intentData } = await supabase.rpc('fn_classify_listing_intent', { 
+                p_url: candidate.url, 
+                p_title: candidate.title, 
+                p_snippet: candidate.snippet 
+              });
+              const intentObj = intentData || { intent: 'unknown', reason: 'RPC_FAILED' };
+              
+              // Save rejected candidate with criteria_version and canonical_id
               await supabase
                 .from('hunt_external_candidates')
                 .upsert({
                   hunt_id,
                   source_url: candidate.url,
                   source_name: candidate.domain,
-                  dedup_key: candidate.url,
+                  canonical_id: canonicalId,
+                  dedup_key: canonicalId,  // Keep for backwards compat
                   title: candidate.title,
                   raw_snippet: candidate.snippet,
                   year: candidate.year,
@@ -1590,7 +1617,6 @@ serve(async (req) => {
                   location: candidate.location,
                   confidence: candidate.confidence,
                   decision: 'IGNORE',
-                  // New v1.2 fields
                   is_listing: candidate.is_listing,
                   listing_kind: candidate.listing_kind,
                   page_type: candidate.page_type,
@@ -1599,10 +1625,12 @@ serve(async (req) => {
                   km_verified: false,
                   year_verified: false,
                   verified_fields: {},
-                  // CRITICAL: Set criteria_version for version alignment
                   criteria_version: hunt.criteria_version,
                   is_stale: false,
-                }, { onConflict: 'dedup_key' });
+                  listing_intent: intentObj.intent,
+                  listing_intent_reason: intentObj.reason,
+                  source_tier: sourceTier,
+                }, { onConflict: 'hunt_id,criteria_version,canonical_id' });
               
               continue;
             }
@@ -1610,14 +1638,32 @@ serve(async (req) => {
             // Score and decide
             const { score, decision, reasons } = scoreAndDecide(candidate, classification, hunt as Hunt);
             
-            // Upsert to hunt_external_candidates with criteria_version
+            // Use canonical_id for proper dedupe (not URL-based)
+            const { data: canonicalData } = await supabase.rpc('fn_canonical_listing_id', { p_url: candidate.url });
+            const canonicalId = canonicalData || `${candidate.domain}:${btoa(candidate.url).slice(0, 32)}`;
+            
+            const { data: tierData } = await supabase.rpc('fn_source_tier', { 
+              p_url: candidate.url, 
+              p_source_name: candidate.domain 
+            });
+            const sourceTier = tierData ?? 3;
+            
+            const { data: intentData } = await supabase.rpc('fn_classify_listing_intent', { 
+              p_url: candidate.url, 
+              p_title: candidate.title, 
+              p_snippet: candidate.snippet 
+            });
+            const intentObj = intentData || { intent: 'unknown', reason: 'RPC_FAILED' };
+            
+            // Upsert to hunt_external_candidates with canonical_id for dedupe
             const { data: upsertedCandidate, error: upsertError } = await supabase
               .from('hunt_external_candidates')
               .upsert({
                 hunt_id,
                 source_url: candidate.url,
                 source_name: candidate.domain,
-                dedup_key: candidate.url,
+                canonical_id: canonicalId,
+                dedup_key: canonicalId,  // Keep for backwards compat
                 title: candidate.title,
                 raw_snippet: candidate.snippet,
                 year: candidate.year,
@@ -1631,7 +1677,6 @@ serve(async (req) => {
                 match_score: score,
                 decision,
                 alert_emitted: false,
-                // New v1.2 fields
                 is_listing: candidate.is_listing,
                 listing_kind: candidate.listing_kind,
                 page_type: candidate.page_type,
@@ -1644,10 +1689,12 @@ serve(async (req) => {
                   km: candidate.km,
                   year: candidate.year,
                 },
-                // CRITICAL: Set criteria_version for version alignment
                 criteria_version: hunt.criteria_version,
                 is_stale: false,
-              }, { onConflict: 'dedup_key' })
+                listing_intent: intentObj.intent,
+                listing_intent_reason: intentObj.reason,
+                source_tier: sourceTier,
+              }, { onConflict: 'hunt_id,criteria_version,canonical_id' })
               .select('id, alert_emitted')
               .single();
             
