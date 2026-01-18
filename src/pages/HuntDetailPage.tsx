@@ -622,24 +622,25 @@ export default function HuntDetailPage() {
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="p-3 text-left font-medium">#</th>
-                        <th className="p-3 text-left font-medium">DNA</th>
+                        <th className="p-3 text-left font-medium">Rank</th>
                         <th className="p-3 text-left font-medium">Source</th>
                         <th className="p-3 text-left font-medium">Price</th>
                         <th className="p-3 text-left font-medium">Decision</th>
                         <th className="p-3 text-left font-medium">Details</th>
+                        <th className="p-3 text-left font-medium">Why</th>
                         <th className="p-3 text-left font-medium">Link</th>
                       </tr>
                     </thead>
                     <tbody>
                       {outwardLoading ? (
                         <tr>
-                          <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                          <td colSpan={8} className="p-8 text-center text-muted-foreground">
                             Loading web candidates...
                           </td>
                         </tr>
                       ) : (outwardData?.candidates || []).length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                          <td colSpan={8} className="p-8 text-center text-muted-foreground">
                             <div className="flex flex-col items-center gap-2">
                               <Globe className="h-8 w-8 text-muted-foreground/50" />
                               <span>No verified web listings yet — click "Search Web" to scan</span>
@@ -653,13 +654,16 @@ export default function HuntDetailPage() {
                               {idx + 1}
                             </td>
                             <td className="p-3">
-                              <div className="flex items-center gap-1">
-                                <span className={`font-mono text-xs px-1.5 py-0.5 rounded ${
-                                  candidate.dna_score >= 7 ? 'bg-emerald-500/20 text-emerald-700' :
-                                  candidate.dna_score >= 5.5 ? 'bg-amber-500/20 text-amber-700' :
+                              <div className="flex flex-col gap-0.5">
+                                <span className={`font-mono text-xs px-1.5 py-0.5 rounded inline-block w-fit ${
+                                  (candidate.rank_score || candidate.dna_score || 0) >= 10 ? 'bg-emerald-500/20 text-emerald-700' :
+                                  (candidate.rank_score || candidate.dna_score || 0) >= 7 ? 'bg-amber-500/20 text-amber-700' :
                                   'bg-muted text-muted-foreground'
                                 }`}>
-                                  {candidate.dna_score?.toFixed(1) || '—'}
+                                  {candidate.rank_score?.toFixed(1) || candidate.dna_score?.toFixed(1) || '—'}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  DNA: {candidate.dna_score?.toFixed(1) || '—'}
                                 </span>
                               </div>
                             </td>
@@ -707,6 +711,23 @@ export default function HuntDetailPage() {
                               <div className="text-xs">
                                 <div>{candidate.year} {candidate.make} {candidate.model}</div>
                                 {candidate.km && <div className="text-muted-foreground">{candidate.km.toLocaleString()} km</div>}
+                              </div>
+                            </td>
+                            {/* Why matched - sort_reason audit trail */}
+                            <td className="p-3">
+                              <div className="flex flex-wrap gap-1">
+                                {(candidate.sort_reason || []).slice(0, 3).map((reason, i) => (
+                                  <Badge 
+                                    key={i} 
+                                    variant="outline" 
+                                    className="text-[10px] font-mono bg-muted/50"
+                                  >
+                                    {reason}
+                                  </Badge>
+                                ))}
+                                {(!candidate.sort_reason || candidate.sort_reason.length === 0) && (
+                                  <span className="text-muted-foreground text-xs">—</span>
+                                )}
                               </div>
                             </td>
                             <td className="p-3">
@@ -779,24 +800,25 @@ export default function HuntDetailPage() {
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="p-3 text-left font-medium">#</th>
-                        <th className="p-3 text-left font-medium">DNA</th>
+                        <th className="p-3 text-left font-medium">Rank</th>
                         <th className="p-3 text-left font-medium">Source</th>
                         <th className="p-3 text-left font-medium">Price</th>
                         <th className="p-3 text-left font-medium">Decision</th>
                         <th className="p-3 text-left font-medium">Details</th>
+                        <th className="p-3 text-left font-medium">Why</th>
                         <th className="p-3 text-left font-medium">Link</th>
                       </tr>
                     </thead>
                     <tbody>
                       {internalLoading ? (
                         <tr>
-                          <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                          <td colSpan={8} className="p-8 text-center text-muted-foreground">
                             Loading internal feed...
                           </td>
                         </tr>
                       ) : (internalData?.candidates || []).length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                          <td colSpan={8} className="p-8 text-center text-muted-foreground">
                             No internal matches. Run "Scan Now" to check Autotrader/Drive/Gumtree.
                           </td>
                         </tr>
@@ -807,13 +829,18 @@ export default function HuntDetailPage() {
                               {idx + 1}
                             </td>
                             <td className="p-3">
-                              <span className={`font-mono text-xs px-1.5 py-0.5 rounded ${
-                                candidate.dna_score >= 7 ? 'bg-emerald-500/20 text-emerald-700' :
-                                candidate.dna_score >= 5.5 ? 'bg-amber-500/20 text-amber-700' :
-                                'bg-muted text-muted-foreground'
-                              }`}>
-                                {candidate.dna_score?.toFixed(1) || '—'}
-                              </span>
+                              <div className="flex flex-col gap-0.5">
+                                <span className={`font-mono text-xs px-1.5 py-0.5 rounded inline-block w-fit ${
+                                  (candidate.rank_score || candidate.dna_score || 0) >= 10 ? 'bg-emerald-500/20 text-emerald-700' :
+                                  (candidate.rank_score || candidate.dna_score || 0) >= 7 ? 'bg-amber-500/20 text-amber-700' :
+                                  'bg-muted text-muted-foreground'
+                                }`}>
+                                  {candidate.rank_score?.toFixed(1) || candidate.dna_score?.toFixed(1) || '—'}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  DNA: {candidate.dna_score?.toFixed(1) || '—'}
+                                </span>
+                              </div>
                             </td>
                             <td className="p-3">
                               {/* Source Tier Badge for internal listings too */}
@@ -849,6 +876,19 @@ export default function HuntDetailPage() {
                               <div className="text-xs">
                                 <div>{candidate.year} {candidate.make} {candidate.model}</div>
                                 {candidate.km && <div className="text-muted-foreground">{candidate.km.toLocaleString()} km</div>}
+                              </div>
+                            </td>
+                            {/* Why matched - sort_reason audit trail */}
+                            <td className="p-3">
+                              <div className="flex flex-wrap gap-1">
+                                {(candidate.sort_reason || []).slice(0, 3).map((reason, i) => (
+                                  <Badge key={i} variant="outline" className="text-[10px] font-mono bg-muted/50">
+                                    {reason}
+                                  </Badge>
+                                ))}
+                                {(!candidate.sort_reason || candidate.sort_reason.length === 0) && (
+                                  <span className="text-muted-foreground text-xs">—</span>
+                                )}
                               </div>
                             </td>
                             <td className="p-3">
