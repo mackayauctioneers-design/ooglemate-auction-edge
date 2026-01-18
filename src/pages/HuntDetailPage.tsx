@@ -175,6 +175,8 @@ export default function HuntDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['hunt', huntId] });
       queryClient.invalidateQueries({ queryKey: ['unified-candidates', huntId] });
       queryClient.invalidateQueries({ queryKey: ['candidate-counts', huntId] });
+      queryClient.invalidateQueries({ queryKey: ['live-matches', huntId] });
+      refetchLiveMatches();
       toast.success(`Scan complete: ${data.results?.[0]?.matches || 0} matches, ${data.results?.[0]?.alerts || 0} alerts`);
     },
     onError: (error) => {
