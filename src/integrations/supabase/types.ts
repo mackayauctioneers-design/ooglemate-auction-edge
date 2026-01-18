@@ -2215,6 +2215,13 @@ export type Database = {
             referencedRelation: "retail_listings"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "hunt_matches_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "retail_listings_active_v"
+            referencedColumns: ["id"]
+          },
         ]
       }
       hunt_scans: {
@@ -2624,6 +2631,13 @@ export type Database = {
             referencedRelation: "retail_listings"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "listing_classify_queue_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: true
+            referencedRelation: "retail_listings_active_v"
+            referencedColumns: ["id"]
+          },
         ]
       }
       listing_enrichment_queue: {
@@ -2993,6 +3007,13 @@ export type Database = {
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "hunt_external_candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outward_candidate_scrape_queue_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "hunt_external_candidates_v"
             referencedColumns: ["id"]
           },
           {
@@ -5469,6 +5490,13 @@ export type Database = {
             referencedRelation: "retail_listings"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "variant_audit_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "retail_listings_active_v"
+            referencedColumns: ["id"]
+          },
         ]
       }
       variant_extraction_rules: {
@@ -6133,6 +6161,116 @@ export type Database = {
         }
         Relationships: []
       }
+      hunt_external_candidates_v: {
+        Row: {
+          asking_price: number | null
+          criteria_version: number | null
+          decision: string | null
+          ext_badge: string | null
+          ext_body_type: string | null
+          ext_cab_type: string | null
+          ext_engine_family: string | null
+          ext_identity_confidence: number | null
+          ext_identity_evidence: Json | null
+          ext_identity_key: string | null
+          ext_listing_intent: string | null
+          ext_listing_intent_reason: string | null
+          ext_series_family: string | null
+          hunt_id: string | null
+          id: string | null
+          is_listing: boolean | null
+          is_stale: boolean | null
+          km: number | null
+          listing_kind: string | null
+          location: string | null
+          make: string | null
+          model: string | null
+          page_type: string | null
+          raw_snippet: string | null
+          reject_reason: string | null
+          source_name: string | null
+          source_url: string | null
+          title: string | null
+          variant_raw: string | null
+          verified: boolean | null
+          year: number | null
+        }
+        Insert: {
+          asking_price?: number | null
+          criteria_version?: number | null
+          decision?: string | null
+          ext_badge?: string | null
+          ext_body_type?: string | null
+          ext_cab_type?: string | null
+          ext_engine_family?: string | null
+          ext_identity_confidence?: number | null
+          ext_identity_evidence?: Json | null
+          ext_identity_key?: string | null
+          ext_listing_intent?: string | null
+          ext_listing_intent_reason?: string | null
+          ext_series_family?: string | null
+          hunt_id?: string | null
+          id?: string | null
+          is_listing?: never
+          is_stale?: boolean | null
+          km?: number | null
+          listing_kind?: string | null
+          location?: string | null
+          make?: string | null
+          model?: string | null
+          page_type?: string | null
+          raw_snippet?: string | null
+          reject_reason?: string | null
+          source_name?: string | null
+          source_url?: string | null
+          title?: string | null
+          variant_raw?: string | null
+          verified?: never
+          year?: number | null
+        }
+        Update: {
+          asking_price?: number | null
+          criteria_version?: number | null
+          decision?: string | null
+          ext_badge?: string | null
+          ext_body_type?: string | null
+          ext_cab_type?: string | null
+          ext_engine_family?: string | null
+          ext_identity_confidence?: number | null
+          ext_identity_evidence?: Json | null
+          ext_identity_key?: string | null
+          ext_listing_intent?: string | null
+          ext_listing_intent_reason?: string | null
+          ext_series_family?: string | null
+          hunt_id?: string | null
+          id?: string | null
+          is_listing?: never
+          is_stale?: boolean | null
+          km?: number | null
+          listing_kind?: string | null
+          location?: string | null
+          make?: string | null
+          model?: string | null
+          page_type?: string | null
+          raw_snippet?: string | null
+          reject_reason?: string | null
+          source_name?: string | null
+          source_url?: string | null
+          title?: string | null
+          variant_raw?: string | null
+          verified?: never
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hunt_external_candidates_hunt_id_fkey"
+            columns: ["hunt_id"]
+            isOneToOne: false
+            referencedRelation: "sale_hunts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hunt_matches_ranked: {
         Row: {
           asking_price: number | null
@@ -6212,6 +6350,13 @@ export type Database = {
             columns: ["listing_id"]
             isOneToOne: false
             referencedRelation: "retail_listings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hunt_matches_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "retail_listings_active_v"
             referencedColumns: ["id"]
           },
         ]
@@ -6341,6 +6486,96 @@ export type Database = {
           listings_with_identity: number | null
           triggers_today: number | null
           watch_triggers_today: number | null
+        }
+        Relationships: []
+      }
+      retail_listings_active_v: {
+        Row: {
+          asking_price: number | null
+          badge: string | null
+          body_type: string | null
+          cab_type: string | null
+          description: string | null
+          engine_family: string | null
+          first_seen_at: string | null
+          id: string | null
+          identity_confidence: number | null
+          identity_evidence: Json | null
+          identity_key: string | null
+          is_active: boolean | null
+          km: number | null
+          listing_intent: string | null
+          listing_intent_reason: string | null
+          listing_url: string | null
+          make: string | null
+          model: string | null
+          region_id: string | null
+          series_family: string | null
+          source: string | null
+          source_listing_id: string | null
+          state: string | null
+          suburb: string | null
+          title: string | null
+          variant_raw: string | null
+          year: number | null
+        }
+        Insert: {
+          asking_price?: number | null
+          badge?: string | null
+          body_type?: string | null
+          cab_type?: string | null
+          description?: string | null
+          engine_family?: string | null
+          first_seen_at?: string | null
+          id?: string | null
+          identity_confidence?: number | null
+          identity_evidence?: Json | null
+          identity_key?: string | null
+          is_active?: never
+          km?: number | null
+          listing_intent?: string | null
+          listing_intent_reason?: string | null
+          listing_url?: string | null
+          make?: string | null
+          model?: string | null
+          region_id?: string | null
+          series_family?: string | null
+          source?: string | null
+          source_listing_id?: string | null
+          state?: string | null
+          suburb?: string | null
+          title?: string | null
+          variant_raw?: string | null
+          year?: number | null
+        }
+        Update: {
+          asking_price?: number | null
+          badge?: string | null
+          body_type?: string | null
+          cab_type?: string | null
+          description?: string | null
+          engine_family?: string | null
+          first_seen_at?: string | null
+          id?: string | null
+          identity_confidence?: number | null
+          identity_evidence?: Json | null
+          identity_key?: string | null
+          is_active?: never
+          km?: number | null
+          listing_intent?: string | null
+          listing_intent_reason?: string | null
+          listing_url?: string | null
+          make?: string | null
+          model?: string | null
+          region_id?: string | null
+          series_family?: string | null
+          source?: string | null
+          source_listing_id?: string | null
+          state?: string | null
+          suburb?: string | null
+          title?: string | null
+          variant_raw?: string | null
+          year?: number | null
         }
         Relationships: []
       }
@@ -6934,27 +7169,45 @@ export type Database = {
         }
         Returns: Json
       }
-      fn_compute_outward_dna_score: {
-        Args: {
-          p_cand_badge: string
-          p_cand_body: string
-          p_cand_engine: string
-          p_cand_km: number
-          p_cand_series: string
-          p_cand_text: string
-          p_cand_year: number
-          p_hunt_make: string
-          p_hunt_model: string
-          p_hunt_must_have_tokens: string[]
-          p_hunt_required_badge: string
-          p_hunt_required_body: string
-          p_hunt_required_engine: string
-          p_hunt_required_series: string
-          p_hunt_year_max: number
-          p_hunt_year_min: number
-        }
-        Returns: number
-      }
+      fn_compute_outward_dna_score:
+        | {
+            Args: {
+              p_cand_badge: string
+              p_cand_body: string
+              p_cand_engine: string
+              p_cand_km: number
+              p_cand_series: string
+              p_cand_text: string
+              p_cand_year: number
+              p_hunt_make: string
+              p_hunt_model: string
+              p_hunt_must_have_tokens: string[]
+              p_hunt_required_badge: string
+              p_hunt_required_body: string
+              p_hunt_required_engine: string
+              p_hunt_required_series: string
+              p_hunt_year_max: number
+              p_hunt_year_min: number
+            }
+            Returns: number
+          }
+        | {
+            Args: {
+              p_badge: string
+              p_body_type: string
+              p_engine_family: string
+              p_hunt_badge: string
+              p_hunt_body: string
+              p_hunt_engine: string
+              p_hunt_series: string
+              p_hunt_year: number
+              p_must_have_tokens: string[]
+              p_series_family: string
+              p_snippet: string
+              p_year: number
+            }
+            Returns: number
+          }
       generate_geo_heat_alerts: {
         Args: {
           p_asof?: string
