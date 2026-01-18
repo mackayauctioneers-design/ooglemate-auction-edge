@@ -319,6 +319,45 @@ export default function HuntDetailPage() {
           </div>
         )}
 
+        {/* Scan Required Banner - Show when hunt was edited but no scan at current version */}
+        {(() => {
+          const latestScanVersion = scans.length > 0 
+            ? Math.max(...scans.map(s => s.criteria_version || 0)) 
+            : 0;
+          const needsScan = hunt.criteria_version > latestScanVersion;
+          
+          if (!needsScan) return null;
+          
+          return (
+            <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-300 dark:border-amber-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-amber-500/20 flex items-center justify-center animate-pulse">
+                    <AlertTriangle className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-amber-700 dark:text-amber-400">
+                      Hunt updated — no scan has run yet
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Run a scan to refresh results for the new criteria (v{hunt.criteria_version})
+                    </div>
+                  </div>
+                </div>
+                <Button 
+                  variant="default"
+                  className="bg-amber-500 hover:bg-amber-600 text-white animate-pulse"
+                  onClick={() => runScanMutation.mutate()}
+                  disabled={runScanMutation.isPending}
+                >
+                  <Zap className="h-4 w-4 mr-2" />
+                  {runScanMutation.isPending ? 'Scanning...' : 'Scan Now'}
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Guardrails Banner */}
         <div className="p-4 rounded-lg bg-muted/50 border">
           <div className="flex items-start gap-3">
