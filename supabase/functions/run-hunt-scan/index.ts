@@ -165,8 +165,107 @@ function checkMustHaveTokens(hunt: Hunt, listing: Listing): MustHaveResult {
   };
 }
 
+// =====================================================
+// SERIES FAMILY DETECTION - Comprehensive LC70/LC300 signals
+// (Shared logic with outward-hunt for consistency)
+// =====================================================
+
+// LC70 positive markers (VDJ7x/GDJ7x engines, body codes, trim names)
+const LC70_POSITIVE_SIGNALS = [
+  // Model codes
+  'LC70', 'LC76', 'LC78', 'LC79', 'LC 70', 'LC 76', 'LC 78', 'LC 79',
+  // Series names
+  '70 SERIES', '76 SERIES', '78 SERIES', '79 SERIES', '70-SERIES', '76-SERIES', '78-SERIES', '79-SERIES',
+  '70SERIES', '76SERIES', '78SERIES', '79SERIES',
+  // Engine codes (VDJ = V8 diesel, GDJ = 2.8 diesel, GRJ = V6 petrol)
+  'VDJ76', 'VDJ78', 'VDJ79', 'GDJ76', 'GDJ78', 'GDJ79', 'GRJ76', 'GRJ78', 'GRJ79',
+  'VDJ7', 'GDJ7', 'GRJ7', // Broader engine family prefixes
+  // Legacy engine codes
+  'HZJ7', 'FZJ7', 'FJ7',
+  // Body variants unique to 70 series
+  'TROOPCARRIER', 'TROOPY', 'TROOP CARRIER',
+  // URL slugs
+  '/LC79/', '/LC78/', '/LC76/', '/LC70/', '/70-SERIES/', '/79-SERIES/',
+  'LANDCRUISER-70', 'LANDCRUISER-79', 'LAND-CRUISER-70', 'LAND-CRUISER-79',
+];
+
+// LC300 positive markers
+const LC300_POSITIVE_SIGNALS = [
+  // Model codes
+  'LC300', 'LC 300', 'LC-300',
+  // Series names
+  '300 SERIES', '300-SERIES', '300SERIES',
+  // Engine codes (FJA300 = V6 twin turbo diesel, VJA300 = V6 twin turbo petrol)
+  'FJA300', 'VJA300',
+  // Exclusive trims
+  'GR SPORT', 'GR-SPORT', 'GRSPORT',
+  // URL slugs
+  '/LC300/', '/300-SERIES/', 'LANDCRUISER-300', 'LAND-CRUISER-300',
+];
+
+// LC200 positive markers
+const LC200_POSITIVE_SIGNALS = [
+  'LC200', 'LC 200', 'LC-200',
+  '200 SERIES', '200-SERIES', '200SERIES',
+  'URJ200', 'VDJ200', 'UZJ200',
+  '/LC200/', '/200-SERIES/', 'LANDCRUISER-200', 'LAND-CRUISER-200',
+];
+
+function detectSeriesFromListing(listing: Listing): { series: string | null; confidence: 'high' | 'medium' | 'low' } {
+  // First check if listing already has series_family set
+  if (listing.series_family) {
+    return { series: listing.series_family, confidence: 'high' };
+  }
+  
+  // Build text blob from listing fields
+  const textParts = [
+    listing.title || '',
+    listing.description || '',
+    listing.variant || '',
+    listing.variant_raw || '',
+    listing.listing_url || '',
+    listing.model || '',
+  ];
+  const combined = textParts.join(' ').toUpperCase();
+  
+  // Count positive signals
+  let lc70Score = 0;
+  let lc300Score = 0;
+  let lc200Score = 0;
+  
+  for (const signal of LC70_POSITIVE_SIGNALS) {
+    if (combined.includes(signal)) lc70Score++;
+  }
+  for (const signal of LC300_POSITIVE_SIGNALS) {
+    if (combined.includes(signal)) lc300Score++;
+  }
+  for (const signal of LC200_POSITIVE_SIGNALS) {
+    if (combined.includes(signal)) lc200Score++;
+  }
+  
+  const maxScore = Math.max(lc70Score, lc300Score, lc200Score);
+  const confidence: 'high' | 'medium' | 'low' = maxScore >= 2 ? 'high' : maxScore === 1 ? 'medium' : 'low';
+  
+  if (maxScore === 0) return { series: null, confidence: 'low' };
+  
+  // Check for collisions
+  const seriesCount = [lc70Score, lc300Score, lc200Score].filter(s => s > 0).length;
+  if (seriesCount > 1) {
+    // Ambiguous - use highest score
+    if (lc300Score > lc70Score && lc300Score > lc200Score) return { series: 'LC300', confidence: 'medium' };
+    if (lc200Score > lc70Score && lc200Score > lc300Score) return { series: 'LC200', confidence: 'medium' };
+    if (lc70Score > 0) return { series: 'LC70', confidence: 'medium' };
+  }
+  
+  if (lc70Score > 0) return { series: 'LC70', confidence };
+  if (lc300Score > 0) return { series: 'LC300', confidence };
+  if (lc200Score > 0) return { series: 'LC200', confidence };
+  
+  return { series: null, confidence: 'low' };
+}
+
 // ============================================
-// Badge Authority Layer - Hard Gates (with Enrichment Support)
+// Badge Authority Layer - Hard Gates (with Enrichment Support + Series Detection)
 // ============================================
 function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
   // ============================================
@@ -248,13 +347,23 @@ function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
   }
   
   // ============================================
-  // Legacy gates (for backward compatibility)
+  // Legacy gates (for backward compatibility) + ENHANCED Series Detection
   // ============================================
   
-  // Gate A: Series mismatch - IGNORE immediately
-  if (hunt.series_family && listing.series_family && 
-      hunt.series_family !== listing.series_family) {
-    return { passed: false, rejection_reason: 'SERIES_MISMATCH' };
+  // Gate A: Series mismatch - ENHANCED with comprehensive detection
+  if (hunt.series_family) {
+    // Use comprehensive series detection from listing text
+    const seriesCheck = detectSeriesFromListing(listing);
+    
+    if (seriesCheck.series !== null && seriesCheck.series !== hunt.series_family) {
+      // Detected as DIFFERENT series - HARD REJECT
+      console.log(`[SERIES_MISMATCH] Hunt=${hunt.series_family}, Listing=${seriesCheck.series} (${seriesCheck.confidence})`);
+      return { passed: false, rejection_reason: 'SERIES_MISMATCH' };
+    } else if (seriesCheck.series === null && seriesCheck.confidence === 'low') {
+      // Unknown series - downgrade to WATCH, needs verification
+      return { passed: true, downgrade_to_watch: true, downgrade_reason: 'SERIES_UNKNOWN_NEEDS_VERIFY' };
+    }
+    // If series matches, continue to other gates
   }
   
   // Gate B: Body type mismatch (legacy) - IGNORE immediately

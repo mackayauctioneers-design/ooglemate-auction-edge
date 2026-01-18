@@ -273,7 +273,97 @@ const BLOCKED_DOMAINS = ['carsales.com.au', 'carsales.com'];
 const AUCTION_DOMAINS = ['pickles.com.au', 'manheim.com.au', 'grays.com', 'lloydsauctions.com.au'];
 
 // Classify candidate based on text analysis
-function classifyCandidate(text: string, hunt: Hunt): ClassificationResult {
+// =====================================================
+// SERIES FAMILY DETECTION - Comprehensive LC70/LC300 signals
+// =====================================================
+
+// LC70 positive markers (VDJ7x/GDJ7x engines, body codes, trim names)
+const LC70_POSITIVE_SIGNALS = [
+  // Model codes
+  'LC70', 'LC76', 'LC78', 'LC79', 'LC 70', 'LC 76', 'LC 78', 'LC 79',
+  // Series names
+  '70 SERIES', '76 SERIES', '78 SERIES', '79 SERIES', '70-SERIES', '76-SERIES', '78-SERIES', '79-SERIES',
+  '70SERIES', '76SERIES', '78SERIES', '79SERIES',
+  // Engine codes (VDJ = V8 diesel, GDJ = 2.8 diesel, GRJ = V6 petrol)
+  'VDJ76', 'VDJ78', 'VDJ79', 'GDJ76', 'GDJ78', 'GDJ79', 'GRJ76', 'GRJ78', 'GRJ79',
+  'VDJ7', 'GDJ7', 'GRJ7', // Broader engine family prefixes
+  // Legacy engine codes
+  'HZJ7', 'FZJ7', 'FJ7',
+  // Body variants unique to 70 series
+  'TROOPCARRIER', 'TROOPY', 'TROOP CARRIER',
+  // URL slugs
+  '/LC79/', '/LC78/', '/LC76/', '/LC70/', '/70-SERIES/', '/79-SERIES/',
+  'LANDCRUISER-70', 'LANDCRUISER-79', 'LAND-CRUISER-70', 'LAND-CRUISER-79',
+];
+
+// LC300 positive markers
+const LC300_POSITIVE_SIGNALS = [
+  // Model codes
+  'LC300', 'LC 300', 'LC-300',
+  // Series names
+  '300 SERIES', '300-SERIES', '300SERIES',
+  // Engine codes (FJA300 = V6 twin turbo diesel, VJA300 = V6 twin turbo petrol)
+  'FJA300', 'VJA300',
+  // Exclusive trims
+  'GR SPORT', 'GR-SPORT', 'GRSPORT',
+  // URL slugs
+  '/LC300/', '/300-SERIES/', 'LANDCRUISER-300', 'LAND-CRUISER-300',
+];
+
+// LC200 positive markers
+const LC200_POSITIVE_SIGNALS = [
+  'LC200', 'LC 200', 'LC-200',
+  '200 SERIES', '200-SERIES', '200SERIES',
+  'URJ200', 'VDJ200', 'UZJ200',
+  '/LC200/', '/200-SERIES/', 'LANDCRUISER-200', 'LAND-CRUISER-200',
+];
+
+function detectSeriesFamily(text: string, url?: string): { series: string | null; confidence: 'high' | 'medium' | 'low' } {
+  const upper = text.toUpperCase();
+  const urlUpper = (url || '').toUpperCase();
+  const combined = upper + ' ' + urlUpper;
+  
+  // Count positive signals
+  let lc70Score = 0;
+  let lc300Score = 0;
+  let lc200Score = 0;
+  
+  for (const signal of LC70_POSITIVE_SIGNALS) {
+    if (combined.includes(signal)) lc70Score++;
+  }
+  for (const signal of LC300_POSITIVE_SIGNALS) {
+    if (combined.includes(signal)) lc300Score++;
+  }
+  for (const signal of LC200_POSITIVE_SIGNALS) {
+    if (combined.includes(signal)) lc200Score++;
+  }
+  
+  // High confidence = 2+ signals
+  // Medium confidence = 1 signal
+  // Low confidence = 0 signals
+  const maxScore = Math.max(lc70Score, lc300Score, lc200Score);
+  const confidence: 'high' | 'medium' | 'low' = maxScore >= 2 ? 'high' : maxScore === 1 ? 'medium' : 'low';
+  
+  if (maxScore === 0) return { series: null, confidence: 'low' };
+  
+  // Check for collisions (text mentions multiple series)
+  const seriesCount = [lc70Score, lc300Score, lc200Score].filter(s => s > 0).length;
+  if (seriesCount > 1) {
+    // Ambiguous - could be a comparison page or umbrella listing
+    // Use highest score as winner
+    if (lc300Score > lc70Score && lc300Score > lc200Score) return { series: 'LC300', confidence: 'medium' };
+    if (lc200Score > lc70Score && lc200Score > lc300Score) return { series: 'LC200', confidence: 'medium' };
+    if (lc70Score > 0) return { series: 'LC70', confidence: 'medium' };
+  }
+  
+  if (lc70Score > 0) return { series: 'LC70', confidence };
+  if (lc300Score > 0) return { series: 'LC300', confidence };
+  if (lc200Score > 0) return { series: 'LC200', confidence };
+  
+  return { series: null, confidence: 'low' };
+}
+
+function classifyCandidate(text: string, hunt: Hunt, url?: string): ClassificationResult {
   const upper = text.toUpperCase();
   
   const result: ClassificationResult = {
@@ -284,41 +374,34 @@ function classifyCandidate(text: string, hunt: Hunt): ClassificationResult {
     badge: null,
   };
   
-  // Series family detection (LandCruiser specific)
-  if (upper.includes('LC79') || upper.includes('79 SERIES') || upper.includes('GDJ79') || upper.includes('VDJ79')) {
-    result.series_family = 'LC70';
-  } else if (upper.includes('LC300') || upper.includes('300 SERIES')) {
-    result.series_family = 'LC300';
-  } else if (upper.includes('LC200') || upper.includes('200 SERIES')) {
-    result.series_family = 'LC200';
-  } else if (upper.includes('LC76') || upper.includes('76 SERIES')) {
-    result.series_family = 'LC70';
-  }
+  // Series family detection (using comprehensive signals)
+  const seriesResult = detectSeriesFamily(text, url);
+  result.series_family = seriesResult.series;
   
   // Engine family detection
-  if (upper.includes('VDJ') || upper.includes('V8 DIESEL') || upper.includes('4.5L DIESEL') || upper.includes('4.5 DIESEL')) {
+  if (upper.includes('VDJ') || upper.includes('V8 DIESEL') || upper.includes('4.5L DIESEL') || upper.includes('4.5 DIESEL') || upper.includes('4.5 V8')) {
     result.engine_family = 'V8_DIESEL';
-  } else if (upper.includes('GDJ') || upper.includes('2.8L') || upper.includes('2.8 DIESEL') || upper.includes('4CYL DIESEL') || upper.includes('4 CYL DIESEL')) {
+  } else if (upper.includes('GDJ') || upper.includes('2.8L') || upper.includes('2.8 DIESEL') || upper.includes('4CYL DIESEL') || upper.includes('4 CYL DIESEL') || upper.includes('2.8L TURBO')) {
     result.engine_family = 'I4_DIESEL';
-  } else if (upper.includes('V6 PETROL') || upper.includes('4.0L PETROL') || upper.includes('GRJ')) {
+  } else if (upper.includes('V6 PETROL') || upper.includes('4.0L PETROL') || upper.includes('GRJ') || upper.includes('4.0 PETROL')) {
     result.engine_family = 'V6_PETROL';
-  } else if (upper.includes('TWIN TURBO') || upper.includes('3.3L DIESEL') || upper.includes('3.3 DIESEL')) {
+  } else if (upper.includes('TWIN TURBO') || upper.includes('3.3L DIESEL') || upper.includes('3.3 DIESEL') || upper.includes('3.3L TURBO')) {
     result.engine_family = 'V6_DIESEL_TT';
   }
   
   // Cab type detection
-  if (upper.includes('DUAL CAB') || upper.includes('DOUBLE CAB') || upper.includes('D/CAB')) {
+  if (upper.includes('DUAL CAB') || upper.includes('DOUBLE CAB') || upper.includes('D/CAB') || upper.includes('DUALCAB')) {
     result.cab_type = 'DUAL';
-  } else if (upper.includes('SINGLE CAB') || upper.includes('S/CAB')) {
+  } else if (upper.includes('SINGLE CAB') || upper.includes('S/CAB') || upper.includes('SINGLECAB')) {
     result.cab_type = 'SINGLE';
   } else if (upper.includes('EXTRA CAB') || upper.includes('KING CAB') || upper.includes('SPACE CAB')) {
     result.cab_type = 'EXTRA';
   }
   
   // Body type detection
-  if (upper.includes('CAB CHASSIS') || upper.includes('TRAY') || upper.includes('UTE')) {
+  if (upper.includes('CAB CHASSIS') || upper.includes('TRAY') || upper.includes('UTE') || upper.includes('CAB-CHASSIS')) {
     result.body_type = 'CAB_CHASSIS';
-  } else if (upper.includes('WAGON') || upper.includes('SUV')) {
+  } else if (upper.includes('WAGON') || upper.includes('SUV') || upper.includes('TROOPCARRIER') || upper.includes('TROOPY')) {
     result.body_type = 'WAGON';
   }
   
@@ -335,35 +418,64 @@ function classifyCandidate(text: string, hunt: Hunt): ClassificationResult {
 }
 
 // Apply hard gates - returns reject reasons or empty array if passes
+// Also returns allowWatch = false if candidate should be fully rejected (not even WATCH)
+interface HardGateResult {
+  rejectReasons: string[];
+  allowWatch: boolean;  // If false, candidate should be IGNORED entirely
+}
+
 function applyHardGates(
   classification: ClassificationResult,
   hunt: Hunt,
-  candidateText: string
-): string[] {
+  candidateText: string,
+  url?: string
+): HardGateResult {
   const rejectReasons: string[] = [];
+  let allowWatch = true;
   
-  // Series mismatch
-  if (hunt.series_family && classification.series_family && 
-      hunt.series_family !== classification.series_family) {
-    rejectReasons.push(`SERIES_MISMATCH:${classification.series_family}`);
+  // =====================================================
+  // SERIES FAMILY - Hard gate with positive marker requirement
+  // Rule: If hunt has series_family, candidate MUST:
+  //   1. Match that series (if detected), OR
+  //   2. Have no detected series (unknown) - can WATCH only
+  // If candidate is detected as a DIFFERENT series -> REJECT entirely
+  // =====================================================
+  if (hunt.series_family) {
+    // Re-run series detection with URL for better accuracy
+    const seriesCheck = detectSeriesFamily(candidateText, url);
+    
+    if (seriesCheck.series !== null && seriesCheck.series !== hunt.series_family) {
+      // Detected as DIFFERENT series - HARD REJECT, no WATCH allowed
+      rejectReasons.push(`SERIES_MISMATCH:${seriesCheck.series}`);
+      allowWatch = false; // Critical: don't even allow WATCH for series mismatch
+      console.log(`[HARD_REJECT] Series mismatch: hunt=${hunt.series_family}, detected=${seriesCheck.series}`);
+    } else if (seriesCheck.series === null) {
+      // Unknown series - allow WATCH but not BUY until verified
+      rejectReasons.push('SERIES_UNKNOWN_NEEDS_VERIFY');
+      // allowWatch stays true - can still WATCH
+    }
+    // If series matches exactly, no reject reason added
   }
   
-  // Engine mismatch (critical for LC79)
+  // Engine mismatch (critical for LC79) - Hard reject
   if (hunt.engine_family && classification.engine_family &&
       hunt.engine_family !== classification.engine_family) {
     rejectReasons.push(`ENGINE_MISMATCH:${classification.engine_family}`);
+    allowWatch = false; // Engine mismatch is also a hard reject
   }
   
-  // Cab type mismatch
+  // Cab type mismatch - Hard reject
   if (hunt.cab_type && classification.cab_type &&
       hunt.cab_type !== classification.cab_type) {
     rejectReasons.push(`CAB_MISMATCH:${classification.cab_type}`);
+    allowWatch = false;
   }
   
-  // Body type mismatch
+  // Body type mismatch - Hard reject
   if (hunt.body_type && classification.body_type &&
       hunt.body_type !== classification.body_type) {
     rejectReasons.push(`BODY_MISMATCH:${classification.body_type}`);
+    allowWatch = false;
   }
   
   // Must-have tokens (strict mode)
@@ -372,11 +484,12 @@ function applyHardGates(
     for (const token of hunt.must_have_tokens) {
       if (!upper.includes(token.toUpperCase())) {
         rejectReasons.push(`MISSING_REQUIRED_TOKEN:${token}`);
+        // Allow WATCH for missing tokens (soft gate)
       }
     }
   }
   
-  return rejectReasons;
+  return { rejectReasons, allowWatch };
 }
 
 // Extract VIN from text (17 character alphanumeric, no I/O/Q)
@@ -953,7 +1066,7 @@ serve(async (req) => {
             if (!candidate) continue;
             
             const fullText = `${candidate.title} ${candidate.snippet}`;
-            const classification = classifyCandidate(fullText, hunt as Hunt);
+            const classification = classifyCandidate(fullText, hunt as Hunt, candidate.url);
             
             // Track listing vs article
             if (candidate.is_listing) {
@@ -962,20 +1075,25 @@ serve(async (req) => {
               results.articles_skipped++;
             }
             
-            // Apply hard gates
-            const rejectReasons = applyHardGates(classification, hunt as Hunt, fullText);
+            // Apply hard gates (now includes URL for better series detection)
+            const gateResult = applyHardGates(classification, hunt as Hunt, fullText, candidate.url);
             
-            for (const reason of rejectReasons) {
+            for (const reason of gateResult.rejectReasons) {
               const key = reason.split(':')[0];
               results.reject_reasons[key] = (results.reject_reasons[key] || 0) + 1;
             }
             
             // Combine reject reasons
             const allRejectReasons = candidate.reject_reason 
-              ? [...rejectReasons, candidate.reject_reason] 
-              : rejectReasons;
+              ? [...gateResult.rejectReasons, candidate.reject_reason] 
+              : gateResult.rejectReasons;
             
-            if (allRejectReasons.length > 0 && !candidate.is_listing) {
+            // CRITICAL FIX: Hard rejects (series/engine/cab/body mismatch) should reject 
+            // even verified listings. Only non-listings get auto-rejected on soft gates.
+            const hasHardReject = !gateResult.allowWatch;
+            const shouldReject = hasHardReject || (allRejectReasons.length > 0 && !candidate.is_listing);
+            
+            if (shouldReject) {
               results.candidates_rejected++;
               
               // Save rejected candidate with criteria_version
@@ -997,10 +1115,10 @@ serve(async (req) => {
                   confidence: candidate.confidence,
                   decision: 'IGNORE',
                   // New v1.2 fields
-                  is_listing: false,
+                  is_listing: candidate.is_listing,
                   listing_kind: candidate.listing_kind,
                   page_type: candidate.page_type,
-                  reject_reason: allRejectReasons[0],
+                  reject_reason: allRejectReasons[0] || 'HARD_GATE_FAILED',
                   price_verified: false,
                   km_verified: false,
                   year_verified: false,
