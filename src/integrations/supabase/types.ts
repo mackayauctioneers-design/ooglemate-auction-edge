@@ -7244,7 +7244,7 @@ export type Database = {
           }
       fn_is_listing_intent: {
         Args: { p_snippet: string; p_title: string; p_url: string }
-        Returns: Json
+        Returns: string
       }
       fn_is_verified_listing: {
         Args: {
@@ -7257,10 +7257,9 @@ export type Database = {
         }
         Returns: boolean
       }
-      fn_source_tier: {
-        Args: { p_source_name: string; p_url: string }
-        Returns: number
-      }
+      fn_source_tier:
+        | { Args: { p_url: string }; Returns: number }
+        | { Args: { p_source_name: string; p_url: string }; Returns: number }
       generate_geo_heat_alerts: {
         Args: {
           p_asof?: string
