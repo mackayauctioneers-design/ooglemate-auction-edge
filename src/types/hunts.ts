@@ -118,6 +118,7 @@ export interface HuntScan {
   matches_found: number | null;
   alerts_emitted: number | null;
   metadata?: HuntScanMetadata | null;
+  criteria_version?: number; // Version of hunt criteria at time of scan
 }
 
 // ============================================================
