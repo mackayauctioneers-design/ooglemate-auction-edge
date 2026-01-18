@@ -139,17 +139,12 @@ export function HuntHeader({
             )}
           </div>
           
-          {/* Coverage Row - replaces outward toggle */}
-          <div className="flex items-start gap-2 pl-[52px] pt-3 border-t border-border mt-3">
-            <Radio className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-            <div>
-              <div className="text-sm font-medium text-foreground">
-                Coverage: {COVERAGE_MESSAGE}
-              </div>
-              <div className="text-xs text-muted-foreground/70 mt-1">
-                Kiting Mode™ is active — scanning all major outlets.
-              </div>
-            </div>
+          {/* Simplified Coverage Row - no toggles, always on */}
+          <div className="flex items-center gap-2 pl-[52px] pt-3 border-t border-border mt-3">
+            <Radio className="h-4 w-4 text-primary shrink-0" />
+            <span className="text-sm text-foreground">
+              <span className="font-medium">Coverage:</span> Auctions, dealer stock, marketplaces, and the wider web
+            </span>
           </div>
         </div>
 

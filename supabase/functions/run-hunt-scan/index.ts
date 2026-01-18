@@ -308,146 +308,128 @@ function needsDeepEnrichment(hunt: Hunt, listing: Listing): boolean {
   return false;
 }
 
-// Scoring weights (total max ~10)
-function scoreMatch(hunt: Hunt, listing: Listing): { score: number; reasons: string[] } {
+// ============================================
+// DNA SCORING v2 - Replaces legacy scoring
+// Scoring weights (total max 10.0)
+// ============================================
+function scoreDnaMatch(hunt: Hunt, listing: Listing): { dna_score: number; reasons: string[] } {
   let score = 0;
   const reasons: string[] = [];
   
+  // =====================================================
+  // MANDATORY GATES - auto-reject if these fail
+  // (handled in applyHardGates, but double-check here)
+  // =====================================================
+  
   // Year match (0-1.5)
   if (listing.year !== null) {
-    if (listing.year === hunt.year) {
+    const yearDiff = Math.abs(listing.year - hunt.year);
+    if (yearDiff === 0) {
       score += 1.5;
       reasons.push('year_exact');
-    } else if (Math.abs(listing.year - hunt.year) === 1) {
+    } else if (yearDiff === 1) {
       score += 1.0;
-      reasons.push('year_adjacent');
-    }
-  }
-  
-  // Make/Model match (0-2.0)
-  const listingMake = (listing.make || '').toLowerCase();
-  const listingModel = (listing.model || '').toLowerCase();
-  const huntMake = hunt.make.toLowerCase();
-  const huntModel = hunt.model.toLowerCase();
-  
-  if (listingMake === huntMake && listingModel === huntModel) {
-    score += 2.0;
-    reasons.push('make_model_exact');
-  }
-  
-  // Variant family match (0-1.0)
-  if (hunt.variant_family && listing.variant_family) {
-    const huntVf = hunt.variant_family.toLowerCase();
-    const listingVf = listing.variant_family.toLowerCase();
-    if (listingVf === huntVf || listingVf.includes(huntVf) || huntVf.includes(listingVf)) {
-      score += 1.0;
-      reasons.push('variant_family_match');
-    }
-  } else if (!hunt.variant_family) {
-    score += 0.3; // No variant specified, partial credit
-    reasons.push('variant_unknown');
-  }
-  
-  // Series family match bonus (Badge Authority Layer)
-  if (hunt.series_family && listing.series_family && 
-      hunt.series_family === listing.series_family) {
-    score += 0.5;
-    reasons.push('series_family_match');
-  }
-  
-  // Engine family match bonus
-  if (hunt.engine_family && listing.engine_family && 
-      hunt.engine_family === listing.engine_family) {
-    score += 0.3;
-    reasons.push('engine_family_match');
-  }
-  
-  // Body type match bonus
-  if (hunt.body_type && listing.body_type && 
-      hunt.body_type === listing.body_type) {
-    score += 0.2;
-    reasons.push('body_type_match');
-  }
-  
-  // Fuel/Trans/Drivetrain match (0-0.5)
-  if (hunt.fuel && listing.fuel && hunt.fuel.toLowerCase() === listing.fuel.toLowerCase()) {
-    score += 0.15;
-    reasons.push('fuel_match');
-  }
-  if (hunt.transmission && listing.transmission && 
-      hunt.transmission.toLowerCase() === listing.transmission.toLowerCase()) {
-    score += 0.2;
-    reasons.push('trans_match');
-  }
-  if (hunt.drivetrain && listing.drivetrain && 
-      hunt.drivetrain.toLowerCase() === listing.drivetrain.toLowerCase()) {
-    score += 0.15;
-    reasons.push('drive_match');
-  }
-  
-  // KM match (0-2.0)
-  if (hunt.km && listing.km) {
-    const tolerance = hunt.km * (hunt.km_tolerance_pct / 100);
-    if (Math.abs(listing.km - hunt.km) <= tolerance) {
-      score += 2.0;
-      reasons.push('km_in_tolerance');
-    } else {
+      reasons.push('year_±1');
+    } else if (yearDiff === 2) {
       score += 0.5;
-      reasons.push('km_out_tolerance');
+      reasons.push('year_±2');
+    }
+  }
+  
+  // Badge exact match (+2.0)
+  if (hunt.badge && listing.badge) {
+    if (hunt.badge.toUpperCase() === listing.badge.toUpperCase()) {
+      score += 2.0;
+      reasons.push('badge_exact');
+    }
+  } else if (!hunt.badge) {
+    // No badge requirement - partial credit
+    score += 0.5;
+    reasons.push('badge_any');
+  }
+  
+  // Body exact match (+1.5)
+  if (hunt.body_type && listing.body_type) {
+    if (hunt.body_type.toUpperCase() === listing.body_type.toUpperCase()) {
+      score += 1.5;
+      reasons.push('body_exact');
+    }
+  } else if (!hunt.body_type) {
+    score += 0.3;
+    reasons.push('body_any');
+  }
+  
+  // Engine family exact match (+1.5)
+  if (hunt.engine_family && listing.engine_family) {
+    if (hunt.engine_family.toUpperCase() === listing.engine_family.toUpperCase()) {
+      score += 1.5;
+      reasons.push('engine_exact');
+    }
+  } else if (!hunt.engine_family) {
+    score += 0.3;
+    reasons.push('engine_any');
+  }
+  
+  // KM within tolerance (+1.0 for ±10%, +0.5 for ±20%)
+  if (hunt.km && listing.km) {
+    const kmDiff = Math.abs(listing.km - hunt.km);
+    const pct = (kmDiff / hunt.km) * 100;
+    if (pct <= 10) {
+      score += 1.0;
+      reasons.push('km_±10%');
+    } else if (pct <= 20) {
+      score += 0.5;
+      reasons.push('km_±20%');
     }
   } else if (listing.km) {
-    score += 0.5; // Has km but no target
+    // Has km but no target
+    score += 0.2;
     reasons.push('km_present');
   }
   
-  // Geo match (0-1.0)
-  if (hunt.geo_mode === 'national') {
-    score += 0.5;
-    reasons.push('geo_national');
-  } else if (hunt.states && listing.state) {
-    const listingState = listing.state.toUpperCase();
-    if (hunt.states.map(s => s.toUpperCase()).includes(listingState)) {
-      score += 1.0;
-      reasons.push('geo_state_match');
+  // Must-have token hits (+0.5 each, max +1.5)
+  const tokens = hunt.must_have_tokens || [];
+  if (tokens.length > 0) {
+    const textBlob = [
+      listing.title || '',
+      listing.description || '',
+      listing.variant || '',
+      listing.dealer_name || ''
+    ].join(' ').toUpperCase();
+    
+    let tokenHits = 0;
+    for (const token of tokens) {
+      if (textBlob.includes(token)) {
+        tokenHits++;
+        reasons.push(`must_have:${token.toLowerCase()}`);
+      }
     }
-  } else {
-    score += 0.5; // No geo filter
-    reasons.push('geo_unknown');
+    score += Math.min(tokenHits * 0.5, 1.5);
   }
   
-  // Listing quality (0-1.0)
-  if (listing.km) {
-    score += 0.5;
-    reasons.push('has_km');
-  }
-  if (listing.variant) {
-    score += 0.3;
-    reasons.push('has_variant');
-  }
-  if (listing.dealer_name || listing.state) {
-    score += 0.2;
-    reasons.push('has_location');
-  }
-  
-  // Source reliability (0-1.0)
-  const source = (listing.source || '').toLowerCase();
-  if (source === 'autotrader' || source === 'drive') {
-    score += 1.0;
-    reasons.push('source_premium');
-  } else if (source === 'gumtree_dealer') {
-    score += 0.7;
-    reasons.push('source_dealer');
-  } else if (source === 'gumtree_private') {
+  // Source bonus
+  const domain = (listing.source || '').toLowerCase();
+  if (domain.includes('pickles') || domain.includes('manheim') || domain.includes('grays') || domain.includes('lloyds')) {
     score += 0.4;
-    reasons.push('source_private');
+    reasons.push('auction_source');
+  } else if (domain.includes('autotrader') || domain.includes('drive') || domain.includes('carsales') || domain.includes('gumtree')) {
+    score += 0.2;
+    reasons.push('marketplace_source');
   }
   
-  return { score: Math.round(score * 100) / 100, reasons };
+  // Cap at 10.0
+  return { dna_score: Math.min(Math.round(score * 100) / 100, 10.0), reasons };
+}
+
+// Legacy scoring wrapper for backward compatibility
+function scoreMatch(hunt: Hunt, listing: Listing): { score: number; reasons: string[] } {
+  const { dna_score, reasons } = scoreDnaMatch(hunt, listing);
+  return { score: dna_score, reasons };
 }
 
 function getConfidence(score: number): 'high' | 'medium' | 'low' {
-  if (score >= 7.5) return 'high';
-  if (score >= 6.0) return 'medium';
+  if (score >= 7.0) return 'high';
+  if (score >= 5.5) return 'medium';
   return 'low';
 }
 

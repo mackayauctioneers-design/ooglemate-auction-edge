@@ -2101,6 +2101,7 @@ export type Database = {
           confidence_label: string
           criteria_version: number
           decision: string
+          dna_score: number | null
           gap_dollars: number | null
           gap_pct: number | null
           hunt_id: string
@@ -2119,6 +2120,7 @@ export type Database = {
           confidence_label: string
           criteria_version?: number
           decision: string
+          dna_score?: number | null
           gap_dollars?: number | null
           gap_pct?: number | null
           hunt_id: string
@@ -2137,6 +2139,7 @@ export type Database = {
           confidence_label?: string
           criteria_version?: number
           decision?: string
+          dna_score?: number | null
           gap_dollars?: number | null
           gap_pct?: number | null
           hunt_id?: string
@@ -2286,6 +2289,7 @@ export type Database = {
           created_at: string | null
           criteria_version: number
           decision: string | null
+          dna_score: number | null
           domain: string | null
           effective_price: number | null
           extracted: Json | null
@@ -2306,6 +2310,7 @@ export type Database = {
           reasons: string[] | null
           requires_manual_check: boolean | null
           source: string
+          source_class: string | null
           source_listing_id: string | null
           source_type: string
           title: string | null
@@ -2321,6 +2326,7 @@ export type Database = {
           created_at?: string | null
           criteria_version?: number
           decision?: string | null
+          dna_score?: number | null
           domain?: string | null
           effective_price?: number | null
           extracted?: Json | null
@@ -2341,6 +2347,7 @@ export type Database = {
           reasons?: string[] | null
           requires_manual_check?: boolean | null
           source: string
+          source_class?: string | null
           source_listing_id?: string | null
           source_type: string
           title?: string | null
@@ -2356,6 +2363,7 @@ export type Database = {
           created_at?: string | null
           criteria_version?: number
           decision?: string | null
+          dna_score?: number | null
           domain?: string | null
           effective_price?: number | null
           extracted?: Json | null
@@ -2376,6 +2384,7 @@ export type Database = {
           reasons?: string[] | null
           requires_manual_check?: boolean | null
           source?: string
+          source_class?: string | null
           source_listing_id?: string | null
           source_type?: string
           title?: string | null
@@ -2916,6 +2925,7 @@ export type Database = {
           created_at: string
           criteria_version: number
           decision: string | null
+          dna_score: number | null
           domain: string | null
           extracted: Json | null
           hunt_id: string
@@ -2939,6 +2949,7 @@ export type Database = {
           created_at?: string
           criteria_version?: number
           decision?: string | null
+          dna_score?: number | null
           domain?: string | null
           extracted?: Json | null
           hunt_id: string
@@ -2962,6 +2973,7 @@ export type Database = {
           created_at?: string
           criteria_version?: number
           decision?: string | null
+          dna_score?: number | null
           domain?: string | null
           extracted?: Json | null
           hunt_id?: string
@@ -7421,6 +7433,7 @@ export type Database = {
           confidence: string
           criteria_version: number
           decision: string
+          dna_score: number
           effective_price: number
           final_score: number
           first_seen_at: string
@@ -7435,6 +7448,8 @@ export type Database = {
           make: string
           model: string
           price_score: number
+          reasons: string[]
+          source_class: string
           source_listing_id: string
           source_name: string
           source_type: string

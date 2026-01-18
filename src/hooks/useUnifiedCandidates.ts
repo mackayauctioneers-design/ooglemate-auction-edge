@@ -78,31 +78,47 @@ export function useUnifiedCandidates({
         id: row.id,
         hunt_id: huntId,
         source_type: row.source_type as 'internal' | 'outward',
-        source: row.source,
+        source: row.source_name || row.source,
         source_listing_id: row.source_listing_id,
-        url: row.url,
+        url: row.url || row.listing_url,
         title: row.title,
         year: row.year,
         make: row.make,
         model: row.model,
-        variant_raw: row.variant_raw,
+        variant_raw: row.variant,
+        variant: row.variant,
         km: row.km,
-        price: row.price,
+        price: row.asking_price || row.price,
+        asking_price: row.asking_price,
         location: row.location,
         domain: row.domain,
-        match_score: row.match_score,
+        // DNA-first ranking fields
+        dna_score: row.dna_score || row.match_score || 0,
+        match_score: row.match_score || row.dna_score,
         price_score: row.price_score,
         final_score: row.final_score,
+        effective_price: row.effective_price,
         decision: row.decision as 'BUY' | 'WATCH' | 'IGNORE',
-        reasons: row.reasons,
+        confidence: row.confidence,
+        // Gap analysis
+        gap_dollars: row.gap_dollars,
+        gap_pct: row.gap_pct,
+        // Source classification
+        source_name: row.source_name,
+        source_class: row.source_class,
+        listing_url: row.listing_url || row.url,
+        first_seen_at: row.first_seen_at,
+        // Debug info
+        reasons: row.reasons || [],
+        // Status
+        is_verified: row.is_verified,
         is_cheapest: row.is_cheapest,
         rank_position: row.rank_position,
+        criteria_version: row.criteria_version,
         // ID Kit fields for blocked sources
         blocked_reason: row.blocked_reason,
         id_kit: row.id_kit,
         requires_manual_check: row.requires_manual_check,
-        // Verification status
-        is_verified: row.is_verified,
       }));
 
       return {

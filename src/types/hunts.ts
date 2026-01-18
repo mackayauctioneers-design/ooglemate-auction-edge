@@ -251,29 +251,53 @@ export interface UnifiedCandidate {
   id: string;
   hunt_id: string;
   source_type: 'internal' | 'outward';
-  source: string;
+  source?: string;
   source_listing_id: string | null;
   url: string;
   title: string | null;
+  
+  // Vehicle identity
   year: number | null;
   make: string | null;
   model: string | null;
-  variant_raw: string | null;
+  variant_raw?: string | null;
+  variant?: string | null;
   km: number | null;
-  price: number | null;
+  price?: number | null;
+  asking_price?: number | null;
   location: string | null;
-  domain: string | null;
-  match_score: number;
-  price_score: number;
-  final_score: number;
-  decision: 'BUY' | 'WATCH' | 'IGNORE';
+  domain?: string | null;
+  
+  // DNA-first ranking fields
+  dna_score: number;
+  match_score?: number;
+  price_score?: number;
+  final_score?: number;
+  effective_price?: number | null;
+  decision: 'BUY' | 'WATCH' | 'IGNORE' | string;
+  confidence?: string;
+  
+  // Gap analysis
+  gap_dollars?: number | null;
+  gap_pct?: number | null;
+  
+  // Source classification (for debug/operator UI)
+  source_name?: string | null;
+  source_class?: 'auction' | 'marketplace' | 'dealer' | 'internal' | string;
+  listing_url?: string | null;
+  first_seen_at?: string | null;
+  
+  // Debug info (mandatory for operator trust)
   reasons: string[] | null;
+  
+  // Status
+  is_verified?: boolean;
   is_cheapest?: boolean;
   rank_position?: number;
-  // ID Kit for blocked sources
+  criteria_version?: number;
+  
+  // ID Kit for blocked sources (e.g., Carsales)
   blocked_reason?: string | null;
   id_kit?: IdKit | null;
   requires_manual_check?: boolean;
-  // Verification status (from outward scrape worker)
-  is_verified?: boolean;
 }

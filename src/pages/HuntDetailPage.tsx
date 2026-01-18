@@ -622,6 +622,7 @@ export default function HuntDetailPage() {
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="p-3 text-left font-medium">#</th>
+                        <th className="p-3 text-left font-medium">DNA</th>
                         <th className="p-3 text-left font-medium">Source</th>
                         <th className="p-3 text-left font-medium">Price</th>
                         <th className="p-3 text-left font-medium">Decision</th>
@@ -632,13 +633,13 @@ export default function HuntDetailPage() {
                     <tbody>
                       {outwardLoading ? (
                         <tr>
-                          <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                          <td colSpan={7} className="p-8 text-center text-muted-foreground">
                             Loading web candidates...
                           </td>
                         </tr>
                       ) : (outwardData?.candidates || []).length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                          <td colSpan={7} className="p-8 text-center text-muted-foreground">
                             <div className="flex flex-col items-center gap-2">
                               <Globe className="h-8 w-8 text-muted-foreground/50" />
                               <span>No verified web listings yet — click "Search Web" to scan</span>
@@ -652,6 +653,17 @@ export default function HuntDetailPage() {
                               {idx + 1}
                             </td>
                             <td className="p-3">
+                              <div className="flex items-center gap-1">
+                                <span className={`font-mono text-xs px-1.5 py-0.5 rounded ${
+                                  candidate.dna_score >= 7 ? 'bg-emerald-500/20 text-emerald-700' :
+                                  candidate.dna_score >= 5.5 ? 'bg-amber-500/20 text-amber-700' :
+                                  'bg-muted text-muted-foreground'
+                                }`}>
+                                  {candidate.dna_score?.toFixed(1) || '—'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-3">
                               <div className="flex items-center gap-2">
                                 <Badge 
                                   variant="outline" 
@@ -661,7 +673,9 @@ export default function HuntDetailPage() {
                                 >
                                   {candidate.is_verified ? '✓ Verified' : 'Pending'}
                                 </Badge>
-                                <span className="text-xs text-muted-foreground">{candidate.domain}</span>
+                                <Badge variant="secondary" className="text-xs">
+                                  {candidate.source_class || 'web'}
+                                </Badge>
                               </div>
                             </td>
                             <td className="p-3">
@@ -753,9 +767,9 @@ export default function HuntDetailPage() {
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="p-3 text-left font-medium">#</th>
+                        <th className="p-3 text-left font-medium">DNA</th>
                         <th className="p-3 text-left font-medium">Source</th>
                         <th className="p-3 text-left font-medium">Price</th>
-                        <th className="p-3 text-left font-medium">Score</th>
                         <th className="p-3 text-left font-medium">Decision</th>
                         <th className="p-3 text-left font-medium">Details</th>
                         <th className="p-3 text-left font-medium">Link</th>
@@ -781,29 +795,24 @@ export default function HuntDetailPage() {
                               {idx + 1}
                             </td>
                             <td className="p-3">
-                              <div className="flex items-center gap-2">
-                                <Badge 
-                                  variant="outline" 
-                                  className="bg-blue-500/10 text-blue-600 border-blue-200"
-                                >
-                                  {candidate.source?.replace('_', ' ')}
-                                </Badge>
-                                <span className="text-xs text-muted-foreground">{candidate.domain}</span>
-                              </div>
+                              <span className={`font-mono text-xs px-1.5 py-0.5 rounded ${
+                                candidate.dna_score >= 7 ? 'bg-emerald-500/20 text-emerald-700' :
+                                candidate.dna_score >= 5.5 ? 'bg-amber-500/20 text-amber-700' :
+                                'bg-muted text-muted-foreground'
+                              }`}>
+                                {candidate.dna_score?.toFixed(1) || '—'}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-200">
+                                {candidate.source_class || candidate.source?.replace('_', ' ')}
+                              </Badge>
                             </td>
                             <td className="p-3">
                               <div className="flex items-center gap-1">
                                 {candidate.is_cheapest && <Zap className="h-4 w-4 text-amber-500" />}
                                 <span className={candidate.is_cheapest ? 'font-bold text-emerald-600' : ''}>
                                   {candidate.price ? `$${candidate.price.toLocaleString()}` : '—'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="p-3">
-                              <div className="text-xs">
-                                <span className="font-medium">{candidate.final_score?.toFixed(1)}</span>
-                                <span className="text-muted-foreground ml-1">
-                                  (M:{candidate.match_score?.toFixed(1)} P:{candidate.price_score?.toFixed(1)})
                                 </span>
                               </div>
                             </td>
