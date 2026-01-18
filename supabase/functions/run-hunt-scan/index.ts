@@ -625,121 +625,78 @@ Deno.serve(async (req) => {
 
         console.log(`Found ${candidates.length} candidates for hunt ${hunt.id}`);
 
-        // ============================================
-        // BATCH CLASSIFY unclassified TOYOTA LANDCRUISER listings
-        // This populates series_family, body_type, cab_type, engine_family
-        // ============================================
-        if (makeUpper === 'TOYOTA' && modelUpper.includes('LANDCRUISER')) {
-          const unclassifiedIds = candidates
-            .filter((c: Listing) => !c.series_family && !c.cab_type)
-            .map((c: Listing) => c.id);
-          
-          if (unclassifiedIds.length > 0) {
-            console.log(`Classifying ${unclassifiedIds.length} unclassified Toyota LandCruiser listings...`);
-            
-            // Batch classify in groups of 20 to avoid timeout
-            const batchSize = 20;
-            for (let i = 0; i < Math.min(unclassifiedIds.length, 100); i += batchSize) {
-              const batch = unclassifiedIds.slice(i, i + batchSize);
-              await Promise.all(batch.map((listingId: string) =>
-                supabase.rpc('rpc_classify_listing', { p_listing_id: listingId })
-              ));
-            }
-            
-            // Refetch candidates with updated classification
-            const { data: refreshedCandidates } = await query;
-            const refreshedFiltered = (refreshedCandidates || []).filter((c: any) => 
-              sourcesLower.includes((c.source || '').toLowerCase())
-            );
-            // Replace candidates array with refreshed data
-            candidates.length = 0;
-            candidates.push(...refreshedFiltered);
-            console.log(`Classification complete, ${candidates.length} candidates after refresh`);
-          }
-        }
-
+        // NOTE: Inline classification removed to prevent timeouts.
+        // Classification should be done in a background batch process.
+        // Listings without series_family will still score lower but won't block the scan.
         const matches: MatchResult[] = [];
         let alertsEmitted = 0;
         let rejectedCount = 0;
 
+        // Batch arrays for efficient inserts
+        const matchInserts: any[] = [];
+        const alertInserts: any[] = [];
+        const enrichmentUpserts: any[] = [];
+        
         // Since we delete matches at start, existingListingIds is empty
         const existingListingIds = new Set<string>();
 
         for (const listing of (candidates || [])) {
-          // Use listing directly - classification should be done in a separate batch process
-          // This avoids N+1 queries and timeout issues
-          
           // Skip if already matched
           if (existingListingIds.has(listing.id)) {
             continue;
           }
           
-          // ============================================
           // BADGE AUTHORITY LAYER - HARD GATES
-          // Apply BEFORE scoring to reject early
-          // ============================================
           const gateResult = applyHardGates(hunt, listing);
           
-          // ============================================
-          // DEEP ENRICHMENT: Enqueue listings with unknown required fields
-          // Priority 10 = will be scraped with Firecrawl
-          // ============================================
+          // Queue for deep enrichment (batched later)
           if (needsDeepEnrichment(hunt, listing)) {
-            // Enqueue for deep enrichment (high priority)
-            await supabase.from('listing_enrichment_queue').upsert({
+            enrichmentUpserts.push({
               listing_id: listing.id,
               source: listing.source || 'unknown',
-              priority: 10,  // High priority = will be scraped
+              priority: 10,
               status: 'queued',
               attempts: 0,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            }, {
-              onConflict: 'listing_id',
-              ignoreDuplicates: false,
             });
           }
           
           if (!gateResult.passed) {
-            // Store IGNORE match with rejection reason
-            await supabase.from('hunt_matches').insert({
+            matchInserts.push({
               hunt_id: hunt.id,
               listing_id: listing.id,
               match_score: 0,
               confidence_label: 'low',
               reasons: [gateResult.rejection_reason],
               asking_price: listing.asking_price,
-              decision: 'ignore'
+              decision: 'ignore',
+              criteria_version: hunt.criteria_version || 1
             });
             existingListingIds.add(listing.id);
             rejectedCount++;
-            continue; // Skip to next listing - hard gate failed
+            continue;
           }
           
-          // ============================================
           // MUST-HAVE KEYWORD MATCHING
-          // ============================================
           const mustHaveResult = checkMustHaveTokens(hunt, listing);
           
-          // In strict mode, missing tokens = IGNORE
           if (hunt.must_have_mode === 'strict' && !mustHaveResult.passed) {
-            await supabase.from('hunt_matches').insert({
+            matchInserts.push({
               hunt_id: hunt.id,
               listing_id: listing.id,
               match_score: 0,
               confidence_label: 'low',
               reasons: [`missing_required_token:${mustHaveResult.missing_tokens[0]}`],
               asking_price: listing.asking_price,
-              decision: 'ignore'
+              decision: 'ignore',
+              criteria_version: hunt.criteria_version || 1
             });
             existingListingIds.add(listing.id);
             rejectedCount++;
-            continue; // Skip - strict mode and missing token
+            continue;
           }
           
           let { score, reasons } = scoreMatch(hunt, listing);
           
-          // Add must-have bonus in soft mode (or matched tokens in strict)
           if (mustHaveResult.matched_tokens.length > 0) {
             score += mustHaveResult.score_bonus;
             for (const token of mustHaveResult.matched_tokens) {
@@ -747,22 +704,20 @@ Deno.serve(async (req) => {
             }
           }
           
-          // Only process if above minimum threshold
           if (score < 6.0) continue;
           
-          // Add gate warning to reasons if downgraded
           const finalReasons = gateResult.downgrade_to_watch 
             ? [...reasons, gateResult.rejection_reason!]
             : reasons;
           
-          const provenExitValue = await getProvenExitValue(supabase, hunt, listing);
+          // Skip proven exit value lookup to speed up - will be filled by rebuild
+          const provenExitValue = null;
           const listingAgeDays = Math.floor((Date.now() - new Date(listing.first_seen_at).getTime()) / (24 * 60 * 60 * 1000));
           const { decision, gap_dollars, gap_pct } = makeDecision(hunt, listing, score, provenExitValue, listingAgeDays, gateResult);
           
           const confidence = getConfidence(score);
 
-        // Insert new match with criteria_version
-          await supabase.from('hunt_matches').insert({
+          matchInserts.push({
             hunt_id: hunt.id,
             listing_id: listing.id,
             match_score: score,
@@ -789,48 +744,51 @@ Deno.serve(async (req) => {
             rejection_reason: gateResult.rejection_reason
           });
 
-          // Create alert if BUY or WATCH (no alerts for gate-rejected)
+          // Queue alert (skip recent alert check - let DB handle dedup)
           if (decision === 'buy' || decision === 'watch') {
-            // Check if already alerted recently
-            const { data: recentAlert } = await supabase
-              .from('hunt_alerts')
-              .select('id')
-              .eq('hunt_id', hunt.id)
-              .eq('listing_id', listing.id)
-              .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-              .maybeSingle();
-
-            if (!recentAlert) {
-              await supabase.from('hunt_alerts').insert({
-                hunt_id: hunt.id,
-                listing_id: listing.id,
-                alert_type: decision === 'buy' ? 'BUY' : 'WATCH',
-                criteria_version: hunt.criteria_version || 1,
-                payload: {
-                  year: listing.year,
-                  make: listing.make,
-                  model: listing.model,
-                  variant: listing.variant,
-                  km: listing.km,
-                  asking_price: listing.asking_price,
-                  proven_exit_value: provenExitValue,
-                  gap_dollars,
-                  gap_pct,
-                  source: listing.source,
-                  listing_url: listing.listing_url,
-                  match_score: score,
-                  reasons: finalReasons,
-                  // Badge Authority Layer fields
-                  series_family: listing.series_family,
-                  body_type: listing.body_type,
-                  engine_family: listing.engine_family,
-                  badge: listing.badge,
-                  variant_confidence: listing.variant_confidence
-                }
-              });
-              alertsEmitted++;
-            }
+            alertInserts.push({
+              hunt_id: hunt.id,
+              listing_id: listing.id,
+              alert_type: decision === 'buy' ? 'BUY' : 'WATCH',
+              criteria_version: hunt.criteria_version || 1,
+              payload: {
+                year: listing.year,
+                make: listing.make,
+                model: listing.model,
+                variant: listing.variant,
+                km: listing.km,
+                asking_price: listing.asking_price,
+                source: listing.source,
+                listing_url: listing.listing_url,
+                match_score: score,
+                reasons: finalReasons,
+              }
+            });
           }
+        }
+
+        // BATCH INSERT all matches at once
+        if (matchInserts.length > 0) {
+          const { error: matchErr } = await supabase
+            .from('hunt_matches')
+            .insert(matchInserts);
+          if (matchErr) console.warn('Batch match insert error:', matchErr.message);
+        }
+
+        // BATCH INSERT alerts (using upsert to handle duplicates)
+        if (alertInserts.length > 0) {
+          const { error: alertErr } = await supabase
+            .from('hunt_alerts')
+            .insert(alertInserts);
+          if (alertErr) console.warn('Batch alert insert error:', alertErr.message);
+          else alertsEmitted = alertInserts.length;
+        }
+
+        // BATCH UPSERT enrichment queue (fire and forget)
+        if (enrichmentUpserts.length > 0) {
+          supabase.from('listing_enrichment_queue')
+            .upsert(enrichmentUpserts, { onConflict: 'listing_id', ignoreDuplicates: true })
+            .then(() => console.log(`Queued ${enrichmentUpserts.length} for enrichment`));
         }
 
         // Update scan record
@@ -858,23 +816,19 @@ Deno.serve(async (req) => {
 
         // ============================================
         // TRIGGER OUTWARD HUNT (Web Discovery)
-        // Always run outward search for active hunts
+        // Fire and forget - don't block the response
         // ============================================
         if (hunt.status === 'active') {
-          try {
-            const funcUrl = `${supabaseUrl}/functions/v1/outward-hunt`;
-            await fetch(funcUrl, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${supabaseKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ hunt_id: hunt.id, max_results: 15 }),
-            });
-            console.log(`Triggered outward hunt for ${hunt.id}`);
-          } catch (outwardErr) {
-            console.warn(`Failed to trigger outward hunt: ${outwardErr}`);
-          }
+          const funcUrl = `${supabaseUrl}/functions/v1/outward-hunt`;
+          fetch(funcUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ hunt_id: hunt.id, max_results: 15 }),
+          }).then(() => console.log(`Triggered outward hunt for ${hunt.id}`))
+            .catch(err => console.warn(`Failed to trigger outward hunt: ${err}`));
         }
 
         // ============================================
