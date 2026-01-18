@@ -7161,8 +7161,8 @@ export type Database = {
       }
       fn_classify_vehicle_identity: {
         Args: {
-          p_make: string
-          p_model: string
+          p_make?: string
+          p_model?: string
           p_text?: string
           p_url?: string
           p_variant_raw?: string
@@ -7208,6 +7208,17 @@ export type Database = {
             }
             Returns: number
           }
+      fn_is_verified_listing: {
+        Args: {
+          p_asking_price: number
+          p_intent_reason: string
+          p_make: string
+          p_model: string
+          p_url: string
+          p_year: number
+        }
+        Returns: boolean
+      }
       generate_geo_heat_alerts: {
         Args: {
           p_asof?: string
@@ -7862,6 +7873,50 @@ export type Database = {
               source_type: string
               updated_at: string
               url: string
+              verified: boolean
+              year: number
+            }[]
+          }
+        | {
+            Args: {
+              p_decision_filter?: string
+              p_hunt_id: string
+              p_limit?: number
+              p_offset?: number
+              p_source_filter?: string
+            }
+            Returns: {
+              badge: string
+              blocked_reason: string
+              body_type: string
+              cab_type: string
+              created_at: string
+              criteria_version: number
+              decision: string
+              dna_score: number
+              engine_family: string
+              hunt_id: string
+              id: string
+              identity_confidence: number
+              identity_key: string
+              is_cheapest: boolean
+              km: number
+              listing_intent: string
+              listing_intent_reason: string
+              location: string
+              make: string
+              match_score: number
+              model: string
+              price: number
+              rank_position: number
+              series_family: string
+              source: string
+              source_class: string
+              source_tier: number
+              source_type: string
+              title: string
+              url: string
+              variant_raw: string
               verified: boolean
               year: number
             }[]
