@@ -24,6 +24,7 @@ interface CandidateCounts {
   total: number;
   buy: number;
   watch: number;
+  discovered: number;
   unverified: number;
   ignore: number;
   live_matches: number;
@@ -182,6 +183,7 @@ export function useCandidateCounts(huntId: string, enabled: boolean = true) {
         total: result?.total ?? 0,
         buy: result?.buy ?? 0,
         watch: result?.watch ?? 0,
+        discovered: (result as any)?.discovered ?? 0,
         unverified: result?.unverified ?? 0,
         ignore: result?.ignore ?? 0,
         live_matches: result?.live_matches ?? 0,

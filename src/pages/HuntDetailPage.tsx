@@ -280,6 +280,7 @@ export default function HuntDetailPage() {
     switch (d) {
       case 'buy': return 'bg-emerald-500/10 text-emerald-600';
       case 'watch': return 'bg-amber-500/10 text-amber-600';
+      case 'discovered': return 'bg-purple-500/10 text-purple-600';
       case 'unverified': return 'bg-blue-500/10 text-blue-600';
       case 'ignore': return 'bg-muted text-muted-foreground';
       default: return 'bg-muted';
