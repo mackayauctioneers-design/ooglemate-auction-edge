@@ -673,8 +673,20 @@ export default function HuntDetailPage() {
                                 >
                                   {candidate.is_verified ? '✓ Verified' : 'Pending'}
                                 </Badge>
-                                <Badge variant="secondary" className="text-xs">
-                                  {candidate.source_class || 'web'}
+                                {/* Source Tier Badge: Tier 1 = auction (gold), Tier 2 = marketplace (blue), Tier 3 = dealer (gray) */}
+                                <Badge 
+                                  variant="secondary" 
+                                  className={`text-xs ${
+                                    candidate.source_tier === 1 
+                                      ? 'bg-amber-500/20 text-amber-700 border-amber-300' 
+                                      : candidate.source_tier === 2 
+                                        ? 'bg-blue-500/20 text-blue-700 border-blue-300'
+                                        : 'bg-muted text-muted-foreground'
+                                  }`}
+                                >
+                                  {candidate.source_tier === 1 ? '🔨 Auction' : 
+                                   candidate.source_tier === 2 ? '🛒 Marketplace' : 
+                                   candidate.source_class || 'dealer'}
                                 </Badge>
                               </div>
                             </td>
@@ -804,8 +816,20 @@ export default function HuntDetailPage() {
                               </span>
                             </td>
                             <td className="p-3">
-                              <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-200">
-                                {candidate.source_class || candidate.source?.replace('_', ' ')}
+                              {/* Source Tier Badge for internal listings too */}
+                              <Badge 
+                                variant="secondary" 
+                                className={`text-xs ${
+                                  candidate.source_tier === 1 
+                                    ? 'bg-amber-500/20 text-amber-700 border-amber-300' 
+                                    : candidate.source_tier === 2 
+                                      ? 'bg-blue-500/20 text-blue-700 border-blue-300'
+                                      : 'bg-muted text-muted-foreground'
+                                }`}
+                              >
+                                {candidate.source_tier === 1 ? '🔨 Auction' : 
+                                 candidate.source_tier === 2 ? '🛒 Marketplace' : 
+                                 candidate.source_class || candidate.source?.replace('_', ' ') || 'internal'}
                               </Badge>
                             </td>
                             <td className="p-3">

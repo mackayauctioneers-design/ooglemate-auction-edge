@@ -2312,6 +2312,7 @@ export type Database = {
           source: string
           source_class: string | null
           source_listing_id: string | null
+          source_tier: number | null
           source_type: string
           title: string | null
           updated_at: string | null
@@ -2349,6 +2350,7 @@ export type Database = {
           source: string
           source_class?: string | null
           source_listing_id?: string | null
+          source_tier?: number | null
           source_type: string
           title?: string | null
           updated_at?: string | null
@@ -2386,6 +2388,7 @@ export type Database = {
           source?: string
           source_class?: string | null
           source_listing_id?: string | null
+          source_tier?: number | null
           source_type?: string
           title?: string | null
           updated_at?: string | null
@@ -7452,6 +7455,7 @@ export type Database = {
           source_class: string
           source_listing_id: string
           source_name: string
+          source_tier: number
           source_type: string
           title: string
           url: string

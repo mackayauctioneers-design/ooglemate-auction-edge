@@ -106,6 +106,7 @@ export function useUnifiedCandidates({
         // Source classification
         source_name: row.source_name,
         source_class: row.source_class,
+        source_tier: row.source_tier,
         listing_url: row.listing_url || row.url,
         first_seen_at: row.first_seen_at,
         // Debug info

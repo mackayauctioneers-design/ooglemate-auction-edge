@@ -312,16 +312,21 @@ function needsDeepEnrichment(hunt: Hunt, listing: Listing): boolean {
 // DNA SCORING v2 - Replaces legacy scoring
 // Scoring weights (total max 10.0)
 // ============================================
-function scoreDnaMatch(hunt: Hunt, listing: Listing): { dna_score: number; reasons: string[] } {
+function scoreDnaMatch(hunt: Hunt, listing: Listing): { dna_score: number; reasons: string[]; source_tier: number } {
   let score = 0;
   const reasons: string[] = [];
   
   // =====================================================
-  // MANDATORY GATES - auto-reject if these fail
-  // (handled in applyHardGates, but double-check here)
+  // DNA SCORING v2 FINAL SPEC - 10 POINT SCALE
+  // Per: Kiting Mode Clean Reset Spec v1
   // =====================================================
   
-  // Year match (0-1.5)
+  // Make + Model baseline match: +3.0 (these are mandatory gates, but we add base points)
+  // (Actually matched via hard gates, but add credit to baseline score)
+  score += 3.0;
+  reasons.push('make_model_match');
+  
+  // Year match (+1.5 exact, +1.0 ±1)
   if (listing.year !== null) {
     const yearDiff = Math.abs(listing.year - hunt.year);
     if (yearDiff === 0) {
@@ -336,58 +341,41 @@ function scoreDnaMatch(hunt: Hunt, listing: Listing): { dna_score: number; reaso
     }
   }
   
-  // Badge exact match (+2.0)
+  // Badge exact match (+1.0)
   if (hunt.badge && listing.badge) {
     if (hunt.badge.toUpperCase() === listing.badge.toUpperCase()) {
-      score += 2.0;
+      score += 1.0;
       reasons.push('badge_exact');
     }
   } else if (!hunt.badge) {
-    // No badge requirement - partial credit
-    score += 0.5;
+    // No badge requirement
+    score += 0.2;
     reasons.push('badge_any');
   }
   
-  // Body exact match (+1.5)
+  // Body type match (+1.0)
   if (hunt.body_type && listing.body_type) {
     if (hunt.body_type.toUpperCase() === listing.body_type.toUpperCase()) {
-      score += 1.5;
+      score += 1.0;
       reasons.push('body_exact');
     }
   } else if (!hunt.body_type) {
-    score += 0.3;
+    score += 0.2;
     reasons.push('body_any');
   }
   
-  // Engine family exact match (+1.5)
+  // Engine family match (+1.0)
   if (hunt.engine_family && listing.engine_family) {
     if (hunt.engine_family.toUpperCase() === listing.engine_family.toUpperCase()) {
-      score += 1.5;
+      score += 1.0;
       reasons.push('engine_exact');
     }
   } else if (!hunt.engine_family) {
-    score += 0.3;
+    score += 0.2;
     reasons.push('engine_any');
   }
   
-  // KM within tolerance (+1.0 for ±10%, +0.5 for ±20%)
-  if (hunt.km && listing.km) {
-    const kmDiff = Math.abs(listing.km - hunt.km);
-    const pct = (kmDiff / hunt.km) * 100;
-    if (pct <= 10) {
-      score += 1.0;
-      reasons.push('km_±10%');
-    } else if (pct <= 20) {
-      score += 0.5;
-      reasons.push('km_±20%');
-    }
-  } else if (listing.km) {
-    // Has km but no target
-    score += 0.2;
-    reasons.push('km_present');
-  }
-  
-  // Must-have token hits (+0.5 each, max +1.5)
+  // Required keyword matches (+1.5 max)
   const tokens = hunt.must_have_tokens || [];
   if (tokens.length > 0) {
     const textBlob = [
@@ -399,7 +387,7 @@ function scoreDnaMatch(hunt: Hunt, listing: Listing): { dna_score: number; reaso
     
     let tokenHits = 0;
     for (const token of tokens) {
-      if (textBlob.includes(token)) {
+      if (textBlob.includes(token.toUpperCase())) {
         tokenHits++;
         reasons.push(`must_have:${token.toLowerCase()}`);
       }
@@ -407,18 +395,26 @@ function scoreDnaMatch(hunt: Hunt, listing: Listing): { dna_score: number; reaso
     score += Math.min(tokenHits * 0.5, 1.5);
   }
   
-  // Source bonus
+  // Source tier bonus (+1.0 Tier 1 auction, +0.5 Tier 2 marketplace)
   const domain = (listing.source || '').toLowerCase();
+  let source_tier = 3; // Default: dealer/internal
+  
   if (domain.includes('pickles') || domain.includes('manheim') || domain.includes('grays') || domain.includes('lloyds')) {
-    score += 0.4;
-    reasons.push('auction_source');
-  } else if (domain.includes('autotrader') || domain.includes('drive') || domain.includes('carsales') || domain.includes('gumtree')) {
-    score += 0.2;
-    reasons.push('marketplace_source');
+    score += 1.0;
+    source_tier = 1;
+    reasons.push('tier1_auction');
+  } else if (domain.includes('carsales') || domain.includes('autotrader') || domain.includes('drive') || domain.includes('gumtree')) {
+    score += 0.5;
+    source_tier = 2;
+    reasons.push('tier2_marketplace');
   }
   
   // Cap at 10.0
-  return { dna_score: Math.min(Math.round(score * 100) / 100, 10.0), reasons };
+  return { 
+    dna_score: Math.min(Math.round(score * 100) / 100, 10.0), 
+    reasons,
+    source_tier
+  };
 }
 
 // Legacy scoring wrapper for backward compatibility
