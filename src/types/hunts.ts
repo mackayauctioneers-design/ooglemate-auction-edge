@@ -270,4 +270,6 @@ export interface UnifiedCandidate {
   blocked_reason?: string | null;
   id_kit?: IdKit | null;
   requires_manual_check?: boolean;
+  // Verification status (from outward scrape worker)
+  is_verified?: boolean;
 }

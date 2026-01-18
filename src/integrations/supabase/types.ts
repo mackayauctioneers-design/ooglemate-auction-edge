@@ -7378,6 +7378,7 @@ export type Database = {
           p_hunt_id: string
           p_limit?: number
           p_offset?: number
+          p_source_filter?: string
         }
         Returns: {
           blocked_reason: string
@@ -7387,6 +7388,7 @@ export type Database = {
           id: string
           id_kit: Json
           is_cheapest: boolean
+          is_verified: boolean
           km: number
           location: string
           make: string

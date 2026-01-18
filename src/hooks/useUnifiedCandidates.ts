@@ -7,6 +7,7 @@ interface UseUnifiedCandidatesOptions {
   limit?: number;
   offset?: number;
   decisionFilter?: 'BUY' | 'WATCH' | null;
+  sourceFilter?: 'outward' | 'internal' | null; // NEW: filter by source type
   enabled?: boolean;
   staleTime?: number;
   refetchOnMount?: boolean | 'always';
@@ -23,19 +24,21 @@ export function useUnifiedCandidates({
   limit = 50,
   offset = 0,
   decisionFilter = null,
+  sourceFilter = null,
   enabled = true,
   staleTime = 0,
   refetchOnMount = 'always',
 }: UseUnifiedCandidatesOptions) {
   return useQuery<UnifiedCandidatesResult>({
-    queryKey: ['unified-candidates', huntId, limit, offset, decisionFilter],
+    queryKey: ['unified-candidates', huntId, limit, offset, decisionFilter, sourceFilter],
     queryFn: async () => {
-      // Fetch candidates using the RPC
+      // Fetch candidates using the RPC with new source filter
       const { data, error } = await supabase.rpc('rpc_get_unified_candidates', {
         p_hunt_id: huntId,
         p_limit: limit,
         p_offset: offset,
         p_decision_filter: decisionFilter,
+        p_source_filter: sourceFilter,
       });
 
       if (error) throw error;
@@ -49,19 +52,27 @@ export function useUnifiedCandidates({
       if (decisionFilter) {
         countQuery = countQuery.eq('decision', decisionFilter);
       }
+      if (sourceFilter) {
+        countQuery = countQuery.eq('source_type', sourceFilter);
+      }
 
       const { count, error: countError } = await countQuery;
       if (countError) throw countError;
 
-      // Get cheapest price
-      const { data: cheapestData } = await supabase
+      // Get cheapest price (for the filtered set)
+      let cheapestQuery = supabase
         .from('hunt_unified_candidates')
         .select('price')
         .eq('hunt_id', huntId)
         .not('price', 'is', null)
         .order('price', { ascending: true })
-        .limit(1)
-        .single();
+        .limit(1);
+
+      if (sourceFilter) {
+        cheapestQuery = cheapestQuery.eq('source_type', sourceFilter);
+      }
+
+      const { data: cheapestData } = await cheapestQuery.single();
 
       const candidates: UnifiedCandidate[] = (data || []).map((row: any) => ({
         id: row.id,
@@ -90,6 +101,8 @@ export function useUnifiedCandidates({
         blocked_reason: row.blocked_reason,
         id_kit: row.id_kit,
         requires_manual_check: row.requires_manual_check,
+        // Verification status
+        is_verified: row.is_verified,
       }));
 
       return {
