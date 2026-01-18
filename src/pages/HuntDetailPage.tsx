@@ -19,6 +19,7 @@ import { HuntKPICards } from "@/components/hunts/HuntKPICards";
 import { HuntAlertCardEnhanced } from "@/components/hunts/HuntAlertCardEnhanced";
 import { ProofOfHuntModal } from "@/components/hunts/ProofOfHuntModal";
 import { useUnifiedCandidates, useCandidateCounts } from "@/hooks/useUnifiedCandidates";
+import { useLiveMatches } from "@/hooks/useLiveMatches";
 import type { 
   SaleHunt, 
   HuntMatch, 
@@ -55,13 +56,11 @@ export default function HuntDetailPage() {
   const { data: counts } = useCandidateCounts(huntId || '', !!huntId && !!hunt);
 
   // LIVE MATCHES: All candidates except IGNORE (BUY + WATCH + UNVERIFIED)
-  const { data: liveMatchesData, isLoading: liveMatchesLoading, refetch: refetchLiveMatches } = useUnifiedCandidates({
+  // Uses dedicated RPC that ONLY filters out IGNORE - shows UNVERIFIED too
+  const { data: liveMatchesData, isLoading: liveMatchesLoading, refetch: refetchLiveMatches } = useLiveMatches({
     huntId: huntId || '',
-    limit: 100,
-    excludeIgnore: true, // Show all except IGNORE
+    limit: 200,
     enabled: !!huntId,
-    staleTime: 0,
-    refetchOnMount: 'always'
   });
 
   // OPPORTUNITIES: Only BUY + WATCH (price-gap labeled)
@@ -630,7 +629,7 @@ export default function HuntDetailPage() {
         <Tabs defaultValue="live-matches">
           <TabsList className="flex-wrap">
             <TabsTrigger value="live-matches" className="data-[state=active]:text-primary">
-              Live Matches ({counts?.live_matches || liveMatchesData?.totalCount || 0})
+              Live Matches ({liveMatchesData?.totalCount || counts?.live_matches || 0})
             </TabsTrigger>
             <TabsTrigger value="opportunities" className="data-[state=active]:text-emerald-600">
               Opportunities ({counts?.opportunities || opportunities.length})
@@ -651,7 +650,7 @@ export default function HuntDetailPage() {
                   <Globe className="h-4 w-4 text-primary" />
                   Live Matches
                   <Badge variant="outline" className="ml-2">
-                    {liveMatchesData?.totalCount || 0} total
+                    {liveMatchesData?.totalCount || 0} total (BUY + WATCH + UNVERIFIED)
                   </Badge>
                   <div className="ml-auto flex gap-2 text-xs">
                     <Badge variant="secondary" className="bg-amber-500/10 text-amber-700">
@@ -698,7 +697,7 @@ export default function HuntDetailPage() {
                             Loading live matches...
                           </td>
                         </tr>
-                      ) : (liveMatchesData?.candidates || []).length === 0 ? (
+                      ) : (liveMatchesData?.matches || []).length === 0 ? (
                         <tr>
                           <td colSpan={8} className="p-8 text-center text-muted-foreground">
                             <div className="flex flex-col items-center gap-2">
@@ -708,9 +707,92 @@ export default function HuntDetailPage() {
                           </td>
                         </tr>
                       ) : (
-                        (liveMatchesData?.candidates || []).map((candidate, idx) => 
-                          renderCandidateRow(candidate, idx)
-                        )
+                        (liveMatchesData?.matches || []).map((match, idx) => (
+                          <tr key={match.id} className="border-t hover:bg-muted/30">
+                            <td className="p-3 text-muted-foreground">{idx + 1}</td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-1">
+                                <Badge variant="outline" className="bg-primary/10 text-primary">
+                                  {match.dna_score?.toFixed(1) || '—'}
+                                </Badge>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <Badge 
+                                variant="outline" 
+                                className={
+                                  match.source_tier === 1 ? 'bg-amber-500/10 text-amber-700 border-amber-300' :
+                                  match.source_tier === 2 ? 'bg-blue-500/10 text-blue-700 border-blue-300' :
+                                  'bg-muted text-muted-foreground'
+                                }
+                              >
+                                {match.source || match.source_class || 'Unknown'}
+                              </Badge>
+                            </td>
+                            <td className="p-3 font-medium">
+                              {match.price ? `$${match.price.toLocaleString()}` : '—'}
+                              {match.is_cheapest && (
+                                <Badge variant="outline" className="ml-1 bg-emerald-500/10 text-emerald-600 text-xs">
+                                  ★
+                                </Badge>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <Badge 
+                                variant="outline" 
+                                className={
+                                  match.decision === 'BUY' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-300' :
+                                  match.decision === 'WATCH' ? 'bg-amber-500/10 text-amber-600 border-amber-300' :
+                                  'bg-muted text-muted-foreground border-muted-foreground/30'
+                                }
+                              >
+                                {match.decision}
+                              </Badge>
+                              {match.blocked_reason && (
+                                <span className="ml-1 text-xs text-muted-foreground">
+                                  ({match.blocked_reason})
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <div className="text-xs">
+                                <div className="font-medium">{match.title || `${match.year} ${match.make} ${match.model}`}</div>
+                                <div className="text-muted-foreground">
+                                  {match.km ? `${(match.km / 1000).toFixed(0)}k km` : ''} 
+                                  {match.location ? ` • ${match.location}` : ''}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <div className="text-xs space-y-0.5">
+                                {match.series_family && (
+                                  <Badge variant="outline" className="mr-1 text-xs">{match.series_family}</Badge>
+                                )}
+                                {match.engine_family && (
+                                  <Badge variant="outline" className="mr-1 text-xs">{match.engine_family}</Badge>
+                                )}
+                                {match.body_type && (
+                                  <Badge variant="outline" className="mr-1 text-xs">{match.body_type}</Badge>
+                                )}
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              {match.url && !match.url.startsWith('internal://') ? (
+                                <a
+                                  href={match.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                  View
+                                </a>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
                       )}
                     </tbody>
                   </table>
