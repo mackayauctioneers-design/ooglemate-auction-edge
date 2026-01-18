@@ -99,6 +99,11 @@ export function HuntHeader({
             <Badge variant="outline" className={`ml-2 ${getStatusColor(hunt.status)}`}>
               {hunt.status}
             </Badge>
+            {hunt.criteria_version && hunt.criteria_version > 1 && (
+              <Badge variant="secondary" className="ml-1 text-xs bg-primary/10 text-primary">
+                v{hunt.criteria_version}
+              </Badge>
+            )}
           </div>
 
           {/* Subtitle */}

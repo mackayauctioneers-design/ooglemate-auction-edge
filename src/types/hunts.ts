@@ -215,6 +215,10 @@ export interface SaleHunt {
   max_outward_age_days: number;
   sort_mode: 'best_buy' | 'best_match';
   outward_weight: number;
+  
+  // Criteria Versioning
+  criteria_version: number;
+  criteria_updated_at: string | null;
 }
 
 // ============================================================

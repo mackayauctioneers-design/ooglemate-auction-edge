@@ -1919,8 +1919,10 @@ export type Database = {
           acknowledged_at: string | null
           alert_type: string
           created_at: string
+          criteria_version: number
           hunt_id: string
           id: string
+          is_stale: boolean
           last_notification_error: string | null
           listing_id: string
           notification_attempts: number | null
@@ -1934,8 +1936,10 @@ export type Database = {
           acknowledged_at?: string | null
           alert_type: string
           created_at?: string
+          criteria_version?: number
           hunt_id: string
           id?: string
+          is_stale?: boolean
           last_notification_error?: string | null
           listing_id: string
           notification_attempts?: number | null
@@ -1949,8 +1953,10 @@ export type Database = {
           acknowledged_at?: string | null
           alert_type?: string
           created_at?: string
+          criteria_version?: number
           hunt_id?: string
           id?: string
+          is_stale?: boolean
           last_notification_error?: string | null
           listing_id?: string
           notification_attempts?: number | null
@@ -1976,6 +1982,7 @@ export type Database = {
           asking_price: number | null
           confidence: string | null
           created_at: string | null
+          criteria_version: number
           decision: string | null
           dedup_key: string
           discovered_at: string | null
@@ -1984,6 +1991,7 @@ export type Database = {
           hunt_id: string
           id: string
           is_listing: boolean
+          is_stale: boolean
           km: number | null
           km_verified: boolean
           listing_kind: string | null
@@ -2010,6 +2018,7 @@ export type Database = {
           asking_price?: number | null
           confidence?: string | null
           created_at?: string | null
+          criteria_version?: number
           decision?: string | null
           dedup_key: string
           discovered_at?: string | null
@@ -2018,6 +2027,7 @@ export type Database = {
           hunt_id: string
           id?: string
           is_listing?: boolean
+          is_stale?: boolean
           km?: number | null
           km_verified?: boolean
           listing_kind?: string | null
@@ -2044,6 +2054,7 @@ export type Database = {
           asking_price?: number | null
           confidence?: string | null
           created_at?: string | null
+          criteria_version?: number
           decision?: string | null
           dedup_key?: string
           discovered_at?: string | null
@@ -2052,6 +2063,7 @@ export type Database = {
           hunt_id?: string
           id?: string
           is_listing?: boolean
+          is_stale?: boolean
           km?: number | null
           km_verified?: boolean
           listing_kind?: string | null
@@ -2087,11 +2099,13 @@ export type Database = {
         Row: {
           asking_price: number | null
           confidence_label: string
+          criteria_version: number
           decision: string
           gap_dollars: number | null
           gap_pct: number | null
           hunt_id: string
           id: string
+          is_stale: boolean
           lane: string | null
           listing_id: string
           match_score: number
@@ -2103,11 +2117,13 @@ export type Database = {
         Insert: {
           asking_price?: number | null
           confidence_label: string
+          criteria_version?: number
           decision: string
           gap_dollars?: number | null
           gap_pct?: number | null
           hunt_id: string
           id?: string
+          is_stale?: boolean
           lane?: string | null
           listing_id: string
           match_score: number
@@ -2119,11 +2135,13 @@ export type Database = {
         Update: {
           asking_price?: number | null
           confidence_label?: string
+          criteria_version?: number
           decision?: string
           gap_dollars?: number | null
           gap_pct?: number | null
           hunt_id?: string
           id?: string
+          is_stale?: boolean
           lane?: string | null
           listing_id?: string
           match_score?: number
@@ -2266,6 +2284,7 @@ export type Database = {
           blocked_reason: string | null
           classification: Json | null
           created_at: string | null
+          criteria_version: number
           decision: string | null
           domain: string | null
           effective_price: number | null
@@ -2275,6 +2294,7 @@ export type Database = {
           id: string
           id_kit: Json | null
           is_cheapest: boolean | null
+          is_stale: boolean
           km: number | null
           location: string | null
           make: string | null
@@ -2299,6 +2319,7 @@ export type Database = {
           blocked_reason?: string | null
           classification?: Json | null
           created_at?: string | null
+          criteria_version?: number
           decision?: string | null
           domain?: string | null
           effective_price?: number | null
@@ -2308,6 +2329,7 @@ export type Database = {
           id?: string
           id_kit?: Json | null
           is_cheapest?: boolean | null
+          is_stale?: boolean
           km?: number | null
           location?: string | null
           make?: string | null
@@ -2332,6 +2354,7 @@ export type Database = {
           blocked_reason?: string | null
           classification?: Json | null
           created_at?: string | null
+          criteria_version?: number
           decision?: string | null
           domain?: string | null
           effective_price?: number | null
@@ -2341,6 +2364,7 @@ export type Database = {
           id?: string
           id_kit?: Json | null
           is_cheapest?: boolean | null
+          is_stale?: boolean
           km?: number | null
           location?: string | null
           make?: string | null
@@ -2890,12 +2914,14 @@ export type Database = {
           blocked_reason: string | null
           classification: Json | null
           created_at: string
+          criteria_version: number
           decision: string | null
           domain: string | null
           extracted: Json | null
           hunt_id: string
           id: string
           id_kit: Json | null
+          is_stale: boolean
           match_score: number | null
           provider: string
           published_at: string | null
@@ -2911,12 +2937,14 @@ export type Database = {
           blocked_reason?: string | null
           classification?: Json | null
           created_at?: string
+          criteria_version?: number
           decision?: string | null
           domain?: string | null
           extracted?: Json | null
           hunt_id: string
           id?: string
           id_kit?: Json | null
+          is_stale?: boolean
           match_score?: number | null
           provider?: string
           published_at?: string | null
@@ -2932,12 +2960,14 @@ export type Database = {
           blocked_reason?: string | null
           classification?: Json | null
           created_at?: string
+          criteria_version?: number
           decision?: string | null
           domain?: string | null
           extracted?: Json | null
           hunt_id?: string
           id?: string
           id_kit?: Json | null
+          is_stale?: boolean
           match_score?: number | null
           provider?: string
           published_at?: string | null
@@ -3645,6 +3675,8 @@ export type Database = {
           body_type: string | null
           cab_type: string | null
           created_at: string
+          criteria_updated_at: string
+          criteria_version: number
           cylinders: number | null
           dealer_id: string
           drivetrain: string | null
@@ -3708,6 +3740,8 @@ export type Database = {
           body_type?: string | null
           cab_type?: string | null
           created_at?: string
+          criteria_updated_at?: string
+          criteria_version?: number
           cylinders?: number | null
           dealer_id: string
           drivetrain?: string | null
@@ -3771,6 +3805,8 @@ export type Database = {
           body_type?: string | null
           cab_type?: string | null
           created_at?: string
+          criteria_updated_at?: string
+          criteria_version?: number
           cylinders?: number | null
           dealer_id?: string
           drivetrain?: string | null
@@ -7381,38 +7417,51 @@ export type Database = {
           p_source_filter?: string
         }
         Returns: {
-          blocked_reason: string
+          asking_price: number
+          confidence: string
+          criteria_version: number
           decision: string
-          domain: string
+          effective_price: number
           final_score: number
+          first_seen_at: string
+          gap_dollars: number
+          gap_pct: number
+          hunt_id: string
           id: string
-          id_kit: Json
-          is_cheapest: boolean
           is_verified: boolean
           km: number
+          listing_url: string
           location: string
           make: string
-          match_score: number
           model: string
-          price: number
           price_score: number
-          rank_position: number
-          reasons: string[]
-          requires_manual_check: boolean
-          source: string
           source_listing_id: string
+          source_name: string
           source_type: string
           title: string
           url: string
-          variant_raw: string
+          variant: string
           year: number
         }[]
+      }
+      rpc_get_unified_candidates_count: {
+        Args: {
+          p_decision_filter?: string
+          p_hunt_id: string
+          p_source_filter?: string
+        }
+        Returns: number
+      }
+      rpc_get_unified_cheapest_price: {
+        Args: { p_hunt_id: string; p_source_filter?: string }
+        Returns: number
       }
       rpc_get_upcoming_auction_cards: {
         Args: { p_dealer_id: string; p_filters?: Json }
         Returns: Json
       }
       rpc_get_watchlist: { Args: { p_dealer_id: string }; Returns: Json }
+      rpc_reset_hunt_results: { Args: { p_hunt_id: string }; Returns: Json }
       run_spec_matching_batch: {
         Args: { p_since_hours?: number }
         Returns: {

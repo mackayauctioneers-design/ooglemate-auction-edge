@@ -79,14 +79,16 @@ export default function HuntDetailPage() {
     refetchOnMount: true
   });
 
-  // Also keep legacy matches for rejection tab
+  // Also keep legacy matches for rejection tab - filtered by current criteria_version
   const { data: matches = [] } = useQuery({
-    queryKey: ['hunt-matches', huntId],
+    queryKey: ['hunt-matches', huntId, hunt?.criteria_version],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('hunt_matches')
         .select('*, retail_listings!inner(listing_url, source)')
         .eq('hunt_id', huntId)
+        .eq('criteria_version', hunt?.criteria_version || 1)
+        .eq('is_stale', false)
         .order('priority_score', { ascending: false, nullsFirst: false })
         .limit(100);
       if (error) throw error;
@@ -97,22 +99,24 @@ export default function HuntDetailPage() {
         source: m.retail_listings?.source || null
       })) as (HuntMatch & { listing_url?: string | null; source?: string | null })[];
     },
-    enabled: !!huntId
+    enabled: !!huntId && !!hunt
   });
 
   const { data: alerts = [] } = useQuery({
-    queryKey: ['hunt-alerts', huntId],
+    queryKey: ['hunt-alerts', huntId, hunt?.criteria_version],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('hunt_alerts')
         .select('*')
         .eq('hunt_id', huntId)
+        .eq('criteria_version', hunt?.criteria_version || 1)
+        .eq('is_stale', false)
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
       return data as HuntAlert[];
     },
-    enabled: !!huntId,
+    enabled: !!huntId && !!hunt,
     staleTime: 0,
     refetchOnMount: 'always'
   });
