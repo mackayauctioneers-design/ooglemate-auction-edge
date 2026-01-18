@@ -6934,6 +6934,27 @@ export type Database = {
         }
         Returns: Json
       }
+      fn_compute_outward_dna_score: {
+        Args: {
+          p_cand_badge: string
+          p_cand_body: string
+          p_cand_engine: string
+          p_cand_km: number
+          p_cand_series: string
+          p_cand_text: string
+          p_cand_year: number
+          p_hunt_make: string
+          p_hunt_model: string
+          p_hunt_must_have_tokens: string[]
+          p_hunt_required_badge: string
+          p_hunt_required_body: string
+          p_hunt_required_engine: string
+          p_hunt_required_series: string
+          p_hunt_year_max: number
+          p_hunt_year_min: number
+        }
+        Returns: number
+      }
       generate_geo_heat_alerts: {
         Args: {
           p_asof?: string
