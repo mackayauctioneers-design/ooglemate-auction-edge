@@ -12,17 +12,18 @@ const corsHeaders = {
  * Uses Firecrawl map/scrape with allowlist filtering.
  */
 
-// Allowlist patterns for valid listing URLs
+// DETAIL-ONLY patterns for valid listing URLs
+// These must include an individual vehicle identifier (stock code, ID, etc.)
 const LISTING_URL_PATTERNS = [
-  // Generic inventory paths with IDs
-  /^https?:\/\/[^\/]+\/(?:used-?cars?|pre-owned|stock|inventory|vehicles?|listings?|details?|car-for-sale)\/[\w-]+(?:-\d+)?\/?\??.*$/i,
-  // Toyota-style paths
-  /^https?:\/\/[^\/]+\/(?:used-vehicles?|pre-owned-vehicles?)\/[\w-]+\/?\??.*$/i,
-  // Detail pages with stock codes
-  /^https?:\/\/[^\/]+\/.*(?:stock|vehicle|listing|details?)[-\/][\w]{3,20}\/?\??.*$/i,
+  // Detail pages with explicit ID/stock patterns
+  /^https?:\/\/[^\/]+\/(?:stock|inventory|vehicles?|details?|used-vehicles?|car|listing)\/[a-z0-9_-]{4,}(?:\/|\?|$)/i,
+  // Toyota-style detail pages with stock codes
+  /^https?:\/\/[^\/]+\/vehicle-inventory\/details\/[a-z0-9_-]+/i,
+  // Pages with numeric stock IDs in path
+  /^https?:\/\/[^\/]+\/.*[-_](\d{5,}|[A-Z]{2,4}\d{3,})(?:\/|\?|$)/i,
 ];
 
-// Exclusion patterns (never crawl these)
+// AGGRESSIVE exclusion patterns - reject search/category/grid pages
 const EXCLUDE_PATTERNS = [
   /\/search\b/i,
   /\/results\b/i,
@@ -47,6 +48,16 @@ const EXCLUDE_PATTERNS = [
   /page=\d/i,
   /[\?&]sort=/i,
   /[\?&]order=/i,
+  /[\?&]make=/i,
+  /[\?&]model=/i,
+  /[\?&]year=/i,
+  // NEW: Reject category/grid pages without individual IDs
+  /\/used-?cars?\/?$/i,        // Bare /used-cars/ is a grid
+  /\/pre-owned\/?$/i,          // Bare /pre-owned/ is a grid
+  /\/inventory\/?$/i,          // Bare /inventory/ is a grid  
+  /\/vehicles?\/?$/i,          // Bare /vehicles/ is a grid
+  /\/all-?stock\/?$/i,
+  /\/browse\/?/i,
 ];
 
 interface DealerCandidate {
@@ -79,7 +90,12 @@ function isValidListingUrl(url: string): boolean {
   if (EXCLUDE_PATTERNS.some(p => p.test(url))) {
     return false;
   }
-  // Then check allowlist
+  // Then check allowlist - must have a detail identifier
+  const hasDetailId = /\/[a-z0-9_-]{6,}(?:\/|\?|$)/i.test(url) || 
+                      /[-_](\d{5,}|[A-Z]{2,4}\d{3,})/i.test(url);
+  if (!hasDetailId) {
+    return false;
+  }
   return LISTING_URL_PATTERNS.some(p => p.test(url));
 }
 
@@ -322,7 +338,7 @@ Deno.serve(async (req) => {
                 url,
                 formats: ['markdown'],
                 onlyMainContent: true,
-                waitFor: 2000,
+                waitFor: 3000,  // Wait for JS to load
               }),
             });
 
