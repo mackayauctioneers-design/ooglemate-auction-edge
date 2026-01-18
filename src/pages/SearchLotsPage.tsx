@@ -621,12 +621,14 @@ export default function SearchLotsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredLots.map((lot) => {
+                  {filteredLots.map((lot, index) => {
                     const isExcluded = !!lot.excluded_reason;
+                    // Use a composite key to ensure uniqueness
+                    const uniqueKey = lot.lot_key || lot.listing_key || `${lot.source_type}-${lot.source_name}-${lot.lot_id}-${index}`;
                     
                     return (
                       <TableRow
-                        key={lot.lot_key || lot.listing_key || lot.lot_id}
+                        key={uniqueKey}
                         className={`cursor-pointer hover:bg-muted/30 ${isExcluded ? 'opacity-50 bg-muted/20' : ''}`}
                         onClick={() => setSelectedLot(lot)}
                       >
