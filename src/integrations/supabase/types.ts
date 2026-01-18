@@ -7169,7 +7169,7 @@ export type Database = {
       }
       fn_canonical_listing_id: { Args: { p_url: string }; Returns: string }
       fn_classify_listing_intent: {
-        Args: { p_snippet: string; p_title: string; p_url: string }
+        Args: { p_snippet?: string; p_title?: string; p_url: string }
         Returns: Json
       }
       fn_classify_vehicle_identity: {
