@@ -50,7 +50,27 @@ export default function HuntDetailPage() {
     enabled: !!huntId
   });
 
-  // Unified candidates - the "Cheapest On The Internet" ranking
+  // Outward Web candidates - "Verified Cheapest" ranking (verified price from scrape)
+  const { data: outwardData, isLoading: outwardLoading } = useUnifiedCandidates({
+    huntId: huntId || '',
+    limit: 50,
+    sourceFilter: 'outward',
+    enabled: !!huntId,
+    staleTime: 0,
+    refetchOnMount: true
+  });
+
+  // Internal Feed candidates (Autotrader, Drive, Gumtree ingest)
+  const { data: internalData, isLoading: internalLoading } = useUnifiedCandidates({
+    huntId: huntId || '',
+    limit: 50,
+    sourceFilter: 'internal',
+    enabled: !!huntId,
+    staleTime: 0,
+    refetchOnMount: true
+  });
+
+  // All unified candidates (for backward compatibility)
   const { data: unifiedData, isLoading: unifiedLoading, refetch: refetchUnified } = useUnifiedCandidates({
     huntId: huntId || '',
     limit: 100,
@@ -58,7 +78,7 @@ export default function HuntDetailPage() {
     staleTime: 0,
     refetchOnMount: true
   });
-  
+
   // Also keep legacy matches for rejection tab
   const { data: matches = [] } = useQuery({
     queryKey: ['hunt-matches', huntId],
@@ -147,22 +167,38 @@ export default function HuntDetailPage() {
     }
   });
 
-  // Outward hunt mutation
+  // Outward hunt mutation - now triggers immediate verification
   const runOutwardMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('outward-hunt', {
+      // Step 1: Run outward discovery
+      const { data: discoveryData, error: discoveryError } = await supabase.functions.invoke('outward-hunt', {
         body: { hunt_id: huntId }
       });
-      if (error) throw error;
-      return data;
+      if (discoveryError) throw discoveryError;
+      
+      // Step 2: Immediately trigger scrape worker to verify prices
+      // This ensures user sees verified results faster
+      toast.info('Verifying listings...');
+      try {
+        await supabase.functions.invoke('outward-scrape-worker', {
+          body: { batch_size: 20 }
+        });
+      } catch (verifyErr) {
+        console.warn('Scrape worker failed:', verifyErr);
+        // Don't fail the whole operation if verification fails
+      }
+      
+      return discoveryData;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['hunt-alerts', huntId] });
       queryClient.invalidateQueries({ queryKey: ['unified-candidates', huntId] });
-      toast.success(`Outward search: ${data.candidates_found || 0} candidates, ${data.alerts_emitted || 0} alerts`);
+      queryClient.invalidateQueries({ queryKey: ['outward-candidates', huntId] });
+      queryClient.invalidateQueries({ queryKey: ['internal-candidates', huntId] });
+      toast.success(`Web search: ${data.candidates_found || 0} candidates, ${data.alerts_emitted || 0} alerts`);
     },
     onError: (error) => {
-      toast.error(`Outward search failed: ${error.message}`);
+      toast.error(`Web search failed: ${error.message}`);
     }
   });
 
@@ -483,7 +519,7 @@ export default function HuntDetailPage() {
               All Alerts ({allAlerts.length})
             </TabsTrigger>
             <TabsTrigger value="matches">
-              Valid Matches ({matches.filter(m => m.decision !== 'ignore').length})
+              Listings ({(outwardData?.totalCount || 0) + (internalData?.totalCount || 0)})
             </TabsTrigger>
             <TabsTrigger value="rejections" className="text-muted-foreground">
               Rejected ({matches.filter(m => m.decision === 'ignore').length})
@@ -556,135 +592,251 @@ export default function HuntDetailPage() {
             )}
           </TabsContent>
 
-          {/* Unified Candidates - Cheapest First Ranking */}
-          <TabsContent value="matches" className="mt-4">
-            <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
-              <Globe className="h-4 w-4" />
-              <span>Coverage: Marketplaces + Auctions + Dealer Sites • Ranked by Best Buy (cheapest first)</span>
-              {unifiedData?.cheapestPrice && (
-                <Badge variant="outline" className="ml-auto bg-emerald-500/10 text-emerald-600">
-                  <TrendingDown className="h-3 w-3 mr-1" />
-                  From ${unifiedData.cheapestPrice.toLocaleString()}
-                </Badge>
-              )}
-            </div>
-            <div className="rounded-lg border overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="p-3 text-left font-medium">#</th>
-                    <th className="p-3 text-left font-medium">Source</th>
-                    <th className="p-3 text-left font-medium">Price</th>
-                    <th className="p-3 text-left font-medium">Score</th>
-                    <th className="p-3 text-left font-medium">Decision</th>
-                    <th className="p-3 text-left font-medium">Details</th>
-                    <th className="p-3 text-left font-medium">Link</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {unifiedLoading ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                        Loading unified candidates...
-                      </td>
-                    </tr>
-                  ) : (unifiedData?.candidates || []).length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                        No matches found yet. Run a scan to search marketplaces and auctions.
-                      </td>
-                    </tr>
-                  ) : (
-                    (unifiedData?.candidates || []).map((candidate) => (
-                      <tr key={candidate.id} className={`border-t hover:bg-muted/30 ${candidate.is_cheapest ? 'bg-emerald-50/50' : ''}`}>
-                        <td className="p-3 font-mono text-xs text-muted-foreground">
-                          {candidate.rank_position}
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <Badge 
-                              variant="outline" 
-                              className={candidate.source_type === 'outward' 
-                                ? 'bg-amber-500/10 text-amber-600 border-amber-200' 
-                                : 'bg-blue-500/10 text-blue-600 border-blue-200'}
-                            >
-                              {candidate.source_type === 'outward' ? (
-                                <><Globe className="h-3 w-3 mr-1" />Web</>
-                              ) : (
-                                candidate.source?.replace('_', ' ')
-                              )}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">{candidate.domain}</span>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-1">
-                            {candidate.is_cheapest && <Zap className="h-4 w-4 text-amber-500" />}
-                            <span className={candidate.is_cheapest ? 'font-bold text-emerald-600' : ''}>
-                              {candidate.price ? `$${candidate.price.toLocaleString()}` : '—'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="text-xs">
-                            <span className="font-medium">{candidate.final_score?.toFixed(1)}</span>
-                            <span className="text-muted-foreground ml-1">
-                              (M:{candidate.match_score?.toFixed(1)} P:{candidate.price_score?.toFixed(1)})
-                            </span>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <Badge className={getDecisionColor(candidate.decision.toLowerCase() as MatchDecision)}>
-                            {candidate.decision}
-                          </Badge>
-                        </td>
-                        <td className="p-3">
-                          <div className="text-xs">
-                            <div>{candidate.year} {candidate.make} {candidate.model}</div>
-                            {candidate.km && <div className="text-muted-foreground">{candidate.km.toLocaleString()} km</div>}
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            {candidate.requires_manual_check && (
-                              <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-600 border-amber-200">
-                                <AlertTriangle className="h-3 w-3 mr-1" />
-                                Manual
-                              </Badge>
-                            )}
-                            {candidate.requires_manual_check ? (
-                              <CarsalesIdKitModal
-                                title={candidate.title || `${candidate.year} ${candidate.make} ${candidate.model}`}
-                                domain={candidate.domain || ''}
-                                idKit={candidate.id_kit}
-                                year={candidate.year}
-                                make={candidate.make}
-                                model={candidate.model}
-                                variant={candidate.variant_raw}
-                                km={candidate.km}
-                                price={candidate.price}
-                                location={candidate.location}
-                              />
-                            ) : candidate.url && !candidate.url.startsWith('internal://') ? (
-                              <a
-                                href={candidate.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-primary hover:underline"
-                              >
-                                View <ExternalLink className="h-3 w-3" />
-                              </a>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+          {/* Unified Candidates - Two Section Layout */}
+          <TabsContent value="matches" className="mt-4 space-y-6">
+            
+            {/* Section A: Web Verified Cheapest (TOP) */}
+            <Card className="border-amber-200 dark:border-amber-900/50">
+              <CardHeader className="py-3 bg-gradient-to-r from-amber-500/10 to-transparent">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-amber-600" />
+                  Web Verified Cheapest
+                  <Badge variant="outline" className="ml-2 bg-amber-500/10 text-amber-600 border-amber-200">
+                    {outwardData?.candidates?.filter(c => c.is_verified).length || 0} verified
+                  </Badge>
+                  {outwardData?.cheapestPrice && (
+                    <Badge variant="outline" className="ml-auto bg-emerald-500/10 text-emerald-600">
+                      <TrendingDown className="h-3 w-3 mr-1" />
+                      From ${outwardData.cheapestPrice.toLocaleString()}
+                    </Badge>
                   )}
-                </tbody>
-              </table>
-            </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="p-3 text-left font-medium">#</th>
+                        <th className="p-3 text-left font-medium">Source</th>
+                        <th className="p-3 text-left font-medium">Price</th>
+                        <th className="p-3 text-left font-medium">Decision</th>
+                        <th className="p-3 text-left font-medium">Details</th>
+                        <th className="p-3 text-left font-medium">Link</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {outwardLoading ? (
+                        <tr>
+                          <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                            Loading web candidates...
+                          </td>
+                        </tr>
+                      ) : (outwardData?.candidates || []).length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                            <div className="flex flex-col items-center gap-2">
+                              <Globe className="h-8 w-8 text-muted-foreground/50" />
+                              <span>No verified web listings yet — click "Search Web" to scan</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        (outwardData?.candidates || []).map((candidate, idx) => (
+                          <tr key={candidate.id} className={`border-t hover:bg-muted/30 ${candidate.is_cheapest ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}>
+                            <td className="p-3 font-mono text-xs text-muted-foreground">
+                              {idx + 1}
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-2">
+                                <Badge 
+                                  variant="outline" 
+                                  className={candidate.is_verified 
+                                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-200' 
+                                    : 'bg-amber-500/10 text-amber-600 border-amber-200'}
+                                >
+                                  {candidate.is_verified ? '✓ Verified' : 'Pending'}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">{candidate.domain}</span>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-1">
+                                {candidate.is_cheapest && <Zap className="h-4 w-4 text-amber-500" />}
+                                <span className={candidate.is_cheapest ? 'font-bold text-emerald-600' : ''}>
+                                  {candidate.price ? `$${candidate.price.toLocaleString()}` : '—'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <Badge className={getDecisionColor(candidate.decision.toLowerCase() as MatchDecision)}>
+                                {candidate.decision}
+                              </Badge>
+                            </td>
+                            <td className="p-3">
+                              <div className="text-xs">
+                                <div>{candidate.year} {candidate.make} {candidate.model}</div>
+                                {candidate.km && <div className="text-muted-foreground">{candidate.km.toLocaleString()} km</div>}
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-2">
+                                {candidate.requires_manual_check && (
+                                  <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-600 border-amber-200">
+                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                    Manual
+                                  </Badge>
+                                )}
+                                {candidate.requires_manual_check ? (
+                                  <CarsalesIdKitModal
+                                    title={candidate.title || `${candidate.year} ${candidate.make} ${candidate.model}`}
+                                    domain={candidate.domain || ''}
+                                    idKit={candidate.id_kit}
+                                    year={candidate.year}
+                                    make={candidate.make}
+                                    model={candidate.model}
+                                    variant={candidate.variant_raw}
+                                    km={candidate.km}
+                                    price={candidate.price}
+                                    location={candidate.location}
+                                  />
+                                ) : candidate.url && !candidate.url.startsWith('internal://') ? (
+                                  <a
+                                    href={candidate.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                                  >
+                                    View <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Section B: Internal Feed (SECOND) */}
+            <Card>
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-blue-600" />
+                  Internal Feed
+                  <Badge variant="outline" className="ml-2 text-muted-foreground">
+                    {internalData?.totalCount || 0} listings
+                  </Badge>
+                  <span className="text-xs text-muted-foreground font-normal ml-2">
+                    Autotrader • Drive • Gumtree
+                  </span>
+                  {internalData?.cheapestPrice && (
+                    <Badge variant="outline" className="ml-auto bg-blue-500/10 text-blue-600">
+                      <TrendingDown className="h-3 w-3 mr-1" />
+                      From ${internalData.cheapestPrice.toLocaleString()}
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="p-3 text-left font-medium">#</th>
+                        <th className="p-3 text-left font-medium">Source</th>
+                        <th className="p-3 text-left font-medium">Price</th>
+                        <th className="p-3 text-left font-medium">Score</th>
+                        <th className="p-3 text-left font-medium">Decision</th>
+                        <th className="p-3 text-left font-medium">Details</th>
+                        <th className="p-3 text-left font-medium">Link</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {internalLoading ? (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                            Loading internal feed...
+                          </td>
+                        </tr>
+                      ) : (internalData?.candidates || []).length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                            No internal matches. Run "Scan Now" to check Autotrader/Drive/Gumtree.
+                          </td>
+                        </tr>
+                      ) : (
+                        (internalData?.candidates || []).map((candidate, idx) => (
+                          <tr key={candidate.id} className={`border-t hover:bg-muted/30 ${candidate.is_cheapest ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}>
+                            <td className="p-3 font-mono text-xs text-muted-foreground">
+                              {idx + 1}
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-2">
+                                <Badge 
+                                  variant="outline" 
+                                  className="bg-blue-500/10 text-blue-600 border-blue-200"
+                                >
+                                  {candidate.source?.replace('_', ' ')}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">{candidate.domain}</span>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-1">
+                                {candidate.is_cheapest && <Zap className="h-4 w-4 text-amber-500" />}
+                                <span className={candidate.is_cheapest ? 'font-bold text-emerald-600' : ''}>
+                                  {candidate.price ? `$${candidate.price.toLocaleString()}` : '—'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <div className="text-xs">
+                                <span className="font-medium">{candidate.final_score?.toFixed(1)}</span>
+                                <span className="text-muted-foreground ml-1">
+                                  (M:{candidate.match_score?.toFixed(1)} P:{candidate.price_score?.toFixed(1)})
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <Badge className={getDecisionColor(candidate.decision.toLowerCase() as MatchDecision)}>
+                                {candidate.decision}
+                              </Badge>
+                            </td>
+                            <td className="p-3">
+                              <div className="text-xs">
+                                <div>{candidate.year} {candidate.make} {candidate.model}</div>
+                                {candidate.km && <div className="text-muted-foreground">{candidate.km.toLocaleString()} km</div>}
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              {candidate.url && !candidate.url.startsWith('internal://') ? (
+                                <a
+                                  href={candidate.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                                >
+                                  View <ExternalLink className="h-3 w-3" />
+                                </a>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
           </TabsContent>
 
           {/* Rejected Matches (Audit Trail) */}
