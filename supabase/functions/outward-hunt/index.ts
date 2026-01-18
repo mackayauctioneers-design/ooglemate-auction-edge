@@ -510,25 +510,28 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
 }
 
 // =====================================================
-// CONTENT SIGNALS CHECK - Relaxed: price OR km to be listing
+// CONTENT SIGNALS CHECK v2 - Must have real signals, block junk
 // =====================================================
 function hasListingSignals(content: string): { valid: boolean; reason: string | null } {
   const contentLower = content.toLowerCase();
-  
-  // Price indicators
-  const hasPrice = contentLower.includes('$') || /\d{2,3},\d{3}/.test(content);
-  
-  // Mileage indicators
-  const hasKm = /\d{1,3}(,\d{3})*\s*(km|kms|kilometres|odometer)/i.test(content);
-  
-  // Enquire/contact indicators (many dealer pages hide price behind these)
-  const hasEnquire = /enquire|contact\s*(us|dealer|seller)|get\s*quote|request\s*(info|price)|call\s*(us|now)/i.test(contentLower);
-  
-  // Very relaxed: need price OR km OR enquire signal (dealer pages often hide price)
-  if (!hasPrice && !hasKm && !hasEnquire) {
-    return { valid: false, reason: 'NO_PRICE_KM_OR_ENQUIRE_SIGNAL' };
+
+  // Required: price OR mileage
+  const hasPrice = contentLower.includes('$') || /\d{2,3},\d{3}/.test(contentLower);
+  const hasKm = /\d{1,3}(,\d{3})*\s*(km|kms|kilometres|odometer)/i.test(contentLower);
+
+  // Block junk signals (common in footers/menus/spec pages)
+  const isJunk = /download|brochure|park assist|usb|bluetooth|airbag|manual|features|specs|guide|csv|pdf/i.test(contentLower);
+
+  // Rule: Must have price OR km
+  if (!hasPrice && !hasKm) {
+    return { valid: false, reason: 'NO_PRICE_OR_KM' };
   }
   
+  // If junk words present but missing BOTH price AND km, reject
+  if (isJunk && !hasPrice && !hasKm) {
+    return { valid: false, reason: 'LIKELY_JUNK_CONTENT' };
+  }
+
   return { valid: true, reason: null };
 }
 
