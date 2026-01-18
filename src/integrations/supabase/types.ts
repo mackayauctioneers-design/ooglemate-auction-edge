@@ -7175,6 +7175,23 @@ export type Database = {
               p_cand_badge: string
               p_cand_body: string
               p_cand_engine: string
+              p_cand_series: string
+              p_cand_year: number
+              p_hunt_year: number
+              p_must_have_tokens: string[]
+              p_req_badge: string
+              p_req_body: string
+              p_req_engine: string
+              p_req_series: string
+              p_snippet: string
+            }
+            Returns: number
+          }
+        | {
+            Args: {
+              p_cand_badge: string
+              p_cand_body: string
+              p_cand_engine: string
               p_cand_km: number
               p_cand_series: string
               p_cand_text: string
@@ -7191,29 +7208,12 @@ export type Database = {
             }
             Returns: number
           }
-        | {
-            Args: {
-              p_badge: string
-              p_body_type: string
-              p_engine_family: string
-              p_hunt_badge: string
-              p_hunt_body: string
-              p_hunt_engine: string
-              p_hunt_series: string
-              p_hunt_year: number
-              p_must_have_tokens: string[]
-              p_series_family: string
-              p_snippet: string
-              p_year: number
-            }
-            Returns: number
-          }
       fn_is_verified_listing: {
         Args: {
-          p_asking_price: number
           p_intent_reason: string
           p_make: string
           p_model: string
+          p_price: number
           p_url: string
           p_year: number
         }
