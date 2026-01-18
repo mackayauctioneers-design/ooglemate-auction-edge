@@ -1980,20 +1980,29 @@ export type Database = {
         Row: {
           alert_emitted: boolean | null
           asking_price: number | null
+          badge: string | null
+          body_type: string | null
+          cab_type: string | null
           confidence: string | null
           created_at: string | null
           criteria_version: number
           decision: string | null
           dedup_key: string
           discovered_at: string | null
+          engine_family: string | null
           expired_at: string | null
           extraction_error: string | null
           hunt_id: string
           id: string
+          identity_confidence: number | null
+          identity_evidence: Json | null
+          identity_key: string | null
           is_listing: boolean
           is_stale: boolean
           km: number | null
           km_verified: boolean
+          listing_intent: string | null
+          listing_intent_reason: string | null
           listing_kind: string | null
           location: string | null
           make: string | null
@@ -2004,10 +2013,12 @@ export type Database = {
           raw_snippet: string | null
           reject_reason: string | null
           scored_at: string | null
+          series_family: string | null
           source_name: string
           source_url: string
           title: string | null
           variant_raw: string | null
+          verified: boolean | null
           verified_at: string | null
           verified_fields: Json
           year: number | null
@@ -2016,20 +2027,29 @@ export type Database = {
         Insert: {
           alert_emitted?: boolean | null
           asking_price?: number | null
+          badge?: string | null
+          body_type?: string | null
+          cab_type?: string | null
           confidence?: string | null
           created_at?: string | null
           criteria_version?: number
           decision?: string | null
           dedup_key: string
           discovered_at?: string | null
+          engine_family?: string | null
           expired_at?: string | null
           extraction_error?: string | null
           hunt_id: string
           id?: string
+          identity_confidence?: number | null
+          identity_evidence?: Json | null
+          identity_key?: string | null
           is_listing?: boolean
           is_stale?: boolean
           km?: number | null
           km_verified?: boolean
+          listing_intent?: string | null
+          listing_intent_reason?: string | null
           listing_kind?: string | null
           location?: string | null
           make?: string | null
@@ -2040,10 +2060,12 @@ export type Database = {
           raw_snippet?: string | null
           reject_reason?: string | null
           scored_at?: string | null
+          series_family?: string | null
           source_name: string
           source_url: string
           title?: string | null
           variant_raw?: string | null
+          verified?: boolean | null
           verified_at?: string | null
           verified_fields?: Json
           year?: number | null
@@ -2052,20 +2074,29 @@ export type Database = {
         Update: {
           alert_emitted?: boolean | null
           asking_price?: number | null
+          badge?: string | null
+          body_type?: string | null
+          cab_type?: string | null
           confidence?: string | null
           created_at?: string | null
           criteria_version?: number
           decision?: string | null
           dedup_key?: string
           discovered_at?: string | null
+          engine_family?: string | null
           expired_at?: string | null
           extraction_error?: string | null
           hunt_id?: string
           id?: string
+          identity_confidence?: number | null
+          identity_evidence?: Json | null
+          identity_key?: string | null
           is_listing?: boolean
           is_stale?: boolean
           km?: number | null
           km_verified?: boolean
+          listing_intent?: string | null
+          listing_intent_reason?: string | null
           listing_kind?: string | null
           location?: string | null
           make?: string | null
@@ -2076,10 +2107,12 @@ export type Database = {
           raw_snippet?: string | null
           reject_reason?: string | null
           scored_at?: string | null
+          series_family?: string | null
           source_name?: string
           source_url?: string
           title?: string | null
           variant_raw?: string | null
+          verified?: boolean | null
           verified_at?: string | null
           verified_fields?: Json
           year?: number | null
@@ -2284,7 +2317,11 @@ export type Database = {
       hunt_unified_candidates: {
         Row: {
           alert_emitted: boolean | null
+          asking_price: number | null
+          badge: string | null
           blocked_reason: string | null
+          body_type: string | null
+          cab_type: string | null
           classification: Json | null
           created_at: string | null
           criteria_version: number
@@ -2292,6 +2329,7 @@ export type Database = {
           dna_score: number | null
           domain: string | null
           effective_price: number | null
+          engine_family: string | null
           extracted: Json | null
           final_score: number | null
           gap_dollars: number | null
@@ -2299,9 +2337,14 @@ export type Database = {
           hunt_id: string
           id: string
           id_kit: Json | null
+          identity_confidence: number | null
+          identity_evidence: Json | null
+          identity_key: string | null
           is_cheapest: boolean | null
           is_stale: boolean
           km: number | null
+          listing_intent: string | null
+          listing_intent_reason: string | null
           location: string | null
           make: string | null
           match_score: number | null
@@ -2312,9 +2355,11 @@ export type Database = {
           rank_score: number | null
           reasons: string[] | null
           requires_manual_check: boolean | null
+          series_family: string | null
           sort_reason: string[] | null
           source: string
           source_class: string | null
+          source_key: string | null
           source_listing_id: string | null
           source_tier: number | null
           source_type: string
@@ -2322,11 +2367,16 @@ export type Database = {
           updated_at: string | null
           url: string
           variant_raw: string | null
+          verified: boolean | null
           year: number | null
         }
         Insert: {
           alert_emitted?: boolean | null
+          asking_price?: number | null
+          badge?: string | null
           blocked_reason?: string | null
+          body_type?: string | null
+          cab_type?: string | null
           classification?: Json | null
           created_at?: string | null
           criteria_version?: number
@@ -2334,6 +2384,7 @@ export type Database = {
           dna_score?: number | null
           domain?: string | null
           effective_price?: number | null
+          engine_family?: string | null
           extracted?: Json | null
           final_score?: number | null
           gap_dollars?: number | null
@@ -2341,9 +2392,14 @@ export type Database = {
           hunt_id: string
           id?: string
           id_kit?: Json | null
+          identity_confidence?: number | null
+          identity_evidence?: Json | null
+          identity_key?: string | null
           is_cheapest?: boolean | null
           is_stale?: boolean
           km?: number | null
+          listing_intent?: string | null
+          listing_intent_reason?: string | null
           location?: string | null
           make?: string | null
           match_score?: number | null
@@ -2354,9 +2410,11 @@ export type Database = {
           rank_score?: number | null
           reasons?: string[] | null
           requires_manual_check?: boolean | null
+          series_family?: string | null
           sort_reason?: string[] | null
           source: string
           source_class?: string | null
+          source_key?: string | null
           source_listing_id?: string | null
           source_tier?: number | null
           source_type: string
@@ -2364,11 +2422,16 @@ export type Database = {
           updated_at?: string | null
           url: string
           variant_raw?: string | null
+          verified?: boolean | null
           year?: number | null
         }
         Update: {
           alert_emitted?: boolean | null
+          asking_price?: number | null
+          badge?: string | null
           blocked_reason?: string | null
+          body_type?: string | null
+          cab_type?: string | null
           classification?: Json | null
           created_at?: string | null
           criteria_version?: number
@@ -2376,6 +2439,7 @@ export type Database = {
           dna_score?: number | null
           domain?: string | null
           effective_price?: number | null
+          engine_family?: string | null
           extracted?: Json | null
           final_score?: number | null
           gap_dollars?: number | null
@@ -2383,9 +2447,14 @@ export type Database = {
           hunt_id?: string
           id?: string
           id_kit?: Json | null
+          identity_confidence?: number | null
+          identity_evidence?: Json | null
+          identity_key?: string | null
           is_cheapest?: boolean | null
           is_stale?: boolean
           km?: number | null
+          listing_intent?: string | null
+          listing_intent_reason?: string | null
           location?: string | null
           make?: string | null
           match_score?: number | null
@@ -2396,9 +2465,11 @@ export type Database = {
           rank_score?: number | null
           reasons?: string[] | null
           requires_manual_check?: boolean | null
+          series_family?: string | null
           sort_reason?: string[] | null
           source?: string
           source_class?: string | null
+          source_key?: string | null
           source_listing_id?: string | null
           source_tier?: number | null
           source_type?: string
@@ -2406,6 +2477,7 @@ export type Database = {
           updated_at?: string | null
           url?: string
           variant_raw?: string | null
+          verified?: boolean | null
           year?: number | null
         }
         Relationships: [
@@ -3340,7 +3412,10 @@ export type Database = {
           first_seen_at: string
           fuel_type: string | null
           id: string
+          identity_confidence: number | null
+          identity_evidence: Json | null
           identity_id: string | null
+          identity_key: string | null
           identity_mapped_at: string | null
           km: number | null
           last_evaluated_at: string | null
@@ -3354,6 +3429,8 @@ export type Database = {
           lifecycle_status: string | null
           linked_from_listing_id: string | null
           linked_reason: string | null
+          listing_intent: string | null
+          listing_intent_reason: string | null
           listing_url: string | null
           lng: number | null
           make: string
@@ -3425,7 +3502,10 @@ export type Database = {
           first_seen_at?: string
           fuel_type?: string | null
           id?: string
+          identity_confidence?: number | null
+          identity_evidence?: Json | null
           identity_id?: string | null
+          identity_key?: string | null
           identity_mapped_at?: string | null
           km?: number | null
           last_evaluated_at?: string | null
@@ -3439,6 +3519,8 @@ export type Database = {
           lifecycle_status?: string | null
           linked_from_listing_id?: string | null
           linked_reason?: string | null
+          listing_intent?: string | null
+          listing_intent_reason?: string | null
           listing_url?: string | null
           lng?: number | null
           make: string
@@ -3510,7 +3592,10 @@ export type Database = {
           first_seen_at?: string
           fuel_type?: string | null
           id?: string
+          identity_confidence?: number | null
+          identity_evidence?: Json | null
           identity_id?: string | null
+          identity_key?: string | null
           identity_mapped_at?: string | null
           km?: number | null
           last_evaluated_at?: string | null
@@ -3524,6 +3609,8 @@ export type Database = {
           lifecycle_status?: string | null
           linked_from_listing_id?: string | null
           linked_reason?: string | null
+          listing_intent?: string | null
+          listing_intent_reason?: string | null
           listing_url?: string | null
           lng?: number | null
           make?: string
@@ -3746,6 +3833,7 @@ export type Database = {
           required_body_type: string | null
           required_engine_family: string | null
           required_engine_size_l: number | null
+          required_series_family: string | null
           scan_interval_minutes: number
           series_family: string | null
           sort_mode: string | null
@@ -3811,6 +3899,7 @@ export type Database = {
           required_body_type?: string | null
           required_engine_family?: string | null
           required_engine_size_l?: number | null
+          required_series_family?: string | null
           scan_interval_minutes?: number
           series_family?: string | null
           sort_mode?: string | null
@@ -3876,6 +3965,7 @@ export type Database = {
           required_body_type?: string | null
           required_engine_family?: string | null
           required_engine_size_l?: number | null
+          required_series_family?: string | null
           scan_interval_minutes?: number
           series_family?: string | null
           sort_mode?: string | null
@@ -6818,6 +6908,32 @@ export type Database = {
         }[]
       }
       flag_stale_buy_windows: { Args: never; Returns: Json }
+      fn_build_identity_key: {
+        Args: {
+          p_badge: string
+          p_body: string
+          p_cab: string
+          p_engine: string
+          p_make: string
+          p_model: string
+          p_series: string
+        }
+        Returns: string
+      }
+      fn_classify_listing_intent: {
+        Args: { p_snippet?: string; p_title?: string; p_url: string }
+        Returns: Json
+      }
+      fn_classify_vehicle_identity: {
+        Args: {
+          p_make: string
+          p_model: string
+          p_text?: string
+          p_url?: string
+          p_variant_raw?: string
+        }
+        Returns: Json
+      }
       generate_geo_heat_alerts: {
         Args: {
           p_asof?: string
@@ -7442,8 +7558,39 @@ export type Database = {
               p_decision_filter?: string
               p_hunt_id: string
               p_limit?: number
+              p_offset?: number
             }
-            Returns: Json
+            Returns: {
+              asking_price: number
+              badge: string
+              body_type: string
+              cab_type: string
+              created_at: string
+              criteria_version: number
+              decision: string
+              engine_family: string
+              hunt_id: string
+              id: string
+              identity_confidence: number
+              identity_evidence: Json
+              identity_key: string
+              km: number
+              listing_intent: string
+              listing_intent_reason: string
+              match_score: number
+              rank_position: number
+              rank_score: number
+              reasons: string[]
+              series_family: string
+              sort_reason: string[]
+              source_key: string
+              source_tier: number
+              source_type: string
+              updated_at: string
+              url: string
+              verified: boolean
+              year: number
+            }[]
           }
         | {
             Args: {
