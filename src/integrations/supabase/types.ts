@@ -7156,7 +7156,7 @@ export type Database = {
         Returns: string
       }
       fn_classify_listing_intent: {
-        Args: { p_snippet?: string; p_title?: string; p_url: string }
+        Args: { p_snippet?: string; p_title?: string; p_url?: string }
         Returns: Json
       }
       fn_classify_vehicle_identity: {
