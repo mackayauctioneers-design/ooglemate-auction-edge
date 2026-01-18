@@ -667,7 +667,7 @@ Deno.serve(async (req) => {
       if (hunt) huntsToScan = [hunt];
     }
 
-    const results: { hunt_id: string; matches: number; alerts: number; rejected: number }[] = [];
+    const results: { hunt_id: string; matches: number; alerts: number; buy: number; watch: number; unverified: number; rejected: number }[] = [];
 
     for (const hunt of huntsToScan) {
       // Create scan record
@@ -943,6 +943,7 @@ Deno.serve(async (req) => {
         // BUILD UNIFIED CANDIDATES
         // Merge internal + outward into single ranked list
         // ============================================
+        let unifiedCounts = { total: 0, buy: 0, watch: 0, unverified: 0, ignore: 0 };
         try {
           const { data: unifiedResult, error: unifiedErr } = await supabase.rpc(
             'rpc_build_unified_candidates',
@@ -953,14 +954,33 @@ Deno.serve(async (req) => {
           } else {
             console.log(`Unified candidates built:`, unifiedResult);
           }
+
+          // Get actual counts from hunt_unified_candidates
+          const { data: countData, error: countErr } = await supabase
+            .from('hunt_unified_candidates')
+            .select('decision')
+            .eq('hunt_id', hunt.id)
+            .eq('criteria_version', hunt.criteria_version);
+
+          if (!countErr && countData) {
+            unifiedCounts.total = countData.filter(r => r.decision !== 'IGNORE').length;
+            unifiedCounts.buy = countData.filter(r => r.decision === 'BUY').length;
+            unifiedCounts.watch = countData.filter(r => r.decision === 'WATCH').length;
+            unifiedCounts.unverified = countData.filter(r => r.decision === 'UNVERIFIED').length;
+            unifiedCounts.ignore = countData.filter(r => r.decision === 'IGNORE').length;
+            console.log(`Unified counts: total=${unifiedCounts.total}, BUY=${unifiedCounts.buy}, WATCH=${unifiedCounts.watch}, UNVERIFIED=${unifiedCounts.unverified}`);
+          }
         } catch (unifyErr) {
           console.warn(`Unified build error: ${unifyErr}`);
         }
 
         results.push({
           hunt_id: hunt.id,
-          matches: matches.length,
-          alerts: alertsEmitted,
+          matches: unifiedCounts.total,  // Use unified count (BUY+WATCH+UNVERIFIED)
+          alerts: unifiedCounts.buy,     // BUY = actionable alerts
+          buy: unifiedCounts.buy,
+          watch: unifiedCounts.watch,
+          unverified: unifiedCounts.unverified,
           rejected: rejectedCount
         });
 

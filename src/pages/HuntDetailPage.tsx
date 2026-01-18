@@ -177,7 +177,12 @@ export default function HuntDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['candidate-counts', huntId] });
       queryClient.invalidateQueries({ queryKey: ['live-matches', huntId] });
       refetchLiveMatches();
-      toast.success(`Scan complete: ${data.results?.[0]?.matches || 0} matches, ${data.results?.[0]?.alerts || 0} alerts`);
+      const r = data.results?.[0];
+      const total = r?.matches || 0;
+      const buy = r?.buy || 0;
+      const watch = r?.watch || 0;
+      const unverified = r?.unverified || 0;
+      toast.success(`Scan complete: ${total} matches (${buy} BUY, ${watch} WATCH, ${unverified} UNVERIFIED)`);
     },
     onError: (error) => {
       toast.error(`Scan failed: ${error.message}`);
