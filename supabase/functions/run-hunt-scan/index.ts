@@ -52,6 +52,8 @@ interface Hunt {
   required_body_type: string | null;
   required_engine_family: string | null;
   required_engine_size_l: number | null;
+  // Criteria versioning
+  criteria_version: number;
 }
 
 interface Listing {
@@ -781,7 +783,7 @@ Deno.serve(async (req) => {
           
           const confidence = getConfidence(score);
 
-          // Insert new match
+        // Insert new match with criteria_version
           await supabase.from('hunt_matches').insert({
             hunt_id: hunt.id,
             listing_id: listing.id,
@@ -792,7 +794,8 @@ Deno.serve(async (req) => {
             proven_exit_value: provenExitValue,
             gap_dollars,
             gap_pct,
-            decision
+            decision,
+            criteria_version: hunt.criteria_version || 1
           });
           existingListingIds.add(listing.id);
 
@@ -824,6 +827,7 @@ Deno.serve(async (req) => {
                 hunt_id: hunt.id,
                 listing_id: listing.id,
                 alert_type: decision === 'buy' ? 'BUY' : 'WATCH',
+                criteria_version: hunt.criteria_version || 1,
                 payload: {
                   year: listing.year,
                   make: listing.make,

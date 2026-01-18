@@ -168,7 +168,9 @@ export function EditHuntDrawer({ open, onOpenChange, hunt }: EditHuntDrawerProps
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hunt', hunt.id] });
       queryClient.invalidateQueries({ queryKey: ['hunts'] });
-      toast.success('Hunt updated successfully');
+      queryClient.invalidateQueries({ queryKey: ['unified-candidates', hunt.id] });
+      queryClient.invalidateQueries({ queryKey: ['hunt-alerts', hunt.id] });
+      toast.success('Hunt updated — criteria changed, results reset. Run a new scan.');
       onOpenChange(false);
     },
     onError: (error: Error) => {
