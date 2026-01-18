@@ -6,6 +6,300 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// =====================================================
+// CARSALES RESULTS PAGE EXTRACTOR
+// When we get a Carsales results page (not a details page),
+// scrape it and extract individual listing cards
+// =====================================================
+
+interface CarsalesListingCard {
+  external_id: string;  // Unique ID for dedup (listing ID or hash)
+  details_url: string | null;
+  title: string;
+  price: number | null;
+  km: number | null;
+  year: number | null;
+  state: string | null;
+  badge: string | null;
+  raw_snippet: string;
+}
+
+function isCarsalesResultsPage(url: string): boolean {
+  const lower = url.toLowerCase();
+  // Results pages: /cars/toyota/landcruiser/... but NOT /cars/details/...
+  return lower.includes('carsales.com.au') && 
+         lower.includes('/cars/') && 
+         !lower.includes('/details/') &&
+         !lower.includes('/car-details/');
+}
+
+function isCarsalesDetailsPage(url: string): boolean {
+  const lower = url.toLowerCase();
+  return lower.includes('carsales.com.au') && 
+         (lower.includes('/details/') || lower.includes('/car-details/'));
+}
+
+// Extract listing ID from Carsales details URL
+function extractCarsalesListingId(url: string): string | null {
+  // Pattern: /details/toyota-landcruiser-79-series-SSE-AD-12345678/
+  const match = url.match(/SSE-AD-(\d+)/i) || 
+                url.match(/\/details\/[^\/]+-(\d{6,})/i) ||
+                url.match(/OAG-AD-(\d+)/i);
+  return match ? match[1] : null;
+}
+
+// Generate a unique ID for a Carsales card when no details URL is available
+function generateCarsalesCardId(title: string, price: number | null, km: number | null, state: string | null): string {
+  const hash = `${title}|${price || 0}|${km || 0}|${state || 'AU'}`;
+  // Simple hash function
+  let hashCode = 0;
+  for (let i = 0; i < hash.length; i++) {
+    const char = hash.charCodeAt(i);
+    hashCode = ((hashCode << 5) - hashCode) + char;
+    hashCode = hashCode & hashCode; // Convert to 32bit integer
+  }
+  return `carsales-card-${Math.abs(hashCode).toString(16)}`;
+}
+
+// Parse Carsales listing cards from HTML/Markdown content
+function parseCarsalesListingCards(content: string, resultsPageUrl: string): CarsalesListingCard[] {
+  const cards: CarsalesListingCard[] = [];
+  const seen = new Set<string>();
+  
+  // Multiple patterns to extract listing data from Carsales
+  // The HTML typically has listing cards with:
+  // - Title with year, make, model, badge
+  // - Price like "$XX,XXX" or "Price on Application"
+  // - KM like "XX,XXX km"
+  // - Location/State
+  // - Link to details page
+  
+  // Pattern 1: Try to find individual listing links with details
+  const detailsUrlPattern = /href=["']([^"']*carsales\.com\.au[^"']*\/details\/[^"']+)["']/gi;
+  const detailsUrls = Array.from(content.matchAll(detailsUrlPattern));
+  
+  // Pattern 2: Extract listing info from markdown blocks
+  // Carsales often shows listings like:
+  // ## 2024 Toyota LandCruiser 79 Series
+  // $XX,XXX
+  // XX,XXX km | Location, State
+  
+  const lines = content.split(/\n/);
+  let currentCard: Partial<CarsalesListingCard> | null = null;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Look for vehicle title patterns (year + make + model)
+    const titleMatch = line.match(/^#+\s*(20[1-2]\d.*(?:Toyota|LandCruiser|Land\s*Cruiser).*)/i) ||
+                       line.match(/^\*\*\s*(20[1-2]\d.*(?:Toyota|LandCruiser|Land\s*Cruiser).*)\*\*/i) ||
+                       line.match(/^(20[1-2]\d\s+Toyota\s+Land\s*Cruiser[^$\n]*)/i);
+    
+    if (titleMatch) {
+      // Save previous card if exists
+      if (currentCard && currentCard.title) {
+        const id = currentCard.external_id || generateCarsalesCardId(
+          currentCard.title,
+          currentCard.price || null,
+          currentCard.km || null,
+          currentCard.state || null
+        );
+        if (!seen.has(id)) {
+          seen.add(id);
+          cards.push({
+            external_id: id,
+            details_url: currentCard.details_url || null,
+            title: currentCard.title,
+            price: currentCard.price || null,
+            km: currentCard.km || null,
+            year: currentCard.year || null,
+            state: currentCard.state || null,
+            badge: currentCard.badge || null,
+            raw_snippet: currentCard.raw_snippet || currentCard.title,
+          });
+        }
+      }
+      
+      // Start new card
+      const title = titleMatch[1].replace(/[#*]/g, '').trim();
+      const yearMatch = title.match(/\b(20[1-2]\d)\b/);
+      const year = yearMatch ? parseInt(yearMatch[1], 10) : null;
+      
+      // Extract badge
+      let badge: string | null = null;
+      const badges = ['WORKMATE', 'GXL', 'GX', 'VX', 'SAHARA', 'SR5'];
+      for (const b of badges) {
+        if (title.toUpperCase().includes(b)) {
+          badge = b;
+          break;
+        }
+      }
+      
+      currentCard = {
+        title,
+        year,
+        badge,
+        raw_snippet: title,
+      };
+      continue;
+    }
+    
+    // If we have a current card, look for price/km/location
+    if (currentCard) {
+      // Price pattern
+      const priceMatch = line.match(/\$\s*([\d,]+)/);
+      if (priceMatch && !currentCard.price) {
+        const price = parseInt(priceMatch[1].replace(/,/g, ''), 10);
+        if (price >= 5000 && price <= 500000) {
+          currentCard.price = price;
+          currentCard.raw_snippet = (currentCard.raw_snippet || '') + ' ' + line;
+        }
+      }
+      
+      // KM pattern
+      const kmMatch = line.match(/([\d,]+)\s*(?:km|kms|kilometres)/i);
+      if (kmMatch && !currentCard.km) {
+        currentCard.km = parseInt(kmMatch[1].replace(/,/g, ''), 10);
+        currentCard.raw_snippet = (currentCard.raw_snippet || '') + ' ' + line;
+      }
+      
+      // State pattern
+      const stateMatch = line.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
+      if (stateMatch && !currentCard.state) {
+        currentCard.state = stateMatch[1].toUpperCase();
+        currentCard.raw_snippet = (currentCard.raw_snippet || '') + ' ' + line;
+      }
+      
+      // Details URL pattern
+      const urlMatch = line.match(/\[.*?\]\((https:\/\/www\.carsales\.com\.au[^)]*\/details\/[^)]+)\)/i) ||
+                       line.match(/(https:\/\/www\.carsales\.com\.au[^\s]*\/details\/[^\s]+)/i);
+      if (urlMatch && !currentCard.details_url) {
+        currentCard.details_url = urlMatch[1];
+        const listingId = extractCarsalesListingId(urlMatch[1]);
+        if (listingId) {
+          currentCard.external_id = `carsales-${listingId}`;
+        }
+      }
+    }
+  }
+  
+  // Don't forget last card
+  if (currentCard && currentCard.title) {
+    const id = currentCard.external_id || generateCarsalesCardId(
+      currentCard.title,
+      currentCard.price || null,
+      currentCard.km || null,
+      currentCard.state || null
+    );
+    if (!seen.has(id)) {
+      seen.add(id);
+      cards.push({
+        external_id: id,
+        details_url: currentCard.details_url || null,
+        title: currentCard.title,
+        price: currentCard.price || null,
+        km: currentCard.km || null,
+        year: currentCard.year || null,
+        state: currentCard.state || null,
+        badge: currentCard.badge || null,
+        raw_snippet: currentCard.raw_snippet || currentCard.title,
+      });
+    }
+  }
+  
+  // Also extract from details URLs we found
+  for (const match of detailsUrls) {
+    const url = match[1];
+    const listingId = extractCarsalesListingId(url);
+    if (listingId) {
+      const id = `carsales-${listingId}`;
+      if (!seen.has(id)) {
+        seen.add(id);
+        // Try to find title near this URL
+        const urlIndex = content.indexOf(url);
+        const contextStart = Math.max(0, urlIndex - 300);
+        const contextEnd = Math.min(content.length, urlIndex + 100);
+        const context = content.substring(contextStart, contextEnd);
+        
+        const titleMatch = context.match(/(20[1-2]\d\s+Toyota\s+Land\s*Cruiser[^|\n]*)/i);
+        const priceMatch = context.match(/\$\s*([\d,]+)/);
+        const kmMatch = context.match(/([\d,]+)\s*(?:km|kms)/i);
+        const stateMatch = context.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
+        
+        cards.push({
+          external_id: id,
+          details_url: url,
+          title: titleMatch ? titleMatch[1].trim() : `Toyota LandCruiser (ID: ${listingId})`,
+          price: priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null,
+          km: kmMatch ? parseInt(kmMatch[1].replace(/,/g, ''), 10) : null,
+          year: null,
+          state: stateMatch ? stateMatch[1].toUpperCase() : null,
+          badge: null,
+          raw_snippet: context.slice(0, 200),
+        });
+      }
+    }
+  }
+  
+  return cards;
+}
+
+// Scrape Carsales results page and extract individual listings
+async function scrapeCarsalesResultsPage(
+  resultsPageUrl: string,
+  firecrawlKey: string,
+  hunt: Hunt
+): Promise<CarsalesListingCard[]> {
+  console.log(`[CARSALES] Scraping results page: ${resultsPageUrl}`);
+  
+  try {
+    const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${firecrawlKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url: resultsPageUrl,
+        formats: ["markdown", "html"],
+        onlyMainContent: true,
+        waitFor: 3000,  // Wait for JS to load
+      }),
+    });
+    
+    if (!scrapeRes.ok) {
+      console.error(`[CARSALES] Scrape failed: ${scrapeRes.status}`);
+      return [];
+    }
+    
+    const scrapeData = await scrapeRes.json();
+    const markdown = scrapeData.data?.markdown || scrapeData.markdown || '';
+    const html = scrapeData.data?.html || scrapeData.html || '';
+    
+    // Parse both markdown and HTML for maximum extraction
+    const content = markdown + '\n' + html;
+    const cards = parseCarsalesListingCards(content, resultsPageUrl);
+    
+    console.log(`[CARSALES] Extracted ${cards.length} listing cards from results page`);
+    
+    // Filter by year if specified
+    if (hunt.year || hunt.year_min || hunt.year_max) {
+      const yearMin = hunt.year_min ?? hunt.year ?? 2015;
+      const yearMax = hunt.year_max ?? hunt.year ?? new Date().getFullYear();
+      
+      return cards.filter(card => {
+        if (!card.year) return true;  // Keep cards without year (need verification)
+        return card.year >= yearMin - 1 && card.year <= yearMax + 1;
+      });
+    }
+    
+    return cards;
+  } catch (err) {
+    console.error(`[CARSALES] Error scraping results page:`, err);
+    return [];
+  }
+}
+
 /**
  * Outward Hunt v1.2 - Listing-Only + Cheapest-First + Scrape-to-Verify
  * 
@@ -975,6 +1269,7 @@ serve(async (req) => {
     
     // Site-specific queries for Australian car sites
     enhancedQueries.push(
+      `site:carsales.com.au ${yearStr} ${make} ${model} ${mustHaves} for sale ${negTokens}`.trim(),  // Carsales first!
       `site:autotrader.com.au ${yearStr} ${make} ${model} ${mustHaves} for sale ${negTokens}`.trim(),
       `site:gumtree.com.au ${yearStr} ${make} ${model} ${mustHaves} car for sale ${negTokens}`.trim(),
       `site:pickles.com.au ${make} ${model} auction lot ${negTokens}`.trim(),
@@ -1016,10 +1311,14 @@ serve(async (req) => {
       candidates_rejected: 0,
       queued_for_scrape: 0,
       alerts_emitted: 0,
+      carsales_pages_scraped: 0,
+      carsales_cards_extracted: 0,
       reject_reasons: {} as Record<string, number>,
       errors: [] as string[],
     };
     
+    // Track processed Carsales results pages to avoid re-scraping
+    const processedCarsalesPages = new Set<string>();
     // Run Firecrawl search for each query
     const queriesToRun = searchQueries.slice(0, 6);
     
@@ -1062,6 +1361,159 @@ serve(async (req) => {
         // Process each search result
         for (const result of searchResults) {
           try {
+            const resultUrl = result.url || '';
+            
+            // =====================================================
+            // CARSALES RESULTS PAGE EXTRACTION
+            // If this is a Carsales results page (not a details page),
+            // scrape it and extract individual listing cards
+            // =====================================================
+            if (isCarsalesResultsPage(resultUrl) && !processedCarsalesPages.has(resultUrl)) {
+              processedCarsalesPages.add(resultUrl);
+              console.log(`[CARSALES] Detected results page, extracting cards...`);
+              
+              const cards = await scrapeCarsalesResultsPage(resultUrl, firecrawlKey, hunt as Hunt);
+              results.carsales_pages_scraped++;
+              results.carsales_cards_extracted += cards.length;
+              
+              // Process each Carsales card as a separate candidate
+              for (const card of cards) {
+                try {
+                  const cardFullText = `${card.title} ${card.raw_snippet}`;
+                  const classification = classifyCandidate(cardFullText, hunt as Hunt, card.details_url || resultUrl);
+                  
+                  // Apply hard gates
+                  const gateResult = applyHardGates(classification, hunt as Hunt, cardFullText, card.details_url || resultUrl);
+                  
+                  const hasHardReject = !gateResult.allowWatch;
+                  if (hasHardReject) {
+                    results.candidates_rejected++;
+                    continue;
+                  }
+                  
+                  // Score the card - treat as verified listing (we know it's a listing card)
+                  let score = 5.0;
+                  const reasons: string[] = ['carsales_card'];
+                  
+                  if (card.year === hunt.year) {
+                    score += 1.5;
+                    reasons.push('exact_year_match');
+                  }
+                  if (card.price && hunt.proven_exit_value) {
+                    const gap_pct = ((hunt.proven_exit_value - card.price) / hunt.proven_exit_value) * 100;
+                    if (gap_pct >= 10) {
+                      score += 1.5;
+                      reasons.push(`gap_${gap_pct.toFixed(0)}pct`);
+                    } else if (gap_pct >= 5) {
+                      score += 1.0;
+                    }
+                  }
+                  if (classification.series_family === hunt.series_family) {
+                    score += 0.5;
+                    reasons.push('series_match');
+                  }
+                  
+                  score = Math.min(10, Math.max(0, score));
+                  const decision = score >= 7.0 ? 'BUY' : score >= 5.0 ? 'WATCH' : 'IGNORE';
+                  
+                  // UNIQUE DEDUP KEY for Carsales cards
+                  const dedupKey = `carsales:${card.external_id}`;
+                  
+                  // Upsert Carsales card as candidate
+                  const { data: upsertedCard, error: upsertErr } = await supabase
+                    .from('hunt_external_candidates')
+                    .upsert({
+                      hunt_id,
+                      source_url: card.details_url || `${resultUrl}#card=${card.external_id}`,
+                      source_name: 'carsales.com.au',
+                      dedup_key: dedupKey,  // UNIQUE per card, not per page!
+                      title: card.title,
+                      raw_snippet: card.raw_snippet,
+                      year: card.year,
+                      make: 'Toyota',
+                      model: 'LandCruiser',
+                      km: card.km,
+                      asking_price: card.price,
+                      location: card.state,
+                      confidence: card.details_url ? 'high' : 'medium',
+                      match_score: score,
+                      decision,
+                      is_listing: true,
+                      listing_kind: 'retail_listing',
+                      page_type: 'listing',
+                      reject_reason: null,
+                      price_verified: !!card.price,
+                      km_verified: !!card.km,
+                      year_verified: !!card.year,
+                      verified_fields: {
+                        asking_price: card.price,
+                        km: card.km,
+                        year: card.year,
+                      },
+                      criteria_version: hunt.criteria_version,
+                      is_stale: false,
+                      // Mark as requiring manual check (Carsales blocks scraping)
+                      ext_listing_intent: 'listing',
+                      ext_listing_intent_reason: 'CARSALES_CARD_EXTRACTED',
+                    }, { onConflict: 'dedup_key' })
+                    .select('id, alert_emitted')
+                    .single();
+                  
+                  if (!upsertErr && upsertedCard) {
+                    results.candidates_created++;
+                    results.listings_found++;
+                    
+                    // Emit alert for BUY/WATCH
+                    if ((decision === 'BUY' || decision === 'WATCH') && !upsertedCard.alert_emitted) {
+                      const alertPayload = {
+                        year: card.year,
+                        make: 'Toyota',
+                        model: 'LandCruiser',
+                        badge: card.badge,
+                        km: card.km,
+                        asking_price: card.price,
+                        proven_exit_value: hunt.proven_exit_value,
+                        gap_dollars: hunt.proven_exit_value && card.price 
+                          ? hunt.proven_exit_value - card.price 
+                          : null,
+                        match_score: score,
+                        source: 'Carsales (extracted card)',
+                        source_type: 'outward',
+                        listing_url: card.details_url || resultUrl,
+                        classification,
+                        reasons,
+                        is_verified_listing: true,
+                        listing_kind: 'retail_listing',
+                        requires_carsales_lookup: !card.details_url,
+                      };
+                      
+                      await supabase.from('hunt_alerts').insert({
+                        hunt_id,
+                        listing_id: upsertedCard.id,
+                        alert_type: decision,
+                        payload: alertPayload,
+                        criteria_version: hunt.criteria_version || 1,
+                        is_stale: false,
+                      });
+                      
+                      await supabase
+                        .from('hunt_external_candidates')
+                        .update({ alert_emitted: true })
+                        .eq('id', upsertedCard.id);
+                      
+                      results.alerts_emitted++;
+                    }
+                  }
+                } catch (cardErr) {
+                  console.error('[CARSALES] Error processing card:', cardErr);
+                }
+              }
+              
+              // Skip normal processing for results pages
+              continue;
+            }
+            
+            // Normal candidate processing (non-Carsales results pages)
             const candidate = extractCandidate(result, hunt as Hunt);
             if (!candidate) continue;
             
