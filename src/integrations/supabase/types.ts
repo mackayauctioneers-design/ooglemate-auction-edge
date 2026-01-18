@@ -1983,6 +1983,7 @@ export type Database = {
           badge: string | null
           body_type: string | null
           cab_type: string | null
+          canonical_id: string
           confidence: string | null
           created_at: string | null
           criteria_version: number
@@ -1991,6 +1992,7 @@ export type Database = {
           discovered_at: string | null
           engine_family: string | null
           expired_at: string | null
+          extracted_price: number | null
           extraction_error: string | null
           hunt_id: string
           id: string
@@ -2015,6 +2017,7 @@ export type Database = {
           scored_at: string | null
           series_family: string | null
           source_name: string
+          source_tier: number | null
           source_url: string
           title: string | null
           variant_raw: string | null
@@ -2030,6 +2033,7 @@ export type Database = {
           badge?: string | null
           body_type?: string | null
           cab_type?: string | null
+          canonical_id: string
           confidence?: string | null
           created_at?: string | null
           criteria_version?: number
@@ -2038,6 +2042,7 @@ export type Database = {
           discovered_at?: string | null
           engine_family?: string | null
           expired_at?: string | null
+          extracted_price?: number | null
           extraction_error?: string | null
           hunt_id: string
           id?: string
@@ -2062,6 +2067,7 @@ export type Database = {
           scored_at?: string | null
           series_family?: string | null
           source_name: string
+          source_tier?: number | null
           source_url: string
           title?: string | null
           variant_raw?: string | null
@@ -2077,6 +2083,7 @@ export type Database = {
           badge?: string | null
           body_type?: string | null
           cab_type?: string | null
+          canonical_id?: string
           confidence?: string | null
           created_at?: string | null
           criteria_version?: number
@@ -2085,6 +2092,7 @@ export type Database = {
           discovered_at?: string | null
           engine_family?: string | null
           expired_at?: string | null
+          extracted_price?: number | null
           extraction_error?: string | null
           hunt_id?: string
           id?: string
@@ -2109,6 +2117,7 @@ export type Database = {
           scored_at?: string | null
           series_family?: string | null
           source_name?: string
+          source_tier?: number | null
           source_url?: string
           title?: string | null
           variant_raw?: string | null
@@ -7155,6 +7164,7 @@ export type Database = {
         }
         Returns: string
       }
+      fn_canonical_listing_id: { Args: { p_url: string }; Returns: string }
       fn_classify_listing_intent: {
         Args: { p_snippet: string; p_title: string; p_url: string }
         Returns: Json
@@ -7243,6 +7253,10 @@ export type Database = {
           p_year: number
         }
         Returns: boolean
+      }
+      fn_source_tier: {
+        Args: { p_source_name: string; p_url: string }
+        Returns: number
       }
       generate_geo_heat_alerts: {
         Args: {
