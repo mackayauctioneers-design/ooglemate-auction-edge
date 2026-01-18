@@ -7859,177 +7859,61 @@ export type Database = {
         Args: { p_dealer_id: string; p_filters?: Json }
         Returns: Json
       }
-      rpc_get_unified_candidates:
-        | {
-            Args: {
-              p_decision_filter?: string
-              p_hunt_id: string
-              p_limit?: number
-              p_offset?: number
-            }
-            Returns: {
-              asking_price: number
-              badge: string
-              body_type: string
-              cab_type: string
-              created_at: string
-              criteria_version: number
-              decision: string
-              engine_family: string
-              hunt_id: string
-              id: string
-              identity_confidence: number
-              identity_evidence: Json
-              identity_key: string
-              km: number
-              listing_intent: string
-              listing_intent_reason: string
-              match_score: number
-              rank_position: number
-              rank_score: number
-              reasons: string[]
-              series_family: string
-              sort_reason: string[]
-              source_key: string
-              source_tier: number
-              source_type: string
-              updated_at: string
-              url: string
-              verified: boolean
-              year: number
-            }[]
-          }
-        | {
-            Args: {
-              p_decision_filter?: string
-              p_exclude_ignore?: boolean
-              p_hunt_id: string
-              p_limit?: number
-              p_offset?: number
-              p_source_filter?: string
-            }
-            Returns: {
-              badge: string
-              blocked_reason: string
-              body_type: string
-              cab_type: string
-              created_at: string
-              criteria_version: number
-              decision: string
-              dna_score: number
-              engine_family: string
-              hunt_id: string
-              id: string
-              identity_confidence: number
-              identity_key: string
-              is_cheapest: boolean
-              km: number
-              listing_intent: string
-              listing_intent_reason: string
-              location: string
-              make: string
-              match_score: number
-              model: string
-              price: number
-              rank_position: number
-              series_family: string
-              source: string
-              source_class: string
-              source_tier: number
-              source_type: string
-              title: string
-              url: string
-              variant_raw: string
-              verified: boolean
-              year: number
-            }[]
-          }
-        | {
-            Args: {
-              p_decision_filter?: string
-              p_hunt_id: string
-              p_limit?: number
-              p_offset?: number
-              p_source_filter?: string
-            }
-            Returns: {
-              badge: string
-              blocked_reason: string
-              body_type: string
-              cab_type: string
-              created_at: string
-              criteria_version: number
-              decision: string
-              dna_score: number
-              engine_family: string
-              hunt_id: string
-              id: string
-              identity_confidence: number
-              identity_key: string
-              is_cheapest: boolean
-              km: number
-              listing_intent: string
-              listing_intent_reason: string
-              location: string
-              make: string
-              match_score: number
-              model: string
-              price: number
-              rank_position: number
-              series_family: string
-              source: string
-              source_class: string
-              source_tier: number
-              source_type: string
-              title: string
-              url: string
-              variant_raw: string
-              verified: boolean
-              year: number
-            }[]
-          }
-        | {
-            Args: {
-              p_decision_filter?: string
-              p_hunt_id: string
-              p_limit?: number
-              p_offset?: number
-              p_source_filter?: string
-            }
-            Returns: {
-              asking_price: number
-              confidence: string
-              criteria_version: number
-              decision: string
-              dna_score: number
-              effective_price: number
-              final_score: number
-              first_seen_at: string
-              gap_dollars: number
-              gap_pct: number
-              hunt_id: string
-              id: string
-              is_verified: boolean
-              km: number
-              listing_url: string
-              location: string
-              make: string
-              model: string
-              price_score: number
-              rank_score: number
-              reasons: string[]
-              sort_reason: string[]
-              source_class: string
-              source_listing_id: string
-              source_name: string
-              source_tier: number
-              source_type: string
-              title: string
-              url: string
-              variant: string
-              year: number
-            }[]
-          }
+      rpc_get_unified_candidates: {
+        Args: {
+          p_decision_filter?: string
+          p_exclude_ignore?: boolean
+          p_hunt_id: string
+          p_limit?: number
+          p_offset?: number
+          p_source_filter?: string
+        }
+        Returns: {
+          asking_price: number
+          badge: string
+          blocked_reason: string
+          body_type: string
+          cab_type: string
+          created_at: string
+          criteria_version: number
+          decision: string
+          dna_score: number
+          domain: string
+          effective_price: number
+          engine_family: string
+          final_score: number
+          gap_dollars: number
+          gap_pct: number
+          hunt_id: string
+          id: string
+          id_kit: Json
+          is_cheapest: boolean
+          km: number
+          location: string
+          make: string
+          match_score: number
+          model: string
+          price: number
+          price_score: number
+          rank_position: number
+          rank_score: number
+          reasons: string[]
+          requires_manual_check: boolean
+          series_family: string
+          sort_reason: string[]
+          source: string
+          source_class: string
+          source_listing_id: string
+          source_name: string
+          source_tier: number
+          source_type: string
+          title: string
+          url: string
+          variant: string
+          verified: boolean
+          year: number
+        }[]
+      }
       rpc_get_unified_candidates_count: {
         Args: {
           p_decision_filter?: string

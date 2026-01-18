@@ -61,11 +61,12 @@ export function useUnifiedCandidates({
 
       if (error) throw error;
 
-      // Get total count based on filters
+      // Get total count based on filters (must include is_stale = false)
       let countQuery = supabase
         .from('hunt_unified_candidates')
         .select('*', { count: 'exact', head: true })
-        .eq('hunt_id', huntId);
+        .eq('hunt_id', huntId)
+        .eq('is_stale', false);
 
       if (decisionFilter) {
         countQuery = countQuery.eq('decision', decisionFilter);
@@ -79,11 +80,12 @@ export function useUnifiedCandidates({
       const { count, error: countError } = await countQuery;
       if (countError) throw countError;
 
-      // Get cheapest price (for the filtered set)
+      // Get cheapest price (for the filtered set, must include is_stale = false)
       let cheapestQuery = supabase
         .from('hunt_unified_candidates')
         .select('price')
         .eq('hunt_id', huntId)
+        .eq('is_stale', false)
         .not('price', 'is', null)
         .order('price', { ascending: true })
         .limit(1);
@@ -131,8 +133,8 @@ export function useUnifiedCandidates({
         source_name: row.source_name,
         source_class: row.source_class,
         source_tier: row.source_tier,
-        listing_url: row.listing_url || row.url,
-        first_seen_at: row.first_seen_at,
+        listing_url: row.url,
+        first_seen_at: row.created_at, // RPC returns created_at
         // Debug info
         reasons: row.reasons || [],
         sort_reason: row.sort_reason || [],
