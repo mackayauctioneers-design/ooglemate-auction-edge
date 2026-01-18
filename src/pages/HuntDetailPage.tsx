@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, AlertTriangle, Clock, ExternalLink, Globe, Info, Pencil, Trophy, TrendingDown, Zap } from "lucide-react";
+import { AlertCircle, AlertTriangle, Check, Clock, ExternalLink, Globe, Info, Pencil, Trophy, TrendingDown, Zap } from "lucide-react";
 import { EditHuntDrawer } from "@/components/hunts/EditHuntDrawer";
 import { CarsalesIdKitModal } from "@/components/hunts/CarsalesIdKitModal";
 import { formatDistanceToNow } from "date-fns";
@@ -17,7 +17,7 @@ import { HuntHeader } from "@/components/hunts/HuntHeader";
 import { HuntKPICards } from "@/components/hunts/HuntKPICards";
 import { HuntAlertCardEnhanced } from "@/components/hunts/HuntAlertCardEnhanced";
 import { ProofOfHuntModal } from "@/components/hunts/ProofOfHuntModal";
-import { useUnifiedCandidates } from "@/hooks/useUnifiedCandidates";
+import { useUnifiedCandidates, useCandidateCounts } from "@/hooks/useUnifiedCandidates";
 import type { 
   SaleHunt, 
   HuntMatch, 
@@ -50,36 +50,46 @@ export default function HuntDetailPage() {
     enabled: !!huntId
   });
 
-  // Outward Web candidates - "Verified Cheapest" ranking (verified price from scrape)
-  const { data: outwardData, isLoading: outwardLoading } = useUnifiedCandidates({
-    huntId: huntId || '',
-    limit: 50,
-    sourceFilter: 'outward',
-    enabled: !!huntId,
-    staleTime: 0,
-    refetchOnMount: true
-  });
+  // Get candidate counts for tab badges
+  const { data: counts } = useCandidateCounts(huntId || '', !!huntId && !!hunt);
 
-  // Internal Feed candidates (Autotrader, Drive, Gumtree ingest)
-  const { data: internalData, isLoading: internalLoading } = useUnifiedCandidates({
-    huntId: huntId || '',
-    limit: 50,
-    sourceFilter: 'internal',
-    enabled: !!huntId,
-    staleTime: 0,
-    refetchOnMount: true
-  });
-
-  // All unified candidates (for backward compatibility)
-  const { data: unifiedData, isLoading: unifiedLoading, refetch: refetchUnified } = useUnifiedCandidates({
+  // LIVE MATCHES: All candidates except IGNORE (BUY + WATCH + UNVERIFIED)
+  const { data: liveMatchesData, isLoading: liveMatchesLoading, refetch: refetchLiveMatches } = useUnifiedCandidates({
     huntId: huntId || '',
     limit: 100,
+    excludeIgnore: true, // Show all except IGNORE
     enabled: !!huntId,
     staleTime: 0,
-    refetchOnMount: true
+    refetchOnMount: 'always'
   });
 
-  // Also keep legacy matches for rejection tab - filtered by current criteria_version
+  // OPPORTUNITIES: Only BUY + WATCH (price-gap labeled)
+  const { data: opportunitiesData, isLoading: opportunitiesLoading } = useUnifiedCandidates({
+    huntId: huntId || '',
+    limit: 100,
+    excludeIgnore: true,
+    enabled: !!huntId,
+    staleTime: 0,
+    refetchOnMount: 'always'
+  });
+
+  // Filter opportunities to only BUY/WATCH
+  const opportunities = (opportunitiesData?.candidates || []).filter(
+    c => c.decision === 'BUY' || c.decision === 'WATCH'
+  );
+
+  // REJECTED: Only IGNORE decisions
+  const { data: rejectedData, isLoading: rejectedLoading } = useUnifiedCandidates({
+    huntId: huntId || '',
+    limit: 100,
+    decisionFilter: 'IGNORE' as any,
+    excludeIgnore: false,
+    enabled: !!huntId,
+    staleTime: 0,
+    refetchOnMount: 'always'
+  });
+
+  // Legacy matches query for compatibility
   const { data: matches = [] } = useQuery({
     queryKey: ['hunt-matches', huntId, hunt?.criteria_version],
     queryFn: async () => {
@@ -164,6 +174,7 @@ export default function HuntDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['hunt-scans', huntId] });
       queryClient.invalidateQueries({ queryKey: ['hunt', huntId] });
       queryClient.invalidateQueries({ queryKey: ['unified-candidates', huntId] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-counts', huntId] });
       toast.success(`Scan complete: ${data.results?.[0]?.matches || 0} matches, ${data.results?.[0]?.alerts || 0} alerts`);
     },
     onError: (error) => {
@@ -171,17 +182,14 @@ export default function HuntDetailPage() {
     }
   });
 
-  // Outward hunt mutation - now triggers immediate verification
+  // Outward hunt mutation
   const runOutwardMutation = useMutation({
     mutationFn: async () => {
-      // Step 1: Run outward discovery
       const { data: discoveryData, error: discoveryError } = await supabase.functions.invoke('outward-hunt', {
         body: { hunt_id: huntId }
       });
       if (discoveryError) throw discoveryError;
       
-      // Step 2: Immediately trigger scrape worker to verify prices
-      // This ensures user sees verified results faster
       toast.info('Verifying listings...');
       try {
         await supabase.functions.invoke('outward-scrape-worker', {
@@ -189,7 +197,6 @@ export default function HuntDetailPage() {
         });
       } catch (verifyErr) {
         console.warn('Scrape worker failed:', verifyErr);
-        // Don't fail the whole operation if verification fails
       }
       
       return discoveryData;
@@ -197,16 +204,13 @@ export default function HuntDetailPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['hunt-alerts', huntId] });
       queryClient.invalidateQueries({ queryKey: ['unified-candidates', huntId] });
-      queryClient.invalidateQueries({ queryKey: ['outward-candidates', huntId] });
-      queryClient.invalidateQueries({ queryKey: ['internal-candidates', huntId] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-counts', huntId] });
       toast.success(`Web search: ${data.candidates_found || 0} candidates, ${data.alerts_emitted || 0} alerts`);
     },
     onError: (error) => {
       toast.error(`Web search failed: ${error.message}`);
     }
   });
-
-  // Kiting Mode is always active - no toggle needed
 
   const acknowledgeAlertMutation = useMutation({
     mutationFn: async (alertId: string) => {
@@ -255,7 +259,6 @@ export default function HuntDetailPage() {
   const buyAlerts = alerts.filter(a => a.alert_type === 'BUY' && !a.acknowledged_at);
   const watchAlerts = alerts.filter(a => a.alert_type === 'WATCH' && !a.acknowledged_at);
   const acknowledgedBuyAlerts = alerts.filter(a => a.alert_type === 'BUY' && a.acknowledged_at);
-  const allAlerts = alerts;
 
   // Get the most recent acknowledged BUY alert for "proof" feature
   const latestStrike = acknowledgedBuyAlerts.length > 0 ? acknowledgedBuyAlerts[0] : null;
@@ -265,14 +268,127 @@ export default function HuntDetailPage() {
     setProofModalOpen(true);
   };
 
-  const getDecisionColor = (decision: MatchDecision) => {
-    switch (decision) {
+  const getDecisionColor = (decision: MatchDecision | string) => {
+    const d = decision.toLowerCase();
+    switch (d) {
       case 'buy': return 'bg-emerald-500/10 text-emerald-600';
       case 'watch': return 'bg-amber-500/10 text-amber-600';
+      case 'unverified': return 'bg-blue-500/10 text-blue-600';
       case 'ignore': return 'bg-muted text-muted-foreground';
       default: return 'bg-muted';
     }
   };
+
+  const getSourceTierBadge = (candidate: UnifiedCandidate) => {
+    if (candidate.source_tier === 1) {
+      return <Badge variant="secondary" className="text-xs bg-amber-500/20 text-amber-700 border-amber-300">🔨 Auction</Badge>;
+    } else if (candidate.source_tier === 2) {
+      return <Badge variant="secondary" className="text-xs bg-blue-500/20 text-blue-700 border-blue-300">🛒 Marketplace</Badge>;
+    } else {
+      return <Badge variant="secondary" className="text-xs bg-muted text-muted-foreground">{candidate.source_class || 'Dealer'}</Badge>;
+    }
+  };
+
+  // Render candidate row (reusable)
+  const renderCandidateRow = (candidate: UnifiedCandidate, idx: number) => (
+    <tr key={candidate.id} className={`border-t hover:bg-muted/30 ${candidate.is_cheapest ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}>
+      <td className="p-3 font-mono text-xs text-muted-foreground">
+        {idx + 1}
+      </td>
+      <td className="p-3">
+        <div className="flex flex-col gap-0.5">
+          <span className={`font-mono text-xs px-1.5 py-0.5 rounded inline-block w-fit ${
+            (candidate.dna_score || 0) >= 8 ? 'bg-emerald-500/20 text-emerald-700' :
+            (candidate.dna_score || 0) >= 5 ? 'bg-amber-500/20 text-amber-700' :
+            'bg-muted text-muted-foreground'
+          }`}>
+            {candidate.dna_score?.toFixed(1) || '—'}
+          </span>
+        </div>
+      </td>
+      <td className="p-3">
+        <div className="flex items-center gap-2">
+          {getSourceTierBadge(candidate)}
+          {candidate.is_verified && (
+            <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-600 border-emerald-200">
+              <Check className="h-3 w-3 mr-1" />
+              Verified
+            </Badge>
+          )}
+        </div>
+      </td>
+      <td className="p-3">
+        <div className="flex items-center gap-1">
+          {candidate.is_cheapest && <Zap className="h-4 w-4 text-amber-500" />}
+          <span className={candidate.is_cheapest ? 'font-bold text-emerald-600' : ''}>
+            {candidate.price ? `$${candidate.price.toLocaleString()}` : '—'}
+          </span>
+        </div>
+      </td>
+      <td className="p-3">
+        <Badge className={getDecisionColor(candidate.decision)}>
+          {candidate.decision}
+        </Badge>
+      </td>
+      <td className="p-3">
+        <div className="text-xs">
+          <div className="font-medium">{candidate.title || `${candidate.year} ${candidate.make} ${candidate.model}`}</div>
+          <div className="text-muted-foreground">
+            {candidate.km && `${candidate.km.toLocaleString()} km`}
+            {candidate.location && ` • ${candidate.location}`}
+          </div>
+        </div>
+      </td>
+      <td className="p-3">
+        <div className="flex flex-wrap gap-1 text-xs">
+          {(candidate as any).series_family && (
+            <Badge variant="outline" className="text-[10px] font-mono">{(candidate as any).series_family}</Badge>
+          )}
+          {(candidate as any).engine_family && (
+            <Badge variant="outline" className="text-[10px] font-mono">{(candidate as any).engine_family}</Badge>
+          )}
+          {(candidate as any).body_type && (
+            <Badge variant="outline" className="text-[10px] font-mono">{(candidate as any).body_type}</Badge>
+          )}
+        </div>
+      </td>
+      <td className="p-3">
+        <div className="flex items-center gap-2">
+          {candidate.requires_manual_check ? (
+            <>
+              <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-600 border-amber-200">
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                Manual
+              </Badge>
+              <CarsalesIdKitModal
+                title={candidate.title || `${candidate.year} ${candidate.make} ${candidate.model}`}
+                domain={candidate.domain || ''}
+                idKit={candidate.id_kit}
+                year={candidate.year}
+                make={candidate.make}
+                model={candidate.model}
+                variant={candidate.variant_raw}
+                km={candidate.km}
+                price={candidate.price}
+                location={candidate.location}
+              />
+            </>
+          ) : candidate.url && !candidate.url.startsWith('internal://') ? (
+            <a
+              href={candidate.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-primary hover:underline"
+            >
+              View <ExternalLink className="h-3 w-3" />
+            </a>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
 
   return (
     <AppLayout>
@@ -290,7 +406,7 @@ export default function HuntDetailPage() {
           lastMatchAt={matches[0]?.matched_at}
         />
 
-        {/* Strike Success Banner (when there's an acknowledged BUY) */}
+        {/* Strike Success Banner */}
         {latestStrike && (
           <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800">
             <div className="flex items-center justify-between">
@@ -319,7 +435,7 @@ export default function HuntDetailPage() {
           </div>
         )}
 
-        {/* Scan Required Banner - Show when hunt was edited but no scan at current version */}
+        {/* Scan Required Banner */}
         {(() => {
           const latestScanVersion = scans.length > 0 
             ? Math.max(...scans.map(s => s.criteria_version || 0)) 
@@ -358,19 +474,31 @@ export default function HuntDetailPage() {
           );
         })()}
 
-        {/* Guardrails Banner */}
-        <div className="p-4 rounded-lg bg-muted/50 border">
-          <div className="flex items-start gap-3">
-            <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-            <div className="text-sm">
-              <div className="font-medium mb-1">How to read these alerts</div>
-              <div className="text-muted-foreground space-y-1">
-                <div><span className="font-medium text-emerald-600">BUY</span> = High-confidence strike opportunity. Always verify photos, condition, and spec before bidding.</div>
-                <div><span className="font-medium text-amber-600">WATCH</span> = Worth monitoring. May need price movement or more evidence to become a BUY.</div>
+        {/* Coverage Bar */}
+        <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Globe className="h-5 w-5 text-primary" />
+                <span className="font-medium text-sm">Coverage</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                  <Check className="h-3 w-3 mr-1" /> Auctions
+                </Badge>
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                  <Check className="h-3 w-3 mr-1" /> Dealer sites
+                </Badge>
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                  <Check className="h-3 w-3 mr-1" /> Marketplaces
+                </Badge>
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                  <Check className="h-3 w-3 mr-1" /> Web discovery
+                </Badge>
               </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* KPI Cards */}
         <HuntKPICards 
@@ -378,7 +506,7 @@ export default function HuntDetailPage() {
           matches={matches}
         />
 
-        {/* Match Criteria Status - Trust Builder */}
+        {/* Match Criteria Status */}
         <Card className="border-primary/20 bg-primary/5">
           <CardHeader className="py-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -387,8 +515,17 @@ export default function HuntDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-4">
-            {/* Status indicators */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+              <div className="flex items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${hunt.series_family ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`} />
+                <span className="text-muted-foreground">Series:</span>
+                <span className="font-medium">
+                  {hunt.series_family 
+                    ? <span className="text-emerald-600">✓ {hunt.series_family}</span>
+                    : <span className="text-muted-foreground">— auto</span>
+                  }
+                </span>
+              </div>
               <div className="flex items-center gap-2">
                 <span className={`h-2 w-2 rounded-full ${hunt.engine_code && hunt.engine_code !== 'UNKNOWN' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                 <span className="text-muted-foreground">Engine:</span>
@@ -419,33 +556,8 @@ export default function HuntDetailPage() {
                   }
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${hunt.series_family ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`} />
-                <span className="text-muted-foreground">Series:</span>
-                <span className="font-medium">
-                  {hunt.series_family 
-                    ? <span className="text-emerald-600">✓ {hunt.series_family}</span>
-                    : <span className="text-muted-foreground">— auto</span>
-                  }
-                </span>
-              </div>
             </div>
             
-            {/* Warning if missing critical data */}
-            {(!hunt.engine_code || hunt.engine_code === 'UNKNOWN') && (!hunt.body_type && !hunt.cab_type) && (
-              <div className="p-2 rounded bg-amber-500/10 border border-amber-200 text-xs text-amber-700 dark:text-amber-400 mb-3">
-                ⚠ Engine and body not specified — BUY alerts blocked, only WATCH allowed.
-              </div>
-            )}
-            
-            {/* Badge not set warning */}
-            {!hunt.badge && (
-              <div className="p-2 rounded bg-muted text-xs text-muted-foreground mb-3">
-                Badge not specified — matches are broader. Add a badge for precision matching.
-              </div>
-            )}
-            
-            {/* Must-have tokens */}
             {hunt.must_have_tokens && hunt.must_have_tokens.length > 0 && (
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-muted-foreground">Must-Have:</span>
@@ -460,15 +572,12 @@ export default function HuntDetailPage() {
                     </Badge>
                   ))}
                 </div>
-                {hunt.must_have_mode === 'strict' && (
-                  <Badge className="bg-amber-500/10 text-amber-600 border-amber-200 text-xs">Strict</Badge>
-                )}
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Hunt Configuration (collapsible summary) */}
+        {/* Hunt Configuration */}
         <Card>
           <CardHeader className="py-3 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-medium">Hunt Configuration</CardTitle>
@@ -485,449 +594,237 @@ export default function HuntDetailPage() {
           <CardContent className="pb-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
+                <span className="text-muted-foreground">Year:</span>
+                <span className="ml-2 font-medium">{hunt.year || 'Any'}</span>
+              </div>
+              <div>
                 <span className="text-muted-foreground">KM Target:</span>
                 <span className="ml-2 font-medium">{hunt.km ? `${(hunt.km / 1000).toFixed(0)}k (±${hunt.km_tolerance_pct}%)` : 'Any'}</span>
               </div>
               <div>
-                <span className="text-muted-foreground">BUY Gap:</span>
-                <span className="ml-2 font-medium">${hunt.min_gap_abs_buy} / {hunt.min_gap_pct_buy}%</span>
+                <span className="text-muted-foreground">Max Price:</span>
+                <span className="ml-2 font-medium">${(hunt as any).max_price?.toLocaleString() || 'Any'}</span>
               </div>
               <div>
-                <span className="text-muted-foreground">WATCH Gap:</span>
-                <span className="ml-2 font-medium">${hunt.min_gap_abs_watch} / {hunt.min_gap_pct_watch}%</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Max Age (BUY):</span>
-                <span className="ml-2 font-medium">≤{hunt.max_listing_age_days_buy} days</span>
+                <span className="text-muted-foreground">Exit Value:</span>
+                <span className="ml-2 font-medium">${hunt.proven_exit_value?.toLocaleString() || 'Not set'}</span>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Kiting Mode Status - Web Discovery */}
-        <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <svg className="h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 2a10 10 0 0 1 7.07 17.07"/>
-                <path d="M2 12h4m12 0h4"/>
-              </svg>
-              Kiting Mode Active
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-4 space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Scanning auctions, dealer networks, and the wider web for replicas.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
-                ✓ Web Discovery
-              </Badge>
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
-                ✓ Auctions
-              </Badge>
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
-                ✓ Dealer Networks
-              </Badge>
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
-                ✓ Autotrader
-              </Badge>
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
-                ✓ Drive
-              </Badge>
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200">
-                ✓ Gumtree
-              </Badge>
-            </div>
-            {hunt.last_outward_scan_at && (
-              <div className="text-xs text-muted-foreground flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                Last web scan: {formatDistanceToNow(new Date(hunt.last_outward_scan_at), { addSuffix: true })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Alert Tabs */}
-        <Tabs defaultValue="buy">
+        {/* Main Tabs - IDENTITY-FIRST STRUCTURE */}
+        <Tabs defaultValue="live-matches">
           <TabsList className="flex-wrap">
-            <TabsTrigger value="buy" className="data-[state=active]:text-emerald-600">
-              BUY ({buyAlerts.length})
+            <TabsTrigger value="live-matches" className="data-[state=active]:text-primary">
+              Live Matches ({counts?.live_matches || liveMatchesData?.totalCount || 0})
             </TabsTrigger>
-            <TabsTrigger value="watch" className="data-[state=active]:text-amber-600">
-              WATCH ({watchAlerts.length})
+            <TabsTrigger value="opportunities" className="data-[state=active]:text-emerald-600">
+              Opportunities ({counts?.opportunities || opportunities.length})
             </TabsTrigger>
-            <TabsTrigger value="all">
-              All Alerts ({allAlerts.length})
-            </TabsTrigger>
-            <TabsTrigger value="matches">
-              Listings ({(outwardData?.totalCount || 0) + (internalData?.totalCount || 0)})
-            </TabsTrigger>
-            <TabsTrigger value="rejections" className="text-muted-foreground">
-              Rejected ({matches.filter(m => m.decision === 'ignore').length})
+            <TabsTrigger value="rejected" className="text-muted-foreground">
+              Rejected ({counts?.ignore || 0})
             </TabsTrigger>
             <TabsTrigger value="scans">
               Scans ({scans.length})
             </TabsTrigger>
           </TabsList>
 
-          {/* BUY Alerts */}
-          <TabsContent value="buy" className="space-y-3 mt-4">
-            {buyAlerts.length === 0 ? (
-              <Card className="py-8">
-                <CardContent className="text-center text-muted-foreground">
-                  No BUY alerts yet. Run a scan to find opportunities.
-                </CardContent>
-              </Card>
-            ) : (
-              buyAlerts.map((alert) => (
-                <HuntAlertCardEnhanced
-                  key={alert.id}
-                  alert={alert}
-                  hunt={hunt}
-                  onAcknowledge={(id) => acknowledgeAlertMutation.mutate(id)}
-                  isAcknowledging={acknowledgeAlertMutation.isPending}
-                />
-              ))
-            )}
-          </TabsContent>
-
-          {/* WATCH Alerts */}
-          <TabsContent value="watch" className="space-y-3 mt-4">
-            {watchAlerts.length === 0 ? (
-              <Card className="py-8">
-                <CardContent className="text-center text-muted-foreground">
-                  No WATCH alerts yet.
-                </CardContent>
-              </Card>
-            ) : (
-              watchAlerts.map((alert) => (
-                <HuntAlertCardEnhanced
-                  key={alert.id}
-                  alert={alert}
-                  hunt={hunt}
-                  onAcknowledge={(id) => acknowledgeAlertMutation.mutate(id)}
-                  isAcknowledging={acknowledgeAlertMutation.isPending}
-                />
-              ))
-            )}
-          </TabsContent>
-
-          {/* All Alerts */}
-          <TabsContent value="all" className="space-y-3 mt-4">
-            {allAlerts.length === 0 ? (
-              <Card className="py-8">
-                <CardContent className="text-center text-muted-foreground">
-                  No alerts yet. Run a scan to find matches.
-                </CardContent>
-              </Card>
-            ) : (
-              allAlerts.map((alert) => (
-                <HuntAlertCardEnhanced
-                  key={alert.id}
-                  alert={alert}
-                  hunt={hunt}
-                  onAcknowledge={(id) => acknowledgeAlertMutation.mutate(id)}
-                  isAcknowledging={acknowledgeAlertMutation.isPending}
-                />
-              ))
-            )}
-          </TabsContent>
-
-          {/* Unified Candidates - Two Section Layout */}
-          <TabsContent value="matches" className="mt-4 space-y-6">
-            
-            {/* Section A: Web Verified Cheapest (TOP) */}
-            <Card className="border-amber-200 dark:border-amber-900/50">
-              <CardHeader className="py-3 bg-gradient-to-r from-amber-500/10 to-transparent">
+          {/* LIVE MATCHES - Shows ALL candidates except IGNORE */}
+          <TabsContent value="live-matches" className="mt-4">
+            <Card>
+              <CardHeader className="py-3">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-amber-600" />
-                  Web Verified Cheapest
-                  <Badge variant="outline" className="ml-2 bg-amber-500/10 text-amber-600 border-amber-200">
-                    {outwardData?.candidates?.filter(c => c.is_verified).length || 0} verified
+                  <Globe className="h-4 w-4 text-primary" />
+                  Live Matches
+                  <Badge variant="outline" className="ml-2">
+                    {liveMatchesData?.totalCount || 0} total
                   </Badge>
-                  {outwardData?.cheapestPrice && (
-                    <Badge variant="outline" className="ml-auto bg-emerald-500/10 text-emerald-600">
+                  <div className="ml-auto flex gap-2 text-xs">
+                    <Badge variant="secondary" className="bg-amber-500/10 text-amber-700">
+                      {counts?.by_tier?.auction || 0} Auctions
+                    </Badge>
+                    <Badge variant="secondary" className="bg-blue-500/10 text-blue-700">
+                      {counts?.by_tier?.marketplace || 0} Marketplaces
+                    </Badge>
+                    <Badge variant="secondary" className="bg-muted text-muted-foreground">
+                      {counts?.by_tier?.dealer || 0} Dealers
+                    </Badge>
+                  </div>
+                  {liveMatchesData?.cheapestPrice && (
+                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600">
                       <TrendingDown className="h-3 w-3 mr-1" />
-                      From ${outwardData.cheapestPrice.toLocaleString()}
+                      From ${liveMatchesData.cheapestPrice.toLocaleString()}
                     </Badge>
                   )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
+                <div className="mb-3 mx-4 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+                  <Info className="h-4 w-4 inline mr-2" />
+                  Showing ALL matching vehicles ranked by: Auction → Marketplace → Dealer, then by identity score and price.
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="p-3 text-left font-medium">#</th>
-                        <th className="p-3 text-left font-medium">Rank</th>
+                        <th className="p-3 text-left font-medium">Score</th>
                         <th className="p-3 text-left font-medium">Source</th>
                         <th className="p-3 text-left font-medium">Price</th>
-                        <th className="p-3 text-left font-medium">Decision</th>
+                        <th className="p-3 text-left font-medium">Status</th>
                         <th className="p-3 text-left font-medium">Details</th>
-                        <th className="p-3 text-left font-medium">Why</th>
+                        <th className="p-3 text-left font-medium">Identity</th>
                         <th className="p-3 text-left font-medium">Link</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {outwardLoading ? (
+                      {liveMatchesLoading ? (
                         <tr>
                           <td colSpan={8} className="p-8 text-center text-muted-foreground">
-                            Loading web candidates...
+                            Loading live matches...
                           </td>
                         </tr>
-                      ) : (outwardData?.candidates || []).length === 0 ? (
+                      ) : (liveMatchesData?.candidates || []).length === 0 ? (
                         <tr>
                           <td colSpan={8} className="p-8 text-center text-muted-foreground">
                             <div className="flex flex-col items-center gap-2">
                               <Globe className="h-8 w-8 text-muted-foreground/50" />
-                              <span>No verified web listings yet — click "Search Web" to scan</span>
+                              <span>No matches found. Click "Scan Now" or "Search Web" to find vehicles.</span>
                             </div>
                           </td>
                         </tr>
                       ) : (
-                        (outwardData?.candidates || []).map((candidate, idx) => (
-                          <tr key={candidate.id} className={`border-t hover:bg-muted/30 ${candidate.is_cheapest ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}>
-                            <td className="p-3 font-mono text-xs text-muted-foreground">
-                              {idx + 1}
-                            </td>
-                            <td className="p-3">
-                              <div className="flex flex-col gap-0.5">
-                                <span className={`font-mono text-xs px-1.5 py-0.5 rounded inline-block w-fit ${
-                                  (candidate.rank_score || candidate.dna_score || 0) >= 10 ? 'bg-emerald-500/20 text-emerald-700' :
-                                  (candidate.rank_score || candidate.dna_score || 0) >= 7 ? 'bg-amber-500/20 text-amber-700' :
-                                  'bg-muted text-muted-foreground'
-                                }`}>
-                                  {candidate.rank_score?.toFixed(1) || candidate.dna_score?.toFixed(1) || '—'}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground">
-                                  DNA: {candidate.dna_score?.toFixed(1) || '—'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="p-3">
-                              <div className="flex items-center gap-2">
-                                <Badge 
-                                  variant="outline" 
-                                  className={candidate.is_verified 
-                                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-200' 
-                                    : 'bg-amber-500/10 text-amber-600 border-amber-200'}
-                                >
-                                  {candidate.is_verified ? '✓ Verified' : 'Pending'}
-                                </Badge>
-                                {/* Source Tier Badge: Tier 1 = auction (gold), Tier 2 = marketplace (blue), Tier 3 = dealer (gray) */}
-                                <Badge 
-                                  variant="secondary" 
-                                  className={`text-xs ${
-                                    candidate.source_tier === 1 
-                                      ? 'bg-amber-500/20 text-amber-700 border-amber-300' 
-                                      : candidate.source_tier === 2 
-                                        ? 'bg-blue-500/20 text-blue-700 border-blue-300'
-                                        : 'bg-muted text-muted-foreground'
-                                  }`}
-                                >
-                                  {candidate.source_tier === 1 ? '🔨 Auction' : 
-                                   candidate.source_tier === 2 ? '🛒 Marketplace' : 
-                                   candidate.source_class || 'dealer'}
-                                </Badge>
-                              </div>
-                            </td>
-                            <td className="p-3">
-                              <div className="flex items-center gap-1">
-                                {candidate.is_cheapest && <Zap className="h-4 w-4 text-amber-500" />}
-                                <span className={candidate.is_cheapest ? 'font-bold text-emerald-600' : ''}>
-                                  {candidate.price ? `$${candidate.price.toLocaleString()}` : '—'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="p-3">
-                              <Badge className={getDecisionColor(candidate.decision.toLowerCase() as MatchDecision)}>
-                                {candidate.decision}
-                              </Badge>
-                            </td>
-                            <td className="p-3">
-                              <div className="text-xs">
-                                <div>{candidate.year} {candidate.make} {candidate.model}</div>
-                                {candidate.km && <div className="text-muted-foreground">{candidate.km.toLocaleString()} km</div>}
-                              </div>
-                            </td>
-                            {/* Why matched - sort_reason audit trail */}
-                            <td className="p-3">
-                              <div className="flex flex-wrap gap-1">
-                                {(candidate.sort_reason || []).slice(0, 3).map((reason, i) => (
-                                  <Badge 
-                                    key={i} 
-                                    variant="outline" 
-                                    className="text-[10px] font-mono bg-muted/50"
-                                  >
-                                    {reason}
-                                  </Badge>
-                                ))}
-                                {(!candidate.sort_reason || candidate.sort_reason.length === 0) && (
-                                  <span className="text-muted-foreground text-xs">—</span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="p-3">
-                              <div className="flex items-center gap-2">
-                                {candidate.requires_manual_check && (
-                                  <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-600 border-amber-200">
-                                    <AlertTriangle className="h-3 w-3 mr-1" />
-                                    Manual
-                                  </Badge>
-                                )}
-                                {candidate.requires_manual_check ? (
-                                  <CarsalesIdKitModal
-                                    title={candidate.title || `${candidate.year} ${candidate.make} ${candidate.model}`}
-                                    domain={candidate.domain || ''}
-                                    idKit={candidate.id_kit}
-                                    year={candidate.year}
-                                    make={candidate.make}
-                                    model={candidate.model}
-                                    variant={candidate.variant_raw}
-                                    km={candidate.km}
-                                    price={candidate.price}
-                                    location={candidate.location}
-                                  />
-                                ) : candidate.url && !candidate.url.startsWith('internal://') ? (
-                                  <a
-                                    href={candidate.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 text-primary hover:underline"
-                                  >
-                                    View <ExternalLink className="h-3 w-3" />
-                                  </a>
-                                ) : (
-                                  <span className="text-muted-foreground">—</span>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))
+                        (liveMatchesData?.candidates || []).map((candidate, idx) => 
+                          renderCandidateRow(candidate, idx)
+                        )
                       )}
                     </tbody>
                   </table>
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
 
-            {/* Section B: Internal Feed (SECOND) */}
+          {/* OPPORTUNITIES - Only BUY/WATCH with price-gap labels */}
+          <TabsContent value="opportunities" className="mt-4">
             <Card>
               <CardHeader className="py-3">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-blue-600" />
-                  Internal Feed
-                  <Badge variant="outline" className="ml-2 text-muted-foreground">
-                    {internalData?.totalCount || 0} listings
+                  <Zap className="h-4 w-4 text-emerald-600" />
+                  Opportunities
+                  <Badge variant="outline" className="ml-2 bg-emerald-500/10 text-emerald-600">
+                    {counts?.buy || 0} BUY
                   </Badge>
-                  <span className="text-xs text-muted-foreground font-normal ml-2">
-                    Autotrader • Drive • Gumtree
-                  </span>
-                  {internalData?.cheapestPrice && (
-                    <Badge variant="outline" className="ml-auto bg-blue-500/10 text-blue-600">
-                      <TrendingDown className="h-3 w-3 mr-1" />
-                      From ${internalData.cheapestPrice.toLocaleString()}
-                    </Badge>
-                  )}
+                  <Badge variant="outline" className="ml-1 bg-amber-500/10 text-amber-600">
+                    {counts?.watch || 0} WATCH
+                  </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
+                <div className="mb-3 mx-4 p-3 rounded-lg bg-emerald-500/5 border border-emerald-200/50 text-sm">
+                  <Info className="h-4 w-4 inline mr-2 text-emerald-600" />
+                  These are vehicles with confirmed price gaps based on proven exit value. BUY = high confidence strike. WATCH = worth monitoring.
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="p-3 text-left font-medium">#</th>
-                        <th className="p-3 text-left font-medium">Rank</th>
+                        <th className="p-3 text-left font-medium">Score</th>
                         <th className="p-3 text-left font-medium">Source</th>
                         <th className="p-3 text-left font-medium">Price</th>
-                        <th className="p-3 text-left font-medium">Decision</th>
+                        <th className="p-3 text-left font-medium">Status</th>
                         <th className="p-3 text-left font-medium">Details</th>
-                        <th className="p-3 text-left font-medium">Why</th>
+                        <th className="p-3 text-left font-medium">Identity</th>
                         <th className="p-3 text-left font-medium">Link</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {internalLoading ? (
+                      {opportunitiesLoading ? (
                         <tr>
                           <td colSpan={8} className="p-8 text-center text-muted-foreground">
-                            Loading internal feed...
+                            Loading opportunities...
                           </td>
                         </tr>
-                      ) : (internalData?.candidates || []).length === 0 ? (
+                      ) : opportunities.length === 0 ? (
                         <tr>
                           <td colSpan={8} className="p-8 text-center text-muted-foreground">
-                            No internal matches. Run "Scan Now" to check Autotrader/Drive/Gumtree.
+                            <div className="flex flex-col items-center gap-2">
+                              <Zap className="h-8 w-8 text-muted-foreground/50" />
+                              <span>No BUY/WATCH opportunities yet. Check "Live Matches" for all available vehicles.</span>
+                            </div>
                           </td>
                         </tr>
                       ) : (
-                        (internalData?.candidates || []).map((candidate, idx) => (
-                          <tr key={candidate.id} className={`border-t hover:bg-muted/30 ${candidate.is_cheapest ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}>
-                            <td className="p-3 font-mono text-xs text-muted-foreground">
-                              {idx + 1}
-                            </td>
+                        opportunities.map((candidate, idx) => 
+                          renderCandidateRow(candidate, idx)
+                        )
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* REJECTED - IGNORE decisions with reasons */}
+          <TabsContent value="rejected" className="mt-4">
+            <Card>
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                  Rejected
+                  <Badge variant="outline" className="ml-2 text-muted-foreground">
+                    {counts?.ignore || 0} items
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="mb-3 mx-4 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+                  These listings were evaluated but rejected due to identity mismatch (series/engine/body) or non-listing content (news, reviews, etc.).
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="p-3 text-left font-medium">Reason</th>
+                        <th className="p-3 text-left font-medium">Source</th>
+                        <th className="p-3 text-left font-medium">Price</th>
+                        <th className="p-3 text-left font-medium">Details</th>
+                        <th className="p-3 text-left font-medium">Link</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rejectedLoading ? (
+                        <tr>
+                          <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                            Loading rejected items...
+                          </td>
+                        </tr>
+                      ) : (rejectedData?.candidates || []).length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                            No rejected items. Gates are being applied correctly.
+                          </td>
+                        </tr>
+                      ) : (
+                        (rejectedData?.candidates || []).map((candidate) => (
+                          <tr key={candidate.id} className="border-t hover:bg-muted/30 opacity-60">
                             <td className="p-3">
-                              <div className="flex flex-col gap-0.5">
-                                <span className={`font-mono text-xs px-1.5 py-0.5 rounded inline-block w-fit ${
-                                  (candidate.rank_score || candidate.dna_score || 0) >= 10 ? 'bg-emerald-500/20 text-emerald-700' :
-                                  (candidate.rank_score || candidate.dna_score || 0) >= 7 ? 'bg-amber-500/20 text-amber-700' :
-                                  'bg-muted text-muted-foreground'
-                                }`}>
-                                  {candidate.rank_score?.toFixed(1) || candidate.dna_score?.toFixed(1) || '—'}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground">
-                                  DNA: {candidate.dna_score?.toFixed(1) || '—'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="p-3">
-                              {/* Source Tier Badge for internal listings too */}
-                              <Badge 
-                                variant="secondary" 
-                                className={`text-xs ${
-                                  candidate.source_tier === 1 
-                                    ? 'bg-amber-500/20 text-amber-700 border-amber-300' 
-                                    : candidate.source_tier === 2 
-                                      ? 'bg-blue-500/20 text-blue-700 border-blue-300'
-                                      : 'bg-muted text-muted-foreground'
-                                }`}
-                              >
-                                {candidate.source_tier === 1 ? '🔨 Auction' : 
-                                 candidate.source_tier === 2 ? '🛒 Marketplace' : 
-                                 candidate.source_class || candidate.source?.replace('_', ' ') || 'internal'}
+                              <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
+                                {candidate.blocked_reason || 'Unknown'}
                               </Badge>
                             </td>
                             <td className="p-3">
-                              <div className="flex items-center gap-1">
-                                {candidate.is_cheapest && <Zap className="h-4 w-4 text-amber-500" />}
-                                <span className={candidate.is_cheapest ? 'font-bold text-emerald-600' : ''}>
-                                  {candidate.price ? `$${candidate.price.toLocaleString()}` : '—'}
-                                </span>
-                              </div>
+                              {getSourceTierBadge(candidate)}
                             </td>
                             <td className="p-3">
-                              <Badge className={getDecisionColor(candidate.decision.toLowerCase() as MatchDecision)}>
-                                {candidate.decision}
-                              </Badge>
+                              {candidate.price ? `$${candidate.price.toLocaleString()}` : '—'}
                             </td>
                             <td className="p-3">
                               <div className="text-xs">
-                                <div>{candidate.year} {candidate.make} {candidate.model}</div>
-                                {candidate.km && <div className="text-muted-foreground">{candidate.km.toLocaleString()} km</div>}
-                              </div>
-                            </td>
-                            {/* Why matched - sort_reason audit trail */}
-                            <td className="p-3">
-                              <div className="flex flex-wrap gap-1">
-                                {(candidate.sort_reason || []).slice(0, 3).map((reason, i) => (
-                                  <Badge key={i} variant="outline" className="text-[10px] font-mono bg-muted/50">
-                                    {reason}
-                                  </Badge>
-                                ))}
-                                {(!candidate.sort_reason || candidate.sort_reason.length === 0) && (
-                                  <span className="text-muted-foreground text-xs">—</span>
-                                )}
+                                <div>{candidate.title || `${candidate.year} ${candidate.make} ${candidate.model}`}</div>
                               </div>
                             </td>
                             <td className="p-3">
@@ -952,68 +849,9 @@ export default function HuntDetailPage() {
                 </div>
               </CardContent>
             </Card>
-
           </TabsContent>
 
-          {/* Rejected Matches (Audit Trail) */}
-          <TabsContent value="rejections" className="mt-4">
-            <div className="mb-3 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
-              These listings were evaluated but rejected by hard gates (series/body/engine mismatch) or missing required keywords.
-            </div>
-            <div className="rounded-lg border overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="p-3 text-left font-medium">Rejection Reason</th>
-                    <th className="p-3 text-left font-medium">Price</th>
-                    <th className="p-3 text-left font-medium">Link</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matches.filter(m => m.decision === 'ignore').length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="p-8 text-center text-muted-foreground">
-                        No rejected matches. Gates are being applied correctly.
-                      </td>
-                    </tr>
-                  ) : (
-                    matches.filter(m => m.decision === 'ignore').map((match) => {
-                      const rejectionReason = (match.reasons || []).filter(Boolean)[0] || 'Unknown';
-                      
-                      return (
-                        <tr key={match.id} className="border-t hover:bg-muted/30 opacity-60">
-                          <td className="p-3">
-                            <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
-                              {rejectionReason}
-                            </Badge>
-                          </td>
-                          <td className="p-3">
-                            ${match.asking_price?.toLocaleString() || '?'}
-                          </td>
-                          <td className="p-3">
-                            {(match as any).listing_url ? (
-                              <a
-                                href={(match as any).listing_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-primary hover:underline"
-                              >
-                                View <ExternalLink className="h-3 w-3" />
-                              </a>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </TabsContent>
-
-          {/* Scan History */}
+          {/* SCANS - Audit trail */}
           <TabsContent value="scans" className="mt-4">
             <div className="space-y-3">
               {scans.length === 0 ? (
@@ -1033,7 +871,6 @@ export default function HuntDetailPage() {
                   return (
                     <Card key={scan.id}>
                       <CardContent className="p-4 space-y-3">
-                        {/* Top row - status and time */}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <Badge className={
@@ -1055,7 +892,6 @@ export default function HuntDetailPage() {
                           </div>
                         </div>
                         
-                        {/* Sources scanned row */}
                         {metadata?.sources_scanned && metadata.sources_scanned.length > 0 && (
                           <div className="flex flex-wrap items-center gap-2 text-xs">
                             <span className="text-muted-foreground">Sources:</span>
@@ -1067,7 +903,6 @@ export default function HuntDetailPage() {
                           </div>
                         )}
                         
-                        {/* Near-misses / rejections row */}
                         {metadata?.rejected_by_gates && metadata.rejected_by_gates > 0 && (
                           <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded p-2">
                             <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
@@ -1087,7 +922,6 @@ export default function HuntDetailPage() {
                           </div>
                         )}
                         
-                        {/* Error row */}
                         {scan.error && (
                           <div className="flex items-center gap-2 text-xs text-destructive">
                             <AlertCircle className="h-3.5 w-3.5" />
