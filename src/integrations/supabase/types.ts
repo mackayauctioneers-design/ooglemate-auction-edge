@@ -2294,6 +2294,8 @@ export type Database = {
           effective_price: number | null
           extracted: Json | null
           final_score: number | null
+          gap_dollars: number | null
+          gap_pct: number | null
           hunt_id: string
           id: string
           id_kit: Json | null
@@ -2334,6 +2336,8 @@ export type Database = {
           effective_price?: number | null
           extracted?: Json | null
           final_score?: number | null
+          gap_dollars?: number | null
+          gap_pct?: number | null
           hunt_id: string
           id?: string
           id_kit?: Json | null
@@ -2374,6 +2378,8 @@ export type Database = {
           effective_price?: number | null
           extracted?: Json | null
           final_score?: number | null
+          gap_dollars?: number | null
+          gap_pct?: number | null
           hunt_id?: string
           id?: string
           id_kit?: Json | null
