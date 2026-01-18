@@ -1343,10 +1343,11 @@ serve(async (req) => {
     const engineFamily = hunt.engine_family || '';
     const mustHaves = (hunt.must_have_tokens || []).slice(0, 2).join(' ');
     
-    // Use individual year for better results
-    const huntYear = hunt.year || new Date().getFullYear();
-    const yearMin = hunt.year_min ?? (huntYear - 1);
-    const yearMax = hunt.year_max ?? (huntYear + 1);
+    // Use individual years for better results (cap to ±3 years max)
+    const currentYear = new Date().getFullYear();
+    const huntYear = hunt.year || currentYear;
+    const yearMin = Math.max(hunt.year_min ?? (huntYear - 1), huntYear - 3);
+    const yearMax = Math.min(hunt.year_max ?? (huntYear + 1), huntYear + 3, currentYear + 1);
     
     // Build spec tokens for tighter matching
     const specTokens: string[] = [];
@@ -1361,10 +1362,10 @@ serve(async (req) => {
     // Simpler negatives (Firecrawl-compatible)
     const negTokens = '-review -news -blog -specs -guide';
     
-    // Build year list (e.g., "2023 OR 2024 OR 2025")
+    // Build year list with OR for better matching (e.g., "2023 OR 2024 OR 2025")
     const years: number[] = [];
     for (let y = yearMin; y <= yearMax; y++) years.push(y);
-    const yearStr = years.join(' ');
+    const yearStr = years.length > 1 ? years.join(' OR ') : String(years[0] || huntYear);
     
     // ==========================================
     // TIER 1: AUCTION SITES (simple site: queries)
