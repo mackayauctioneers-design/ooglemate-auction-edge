@@ -450,7 +450,7 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
     'towing-capacity', 'specs', 'review', 'price-list',
   ];
   
-  // DETAIL page patterns - must have individual listing ID
+  // DETAIL page patterns - must have individual listing ID (expanded)
   const detailPatterns = [
     /\/car\/\d{5,}/,              // Carsales detail: /car/123456
     /\/sse-ad-\d+/i,              // Carsales SSE-AD in URL
@@ -463,6 +463,9 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
     /\/listing\/[a-z0-9-]+/i,     // Listing page: /listing/abc-123
     /\/item\/[a-z0-9-]+/i,        // Item page: /item/12345
     /\/ad\/[a-z0-9-]+/i,          // Dealer ad page: /ad/12345 or /ad/hyundai-i30
+    /\/product\/[a-z0-9-]+/i,     // Product page: /product/hyundai-i30-n-line
+    /\/view\/[a-z0-9-]+/i,        // View page: /view/ABC123
+    /\/car-details\/[a-z0-9-]+/i, // Car details: /car-details/abc-123
     /SSE-AD-\d+/i,                // Carsales SSE-AD-xxxxx
     /OAG-AD-\d+/i,                // AutoTrader OAG-AD-xxxxx
   ];
@@ -502,22 +505,20 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
 }
 
 // =====================================================
-// CONTENT SIGNALS CHECK - Must have price + km to be listing
+// CONTENT SIGNALS CHECK - Relaxed: price OR km to be listing
 // =====================================================
 function hasListingSignals(content: string): { valid: boolean; reason: string | null } {
   const contentLower = content.toLowerCase();
   
-  // Must have price indicator ($)
+  // Price indicators
   const hasPrice = contentLower.includes('$') || /\d{2,3},\d{3}/.test(content);
   
-  // Must have km/mileage
-  const hasKm = /\d{1,3}(,\d{3})*\s*(km|kms|kilometres)/i.test(content);
+  // Mileage indicators
+  const hasKm = /\d{1,3}(,\d{3})*\s*(km|kms|kilometres|odometer)/i.test(content);
   
-  if (!hasPrice) {
-    return { valid: false, reason: 'NO_PRICE_SIGNAL' };
-  }
-  if (!hasKm) {
-    return { valid: false, reason: 'NO_KM_SIGNAL' };
+  // Relaxed: need EITHER price OR km (some pages hide one behind JS)
+  if (!hasPrice && !hasKm) {
+    return { valid: false, reason: 'NO_PRICE_AND_NO_KM_SIGNAL' };
   }
   
   return { valid: true, reason: null };
@@ -1453,9 +1454,9 @@ serve(async (req) => {
             scrapeOptions: {
               formats: ["markdown"],
               onlyMainContent: true,
-              waitFor: 4000,  // Wait for JS to load on dynamic pages
+              waitFor: 8000,  // Increased: wait 8s for JS-heavy dealer sites
             },
-            timeout: 30000,  // 30s timeout for JS-heavy pages
+            timeout: 60000,  // Increased: 60s timeout for slow JS-heavy pages
           }),
         });
         
@@ -1673,6 +1674,10 @@ serve(async (req) => {
             if (shouldReject) {
               results.candidates_rejected++;
               
+              // DEBUG: Log rejected URLs for analysis (first 20)
+              if (results.candidates_rejected <= 20) {
+                console.log(`[REJECTED ${results.candidates_rejected}] URL: ${candidate.url.slice(0, 100)} | Reasons: ${allRejectReasons.join(', ')} | isListing: ${candidate.is_listing} | pageType: ${candidate.page_type}`);
+              }
               // Use canonical_id for proper dedupe
               const { data: canonicalData } = await supabase.rpc('fn_canonical_listing_id', { p_url: candidate.url });
               const canonicalId = canonicalData || `${candidate.domain}:${btoa(candidate.url).slice(0, 32)}`;
