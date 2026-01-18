@@ -461,41 +461,40 @@ function makeDecision(
   listingAgeDays: number,
   gateResult: GateResult
 ): { decision: 'buy' | 'watch' | 'ignore' | 'no_evidence'; gap_dollars: number | null; gap_pct: number | null } {
-  // No evidence case - still show as WATCH so user sees cheapest available
-  if (!provenExitValue || !listing.asking_price) {
-    return { decision: 'no_evidence', gap_dollars: null, gap_pct: null };
+  const gap_dollars = provenExitValue && listing.asking_price 
+    ? provenExitValue - listing.asking_price 
+    : null;
+  const gap_pct = provenExitValue && gap_dollars !== null 
+    ? (gap_dollars / provenExitValue) * 100 
+    : null;
+  
+  // If we have proven exit value and price, we can evaluate BUY
+  if (provenExitValue && listing.asking_price) {
+    const canBuy = 
+      score >= 7.5 &&
+      listingAgeDays <= hunt.max_listing_age_days_buy &&
+      gap_dollars !== null && gap_dollars >= hunt.min_gap_abs_buy &&
+      gap_pct !== null && gap_pct >= hunt.min_gap_pct_buy &&
+      listing.km !== null &&
+      (listing.source || '').toLowerCase() !== 'gumtree_private' &&
+      !gateResult.downgrade_to_watch;
+    
+    if (canBuy) {
+      return { decision: 'buy', gap_dollars, gap_pct };
+    }
   }
   
-  const gap_dollars = provenExitValue - listing.asking_price;
-  const gap_pct = (gap_dollars / provenExitValue) * 100;
-  
-  // Check BUY criteria - strict thresholds
-  const canBuy = 
-    score >= 7.5 &&
-    listingAgeDays <= hunt.max_listing_age_days_buy &&
-    gap_dollars >= hunt.min_gap_abs_buy &&
-    gap_pct >= hunt.min_gap_pct_buy &&
-    listing.km !== null && // Must have km for BUY
-    (listing.source || '').toLowerCase() !== 'gumtree_private' && // No private for BUY
-    !gateResult.downgrade_to_watch; // Badge tier gate check
-  
-  if (canBuy) {
-    return { decision: 'buy', gap_dollars, gap_pct };
+  // WATCH for good matches - DNA score is the primary signal
+  // High DNA score (>=6.5) = strong WATCH candidate
+  // Medium DNA score (>=5.0) = regular WATCH
+  if (score >= 5.0) {
+    const ageOk = listingAgeDays <= Math.max(hunt.max_listing_age_days_watch, 30);
+    if (ageOk) {
+      return { decision: 'watch', gap_dollars, gap_pct };
+    }
   }
   
-  // CRITICAL: Never ignore just because of price!
-  // The user wants to see the "cheapest, closest" match even if overpriced
-  // WATCH is the fallback for anything that passes hard gates
-  // Only apply age filter very loosely for WATCH
-  const canWatch = 
-    score >= 5.0 && // Lower threshold
-    listingAgeDays <= Math.max(hunt.max_listing_age_days_watch, 30); // More lenient age
-  
-  if (canWatch) {
-    return { decision: 'watch', gap_dollars, gap_pct };
-  }
-  
-  // Only IGNORE for very stale listings or very low match scores
+  // Only IGNORE for low scores or very stale listings
   return { decision: 'ignore', gap_dollars, gap_pct };
 }
 
