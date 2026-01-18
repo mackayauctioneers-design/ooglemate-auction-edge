@@ -284,6 +284,7 @@ export interface UnifiedCandidate {
   // Source classification (for debug/operator UI)
   source_name?: string | null;
   source_class?: 'auction' | 'marketplace' | 'dealer' | 'internal' | string;
+  source_tier?: number; // 1=auction, 2=marketplace, 3=dealer
   listing_url?: string | null;
   first_seen_at?: string | null;
   

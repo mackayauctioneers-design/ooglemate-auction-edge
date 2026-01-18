@@ -39,8 +39,7 @@ function getStatusColor(status: HuntStatus): string {
   }
 }
 
-// Coverage message - intentionally vague to avoid over-promising
-const COVERAGE_MESSAGE = "Marketplaces + auctions + dealer sites";
+// Coverage message - single line per spec, no toggles
 
 export function HuntHeader({ 
   hunt, 
@@ -125,13 +124,7 @@ export function HuntHeader({
               <Zap className="h-4 w-4" />
               Interval: {hunt.scan_interval_minutes} min
             </div>
-            <div className="flex flex-wrap gap-1">
-              {hunt.sources_enabled.map(src => (
-                <Badge key={src} variant="secondary" className="text-xs">
-                  {src}
-                </Badge>
-              ))}
-            </div>
+            {/* Sources removed - spec says no individual source display, just unified coverage line */}
             {hunt.expires_at && (
               <div>
                 Expires: {format(new Date(hunt.expires_at), "MMM d, yyyy")}
