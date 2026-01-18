@@ -2339,6 +2339,7 @@ export type Database = {
           body_type: string | null
           cab_type: string | null
           candidate_stage: string | null
+          canonical_id: string | null
           classification: Json | null
           created_at: string | null
           criteria_version: number
@@ -2395,6 +2396,7 @@ export type Database = {
           body_type?: string | null
           cab_type?: string | null
           candidate_stage?: string | null
+          canonical_id?: string | null
           classification?: Json | null
           created_at?: string | null
           criteria_version?: number
@@ -2451,6 +2453,7 @@ export type Database = {
           body_type?: string | null
           cab_type?: string | null
           candidate_stage?: string | null
+          canonical_id?: string | null
           classification?: Json | null
           created_at?: string | null
           criteria_version?: number
