@@ -450,7 +450,7 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
     'towing-capacity', 'specs', 'review', 'price-list',
   ];
   
-  // DETAIL page patterns - must have individual listing ID (expanded)
+  // DETAIL page patterns - must have individual listing ID (expanded for AU dealers)
   const detailPatterns = [
     /\/car\/\d{5,}/,              // Carsales detail: /car/123456
     /\/sse-ad-\d+/i,              // Carsales SSE-AD in URL
@@ -466,6 +466,11 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
     /\/product\/[a-z0-9-]+/i,     // Product page: /product/hyundai-i30-n-line
     /\/view\/[a-z0-9-]+/i,        // View page: /view/ABC123
     /\/car-details\/[a-z0-9-]+/i, // Car details: /car-details/abc-123
+    /\/view-car\/[a-z0-9-]+/i,    // View car: /view-car/ABC123
+    /\/showroom\/[a-z0-9-]+/i,    // Showroom: /showroom/12345
+    /\/used-car\/[a-z0-9-]+/i,    // Used car: /used-car/abc-123
+    /\/used-cars\/[a-z0-9-]+/i,   // Used cars detail: /used-cars/abc-123
+    /\/pre-owned\/[a-z0-9-]+/i,   // Pre-owned: /pre-owned/abc-123
     /SSE-AD-\d+/i,                // Carsales SSE-AD-xxxxx
     /OAG-AD-\d+/i,                // AutoTrader OAG-AD-xxxxx
   ];
@@ -516,9 +521,12 @@ function hasListingSignals(content: string): { valid: boolean; reason: string | 
   // Mileage indicators
   const hasKm = /\d{1,3}(,\d{3})*\s*(km|kms|kilometres|odometer)/i.test(content);
   
-  // Relaxed: need EITHER price OR km (some pages hide one behind JS)
-  if (!hasPrice && !hasKm) {
-    return { valid: false, reason: 'NO_PRICE_AND_NO_KM_SIGNAL' };
+  // Enquire/contact indicators (many dealer pages hide price behind these)
+  const hasEnquire = /enquire|contact\s*(us|dealer|seller)|get\s*quote|request\s*(info|price)|call\s*(us|now)/i.test(contentLower);
+  
+  // Very relaxed: need price OR km OR enquire signal (dealer pages often hide price)
+  if (!hasPrice && !hasKm && !hasEnquire) {
+    return { valid: false, reason: 'NO_PRICE_KM_OR_ENQUIRE_SIGNAL' };
   }
   
   return { valid: true, reason: null };
