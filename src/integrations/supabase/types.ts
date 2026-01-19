@@ -8366,6 +8366,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      upsert_harvest_batch: {
+        Args: { p_items: Json; p_run_id: string; p_source: string }
+        Returns: Json
+      }
       upsert_pickles_harvest_batch: {
         Args: { p_items: Json; p_run_id: string }
         Returns: Json
