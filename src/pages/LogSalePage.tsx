@@ -328,11 +328,21 @@ export default function LogSalePage() {
       return;
     }
 
-    // Engine, Drivetrain, Transmission required for proper matching
+    // Engine, Drivetrain, Transmission, Body Type required for proper matching
     if (!formData.engine || !formData.drivetrain || !formData.transmission) {
       toast({
         title: "Specs required for Kiting Mode",
         description: "Please select Engine, Drivetrain, and Transmission to enable accurate matching.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Body Type required for accurate matching (no more "unknown")
+    if (!formData.body_type || formData.body_type === 'UNSPECIFIED') {
+      toast({
+        title: "Body Type required",
+        description: "Please select a Body Type (Sedan, Hatch, SUV, etc.) to enable accurate matching.",
         variant: "destructive",
       });
       return;
@@ -771,18 +781,19 @@ export default function LogSalePage() {
                   </div>
                 </div>
 
-                {/* Body Type - Universal for all vehicles */}
+                {/* Body Type - REQUIRED for accurate matching */}
                 <div className="space-y-2">
-                  <Label htmlFor="body_type">Body Type (optional)</Label>
+                  <Label htmlFor="body_type" className="flex items-center gap-1">
+                    Body Type <span className="text-destructive">*</span>
+                  </Label>
                   <Select
                     value={formData.body_type}
                     onValueChange={(v) => updateField('body_type', v)}
                   >
-                    <SelectTrigger className="bg-input">
+                    <SelectTrigger className={`bg-input ${!formData.body_type || formData.body_type === 'UNSPECIFIED' ? 'border-amber-500/50' : ''}`}>
                       <SelectValue placeholder="Select body type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="UNSPECIFIED">Not specified</SelectItem>
                       <SelectItem value="SEDAN">Sedan</SelectItem>
                       <SelectItem value="HATCH">Hatchback</SelectItem>
                       <SelectItem value="WAGON">Wagon</SelectItem>
@@ -797,7 +808,7 @@ export default function LogSalePage() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Helps Kiting Mode avoid mismatches (e.g. sedan vs hatch, single vs dual cab)
+                    Required — helps Kiting Mode avoid mismatches (e.g. sedan vs hatch)
                   </p>
                 </div>
 
