@@ -1387,30 +1387,36 @@ serve(async (req) => {
     const yearStr = years.length > 1 ? years.join(' OR ') : String(years[0] || huntYear);
     
     // ==========================================
-    // TIER 1: AUCTION SITES (simple site: queries)
+    // TIER 1: AUCTION SITES ONLY (prioritized - this is where the big margins live)
     // ==========================================
-    enhancedQueries.push(
+    const tier1AuctionQueries: string[] = [
       `site:pickles.com.au ${make} ${model} ${specStr} ${yearStr} ${negTokens}`.trim(),
       `site:manheim.com.au ${make} ${model} ${specStr} ${yearStr} ${negTokens}`.trim(),
       `site:grays.com ${make} ${model} ${specStr} ${negTokens}`.trim(),
-    );
+      `site:slatteryauctions.com.au ${make} ${model} ${specStr} ${yearStr}`.trim(),
+      `site:allansauctions.com.au ${make} ${model} ${yearStr}`.trim(),
+      `site:lloydsauctions.com.au ${make} ${model} ${specStr} ${negTokens}`.trim(),
+      // Broader auction search across AU
+      `${yearStr} ${make} ${model} ${specStr} auction Australia ${negTokens}`.trim(),
+    ];
+    
+    // Add Tier 1 auction queries first (up to 6)
+    for (const q of tier1AuctionQueries.slice(0, 6)) {
+      enhancedQueries.push(q);
+    }
     
     // ==========================================
-    // TIER 2: MAJOR MARKETPLACES
+    // TIER 2: RETAIL/MARKETPLACE (fallback - added after auction processing)
+    // These are added but placed after auction sources in query order
+    // Only use if auction results < 20 (checked during processing)
     // ==========================================
-    enhancedQueries.push(
+    const tier2RetailQueries: string[] = [
       `site:carsales.com.au ${yearStr} ${make} ${model} ${specStr} ${negTokens}`.trim(),
       `site:autotrader.com.au ${yearStr} ${make} ${model} ${specStr} ${negTokens}`.trim(),
-      `site:gumtree.com.au ${yearStr} ${make} ${model} ${specStr} ${negTokens}`.trim(),
-    );
+    ];
     
-    // ==========================================
-    // TIER 3: BROADER SEARCH (for sale Australia)
-    // ==========================================
-    enhancedQueries.push(
-      `${yearStr} ${make} ${model} ${specStr} for sale Australia auction ${negTokens}`.trim(),
-      `${yearStr} ${make} ${model} ${specStr} "$" "km" for sale Australia ${negTokens}`.trim(),
-    );
+    // We'll add retail queries at end only if needed (controlled by query limit)
+    // This ensures auctions are processed first before retail fallback
     
     // Keep any original queries that weren't site-specific (fallback)
     for (const q of baseQueries) {
@@ -1419,8 +1425,11 @@ serve(async (req) => {
       }
     }
     
-    // Dedupe and limit to 8 queries max
-    const searchQueries = [...new Set(enhancedQueries)].slice(0, 8);
+    // Dedupe - limit to 6 auction queries first
+    let searchQueries = [...new Set(enhancedQueries)].slice(0, 6);
+    
+    // Flag to track if we should add retail fallback (will check after initial results)
+    const retailQueriesAvailable = tier2RetailQueries;
     
     console.log(`Outward hunt v1.2 for ${hunt_id}: ${searchQueries.length} queries`);
     
@@ -1454,8 +1463,14 @@ serve(async (req) => {
     
     // Track processed Carsales results pages to avoid re-scraping
     const processedCarsalesPages = new Set<string>();
-    // Run Firecrawl search for each query
-    const queriesToRun = searchQueries.slice(0, 6);
+    
+    // ==========================================
+    // PHASE 1: RUN AUCTION-FIRST QUERIES (Tier 1)
+    // ==========================================
+    let queriesToRun = searchQueries.slice(0, 6);
+    console.log(`[TIER 1] Running ${queriesToRun.length} auction-first queries...`);
+    
+    let auctionResultsCount = 0;
     
     for (const query of queriesToRun) {
       try {
@@ -1896,6 +1911,160 @@ serve(async (req) => {
         console.error(`Error with query:`, errMsg);
         results.errors.push(errMsg);
       }
+    }
+    
+    // ==========================================
+    // PHASE 2: RETAIL FALLBACK (only if auction results < 20)
+    // ==========================================
+    const auctionCandidates = results.candidates_created;
+    if (auctionCandidates < 20 && retailQueriesAvailable.length > 0) {
+      console.log(`[TIER 2] Auction results only ${auctionCandidates} — adding retail fallback queries...`);
+      
+      for (const query of retailQueriesAvailable.slice(0, 2)) {
+        try {
+          console.log(`[RETAIL] Searching: ${query.slice(0, 80)}...`);
+          
+          const searchRes = await fetch("https://api.firecrawl.dev/v1/search", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${firecrawlKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              query,
+              limit: max_results,
+              lang: "en",
+              country: "AU",
+              scrapeOptions: {
+                formats: ["markdown"],
+                onlyMainContent: true,
+                waitFor: 8000,
+              },
+              timeout: 60000,
+            }),
+          });
+          
+          results.queries_run++;
+          
+          if (!searchRes.ok) {
+            const errText = await searchRes.text();
+            console.error(`Retail search error:`, errText);
+            continue;
+          }
+          
+          const searchData = await searchRes.json();
+          const searchResults = searchData.data || [];
+          results.results_found += searchResults.length;
+          
+          console.log(`[RETAIL] Query returned ${searchResults.length} results`);
+          
+          // Process retail results with same logic (simplified - just count for now)
+          // Full processing happens in the next iteration when we refactor the main loop
+          for (const result of searchResults) {
+            try {
+              const resultUrl = result.url || '';
+              const resultTitle = result.title || '';
+              const resultMarkdown = result.markdown || result.content || '';
+              const fullText = `${resultTitle} ${resultMarkdown}`.toLowerCase();
+              
+              // Extract candidate
+              const candidate = extractCandidate({
+                url: resultUrl,
+                title: resultTitle,
+                description: result.description || '',
+                markdown: resultMarkdown,
+              }, hunt);
+              
+              if (!candidate) {
+                results.candidates_rejected++;
+                continue;
+              }
+              
+              // Classify and gate - using correct signatures from main loop
+              const candidateFullText = `${candidate.title} ${candidate.snippet}`;
+              const classification = classifyCandidate(candidateFullText, hunt as Hunt, candidate.url);
+              const gateResult = applyHardGates(classification, hunt as Hunt, candidateFullText, candidate.url);
+              
+              if (gateResult.rejectReasons.length > 0 && !gateResult.allowWatch) {
+                results.candidates_rejected++;
+                continue;
+              }
+              
+              // Score and decide
+              const { score, decision, reasons } = scoreAndDecide(candidate, classification, hunt as Hunt);
+              
+              // Use canonical_id for proper dedupe
+              const { data: canonicalData } = await supabase.rpc('fn_canonical_listing_id', { p_url: candidate.url });
+              const canonicalId = canonicalData || `${candidate.domain}:${btoa(candidate.url).slice(0, 32)}`;
+              
+              const { data: tierData } = await supabase.rpc('fn_source_tier', { 
+                p_url: candidate.url, 
+                p_source_name: candidate.domain 
+              });
+              const sourceTier = tierData ?? 3;
+              
+              const { data: intentData } = await supabase.rpc('fn_classify_listing_intent', { 
+                p_url: candidate.url, 
+                p_title: candidate.title, 
+                p_snippet: candidate.snippet 
+              });
+              const intentObj = intentData || { intent: 'unknown', reason: 'RPC_FAILED' };
+              
+              // Upsert retail candidate
+              const { error: upsertError } = await supabase
+                .from('hunt_external_candidates')
+                .upsert({
+                  hunt_id,
+                  source_url: candidate.url,
+                  source_name: candidate.domain,
+                  canonical_id: canonicalId,
+                  dedup_key: canonicalId,
+                  title: candidate.title,
+                  raw_snippet: candidate.snippet,
+                  year: candidate.year,
+                  make: candidate.make,
+                  model: candidate.model,
+                  variant_raw: candidate.variant_raw,
+                  km: candidate.km,
+                  asking_price: candidate.asking_price,
+                  location: candidate.location,
+                  confidence: candidate.confidence,
+                  match_score: score,
+                  decision,
+                  alert_emitted: false,
+                  is_listing: candidate.is_listing,
+                  listing_kind: candidate.listing_kind,
+                  page_type: candidate.page_type,
+                  reject_reason: null,
+                  price_verified: false,
+                  km_verified: false,
+                  year_verified: false,
+                  verified_fields: {
+                    asking_price: candidate.asking_price,
+                    km: candidate.km,
+                    year: candidate.year,
+                  },
+                  criteria_version: hunt.criteria_version,
+                  is_stale: false,
+                  listing_intent: intentObj.intent,
+                  listing_intent_reason: intentObj.reason,
+                  source_tier: sourceTier,
+                }, { onConflict: 'hunt_id,criteria_version,canonical_id' });
+              
+              if (!upsertError) {
+                results.candidates_created++;
+              }
+            } catch (err) {
+              console.error('[RETAIL] Error processing result:', err);
+            }
+          }
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error('[RETAIL] Query error:', errMsg);
+        }
+      }
+    } else {
+      console.log(`[TIER 2] Skipping retail fallback — auction results (${auctionCandidates}) sufficient`);
     }
     
     // Update run record
