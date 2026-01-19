@@ -264,3 +264,12 @@ verify_jwt = false
 verify_jwt = false
 # Daily cron at 11:00am AEST (01:00 UTC) - crawl dealer sites after retail ingest
 schedule = "0 1 * * *"
+
+[functions.pickles-api-probe]
+verify_jwt = false
+
+[functions.pickles-search-harvest]
+verify_jwt = false
+
+[functions.pickles-detail-crawler]
+verify_jwt = false
