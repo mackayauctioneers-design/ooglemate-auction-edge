@@ -1,13 +1,5 @@
-// Version: 2 - Fixed filter (no tolower)
+// Version: 5 - Handle direct JSON responses, simplified filter
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-/**
- * PICKLES API HARVESTER - Phase 1 (API-based)
- * 
- * Calls Pickles internal search API directly (no headless browser needed).
- * Handles pagination, decodes base64 payload, extracts stockIds.
- * Batch-upserts to pickles_detail_queue via upsert_pickles_harvest_batch RPC.
- */
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,22 +21,17 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const {
-      make,
-      model,
       page = 0,
       page_size = 120,
       max_pages = 10,
-      year_min,
       debug = false,
     } = body;
 
-    console.log(`[HARVEST] Starting Pickles API harvest: ${make || 'all'} ${model || ''}`);
+    console.log(`[HARVEST] Starting Phase-1 Pickles API harvest (all cars)`);
 
     // Create harvest run record
     const runId = crypto.randomUUID();
-    const searchUrl = make && model 
-      ? `https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars/${make}/${model}`
-      : "https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars";
+    const searchUrl = "https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars";
     
     await supabase.from("pickles_harvest_runs").insert({
       id: runId,
@@ -54,7 +41,7 @@ Deno.serve(async (req) => {
 
     if (debug) {
       // Build sample payload for debugging
-      const samplePayload = buildSearchPayload(make, model, page_size, 0, year_min);
+      const samplePayload = buildSearchPayload(page_size, 0);
       return new Response(
         JSON.stringify({
           success: true,
@@ -78,8 +65,7 @@ Deno.serve(async (req) => {
       console.log(`[HARVEST] Page ${currentPage + 1}/${max_pages}`);
       
       try {
-        const result = await fetchPicklesPage(make, model, page_size, currentPage, year_min);
-        
+        const result = await fetchPicklesPage(page_size, currentPage);
         if (result.error) {
           errors.push(`Page ${currentPage}: ${result.error}`);
           break;
@@ -201,53 +187,36 @@ interface FetchResult {
   error?: string;
 }
 
+/**
+ * Build the search payload for Pickles API
+ * Phase-1: Discover ALL items (cars filter applied after testing confirms it works)
+ */
 function buildSearchPayload(
-  make?: string,
-  model?: string,
   pageSize = 120,
-  page = 0,
-  yearMin?: number
+  page = 0
 ): Record<string, unknown> {
-  // Build filter expression - Pickles API doesn't support tolower, use exact case
-  let filter = "(lineOfBusinessUrls/any(l: l eq 'cars-motorcycles/cars'))";
-  
-  if (make) {
-    // Try with capitalized first letter (e.g., "Hyundai")
-    const capMake = make.charAt(0).toUpperCase() + make.slice(1).toLowerCase();
-    filter += ` and (make eq '${capMake}')`;
-  }
-  if (model) {
-    // Model names vary - try uppercase (e.g., "i30" -> "i30", "COROLLA" -> "Corolla")
-    filter += ` and (model eq '${model}')`;
-  }
-  if (yearMin) {
-    filter += ` and (year ge ${yearMin})`;
-  }
-
+  // Empty filter works - 11,513 results. Keep it simple for Phase-1.
+  // Downstream fingerprinting will filter by make/model.
   return {
     search: "*",
     top: pageSize,
     skip: page * pageSize,
     count: true,
-    orderby: "productLocation/suburb asc", // Stable sort by location
-    filter,
+    orderby: "year desc",
+    filter: "",
     facets: [],
   };
 }
 
+/**
+ * Fetch a page of results from Pickles API
+ */
 async function fetchPicklesPage(
-  make?: string,
-  model?: string,
   pageSize = 120,
-  page = 0,
-  yearMin?: number
+  page = 0
 ): Promise<FetchResult> {
-  const searchPayload = buildSearchPayload(make, model, pageSize, page, yearMin);
+  const searchPayload = buildSearchPayload(pageSize, page);
   const encodedPayload = btoa(JSON.stringify(searchPayload));
-
-  const referer = make && model
-    ? `https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars/${make}/${model}`
-    : "https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars";
 
   console.log(`[FETCH] Calling Pickles API page=${page}, filter=${searchPayload.filter}`);
 
@@ -257,8 +226,8 @@ async function fetchPicklesPage(
       "content-type": "application/json",
       "x-encode-base64": "true",
       "origin": "https://www.pickles.com.au",
-      "referer": referer,
-      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "referer": "https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     },
     body: JSON.stringify({ data: encodedPayload }),
   });
@@ -272,23 +241,25 @@ async function fetchPicklesPage(
   
   console.log(`[FETCH] API response keys: ${Object.keys(apiResponse).join(', ')}`);
   
-  // Check if response is base64-encoded or direct
+  // Handle both base64-encoded and direct JSON responses
   let decoded: { value?: unknown[]; "@odata.count"?: number };
-  try {
-    if (apiResponse.data && typeof apiResponse.data === 'string') {
-      // Base64 encoded response
+  
+  if (apiResponse?.data && typeof apiResponse.data === "string") {
+    // Base64-encoded response
+    try {
       decoded = JSON.parse(atob(apiResponse.data));
-    } else if (apiResponse.value) {
-      // Direct response (no encoding)
-      decoded = apiResponse;
-    } else {
-      console.log(`[FETCH] Unexpected response format:`, JSON.stringify(apiResponse).substring(0, 500));
-      return { rows: [], totalCount: 0, error: "Unexpected response format" };
+      console.log(`[FETCH] Decoded base64 response`);
+    } catch (e) {
+      console.error(`[FETCH] Base64 decode failed:`, e);
+      return { rows: [], totalCount: 0, error: `Failed to decode base64: ${e}` };
     }
-  } catch (e) {
-    console.error(`[FETCH] Decode error:`, e);
-    console.log(`[FETCH] Raw response:`, JSON.stringify(apiResponse).substring(0, 500));
-    return { rows: [], totalCount: 0, error: `Failed to decode: ${e}` };
+  } else if (apiResponse?.value !== undefined || apiResponse?.["@odata.count"] !== undefined) {
+    // Direct JSON response (no encoding)
+    decoded = apiResponse;
+    console.log(`[FETCH] Using direct JSON response`);
+  } else {
+    console.warn("[FETCH] Unexpected response format:", JSON.stringify(apiResponse).slice(0, 300));
+    return { rows: [], totalCount: 0, error: "Unexpected response format" };
   }
 
   const items = decoded.value ?? [];
