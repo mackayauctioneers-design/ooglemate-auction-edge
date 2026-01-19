@@ -1,14 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * PICKLES SEARCH HARVESTER - Phase 1 (Hardened)
+ * PICKLES SEARCH HARVESTER - Phase 1 (Direct Fetch)
  * 
- * Improvements:
- * - Uses URLSearchParams for proper query encoding
+ * Key changes:
+ * - Uses direct fetch() instead of Firecrawl (HTML is server-rendered)
+ * - Uses correct LOB URL pattern: /used/search/lob/cars-motorcycles/cars/{make}/{model}
+ * - Proper User-Agent and headers to avoid bot detection
  * - Batch upsert via RPC (eliminates per-item selects)
- * - HTML anchor parsing (not just regex)
  * - URL normalization (strips tracking params)
- * - Stable pagination sort
  */
 
 const corsHeaders = {
@@ -26,6 +26,24 @@ const PICKLES_SHORT_ITEM = /\/(?:cars\/)?item\/(\d+)/;
 
 // Tracking params to strip
 const TRACKING_PARAMS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "fbclid", "gclid", "ref", "source"];
+
+// Realistic browser headers
+const BROWSER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+  "Accept-Language": "en-AU,en;q=0.9,en-US;q=0.8",
+  "Accept-Encoding": "gzip, deflate, br",
+  "Cache-Control": "no-cache",
+  "Pragma": "no-cache",
+  "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+  "Sec-Ch-Ua-Mobile": "?0",
+  "Sec-Ch-Ua-Platform": '"Windows"',
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+  "Sec-Fetch-User": "?1",
+  "Upgrade-Insecure-Requests": "1",
+};
 
 interface HarvestedUrl {
   detail_url: string;
@@ -86,12 +104,6 @@ function normalizeDetailUrl(rawUrl: string): { url: string; stockId: string } | 
   } catch {
     return null;
   }
-}
-
-// Extract stock ID from URL (legacy helper)
-function extractStockId(url: string): string | null {
-  const result = normalizeDetailUrl(url);
-  return result ? result.stockId : null;
 }
 
 // Extract detail URLs from HTML - prioritize <a href> parsing
@@ -163,7 +175,7 @@ function extractDetailUrls(content: string, pageNo: number): HarvestedUrl[] {
     });
   }
   
-  // Strategy 5: Fallback full URL regex for markdown/text
+  // Strategy 5: Fallback full URL regex for any pickles detail links in text
   const fallbackPattern = /https:\/\/www\.pickles\.com\.au\/used\/(?:details|item)\/cars\/[^\s"'<>?#]+[/-](\d+)/gi;
   
   while ((match = fallbackPattern.exec(content)) !== null) {
@@ -181,15 +193,16 @@ function extractDetailUrls(content: string, pageNo: number): HarvestedUrl[] {
   return urls;
 }
 
-// Build search URL with proper encoding
-// CRITICAL: Preserve the path (make/model) from base URL, only add/override query params
+// Build search URL with proper LOB path pattern
+// CRITICAL: Use /used/search/lob/cars-motorcycles/cars/{make}/{model} format
 function buildSearchUrl(baseUrl: string, page: number, yearMin?: number): string {
   const url = new URL(baseUrl);
   
   // Preserve existing query params from baseUrl (if any)
   const params = new URLSearchParams(url.search);
   
-  // Override/add pagination params
+  // Required params for proper results
+  params.set("contentkey", "all-cars");
   params.set("limit", "120");
   params.set("page", String(page));
   params.set("sort", "endDate asc"); // Stable sort: closing soon first
@@ -203,8 +216,61 @@ function buildSearchUrl(baseUrl: string, page: number, yearMin?: number): string
     params.set("year-min", String(yearMin));
   }
   
-  // Return with preserved pathname (includes /hyundai/i30 etc.)
+  // Return with preserved pathname (includes make/model from LOB path)
   return `${url.origin}${url.pathname}?${params.toString()}`;
+}
+
+// Build base LOB search URL for make/model
+function buildLobSearchUrl(make?: string, model?: string): string {
+  const base = "https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars";
+  
+  if (make && model) {
+    const normMake = make.toLowerCase().trim().replace(/\s+/g, "-");
+    const normModel = model.toLowerCase().trim().replace(/\s+/g, "-");
+    return `${base}/${normMake}/${normModel}`;
+  } else if (make) {
+    const normMake = make.toLowerCase().trim().replace(/\s+/g, "-");
+    return `${base}/${normMake}`;
+  }
+  
+  return base;
+}
+
+// Fetch HTML directly (no headless browser needed - content is server-rendered)
+async function fetchSearchPage(url: string): Promise<{ html: string; status: number; error?: string }> {
+  try {
+    console.log(`[FETCH] Requesting: ${url}`);
+    
+    const response = await fetch(url, {
+      method: "GET",
+      headers: BROWSER_HEADERS,
+      redirect: "follow",
+    });
+    
+    const status = response.status;
+    console.log(`[FETCH] Status: ${status}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      return { 
+        html: "", 
+        status, 
+        error: `HTTP ${status}: ${errorText.substring(0, 200)}` 
+      };
+    }
+    
+    const html = await response.text();
+    console.log(`[FETCH] HTML length: ${html.length}`);
+    
+    return { html, status };
+  } catch (err) {
+    console.error(`[FETCH] Error:`, err);
+    return { 
+      html: "", 
+      status: 0, 
+      error: err instanceof Error ? err.message : String(err) 
+    };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -215,7 +281,6 @@ Deno.serve(async (req) => {
   const startTime = Date.now();
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
   
   const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -230,23 +295,10 @@ Deno.serve(async (req) => {
       debug = false,
     } = body;
 
-    if (!firecrawlKey) {
-      return new Response(
-        JSON.stringify({ success: false, error: "FIRECRAWL_API_KEY not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Build base search URL
+    // Build base search URL using LOB path pattern
     let baseSearchUrl = search_url;
     if (!baseSearchUrl) {
-      if (make && model) {
-        const normMake = make.toLowerCase().trim().replace(/\s+/g, "-");
-        const normModel = model.toLowerCase().trim().replace(/\s+/g, "-");
-        baseSearchUrl = `https://www.pickles.com.au/used/search/cars/${normMake}/${normModel}`;
-      } else {
-        baseSearchUrl = "https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars";
-      }
+      baseSearchUrl = buildLobSearchUrl(make, model);
     }
 
     // Create harvest run record
@@ -258,7 +310,7 @@ Deno.serve(async (req) => {
     });
 
     console.log(`[HARVEST] Starting run ${runId}`);
-    console.log(`[HARVEST] Base URL: ${baseSearchUrl}`);
+    console.log(`[HARVEST] Base URL (LOB pattern): ${baseSearchUrl}`);
 
     if (debug) {
       const sampleUrl = buildSearchUrl(baseSearchUrl, 1, year_min);
@@ -270,12 +322,13 @@ Deno.serve(async (req) => {
           base_url: baseSearchUrl,
           sample_page_url: sampleUrl,
           max_pages,
+          note: "Using direct fetch with LOB URL pattern",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Harvest pages
+    // Harvest pages using direct fetch
     const allUrls: HarvestedUrl[] = [];
     const errors: string[] = [];
     let pagesCrawled = 0;
@@ -285,73 +338,58 @@ Deno.serve(async (req) => {
       const pageUrl = buildSearchUrl(baseSearchUrl, page, year_min);
       console.log(`[HARVEST] Page ${page}: ${pageUrl}`);
 
-      try {
-        const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${firecrawlKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            url: pageUrl,
-            formats: ["html", "markdown"],
-            onlyMainContent: false,
-            waitFor: 10000, // Increased for SPA rendering
-            // Wait for vehicle cards to load
-            actions: [
-              { type: "wait", milliseconds: 3000 },
-              { type: "scroll", direction: "down", amount: 500 },
-              { type: "wait", milliseconds: 2000 },
-            ],
-          }),
-        });
-
-        if (!scrapeRes.ok) {
-          const errText = await scrapeRes.text();
-          console.error(`[HARVEST] Page ${page} scrape failed:`, errText);
-          errors.push(`Page ${page}: Firecrawl ${scrapeRes.status}`);
-          consecutiveEmpty++;
-          continue;
+      const { html, status, error } = await fetchSearchPage(pageUrl);
+      
+      if (error) {
+        console.error(`[HARVEST] Page ${page} fetch error:`, error);
+        errors.push(`Page ${page}: ${error}`);
+        
+        // Check for rate limiting / blocking
+        if (status === 403 || status === 429 || status === 503) {
+          console.warn(`[HARVEST] Possible blocking detected (${status}), backing off...`);
+          await new Promise(r => setTimeout(r, 5000));
         }
-
-        const scrapeData = await scrapeRes.json();
-        const html = scrapeData.data?.html || "";
-        const markdown = scrapeData.data?.markdown || "";
-        const content = `${html}\n${markdown}`;
         
-        // Debug: log content stats
-        console.log(`[HARVEST] Page ${page} content: html=${html.length}b, md=${markdown.length}b`);
-        
-        // Debug: check for any pickles detail URLs in raw content
-        const rawDetailMatches = (content.match(/\/used\/details\/cars\//g) || []).length;
-        const rawItemMatches = (content.match(/\/used\/item\//g) || []).length;
-        console.log(`[HARVEST] Page ${page} raw patterns: /used/details/cars/=${rawDetailMatches}, /used/item/=${rawItemMatches}`);
-        
-        // Debug: sample the first 500 chars of markdown
-        if (markdown.length > 0) {
-          console.log(`[HARVEST] Page ${page} markdown sample:`, markdown.substring(0, 500).replace(/\n/g, ' '));
-        }
-
-        const pageUrls = extractDetailUrls(content, page);
-        console.log(`[HARVEST] Page ${page}: ${pageUrls.length} detail URLs found`);
-
-        if (pageUrls.length === 0) {
-          consecutiveEmpty++;
-        } else {
-          consecutiveEmpty = 0;
-          allUrls.push(...pageUrls);
-        }
-
-        pagesCrawled++;
-        
-        // Rate limit
-        await new Promise(r => setTimeout(r, 1500));
-        
-      } catch (err) {
-        console.error(`[HARVEST] Page ${page} error:`, err);
-        errors.push(`Page ${page}: ${err instanceof Error ? err.message : String(err)}`);
         consecutiveEmpty++;
+        continue;
       }
+      
+      // Debug: log content stats
+      console.log(`[HARVEST] Page ${page} HTML length: ${html.length}`);
+      
+      // Debug: check for any pickles detail URLs in raw content
+      const rawDetailMatches = (html.match(/\/used\/details\/cars\//g) || []).length;
+      const rawItemMatches = (html.match(/\/used\/item\//g) || []).length;
+      const stockIdMatches = (html.match(/stockId/gi) || []).length;
+      console.log(`[HARVEST] Page ${page} patterns: details=${rawDetailMatches}, items=${rawItemMatches}, stockId=${stockIdMatches}`);
+      
+      // Debug: log a sample of the HTML around listing areas
+      const listingAreaMatch = html.match(/<div[^>]*class="[^"]*(?:listing|card|result|vehicle)[^"]*"[^>]*>/i);
+      if (listingAreaMatch) {
+        const idx = html.indexOf(listingAreaMatch[0]);
+        console.log(`[HARVEST] Page ${page} listing area sample:`, html.substring(idx, idx + 500).replace(/\n/g, ' '));
+      }
+
+      const pageUrls = extractDetailUrls(html, page);
+      console.log(`[HARVEST] Page ${page}: ${pageUrls.length} detail URLs extracted`);
+
+      if (pageUrls.length === 0) {
+        // Check if we got a valid page but no results (end of pagination)
+        const hasNoResults = html.includes("no results") || html.includes("No vehicles found") || html.includes("0 results");
+        if (hasNoResults) {
+          console.log(`[HARVEST] Page ${page}: No results found, ending pagination`);
+          break;
+        }
+        consecutiveEmpty++;
+      } else {
+        consecutiveEmpty = 0;
+        allUrls.push(...pageUrls);
+      }
+
+      pagesCrawled++;
+      
+      // Rate limit between requests (be polite)
+      await new Promise(r => setTimeout(r, 1000));
     }
 
     // Dedupe by stock ID
