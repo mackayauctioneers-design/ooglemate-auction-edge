@@ -455,7 +455,7 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
     'towing-capacity', 'specs', 'review', 'price-list',
   ];
   
-  // DETAIL page patterns - must have individual listing ID (expanded for AU dealers)
+  // DETAIL page patterns - must have individual listing ID (expanded for AU dealers + auctions)
   const detailPatterns = [
     /\/car\/\d{5,}/,              // Carsales detail: /car/123456
     /\/sse-ad-\d+/i,              // Carsales SSE-AD in URL
@@ -478,6 +478,12 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
     /\/pre-owned\/[a-z0-9-]+/i,   // Pre-owned: /pre-owned/abc-123
     /SSE-AD-\d+/i,                // Carsales SSE-AD-xxxxx
     /OAG-AD-\d+/i,                // AutoTrader OAG-AD-xxxxx
+    // === AUCTION-SPECIFIC PATTERNS ===
+    /\/cars\/item\/[a-z0-9-]+/i,  // Pickles: /cars/item/12345
+    /\/used\/details\/[a-z0-9-]+/i, // Pickles: /used/details/12345
+    /\/vehicle\/\d+/i,            // Manheim: /vehicle/123456
+    /\/auction\/lot\/\d+/i,       // Lloyd's: /auction/lot/12345
+    /\/lots\/\d+/i,               // Grays/General: /lots/12345
   ];
   
   const isDetailPage = detailPatterns.some(p => p.test(urlLower));
@@ -589,13 +595,22 @@ function isVerifiedListingUrl(url: string, domain: string): { is_listing: boolea
     return { is_listing: true, listing_kind: 'retail_listing' };
   }
   
-  // Pickles - auction lots (individual lot pages only - require numeric ID)
+  // Pickles - auction lots (individual lot pages - multiple URL patterns)
   if (domain.includes('pickles.com.au')) {
-    // Match /lots/123456 or /item/123456 patterns (must have numeric ID)
-    if (/\/(lots?|item)\/\d{4,}/.test(urlLower)) {
+    // Match various Pickles detail page patterns:
+    // /lots/123456, /item/123456, /cars/item/abc-123, /used/details/abc-123
+    if (/\/(lots?|item|details?)\/[a-z0-9-]{4,}/i.test(urlLower)) {
       return { is_listing: true, listing_kind: 'auction_lot' };
     }
-    // Reject /products/ and /used/ search pages
+    // Match /cars/item/... pattern (Pickles current format)
+    if (/\/cars\/item\/[a-z0-9-]+/i.test(urlLower)) {
+      return { is_listing: true, listing_kind: 'auction_lot' };
+    }
+    // Match /used/details/... pattern
+    if (/\/used\/details\/[a-z0-9-]+/i.test(urlLower)) {
+      return { is_listing: true, listing_kind: 'auction_lot' };
+    }
+    // Reject generic /products/ and /used/search pages
     return { is_listing: false, listing_kind: null };
   }
   
@@ -1389,21 +1404,35 @@ serve(async (req) => {
     // ==========================================
     // TIER 1: AUCTION SITES ONLY (prioritized - this is where the big margins live)
     // ==========================================
-    const tier1AuctionQueries: string[] = [
-      `site:pickles.com.au ${make} ${model} ${specStr} ${yearStr} ${negTokens}`.trim(),
-      `site:manheim.com.au ${make} ${model} ${specStr} ${yearStr} ${negTokens}`.trim(),
-      `site:grays.com ${make} ${model} ${specStr} ${negTokens}`.trim(),
-      `site:slatteryauctions.com.au ${make} ${model} ${specStr} ${yearStr}`.trim(),
-      `site:allansauctions.com.au ${make} ${model} ${yearStr}`.trim(),
-      `site:lloydsauctions.com.au ${make} ${model} ${specStr} ${negTokens}`.trim(),
-      // Broader auction search across AU
-      `${yearStr} ${make} ${model} ${specStr} auction Australia ${negTokens}`.trim(),
+    
+    // CRITICAL: Direct forced queries first (no year/spec constraints - cast widest net)
+    const tier1ForcedAuctionQueries: string[] = [
+      `site:pickles.com.au ${make} ${model}`,         // Direct: Pickles + make/model only
+      `site:manheim.com.au ${make} ${model}`,         // Direct: Manheim + make/model only
+      `site:grays.com ${make} ${model}`,              // Direct: Grays + make/model only
     ];
     
-    // Add Tier 1 auction queries first (up to 6)
-    for (const q of tier1AuctionQueries.slice(0, 6)) {
+    // Spec-constrained auction queries (narrower, but still prioritized)
+    const tier1SpecAuctionQueries: string[] = [
+      `site:pickles.com.au ${make} ${model} ${yearStr}`.trim(),
+      `site:manheim.com.au ${make} ${model} ${yearStr}`.trim(),
+      `site:grays.com ${make} ${model} ${specStr}`.trim(),
+      `site:slatteryauctions.com.au ${make} ${model} ${yearStr}`.trim(),
+      `site:allansauctions.com.au ${make} ${model}`.trim(),
+      `site:lloydsauctions.com.au ${make} ${model}`.trim(),
+      // Broader auction search across AU
+      `${make} ${model} auction Australia ${yearStr}`.trim(),
+    ];
+    
+    // Combine: forced first, then spec queries
+    const tier1AuctionQueries = [...tier1ForcedAuctionQueries, ...tier1SpecAuctionQueries];
+    
+    // Add Tier 1 auction queries first (up to 8 for better coverage)
+    for (const q of tier1AuctionQueries.slice(0, 8)) {
       enhancedQueries.push(q);
     }
+    
+    console.log(`[TIER 1 QUERIES] Auction-first queries:`, tier1AuctionQueries.slice(0, 8));
     
     // ==========================================
     // TIER 2: RETAIL/MARKETPLACE (fallback - added after auction processing)
@@ -1425,13 +1454,14 @@ serve(async (req) => {
       }
     }
     
-    // Dedupe - limit to 6 auction queries first
-    let searchQueries = [...new Set(enhancedQueries)].slice(0, 6);
+    // Dedupe - limit to 8 auction queries first (increased from 6)
+    let searchQueries = [...new Set(enhancedQueries)].slice(0, 8);
     
     // Flag to track if we should add retail fallback (will check after initial results)
     const retailQueriesAvailable = tier2RetailQueries;
     
-    console.log(`Outward hunt v1.2 for ${hunt_id}: ${searchQueries.length} queries`);
+    console.log(`Outward hunt v1.3 for ${hunt_id}: ${searchQueries.length} queries`);
+    console.log(`[QUERY LIST]`, searchQueries);
     
     // Create run record
     const { data: run } = await supabase
@@ -1467,8 +1497,9 @@ serve(async (req) => {
     // ==========================================
     // PHASE 1: RUN AUCTION-FIRST QUERIES (Tier 1)
     // ==========================================
-    let queriesToRun = searchQueries.slice(0, 6);
+    let queriesToRun = searchQueries.slice(0, 8);
     console.log(`[TIER 1] Running ${queriesToRun.length} auction-first queries...`);
+    console.log(`[TIER 1 QUERIES]`, queriesToRun);
     
     let auctionResultsCount = 0;
     
@@ -1510,6 +1541,23 @@ serve(async (req) => {
         results.results_found += searchResults.length;
         
         console.log(`Query returned ${searchResults.length} results`);
+        
+        // === DEBUG: Log first 10 raw URLs/titles for visibility ===
+        const rawUrls = searchResults.slice(0, 10).map((r: any) => ({
+          url: r.url || 'no-url',
+          title: (r.title || r.metadata?.title || 'no-title').slice(0, 60),
+          domain: extractDomain(r.url || ''),
+        }));
+        console.log(`[RAW RESULTS] Query: "${query.slice(0, 50)}..."`, JSON.stringify(rawUrls, null, 2));
+        
+        // Track auction results specifically
+        const auctionDomains = ['pickles.com.au', 'manheim.com.au', 'grays.com', 'lloydsauctions.com.au', 'slatteryauctions.com.au', 'allansauctions.com.au'];
+        const auctionHits = searchResults.filter((r: any) => {
+          const domain = extractDomain(r.url || '');
+          return auctionDomains.some(ad => domain.includes(ad));
+        });
+        auctionResultsCount += auctionHits.length;
+        console.log(`[AUCTION HITS] ${auctionHits.length} auction results from this query (total: ${auctionResultsCount})`);
         
         // Process each search result
         for (const result of searchResults) {
