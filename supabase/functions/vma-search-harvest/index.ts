@@ -6,29 +6,74 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
+const SOURCE = "bidsonline_vma";
+const BASE_URL = "https://www.valleymotorauctions.com.au";
+
 type HarvestItem = {
   detail_url: string;
   source_listing_id: string;
+  source: string;
   search_url: string;
   page_no: number | null;
 };
 
-function extractMtasFromHtml(html: string): string[] {
-  const mtas = new Set<string>();
+/**
+ * Extract actual detail page links from HTML - no URL construction
+ * Returns array of { url, id } from real hrefs
+ */
+function extractDetailLinks(html: string): { url: string; id: string }[] {
+  const results: { url: string; id: string }[] = [];
+  const seen = new Set<string>();
 
   // Pattern 1: cp_veh_inspection_report.aspx?MTA=123456
-  const linkRe = /cp_veh_inspection_report\.aspx\?[^"'\s>]*\bMTA=(\d{5,10})\b/gi;
+  const pattern1 = /href=["']([^"']*cp_veh_inspection_report\.aspx\?[^"']*MTA=(\d{5,10})[^"']*)/gi;
   let m;
-  while ((m = linkRe.exec(html)) !== null) mtas.add(m[1]);
-
-  // Pattern 2: fallback – stock numbers in table text (6–8 digits typical)
-  if (mtas.size === 0) {
-    const stockRe = /\b\d{6,8}\b/g;
-    const matches = html.match(stockRe) || [];
-    for (const x of matches) mtas.add(x);
+  while ((m = pattern1.exec(html)) !== null) {
+    const [, href, mta] = m;
+    if (!seen.has(mta)) {
+      seen.add(mta);
+      // Normalize to absolute URL
+      const url = href.startsWith("http") ? href : `${BASE_URL}/${href.replace(/^\//, "")}`;
+      results.push({ url, id: mta });
+    }
   }
 
-  return [...mtas];
+  // Pattern 2: LotDetails.aspx?LotID=123456 or similar
+  const pattern2 = /href=["']([^"']*(?:LotDetails|vehicle_details|viewlot)\.aspx\?[^"']*(?:LotID|ID)=(\d{5,10})[^"']*)/gi;
+  while ((m = pattern2.exec(html)) !== null) {
+    const [, href, lotId] = m;
+    if (!seen.has(lotId)) {
+      seen.add(lotId);
+      const url = href.startsWith("http") ? href : `${BASE_URL}/${href.replace(/^\//, "")}`;
+      results.push({ url, id: lotId });
+    }
+  }
+
+  // Pattern 3: Any href with MTA= param (broader catch)
+  const pattern3 = /href=["']([^"']*\bMTA=(\d{5,10})[^"']*)/gi;
+  while ((m = pattern3.exec(html)) !== null) {
+    const [, href, mta] = m;
+    if (!seen.has(mta)) {
+      seen.add(mta);
+      const url = href.startsWith("http") ? href : `${BASE_URL}/${href.replace(/^\//, "")}`;
+      results.push({ url, id: mta });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Extract all hrefs for debug analysis
+ */
+function extractAllHrefs(html: string): string[] {
+  const hrefs: string[] = [];
+  const re = /href=["']([^"']+)/gi;
+  let m;
+  while ((m = re.exec(html)) !== null && hrefs.length < 100) {
+    hrefs.push(m[1]);
+  }
+  return hrefs;
 }
 
 serve(async (req) => {
@@ -60,7 +105,12 @@ serve(async (req) => {
     const errors: string[] = [];
 
     for (let page = 1; page <= max_pages; page++) {
-      const url = search_url;
+      // Actual pagination - append page param
+      const urlObj = new URL(search_url);
+      if (page > 1) {
+        urlObj.searchParams.set("page", String(page));
+      }
+      const url = urlObj.toString();
 
       console.log(`[vma-search-harvest] Fetching page ${page}: ${url}`);
 
@@ -83,11 +133,28 @@ serve(async (req) => {
 
       const html = await res.text();
       console.log(`[vma-search-harvest] Got HTML: ${html.length} bytes`);
-      
-      const mtas = extractMtasFromHtml(html);
-      console.log(`[vma-search-harvest] Extracted ${mtas.length} MTAs`);
 
       if (debug) {
+        const allHrefs = extractAllHrefs(html);
+        const detailLinks = extractDetailLinks(html);
+        const hasViewState = html.includes("__VIEWSTATE");
+        const hasEventValidation = html.includes("__EVENTVALIDATION");
+        
+        // Find context around first MTA mention
+        const mtaIndex = html.indexOf("MTA=");
+        const mtaContext = mtaIndex >= 0 
+          ? html.slice(Math.max(0, mtaIndex - 100), mtaIndex + 200)
+          : null;
+
+        // Filter hrefs that look like detail pages
+        const detailHrefs = allHrefs.filter(h => 
+          h.includes("MTA=") || 
+          h.includes("LotID=") || 
+          h.includes("inspection") ||
+          h.includes("details") ||
+          h.includes("viewlot")
+        ).slice(0, 50);
+
         return new Response(
           JSON.stringify({
             success: true,
@@ -95,36 +162,53 @@ serve(async (req) => {
             run_id: runId,
             fetched_url: url,
             html_len: html.length,
-            mtas_found: mtas.slice(0, 30),
-            html_snippet: html.slice(0, 2000),
+            has_viewstate: hasViewState,
+            has_event_validation: hasEventValidation,
+            is_webforms_paging: hasViewState && hasEventValidation,
+            detail_links_found: detailLinks.length,
+            detail_links: detailLinks.slice(0, 30),
+            detail_hrefs_sample: detailHrefs,
+            mta_context: mtaContext,
+            html_snippet: html.slice(0, 3000),
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      for (const mta of mtas) {
+      const detailLinks = extractDetailLinks(html);
+      console.log(`[vma-search-harvest] Extracted ${detailLinks.length} detail links`);
+
+      for (const link of detailLinks) {
         allItems.push({
-          source_listing_id: mta,
-          detail_url: `https://www.valleymotorauctions.com.au/cp_veh_inspection_report.aspx?MTA=${mta}&sitekey=VMA`,
+          source_listing_id: link.id,
+          detail_url: link.url,
+          source: SOURCE,
           search_url,
-          page_no: null,
+          page_no: page,
         });
+      }
+
+      // If we got zero links on page 1, don't bother with more pages
+      if (page === 1 && detailLinks.length === 0) {
+        console.warn(`[vma-search-harvest] No detail links on page 1, stopping pagination`);
+        break;
       }
     }
 
-    // Dedupe
+    // Dedupe by source_listing_id
     const uniq = new Map<string, HarvestItem>();
     for (const it of allItems) uniq.set(it.source_listing_id, it);
 
     console.log(`[vma-search-harvest] Unique items: ${uniq.size}`);
 
-    // Upsert via existing RPC
+    // Upsert - include source in items
     const { data: upsertResult, error: upsertErr } = await supabase.rpc(
       "upsert_pickles_harvest_batch",
       {
         p_items: [...uniq.values()].map((x) => ({
           detail_url: x.detail_url,
           source_listing_id: x.source_listing_id,
+          source: x.source,
           search_url: x.search_url,
           page_no: x.page_no,
         })),
@@ -149,6 +233,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         run_id: runId,
+        source: SOURCE,
         harvested: uniq.size,
         urls_new: upsertResult?.inserted ?? 0,
         urls_existing: upsertResult?.updated ?? 0,
