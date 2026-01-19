@@ -320,12 +320,23 @@ interface PicklesListingCard {
 
 function isPicklesResultsPage(url: string): boolean {
   const lower = url.toLowerCase();
-  // Results/search pages: /used/search/... but NOT individual item pages
-  return lower.includes('pickles.com.au') && 
-         (lower.includes('/search/') || lower.includes('/used/')) &&
-         !lower.includes('/item/') &&
-         !lower.includes('/details/') &&
-         !lower.includes('/lot/');
+  // Results/search pages: /used/search/..., /search/lob/..., or general /used/ without item ID
+  // Must be pickles.com.au AND contain search indicators OR be /used/ without detail patterns
+  const isPickles = lower.includes('pickles.com.au');
+  if (!isPickles) return false;
+  
+  // Explicit search page patterns
+  const isSearchPage = lower.includes('/used/search/') || 
+                       lower.includes('/search/lob/') ||
+                       lower.includes('/search?') ||
+                       lower.includes('/cars?') ||
+                       (lower.includes('/used/') && lower.includes('toyota'));  // Generic used car search
+  
+  // Exclude individual detail pages (we want to extract cards from results, not re-process details)
+  const isDetailPage = /\/(item|lot|details?)\/[a-z0-9-]{4,}/i.test(lower) ||
+                       /\/cars\/item\//i.test(lower);
+  
+  return isSearchPage && !isDetailPage;
 }
 
 function isPicklesDetailsPage(url: string): boolean {
@@ -499,10 +510,10 @@ async function scrapePicklesResultsPage(
     
     console.log(`[PICKLES] Extracted ${cards.length} listing cards from results page`);
     
-    // Filter by year with ±2 year tolerance for discovery
+    // Filter by year with ±3 year tolerance for discovery (wider for auctions)
     if (hunt.year || hunt.year_min || hunt.year_max) {
-      const yearMin = (hunt.year_min ?? hunt.year ?? 2015) - 2;  // ±2 year tolerance
-      const yearMax = (hunt.year_max ?? hunt.year ?? new Date().getFullYear()) + 2;
+      const yearMin = (hunt.year_min ?? hunt.year ?? 2015) - 3;  // ±3 year tolerance
+      const yearMax = (hunt.year_max ?? hunt.year ?? new Date().getFullYear()) + 3;
       
       return cards.filter(card => {
         if (!card.year) return true;  // Keep cards without year (need verification)
@@ -1779,6 +1790,20 @@ serve(async (req) => {
         auctionResultsCount += auctionHits.length;
         console.log(`[AUCTION HITS] ${auctionHits.length} auction results from this query (total: ${auctionResultsCount})`);
         
+        // === DEBUG: Log all Pickles URLs specifically ===
+        const picklesUrls = searchResults.filter((r: any) => extractDomain(r.url || '').includes('pickles.com.au'));
+        if (picklesUrls.length > 0) {
+          console.log(`[PICKLES DEBUG] Found ${picklesUrls.length} Pickles URLs:`);
+          for (const pu of picklesUrls) {
+            const pUrl = pu.url || '';
+            const isResults = isPicklesResultsPage(pUrl);
+            const isDetails = isPicklesDetailsPage(pUrl);
+            console.log(`  - ${pUrl.slice(0, 100)} | isResultsPage: ${isResults} | isDetailsPage: ${isDetails}`);
+          }
+        } else {
+          console.log(`[PICKLES DEBUG] No Pickles URLs in this query result`);
+        }
+        
         // Process each search result
         for (const result of searchResults) {
           try {
@@ -1976,9 +2001,9 @@ serve(async (req) => {
                   let score = 6.0;  // Auction lots start higher
                   const reasons: string[] = ['pickles_auction_lot'];
                   
-                  // Year matching with tolerance
-                  const huntYearMin = (hunt.year_min ?? hunt.year ?? 2015) - 2;
-                  const huntYearMax = (hunt.year_max ?? hunt.year ?? new Date().getFullYear()) + 2;
+                  // Year matching with ±3 tolerance for auctions
+                  const huntYearMin = (hunt.year_min ?? hunt.year ?? 2015) - 3;
+                  const huntYearMax = (hunt.year_max ?? hunt.year ?? new Date().getFullYear()) + 3;
                   if (card.year && card.year >= huntYearMin && card.year <= huntYearMax) {
                     if (card.year === hunt.year) {
                       score += 1.5;
