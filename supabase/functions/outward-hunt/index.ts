@@ -300,8 +300,225 @@ async function scrapeCarsalesResultsPage(
   }
 }
 
+// =====================================================
+// PICKLES RESULTS PAGE EXTRACTOR
+// When we get a Pickles search/results page, scrape it
+// and extract individual auction lot cards
+// =====================================================
+
+interface PicklesListingCard {
+  external_id: string;  // Stock ID or hash
+  details_url: string | null;
+  title: string;
+  price: number | null;
+  km: number | null;
+  year: number | null;
+  state: string | null;
+  badge: string | null;
+  raw_snippet: string;
+}
+
+function isPicklesResultsPage(url: string): boolean {
+  const lower = url.toLowerCase();
+  // Results/search pages: /used/search/... but NOT individual item pages
+  return lower.includes('pickles.com.au') && 
+         (lower.includes('/search/') || lower.includes('/used/')) &&
+         !lower.includes('/item/') &&
+         !lower.includes('/details/') &&
+         !lower.includes('/lot/');
+}
+
+function isPicklesDetailsPage(url: string): boolean {
+  const lower = url.toLowerCase();
+  return lower.includes('pickles.com.au') && 
+         (lower.includes('/item/') || lower.includes('/details/') || lower.includes('/lot/'));
+}
+
+// Extract stock ID from Pickles URL
+function extractPicklesStockId(url: string): string | null {
+  // Pattern: /item/stock-12345 or /details/toyota-rav4-12345
+  const match = url.match(/\/(?:item|details|lot)\/([a-z0-9-]+)/i);
+  return match ? match[1] : null;
+}
+
+// Parse Pickles listing cards from HTML/Markdown content
+function parsePicklesListingCards(content: string, resultsPageUrl: string): PicklesListingCard[] {
+  const cards: PicklesListingCard[] = [];
+  const seen = new Set<string>();
+  
+  // Extract detail page URLs from content
+  const detailsUrlPattern = /href=["']([^"']*pickles\.com\.au[^"']*\/(?:item|details|lot)\/[^"']+)["']/gi;
+  const detailsUrls = Array.from(content.matchAll(detailsUrlPattern));
+  
+  // Also look for markdown links
+  const mdLinkPattern = /\[([^\]]+)\]\((https?:\/\/[^)]*pickles\.com\.au[^)]*\/(?:item|details|lot)\/[^)]+)\)/gi;
+  const mdLinks = Array.from(content.matchAll(mdLinkPattern));
+  
+  // Process HTML/markdown links to detail pages
+  for (const match of [...detailsUrls, ...mdLinks]) {
+    const url = match[1] || match[2];
+    const stockId = extractPicklesStockId(url);
+    if (!stockId) continue;
+    
+    const id = `pickles-${stockId}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    
+    // Try to find context around this URL for title/price/km
+    const urlIndex = content.indexOf(url);
+    const contextStart = Math.max(0, urlIndex - 400);
+    const contextEnd = Math.min(content.length, urlIndex + 200);
+    const context = content.substring(contextStart, contextEnd);
+    
+    // Extract year
+    const yearMatch = context.match(/\b(20[1-2]\d)\b/);
+    const year = yearMatch ? parseInt(yearMatch[1], 10) : null;
+    
+    // Extract title (look for Toyota/vehicle patterns)
+    const titleMatch = context.match(/(20[1-2]\d\s+)?(?:TOYOTA|Toyota)\s+[A-Z][a-zA-Z0-9\s-]+/i) ||
+                       context.match(/([A-Z][a-zA-Z]+\s+[A-Z][a-zA-Z0-9]+[^|\n]{0,40})/);
+    const title = titleMatch ? titleMatch[0].trim() : `Pickles Lot (${stockId})`;
+    
+    // Extract price
+    const priceMatch = context.match(/\$\s*([\d,]+)/);
+    let price: number | null = null;
+    if (priceMatch) {
+      const parsed = parseInt(priceMatch[1].replace(/,/g, ''), 10);
+      if (parsed >= 3000 && parsed <= 500000) price = parsed;
+    }
+    
+    // Extract KM
+    const kmMatch = context.match(/([\d,]+)\s*(?:km|kms|kilometres|odometer)/i);
+    const km = kmMatch ? parseInt(kmMatch[1].replace(/,/g, ''), 10) : null;
+    
+    // Extract state
+    const stateMatch = context.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
+    const state = stateMatch ? stateMatch[1].toUpperCase() : null;
+    
+    // Extract badge
+    let badge: string | null = null;
+    const badges = ['GX', 'GXL', 'CRUISER', 'EDGE', 'HYBRID', 'AWD'];
+    for (const b of badges) {
+      if (context.toUpperCase().includes(b)) {
+        badge = b;
+        break;
+      }
+    }
+    
+    cards.push({
+      external_id: id,
+      details_url: url,
+      title,
+      price,
+      km,
+      year,
+      state,
+      badge,
+      raw_snippet: context.slice(0, 200),
+    });
+  }
+  
+  // Also try to parse structured listing blocks from content
+  // Pickles often shows: "2021 Toyota RAV4 GX Hybrid | 45,000 km | SA | $38,500"
+  const blockPattern = /(20[1-2]\d)\s+(Toyota|TOYOTA)\s+([A-Za-z0-9\s-]+?)(?:\s*\|\s*|\s+)([\d,]+)\s*km/gi;
+  let blockMatch;
+  while ((blockMatch = blockPattern.exec(content)) !== null) {
+    const year = parseInt(blockMatch[1], 10);
+    const model = blockMatch[3].trim();
+    const km = parseInt(blockMatch[4].replace(/,/g, ''), 10);
+    
+    // Generate ID from content
+    const blockHash = `${year}-${model}-${km}`.toLowerCase().replace(/\s+/g, '-');
+    const id = `pickles-block-${blockHash}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    
+    // Look for price nearby
+    const priceMatch = content.substring(blockMatch.index, blockMatch.index + 150).match(/\$\s*([\d,]+)/);
+    let price: number | null = null;
+    if (priceMatch) {
+      const parsed = parseInt(priceMatch[1].replace(/,/g, ''), 10);
+      if (parsed >= 3000 && parsed <= 500000) price = parsed;
+    }
+    
+    // Look for state
+    const stateMatch = content.substring(blockMatch.index, blockMatch.index + 100).match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
+    const state = stateMatch ? stateMatch[1].toUpperCase() : null;
+    
+    cards.push({
+      external_id: id,
+      details_url: null,  // No direct URL, came from block parsing
+      title: `${year} Toyota ${model}`,
+      price,
+      km,
+      year,
+      state,
+      badge: null,
+      raw_snippet: blockMatch[0],
+    });
+  }
+  
+  return cards;
+}
+
+// Scrape Pickles results page and extract individual listings
+async function scrapePicklesResultsPage(
+  resultsPageUrl: string,
+  firecrawlKey: string,
+  hunt: Hunt
+): Promise<PicklesListingCard[]> {
+  console.log(`[PICKLES] Scraping results page: ${resultsPageUrl}`);
+  
+  try {
+    const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${firecrawlKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url: resultsPageUrl,
+        formats: ["markdown", "html"],
+        onlyMainContent: true,
+        waitFor: 5000,  // Wait for JS to load (Pickles is JS-heavy)
+      }),
+    });
+    
+    if (!scrapeRes.ok) {
+      console.error(`[PICKLES] Scrape failed: ${scrapeRes.status}`);
+      return [];
+    }
+    
+    const scrapeData = await scrapeRes.json();
+    const markdown = scrapeData.data?.markdown || scrapeData.markdown || '';
+    const html = scrapeData.data?.html || scrapeData.html || '';
+    
+    // Parse both markdown and HTML for maximum extraction
+    const content = markdown + '\n' + html;
+    const cards = parsePicklesListingCards(content, resultsPageUrl);
+    
+    console.log(`[PICKLES] Extracted ${cards.length} listing cards from results page`);
+    
+    // Filter by year with ±2 year tolerance for discovery
+    if (hunt.year || hunt.year_min || hunt.year_max) {
+      const yearMin = (hunt.year_min ?? hunt.year ?? 2015) - 2;  // ±2 year tolerance
+      const yearMax = (hunt.year_max ?? hunt.year ?? new Date().getFullYear()) + 2;
+      
+      return cards.filter(card => {
+        if (!card.year) return true;  // Keep cards without year (need verification)
+        return card.year >= yearMin && card.year <= yearMax;
+      });
+    }
+    
+    return cards;
+  } catch (err) {
+    console.error(`[PICKLES] Error scraping results page:`, err);
+    return [];
+  }
+}
+
 /**
- * Outward Hunt v1.2 - Listing-Only + Cheapest-First + Scrape-to-Verify
+ * Outward Hunt v1.3 - Listing-Only + Cheapest-First + Scrape-to-Verify
  * 
  * Stage 1: Search the web for real vehicle listings
  * Stage 2: Queue verified listings for scrape verification
@@ -1487,12 +1704,15 @@ serve(async (req) => {
       alerts_emitted: 0,
       carsales_pages_scraped: 0,
       carsales_cards_extracted: 0,
+      pickles_pages_scraped: 0,
+      pickles_cards_extracted: 0,
       reject_reasons: {} as Record<string, number>,
       errors: [] as string[],
     };
     
-    // Track processed Carsales results pages to avoid re-scraping
+    // Track processed results pages to avoid re-scraping
     const processedCarsalesPages = new Set<string>();
+    const processedPicklesPages = new Set<string>();
     
     // ==========================================
     // PHASE 1: RUN AUCTION-FIRST QUERIES (Tier 1)
@@ -1719,11 +1939,174 @@ serve(async (req) => {
                 }
               }
               
-              // Skip normal processing for results pages
+              // Skip normal processing for Carsales results pages
               continue;
             }
             
-            // Normal candidate processing (non-Carsales results pages)
+            // =====================================================
+            // PICKLES RESULTS PAGE EXTRACTION
+            // If this is a Pickles search/results page,
+            // scrape it and extract individual auction lot cards
+            // =====================================================
+            if (isPicklesResultsPage(resultUrl) && !processedPicklesPages.has(resultUrl)) {
+              processedPicklesPages.add(resultUrl);
+              console.log(`[PICKLES] Detected results page, extracting cards: ${resultUrl.slice(0, 80)}...`);
+              
+              const cards = await scrapePicklesResultsPage(resultUrl, firecrawlKey, hunt as Hunt);
+              results.pickles_pages_scraped++;
+              results.pickles_cards_extracted += cards.length;
+              
+              // Process each Pickles card as a separate candidate
+              for (const card of cards) {
+                try {
+                  const cardFullText = `${card.title} ${card.raw_snippet}`;
+                  const classification = classifyCandidate(cardFullText, hunt as Hunt, card.details_url || resultUrl);
+                  
+                  // Apply hard gates (but with relaxed year matching for auctions)
+                  const gateResult = applyHardGates(classification, hunt as Hunt, cardFullText, card.details_url || resultUrl);
+                  
+                  const hasHardReject = !gateResult.allowWatch;
+                  if (hasHardReject) {
+                    results.candidates_rejected++;
+                    console.log(`[PICKLES CARD REJECTED] ${card.title}: ${gateResult.rejectReasons.join(', ')}`);
+                    continue;
+                  }
+                  
+                  // Score the card - treat as verified auction listing (high priority)
+                  let score = 6.0;  // Auction lots start higher
+                  const reasons: string[] = ['pickles_auction_lot'];
+                  
+                  // Year matching with tolerance
+                  const huntYearMin = (hunt.year_min ?? hunt.year ?? 2015) - 2;
+                  const huntYearMax = (hunt.year_max ?? hunt.year ?? new Date().getFullYear()) + 2;
+                  if (card.year && card.year >= huntYearMin && card.year <= huntYearMax) {
+                    if (card.year === hunt.year) {
+                      score += 1.5;
+                      reasons.push('exact_year_match');
+                    } else {
+                      score += 0.5;
+                      reasons.push('year_in_range');
+                    }
+                  }
+                  
+                  if (card.price && hunt.proven_exit_value) {
+                    const gap_pct = ((hunt.proven_exit_value - card.price) / hunt.proven_exit_value) * 100;
+                    if (gap_pct >= 10) {
+                      score += 2.0;  // Big gap = high score for auctions
+                      reasons.push(`gap_${gap_pct.toFixed(0)}pct`);
+                    } else if (gap_pct >= 5) {
+                      score += 1.0;
+                    }
+                  }
+                  
+                  score = Math.min(10, Math.max(0, score));
+                  const decision = score >= 7.0 ? 'BUY' : score >= 5.0 ? 'WATCH' : 'IGNORE';
+                  
+                  // Use canonical_id for proper dedupe
+                  const canonicalId = `pickles:${card.external_id}`;
+                  const cardUrl = card.details_url || `${resultUrl}#card=${card.external_id}`;
+                  
+                  // Pickles is always Tier 1 (auction)
+                  const sourceTier = 1;
+                  
+                  // Upsert Pickles card as candidate
+                  const { data: upsertedCard, error: upsertErr } = await supabase
+                    .from('hunt_external_candidates')
+                    .upsert({
+                      hunt_id,
+                      source_url: cardUrl,
+                      source_name: 'pickles.com.au',
+                      canonical_id: canonicalId,
+                      dedup_key: canonicalId,
+                      title: card.title,
+                      raw_snippet: card.raw_snippet,
+                      year: card.year,
+                      make: hunt.make || 'Toyota',
+                      model: hunt.model || 'Unknown',
+                      km: card.km,
+                      asking_price: card.price,
+                      location: card.state,
+                      confidence: card.details_url ? 'high' : 'medium',
+                      match_score: score,
+                      decision,
+                      is_listing: true,
+                      listing_kind: 'auction_lot',
+                      page_type: 'listing',
+                      reject_reason: null,
+                      price_verified: !!card.price,
+                      km_verified: !!card.km,
+                      year_verified: !!card.year,
+                      verified_fields: {
+                        asking_price: card.price,
+                        km: card.km,
+                        year: card.year,
+                      },
+                      criteria_version: hunt.criteria_version,
+                      is_stale: false,
+                      listing_intent: 'listing',
+                      listing_intent_reason: 'PICKLES_AUCTION_CARD_EXTRACTED',
+                      source_tier: sourceTier,
+                    }, { onConflict: 'hunt_id,criteria_version,canonical_id' })
+                    .select('id, alert_emitted')
+                    .single();
+                  
+                  if (!upsertErr && upsertedCard) {
+                    results.candidates_created++;
+                    results.listings_found++;
+                    auctionResultsCount++;
+                    
+                    console.log(`[PICKLES CARD] Created: ${card.title} | $${card.price || 'N/A'} | ${card.km || 'N/A'}km | ${card.state || 'AU'}`);
+                    
+                    // Emit alert for BUY/WATCH
+                    if ((decision === 'BUY' || decision === 'WATCH') && !upsertedCard.alert_emitted) {
+                      const alertPayload = {
+                        year: card.year,
+                        make: hunt.make || 'Toyota',
+                        model: hunt.model || 'Unknown',
+                        badge: card.badge,
+                        km: card.km,
+                        asking_price: card.price,
+                        proven_exit_value: hunt.proven_exit_value,
+                        gap_dollars: hunt.proven_exit_value && card.price 
+                          ? hunt.proven_exit_value - card.price 
+                          : null,
+                        match_score: score,
+                        source: 'Pickles Auction',
+                        source_type: 'outward_auction',
+                        listing_url: card.details_url || resultUrl,
+                        classification,
+                        reasons,
+                        is_verified_listing: true,
+                        listing_kind: 'auction_lot',
+                      };
+                      
+                      await supabase.from('hunt_alerts').insert({
+                        hunt_id,
+                        listing_id: upsertedCard.id,
+                        alert_type: decision,
+                        payload: alertPayload,
+                        criteria_version: hunt.criteria_version || 1,
+                        is_stale: false,
+                      });
+                      
+                      await supabase
+                        .from('hunt_external_candidates')
+                        .update({ alert_emitted: true })
+                        .eq('id', upsertedCard.id);
+                      
+                      results.alerts_emitted++;
+                    }
+                  }
+                } catch (cardErr) {
+                  console.error('[PICKLES] Error processing card:', cardErr);
+                }
+              }
+              
+              // Skip normal processing for Pickles results pages
+              continue;
+            }
+            
+            // Normal candidate processing (non-results pages)
             const candidate = extractCandidate(result, hunt as Hunt);
             if (!candidate) continue;
             
