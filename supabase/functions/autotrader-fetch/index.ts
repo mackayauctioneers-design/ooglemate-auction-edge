@@ -24,76 +24,79 @@ interface AutotraderListing {
 }
 
 // Map Apify dataset item to our canonical format
-function mapApifyItem(item: Record<string, unknown>): AutotraderListing | null {
+// CRITICAL: Apify returns items nested under _source from ElasticSearch
+function mapApifyItem(rawItem: Record<string, unknown>): AutotraderListing | null {
   try {
-    const listingUrl = (item.url || item.listingUrl || item.link || "") as string;
-    const idMatch = listingUrl.match(/\/car\/(\d+)/);
-    const listingId = (item.id || item.listingId || idMatch?.[1] || "") as string;
+    // Unwrap _source if present (Apify AutoTrader uses ES format)
+    const item = (rawItem._source as Record<string, unknown>) || rawItem;
     
-    if (!listingId) return null;
+    // Extract listing ID - try multiple sources
+    const sourceId = item.id as number | string;
+    const urlPath = (item.url || "") as string;
+    const idMatch = urlPath.match(/car\/(\d+)\//);
+    const listingId = String(sourceId || idMatch?.[1] || "");
     
-    const title = (item.title || item.name || "") as string;
-    let year = item.year as number;
-    if (!year) {
-      const yearMatch = title.match(/\b(20\d{2})\b/);
-      year = yearMatch ? parseInt(yearMatch[1], 10) : 0;
+    if (!listingId) {
+      console.log("[AUTOTRADER MAP] Rejected: no listing ID", { rawKeys: Object.keys(rawItem).slice(0, 5) });
+      return null;
     }
-    if (!year || year < 2000) return null;
     
-    let make = (item.make || "") as string;
-    let model = (item.model || "") as string;
-    let variant = (item.variant || item.badge || item.trim || "") as string;
+    // Year: field is manu_year, not year
+    const year = (item.manu_year || item.year) as number;
+    if (!year || year < 2000) {
+      console.log(`[AUTOTRADER MAP] Rejected ${listingId}: invalid year ${year}`);
+      return null;
+    }
+    
+    // Make/Model: can be at root or nested in vehicle object
+    const vehicle = (item.vehicle || {}) as Record<string, unknown>;
+    const make = ((item.make || vehicle.make || "") as string).toUpperCase().trim();
+    const model = ((item.model || vehicle.model || "") as string).toUpperCase().trim();
     
     if (!make || !model) {
-      const titleParts = title.replace(/^\d{4}\s+/, "").split(/\s+/);
-      if (titleParts.length >= 2) {
-        make = make || titleParts[0];
-        model = model || titleParts[1];
-        variant = variant || titleParts.slice(2).join(" ");
-      }
+      console.log(`[AUTOTRADER MAP] Rejected ${listingId}: no make/model`);
+      return null;
     }
     
-    if (!make || !model) return null;
+    // Variant
+    const variant = ((item.variant || vehicle.variant || "") as string).toUpperCase().trim();
     
-    let price = item.price as number;
-    if (!price) {
-      const priceStr = (item.priceText || item.priceString || "") as string;
-      const priceMatch = priceStr.replace(/[,$]/g, "").match(/(\d+)/);
-      price = priceMatch ? parseInt(priceMatch[1], 10) : 0;
-    }
-    if (price < 1000 || price > 500000) return null;
+    // Price: nested under price.advertised_price or price.driveaway_price
+    const priceObj = (item.price || {}) as Record<string, unknown>;
+    const price = (priceObj.advertised_price || priceObj.driveaway_price || item.price) as number;
     
-    let km: number | undefined = item.odometer as number || item.km as number || item.mileage as number;
-    if (!km) {
-      const odometerStr = (item.odometerText || "") as string;
-      const kmMatch = odometerStr.replace(/,/g, "").match(/(\d+)/);
-      km = kmMatch ? parseInt(kmMatch[1], 10) : undefined;
+    if (!price || price < 1000 || price > 500000) {
+      console.log(`[AUTOTRADER MAP] Rejected ${listingId}: invalid price ${price}`);
+      return null;
     }
     
-    const location = (item.location || item.suburb || "") as string;
-    const stateRaw = (item.state || "") as string;
-    let state = stateRaw.toUpperCase();
-    let suburb = location;
+    // Odometer: field is odometer, not km
+    const km = (item.odometer || item.km || item.mileage) as number | undefined;
     
-    if (!state && location) {
-      const stateMatch = location.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
-      state = stateMatch ? stateMatch[1].toUpperCase() : "";
-    }
+    // Location: state can be at root or nested
+    const state = ((item.location_state || item.state || "") as string).toUpperCase();
+    const suburb = (item.location_city || item.suburb || item.location || "") as string;
+    
+    // Build full URL
+    const baseUrl = "https://www.autotrader.com.au/";
+    const fullUrl = urlPath.startsWith("http") ? urlPath : `${baseUrl}${urlPath}`;
+    
+    console.log(`[AUTOTRADER MAP] ✓ Mapped ${listingId}: ${year} ${make} ${model} $${price} ${km || "N/A"}km`);
     
     return {
-      source_listing_id: String(listingId),
-      listing_url: listingUrl || `https://www.autotrader.com.au/car/${listingId}`,
+      source_listing_id: listingId,
+      listing_url: fullUrl,
       year,
-      make: make.toUpperCase().trim(),
-      model: model.toUpperCase().trim(),
-      variant_raw: variant?.toUpperCase().trim() || undefined,
+      make,
+      model,
+      variant_raw: variant || undefined,
       km,
       asking_price: price,
       state: state || undefined,
       suburb: suburb || undefined,
     };
   } catch (err) {
-    console.error("Error mapping Apify item:", err);
+    console.error("[AUTOTRADER MAP] Error mapping item:", err);
     return null;
   }
 }
@@ -305,6 +308,12 @@ serve(async (req) => {
             .map(mapApifyItem)
             .filter((l: AutotraderListing | null): l is AutotraderListing => l !== null);
 
+          console.log(`[AUTOTRADER UPSERT] Batch: ${items.length} raw → ${listings.length} mapped (${items.length - listings.length} rejected)`);
+          
+          if (listings.length > 0) {
+            console.log(`[AUTOTRADER UPSERT] First item: ${listings[0].year} ${listings[0].make} ${listings[0].model} $${listings[0].asking_price}`);
+          }
+
           for (const listing of listings) {
             try {
               const { data, error } = await supabase.rpc("upsert_retail_listing", {
@@ -323,6 +332,7 @@ serve(async (req) => {
               });
 
               if (error) {
+                console.error(`[AUTOTRADER UPSERT] RPC error for ${listing.source_listing_id}:`, error.message);
                 runErrors++;
                 continue;
               }
@@ -334,7 +344,8 @@ serve(async (req) => {
               } else {
                 runUpdated++;
               }
-            } catch {
+            } catch (err) {
+              console.error(`[AUTOTRADER UPSERT] Exception for ${listing.source_listing_id}:`, err);
               runErrors++;
             }
           }
