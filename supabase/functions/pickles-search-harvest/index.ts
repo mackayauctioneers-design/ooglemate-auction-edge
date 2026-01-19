@@ -16,8 +16,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Regex: /used/details/cars/{slug}/{stockId} where stockId is digits
+// Regex patterns for Pickles detail URLs
+// Format 1: /used/details/cars/{slug}/{stockId}
 const PICKLES_DETAIL_PATTERN = /\/used\/details\/cars\/[^\/\s"'<>?#]+\/(\d+)/;
+// Format 2: /used/item/cars/{slug}-{stockId} (alternate format)
+const PICKLES_ITEM_PATTERN = /\/used\/item\/cars\/[^\/\s"'<>?#]+-(\d+)/;
+// Format 3: /cars/item/{stockId} or /item/{stockId}
+const PICKLES_SHORT_ITEM = /\/(?:cars\/)?item\/(\d+)/;
 
 // Tracking params to strip
 const TRACKING_PARAMS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "fbclid", "gclid", "ref", "source"];
@@ -29,7 +34,7 @@ interface HarvestedUrl {
 }
 
 // Normalize URL: strip tracking params, ensure https
-function normalizeDetailUrl(rawUrl: string): string | null {
+function normalizeDetailUrl(rawUrl: string): { url: string; stockId: string } | null {
   try {
     // Ensure absolute URL
     let url: URL;
@@ -51,22 +56,42 @@ function normalizeDetailUrl(rawUrl: string): string | null {
       url.searchParams.delete(param);
     }
     
-    // Validate path matches detail pattern
-    if (!PICKLES_DETAIL_PATTERN.test(url.pathname)) {
+    // Try to extract stock ID from various patterns
+    let stockId: string | null = null;
+    
+    // Try detail pattern first
+    let match = url.pathname.match(PICKLES_DETAIL_PATTERN);
+    if (match) {
+      stockId = match[1];
+    }
+    
+    // Try item pattern
+    if (!stockId) {
+      match = url.pathname.match(PICKLES_ITEM_PATTERN);
+      if (match) stockId = match[1];
+    }
+    
+    // Try short item pattern
+    if (!stockId) {
+      match = url.pathname.match(PICKLES_SHORT_ITEM);
+      if (match) stockId = match[1];
+    }
+    
+    if (!stockId) {
       return null;
     }
     
     // Return clean URL (no query string for detail pages)
-    return `${url.origin}${url.pathname}`;
+    return { url: `${url.origin}${url.pathname}`, stockId };
   } catch {
     return null;
   }
 }
 
-// Extract stock ID from URL
+// Extract stock ID from URL (legacy helper)
 function extractStockId(url: string): string | null {
-  const match = url.match(PICKLES_DETAIL_PATTERN);
-  return match ? match[1] : null;
+  const result = normalizeDetailUrl(url);
+  return result ? result.stockId : null;
 }
 
 // Extract detail URLs from HTML - prioritize <a href> parsing
@@ -74,43 +99,81 @@ function extractDetailUrls(content: string, pageNo: number): HarvestedUrl[] {
   const urls: HarvestedUrl[] = [];
   const seen = new Set<string>();
   
-  // Strategy 1: Parse <a href="..."> links (most reliable)
-  const hrefPattern = /href=["']([^"']*\/used\/details\/cars\/[^"'\s]+\/\d+)[^"']*/gi;
+  // Strategy 1: Parse <a href="..."> links for /used/details/cars/
+  const hrefPattern1 = /href=["']([^"']*\/used\/details\/cars\/[^"'\s]+\/\d+)[^"']*/gi;
   let match;
   
-  while ((match = hrefPattern.exec(content)) !== null) {
-    const rawUrl = match[1];
-    const normalizedUrl = normalizeDetailUrl(rawUrl);
+  while ((match = hrefPattern1.exec(content)) !== null) {
+    const result = normalizeDetailUrl(match[1]);
+    if (!result || seen.has(result.stockId)) continue;
     
-    if (!normalizedUrl) continue;
+    seen.add(result.stockId);
+    urls.push({
+      detail_url: result.url,
+      source_listing_id: result.stockId,
+      page_no: pageNo,
+    });
+  }
+  
+  // Strategy 2: Parse <a href="..."> links for /used/item/cars/
+  const hrefPattern2 = /href=["']([^"']*\/used\/item\/cars\/[^"'\s]+-\d+)[^"']*/gi;
+  
+  while ((match = hrefPattern2.exec(content)) !== null) {
+    const result = normalizeDetailUrl(match[1]);
+    if (!result || seen.has(result.stockId)) continue;
     
-    const stockId = extractStockId(normalizedUrl);
-    if (!stockId || seen.has(stockId)) continue;
+    seen.add(result.stockId);
+    urls.push({
+      detail_url: result.url,
+      source_listing_id: result.stockId,
+      page_no: pageNo,
+    });
+  }
+  
+  // Strategy 3: Parse <a href="..."> for /cars/item/ or /item/
+  const hrefPattern3 = /href=["']([^"']*\/(?:cars\/)?item\/\d+)[^"']*/gi;
+  
+  while ((match = hrefPattern3.exec(content)) !== null) {
+    const result = normalizeDetailUrl(match[1]);
+    if (!result || seen.has(result.stockId)) continue;
     
+    seen.add(result.stockId);
+    urls.push({
+      detail_url: result.url,
+      source_listing_id: result.stockId,
+      page_no: pageNo,
+    });
+  }
+  
+  // Strategy 4: Look for stock IDs in JSON/data attributes (common in SPAs)
+  // Pattern: "stockId": 12345 or data-stock-id="12345" or :stock-id="12345"
+  const jsonStockPattern = /(?:"stockId"|"stock_id"|"itemId"|data-stock-id=|:stock-id=)["']?(\d{7,})/gi;
+  
+  while ((match = jsonStockPattern.exec(content)) !== null) {
+    const stockId = match[1];
+    if (seen.has(stockId)) continue;
+    
+    // Construct a detail URL from stock ID
+    const detailUrl = `https://www.pickles.com.au/used/details/cars/vehicle/${stockId}`;
     seen.add(stockId);
     urls.push({
-      detail_url: normalizedUrl,
+      detail_url: detailUrl,
       source_listing_id: stockId,
       page_no: pageNo,
     });
   }
   
-  // Strategy 2: Fallback regex for non-anchor URLs (markdown, etc.)
-  const fallbackPattern = /https:\/\/www\.pickles\.com\.au\/used\/details\/cars\/[^\s"'<>?#]+\/(\d+)/gi;
+  // Strategy 5: Fallback full URL regex for markdown/text
+  const fallbackPattern = /https:\/\/www\.pickles\.com\.au\/used\/(?:details|item)\/cars\/[^\s"'<>?#]+[/-](\d+)/gi;
   
   while ((match = fallbackPattern.exec(content)) !== null) {
-    const rawUrl = match[0];
-    const stockId = match[1];
+    const result = normalizeDetailUrl(match[0]);
+    if (!result || seen.has(result.stockId)) continue;
     
-    if (seen.has(stockId)) continue;
-    
-    const normalizedUrl = normalizeDetailUrl(rawUrl);
-    if (!normalizedUrl) continue;
-    
-    seen.add(stockId);
+    seen.add(result.stockId);
     urls.push({
-      detail_url: normalizedUrl,
-      source_listing_id: stockId,
+      detail_url: result.url,
+      source_listing_id: result.stockId,
       page_no: pageNo,
     });
   }
@@ -119,25 +182,28 @@ function extractDetailUrls(content: string, pageNo: number): HarvestedUrl[] {
 }
 
 // Build search URL with proper encoding
+// CRITICAL: Preserve the path (make/model) from base URL, only add/override query params
 function buildSearchUrl(baseUrl: string, page: number, yearMin?: number): string {
   const url = new URL(baseUrl);
-  const params = new URLSearchParams();
   
-  // Stable pagination params
-  params.set("contentkey", "all-cars");
+  // Preserve existing query params from baseUrl (if any)
+  const params = new URLSearchParams(url.search);
+  
+  // Override/add pagination params
   params.set("limit", "120");
   params.set("page", String(page));
   params.set("sort", "endDate asc"); // Stable sort: closing soon first
   
   // Buy method filter (auction opportunities only)
-  // Pickles uses array notation: filter[buyMethod][]=Pickles Online
-  // But their API also accepts: buyMethod=Pickles Online,Pickles Live
-  params.set("buyMethod", "Pickles Online,Pickles Live");
+  if (!params.has("buyMethod")) {
+    params.set("buyMethod", "Pickles Online,Pickles Live");
+  }
   
-  if (yearMin) {
+  if (yearMin && !params.has("year-min")) {
     params.set("year-min", String(yearMin));
   }
   
+  // Return with preserved pathname (includes /hyundai/i30 etc.)
   return `${url.origin}${url.pathname}?${params.toString()}`;
 }
 
@@ -230,7 +296,13 @@ Deno.serve(async (req) => {
             url: pageUrl,
             formats: ["html", "markdown"],
             onlyMainContent: false,
-            waitFor: 5000,
+            waitFor: 10000, // Increased for SPA rendering
+            // Wait for vehicle cards to load
+            actions: [
+              { type: "wait", milliseconds: 3000 },
+              { type: "scroll", direction: "down", amount: 500 },
+              { type: "wait", milliseconds: 2000 },
+            ],
           }),
         });
 
@@ -246,6 +318,19 @@ Deno.serve(async (req) => {
         const html = scrapeData.data?.html || "";
         const markdown = scrapeData.data?.markdown || "";
         const content = `${html}\n${markdown}`;
+        
+        // Debug: log content stats
+        console.log(`[HARVEST] Page ${page} content: html=${html.length}b, md=${markdown.length}b`);
+        
+        // Debug: check for any pickles detail URLs in raw content
+        const rawDetailMatches = (content.match(/\/used\/details\/cars\//g) || []).length;
+        const rawItemMatches = (content.match(/\/used\/item\//g) || []).length;
+        console.log(`[HARVEST] Page ${page} raw patterns: /used/details/cars/=${rawDetailMatches}, /used/item/=${rawItemMatches}`);
+        
+        // Debug: sample the first 500 chars of markdown
+        if (markdown.length > 0) {
+          console.log(`[HARVEST] Page ${page} markdown sample:`, markdown.substring(0, 500).replace(/\n/g, ' '));
+        }
 
         const pageUrls = extractDetailUrls(content, page);
         console.log(`[HARVEST] Page ${page}: ${pageUrls.length} detail URLs found`);
