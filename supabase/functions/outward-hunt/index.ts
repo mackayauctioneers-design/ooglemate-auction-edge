@@ -353,17 +353,24 @@ function extractPicklesStockId(url: string): string | null {
 }
 
 // Parse Pickles listing cards from HTML/Markdown content
+// Pickles is a Vue.js SPA - we need multiple extraction strategies
 function parsePicklesListingCards(content: string, resultsPageUrl: string): PicklesListingCard[] {
   const cards: PicklesListingCard[] = [];
   const seen = new Set<string>();
   
-  // Extract detail page URLs from content
+  // DEBUG: Log first 500 chars of content to see what we're working with
+  console.log(`[PICKLES PARSE] Content preview (first 500 chars): ${content.slice(0, 500).replace(/\n/g, ' ')}`);
+  console.log(`[PICKLES PARSE] Content length: ${content.length} chars`);
+  
+  // Strategy 1: Extract detail page URLs from content (works if JS rendered)
   const detailsUrlPattern = /href=["']([^"']*pickles\.com\.au[^"']*\/(?:item|details|lot)\/[^"']+)["']/gi;
   const detailsUrls = Array.from(content.matchAll(detailsUrlPattern));
   
   // Also look for markdown links
   const mdLinkPattern = /\[([^\]]+)\]\((https?:\/\/[^)]*pickles\.com\.au[^)]*\/(?:item|details|lot)\/[^)]+)\)/gi;
   const mdLinks = Array.from(content.matchAll(mdLinkPattern));
+  
+  console.log(`[PICKLES PARSE] Found ${detailsUrls.length} HTML detail URLs, ${mdLinks.length} markdown links`);
   
   // Process HTML/markdown links to detail pages
   for (const match of [...detailsUrls, ...mdLinks]) {
@@ -429,7 +436,7 @@ function parsePicklesListingCards(content: string, resultsPageUrl: string): Pick
     });
   }
   
-  // Also try to parse structured listing blocks from content
+  // Strategy 2: Parse structured listing blocks from rendered content
   // Pickles often shows: "2021 Toyota RAV4 GX Hybrid | 45,000 km | SA | $38,500"
   const blockPattern = /(20[1-2]\d)\s+(Toyota|TOYOTA)\s+([A-Za-z0-9\s-]+?)(?:\s*\|\s*|\s+)([\d,]+)\s*km/gi;
   let blockMatch;
@@ -456,6 +463,8 @@ function parsePicklesListingCards(content: string, resultsPageUrl: string): Pick
     const stateMatch = content.substring(blockMatch.index, blockMatch.index + 100).match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
     const state = stateMatch ? stateMatch[1].toUpperCase() : null;
     
+    console.log(`[PICKLES BLOCK] Found: ${year} Toyota ${model} | ${km}km | $${price || 'N/A'} | ${state || 'AU'}`);
+    
     cards.push({
       external_id: id,
       details_url: null,  // No direct URL, came from block parsing
@@ -466,6 +475,86 @@ function parsePicklesListingCards(content: string, resultsPageUrl: string): Pick
       state,
       badge: null,
       raw_snippet: blockMatch[0],
+    });
+  }
+  
+  // Strategy 3: Extract from Pickles JSON/data attributes if present
+  // Look for JSON-LD or data-* attributes with vehicle info
+  const jsonLdPattern = /"@type"\s*:\s*"(?:Product|Vehicle|Car)"[^}]*"name"\s*:\s*"([^"]+)"/gi;
+  let jsonMatch;
+  while ((jsonMatch = jsonLdPattern.exec(content)) !== null) {
+    const name = jsonMatch[1];
+    if (!name.toLowerCase().includes('toyota') && !name.toLowerCase().includes('rav4')) continue;
+    
+    // Extract year from name
+    const yearMatch = name.match(/\b(20[1-2]\d)\b/);
+    const year = yearMatch ? parseInt(yearMatch[1], 10) : null;
+    
+    const id = `pickles-json-${name.toLowerCase().replace(/\s+/g, '-').slice(0, 30)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    
+    console.log(`[PICKLES JSON] Found: ${name}`);
+    
+    cards.push({
+      external_id: id,
+      details_url: null,
+      title: name,
+      price: null,
+      km: null,
+      year,
+      state: null,
+      badge: null,
+      raw_snippet: name,
+    });
+  }
+  
+  // Strategy 4: Look for any Toyota RAV4 mentions with year/km/price nearby
+  // Fallback for when JS doesn't fully render
+  const vehicleMentions = content.match(/(?:20[1-2]\d)\s*(?:Toyota|TOYOTA)\s*(?:RAV4|RAV 4|Rav4)[^<\n]{0,100}/gi) || [];
+  for (const mention of vehicleMentions.slice(0, 20)) {  // Limit to 20
+    const yearMatch = mention.match(/\b(20[1-2]\d)\b/);
+    const year = yearMatch ? parseInt(yearMatch[1], 10) : null;
+    if (!year) continue;
+    
+    const kmMatch = mention.match(/([\d,]+)\s*(?:km|kms)/i);
+    const km = kmMatch ? parseInt(kmMatch[1].replace(/,/g, ''), 10) : null;
+    
+    const priceMatch = mention.match(/\$\s*([\d,]+)/);
+    let price: number | null = null;
+    if (priceMatch) {
+      const parsed = parseInt(priceMatch[1].replace(/,/g, ''), 10);
+      if (parsed >= 5000 && parsed <= 200000) price = parsed;
+    }
+    
+    const stateMatch = mention.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
+    const state = stateMatch ? stateMatch[1].toUpperCase() : null;
+    
+    // Badge detection
+    let badge: string | null = null;
+    const mentionUpper = mention.toUpperCase();
+    if (mentionUpper.includes('GXL')) badge = 'GXL';
+    else if (mentionUpper.includes('GX')) badge = 'GX';
+    else if (mentionUpper.includes('CRUISER')) badge = 'CRUISER';
+    else if (mentionUpper.includes('EDGE')) badge = 'EDGE';
+    else if (mentionUpper.includes('HYBRID')) badge = 'HYBRID';
+    
+    const id = `pickles-mention-${year}-${km || 0}-${(badge || 'unknown').toLowerCase()}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    
+    console.log(`[PICKLES MENTION] Found: ${year} RAV4 ${badge || ''} | ${km || 'N/A'}km | $${price || 'N/A'} | ${state || 'AU'}`);
+    
+    cards.push({
+      external_id: id,
+      details_url: null,
+      title: `${year} Toyota RAV4${badge ? ' ' + badge : ''}`,
+      price,
+      km,
+      year,
+      state,
+      badge,
+      raw_snippet: mention.slice(0, 150),
     });
   }
   
@@ -481,6 +570,7 @@ async function scrapePicklesResultsPage(
   console.log(`[PICKLES] Scraping results page: ${resultsPageUrl}`);
   
   try {
+    // Pickles is a Vue.js SPA - needs longer wait and full page load
     const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: {
@@ -490,13 +580,15 @@ async function scrapePicklesResultsPage(
       body: JSON.stringify({
         url: resultsPageUrl,
         formats: ["markdown", "html"],
-        onlyMainContent: true,
-        waitFor: 5000,  // Wait for JS to load (Pickles is JS-heavy)
+        onlyMainContent: false,  // Get full page to capture Vue-rendered content
+        waitFor: 10000,  // Wait 10s for Vue.js to fully render
+        timeout: 60000,  // 60s timeout
       }),
     });
     
     if (!scrapeRes.ok) {
-      console.error(`[PICKLES] Scrape failed: ${scrapeRes.status}`);
+      const errText = await scrapeRes.text();
+      console.error(`[PICKLES] Scrape failed: ${scrapeRes.status} - ${errText.slice(0, 200)}`);
       return [];
     }
     
@@ -504,21 +596,31 @@ async function scrapePicklesResultsPage(
     const markdown = scrapeData.data?.markdown || scrapeData.markdown || '';
     const html = scrapeData.data?.html || scrapeData.html || '';
     
+    console.log(`[PICKLES] Got ${markdown.length} chars markdown, ${html.length} chars HTML`);
+    
     // Parse both markdown and HTML for maximum extraction
     const content = markdown + '\n' + html;
     const cards = parsePicklesListingCards(content, resultsPageUrl);
     
     console.log(`[PICKLES] Extracted ${cards.length} listing cards from results page`);
     
+    // Log first 3 cards for debugging
+    for (const card of cards.slice(0, 3)) {
+      console.log(`[PICKLES CARD DETAIL] ${card.title} | $${card.price || 'N/A'} | ${card.km || 'N/A'}km | ${card.state || 'AU'} | URL: ${(card.details_url || 'none').slice(0, 60)}`);
+    }
+    
     // Filter by year with ±3 year tolerance for discovery (wider for auctions)
     if (hunt.year || hunt.year_min || hunt.year_max) {
       const yearMin = (hunt.year_min ?? hunt.year ?? 2015) - 3;  // ±3 year tolerance
       const yearMax = (hunt.year_max ?? hunt.year ?? new Date().getFullYear()) + 3;
       
-      return cards.filter(card => {
+      const filtered = cards.filter(card => {
         if (!card.year) return true;  // Keep cards without year (need verification)
         return card.year >= yearMin && card.year <= yearMax;
       });
+      
+      console.log(`[PICKLES] After year filter (${yearMin}-${yearMax}): ${filtered.length} cards remain`);
+      return filtered;
     }
     
     return cards;
