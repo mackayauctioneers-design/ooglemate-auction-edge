@@ -3224,6 +3224,174 @@ export type Database = {
           },
         ]
       }
+      pickles_detail_queue: {
+        Row: {
+          asking_price: number | null
+          buy_method: string | null
+          crawl_attempts: number
+          crawl_status: string
+          detail_url: string
+          first_seen_at: string
+          guide_price: number | null
+          id: string
+          km: number | null
+          last_crawl_at: string | null
+          last_crawl_error: string | null
+          last_seen_at: string
+          location: string | null
+          make: string | null
+          model: string | null
+          page_no: number | null
+          reserve_price: number | null
+          run_id: string | null
+          sale_close_at: string | null
+          sale_status: string | null
+          search_url: string | null
+          sold_price: number | null
+          source: string
+          source_listing_id: string
+          state: string | null
+          variant_raw: string | null
+          year: number | null
+        }
+        Insert: {
+          asking_price?: number | null
+          buy_method?: string | null
+          crawl_attempts?: number
+          crawl_status?: string
+          detail_url: string
+          first_seen_at?: string
+          guide_price?: number | null
+          id?: string
+          km?: number | null
+          last_crawl_at?: string | null
+          last_crawl_error?: string | null
+          last_seen_at?: string
+          location?: string | null
+          make?: string | null
+          model?: string | null
+          page_no?: number | null
+          reserve_price?: number | null
+          run_id?: string | null
+          sale_close_at?: string | null
+          sale_status?: string | null
+          search_url?: string | null
+          sold_price?: number | null
+          source?: string
+          source_listing_id: string
+          state?: string | null
+          variant_raw?: string | null
+          year?: number | null
+        }
+        Update: {
+          asking_price?: number | null
+          buy_method?: string | null
+          crawl_attempts?: number
+          crawl_status?: string
+          detail_url?: string
+          first_seen_at?: string
+          guide_price?: number | null
+          id?: string
+          km?: number | null
+          last_crawl_at?: string | null
+          last_crawl_error?: string | null
+          last_seen_at?: string
+          location?: string | null
+          make?: string | null
+          model?: string | null
+          page_no?: number | null
+          reserve_price?: number | null
+          run_id?: string | null
+          sale_close_at?: string | null
+          sale_status?: string | null
+          search_url?: string | null
+          sold_price?: number | null
+          source?: string
+          source_listing_id?: string
+          state?: string | null
+          variant_raw?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
+      pickles_detail_runs: {
+        Row: {
+          detail_fetched: number
+          duration_ms: number | null
+          id: string
+          inserted: number
+          parsed_ok: number
+          reject_reasons: Json | null
+          rejected: number
+          run_at: string
+          status: string
+          updated: number
+        }
+        Insert: {
+          detail_fetched?: number
+          duration_ms?: number | null
+          id?: string
+          inserted?: number
+          parsed_ok?: number
+          reject_reasons?: Json | null
+          rejected?: number
+          run_at?: string
+          status?: string
+          updated?: number
+        }
+        Update: {
+          detail_fetched?: number
+          duration_ms?: number | null
+          id?: string
+          inserted?: number
+          parsed_ok?: number
+          reject_reasons?: Json | null
+          rejected?: number
+          run_at?: string
+          status?: string
+          updated?: number
+        }
+        Relationships: []
+      }
+      pickles_harvest_runs: {
+        Row: {
+          duration_ms: number | null
+          errors: string[] | null
+          id: string
+          pages_crawled: number
+          run_at: string
+          search_url: string
+          status: string
+          urls_existing: number
+          urls_harvested: number
+          urls_new: number
+        }
+        Insert: {
+          duration_ms?: number | null
+          errors?: string[] | null
+          id?: string
+          pages_crawled?: number
+          run_at?: string
+          search_url: string
+          status?: string
+          urls_existing?: number
+          urls_harvested?: number
+          urls_new?: number
+        }
+        Update: {
+          duration_ms?: number | null
+          errors?: string[] | null
+          id?: string
+          pages_crawled?: number
+          run_at?: string
+          search_url?: string
+          status?: string
+          urls_existing?: number
+          urls_harvested?: number
+          urls_new?: number
+        }
+        Relationships: []
+      }
       pipeline_runs: {
         Row: {
           completed_at: string | null
