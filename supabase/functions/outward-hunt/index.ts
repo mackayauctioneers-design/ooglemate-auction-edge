@@ -427,7 +427,7 @@ function isJunkDomain(domain: string): boolean {
 }
 
 // =====================================================
-// URL PAGE-TYPE CLASSIFIER - Section C1 (ENHANCED v3)
+// URL PAGE-TYPE CLASSIFIER - Section C1 (ENHANCED v4)
 // AGGRESSIVE rejection of search/category/spec/editorial pages
 // Only accepts DETAIL pages with individual listing IDs
 // =====================================================
@@ -437,6 +437,11 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
   // Block junk domains entirely
   if (isJunkDomain(domain)) {
     return { page_type: 'other', reject_reason: 'BLOCKED_DOMAIN' };
+  }
+  
+  // GRAYS-SPECIFIC: Only accept /lot/ with numeric ID, reject everything else
+  if (domain.includes('grays.com') && !/\/lot\/\d{4,}/.test(urlLower)) {
+    return { page_type: 'search', reject_reason: 'GRAYS_SEARCH_OR_CATEGORY' };
   }
   
   // CRITICAL: Search/category/results page patterns - HARD REJECT
@@ -483,7 +488,7 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
     return { page_type: 'search', reject_reason: 'SEARCH_OR_CATEGORY_PAGE' };
   }
   
-  // Non-listing URL patterns - reject these
+  // Non-listing URL patterns - reject these (EXPANDED junk list)
   const articlePatterns = [
     '/news/', '/blog/', '/article/', '/review/', '/reviews/', '/guide/', '/guides/',
     '/car-guide/', '/price-and-specs/', '/compare/', '/comparison/', '/insurance/',
@@ -502,7 +507,7 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
   for (const pattern of articlePatterns) {
     if (urlLower.includes(pattern)) {
       const type = pattern.includes('login') || pattern.includes('signin') ? 'login' : 'article';
-      return { page_type: type, reject_reason: 'NON_LISTING_PAGE' };
+      return { page_type: type, reject_reason: 'NON_LISTING_JUNK_PAGE' };
     }
   }
   
@@ -510,29 +515,32 @@ function classifyUrlPageType(url: string, domain: string): { page_type: 'listing
 }
 
 // =====================================================
-// CONTENT SIGNALS CHECK v2 - Must have real signals, block junk
+// CONTENT SIGNALS CHECK v3 - Relaxed + Junk Filter
 // =====================================================
 function hasListingSignals(content: string): { valid: boolean; reason: string | null } {
   const contentLower = content.toLowerCase();
 
-  // Required: price OR mileage
+  // Primary signals: price OR mileage
   const hasPrice = contentLower.includes('$') || /\d{2,3},\d{3}/.test(contentLower);
   const hasKm = /\d{1,3}(,\d{3})*\s*(km|kms|kilometres|odometer)/i.test(contentLower);
+  
+  // Secondary signal: enquire/contact (many dealer pages hide price)
+  const hasEnquire = /enquire|contact\s*dealer|call|inquire|dm|message|get\s*quote|request\s*(info|price)/i.test(contentLower);
 
   // Block junk signals (common in footers/menus/spec pages)
   const isJunk = /download|brochure|park assist|usb|bluetooth|airbag|manual|features|specs|guide|csv|pdf/i.test(contentLower);
 
-  // Rule: Must have price OR km
-  if (!hasPrice && !hasKm) {
-    return { valid: false, reason: 'NO_PRICE_OR_KM' };
+  // Rule: If junk words present without price AND km, reject as static junk
+  if (isJunk && !hasPrice && !hasKm) {
+    return { valid: false, reason: 'STATIC_JUNK_NO_SIGNALS' };
   }
   
-  // If junk words present but missing BOTH price AND km, reject
-  if (isJunk && !hasPrice && !hasKm) {
-    return { valid: false, reason: 'LIKELY_JUNK_CONTENT' };
+  // Relaxed: price OR km OR enquire signal (dealer pages often hide price)
+  if (hasPrice || hasKm || hasEnquire) {
+    return { valid: true, reason: null };
   }
 
-  return { valid: true, reason: null };
+  return { valid: false, reason: 'INSUFFICIENT_LISTING_SIGNALS' };
 }
 
 // =====================================================
