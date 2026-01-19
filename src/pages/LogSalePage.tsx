@@ -328,6 +328,16 @@ export default function LogSalePage() {
       return;
     }
 
+    // Engine, Drivetrain, Transmission required for proper matching
+    if (!formData.engine || !formData.drivetrain || !formData.transmission) {
+      toast({
+        title: "Specs required for Kiting Mode",
+        description: "Please select Engine, Drivetrain, and Transmission to enable accurate matching.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setFailedHuntSaleId(null);
     
@@ -694,57 +704,70 @@ export default function LogSalePage() {
                   </div>
                 </div>
 
-                {/* Specs */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="engine">Engine *</Label>
-                    <Select
-                      value={formData.engine}
-                      onValueChange={(v) => updateField('engine', v)}
-                    >
-                      <SelectTrigger className="bg-input">
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {engines.map(e => (
-                          <SelectItem key={e} value={e}>{e}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                {/* Specs - REQUIRED for Kiting Mode */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Zap className="h-4 w-4 text-amber-500" />
+                    Vehicle Specs <span className="text-destructive">*</span>
+                    <span className="text-xs text-muted-foreground font-normal">(Required for accurate matching)</span>
                   </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="engine" className="flex items-center gap-1">
+                        Engine <span className="text-destructive">*</span>
+                      </Label>
+                      <Select
+                        value={formData.engine}
+                        onValueChange={(v) => updateField('engine', v)}
+                      >
+                        <SelectTrigger className={`bg-input ${!formData.engine ? 'border-amber-500/50' : ''}`}>
+                          <SelectValue placeholder="Select engine" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {engines.map(e => (
+                            <SelectItem key={e} value={e}>{e}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="drivetrain">Drivetrain *</Label>
-                    <Select
-                      value={formData.drivetrain}
-                      onValueChange={(v) => updateField('drivetrain', v)}
-                    >
-                      <SelectTrigger className="bg-input">
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {drivetrains.map(d => (
-                          <SelectItem key={d} value={d}>{d}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="drivetrain" className="flex items-center gap-1">
+                        Drivetrain <span className="text-destructive">*</span>
+                      </Label>
+                      <Select
+                        value={formData.drivetrain}
+                        onValueChange={(v) => updateField('drivetrain', v)}
+                      >
+                        <SelectTrigger className={`bg-input ${!formData.drivetrain ? 'border-amber-500/50' : ''}`}>
+                          <SelectValue placeholder="Select drivetrain" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {drivetrains.map(d => (
+                            <SelectItem key={d} value={d}>{d}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="transmission">Transmission *</Label>
-                    <Select
-                      value={formData.transmission}
-                      onValueChange={(v) => updateField('transmission', v)}
-                    >
-                      <SelectTrigger className="bg-input">
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {transmissions.map(t => (
-                          <SelectItem key={t} value={t}>{t}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="space-y-2">
+                      <Label htmlFor="transmission" className="flex items-center gap-1">
+                        Transmission <span className="text-destructive">*</span>
+                      </Label>
+                      <Select
+                        value={formData.transmission}
+                        onValueChange={(v) => updateField('transmission', v)}
+                      >
+                        <SelectTrigger className={`bg-input ${!formData.transmission ? 'border-amber-500/50' : ''}`}>
+                          <SelectValue placeholder="Select trans" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {transmissions.map(t => (
+                            <SelectItem key={t} value={t}>{t}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
 
