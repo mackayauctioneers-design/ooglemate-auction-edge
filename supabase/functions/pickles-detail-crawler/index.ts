@@ -1,20 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * PICKLES DETAIL MICRO-CRAWLER - Phase 2 of two-phase pipeline
+ * PICKLES DETAIL MICRO-CRAWLER - Phase 2 (Hardened)
  * 
- * Worker that:
- * 1. Claims pending items from pickles_detail_queue
- * 2. Scrapes each detail URL via Firecrawl
- * 3. Extracts truth fields (year, make, model, variant, km, price, buy_method, etc.)
- * 4. Updates pickles_detail_queue with extracted data
- * 5. Optionally upserts to vehicle_listings or hunt_external_candidates
- * 
- * Validation:
- * - Hard reject: missing year OR make OR model OR source_listing_id
- * - Soft fields (nullable): price, guide, sold, reserve, km
- * 
- * Observability: pickles_detail_runs tracks each run's metrics
+ * Improvements:
+ * - Atomic claim via RPC (parallel-safe with FOR UPDATE SKIP LOCKED)
+ * - Title-based variant extraction
+ * - Labeled field parsing (Odometer, Price, etc.)
+ * - HTTP status and content length tracking
+ * - Sanity bounds on km/price
  */
 
 const corsHeaders = {
@@ -39,74 +33,119 @@ interface ExtractedData {
   sale_status: string | null;
 }
 
-// Extract year from text
+// =====================================================
+// EXTRACTION FUNCTIONS - Improved with labeled fields
+// =====================================================
+
+// Extract year from text (1990-2030 range)
 function parseYear(text: string): number | null {
-  const match = text.match(/\b(19[89]\d|20[0-2]\d)\b/);
+  const match = text.match(/\b(199\d|20[0-2]\d|2030)\b/);
   return match ? parseInt(match[1], 10) : null;
 }
 
-// Extract km from text - handles "123,456 km", "45785km", etc.
+// Extract labeled odometer (priority) or fallback regex
 function parseKm(text: string): number | null {
-  const match = text.match(/(\d{1,3}(?:,\d{3})*|\d+)\s*(?:km|kms|kilometres)/i);
-  if (match) {
-    const km = parseInt(match[1].replace(/,/g, ""), 10);
-    return km >= 0 && km <= 999999 ? km : null;
+  // Priority: labeled fields
+  const labeledPatterns = [
+    /odometer[:\s]*(\d{1,3}(?:,\d{3})*|\d+)\s*(?:km|kms)?/i,
+    /kilometres?[:\s]*(\d{1,3}(?:,\d{3})*|\d+)/i,
+    /mileage[:\s]*(\d{1,3}(?:,\d{3})*|\d+)/i,
+    /kms?[:\s]*(\d{1,3}(?:,\d{3})*|\d+)/i,
+  ];
+  
+  for (const pattern of labeledPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const km = parseInt(match[1].replace(/,/g, ""), 10);
+      if (km >= 50 && km <= 900000) return km;
+    }
   }
+  
+  // Fallback: generic pattern (less reliable)
+  const fallbackMatch = text.match(/(\d{1,3}(?:,\d{3})+|\d{4,6})\s*(?:km|kms)\b/i);
+  if (fallbackMatch) {
+    const km = parseInt(fallbackMatch[1].replace(/,/g, ""), 10);
+    if (km >= 50 && km <= 900000) return km;
+  }
+  
   return null;
 }
 
-// Extract price from text - handles "$27,500", "Price: $35,000", etc.
-function parsePrice(text: string): number | null {
-  // Look for dollar amounts
-  const match = text.match(/\$\s*([\d,]+)/);
-  if (match) {
-    const price = parseInt(match[1].replace(/,/g, ""), 10);
-    return price >= 1000 && price <= 1000000 ? price : null;
-  }
-  return null;
-}
-
-// Extract specific labeled price
-function parseLabeledPrice(text: string, label: string): number | null {
-  const pattern = new RegExp(`${label}[:\\s]*\\$?([\\d,]+)`, "i");
-  const match = text.match(pattern);
-  if (match) {
-    const price = parseInt(match[1].replace(/,/g, ""), 10);
-    return price >= 1000 && price <= 1000000 ? price : null;
-  }
-  return null;
-}
-
-// Parse make from URL slug or text
-function parseMake(slug: string): string | null {
-  // URL format: /used/details/cars/YEAR-MAKE-MODEL/ID
-  const parts = slug.split("/");
-  const carPart = parts.find(p => /^\d{4}-[a-z]+-/.test(p));
-  if (carPart) {
-    const segments = carPart.split("-");
-    if (segments.length >= 2) {
-      return segments[1].charAt(0).toUpperCase() + segments[1].slice(1);
+// Extract labeled price with sanity bounds
+function parseLabeledPrice(text: string, ...labels: string[]): number | null {
+  for (const label of labels) {
+    // Try: "Label: $XX,XXX" or "Label $XX,XXX"
+    const pattern = new RegExp(`${label}[:\\s]*\\$?([\\d,]+)`, "i");
+    const match = text.match(pattern);
+    if (match) {
+      const price = parseInt(match[1].replace(/,/g, ""), 10);
+      if (price >= 500 && price <= 1000000) return price;
     }
   }
   return null;
 }
 
-// Parse model from URL slug
-function parseModel(slug: string): string | null {
-  const parts = slug.split("/");
-  const carPart = parts.find(p => /^\d{4}-[a-z]+-/.test(p));
-  if (carPart) {
-    const segments = carPart.split("-");
-    if (segments.length >= 3) {
-      return segments[2].charAt(0).toUpperCase() + segments[2].slice(1);
-    }
+// Extract any price (fallback)
+function parseAnyPrice(text: string): number | null {
+  // Skip common false positives
+  const skipPatterns = /(?:fee|deposit|admin|charge|gst|stamp duty|transfer)/i;
+  
+  // Find all dollar amounts
+  const matches = text.matchAll(/\$\s*([\d,]+)/g);
+  for (const match of matches) {
+    // Get context around the match
+    const start = Math.max(0, match.index! - 30);
+    const context = text.slice(start, match.index! + match[0].length);
+    
+    if (skipPatterns.test(context)) continue;
+    
+    const price = parseInt(match[1].replace(/,/g, ""), 10);
+    if (price >= 500 && price <= 1000000) return price;
   }
   return null;
 }
 
-// Extract variant from title or content
-function parseVariant(text: string, make: string | null, model: string | null): string | null {
-  // Common variant patterns
+// Parse URL for year/make/model (most reliable source)
+function parseFromUrl(url: string): { year: number | null; make: string | null; model: string | null } {
+  try {
+    const urlPath = new URL(url).pathname;
+    // Format: /used/details/cars/YEAR-MAKE-MODEL-VARIANT/ID
+    const slugMatch = urlPath.match(/\/used\/details\/cars\/(\d{4})-([a-z]+)-([a-z0-9]+)/i);
+    
+    if (slugMatch) {
+      return {
+        year: parseInt(slugMatch[1], 10),
+        make: slugMatch[2].charAt(0).toUpperCase() + slugMatch[2].slice(1).toLowerCase(),
+        model: slugMatch[3].charAt(0).toUpperCase() + slugMatch[3].slice(1).toLowerCase(),
+      };
+    }
+  } catch {
+    // Invalid URL
+  }
+  return { year: null, make: null, model: null };
+}
+
+// Extract variant from title (after stripping year/make/model)
+function parseVariantFromTitle(title: string, year: number | null, make: string | null, model: string | null): string | null {
+  if (!title || !year || !make || !model) return null;
+  
+  // Remove year, make, model from title
+  let remaining = title
+    .replace(new RegExp(`\\b${year}\\b`, "gi"), "")
+    .replace(new RegExp(`\\b${make}\\b`, "gi"), "")
+    .replace(new RegExp(`\\b${model}\\b`, "gi"), "")
+    .replace(/pickles|auction|sale|vehicle/gi, "")
+    .trim();
+  
+  // Clean up whitespace and punctuation
+  remaining = remaining.replace(/^[\s\-–—|:]+|[\s\-–—|:]+$/g, "").trim();
+  
+  // Limit to reasonable length
+  if (remaining.length > 0 && remaining.length <= 50) {
+    return remaining.toUpperCase();
+  }
+  
+  // Fallback: known variant keywords
   const variantPatterns = [
     /\b(SR5|GXL|GX|VX|SAHARA|KAKADU|ROGUE|RUGGED|WORKMATE)\b/i,
     /\b(WILDTRAK|RAPTOR|XLT|XLS|XL|TITANIUM|PLATINUM|AMBIENTE|TREND)\b/i,
@@ -116,11 +155,10 @@ function parseVariant(text: string, make: string | null, model: string | null): 
   ];
   
   for (const pattern of variantPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      return match[1].toUpperCase();
-    }
+    const match = title.match(pattern);
+    if (match) return match[1].toUpperCase();
   }
+  
   return null;
 }
 
@@ -136,29 +174,31 @@ function parseBuyMethod(text: string): string | null {
   ];
   
   for (const { pattern, value } of methods) {
-    if (pattern.test(text)) {
-      return value;
-    }
+    if (pattern.test(text)) return value;
   }
   return null;
 }
 
-// Extract location/state
+// Extract location and state
 function parseLocation(text: string): { location: string | null; state: string | null } {
-  // Known Pickles yards
-  const yards = [
-    "Yatala", "Eagle Farm", "Altona", "Dandenong", "Salisbury Plain", "Winnellie",
-    "Moonah", "Welshpool", "Belmont", "Hazelmere", "Canning Vale",
-    "Brisbane", "Sydney", "Melbourne", "Perth", "Adelaide", "Darwin", "Hobart",
-  ];
+  const stateMap: Record<string, string> = {
+    "Yatala": "QLD", "Eagle Farm": "QLD", "Brisbane": "QLD",
+    "Altona": "VIC", "Dandenong": "VIC", "Melbourne": "VIC",
+    "Sydney": "NSW", "Silverwater": "NSW",
+    "Salisbury Plain": "SA", "Adelaide": "SA",
+    "Winnellie": "NT", "Darwin": "NT",
+    "Moonah": "TAS", "Hobart": "TAS",
+    "Welshpool": "WA", "Belmont": "WA", "Hazelmere": "WA", "Canning Vale": "WA", "Perth": "WA",
+  };
   
-  for (const yard of yards) {
-    if (new RegExp(`\\b${yard}\\b`, "i").test(text)) {
-      return { location: yard, state: inferState(yard) };
+  // Check known locations
+  for (const [loc, state] of Object.entries(stateMap)) {
+    if (new RegExp(`\\b${loc}\\b`, "i").test(text)) {
+      return { location: loc, state };
     }
   }
   
-  // State abbreviation
+  // Fallback: state abbreviation
   const stateMatch = text.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
   if (stateMatch) {
     return { location: null, state: stateMatch[1].toUpperCase() };
@@ -167,26 +207,13 @@ function parseLocation(text: string): { location: string | null; state: string |
   return { location: null, state: null };
 }
 
-function inferState(location: string): string | null {
-  const stateMap: Record<string, string> = {
-    "Yatala": "QLD", "Eagle Farm": "QLD", "Brisbane": "QLD",
-    "Altona": "VIC", "Dandenong": "VIC", "Melbourne": "VIC",
-    "Sydney": "NSW",
-    "Salisbury Plain": "SA", "Adelaide": "SA",
-    "Winnellie": "NT", "Darwin": "NT",
-    "Moonah": "TAS", "Hobart": "TAS",
-    "Welshpool": "WA", "Belmont": "WA", "Hazelmere": "WA", "Canning Vale": "WA", "Perth": "WA",
-  };
-  return stateMap[location] || null;
-}
-
 // Extract sale status
 function parseSaleStatus(text: string): string | null {
   if (/\bsold\b/i.test(text)) return "sold";
-  if (/\bpassed\s*in\b/i.test(text)) return "passed_in";
+  if (/\bpassed[\s\-]?in\b/i.test(text)) return "passed_in";
   if (/\bwithdrawn\b/i.test(text)) return "withdrawn";
-  if (/\blive\b.*\bauction\b/i.test(text) || /\bending\s*soon\b/i.test(text)) return "live";
-  if (/\bupcoming\b/i.test(text) || /\bstarts?\s*in\b/i.test(text)) return "upcoming";
+  if (/\b(?:live|ending|bidding)\s*(?:now|soon)?\b/i.test(text)) return "live";
+  if (/\bupcoming\b|\bstarts?\s*in\b/i.test(text)) return "upcoming";
   return null;
 }
 
@@ -197,76 +224,74 @@ function parseCloseDate(text: string): string | null {
     jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
   };
 
-  // Pattern: "Wed 15 Jan 10:00 AM" or "15/01/2026 10:00AM"
-  const patterns = [
-    /(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i,
-    /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?:\s+(\d{4}))?\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) {
-      try {
-        // Handle different formats
-        if (/^\d+\/\d+\/\d+/.test(match[0])) {
-          const [, day, month, year, hour, min, ampm] = match;
-          let h = parseInt(hour);
-          if (ampm?.toUpperCase() === "PM" && h < 12) h += 12;
-          if (ampm?.toUpperCase() === "AM" && h === 12) h = 0;
-          const d = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), h, parseInt(min));
-          if (!isNaN(d.getTime())) return d.toISOString();
-        } else {
-          const [, day, monthStr, year, hour, min, ampm] = match;
-          const monthNum = months[monthStr.toLowerCase()];
-          const yearNum = year ? parseInt(year) : new Date().getFullYear();
-          let h = parseInt(hour);
-          if (ampm?.toUpperCase() === "PM" && h < 12) h += 12;
-          if (ampm?.toUpperCase() === "AM" && h === 12) h = 0;
-          const d = new Date(yearNum, monthNum, parseInt(day), h, parseInt(min));
-          if (!isNaN(d.getTime())) return d.toISOString();
-        }
-      } catch {
-        // Invalid date
-      }
-    }
+  // Pattern: DD/MM/YYYY HH:MM AM/PM
+  const slashPattern = /(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i;
+  const slashMatch = text.match(slashPattern);
+  if (slashMatch) {
+    const [, day, month, year, hour, min, ampm] = slashMatch;
+    let h = parseInt(hour);
+    if (ampm?.toUpperCase() === "PM" && h < 12) h += 12;
+    if (ampm?.toUpperCase() === "AM" && h === 12) h = 0;
+    const d = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), h, parseInt(min));
+    if (!isNaN(d.getTime())) return d.toISOString();
   }
+
+  // Pattern: DD Mon YYYY HH:MM
+  const monthPattern = /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?:\s+(\d{4}))?\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i;
+  const monthMatch = text.match(monthPattern);
+  if (monthMatch) {
+    const [, day, monthStr, year, hour, min, ampm] = monthMatch;
+    const monthNum = months[monthStr.toLowerCase()];
+    const yearNum = year ? parseInt(year) : new Date().getFullYear();
+    let h = parseInt(hour);
+    if (ampm?.toUpperCase() === "PM" && h < 12) h += 12;
+    if (ampm?.toUpperCase() === "AM" && h === 12) h = 0;
+    const d = new Date(yearNum, monthNum, parseInt(day), h, parseInt(min));
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  return null;
+}
+
+// Extract title from HTML/markdown
+function extractTitle(content: string): string | null {
+  // Try meta title
+  const metaMatch = content.match(/<title[^>]*>([^<]+)<\/title>/i);
+  if (metaMatch) return metaMatch[1].trim();
+  
+  // Try og:title
+  const ogMatch = content.match(/property=["']og:title["']\s+content=["']([^"']+)["']/i);
+  if (ogMatch) return ogMatch[1].trim();
+  
+  // Try H1
+  const h1Match = content.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+  if (h1Match) return h1Match[1].trim();
+  
   return null;
 }
 
 // Main extraction function
 function extractFromContent(url: string, content: string): ExtractedData {
-  // Parse from URL first (most reliable for year/make/model)
-  const urlPath = new URL(url).pathname;
-  const urlParts = urlPath.split("/");
-  const slugPart = urlParts.find(p => /^\d{4}-[a-z]+-/i.test(p));
+  // URL is most reliable for year/make/model
+  const urlData = parseFromUrl(url);
+  const title = extractTitle(content);
   
-  let year: number | null = null;
-  let make: string | null = null;
-  let model: string | null = null;
+  const year = urlData.year || parseYear(content);
+  const make = urlData.make;
+  const model = urlData.model;
   
-  if (slugPart) {
-    const segments = slugPart.toLowerCase().split("-");
-    if (segments.length >= 3) {
-      year = parseInt(segments[0], 10);
-      make = segments[1].charAt(0).toUpperCase() + segments[1].slice(1);
-      model = segments[2].charAt(0).toUpperCase() + segments[2].slice(1);
-    }
-  }
+  // Variant from title (stripped of year/make/model)
+  const variant_raw = parseVariantFromTitle(title || "", year, make, model);
   
-  // Fallback to content parsing
-  if (!year) year = parseYear(content);
-  
-  const variant_raw = parseVariant(content, make, model);
+  // Labeled fields
   const km = parseKm(content);
   const { location, state } = parseLocation(content);
   
-  // Price extraction - look for labeled prices first
-  const guide_price = parseLabeledPrice(content, "guide") || parseLabeledPrice(content, "estimate");
-  const sold_price = parseLabeledPrice(content, "sold") || parseLabeledPrice(content, "hammer");
+  // Price extraction - prioritize labeled
+  const guide_price = parseLabeledPrice(content, "guide", "estimate", "estimated");
+  const sold_price = parseLabeledPrice(content, "sold", "hammer", "final bid", "winning bid");
   const reserve_price = parseLabeledPrice(content, "reserve");
-  const asking_price = parseLabeledPrice(content, "buy now") 
-    || parseLabeledPrice(content, "price") 
-    || parsePrice(content);
+  const asking_price = parseLabeledPrice(content, "buy now", "buy-now", "price", "current bid") || parseAnyPrice(content);
   
   const buy_method = parseBuyMethod(content);
   const sale_status = parseSaleStatus(content);
@@ -322,21 +347,22 @@ Deno.serve(async (req) => {
 
     console.log(`[DETAIL] Starting run ${runId}, batch_size=${batch_size}`);
 
-    // Claim pending items (prioritize never-crawled, then oldest)
-    const { data: queueItems, error: fetchErr } = await supabase
-      .from("pickles_detail_queue")
-      .select("*")
-      .eq("crawl_status", "pending")
-      .lt("crawl_attempts", max_retries)
-      .order("first_seen_at", { ascending: true })
-      .limit(batch_size);
+    // ATOMIC CLAIM via RPC (parallel-safe with FOR UPDATE SKIP LOCKED)
+    const { data: claimedItems, error: claimErr } = await supabase.rpc(
+      "claim_pickles_detail_batch",
+      {
+        p_batch_size: batch_size,
+        p_max_retries: max_retries,
+        p_run_id: runId,
+      }
+    );
 
-    if (fetchErr) {
-      throw new Error(`Failed to fetch queue: ${fetchErr.message}`);
+    if (claimErr) {
+      throw new Error(`Claim failed: ${claimErr.message}`);
     }
 
-    if (!queueItems || queueItems.length === 0) {
-      console.log("[DETAIL] No pending items in queue");
+    if (!claimedItems || claimedItems.length === 0) {
+      console.log("[DETAIL] No items to process");
       
       await supabase.from("pickles_detail_runs").update({
         status: "completed",
@@ -349,7 +375,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[DETAIL] Claimed ${queueItems.length} items`);
+    console.log(`[DETAIL] Claimed ${claimedItems.length} items`);
 
     // Process metrics
     let detailFetched = 0;
@@ -357,7 +383,7 @@ Deno.serve(async (req) => {
     let rejected = 0;
     const rejectReasons: Record<string, number> = {};
 
-    for (const item of queueItems) {
+    for (const item of claimedItems) {
       const itemId = item.id;
       const detailUrl = item.detail_url;
       const stockId = item.source_listing_id;
@@ -380,6 +406,8 @@ Deno.serve(async (req) => {
           }),
         });
 
+        const httpStatus = scrapeRes.status;
+
         if (!scrapeRes.ok) {
           const errText = await scrapeRes.text();
           console.error(`[DETAIL] Scrape failed for ${stockId}:`, errText);
@@ -388,7 +416,8 @@ Deno.serve(async (req) => {
             crawl_status: "failed",
             crawl_attempts: item.crawl_attempts + 1,
             last_crawl_at: new Date().toISOString(),
-            last_crawl_error: `Firecrawl ${scrapeRes.status}`,
+            last_crawl_error: `Firecrawl ${httpStatus}`,
+            last_crawl_http_status: httpStatus,
           }).eq("id", itemId);
           
           rejectReasons["scrape_failed"] = (rejectReasons["scrape_failed"] || 0) + 1;
@@ -402,15 +431,18 @@ Deno.serve(async (req) => {
         const markdown = scrapeData.data?.markdown || "";
         const html = scrapeData.data?.html || "";
         const content = `${markdown}\n${html}`;
+        const contentLen = content.length;
         
-        if (content.length < 100) {
-          console.warn(`[DETAIL] Sparse content for ${stockId}: ${content.length} chars`);
+        if (contentLen < 200) {
+          console.warn(`[DETAIL] Sparse content for ${stockId}: ${contentLen} chars`);
           
           await supabase.from("pickles_detail_queue").update({
             crawl_status: "failed",
             crawl_attempts: item.crawl_attempts + 1,
             last_crawl_at: new Date().toISOString(),
             last_crawl_error: "Sparse content",
+            last_crawl_http_status: httpStatus,
+            content_len: contentLen,
           }).eq("id", itemId);
           
           rejectReasons["sparse_content"] = (rejectReasons["sparse_content"] || 0) + 1;
@@ -423,13 +455,21 @@ Deno.serve(async (req) => {
         
         // Validate hard requirements
         if (!extracted.year || !extracted.make || !extracted.model) {
-          console.warn(`[DETAIL] Hard reject ${stockId}: year=${extracted.year}, make=${extracted.make}, model=${extracted.model}`);
+          const missing = [
+            !extracted.year && "year",
+            !extracted.make && "make",
+            !extracted.model && "model",
+          ].filter(Boolean).join(", ");
+          
+          console.warn(`[DETAIL] Hard reject ${stockId}: missing ${missing}`);
           
           await supabase.from("pickles_detail_queue").update({
             crawl_status: "failed",
             crawl_attempts: item.crawl_attempts + 1,
             last_crawl_at: new Date().toISOString(),
-            last_crawl_error: `Missing: ${!extracted.year ? "year " : ""}${!extracted.make ? "make " : ""}${!extracted.model ? "model" : ""}`.trim(),
+            last_crawl_error: `Missing: ${missing}`,
+            last_crawl_http_status: httpStatus,
+            content_len: contentLen,
           }).eq("id", itemId);
           
           rejectReasons["missing_required"] = (rejectReasons["missing_required"] || 0) + 1;
@@ -443,6 +483,8 @@ Deno.serve(async (req) => {
           crawl_attempts: item.crawl_attempts + 1,
           last_crawl_at: new Date().toISOString(),
           last_crawl_error: null,
+          last_crawl_http_status: httpStatus,
+          content_len: contentLen,
           year: extracted.year,
           make: extracted.make,
           model: extracted.model,
@@ -492,7 +534,7 @@ Deno.serve(async (req) => {
     await supabase.from("pickles_detail_runs").update({
       detail_fetched: detailFetched,
       parsed_ok: parsedOk,
-      inserted: 0, // Could add vehicle_listings upsert later
+      inserted: 0,
       updated: 0,
       rejected,
       reject_reasons: rejectReasons,
@@ -506,7 +548,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         run_id: runId,
-        claimed: queueItems.length,
+        claimed: claimedItems.length,
         detail_fetched: detailFetched,
         parsed_ok: parsedOk,
         rejected,

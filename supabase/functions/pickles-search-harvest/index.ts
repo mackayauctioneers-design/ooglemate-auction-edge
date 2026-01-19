@@ -1,19 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * PICKLES SEARCH HARVESTER - Phase 1 of two-phase pipeline
+ * PICKLES SEARCH HARVESTER - Phase 1 (Hardened)
  * 
- * Input: Search URL (optional, defaults to Cars & Motorcycles)
- * Output: pickles_detail_queue (URLs only)
- * 
- * Stores ONLY:
- * - detail_url (must match /used/details/cars/.../\d+)
- * - source_listing_id (the numeric stock ID)
- * - search_url (which search found this)
- * - page_no
- * - first_seen_at, last_seen_at
- * 
- * DOES NOT extract price/km/variant - that's the detail micro-crawler's job
+ * Improvements:
+ * - Uses URLSearchParams for proper query encoding
+ * - Batch upsert via RPC (eliminates per-item selects)
+ * - HTML anchor parsing (not just regex)
+ * - URL normalization (strips tracking params)
+ * - Stable pagination sort
  */
 
 const corsHeaders = {
@@ -22,49 +17,128 @@ const corsHeaders = {
 };
 
 // Regex: /used/details/cars/{slug}/{stockId} where stockId is digits
-const PICKLES_DETAIL_PATTERN = /\/used\/details\/cars\/[^\/]+\/(\d+)/;
+const PICKLES_DETAIL_PATTERN = /\/used\/details\/cars\/[^\/\s"'<>?#]+\/(\d+)/;
+
+// Tracking params to strip
+const TRACKING_PARAMS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "fbclid", "gclid", "ref", "source"];
 
 interface HarvestedUrl {
   detail_url: string;
   source_listing_id: string;
+  page_no: number;
 }
 
-// Extract all detail page URLs from search results HTML/markdown
-function extractDetailUrls(content: string): HarvestedUrl[] {
+// Normalize URL: strip tracking params, ensure https
+function normalizeDetailUrl(rawUrl: string): string | null {
+  try {
+    // Ensure absolute URL
+    let url: URL;
+    if (rawUrl.startsWith("/")) {
+      url = new URL(rawUrl, "https://www.pickles.com.au");
+    } else if (rawUrl.startsWith("http")) {
+      url = new URL(rawUrl);
+    } else {
+      return null;
+    }
+    
+    // Must be pickles.com.au
+    if (!url.hostname.includes("pickles.com.au")) {
+      return null;
+    }
+    
+    // Strip tracking params
+    for (const param of TRACKING_PARAMS) {
+      url.searchParams.delete(param);
+    }
+    
+    // Validate path matches detail pattern
+    if (!PICKLES_DETAIL_PATTERN.test(url.pathname)) {
+      return null;
+    }
+    
+    // Return clean URL (no query string for detail pages)
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+// Extract stock ID from URL
+function extractStockId(url: string): string | null {
+  const match = url.match(PICKLES_DETAIL_PATTERN);
+  return match ? match[1] : null;
+}
+
+// Extract detail URLs from HTML - prioritize <a href> parsing
+function extractDetailUrls(content: string, pageNo: number): HarvestedUrl[] {
   const urls: HarvestedUrl[] = [];
   const seen = new Set<string>();
   
-  // Pattern: full URL or relative path to detail page
-  const patterns = [
-    /https:\/\/www\.pickles\.com\.au\/used\/details\/cars\/[^\s"'<>]+\/(\d+)/gi,
-    /\/used\/details\/cars\/[^\s"'<>]+\/(\d+)/gi,
-  ];
+  // Strategy 1: Parse <a href="..."> links (most reliable)
+  const hrefPattern = /href=["']([^"']*\/used\/details\/cars\/[^"'\s]+\/\d+)[^"']*/gi;
+  let match;
   
-  for (const pattern of patterns) {
-    const matches = content.matchAll(pattern);
-    for (const match of matches) {
-      const fullMatch = match[0];
-      const stockId = match[1];
-      
-      if (!stockId || seen.has(stockId)) continue;
-      seen.add(stockId);
-      
-      // Normalize to full URL
-      const detailUrl = fullMatch.startsWith("http") 
-        ? fullMatch 
-        : `https://www.pickles.com.au${fullMatch}`;
-      
-      // Validate it matches detail pattern
-      if (PICKLES_DETAIL_PATTERN.test(detailUrl)) {
-        urls.push({
-          detail_url: detailUrl,
-          source_listing_id: stockId,
-        });
-      }
-    }
+  while ((match = hrefPattern.exec(content)) !== null) {
+    const rawUrl = match[1];
+    const normalizedUrl = normalizeDetailUrl(rawUrl);
+    
+    if (!normalizedUrl) continue;
+    
+    const stockId = extractStockId(normalizedUrl);
+    if (!stockId || seen.has(stockId)) continue;
+    
+    seen.add(stockId);
+    urls.push({
+      detail_url: normalizedUrl,
+      source_listing_id: stockId,
+      page_no: pageNo,
+    });
+  }
+  
+  // Strategy 2: Fallback regex for non-anchor URLs (markdown, etc.)
+  const fallbackPattern = /https:\/\/www\.pickles\.com\.au\/used\/details\/cars\/[^\s"'<>?#]+\/(\d+)/gi;
+  
+  while ((match = fallbackPattern.exec(content)) !== null) {
+    const rawUrl = match[0];
+    const stockId = match[1];
+    
+    if (seen.has(stockId)) continue;
+    
+    const normalizedUrl = normalizeDetailUrl(rawUrl);
+    if (!normalizedUrl) continue;
+    
+    seen.add(stockId);
+    urls.push({
+      detail_url: normalizedUrl,
+      source_listing_id: stockId,
+      page_no: pageNo,
+    });
   }
   
   return urls;
+}
+
+// Build search URL with proper encoding
+function buildSearchUrl(baseUrl: string, page: number, yearMin?: number): string {
+  const url = new URL(baseUrl);
+  const params = new URLSearchParams();
+  
+  // Stable pagination params
+  params.set("contentkey", "all-cars");
+  params.set("limit", "120");
+  params.set("page", String(page));
+  params.set("sort", "endDate asc"); // Stable sort: closing soon first
+  
+  // Buy method filter (auction opportunities only)
+  // Pickles uses array notation: filter[buyMethod][]=Pickles Online
+  // But their API also accepts: buyMethod=Pickles Online,Pickles Live
+  params.set("buyMethod", "Pickles Online,Pickles Live");
+  
+  if (yearMin) {
+    params.set("year-min", String(yearMin));
+  }
+  
+  return `${url.origin}${url.pathname}?${params.toString()}`;
 }
 
 Deno.serve(async (req) => {
@@ -97,34 +171,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Build search URL
+    // Build base search URL
     let baseSearchUrl = search_url;
     if (!baseSearchUrl) {
       if (make && model) {
-        // Specific make/model search
         const normMake = make.toLowerCase().trim().replace(/\s+/g, "-");
         const normModel = model.toLowerCase().trim().replace(/\s+/g, "-");
         baseSearchUrl = `https://www.pickles.com.au/used/search/cars/${normMake}/${normModel}`;
       } else {
-        // Default: all cars with auction buy methods
         baseSearchUrl = "https://www.pickles.com.au/used/search/lob/cars-motorcycles/cars";
       }
     }
 
-    // Add filters
-    const filters: string[] = [];
-    filters.push("limit=120");
-    filters.push("sort=productLocation/suburb+desc");
-    
-    // Buy method filter: Pickles Online OR Pickles Live (auction opportunities)
-    filters.push("filter=and[0][or][0][buyMethod]=Pickles Online&and[0][or][1][buyMethod]=Pickles Live");
-    
-    if (year_min) {
-      filters.push(`year-min=${year_min}`);
-    }
-
-    const filterStr = filters.join("&");
-    
     // Create harvest run record
     const runId = crypto.randomUUID();
     await supabase.from("pickles_harvest_runs").insert({
@@ -135,16 +193,16 @@ Deno.serve(async (req) => {
 
     console.log(`[HARVEST] Starting run ${runId}`);
     console.log(`[HARVEST] Base URL: ${baseSearchUrl}`);
-    console.log(`[HARVEST] Filters: ${filterStr}`);
 
     if (debug) {
+      const sampleUrl = buildSearchUrl(baseSearchUrl, 1, year_min);
       return new Response(
         JSON.stringify({
           success: true,
           debug: true,
           run_id: runId,
           base_url: baseSearchUrl,
-          filters: filterStr,
+          sample_page_url: sampleUrl,
           max_pages,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -158,7 +216,7 @@ Deno.serve(async (req) => {
     let consecutiveEmpty = 0;
 
     for (let page = 1; page <= max_pages && consecutiveEmpty < 2; page++) {
-      const pageUrl = `${baseSearchUrl}?${filterStr}&page=${page}`;
+      const pageUrl = buildSearchUrl(baseSearchUrl, page, year_min);
       console.log(`[HARVEST] Page ${page}: ${pageUrl}`);
 
       try {
@@ -172,7 +230,7 @@ Deno.serve(async (req) => {
             url: pageUrl,
             formats: ["html", "markdown"],
             onlyMainContent: false,
-            waitFor: 5000, // Wait for Vue.js to render
+            waitFor: 5000,
           }),
         });
 
@@ -189,7 +247,7 @@ Deno.serve(async (req) => {
         const markdown = scrapeData.data?.markdown || "";
         const content = `${html}\n${markdown}`;
 
-        const pageUrls = extractDetailUrls(content);
+        const pageUrls = extractDetailUrls(content, page);
         console.log(`[HARVEST] Page ${page}: ${pageUrls.length} detail URLs found`);
 
         if (pageUrls.length === 0) {
@@ -211,7 +269,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Dedupe URLs
+    // Dedupe by stock ID
     const uniqueUrls = new Map<string, HarvestedUrl>();
     for (const url of allUrls) {
       if (!uniqueUrls.has(url.source_listing_id)) {
@@ -221,45 +279,33 @@ Deno.serve(async (req) => {
 
     console.log(`[HARVEST] Total unique URLs: ${uniqueUrls.size}`);
 
-    // Upsert to pickles_detail_queue
+    // Batch upsert via RPC (eliminates per-item selects)
+    const batchItems = Array.from(uniqueUrls.values()).map(u => ({
+      detail_url: u.detail_url,
+      source_listing_id: u.source_listing_id,
+      search_url: baseSearchUrl,
+      page_no: u.page_no,
+    }));
+
     let urlsNew = 0;
-    let urlsExisting = 0;
+    let urlsUpdated = 0;
 
-    for (const [stockId, urlData] of uniqueUrls) {
-      const { data: existing } = await supabase
-        .from("pickles_detail_queue")
-        .select("id")
-        .eq("source", "pickles")
-        .eq("source_listing_id", stockId)
-        .maybeSingle();
-
-      if (existing) {
-        // Update last_seen_at
-        await supabase
-          .from("pickles_detail_queue")
-          .update({ last_seen_at: new Date().toISOString() })
-          .eq("id", existing.id);
-        urlsExisting++;
-      } else {
-        // Insert new
-        const { error: insertErr } = await supabase
-          .from("pickles_detail_queue")
-          .insert({
-            source: "pickles",
-            detail_url: urlData.detail_url,
-            source_listing_id: stockId,
-            search_url: baseSearchUrl,
-            page_no: null, // Could track this if needed
-            run_id: runId,
-            crawl_status: "pending",
-          });
-
-        if (insertErr) {
-          console.error(`[HARVEST] Insert error for ${stockId}:`, insertErr.message);
-          errors.push(`Insert ${stockId}: ${insertErr.message}`);
-        } else {
-          urlsNew++;
+    if (batchItems.length > 0) {
+      const { data: upsertResult, error: upsertErr } = await supabase.rpc(
+        "upsert_pickles_harvest_batch",
+        {
+          p_items: batchItems,
+          p_run_id: runId,
         }
+      );
+
+      if (upsertErr) {
+        console.error("[HARVEST] Batch upsert failed:", upsertErr.message);
+        errors.push(`Batch upsert: ${upsertErr.message}`);
+      } else {
+        urlsNew = upsertResult?.inserted || 0;
+        urlsUpdated = upsertResult?.updated || 0;
+        console.log(`[HARVEST] Batch upsert: ${urlsNew} new, ${urlsUpdated} updated`);
       }
     }
 
@@ -270,13 +316,13 @@ Deno.serve(async (req) => {
       pages_crawled: pagesCrawled,
       urls_harvested: uniqueUrls.size,
       urls_new: urlsNew,
-      urls_existing: urlsExisting,
+      urls_existing: urlsUpdated,
       errors: errors.length > 0 ? errors : null,
       duration_ms: duration,
       status: "completed",
     }).eq("id", runId);
 
-    console.log(`[HARVEST] Completed: ${uniqueUrls.size} URLs (${urlsNew} new, ${urlsExisting} existing)`);
+    console.log(`[HARVEST] Completed: ${uniqueUrls.size} URLs (${urlsNew} new, ${urlsUpdated} existing)`);
 
     return new Response(
       JSON.stringify({
@@ -286,7 +332,7 @@ Deno.serve(async (req) => {
         pages_crawled: pagesCrawled,
         urls_harvested: uniqueUrls.size,
         urls_new: urlsNew,
-        urls_existing: urlsExisting,
+        urls_existing: urlsUpdated,
         errors: errors.length > 0 ? errors : undefined,
         duration_ms: duration,
       }),

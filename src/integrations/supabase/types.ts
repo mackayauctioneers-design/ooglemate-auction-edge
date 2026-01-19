@@ -3228,6 +3228,9 @@ export type Database = {
         Row: {
           asking_price: number | null
           buy_method: string | null
+          claimed_at: string | null
+          claimed_run_id: string | null
+          content_len: number | null
           crawl_attempts: number
           crawl_status: string
           detail_url: string
@@ -3237,6 +3240,7 @@ export type Database = {
           km: number | null
           last_crawl_at: string | null
           last_crawl_error: string | null
+          last_crawl_http_status: number | null
           last_seen_at: string
           location: string | null
           make: string | null
@@ -3257,6 +3261,9 @@ export type Database = {
         Insert: {
           asking_price?: number | null
           buy_method?: string | null
+          claimed_at?: string | null
+          claimed_run_id?: string | null
+          content_len?: number | null
           crawl_attempts?: number
           crawl_status?: string
           detail_url: string
@@ -3266,6 +3273,7 @@ export type Database = {
           km?: number | null
           last_crawl_at?: string | null
           last_crawl_error?: string | null
+          last_crawl_http_status?: number | null
           last_seen_at?: string
           location?: string | null
           make?: string | null
@@ -3286,6 +3294,9 @@ export type Database = {
         Update: {
           asking_price?: number | null
           buy_method?: string | null
+          claimed_at?: string | null
+          claimed_run_id?: string | null
+          content_len?: number | null
           crawl_attempts?: number
           crawl_status?: string
           detail_url?: string
@@ -3295,6 +3306,7 @@ export type Database = {
           km?: number | null
           last_crawl_at?: string | null
           last_crawl_error?: string | null
+          last_crawl_http_status?: number | null
           last_seen_at?: string
           location?: string | null
           make?: string | null
@@ -7186,6 +7198,52 @@ export type Database = {
           trap_slug: string
         }[]
       }
+      claim_pickles_detail_batch: {
+        Args: {
+          p_batch_size?: number
+          p_max_retries?: number
+          p_run_id?: string
+        }
+        Returns: {
+          asking_price: number | null
+          buy_method: string | null
+          claimed_at: string | null
+          claimed_run_id: string | null
+          content_len: number | null
+          crawl_attempts: number
+          crawl_status: string
+          detail_url: string
+          first_seen_at: string
+          guide_price: number | null
+          id: string
+          km: number | null
+          last_crawl_at: string | null
+          last_crawl_error: string | null
+          last_crawl_http_status: number | null
+          last_seen_at: string
+          location: string | null
+          make: string | null
+          model: string | null
+          page_no: number | null
+          reserve_price: number | null
+          run_id: string | null
+          sale_close_at: string | null
+          sale_status: string | null
+          search_url: string | null
+          sold_price: number | null
+          source: string
+          source_listing_id: string
+          state: string | null
+          variant_raw: string | null
+          year: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "pickles_detail_queue"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       compute_dealer_grade:
         | {
             Args: {
@@ -8020,6 +8078,10 @@ export type Database = {
         Args: { p_source: string; p_stale_interval?: unknown }
         Returns: number
       }
+      mark_pickles_stale: {
+        Args: { p_days_threshold?: number }
+        Returns: number
+      }
       mark_spec_matches_slack_sent: {
         Args: { p_match_ids: string[] }
         Returns: number
@@ -8303,6 +8365,10 @@ export type Database = {
           p_page_crawled: number
         }
         Returns: undefined
+      }
+      upsert_pickles_harvest_batch: {
+        Args: { p_items: Json; p_run_id: string }
+        Returns: Json
       }
       upsert_retail_listing: {
         Args: {
