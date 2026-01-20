@@ -4,6 +4,11 @@
  * Apify Actor that bypasses 403 blocks by running in Playwright.
  * Extracts MTA IDs from VMA search results and upserts to pickles_detail_queue via RPC.
  * 
+ * Auto-detects pagination mode:
+ * - page_param: querystring-based (?page=2)
+ * - postback_or_click: ASP.NET postback / "Next" button click
+ * - none: single page
+ * 
  * Environment Variables (Apify Secrets):
  * - SUPABASE_URL
  * - SUPABASE_SERVICE_ROLE_KEY
@@ -11,7 +16,7 @@
  * Input JSON:
  * {
  *   "searchUrl": "https://www.valleymotorauctions.com.au/search_results.aspx?sitekey=VMA&make=All%20Makes&model=All%20Models&fromyear=2016",
- *   "maxPages": 1,
+ *   "maxPages": 5,
  *   "runId": null
  * }
  */
@@ -25,7 +30,7 @@ const input = (await Actor.getInput()) || {};
 const searchUrl =
   input.searchUrl ||
   "https://www.valleymotorauctions.com.au/search_results.aspx?sitekey=VMA&make=All%20Makes&model=All%20Models";
-const maxPages = Number.isFinite(input.maxPages) ? input.maxPages : 1;
+const maxPages = Number.isFinite(input.maxPages) ? input.maxPages : 5;
 const runId = input.runId || crypto.randomUUID();
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -46,29 +51,28 @@ const page = await browser.newPage({
 
 const itemsMap = new Map(); // mta -> item
 
-for (let p = 1; p <= maxPages; p++) {
-  // v1: no confirmed paging param, so harvest the first page.
-  // Once we identify paging links, we'll add pagination properly.
-  await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+// --- Helpers ---
+function withPageParam(url, pageNum) {
+  const u = new URL(url);
+  u.searchParams.set("page", String(pageNum));
+  return u.toString();
+}
 
-  // Wait for results to appear (robust wait)
-  await page.waitForFunction(() => {
+async function extractMtas(pg, searchUrlRef) {
+  // wait briefly for links to exist (don't hard fail)
+  await pg.waitForFunction(() => {
     return Array.from(document.querySelectorAll("a"))
       .some(a => (a.href || "").includes("cp_veh_inspection_report.aspx") && (a.href || "").includes("MTA="));
-  }, { timeout: 20000 }).catch(() => {
-    console.log("[VMA] Timeout waiting for results - page may be empty");
-  });
+  }, { timeout: 15000 }).catch(() => {});
 
-  // Pull all inspection links (de-duped)
-  const links = await page.$$eval("a", (as) =>
+  const links = await pg.$$eval("a", (as) =>
     [...new Set(as
       .map((a) => a.href)
       .filter((h) => h && h.includes("cp_veh_inspection_report.aspx") && h.includes("MTA="))
     )]
   );
 
-  console.log(`[VMA] Page ${p}: Found ${links.length} raw links`);
-
+  let added = 0;
   for (const href of links) {
     try {
       const u = new URL(href);
@@ -77,38 +81,28 @@ for (let p = 1; p <= maxPages; p++) {
       if (!mta) continue;
 
       const cleanUrl = `https://www.valleymotorauctions.com.au/cp_veh_inspection_report.aspx?MTA=${mta}&sitekey=${sitekey}`;
-
+      const before = itemsMap.size;
       itemsMap.set(String(mta), {
         source_listing_id: String(mta),
         detail_url: cleanUrl,
-        search_url: searchUrl,
+        search_url: searchUrlRef,
         page_no: null,
       });
-    } catch {
-      // ignore malformed
-    }
+      if (itemsMap.size > before) added++;
+    } catch {}
   }
+  return { rawLinks: links.length, added };
+}
 
-  // Check for pager (safe + ASP.NET aware)
-  const pagerInfo = await page.evaluate(() => {
-    const textIncludes = (el, needle) =>
-      (el?.textContent || "").trim().toLowerCase().includes(needle);
-
+async function detectPagingMode(pg) {
+  return await pg.evaluate(() => {
     const anchors = Array.from(document.querySelectorAll("a"));
+    const hrefs = anchors.map(a => a.getAttribute("href") || "");
 
-    // Any "Next" style link by text
-    const nextByText = anchors.find((a) => textIncludes(a, "next"));
+    const hasPageParamLinks = hrefs.some(h => /[?&]page=\d+/i.test(h));
+    const hasPostBackLinks = hrefs.some(h => h.includes("__doPostBack"));
 
-    // Any href-based paging (page=2 etc.)
-    const pageHrefLinks = anchors.filter((a) => /[?&]page=\d+/i.test(a.getAttribute("href") || ""));
-
-    // ASP.NET postback paging patterns
-    const postBackLinks = anchors.filter((a) => {
-      const href = a.getAttribute("href") || "";
-      return href.includes("__doPostBack") || href.includes("__EVENTTARGET") || href.includes("__EVENTARGUMENT");
-    });
-
-    // Common pager containers
+    const nextByText = anchors.find(a => (a.textContent || "").trim().toLowerCase().includes("next"));
     const pagerEl =
       document.querySelector(".pager") ||
       document.querySelector(".pagination") ||
@@ -116,25 +110,78 @@ for (let p = 1; p <= maxPages; p++) {
       document.querySelector("[class*='pager']") ||
       document.querySelector("[class*='pagination']");
 
-    // Also look for form fields that indicate ASP.NET paging
     const hasEventTarget = !!document.querySelector("input[name='__EVENTTARGET']");
     const hasEventArgument = !!document.querySelector("input[name='__EVENTARGUMENT']");
 
     return {
       hasPagerContainer: !!pagerEl,
       hasNextByText: !!nextByText,
-      pageHrefLinksCount: pageHrefLinks.length,
-      postBackLinksCount: postBackLinks.length,
+      hasPageParamLinks,
+      hasPostBackLinks,
       hasEventTarget,
       hasEventArgument,
       pagerHtmlSample: pagerEl ? pagerEl.outerHTML.slice(0, 800) : null,
     };
   });
-  
-  console.log(`[VMA] Pager info:`, JSON.stringify(pagerInfo));
+}
 
-  // break until we implement paging
-  break;
+async function clickNextIfExists(pg) {
+  // try click "Next" by text
+  const clicked = await pg.evaluate(() => {
+    const anchors = Array.from(document.querySelectorAll("a"));
+    const next = anchors.find(a => (a.textContent || "").trim().toLowerCase().includes("next"));
+    if (next) { next.click(); return true; }
+    return false;
+  });
+  if (clicked) {
+    await pg.waitForTimeout(2000);
+    return true;
+  }
+  return false;
+}
+
+// --- Main paging loop ---
+await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+await page.waitForTimeout(1500);
+
+const paging = await detectPagingMode(page);
+console.log("[VMA] Pager info:", JSON.stringify(paging));
+
+let mode = "none";
+if (paging.hasPageParamLinks) mode = "page_param";
+else if (paging.hasPostBackLinks || paging.hasEventTarget) mode = "postback_or_click";
+
+console.log(`[VMA] Paging mode: ${mode}`);
+
+let lastCount = 0;
+
+for (let p = 1; p <= maxPages; p++) {
+  if (p === 1) {
+    // already loaded
+  } else if (mode === "page_param") {
+    const url = withPageParam(searchUrl, p);
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForTimeout(1500);
+  } else if (mode === "postback_or_click") {
+    const ok = await clickNextIfExists(page);
+    if (!ok) {
+      console.log(`[VMA] No Next clickable on page ${p}. Stopping.`);
+      break;
+    }
+  } else {
+    // no paging - just process page 1 and stop
+    if (p > 1) break;
+  }
+
+  const { rawLinks, added } = await extractMtas(page, searchUrl);
+  console.log(`[VMA] Page ${p}: rawLinks=${rawLinks}, added=${added}, totalUnique=${itemsMap.size}`);
+
+  // stop if no growth (end reached)
+  if (p > 1 && itemsMap.size === lastCount) {
+    console.log(`[VMA] No increase after page ${p}. Stopping.`);
+    break;
+  }
+  lastCount = itemsMap.size;
 }
 
 await browser.close();
@@ -177,6 +224,7 @@ await Actor.pushData({
   searchUrl,
   uniqueMtasFound: items.length,
   rpcResult: JSON.parse(rpcText),
+  pagingMode: mode,
   timestamp: new Date().toISOString(),
 });
 
