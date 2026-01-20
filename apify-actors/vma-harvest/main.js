@@ -34,12 +34,17 @@ const searchUrl =
 const maxPages = Number.isFinite(input.maxPages) ? input.maxPages : 5;
 const runId = input.runId || crypto.randomUUID();
 
-// Edge function endpoint and key from Apify secrets
-const INGEST_ENDPOINT = process.env.INGEST_ENDPOINT || "https://xznchxsbuwngfmwvsvhq.supabase.co/functions/v1/ingest-vma";
-const INGEST_KEY = process.env.INGEST_KEY;
+// Edge function endpoint and key - supports both env vars AND input JSON fallback
+// Priority: env var > input JSON > default (for endpoint only)
+const INGEST_ENDPOINT =
+  process.env.INGEST_ENDPOINT ||
+  input.INGEST_ENDPOINT ||
+  "https://xznchxsbuwngfmwvsvhq.supabase.co/functions/v1/ingest-vma";
+
+const INGEST_KEY = process.env.INGEST_KEY || input.INGEST_KEY;
 
 if (!INGEST_KEY) {
-  throw new Error("Missing INGEST_KEY in Apify secrets (this is your VMA_INGEST_KEY value)");
+  throw new Error("Missing INGEST_KEY (set in Apify env vars OR pass in input JSON)");
 }
 
 const SOURCE = "vma";
