@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
     const auth = req.headers.get("authorization") || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
 
-    const expected = Deno.env.get("INGEST_WEBHOOK_SECRET") || "";
+    const expected = Deno.env.get("VMA_INGEST_KEY") || "";
     if (!expected || token !== expected) {
       console.error("[ingest-vma] Unauthorized - token mismatch");
       return new Response(
