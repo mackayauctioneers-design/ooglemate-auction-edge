@@ -21,8 +21,9 @@ Deno.serve(async (req) => {
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
 
     const expected = Deno.env.get("VMA_INGEST_KEY") || "";
+    console.log(`[ingest-vma] Auth check: token_len=${token.length}, expected_len=${expected.length}, match=${token === expected}`);
     if (!expected || token !== expected) {
-      console.error("[ingest-vma] Unauthorized - token mismatch");
+      console.error("[ingest-vma] Unauthorized - token mismatch, expected_prefix=${expected.slice(0,8)}..., got_prefix=${token.slice(0,8)}...");
       return new Response(
         JSON.stringify({ success: false, error: "Unauthorized" }),
         {
