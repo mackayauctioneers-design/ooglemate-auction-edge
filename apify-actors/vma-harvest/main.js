@@ -51,14 +51,20 @@ for (let p = 1; p <= maxPages; p++) {
   // Once we identify paging links, we'll add pagination properly.
   await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-  // Give JS time to hydrate if required
-  await page.waitForTimeout(2500);
+  // Wait for results to appear (robust wait)
+  await page.waitForFunction(() => {
+    return Array.from(document.querySelectorAll("a"))
+      .some(a => (a.href || "").includes("cp_veh_inspection_report.aspx") && (a.href || "").includes("MTA="));
+  }, { timeout: 20000 }).catch(() => {
+    console.log("[VMA] Timeout waiting for results - page may be empty");
+  });
 
-  // Pull all inspection links
+  // Pull all inspection links (de-duped)
   const links = await page.$$eval("a", (as) =>
-    as
+    [...new Set(as
       .map((a) => a.href)
       .filter((h) => h && h.includes("cp_veh_inspection_report.aspx") && h.includes("MTA="))
+    )]
   );
 
   console.log(`[VMA] Page ${p}: Found ${links.length} raw links`);
@@ -83,15 +89,45 @@ for (let p = 1; p <= maxPages; p++) {
     }
   }
 
-  // Check for pager (for future pagination support)
+  // Check for pager (safe + ASP.NET aware)
   const pagerInfo = await page.evaluate(() => {
-    // Look for common pager patterns
-    const nextBtn = document.querySelector('a[href*="page="], a:contains("Next"), .pagination a');
-    const pageLinks = document.querySelectorAll('.pager a, .pagination a, a[href*="__EVENTARGUMENT"]');
+    const textIncludes = (el, needle) =>
+      (el?.textContent || "").trim().toLowerCase().includes(needle);
+
+    const anchors = Array.from(document.querySelectorAll("a"));
+
+    // Any "Next" style link by text
+    const nextByText = anchors.find((a) => textIncludes(a, "next"));
+
+    // Any href-based paging (page=2 etc.)
+    const pageHrefLinks = anchors.filter((a) => /[?&]page=\d+/i.test(a.getAttribute("href") || ""));
+
+    // ASP.NET postback paging patterns
+    const postBackLinks = anchors.filter((a) => {
+      const href = a.getAttribute("href") || "";
+      return href.includes("__doPostBack") || href.includes("__EVENTTARGET") || href.includes("__EVENTARGUMENT");
+    });
+
+    // Common pager containers
+    const pagerEl =
+      document.querySelector(".pager") ||
+      document.querySelector(".pagination") ||
+      document.querySelector("#pager") ||
+      document.querySelector("[class*='pager']") ||
+      document.querySelector("[class*='pagination']");
+
+    // Also look for form fields that indicate ASP.NET paging
+    const hasEventTarget = !!document.querySelector("input[name='__EVENTTARGET']");
+    const hasEventArgument = !!document.querySelector("input[name='__EVENTARGUMENT']");
+
     return {
-      hasNextButton: !!nextBtn,
-      pageLinksCount: pageLinks.length,
-      pagerHtml: document.querySelector('.pager, .pagination')?.outerHTML?.slice(0, 500) || null
+      hasPagerContainer: !!pagerEl,
+      hasNextByText: !!nextByText,
+      pageHrefLinksCount: pageHrefLinks.length,
+      postBackLinksCount: postBackLinks.length,
+      hasEventTarget,
+      hasEventArgument,
+      pagerHtmlSample: pagerEl ? pagerEl.outerHTML.slice(0, 800) : null,
     };
   });
   
