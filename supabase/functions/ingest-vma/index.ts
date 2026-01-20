@@ -8,6 +8,8 @@ const corsHeaders = {
 interface HarvestItem {
   source_listing_id: string;
   detail_url: string;
+  search_url?: string;
+  page_no?: number;
 }
 
 interface IngestPayload {
@@ -60,6 +62,8 @@ Deno.serve(async (req) => {
       p_items: items.map(item => ({
         source_listing_id: item.source_listing_id,
         detail_url: item.detail_url,
+        search_url: item.search_url ?? null,
+        page_no: item.page_no ?? null,
       })),
     });
 
