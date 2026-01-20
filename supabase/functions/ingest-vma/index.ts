@@ -5,7 +5,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 Deno.serve(async (req) => {
@@ -21,10 +23,13 @@ Deno.serve(async (req) => {
     const expected = Deno.env.get("INGEST_WEBHOOK_SECRET") || "";
     if (!expected || token !== expected) {
       console.error("[ingest-vma] Unauthorized - token mismatch");
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     const body = await req.json();
@@ -33,12 +38,12 @@ Deno.serve(async (req) => {
     console.log(`[ingest-vma] Received ${items.length} items`);
 
     if (items.length === 0) {
-      return new Response(JSON.stringify({ success: true, upserted: 0, message: "No items" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: true, upserted: 0, message: "No items" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // Service role is available inside Lovable Edge (via env)
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRole);
@@ -67,7 +72,6 @@ Deno.serve(async (req) => {
 
     console.log(`[ingest-vma] Upserting ${rows.length} valid rows`);
 
-    // Upsert into pickles_detail_queue
     const { data, error } = await supabase
       .from("pickles_detail_queue")
       .upsert(rows, { onConflict: "source,source_listing_id" })
