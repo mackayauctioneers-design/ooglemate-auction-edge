@@ -2,7 +2,7 @@
  * VMA (Valley Motor Auctions) Phase-1 Harvester
  * 
  * Apify Actor that bypasses 403 blocks by running in Playwright.
- * Extracts MTA IDs from VMA search results and upserts to pickles_detail_queue via RPC.
+ * Extracts MTA IDs from VMA search results and sends to Lovable Edge Function.
  * 
  * Auto-detects pagination mode:
  * - page_param: querystring-based (?page=2)
@@ -10,8 +10,8 @@
  * - none: single page
  * 
  * Environment Variables (Apify Secrets):
- * - SUPABASE_URL
- * - SUPABASE_SERVICE_ROLE_KEY
+ * - INGEST_ENDPOINT (e.g. https://xznchxsbuwngfmwvsvhq.supabase.co/functions/v1/ingest-vma)
+ * - INGEST_KEY (your VMA_INGEST_KEY value)
  * 
  * Input JSON:
  * {
@@ -33,14 +33,14 @@ const searchUrl =
 const maxPages = Number.isFinite(input.maxPages) ? input.maxPages : 5;
 const runId = input.runId || crypto.randomUUID();
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Edge function endpoint and key from Apify secrets
+const INGEST_ENDPOINT = process.env.INGEST_ENDPOINT || "https://xznchxsbuwngfmwvsvhq.supabase.co/functions/v1/ingest-vma";
+const INGEST_KEY = process.env.INGEST_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in Apify secrets");
+if (!INGEST_KEY) {
+  throw new Error("Missing INGEST_KEY in Apify secrets (this is your VMA_INGEST_KEY value)");
 }
 
-const RPC_NAME = "upsert_harvest_batch";
 const SOURCE = "vma";
 
 const browser = await chromium.launch({ headless: true });
@@ -58,7 +58,7 @@ function withPageParam(url, pageNum) {
   return u.toString();
 }
 
-async function extractMtas(pg, searchUrlRef) {
+async function extractMtas(pg, searchUrlRef, pageNo) {
   // wait briefly for links to exist (don't hard fail)
   await pg.waitForFunction(() => {
     return Array.from(document.querySelectorAll("a"))
@@ -86,7 +86,7 @@ async function extractMtas(pg, searchUrlRef) {
         source_listing_id: String(mta),
         detail_url: cleanUrl,
         search_url: searchUrlRef,
-        page_no: null,
+        page_no: pageNo,
       });
       if (itemsMap.size > before) added++;
     } catch {}
@@ -173,7 +173,7 @@ for (let p = 1; p <= maxPages; p++) {
     if (p > 1) break;
   }
 
-  const { rawLinks, added } = await extractMtas(page, searchUrl);
+  const { rawLinks, added } = await extractMtas(page, searchUrl, p);
   console.log(`[VMA] Page ${p}: rawLinks=${rawLinks}, added=${added}, totalUnique=${itemsMap.size}`);
 
   // stop if no growth (end reached)
@@ -188,34 +188,44 @@ await browser.close();
 
 const items = Array.from(itemsMap.values());
 
-console.log(`[VMA] Found ${items.length} unique MTAs. Calling RPC...`);
+console.log(`[VMA] Found ${items.length} unique MTAs. Sending to edge function...`);
 
 if (items.length === 0) {
-  console.log("[VMA] No items found - skipping RPC call");
+  console.log("[VMA] No items found - skipping ingest call");
+  await Actor.pushData({
+    runId,
+    source: SOURCE,
+    searchUrl,
+    uniqueMtasFound: 0,
+    ingestResult: null,
+    pagingMode: mode,
+    timestamp: new Date().toISOString(),
+  });
   await Actor.exit();
 }
 
-const rpcRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${RPC_NAME}`, {
+// Call the Lovable Edge Function instead of Supabase directly
+const ingestRes = await fetch(INGEST_ENDPOINT, {
   method: "POST",
   headers: {
-    apikey: SUPABASE_SERVICE_ROLE_KEY,
-    authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-    "content-type": "application/json",
+    "Content-Type": "application/json",
+    "x-ingest-key": INGEST_KEY,
   },
   body: JSON.stringify({
-    p_source: SOURCE,
-    p_items: items,
-    p_run_id: runId,
+    source: SOURCE,
+    run_id: runId,
+    items: items,
   }),
 });
 
-const rpcText = await rpcRes.text();
+const ingestText = await ingestRes.text();
 
-if (!rpcRes.ok) {
-  throw new Error(`RPC failed ${rpcRes.status}: ${rpcText}`);
+if (!ingestRes.ok) {
+  throw new Error(`Edge function failed ${ingestRes.status}: ${ingestText}`);
 }
 
-console.log(`[VMA] RPC OK: ${rpcText}`);
+const ingestResult = JSON.parse(ingestText);
+console.log(`[VMA] Ingest OK:`, ingestResult);
 
 // Store output for Apify dataset
 await Actor.pushData({
@@ -223,7 +233,7 @@ await Actor.pushData({
   source: SOURCE,
   searchUrl,
   uniqueMtasFound: items.length,
-  rpcResult: JSON.parse(rpcText),
+  ingestResult,
   pagingMode: mode,
   timestamp: new Date().toISOString(),
 });
