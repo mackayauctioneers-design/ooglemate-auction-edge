@@ -1,7 +1,7 @@
 /**
  * VMA (Valley Motor Auctions) Phase-1 Harvester
  * 
- * Apify Actor that bypasses 403 blocks by running in Playwright.
+ * Apify Actor that bypasses 403 blocks by running in Playwright with Apify Proxy.
  * Extracts MTA IDs from VMA search results and sends to Lovable Edge Function.
  * 
  * Input JSON:
@@ -30,11 +30,58 @@ if (!searchUrl) throw new Error("Missing input.searchUrl");
 if (!INGEST_URL) throw new Error("Missing input.INGEST_URL");
 if (!INGEST_KEY) throw new Error("Missing input.INGEST_KEY");
 
-const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({
-  userAgent:
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+// ---- Apify Proxy (residential preferred, falls back to AUTO) ----
+const proxyConfiguration = await Actor.createProxyConfiguration({
+  // If you don't have residential on your plan, change to ["RESIDENTIAL"] → ["AUTO"]
+  groups: ["RESIDENTIAL"],
 });
+
+async function newProxyLaunch() {
+  const proxyUrl = await proxyConfiguration.newUrl();
+  const u = new URL(proxyUrl);
+
+  return chromium.launch({
+    headless: true,
+    proxy: {
+      server: `${u.protocol}//${u.host}`,
+      username: decodeURIComponent(u.username),
+      password: decodeURIComponent(u.password),
+    },
+  });
+}
+
+async function loadWithRetries(url, attempts = 5) {
+  for (let i = 1; i <= attempts; i++) {
+    const browser = await newProxyLaunch();
+    const context = await browser.newContext({
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    });
+    const page = await context.newPage();
+
+    console.log(`[VMA] Attempt ${i}/${attempts} loading via proxy...`);
+
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForTimeout(4000);
+
+    const title = await page.title().catch(() => "");
+    const bodySample = await page.evaluate(() => (document.body?.innerText || "").slice(0, 200));
+    const blocked =
+      title.toLowerCase().includes("service unavailable") ||
+      bodySample.toLowerCase().includes("request is blocked") ||
+      bodySample.toLowerCase().includes("blocked");
+
+    if (!blocked) {
+      console.log("[VMA] Page loaded OK (not blocked).");
+      return { browser, context, page };
+    }
+
+    console.log(`[VMA] Blocked response detected. Rotating proxy... Title="${title}" Sample="${bodySample}"`);
+    await browser.close();
+  }
+
+  throw new Error("VMA is blocking all proxy attempts. Need RESIDENTIAL proxy or different pool.");
+}
 
 const itemsMap = new Map(); // mta -> {mta, detail_url, search_url, page_no}
 
@@ -108,7 +155,7 @@ function extractMtasFromHtml(html, baseUrl) {
 /**
  * Detect pagination type and find next page action
  */
-async function detectPagingMode() {
+async function detectPagingMode(page) {
   return await page.evaluate(() => {
     // Check for page parameter in URL
     const url = new URL(window.location.href);
@@ -123,6 +170,7 @@ async function detectPagingMode() {
       const text = (a.textContent || '').toLowerCase().trim();
       return href.includes('__doPostBack') && (text === 'next' || text === '>' || text === '»' || text === 'next page');
     });
+
     if (postbackLink) {
       return { mode: 'postback', selector: null, element: 'found' };
     }
@@ -141,7 +189,7 @@ async function detectPagingMode() {
   });
 }
 
-async function clickNextPage() {
+async function clickNextPage(page) {
   // Try to find and click the next button
   const clicked = await page.evaluate(() => {
     const allLinks = Array.from(document.querySelectorAll('a'));
@@ -186,14 +234,13 @@ async function clickNextPage() {
   return false;
 }
 
-async function harvestPage(pageNo) {
+async function harvestPage(page, pageNo) {
   const html = await page.content();
   const results = extractMtasFromHtml(html, searchUrl);
 
   let added = 0;
   for (const [mta, detailUrl] of results) {
     if (itemsMap.has(mta)) continue;
-
     itemsMap.set(mta, {
       mta,
       detail_url: detailUrl,
@@ -216,10 +263,10 @@ async function harvestPage(pageNo) {
   return { mtasFound: results.size, added, total: itemsMap.size };
 }
 
-// Navigate to search page
+// ---- Main execution with proxy + retry ----
 console.log(`[VMA] Loading search URL: ${searchUrl}`);
-await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-await page.waitForTimeout(4000); // Extra wait for JS rendering
+
+const { browser, page } = await loadWithRetries(searchUrl, 5);
 
 // DEBUG: confirm we loaded the right page
 console.log("[VMA] URL:", page.url());
@@ -236,11 +283,11 @@ const linkCount = await page.$$eval("a", (as) => as.length);
 console.log("[VMA] Link count:", linkCount);
 
 // Harvest first page
-let stats = await harvestPage(1);
+let stats = await harvestPage(page, 1);
 console.log(`[VMA] Page 1: mtasFound=${stats.mtasFound}, added=${stats.added}, total=${stats.total}`);
 
 // Detect pagination mode
-const pagingMode = await detectPagingMode();
+const pagingMode = await detectPagingMode(page);
 console.log(`[VMA] Paging mode detected: ${pagingMode.mode}`);
 
 // Harvest additional pages if pagination exists
@@ -255,14 +302,14 @@ if (pagingMode.mode !== 'none' && maxPages > 1) {
       await page.waitForTimeout(3000);
     } else {
       // click or postback
-      const clicked = await clickNextPage();
+      const clicked = await clickNextPage(page);
       if (!clicked) {
         console.log(`[VMA] Could not click next page at page ${p}`);
         break;
       }
     }
     
-    stats = await harvestPage(p);
+    stats = await harvestPage(page, p);
     console.log(`[VMA] Page ${p}: mtasFound=${stats.mtasFound}, added=${stats.added}, total=${stats.total}`);
     
     // Stop if no new items found (likely end of results)
@@ -276,6 +323,13 @@ if (pagingMode.mode !== 'none' && maxPages > 1) {
 await browser.close();
 
 const items = Array.from(itemsMap.values());
+
+// Don't ingest if no items found
+if (items.length === 0) {
+  console.log("[VMA] No items found; skipping ingest.");
+  await Actor.exit();
+}
+
 console.log(`[VMA] Prepared ${items.length} items. Posting to ingest...`);
 
 const res = await fetch(INGEST_URL, {
@@ -288,7 +342,6 @@ const res = await fetch(INGEST_URL, {
 });
 
 const text = await res.text();
-
 if (!res.ok) {
   throw new Error(`Ingest failed ${res.status}: ${text}`);
 }
