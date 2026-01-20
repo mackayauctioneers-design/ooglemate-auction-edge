@@ -10,8 +10,9 @@
  * - none: single page
  * 
  * Environment Variables (Apify Secrets):
- * - INGEST_ENDPOINT (e.g. https://xznchxsbuwngfmwvsvhq.supabase.co/functions/v1/ingest-vma)
- * - INGEST_KEY (your VMA_INGEST_KEY value)
+ * Set these in: Actor -> Settings -> Environment variables (NOT input JSON)
+ * - INGEST_ENDPOINT (optional, defaults to the hardcoded URL below)
+ * - INGEST_KEY (REQUIRED: your VMA_INGEST_KEY value from Lovable Cloud Secrets)
  * 
  * Input JSON:
  * {
