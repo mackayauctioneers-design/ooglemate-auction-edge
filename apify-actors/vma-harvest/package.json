@@ -1,0 +1,14 @@
+{
+  "name": "vma-harvest",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "VMA (Valley Motor Auctions) Phase-1 harvester for MTA ID extraction",
+  "main": "main.js",
+  "dependencies": {
+    "apify": "^3.1.0",
+    "playwright": "^1.40.0"
+  },
+  "scripts": {
+    "start": "node main.js"
+  }
+}

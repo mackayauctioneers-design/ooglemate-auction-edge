@@ -1,0 +1,30 @@
+{
+  "title": "VMA Harvest Input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "searchUrl": {
+      "title": "Search URL",
+      "type": "string",
+      "description": "VMA search results page URL to harvest",
+      "default": "https://www.valleymotorauctions.com.au/search_results.aspx?sitekey=VMA&make=All%20Makes&model=All%20Models&fromyear=2016",
+      "editor": "textfield"
+    },
+    "maxPages": {
+      "title": "Max Pages",
+      "type": "integer",
+      "description": "Maximum number of pages to crawl (pagination not yet implemented)",
+      "default": 1,
+      "minimum": 1,
+      "maximum": 50
+    },
+    "runId": {
+      "title": "Run ID",
+      "type": "string",
+      "description": "Optional UUID for tracking this harvest run. Auto-generated if not provided.",
+      "editor": "textfield",
+      "nullable": true
+    }
+  },
+  "required": []
+}
