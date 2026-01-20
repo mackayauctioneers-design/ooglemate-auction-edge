@@ -221,6 +221,20 @@ console.log(`[VMA] Loading search URL: ${searchUrl}`);
 await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
 await page.waitForTimeout(4000); // Extra wait for JS rendering
 
+// DEBUG: confirm we loaded the right page
+console.log("[VMA] URL:", page.url());
+
+// DEBUG: look for telltale text
+const title = await page.title().catch(() => "");
+console.log("[VMA] Title:", title);
+
+const bodyTextSample = await page.evaluate(() => (document.body?.innerText || "").slice(0, 400));
+console.log("[VMA] Body sample:", bodyTextSample.replace(/\s+/g, " "));
+
+// DEBUG: count all links
+const linkCount = await page.$$eval("a", (as) => as.length);
+console.log("[VMA] Link count:", linkCount);
+
 // Harvest first page
 let stats = await harvestPage(1);
 console.log(`[VMA] Page 1: mtasFound=${stats.mtasFound}, added=${stats.added}, total=${stats.total}`);
