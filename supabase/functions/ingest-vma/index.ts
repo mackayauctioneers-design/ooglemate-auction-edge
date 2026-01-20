@@ -1,99 +1,93 @@
+// ingest-vma (Lovable Edge Function)
+// Receives scraped MTAs from Apify and inserts into pickles_detail_queue with source='vma'
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-ingest-key',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
-interface HarvestItem {
-  source_listing_id: string;
-  detail_url: string;
-  search_url?: string;
-  page_no?: number;
-}
-
-interface IngestPayload {
-  source: string;
-  run_id?: string;
-  items: HarvestItem[];
-}
-
 Deno.serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Validate ingest key
-    const ingestKey = req.headers.get('x-ingest-key');
-    const expectedKey = Deno.env.get('VMA_INGEST_KEY');
-    
-    if (!ingestKey || ingestKey !== expectedKey) {
-      console.error('Invalid or missing x-ingest-key');
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Simple shared-secret auth (Bearer token)
+    const auth = req.headers.get("authorization") || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+
+    const expected = Deno.env.get("INGEST_WEBHOOK_SECRET") || "";
+    if (!expected || token !== expected) {
+      console.error("[ingest-vma] Unauthorized - token mismatch");
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Parse payload
-    const payload: IngestPayload = await req.json();
-    const { source = 'vma', run_id, items } = payload;
+    const body = await req.json();
+    const items = Array.isArray(body?.items) ? body.items : [];
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'No items provided' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    console.log(`[ingest-vma] Received ${items.length} items`);
+
+    if (items.length === 0) {
+      return new Response(JSON.stringify({ success: true, upserted: 0, message: "No items" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    console.log(`[ingest-vma] Received ${items.length} items from source=${source}, run_id=${run_id || 'none'}`);
+    // Service role is available inside Lovable Edge (via env)
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceRole);
 
-    // Initialize Supabase client with service role
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const now = new Date().toISOString();
 
-    // Call the existing RPC for batch upsert
-    const { data, error } = await supabase.rpc('upsert_harvest_batch', {
-      p_source: source,
-      p_run_id: run_id || null,
-      p_items: items.map(item => ({
-        source_listing_id: item.source_listing_id,
-        detail_url: item.detail_url,
-        search_url: item.search_url ?? null,
-        page_no: item.page_no ?? null,
-      })),
-    });
+    const rows = items
+      .map((x: any) => {
+        const mta = String(x.mta || x.source_listing_id || "").trim();
+        if (!mta) return null;
+
+        return {
+          source: "vma",
+          source_listing_id: mta,
+          detail_url:
+            x.detail_url ||
+            `https://www.valleymotorauctions.com.au/cp_veh_inspection_report.aspx?MTA=${mta}&sitekey=VMA`,
+          search_url: x.search_url || null,
+          page_no: x.page_no ?? null,
+          crawl_status: "pending",
+          first_seen_at: now,
+          last_seen_at: now,
+        };
+      })
+      .filter(Boolean);
+
+    console.log(`[ingest-vma] Upserting ${rows.length} valid rows`);
+
+    // Upsert into pickles_detail_queue
+    const { data, error } = await supabase
+      .from("pickles_detail_queue")
+      .upsert(rows, { onConflict: "source,source_listing_id" })
+      .select("id");
 
     if (error) {
-      console.error('[ingest-vma] RPC error:', error);
-      return new Response(
-        JSON.stringify({ error: error.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error("[ingest-vma] Upsert error:", error);
+      throw error;
     }
 
-    console.log(`[ingest-vma] RPC result:`, data);
+    console.log(`[ingest-vma] Successfully upserted ${data?.length ?? 0} rows`);
 
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        source,
-        run_id,
-        items_received: items.length,
-        rpc_result: data,
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error('[ingest-vma] Unexpected error:', err);
-    return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ success: true, upserted: data?.length ?? 0 }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    console.error("[ingest-vma] Error:", e);
+    return new Response(JSON.stringify({ success: false, error: String(e) }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
