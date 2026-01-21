@@ -64,12 +64,14 @@ interface Listing {
   variant: string | null;
   variant_raw: string | null; // Raw variant from source
   variant_family: string | null;
+  model_family: string | null; // For heat lookup
   fuel: string | null;
   transmission: string | null;
   drivetrain: string | null;
   km: number | null;
   asking_price: number | null;
   state: string | null;
+  sa2_code: string | null; // For heat lookup
   source: string | null;
   first_seen_at: string;
   listing_url: string | null;
@@ -96,6 +98,13 @@ interface Listing {
   enrichment_status: string | null;
 }
 
+// Heat score result from RPC
+interface HeatResult {
+  heat_score: number;
+  heat_source: string; // 'sa2_exact' | 'state_avg' | 'default'
+  sample_quality: string; // 'OK' | 'LOW_SAMPLE' | 'NO_DATA'
+}
+
 interface MatchResult {
   listing: Listing;
   score: number;
@@ -106,6 +115,8 @@ interface MatchResult {
   gap_pct: number | null;
   proven_exit_value: number | null;
   rejection_reason?: string;
+  exit_heat_score: number | null;
+  exit_heat_source: string | null;
 }
 
 // Hard gate types for Badge Authority Layer + LC79 Precision Pack + Must-have keywords
@@ -562,14 +573,51 @@ async function getProvenExitValue(
   return (data as { exit_value?: number } | null)?.exit_value || null;
 }
 
+// Get exit heat score for a listing location
+async function getExitHeatScore(
+  supabase: any,
+  listing: Listing,
+  hunt: Hunt
+): Promise<HeatResult> {
+  // Need state, make, model_family, and sa2_code for heat lookup
+  if (!listing.state || !listing.make || !listing.sa2_code) {
+    return { heat_score: 0.5, heat_source: 'default', sample_quality: 'NO_DATA' };
+  }
+
+  const modelFamily = listing.model_family || listing.model || hunt.model;
+  
+  try {
+    const { data, error } = await supabase.rpc('fn_get_exit_heat_with_fallback', {
+      p_state: listing.state,
+      p_make: listing.make.toUpperCase(),
+      p_model_family: modelFamily?.toUpperCase() || '',
+      p_sa2_code: listing.sa2_code
+    });
+
+    if (error || !data || data.length === 0) {
+      return { heat_score: 0.5, heat_source: 'default', sample_quality: 'NO_DATA' };
+    }
+
+    return {
+      heat_score: data[0].heat_score ?? 0.5,
+      heat_source: data[0].heat_source ?? 'default',
+      sample_quality: data[0].sample_quality ?? 'NO_DATA'
+    };
+  } catch (e) {
+    console.error('Heat score lookup failed:', e);
+    return { heat_score: 0.5, heat_source: 'default', sample_quality: 'NO_DATA' };
+  }
+}
+
 function makeDecision(
   hunt: Hunt,
   listing: Listing,
   score: number,
   provenExitValue: number | null,
   listingAgeDays: number,
-  gateResult: GateResult
-): { decision: 'buy' | 'watch' | 'ignore' | 'no_evidence'; gap_dollars: number | null; gap_pct: number | null } {
+  gateResult: GateResult,
+  exitHeatScore: number = 0.5
+): { decision: 'buy' | 'watch' | 'ignore' | 'no_evidence'; gap_dollars: number | null; gap_pct: number | null; score_adjusted: number } {
   const gap_dollars = provenExitValue && listing.asking_price 
     ? provenExitValue - listing.asking_price 
     : null;
@@ -577,34 +625,55 @@ function makeDecision(
     ? (gap_dollars / provenExitValue) * 100 
     : null;
   
+  // HEAT SCORE ADJUSTMENT
+  // Hot SA2 (>=0.75): boost score by up to +0.5, tighten buy window (allow smaller gaps)
+  // Cold SA2 (<=0.25): penalise score by up to -0.5, require larger gaps
+  // Neutral (0.5): no adjustment
+  let heatAdjustment = 0;
+  if (exitHeatScore >= 0.75) {
+    // Hot market: easier to exit, boost confidence
+    heatAdjustment = (exitHeatScore - 0.5) * 2; // max +1.0 at heat=1.0
+  } else if (exitHeatScore <= 0.25) {
+    // Cold market: harder to exit, reduce confidence
+    heatAdjustment = (exitHeatScore - 0.5) * 2; // max -1.0 at heat=0.0
+  }
+  
+  const adjustedScore = Math.min(10.0, Math.max(0, score + heatAdjustment));
+  
+  // Dynamic gap requirements based on heat
+  // Hot markets can accept tighter margins, cold markets need bigger discounts
+  const heatGapMultiplier = exitHeatScore >= 0.6 ? 0.85 : (exitHeatScore <= 0.3 ? 1.25 : 1.0);
+  const effectiveMinGapPct = hunt.min_gap_pct_buy * heatGapMultiplier;
+  const effectiveMinGapAbs = hunt.min_gap_abs_buy * heatGapMultiplier;
+  
   // If we have proven exit value and price, we can evaluate BUY
   if (provenExitValue && listing.asking_price) {
     const canBuy = 
-      score >= 7.5 &&
+      adjustedScore >= 7.5 &&
       listingAgeDays <= hunt.max_listing_age_days_buy &&
-      gap_dollars !== null && gap_dollars >= hunt.min_gap_abs_buy &&
-      gap_pct !== null && gap_pct >= hunt.min_gap_pct_buy &&
+      gap_dollars !== null && gap_dollars >= effectiveMinGapAbs &&
+      gap_pct !== null && gap_pct >= effectiveMinGapPct &&
       listing.km !== null &&
       (listing.source || '').toLowerCase() !== 'gumtree_private' &&
       !gateResult.downgrade_to_watch;
     
     if (canBuy) {
-      return { decision: 'buy', gap_dollars, gap_pct };
+      return { decision: 'buy', gap_dollars, gap_pct, score_adjusted: adjustedScore };
     }
   }
   
   // WATCH for good matches - DNA score is the primary signal
   // High DNA score (>=6.5) = strong WATCH candidate
   // Medium DNA score (>=5.0) = regular WATCH
-  if (score >= 5.0) {
+  if (adjustedScore >= 5.0) {
     const ageOk = listingAgeDays <= Math.max(hunt.max_listing_age_days_watch, 30);
     if (ageOk) {
-      return { decision: 'watch', gap_dollars, gap_pct };
+      return { decision: 'watch', gap_dollars, gap_pct, score_adjusted: adjustedScore };
     }
   }
   
   // Only IGNORE for low scores or very stale listings
-  return { decision: 'ignore', gap_dollars, gap_pct };
+  return { decision: 'ignore', gap_dollars, gap_pct, score_adjusted: adjustedScore };
 }
 
 // NOTE: Classification is now done in a separate batch process
@@ -818,17 +887,25 @@ Deno.serve(async (req) => {
             ? [...reasons, gateResult.rejection_reason!]
             : reasons;
           
+          // Get exit heat score for this listing's location
+          const heatResult = await getExitHeatScore(supabase, listing, hunt);
+          if (heatResult.heat_source !== 'default') {
+            finalReasons.push(`heat:${heatResult.heat_source}:${heatResult.heat_score.toFixed(2)}`);
+          }
+          
           // Skip proven exit value lookup to speed up - will be filled by rebuild
           const provenExitValue = null;
           const listingAgeDays = Math.floor((Date.now() - new Date(listing.first_seen_at).getTime()) / (24 * 60 * 60 * 1000));
-          const { decision, gap_dollars, gap_pct } = makeDecision(hunt, listing, score, provenExitValue, listingAgeDays, gateResult);
+          const { decision, gap_dollars, gap_pct, score_adjusted } = makeDecision(
+            hunt, listing, score, provenExitValue, listingAgeDays, gateResult, heatResult.heat_score
+          );
           
-          const confidence = getConfidence(score);
+          const confidence = getConfidence(score_adjusted);
 
           matchInserts.push({
             hunt_id: hunt.id,
             listing_id: listing.id,
-            match_score: score,
+            match_score: score_adjusted,
             confidence_label: confidence,
             reasons: finalReasons,
             asking_price: listing.asking_price,
@@ -836,20 +913,24 @@ Deno.serve(async (req) => {
             gap_dollars,
             gap_pct,
             decision,
-            criteria_version: hunt.criteria_version || 1
+            criteria_version: hunt.criteria_version || 1,
+            exit_heat_score: heatResult.heat_score,
+            exit_heat_source: heatResult.heat_source
           });
           existingListingIds.add(listing.id);
 
           matches.push({
             listing,
-            score,
+            score: score_adjusted,
             reasons: finalReasons,
             confidence,
             decision,
             gap_dollars,
             gap_pct,
             proven_exit_value: provenExitValue,
-            rejection_reason: gateResult.rejection_reason
+            rejection_reason: gateResult.rejection_reason,
+            exit_heat_score: heatResult.heat_score,
+            exit_heat_source: heatResult.heat_source
           });
 
           // Queue alert (skip recent alert check - let DB handle dedup)
@@ -868,8 +949,10 @@ Deno.serve(async (req) => {
                 asking_price: listing.asking_price,
                 source: listing.source,
                 listing_url: listing.listing_url,
-                match_score: score,
+                match_score: score_adjusted,
                 reasons: finalReasons,
+                exit_heat_score: heatResult.heat_score,
+                exit_heat_source: heatResult.heat_source
               }
             });
           }

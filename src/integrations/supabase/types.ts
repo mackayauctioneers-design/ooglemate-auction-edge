@@ -2254,6 +2254,8 @@ export type Database = {
           criteria_version: number
           decision: string
           dna_score: number | null
+          exit_heat_score: number | null
+          exit_heat_source: string | null
           gap_dollars: number | null
           gap_pct: number | null
           hunt_id: string
@@ -2273,6 +2275,8 @@ export type Database = {
           criteria_version?: number
           decision: string
           dna_score?: number | null
+          exit_heat_score?: number | null
+          exit_heat_source?: string | null
           gap_dollars?: number | null
           gap_pct?: number | null
           hunt_id: string
@@ -2292,6 +2296,8 @@ export type Database = {
           criteria_version?: number
           decision?: string
           dna_score?: number | null
+          exit_heat_score?: number | null
+          exit_heat_source?: string | null
           gap_dollars?: number | null
           gap_pct?: number | null
           hunt_id?: string
@@ -7743,6 +7749,20 @@ export type Database = {
             }
             Returns: number
           }
+      fn_get_exit_heat_with_fallback: {
+        Args: {
+          p_date?: string
+          p_make: string
+          p_model_family: string
+          p_sa2_code: string
+          p_state: string
+        }
+        Returns: {
+          heat_score: number
+          heat_source: string
+          sample_quality: string
+        }[]
+      }
       fn_get_retail_heat_sa2: {
         Args: {
           p_date?: string
