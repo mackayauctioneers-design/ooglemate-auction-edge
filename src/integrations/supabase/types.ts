@@ -6145,6 +6145,7 @@ export type Database = {
           missing_streak: number
           model: string
           pass_count: number
+          postcode: string | null
           reappeared: boolean
           relist_count: number
           reserve: number | null
@@ -6160,8 +6161,10 @@ export type Database = {
           sold_returned_suspected: boolean
           source: string
           source_class: string
+          state: string | null
           status: string
           status_changed_at: string | null
+          suburb: string | null
           tracked_by: string | null
           transmission: string | null
           updated_at: string
@@ -6226,6 +6229,7 @@ export type Database = {
           missing_streak?: number
           model: string
           pass_count?: number
+          postcode?: string | null
           reappeared?: boolean
           relist_count?: number
           reserve?: number | null
@@ -6241,8 +6245,10 @@ export type Database = {
           sold_returned_suspected?: boolean
           source?: string
           source_class?: string
+          state?: string | null
           status?: string
           status_changed_at?: string | null
+          suburb?: string | null
           tracked_by?: string | null
           transmission?: string | null
           updated_at?: string
@@ -6307,6 +6313,7 @@ export type Database = {
           missing_streak?: number
           model?: string
           pass_count?: number
+          postcode?: string | null
           reappeared?: boolean
           relist_count?: number
           reserve?: number | null
@@ -6322,8 +6329,10 @@ export type Database = {
           sold_returned_suspected?: boolean
           source?: string
           source_class?: string
+          state?: string | null
           status?: string
           status_changed_at?: string | null
+          suburb?: string | null
           tracked_by?: string | null
           transmission?: string | null
           updated_at?: string
@@ -7805,6 +7814,14 @@ export type Database = {
       fn_mark_retail_disappeared: {
         Args: { p_grace_days?: number }
         Returns: number
+      }
+      fn_parse_location_au: {
+        Args: { p_location: string }
+        Returns: {
+          postcode: string
+          state: string
+          suburb: string
+        }[]
       }
       fn_resolve_sa2_from_postcode: {
         Args: { p_postcode: string; p_state: string }
