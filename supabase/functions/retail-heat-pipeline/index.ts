@@ -73,21 +73,28 @@ serve(async (req) => {
       results.errors.push(`Heat rollup step exception: ${msg}`);
     }
 
-    // Log results
-    await supabase.from("cron_audit_log").insert({
-      cron_name: "retail-heat-pipeline",
-      success: results.errors.length === 0,
-      result: results,
-      run_date: new Date().toISOString().split("T")[0],
-    });
+    // FIX: Wrap audit logging in try/catch so it cannot fail the job
+    try {
+      await supabase.from("cron_audit_log").insert({
+        cron_name: "retail-heat-pipeline",
+        success: results.errors.length === 0,
+        result: results,
+        run_date: new Date().toISOString().split("T")[0],
+      });
+    } catch (_) {
+      console.warn("[retail-heat-pipeline] Failed to write audit log (non-fatal)");
+    }
 
-    // Update heartbeat
-    await supabase.from("cron_heartbeat").upsert({
-      cron_name: "retail-heat-pipeline",
-      last_seen_at: new Date().toISOString(),
-      last_ok: results.errors.length === 0,
-      note: `disappeared=${results.disappeared_marked} heat_rows=${results.heat_rows_updated}`,
-    }, { onConflict: "cron_name" });
+    try {
+      await supabase.from("cron_heartbeat").upsert({
+        cron_name: "retail-heat-pipeline",
+        last_seen_at: new Date().toISOString(),
+        last_ok: results.errors.length === 0,
+        note: `disappeared=${results.disappeared_marked} heat_rows=${results.heat_rows_updated}`,
+      }, { onConflict: "cron_name" });
+    } catch (_) {
+      console.warn("[retail-heat-pipeline] Failed to write heartbeat (non-fatal)");
+    }
 
     console.log("[retail-heat-pipeline] Pipeline complete:", results);
 

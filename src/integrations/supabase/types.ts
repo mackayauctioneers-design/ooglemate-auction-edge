@@ -6101,6 +6101,7 @@ export type Database = {
           buy_window_at: string | null
           dealer_name: string | null
           dealer_url: string | null
+          delisted_at: string | null
           drivetrain: string | null
           event_id: string | null
           exclude_from_alerts: boolean | null
@@ -6181,6 +6182,7 @@ export type Database = {
           buy_window_at?: string | null
           dealer_name?: string | null
           dealer_url?: string | null
+          delisted_at?: string | null
           drivetrain?: string | null
           event_id?: string | null
           exclude_from_alerts?: boolean | null
@@ -6261,6 +6263,7 @@ export type Database = {
           buy_window_at?: string | null
           dealer_name?: string | null
           dealer_url?: string | null
+          delisted_at?: string | null
           drivetrain?: string | null
           event_id?: string | null
           exclude_from_alerts?: boolean | null
