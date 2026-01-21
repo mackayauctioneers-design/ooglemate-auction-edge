@@ -1935,6 +1935,65 @@ export type Database = {
         }
         Relationships: []
       }
+      geo_postcode_sa2_xref: {
+        Row: {
+          postcode: string
+          sa2_code: string
+          state: string
+          weight: number
+        }
+        Insert: {
+          postcode: string
+          sa2_code: string
+          state: string
+          weight?: number
+        }
+        Update: {
+          postcode?: string
+          sa2_code?: string
+          state?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "geo_postcode_sa2_xref_sa2_code_fkey"
+            columns: ["sa2_code"]
+            isOneToOne: false
+            referencedRelation: "geo_sa2"
+            referencedColumns: ["sa2_code"]
+          },
+        ]
+      }
+      geo_sa2: {
+        Row: {
+          centroid_lat: number | null
+          centroid_lng: number | null
+          lga_code: string | null
+          sa2_code: string
+          sa2_name: string
+          sa3_code: string | null
+          state: string
+        }
+        Insert: {
+          centroid_lat?: number | null
+          centroid_lng?: number | null
+          lga_code?: string | null
+          sa2_code: string
+          sa2_name: string
+          sa3_code?: string | null
+          state: string
+        }
+        Update: {
+          centroid_lat?: number | null
+          centroid_lng?: number | null
+          lga_code?: string | null
+          sa2_code?: string
+          sa2_name?: string
+          sa3_code?: string | null
+          state?: string
+        }
+        Relationships: []
+      }
       http_session_secrets: {
         Row: {
           cookie_header: string
@@ -3567,6 +3626,59 @@ export type Database = {
           },
         ]
       }
+      retail_geo_heat_sa2_daily: {
+        Row: {
+          active_listings: number
+          created_at: string
+          data_quality: string
+          date: string
+          disappeared_14d: number
+          heat_score: number
+          make: string
+          median_days_to_disappear: number | null
+          model_family: string
+          new_listings_14d: number
+          sa2_code: string
+          state: string
+        }
+        Insert: {
+          active_listings: number
+          created_at?: string
+          data_quality: string
+          date: string
+          disappeared_14d: number
+          heat_score: number
+          make: string
+          median_days_to_disappear?: number | null
+          model_family: string
+          new_listings_14d: number
+          sa2_code: string
+          state: string
+        }
+        Update: {
+          active_listings?: number
+          created_at?: string
+          data_quality?: string
+          date?: string
+          disappeared_14d?: number
+          heat_score?: number
+          make?: string
+          median_days_to_disappear?: number | null
+          model_family?: string
+          new_listings_14d?: number
+          sa2_code?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "retail_geo_heat_sa2_daily_sa2_code_fkey"
+            columns: ["sa2_code"]
+            isOneToOne: false
+            referencedRelation: "geo_sa2"
+            referencedColumns: ["sa2_code"]
+          },
+        ]
+      }
       retail_listing_events: {
         Row: {
           created_at: string
@@ -3647,6 +3759,83 @@ export type Database = {
           year?: number | null
         }
         Relationships: []
+      }
+      retail_listing_sightings: {
+        Row: {
+          km: number | null
+          listing_id: string
+          price: number | null
+          sa2_code: string | null
+          seen_at: string
+          source: string
+        }
+        Insert: {
+          km?: number | null
+          listing_id: string
+          price?: number | null
+          sa2_code?: string | null
+          seen_at: string
+          source: string
+        }
+        Update: {
+          km?: number | null
+          listing_id?: string
+          price?: number | null
+          sa2_code?: string | null
+          seen_at?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "retail_listing_sightings_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "retail_listing_sightings_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "missed_buy_window"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "retail_listing_sightings_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "stale_dealer_grade"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "retail_listing_sightings_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "retail_listing_sightings_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_deals_90_plus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "retail_listing_sightings_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_inventory_current"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "retail_listing_sightings_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_listings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       retail_listings: {
         Row: {
@@ -5923,6 +6112,8 @@ export type Database = {
           fingerprint_version: number
           first_seen_at: string
           fuel: string | null
+          geo_confidence: string | null
+          geo_source: string | null
           highest_bid: number | null
           id: string
           is_dealer_grade: boolean | null
@@ -5944,9 +6135,12 @@ export type Database = {
           missing_streak: number
           model: string
           pass_count: number
+          reappeared: boolean
           relist_count: number
           reserve: number | null
           risk_flags: string[] | null
+          sa2_code: string | null
+          sa2_name: string | null
           seller_confidence: string | null
           seller_reasons: string[] | null
           seller_type: string
@@ -5998,6 +6192,8 @@ export type Database = {
           fingerprint_version?: number
           first_seen_at?: string
           fuel?: string | null
+          geo_confidence?: string | null
+          geo_source?: string | null
           highest_bid?: number | null
           id?: string
           is_dealer_grade?: boolean | null
@@ -6019,9 +6215,12 @@ export type Database = {
           missing_streak?: number
           model: string
           pass_count?: number
+          reappeared?: boolean
           relist_count?: number
           reserve?: number | null
           risk_flags?: string[] | null
+          sa2_code?: string | null
+          sa2_name?: string | null
           seller_confidence?: string | null
           seller_reasons?: string[] | null
           seller_type?: string
@@ -6073,6 +6272,8 @@ export type Database = {
           fingerprint_version?: number
           first_seen_at?: string
           fuel?: string | null
+          geo_confidence?: string | null
+          geo_source?: string | null
           highest_bid?: number | null
           id?: string
           is_dealer_grade?: boolean | null
@@ -6094,9 +6295,12 @@ export type Database = {
           missing_streak?: number
           model?: string
           pass_count?: number
+          reappeared?: boolean
           relist_count?: number
           reserve?: number | null
           risk_flags?: string[] | null
+          sa2_code?: string | null
+          sa2_name?: string | null
           seller_confidence?: string | null
           seller_reasons?: string[] | null
           seller_type?: string
@@ -6128,6 +6332,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "pipeline_runs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_listings_sa2_code_fkey"
+            columns: ["sa2_code"]
+            isOneToOne: false
+            referencedRelation: "geo_sa2"
+            referencedColumns: ["sa2_code"]
           },
         ]
       }
@@ -7450,6 +7661,10 @@ export type Database = {
         }
         Returns: string
       }
+      fn_build_retail_geo_heat_sa2_daily: {
+        Args: { p_date?: string }
+        Returns: number
+      }
       fn_canonical_listing_id: { Args: { p_url: string }; Returns: string }
       fn_classify_listing_intent: {
         Args: { p_snippet?: string; p_title?: string; p_url: string }
@@ -7525,6 +7740,27 @@ export type Database = {
             }
             Returns: number
           }
+      fn_get_retail_heat_sa2: {
+        Args: {
+          p_date?: string
+          p_make?: string
+          p_model_family?: string
+          p_state?: string
+        }
+        Returns: {
+          active_listings: number
+          centroid_lat: number
+          centroid_lng: number
+          data_quality: string
+          disappeared_14d: number
+          heat_score: number
+          median_days_to_disappear: number
+          new_listings_14d: number
+          sa2_code: string
+          sa2_name: string
+          state: string
+        }[]
+      }
       fn_is_listing_intent: {
         Args: { p_snippet: string; p_title: string; p_url: string }
         Returns: string
@@ -7540,9 +7776,38 @@ export type Database = {
         }
         Returns: boolean
       }
+      fn_mark_retail_disappeared: {
+        Args: { p_grace_days?: number }
+        Returns: number
+      }
+      fn_resolve_sa2_from_postcode: {
+        Args: { p_postcode: string; p_state: string }
+        Returns: {
+          confidence: string
+          sa2_code: string
+        }[]
+      }
       fn_source_tier:
         | { Args: { p_url: string }; Returns: number }
         | { Args: { p_source_name: string; p_url: string }; Returns: number }
+      fn_upsert_retail_listing_and_sighting: {
+        Args: {
+          p_km: number
+          p_listing_id: string
+          p_location_raw: string
+          p_make: string
+          p_model: string
+          p_model_family: string
+          p_postcode: string
+          p_price: number
+          p_seen_at?: string
+          p_source: string
+          p_state: string
+          p_suburb: string
+          p_url: string
+        }
+        Returns: string
+      }
       generate_geo_heat_alerts: {
         Args: {
           p_asof?: string
