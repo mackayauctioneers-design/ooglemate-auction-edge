@@ -278,3 +278,8 @@ verify_jwt = false
 
 [functions.ingest-vma]
 verify_jwt = false
+
+[functions.retail-heat-pipeline]
+verify_jwt = false
+# Daily at 3:00am AEST (17:00 UTC previous day) - disappearance + heat rollup
+schedule = "0 17 * * *"
