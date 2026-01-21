@@ -2021,18 +2021,24 @@ export type Database = {
           postcode: string
           state: string
           suburb: string
+          suburb_norm: string | null
+          weight: number | null
         }
         Insert: {
           confidence?: string | null
           postcode: string
           state: string
           suburb: string
+          suburb_norm?: string | null
+          weight?: number | null
         }
         Update: {
           confidence?: string | null
           postcode?: string
           state?: string
           suburb?: string
+          suburb_norm?: string | null
+          weight?: number | null
         }
         Relationships: []
       }
@@ -7858,6 +7864,7 @@ export type Database = {
         Args: { p_grace_days?: number }
         Returns: number
       }
+      fn_norm_suburb: { Args: { p_suburb: string }; Returns: string }
       fn_parse_location_au: {
         Args: { p_location: string }
         Returns: {
