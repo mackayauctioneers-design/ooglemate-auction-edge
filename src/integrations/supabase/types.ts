@@ -2268,6 +2268,7 @@ export type Database = {
           priority_score: number | null
           proven_exit_value: number | null
           reasons: string[] | null
+          score_adjusted: number | null
         }
         Insert: {
           asking_price?: number | null
@@ -2289,6 +2290,7 @@ export type Database = {
           priority_score?: number | null
           proven_exit_value?: number | null
           reasons?: string[] | null
+          score_adjusted?: number | null
         }
         Update: {
           asking_price?: number | null
@@ -2310,6 +2312,7 @@ export type Database = {
           priority_score?: number | null
           proven_exit_value?: number | null
           reasons?: string[] | null
+          score_adjusted?: number | null
         }
         Relationships: [
           {
