@@ -1252,6 +1252,27 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_site_postcode_xref: {
+        Row: {
+          dealer_slug: string
+          postcode: string
+          state: string
+          suburb: string | null
+        }
+        Insert: {
+          dealer_slug: string
+          postcode: string
+          state: string
+          suburb?: string | null
+        }
+        Update: {
+          dealer_slug?: string
+          postcode?: string
+          state?: string
+          suburb?: string | null
+        }
+        Relationships: []
+      }
       dealer_spec_matches: {
         Row: {
           asking_price: number | null
@@ -1991,6 +2012,27 @@ export type Database = {
           sa2_name?: string
           sa3_code?: string | null
           state?: string
+        }
+        Relationships: []
+      }
+      geo_suburb_postcode_xref: {
+        Row: {
+          confidence: string | null
+          postcode: string
+          state: string
+          suburb: string
+        }
+        Insert: {
+          confidence?: string | null
+          postcode: string
+          state: string
+          suburb: string
+        }
+        Update: {
+          confidence?: string | null
+          postcode?: string
+          state?: string
+          suburb?: string
         }
         Relationships: []
       }
@@ -7761,6 +7803,7 @@ export type Database = {
             }
             Returns: number
           }
+      fn_extract_dealer_slug: { Args: { p_source: string }; Returns: string }
       fn_get_exit_heat_with_fallback: {
         Args: {
           p_date?: string
@@ -7821,6 +7864,13 @@ export type Database = {
           postcode: string
           state: string
           suburb: string
+        }[]
+      }
+      fn_resolve_postcode_from_suburb_state: {
+        Args: { p_state: string; p_suburb: string }
+        Returns: {
+          confidence: string
+          postcode: string
         }[]
       }
       fn_resolve_sa2_from_postcode: {
