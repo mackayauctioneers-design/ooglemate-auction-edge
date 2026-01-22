@@ -5,29 +5,35 @@ import { OpportunityFiltersPanel } from '@/components/opportunities/OpportunityF
 import { AuctionLot, OpportunityFilters, SaleFingerprint } from '@/types';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/contexts/AuthContext';
-import { Car, TrendingUp, AlertTriangle, Target, Zap } from 'lucide-react';
+import { Car, TrendingUp, AlertTriangle, Target, Zap, Smartphone } from 'lucide-react';
 import { KitingLiveStrip, HuntOpportunityCard, WatchlistMovementCard } from '@/components/home';
 import { useHomeDashboard } from '@/hooks/useHomeDashboard';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { KitingWingMarkVideo } from '@/components/kiting';
+import { useIsMobile } from '@/hooks/use-mobile';
+
+// ============================================================================
+// MOBILE-OPTIMIZED: Reduced data fetching and simpler UI on mobile devices
+// to prevent iOS Safari memory crashes
+// ============================================================================
 
 export default function OpportunitiesPage() {
   const { isAdmin, currentUser, dealerProfile } = useAuth();
+  const isMobile = useIsMobile();
   const [opportunities, setOpportunities] = useState<AuctionLot[]>([]);
   const [filteredOpportunities, setFilteredOpportunities] = useState<AuctionLot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterOptions, setFilterOptions] = useState({ auction_houses: [] as string[], locations: [] as string[], makes: [] as string[] });
   const [dealerFingerprints, setDealerFingerprints] = useState<SaleFingerprint[]>([]);
   
-  // Kiting Mode data
-  const { 
-    opportunities: huntOpportunities, 
-    kitingLive, 
-    watchlist, 
-    isLoading: kitingLoading,
-    refresh: refreshKiting
-  } = useHomeDashboard();
+  // Skip heavy dashboard hook on mobile
+  const dashboardData = useHomeDashboard();
+  const huntOpportunities = isMobile ? [] : dashboardData.opportunities;
+  const kitingLive = isMobile ? { active_hunts: 0, scans_last_60m: 0, candidates_today: 0, last_scan_at: null, last_scan_ok: false, sources: [] } : dashboardData.kitingLive;
+  const watchlist = isMobile ? [] : dashboardData.watchlist;
+  const kitingLoading = isMobile ? false : dashboardData.isLoading;
+  const refreshKiting = dashboardData.refresh;
 
   const [filters, setFilters] = useState<OpportunityFilters>({
     auction_house: null,
@@ -40,6 +46,12 @@ export default function OpportunitiesPage() {
   });
 
   const loadData = useCallback(async () => {
+    // Skip heavy data loading on mobile
+    if (isMobile) {
+      setIsLoading(false);
+      return;
+    }
+    
     setIsLoading(true);
     try {
       // Load dealer fingerprints if not admin
@@ -60,7 +72,7 @@ export default function OpportunitiesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [isAdmin, currentUser]);
+  }, [isAdmin, currentUser, isMobile]);
 
   useEffect(() => {
     loadData();
@@ -102,8 +114,75 @@ export default function OpportunitiesPage() {
   // Hunt alerts counts
   const huntBuyCount = huntOpportunities.filter(o => o.severity === 'BUY').length;
   const huntWatchCount = huntOpportunities.filter(o => o.severity === 'WATCH').length;
-  const hasKitingData = dealerProfile && (huntOpportunities.length > 0 || kitingLive.active_hunts > 0);
 
+  // Mobile-optimized view - minimal UI to prevent crashes
+  if (isMobile) {
+    return (
+      <AppLayout>
+        <div className="p-4 space-y-4">
+          <div className="flex items-center gap-3">
+            <KitingWingMarkVideo size={40} />
+            <div>
+              <h1 className="text-xl font-bold text-foreground">OogleMate</h1>
+              <p className="text-sm text-muted-foreground">Auction Edge</p>
+            </div>
+          </div>
+
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <Smartphone className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  Mobile View
+                </p>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                  For the full experience with live data, opportunities table, and AI assistant, please use a desktop browser.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Link to="/upcoming-auctions" className="block">
+              <div className="p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                <Target className="h-6 w-6 text-primary mb-2" />
+                <p className="font-medium text-sm">Auctions</p>
+              </div>
+            </Link>
+            <Link to="/search-lots" className="block">
+              <div className="p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                <Car className="h-6 w-6 text-primary mb-2" />
+                <p className="font-medium text-sm">Search</p>
+              </div>
+            </Link>
+            <Link to="/valuation" className="block">
+              <div className="p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                <TrendingUp className="h-6 w-6 text-primary mb-2" />
+                <p className="font-medium text-sm">Valuation</p>
+              </div>
+            </Link>
+            <Link to="/help" className="block">
+              <div className="p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                <AlertTriangle className="h-6 w-6 text-primary mb-2" />
+                <p className="font-medium text-sm">Help</p>
+              </div>
+            </Link>
+          </div>
+
+          {dealerProfile && (
+            <Link to="/log-sale" className="block">
+              <Button className="w-full gap-2">
+                <Zap className="h-4 w-4" />
+                Log Sale
+              </Button>
+            </Link>
+          )}
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // Desktop view - full experience
   return (
     <AppLayout>
       <div className="p-6 space-y-6">
