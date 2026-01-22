@@ -45,6 +45,7 @@ import OperatorDealerSpecsPage from "./pages/operator/DealerSpecsPage";
 import FranchisePortalFeedsPage from "./pages/operator/FranchisePortalFeedsPage";
 import VASalesDataPage from "./pages/operator/VASalesDataPage";
 import TriggerQAPage from "./pages/operator/TriggerQAPage";
+import DealerUrlIntakePage from "./pages/operator/DealerUrlIntakePage";
 
 // Dealer spec pages
 import DealerSpecsListPage from "./pages/dealer/DealerSpecsPage";
@@ -151,6 +152,9 @@ const App = () => (
               } />
               <Route path="/operator/trigger-qa" element={
                 <OperatorGuard><TriggerQAPage /></OperatorGuard>
+              } />
+              <Route path="/operator/dealer-urls" element={
+                <OperatorGuard><DealerUrlIntakePage /></OperatorGuard>
               } />
               {/* === ADMIN TOOLS: Protected by RequireAdmin === */}
               <Route path="/admin-tools" element={

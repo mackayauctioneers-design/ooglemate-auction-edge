@@ -283,3 +283,6 @@ verify_jwt = false
 verify_jwt = false
 # Daily at 3:00am AEST (17:00 UTC previous day) - disappearance + heat rollup
 schedule = "0 17 * * *"
+
+[functions.submit-dealer-urls]
+verify_jwt = false
