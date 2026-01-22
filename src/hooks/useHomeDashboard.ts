@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 // Helper to resolve dealer_id from dealerProfile
 function useDealerId() {
@@ -66,6 +67,7 @@ const DEFAULT_KITING_LIVE: KitingLive = {
 
 export function useHomeDashboard() {
   const dealerId = useDealerId();
+  const isMobile = useIsMobile();
   const [data, setData] = useState<HomeDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +90,6 @@ export function useHomeDashboard() {
       if (rpcError) {
         console.error('[HomeDashboard] RPC error:', rpcError);
         setError(rpcError.message);
-        // Set default empty state
         setData({
           today_opportunities: [],
           kiting_live: DEFAULT_KITING_LIVE,
@@ -114,11 +115,12 @@ export function useHomeDashboard() {
     fetchDashboard();
   }, [fetchDashboard]);
 
-  // Refresh every 5 minutes (reduced from 2 to prevent mobile memory issues)
+  // Disable polling on mobile to prevent iOS memory crashes
   useEffect(() => {
+    if (isMobile) return; // No polling on mobile
     const interval = setInterval(fetchDashboard, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [fetchDashboard]);
+  }, [fetchDashboard, isMobile]);
 
   return {
     data,

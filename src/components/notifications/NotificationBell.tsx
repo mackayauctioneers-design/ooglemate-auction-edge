@@ -5,10 +5,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { NotificationDrawer } from './NotificationDrawer';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
 
 export function NotificationBell() {
   const { isAdmin } = useAuth();
+  const isMobile = useIsMobile();
   const [unreadCount, setUnreadCount] = useState(0);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMarkingAll, setIsMarkingAll] = useState(false);
@@ -34,10 +36,11 @@ export function NotificationBell() {
 
   useEffect(() => {
     loadUnreadCount();
-    // Refresh count every 60 seconds (reduced from 30s to prevent mobile crashes)
+    // Disable polling on mobile to prevent iOS memory crashes
+    if (isMobile) return;
     const interval = setInterval(loadUnreadCount, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isMobile]);
 
   const handleDrawerClose = () => {
     setIsDrawerOpen(false);
