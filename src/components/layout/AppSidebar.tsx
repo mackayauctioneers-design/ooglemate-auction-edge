@@ -27,6 +27,7 @@ import { PushNotificationPrompt } from '@/components/notifications/PushNotificat
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { AuthModal } from '@/components/auth/AuthModal';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 // ============================================================================
 // DEALER NAVIGATION
@@ -52,13 +53,14 @@ const dealerNavItems = [
 export function AppSidebar() {
   const location = useLocation();
   const { currentUser, isAdmin, logout, user, isLoading } = useAuth();
+  const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // Fetch pending job count for operator badge
+  // Fetch pending job count for operator badge - disabled on mobile
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin || isMobile) return;
     
     const fetchPendingJobs = async () => {
       const { data } = await supabase.rpc('get_job_queue_stats');
@@ -68,9 +70,9 @@ export function AppSidebar() {
     };
     
     fetchPendingJobs();
-    const interval = setInterval(fetchPendingJobs, 60000); // refresh every 60s (reduced from 30s)
+    const interval = setInterval(fetchPendingJobs, 60000);
     return () => clearInterval(interval);
-  }, [isAdmin]);
+  }, [isAdmin, isMobile]);
 
   return (
     <>
