@@ -68,7 +68,7 @@ export function AppSidebar() {
     };
     
     fetchPendingJobs();
-    const interval = setInterval(fetchPendingJobs, 30000); // refresh every 30s
+    const interval = setInterval(fetchPendingJobs, 60000); // refresh every 60s (reduced from 30s)
     return () => clearInterval(interval);
   }, [isAdmin]);
 

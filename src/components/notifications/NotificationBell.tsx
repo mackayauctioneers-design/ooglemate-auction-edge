@@ -34,8 +34,8 @@ export function NotificationBell() {
 
   useEffect(() => {
     loadUnreadCount();
-    // Refresh count every 30 seconds
-    const interval = setInterval(loadUnreadCount, 30000);
+    // Refresh count every 60 seconds (reduced from 30s to prevent mobile crashes)
+    const interval = setInterval(loadUnreadCount, 60000);
     return () => clearInterval(interval);
   }, []);
 
