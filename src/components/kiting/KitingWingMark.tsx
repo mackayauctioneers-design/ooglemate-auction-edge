@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { useRef, useEffect, useState } from 'react';
 import type { KitingState } from './KitingIndicator';
 import kitingWingMark from '@/assets/kiting-wing-mark.jpg';
 import kitingWingAnimated from '@/assets/kiting-wing-animated.mp4';
@@ -9,6 +10,87 @@ interface KitingWingMarkProps {
   className?: string;
   animated?: boolean;
   useVideo?: boolean;
+}
+
+/**
+ * Lazy video component that only loads when visible
+ * Prevents iOS memory crashes from multiple simultaneous video elements
+ */
+function LazyVideo({ 
+  src, 
+  size, 
+  aspectRatio = 1,
+  className 
+}: { 
+  src: string; 
+  size: number; 
+  aspectRatio?: number;
+  className?: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          setIsVisible(entry.isIntersecting);
+        });
+      },
+      { threshold: 0.1, rootMargin: '50px' }
+    );
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isVisible) {
+      video.play().catch(() => {
+        // Autoplay blocked - silent fail
+      });
+    } else {
+      video.pause();
+      video.currentTime = 0;
+    }
+  }, [isVisible]);
+
+  return (
+    <div 
+      ref={containerRef} 
+      style={{ width: size, height: size * aspectRatio }}
+      className={className}
+    >
+      {isVisible ? (
+        <video
+          ref={videoRef}
+          src={src}
+          loop
+          muted
+          playsInline
+          preload="none"
+          width={size}
+          height={size * aspectRatio}
+          className="object-contain w-full h-full"
+        />
+      ) : (
+        <img
+          src={kitingWingMark}
+          alt="Kiting"
+          width={size}
+          height={size * aspectRatio}
+          className="object-contain w-full h-full"
+        />
+      )}
+    </div>
+  );
 }
 
 /**
@@ -33,21 +115,14 @@ export function KitingWingMark({
   const isDiving = state === 'diving';
   const isStrike = state === 'strike';
   
-  // Use video version for animated display
+  // Use lazy video version for animated display
   if (useVideo) {
     return (
-      <video
+      <LazyVideo
         src={kitingWingAnimated}
-        autoPlay
-        loop
-        muted
-        playsInline
-        width={size}
-        height={size * 0.67}
-        className={cn(
-          'object-contain',
-          className
-        )}
+        size={size}
+        aspectRatio={0.67}
+        className={cn('object-contain', className)}
       />
     );
   }
@@ -72,25 +147,18 @@ export function KitingWingMark({
 }
 
 /**
- * Animated video version of the logo
+ * Animated video version of the logo - uses lazy loading
  */
 export function KitingWingMarkVideo({ 
   size = 80,
   className
 }: { size?: number; className?: string }) {
   return (
-    <video
+    <LazyVideo
       src={kitingWingAnimated}
-      autoPlay
-      loop
-      muted
-      playsInline
-      width={size}
-      height={size}
-      className={cn(
-        'object-contain rounded-lg',
-        className
-      )}
+      size={size}
+      aspectRatio={1}
+      className={cn('rounded-lg', className)}
     />
   );
 }

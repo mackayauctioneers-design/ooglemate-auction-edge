@@ -589,12 +589,9 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
         {isConnecting ? (
           <Loader2 className="h-7 w-7 animate-spin text-primary" />
         ) : (
-          <video
-            src={bobAvatarVideo}
-            autoPlay
-            loop
-            muted
-            playsInline
+          <img
+            src="/pwa-192x192.png"
+            alt="Bob"
             className="w-full h-full object-cover"
           />
         )}
@@ -612,14 +609,22 @@ export function BobAvatar({ dealerName = 'mate', dealership = '', triggerBrief =
           {/* Header */}
           <div className="bg-gradient-to-br from-primary to-primary/80 p-6 text-center text-primary-foreground relative">
             <div className="w-20 h-20 mx-auto mb-2 rounded-full overflow-hidden border-2 border-primary-foreground/30">
-              <video
-                src={bobAvatarVideo}
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="w-full h-full object-cover"
-              />
+              {isConnected || isConnecting ? (
+                <video
+                  src={bobAvatarVideo}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <img
+                  src="/pwa-192x192.png"
+                  alt="Bob"
+                  className="w-full h-full object-cover"
+                />
+              )}
             </div>
             <p className="font-semibold text-lg">Bob</p>
             
