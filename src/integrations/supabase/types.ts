@@ -3690,7 +3690,7 @@ export type Database = {
           data_quality: string
           date: string
           disappeared_14d: number
-          heat_score: number
+          heat_score: number | null
           make: string
           median_days_to_disappear: number | null
           model_family: string
@@ -3704,7 +3704,7 @@ export type Database = {
           data_quality: string
           date: string
           disappeared_14d: number
-          heat_score: number
+          heat_score?: number | null
           make: string
           median_days_to_disappear?: number | null
           model_family: string
@@ -3718,7 +3718,7 @@ export type Database = {
           data_quality?: string
           date?: string
           disappeared_14d?: number
-          heat_score?: number
+          heat_score?: number | null
           make?: string
           median_days_to_disappear?: number | null
           model_family?: string
