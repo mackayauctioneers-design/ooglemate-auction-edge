@@ -1617,6 +1617,110 @@ export type Database = {
           },
         ]
       }
+      dealer_url_queue: {
+        Row: {
+          created_at: string
+          dealer_slug: string
+          discovered_urls: string[] | null
+          domain: string
+          fail_reason: string | null
+          id: string
+          intent: string
+          last_run_at: string | null
+          method: string
+          next_run_at: string | null
+          priority: string
+          result_summary: Json | null
+          status: string
+          submission_id: string | null
+          url_canonical: string
+          url_raw: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_slug: string
+          discovered_urls?: string[] | null
+          domain: string
+          fail_reason?: string | null
+          id?: string
+          intent?: string
+          last_run_at?: string | null
+          method?: string
+          next_run_at?: string | null
+          priority?: string
+          result_summary?: Json | null
+          status?: string
+          submission_id?: string | null
+          url_canonical: string
+          url_raw: string
+        }
+        Update: {
+          created_at?: string
+          dealer_slug?: string
+          discovered_urls?: string[] | null
+          domain?: string
+          fail_reason?: string | null
+          id?: string
+          intent?: string
+          last_run_at?: string | null
+          method?: string
+          next_run_at?: string | null
+          priority?: string
+          result_summary?: Json | null
+          status?: string
+          submission_id?: string | null
+          url_canonical?: string
+          url_raw?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_url_queue_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_url_submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_url_submissions: {
+        Row: {
+          id: string
+          notes: string | null
+          raw_text: string | null
+          submitted_at: string
+          submitted_by: string
+          urls_accepted: number | null
+          urls_duplicate: number | null
+          urls_manual_review: number | null
+          urls_queued_firecrawl: number | null
+          urls_queued_scrape: number | null
+        }
+        Insert: {
+          id?: string
+          notes?: string | null
+          raw_text?: string | null
+          submitted_at?: string
+          submitted_by?: string
+          urls_accepted?: number | null
+          urls_duplicate?: number | null
+          urls_manual_review?: number | null
+          urls_queued_firecrawl?: number | null
+          urls_queued_scrape?: number | null
+        }
+        Update: {
+          id?: string
+          notes?: string | null
+          raw_text?: string | null
+          submitted_at?: string
+          submitted_by?: string
+          urls_accepted?: number | null
+          urls_duplicate?: number | null
+          urls_manual_review?: number | null
+          urls_queued_firecrawl?: number | null
+          urls_queued_scrape?: number | null
+        }
+        Relationships: []
+      }
       feeding_mode_reports: {
         Row: {
           created_at: string
