@@ -14,7 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBobSiteContext } from '@/contexts/BobSiteContext';
 import { useBobTools } from '@/hooks/useBobTools';
-import bobAvatarVideo from '@/assets/bob-avatar.mp4';
+
 
 // ============================================================================
 // BOB PANEL - Site-aware dealer assistant
@@ -345,12 +345,9 @@ export function BobPanel() {
         <div className="bg-gradient-to-br from-primary to-primary/80 p-4 text-primary-foreground">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary-foreground/30">
-              <video
-                src={bobAvatarVideo}
-                autoPlay
-                loop
-                muted
-                playsInline
+              <img
+                src="/pwa-192x192.png"
+                alt="Bob"
                 className="w-full h-full object-cover"
               />
             </div>
