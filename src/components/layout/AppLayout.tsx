@@ -33,9 +33,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { currentUser } = useAuth();
   const isMobile = useIsMobile();
   
-  // Don't show Bob on ValoPage or on mobile devices (causes crashes)
+  // Don't show Bob features on ValoPage or on mobile devices (causes iOS crashes)
   const isValoPage = location.pathname === '/valo';
-  const showBobAvatar = !isValoPage && !isMobile;
+  const showBobFeatures = !isValoPage && !isMobile;
   
   return (
     <div className="flex min-h-screen w-full bg-background">
@@ -44,13 +44,13 @@ export function AppLayout({ children }: AppLayoutProps) {
         {children}
       </main>
       
-      {/* Bob Avatar - Voice assistant (desktop only, not on ValoPage) */}
-      {showBobAvatar && (
-        <BobAvatarLazy dealerName={currentUser?.dealer_name} />
+      {/* Bob Avatar + Panel - Desktop only to prevent iOS memory crashes */}
+      {showBobFeatures && (
+        <>
+          <BobAvatarLazy dealerName={currentUser?.dealer_name} />
+          <BobPanel />
+        </>
       )}
-      
-      {/* Bob Panel - Text chat + Daily Brief + Help (all pages, all devices) */}
-      <BobPanel />
     </div>
   );
 }
