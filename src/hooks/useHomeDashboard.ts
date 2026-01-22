@@ -114,9 +114,9 @@ export function useHomeDashboard() {
     fetchDashboard();
   }, [fetchDashboard]);
 
-  // Refresh every 2 minutes
+  // Refresh every 5 minutes (reduced from 2 to prevent mobile memory issues)
   useEffect(() => {
-    const interval = setInterval(fetchDashboard, 2 * 60 * 1000);
+    const interval = setInterval(fetchDashboard, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [fetchDashboard]);
 
