@@ -18,7 +18,8 @@ interface Mission {
   location?: string;
   seller_type?: string[];
   exclude_sources?: string[];
-  allowed_domains?: string[];
+  preferred_domains?: string[];  // Renamed: hints, not restrictions
+  allowed_domains?: string[];    // Legacy alias
   notes?: string;
 }
 
@@ -143,6 +144,12 @@ Factor freight into margin calculation. A $2k cheaper car in regional WA with $2
 - Location: ${m.location || "Australia-wide"}
 - Seller type: ${(m.seller_type || ["private", "motivated", "certified"]).join(", ")}
 - Notes: ${m.notes || ""}
+${(m.preferred_domains || m.allowed_domains)?.length ? `
+### PREFERRED SOURCES (check these first, but search broadly)
+${(m.preferred_domains || m.allowed_domains || []).join(", ")}
+These are PRIORITY sources—search them first, but you are NOT limited to them.
+Search the entire web for opportunities. Include dealer direct sites, auction houses, classifieds, and any other legitimate source.
+` : ""}
 
 ---
 
@@ -188,26 +195,21 @@ Return 3-5 ranked opportunities (best first). If no matches, return empty items 
 `.trim();
 }
 
-async function callXai(prompt: string, allowed_domains?: string[]): Promise<string> {
+async function callXai(prompt: string, _preferred_domains?: string[]): Promise<string> {
   const XAI_API_KEY = Deno.env.get("XAI_API_KEY");
   if (!XAI_API_KEY) throw new Error("XAI_API_KEY missing");
 
-  console.log("[run-grok-mission] Calling xAI Responses API with web_search...");
+  console.log("[run-grok-mission] Calling xAI Responses API with web_search (unrestricted)...");
 
   // Use Responses API with web search tools
+  // NOTE: We do NOT restrict allowed_domains - search is unrestricted
+  // Preferred domains are passed in the prompt as priority hints, not hard filters
   const body: Record<string, unknown> = {
     model: "grok-3-fast",
     input: prompt,
     tools: [{ type: "web_search" }],
     tool_choice: "auto",
   };
-
-  // Apply search filters (allowed_domains etc.)
-  if (allowed_domains && allowed_domains.length) {
-    body.search_parameters = {
-      sources: [{ type: "web", allowed_domains }],
-    };
-  }
 
   const res = await fetch("https://api.x.ai/v1/responses", {
     method: "POST",
