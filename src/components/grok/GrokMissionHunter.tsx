@@ -395,7 +395,7 @@ export function GrokMissionHunter() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="domains">Allowed Domains (one per line)</Label>
+                <Label htmlFor="domains">Preferred Sources (check first, not exclusive)</Label>
                 <div className="flex items-center gap-2">
                   {dealerDomainCount > 0 && (
                     <Badge variant="secondary" className="text-xs">
@@ -426,7 +426,7 @@ export function GrokMissionHunter() {
                 className="font-mono text-xs"
               />
               <p className="text-xs text-muted-foreground">
-                Includes submitted dealer URLs from Dealer URL Intake
+                Priority sources—AI will check these first but searches the entire web
               </p>
             </div>
             <div className="space-y-2">
