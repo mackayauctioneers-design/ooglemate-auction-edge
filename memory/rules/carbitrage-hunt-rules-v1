@@ -1,135 +1,155 @@
-# Memory: rules/carbitrage-hunt-rules-v1
+# Carbitrage – Permanent Project Knowledge & Rules
 Updated: 2026-01-23
-
-## Core Carbitrage Hunt Rules (Australia-wide, always)
-
-### Source Priority Order (reliability-first)
-1. **PRIMARY (stable links)**: Gumtree.com.au, Facebook Marketplace, Carma.com.au
-2. **SECONDARY**: Drive.com.au classifieds, private seller ads/forums, dealer direct websites
-3. **CARSALES-DISCOVERY MODE ONLY**: Carsales.com.au for DATA EXTRACTION only (never as primary link)
-
-### Carsales-Safe Discovery Mode (CRITICAL)
-When using carsales.com.au:
-- **NEVER** use direct carsales listing URL as primary `link`
-- Use carsales ONLY for data extraction: price, km, year, dealer name, dealer license, suburb/postcode
-- For every carsales hit:
-  1. Extract dealer name + license + suburb from listing
-  2. Derive stable `dealer_url`: Search "dealer name + license number + website Australia" → use top dealer site result
-  3. If no dealer site found, fall back to carsales dealer profile (`https://www.carsales.com.au/dealer/[dealer-slug]/`)
-- Mark source as `carsales-discovery` (not `carsales`)
-- Store original carsales URL in `verification_source` (for reference only, not for user clicks)
-
-### Pricing
-- ALWAYS use off-road/drive-away excluding govt charges/on-roads/stamp duty
-- Focus on advertised price before extras
-
-### Model Year Priority
-- Prefer newer (e.g., 2024/2025 MY) if price delta ≤ +$8k off-road compared to similar older equivalent
-
-### Mileage
-- Strongly prioritize <50,000 km total (ideally much lower for value)
-
-### Body Type
-- Prioritize hatchbacks and sedans
-- Avoid SUVs/crossovers unless exceptional deal (e.g., off-road price steal under $25k with low km/history)
-
-### Seller Type
-- Heavily favor private/motivated sellers (distressed sales, quick flips)
-- Include dealers only if certified pre-owned + full service history + competitive pricing
-
-### Metrics
-- Always calculate $/km (lower = better)
-- Include brutal honesty—no weak/sideways options
-- Flag any red flags (e.g., accident history, poor condition, potential sold/expired status)
+Location: Sydney-based, Australia-wide used car arbitrage
 
 ---
 
-## Geographic Intelligence (Geo Layer)
+## Core Philosophy & Constraints (apply to EVERY prompt, feature, hunt, code change)
 
-### Purpose
-Carbitrage uses geographic context to understand where vehicles move, where they clear fastest, and where mispricing is most likely to occur. This prevents metro bias and unlocks regional arbitrage.
+### Margin-First Principle
+- Prioritize % margin, exit certainty, time-to-exit over absolute cheapest price or high volume
+- Every deal must justify its margin after all costs (freight, reconditioning, time)
 
-### Geo Normalisation
-All vehicles are normalised to geographic identifiers:
-- State
+### Human-in-the-Loop (CRITICAL)
+- AI (Grok/Lovable) is reconnaissance/enrichment ONLY
+- NEVER auto-decide buys/pricing
+- All final states (Buy/Watch/Reject) require Josh/VA validation
+- Queue items land as 'pending' for human review
+
+### Exit Confidence > Speculation
+- Every opportunity must match known dealer DNA (from 6-month sales dumps) OR proven regional liquidity
+- No speculative buys without historical validation
+
+### Quality Over Volume
+- No blind scraping races or low-quality alerts
+- Filter aggressively early in the pipeline
+- Better to miss a deal than waste time on traps
+
+---
+
+## Geographic Intelligence (Geo Layer) – KING OF ALL CONTEXT
+
+### Geo Normalisation (Required for all listings)
+All vehicles normalised to:
+- State (NSW, VIC, QLD, WA, SA, TAS, NT, ACT)
 - Postcode
 - Suburb
 - SA2 / SA3 (ABS statistical areas)
 - Latitude / longitude
 
-This allows consistent comparison across dealer listings, auctions, private sales, and historical exits.
-
 ### Regional Liquidity Mapping
-The system tracks clearance velocity by region, not just nationally.
-- Some models clear faster in QLD regional than Sydney metro
-- Certain utes / 4WDs have stronger demand in WA / NT
+Track clearance velocity by region, not just nationally:
+- Utes/4WDs: Faster in QLD regional, WA, NT, FNQ
+- Hatchbacks/sedans: Faster in metro Sydney, Melbourne
 - Metro pricing can be misleading for regional exits
-
-Vehicles are scored differently depending on where they are located AND where they are likely to exit.
+- Score vehicles based on WHERE located AND WHERE likely to exit
 
 ### Geo Price Dislocation Detection
-The system looks for regional price mismatches:
-- Cheap regional listings for vehicles that exit strongly in metro
-- Metro listings that are overpriced relative to nearby regions
-- Dealers consistently underpricing in certain postcodes
+Identify regional price mismatches:
+- Cheap regional listings for vehicles that exit strongly in metro = GEO-ARBITRAGE OPPORTUNITY
+- Metro listings overpriced relative to nearby regions = AVOID
+- Dealers consistently underpricing in certain postcodes = TARGET
 
-These are treated as **geo-arbitrage opportunities**, not generic bargains.
-
-### Freight & Distance Cost Modelling
-Location is not a hard exclusion—it's a cost modifier.
-
-**Baseline freight assumptions:**
+### Freight Cost Modelling
+Location is NOT a hard exclusion—it's a cost modifier:
 - NSW ↔ QLD ↔ VIC: ~$1,000 freight
 - Tasmania: ~$1,300 freight
 - WA / NT: ~$1,800-2,500 freight
+Factor freight into margin calculation. A $2k cheaper car in regional WA with $2k freight = NET NEUTRAL.
 
-This allows:
-- Remote vehicles to remain viable
-- Proper margin calculation after logistics
-- Avoiding knee-jerk "too far" rejections
+### Location Traps
+Flag vehicles that appear cheap due to weak exit region:
+- Remote areas with no dealer network
+- Regions with oversupply of that model
+- Areas with historically slow clearance
 
-### Dealer Geo Strength Profiles
-Dealers implicitly develop regional strengths:
-- Dealer A clears Hiluxes fast in FNQ
-- Dealer B dominates metro Sydney prestige
-- Dealer C moves LandCruisers well in WA
+---
 
-These patterns inform matching vehicles to the right dealer by region.
+## Data Sources Priority & Handling
 
-### Geo-Aware Watchlists
-Watchlists can be geo-scoped:
-- "Only alert if in NSW/QLD"
-- "Alert if regional VIC under X price"
-- "Ignore metro Sydney noise"
+### Tier 1: Auctions/Wholesale (Highest Priority)
+- Pickles, Manheim, Grays, Slattery, Lloyd's
+- Highest exit confidence → prioritize always
+- Stable links, verified inventory
 
-This reduces alert fatigue and improves signal quality.
+### Tier 2: Market Truth
+- AutoGrab – market truth for valuations (trade/retail/percentile/residuals)
+- RedBook (planned) – VIN-level specs/valuations/options/residuals
 
-### Geo Heatmaps
-The system tracks:
-- Heatmaps of listings disappearing (sold)
-- Heatmaps of repeated auction failures
-- Model-specific regional demand maps
+### Tier 3: Unstructured Discovery (Primary Links)
+- Gumtree.com.au, Facebook Marketplace, Carma.com.au – stable links, slower expiration
+- Drive.com.au classifieds, private seller ads/forums
+- Dealer direct websites – most stable links
 
-This allows visual understanding of market flow and faster conviction on marginal deals.
+### Tier 4: Carsales (Discovery/Verification ONLY)
+- **NEVER** use direct carsales listing URL as primary link (fragile/blocks/404s)
+- Extract data ONLY: price, km, year, dealer_name, license, suburb/postcode
+- Derive stable dealer_url via search: "[dealer_name] [license] website Australia"
+- Or use public registers (Service NSW, ASIC, etc.)
+- Mark source as `carsales-discovery`
+- Store original URL in `verification_source` only
+- Use for DNA matching/verification only
 
-### Interaction with Grok (CRITICAL)
-Grok is geo-blind by default unless instructed. Carbitrage adds value by:
-- Interpreting Grok's finds through geo context
-- Discounting "cheap" cars in weak exit regions
-- Elevating "normal" priced cars in strong exit regions
+---
 
-**Grok finds the car. Carbitrage decides if the location makes sense.**
+## Core Tables/Queues (enforce in code/logic)
 
-### Geo-Specific Questions for Every Hunt
-1. What's the regional clearance velocity for this model?
-2. Does the listing location match known strong exit regions?
-3. Is this "cheap" because of location (weak region) or genuine underpricing?
-4. What's the freight cost to a strong exit region?
-5. Are there dealer clusters that consistently underprice stock regionally?
+### pickles_detail_queue (Central Spine)
+Fields:
+- source, crawl_status (pending/validated/watch/rejected)
+- detail_url, km, price, year, make, model, variant_raw
+- geo: postcode, suburb, state, SA2, latlong
+- timestamps: first_seen_at, last_seen_at
+- redbook_code (if enriched)
+- trade_value, rtv (retail trade value)
+- regional_liquidity_rating (high/medium/low)
+- dislocation_flag (boolean)
+- freight_adjusted_margin_estimate
+
+### Dealer Profiles (from sales dumps)
+- models/variants/KM bands/price sensitivity
+- regional strengths (e.g., Hiluxes fast in FNQ, LandCruisers in WA)
+- historical gross profit by fingerprint
+- avg days to exit
+
+### Dealer Mandates (queryable filters)
+- year_min, year_max
+- km_max
+- price_max_offroad
+- body type preferences
+- required_options
+- min_margin_target
+- preferred_sources
+- geo_scope (states/regions)
+
+---
+
+## Key Features & Behaviors
+
+### Kiting Mode
+On exit/sale → auto-hunt clones:
+- Same model/variant ±1 year
+- KM delta tolerance (e.g., ≤150% of sold vehicle)
+- Price ≤ last buy price + margin buffer
+- Prioritize same dealer/region
+
+### Trap Inventory
+- Flag stalls/poor velocity repeats
+- Auto-reject similar profiles
+- Track repeat auction failures
+- Monitor relist rates
+
+### Grok Integration (Recon Layer ONLY)
+- Output to queue as source='grok_search', status='pending'
+- Use geo-aware prompts
+- Flag location_traps in response
+- NEVER decide buys—human validation required
+- Include fallback_search_query for manual verification
 
 ---
 
 ## Output Format (Strict JSON)
+
 ```json
 {
   "opportunities": [
@@ -140,34 +160,67 @@ Grok is geo-blind by default unless instructed. Carbitrage adds value by:
       "dollars_per_km": 3.099,
       "source": "gumtree|facebook|carma|drive|dealer-direct|carsales-discovery",
       "link": "https://www.exampledealer.com.au/stock/12345",
+      "dealer_url": "https://www.exampledealer.com.au",
       "verification_source": "https://www.carsales.com.au/cars/details/..." | null,
+      "fallback_search_query": "2024 Hyundai i30 N Line Premium Sydney low km",
       "dealer_name": "Sydney Auto Hub" | null,
       "dealer_license": "MD12345" | null,
-      "fallback_search_query": "2024 Hyundai i30 N Line Premium Sydney low km",
       "seller_type": "private|dealer|certified",
       "location": "Sydney NSW",
       "state": "NSW",
       "postcode": "2000",
       "geo_exit_strength": "HIGH|MEDIUM|LOW|UNKNOWN",
-      "geo_notes": "Sydney metro strong exit region for i30; no freight needed",
+      "geo_notes": "Sydney metro strong exit for i30; no freight needed",
       "estimated_freight_cost": 0,
-      "notes": "Data verified from carsales but linked to dealer site for reliability—no direct carsales click.",
-      "comparison_to_recent_wins": "how it stacks up",
+      "location_trap": false,
+      "notes": "Data verified. Geo context applied. [source-specific warnings]",
+      "comparison_to_recent_wins": "Matches 2024 benchmark ($30,990 / 10k km)",
       "red_flags": "any concerns or 'none'"
     }
   ],
-  "summary": "Prioritized stable sources; carsales used for discovery only with dealer site links. Geo context applied."
+  "summary": "Prioritized stable sources; carsales discovery only. Geo context: [regional insights]."
 }
 ```
 
-### Recent Wins/Benchmarks
-- 2024 Hyundai i30 N Line Premium, ~10k km, $30,990 off-road (strong private buy)
-- Considering 2025 MY25 i30 upgrade ~9k km at $37,990 off-road if delta justified
+### Margin Calculation
+Include in assessment:
+- Freight adjustment based on source→exit location
+- RedBook/AutoGrab ranges for validation
+- Dealer DNA fit (historical success with similar vehicles)
+- Regional liquidity multiplier
 
-### Technical Integration
+---
+
+## Recent Wins/Benchmarks
+
+- 2024 Hyundai i30 N Line Premium, ~10k km, $30,990 off-road (strong private buy)
+- 2025 MY25 i30 upgrade ~9k km at $37,990 off-road (if delta justified)
+
+---
+
+## Priorities (in order)
+
+1. **Exit certainty** via dealer DNA / regional liquidity
+2. **Margin** after all costs (freight, recon, time)
+3. **Speed to validation** (queue filtering efficiency)
+4. **Avoid traps/false positives** (early rejects save time)
+
+---
+
+## Workflow Rules for Lovable/Grok
+
+- Incremental builds: Start small, test after each feature
+- Use Chat mode for discussion/debug without code changes
+- Refactor incrementally, test rigorously, avoid regressions
+- Always reference this Knowledge before changes
+- Confirm absorption: Before major actions, summarize understanding in Chat mode
+
+---
+
+## Technical Integration
+
 - XAI_API_KEY env var for Grok/xAI calls
 - Force JSON output via system prompt
-- Force source priority in queries: Gumtree/FB/Carma FIRST
-- Carsales = discovery mode only (extract data → derive dealer URL → link to dealer)
-- Add verification_source for audit trail
+- Force source priority in queries: Gumtree/FB/Carma → Carsales-discovery
 - Apply geo intelligence layer to all hunt outputs
+- Store verification_source for audit trail
