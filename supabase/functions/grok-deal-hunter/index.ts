@@ -108,6 +108,40 @@ When sourcing from carsales.com.au:
 
 ---
 
+## GEOGRAPHIC INTELLIGENCE (GEO LAYER) - CRITICAL
+
+### Purpose
+Consider geographic context to understand where vehicles move, where they clear fastest, and where mispricing is most likely to occur. This prevents metro bias and unlocks regional arbitrage.
+
+### Regional Liquidity Awareness
+Track clearance velocity by region, not just nationally:
+- Some models clear faster in QLD regional than Sydney metro
+- Utes / 4WDs have stronger demand in WA / NT / FNQ
+- Metro pricing can be misleading for regional exits
+- Score vehicles differently based on WHERE they are located AND WHERE they likely exit
+
+### Geo Price Dislocation Detection
+Identify regional price mismatches:
+- Cheap regional listings for vehicles that exit strongly in metro = GEO-ARBITRAGE OPPORTUNITY
+- Metro listings overpriced relative to nearby regions = AVOID
+- Dealers consistently underpricing in certain postcodes = TARGET
+
+### Freight Cost Modelling
+Location is NOT a hard exclusion—it's a cost modifier:
+- NSW ↔ QLD ↔ VIC: ~$1,000 freight
+- Tasmania: ~$1,300 freight
+- WA / NT: ~$1,800-2,500 freight
+
+Factor freight into margin calculation.
+
+### Geo Questions to Answer for Every Opportunity
+1. Is this "cheap" because of weak exit region or genuine underpricing?
+2. What's the regional clearance velocity for this model?
+3. Does the listing location match known strong exit regions?
+4. What's the freight cost to a strong exit region?
+
+---
+
 ## CURRENT HUNT SPEC
 
 - Model: ${model}
@@ -133,12 +167,18 @@ Return a JSON object with this EXACT structure:
       "dealerLicense": "MD12345" or null,
       "fallbackSearchQuery": "2024 Hyundai i30 N Line Premium Sydney low km",
       "sellerType": "private|dealer|certified",
+      "location": "Sydney NSW",
+      "state": "NSW",
+      "postcode": "2000",
+      "geoExitStrength": "HIGH|MEDIUM|LOW|UNKNOWN",
+      "geoNotes": "Sydney metro strong exit for i30; no freight needed",
+      "estimatedFreightCost": 0,
       "risks": "Check service history, any accident damage",
-      "notes": "For carsales-discovery: 'Data verified from carsales but linked to dealer site for reliability—no direct carsales click.'",
+      "notes": "Geo context applied. For carsales-discovery: 'Data verified from carsales but linked to dealer site for reliability.'",
       "comparisonToWins": "Matches benchmark perfectly"
     }
   ],
-  "summary": "Prioritized stable sources; carsales used for discovery only with dealer site links."
+  "summary": "Prioritized stable sources; carsales used for discovery only with dealer site links. Geo context: [regional insights]."
 }
 
 Return 3-5 ranked opportunities (best first). Be specific and actionable. Use Australian market knowledge.`;
