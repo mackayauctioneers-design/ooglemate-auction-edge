@@ -1,5 +1,25 @@
 # Permanent Core Logic Lock-In – Carbitrage Sourcing & Valuation Rules (Jan 23, 2026)
 
+## 0. SOURCING PRIORITY ORDER (Always follow this sequence)
+
+### User-supplied data is ALWAYS first and authoritative
+- Any URL, screenshot, pasted text, stock number, rego plate, dealer name, km/price extract, photo description, or category flag user provides = **ground truth**.
+- Do NOT override or question it with "not visible publicly" or public fetch results.
+- Extract and use: km, off-road price (excl. govt/on-roads), location, body/transmission, condition notes, flags ("below market", "around market"), dealer name/stock/reg, photos (tray? damage?).
+
+### Process order for every hunt/test:
+1. **Step 1**: Analyze user-supplied URL/screenshot/text first
+2. **Step 2**: Apply all locked rules (off-road price only, no drive-away, prestige = clean unless explicit damage, location value with freight adjust, $/km calc, geo score, brutal honesty)
+3. **Step 3**: Output table verdict + JSON queue match if criteria met
+4. **Step 4**: Only if user asks for "cheaper" or "alternatives", expand to other public sources — but never contradict user data
+
+### When no user link/extract is provided:
+- Use multi-source search (Toyota.com.au used-vehicles first, then Carsales, CarsGuide, Drive, auctions, Gumtree)
+- Proactively apply tight filters (make/model/year/km cap/transmission/body)
+- If nothing found, say "no public matches under criteria" and ask for user extract/link
+
+---
+
 ## 1. No excuses on data access
 - Public pages often hide km, condition, damage flags, salvage/prestige distinction, photos, etc. behind login.
 - When user provides link + visible extract/screenshot/text (e.g., "712 km", "National Prestige", "no damage notes"), ALWAYS accept and use that as ground truth — do NOT re-question or default to "not visible publicly".
