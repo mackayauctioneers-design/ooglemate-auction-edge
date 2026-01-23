@@ -14,6 +14,7 @@ import { KitingWingMarkVideo } from '@/components/kiting';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { GrokMissionHunter } from '@/components/grok/GrokMissionHunter';
 import { SalesPatternHunter } from '@/components/grok/SalesPatternHunter';
+import { CaroogleAiQueue } from '@/components/grok/CaroogleAiQueue';
 
 // ============================================================================
 // MOBILE-OPTIMIZED: Reduced data fetching and simpler UI on mobile devices
@@ -296,10 +297,13 @@ export default function OpportunitiesPage() {
           <WatchlistMovementCard items={watchlist} />
         )}
 
+        {/* CaroogleAi Queue - Show pending AI-discovered candidates */}
+        <CaroogleAiQueue />
+
         {/* Sales Pattern Hunter - Auto-generate missions from profitable sales */}
         <SalesPatternHunter />
 
-        {/* Grok Mission Hunter - Manual AI-powered sourcing with web search */}
+        {/* CaroogleAi Mission Hunter - Manual AI-powered sourcing with web search */}
         <GrokMissionHunter />
 
         {/* Filters */}
