@@ -4,9 +4,20 @@ Updated: 2026-01-23
 ## Core Carbitrage Hunt Rules (Australia-wide, always)
 
 ### Source Priority Order (reliability-first)
-1. **Primary (stable links)**: Gumtree.com.au, Facebook Marketplace, Carma.com.au
-2. **Secondary**: Drive.com.au classifieds, private seller ads/forums, dealer direct websites
-3. **Last Resort ONLY**: Carsales.com.au—frequent 404s, Cloudflare blocks, rapid expirations
+1. **PRIMARY (stable links)**: Gumtree.com.au, Facebook Marketplace, Carma.com.au
+2. **SECONDARY**: Drive.com.au classifieds, private seller ads/forums, dealer direct websites
+3. **CARSALES-DISCOVERY MODE ONLY**: Carsales.com.au for DATA EXTRACTION only (never as primary link)
+
+### Carsales-Safe Discovery Mode (CRITICAL)
+When using carsales.com.au:
+- **NEVER** use direct carsales listing URL as primary `link`
+- Use carsales ONLY for data extraction: price, km, year, dealer name, dealer license, suburb/postcode
+- For every carsales hit:
+  1. Extract dealer name + license + suburb from listing
+  2. Derive stable `dealer_url`: Search "dealer name + license number + website Australia" → use top dealer site result
+  3. If no dealer site found, fall back to carsales dealer profile (`https://www.carsales.com.au/dealer/[dealer-slug]/`)
+- Mark source as `carsales-discovery` (not `carsales`)
+- Store original carsales URL in `verification_source` (for reference only, not for user clicks)
 
 ### Pricing
 - ALWAYS use off-road/drive-away excluding govt charges/on-roads/stamp duty
@@ -31,16 +42,6 @@ Updated: 2026-01-23
 - Include brutal honesty—no weak/sideways options
 - Flag any red flags (e.g., accident history, poor condition, potential sold/expired status)
 
-### Link Handling (Critical for Reliability)
-- ALWAYS prefer non-carsales sources FIRST
-- For carsales (rare fallback only):
-  - Include primary listing URL
-  - ADD strong warnings: "Carsales links frequently 404/expire quickly or block access (Cloudflare irregular activity, cache issues, ISP problems). Try incognito, clear cache/cookies, mobile data/hotspot, or contact dealer directly."
-- Required fields:
-  - `link`: Primary URL from highest-priority source
-  - `dealer_url`: If dealer—derive/search dealer site/profile (or null)
-  - `fallback_search_query`: Google-ready string (e.g., "2024 Hyundai i30 N Line Premium Sydney dealer name")
-
 ### Output Format (Strict JSON)
 ```json
 {
@@ -50,17 +51,19 @@ Updated: 2026-01-23
       "km": 10000,
       "off_road_price_aud": 30990,
       "dollars_per_km": 3.099,
-      "source": "gumtree|facebook|carma|drive|carsales-last-resort",
-      "link": "https://www.gumtree.com.au/...",
-      "dealer_url": "https://www.exampledealer.com.au/" | null,
+      "source": "gumtree|facebook|carma|drive|dealer-direct|carsales-discovery",
+      "link": "https://www.exampledealer.com.au/stock/12345",
+      "verification_source": "https://www.carsales.com.au/cars/details/..." | null,
+      "dealer_name": "Sydney Auto Hub" | null,
+      "dealer_license": "MD12345" | null,
       "fallback_search_query": "2024 Hyundai i30 N Line Premium Sydney low km",
       "seller_type": "private|dealer|certified",
-      "notes": "Prioritized stable source; avoided carsales due to frequent link failures. [caveats]",
+      "notes": "Data verified from carsales but linked to dealer site for reliability—no direct carsales click.",
       "comparison_to_recent_wins": "how it stacks up",
       "red_flags": "any concerns or 'none'"
     }
   ],
-  "summary": "Prioritized stable sources; carsales avoided unless essential. Common issues: expirations, IP blocks—troubleshoot with incognito/mobile."
+  "summary": "Prioritized stable sources; carsales used for discovery only with dealer site links."
 }
 ```
 
@@ -72,5 +75,5 @@ Updated: 2026-01-23
 - XAI_API_KEY env var for Grok/xAI calls
 - Force JSON output via system prompt
 - Force source priority in queries: Gumtree/FB/Carma FIRST
-- Warn on carsales unreliability in all outputs
-- Add fallback_search_query for every opportunity
+- Carsales = discovery mode only (extract data → derive dealer URL → link to dealer)
+- Add verification_source for audit trail

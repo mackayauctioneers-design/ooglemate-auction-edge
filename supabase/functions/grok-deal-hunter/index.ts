@@ -65,9 +65,19 @@ serve(async (req) => {
 ### SOURCE PRIORITY ORDER (reliability-first - CRITICAL)
 1. **PRIMARY (stable links)**: Gumtree.com.au, Facebook Marketplace, Carma.com.au
 2. **SECONDARY**: Drive.com.au classifieds, private seller ads/forums, dealer direct websites
-3. **LAST RESORT ONLY**: Carsales.com.au—frequent 404s, Cloudflare blocks, rapid expirations
+3. **CARSALES-DISCOVERY MODE ONLY**: Use carsales.com.au for DATA EXTRACTION only—NEVER as primary link
 
-ALWAYS prefer sources from priority 1-2. Only use carsales if NO viable matches exist elsewhere.
+### CARSALES-SAFE DISCOVERY MODE (CRITICAL)
+When sourcing from carsales.com.au:
+- **NEVER** use direct carsales listing URL as the primary link
+- Use carsales ONLY for data extraction: price, km, year, dealer name, dealer license, suburb/postcode
+- For EVERY carsales hit:
+  1. Extract dealer name + license + suburb from the listing
+  2. Derive stable dealerUrl: Search "dealer name + license number + website Australia" → use top dealer site result
+  3. If no dealer site found, fall back to carsales dealer profile page
+  4. Use the derived dealer site as the PRIMARY link
+  5. Store original carsales URL in verificationSource (for reference only)
+- Mark source as "carsales-discovery" (NOT "carsales")
 
 ### Pricing Rules
 - ALWAYS use off-road/drive-away price EXCLUDING govt charges/on-roads/stamp duty (focus on advertised price before extras)
@@ -91,15 +101,6 @@ ALWAYS prefer sources from priority 1-2. Only use carsales if NO viable matches 
 - Calculate $/km (lower = better)
 - Be BRUTALLY HONEST—no weak/sideways options
 - Flag ALL red flags (flood damage, odometer rollback, accident history, poor resale regions, potential sold/expired)
-
-### Link Handling (CRITICAL for reliability)
-- ALWAYS prefer non-carsales sources FIRST
-- For carsales (rare fallback only):
-  - ADD strong warning: "Carsales links frequently 404/expire quickly or block access (Cloudflare irregular activity, cache issues). Try incognito, clear cache, mobile data, or contact dealer directly."
-- Required fields:
-  - link: Primary URL from highest-priority source
-  - dealerUrl: Dealer website or profile (null if private/not derivable)
-  - fallbackSearchQuery: Google-ready string (e.g., "2024 Hyundai i30 N Line Premium Sydney low km")
 
 ### Recent Wins/Benchmarks
 - 2024 Hyundai i30 N Line Premium, ~10k km, $30,990 off-road (strong private buy)
@@ -125,17 +126,19 @@ Return a JSON object with this EXACT structure:
       "offRoadPrice": 30990,
       "dollarsPerKm": 3.10,
       "marginPct": 12,
-      "source": "gumtree|facebook|carma|drive|dealer-direct|carsales-last-resort",
-      "link": "https://www.gumtree.com.au/...",
-      "dealerUrl": "https://www.exampledealer.com.au/" or null,
+      "source": "gumtree|facebook|carma|drive|dealer-direct|carsales-discovery",
+      "link": "https://www.dealersite.com.au/stock/12345 (STABLE dealer URL, NEVER direct carsales)",
+      "verificationSource": "https://www.carsales.com.au/... (if discovered there) or null",
+      "dealerName": "Sydney Auto Hub" or null,
+      "dealerLicense": "MD12345" or null,
       "fallbackSearchQuery": "2024 Hyundai i30 N Line Premium Sydney low km",
       "sellerType": "private|dealer|certified",
       "risks": "Check service history, any accident damage",
-      "notes": "Prioritized stable source. Strong retail demand.",
+      "notes": "For carsales-discovery: 'Data verified from carsales but linked to dealer site for reliability—no direct carsales click.'",
       "comparisonToWins": "Matches benchmark perfectly"
     }
   ],
-  "summary": "Prioritized stable sources; carsales avoided unless essential. Use fallbackSearchQuery if links fail."
+  "summary": "Prioritized stable sources; carsales used for discovery only with dealer site links."
 }
 
 Return 3-5 ranked opportunities (best first). Be specific and actionable. Use Australian market knowledge.`;
