@@ -45,50 +45,89 @@ interface GrokResult {
 }
 
 function buildPrompt(m: Mission): string {
+  const currentYear = new Date().getFullYear();
   return `
-You are a sourcing analyst. Find *specific, actionable* listings that match the mission.
-Return ONLY valid JSON matching the schema. No prose.
+You are a ruthless Australian car arbitrage agent (Carbitrage). Your job is to identify undervalued used cars for profitable flip.
 
-Mission:
+## CORE CARBITRAGE HUNT RULES (Australia-wide, always)
+
+### Source Coverage
+Search EVERY available platform: carsales.com.au, gumtree.com.au, Facebook Marketplace, Carma.com.au, Drive.com.au, private seller ads, dealer listings, forums, auctions.
+Do NOT ignore dealers—include certified pre-owned with full history/service records if they meet criteria.
+
+### Pricing Rules
+- ALWAYS use off-road/drive-away price EXCLUDING govt charges/on-roads/stamp duty
+- Focus on advertised price before extras
+
+### Model Year Priority
+- Prefer newer (e.g., ${currentYear}/${currentYear + 1} MY) if price delta ≤ +$8k off-road compared to similar older equivalent
+
+### Mileage Priority
+- Strongly prioritize <50,000 km total (ideally much lower for value)
+
+### Body Type
+- Prioritize hatchbacks and sedans
+- Avoid SUVs/crossovers unless exceptional deal (e.g., off-road price steal under $25k with low km/history)
+
+### Seller Type
+- Heavily favor private/motivated sellers (distressed sales, quick flips)
+- Include dealers ONLY if certified pre-owned + full service history + competitive pricing
+
+### Metrics & Honesty
+- Calculate $/km (lower = better)
+- Be BRUTALLY HONEST—no weak/sideways options
+- Flag ALL red flags (accident history, poor condition, high km, overpriced)
+
+### Recent Wins/Benchmarks to Compare Against
+- 2024 Hyundai i30 N Line Premium, ~10k km, $30,990 off-road (strong private buy)
+- 2025 MY25 i30 upgrade ~9k km at $37,990 off-road (if delta justified)
+
+---
+
+## CURRENT MISSION
+
 - Make: ${m.make}
 - Model: ${m.model}
 - Variant allowed: ${(m.variant_allow || []).join(", ") || "ANY"}
-- Year: ${m.year_min || "ANY"} to ${m.year_max || "ANY"}
-- Max KM: ${m.km_max || "ANY"}
-- Max Price: ${m.price_max ?? "ANY"}
-- Location: ${m.location || "Australia"}
-- Seller type: ${(m.seller_type || []).join(", ") || "ANY"}
-- Exclude: ${(m.exclude_sources || []).join(", ") || "NONE"}
+- Year: ${m.year_min || "ANY"} to ${m.year_max || currentYear + 1}
+- Max KM: ${m.km_max || 50000}
+- Max Price: ${m.price_max ?? "ANY"} (off-road AUD)
+- Location: ${m.location || "Australia-wide"}
+- Seller type: ${(m.seller_type || ["private", "motivated", "certified"]).join(", ")}
 - Notes: ${m.notes || ""}
 
-Rules:
-- Only include listings with a working URL.
-- Prefer VIN or stock number if available; otherwise leave null.
-- If you cannot find matches, return an empty list.
-- Provide evidence: short extracted text snippet from the listing page for each item.
+---
 
-JSON schema:
+## OUTPUT FORMAT (Strict JSON only)
+
 {
-  "mission_name": string,
-  "searched_at": string (ISO),
+  "mission_name": "${m.mission_name}",
+  "searched_at": "ISO timestamp",
   "items": [
     {
-      "listing_url": string,
-      "dealer_name": string|null,
-      "location": string|null,
-      "year": number|null,
-      "make": string|null,
-      "model": string|null,
-      "variant": string|null,
-      "km": number|null,
-      "price": number|null,
-      "vin": string|null,
-      "stock_number": string|null,
-      "confidence": "HIGH"|"MEDIUM"|"LOW",
-      "evidence_snippet": string
+      "listing_url": "working URL to listing",
+      "dealer_name": "seller name or null if private",
+      "location": "city/state",
+      "year": number,
+      "make": "MAKE",
+      "model": "MODEL",
+      "variant": "variant/trim or null",
+      "km": number,
+      "price": number (off-road AUD),
+      "dollars_per_km": number (calculated),
+      "seller_type": "private|dealer|certified",
+      "vin": "if available or null",
+      "stock_number": "if available or null",
+      "confidence": "HIGH|MEDIUM|LOW",
+      "evidence_snippet": "short extracted text proving the listing exists",
+      "comparison_to_recent_wins": "how it stacks up vs benchmarks",
+      "red_flags": "any concerns or 'none'"
     }
-  ]
+  ],
+  "summary": "brief market overview"
 }
+
+Return 3-5 ranked opportunities (best first). If no matches, return empty items array. NO PROSE outside JSON.
 `.trim();
 }
 
