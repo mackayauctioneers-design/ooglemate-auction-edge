@@ -37,6 +37,10 @@ interface GrokCandidate {
   stock_number: string | null;
   confidence: "HIGH" | "MEDIUM" | "LOW";
   evidence_snippet: string;
+  notes?: string;
+  red_flags?: string;
+  condition_flag?: string;
+  condition_notes?: string;
 }
 
 interface GrokResult {
@@ -45,25 +49,68 @@ interface GrokResult {
   items: GrokCandidate[];
 }
 
+// Salvage/damage keywords to auto-reject
+const SALVAGE_KEYWORDS = [
+  'salvage', 'wrecked', 'damaged', 'hail', 'hail damage', 'hail damaged',
+  'write-off', 'write off', 'writeoff', 'stat write-off', 'statutory write-off',
+  'repairable', 'repairable write-off', 'insurance', 'insurance salvage',
+  'wovr', 'ppsr encumbered', 'accident damaged', 'flood', 'flood damaged',
+  'fire damaged', 'theft recovery', 'parts only', 'not roadworthy', 'unregistered',
+  'no rego', 'runs and drives needs work', 'mechanical damage'
+];
+
+function hasSalvageIndicators(text: string): boolean {
+  const lower = (text || '').toLowerCase();
+  return SALVAGE_KEYWORDS.some(kw => lower.includes(kw));
+}
+
 function buildPrompt(m: Mission): string {
   const currentYear = new Date().getFullYear();
   return `
 You are a ruthless Australian car arbitrage agent (Carbitrage). Your job is to identify undervalued used cars for profitable flip.
 
+## ⚠️ NO-SALVAGE POLICY (MANDATORY - HARD EXCLUSION)
+
+**CRITICAL**: Search/browse ONLY clean-title, roadworthy used vehicles.
+
+### MUST EXCLUDE (auto-reject if detected):
+- Salvage vehicles
+- Damaged/accident-damaged vehicles
+- Hail/hail-damaged vehicles
+- Insurance salvage/write-offs
+- Repairable write-offs (WOVR)
+- Statutory write-offs
+- Flood/fire damaged
+- "Parts only" or "not roadworthy"
+- Unregistered vehicles without clear path to rego
+- Any listing with these keywords: salvage, wrecked, damaged, hail, write-off, repairable, insurance, wovr, flood, fire, theft recovery
+
+### Source-Specific Clean Lane Prioritization:
+- **Manheim**: Use "Used Passenger" and "Used SUV/4WD" lanes ONLY—avoid "Salvage", "Damaged", "Insurance" lanes
+- **Pickles**: Use "Used Cars" category—avoid "Damaged", "Salvage", "Insurance Write-off" categories
+- **Carlins**: Dealer-only clean stock (generally salvage-free)
+- **IAAI**: SKIP ENTIRELY for this hunt (salvage-focused platform)
+- **Auto Auctions**: Use general wholesale lanes only
+
+### Condition Flag Requirement:
+Every result MUST include: "condition_flag": "clean"
+If you cannot confirm clean title/condition, DO NOT INCLUDE the listing.
+
+---
+
 ## MANDATORY SOURCE PRIORITY (TIERED AUCTIONS & WHOLESALE - CHECK THESE FIRST)
 
 ### TIER 1: PRIMARY AUCTIONS (Highest priority, best exit confidence)
-Browse these FIRST for every hunt:
-- https://www.manheim.com.au/ - Australia's largest auction; weekly used car auctions (passenger, government, SUV/4WD, commercial, prestige)
-- https://www.pickles.com.au/ - National coverage, online auctions for used cars, trucks, government/ex-fleet
-- https://www.carlins.com.au/ - Dealer-only auctions (VIC, NSW, QLD, WA), hundreds of cars per event
-- https://iaai.com.au/ - Insurance Auto Auctions, salvage/wrecked, hail sales (14 locations)
-- https://www.auto-auctions.com.au/ - Weekly simulcast/live wholesale lanes $100-$50k+
+Browse these FIRST for every hunt (CLEAN LANES ONLY):
+- https://www.manheim.com.au/ - Australia's largest auction; use Used Passenger/SUV lanes ONLY
+- https://www.pickles.com.au/ - National coverage, Used Cars category ONLY
+- https://www.carlins.com.au/ - Dealer-only auctions (VIC, NSW, QLD, WA), clean stock
+- https://www.auto-auctions.com.au/ - Weekly simulcast/live wholesale lanes, general stock only
 
 ### TIER 2: SECONDARY AUCTIONS (Check after Tier 1)
 - https://www.f3motorauctions.com.au/ - F3 Motor Auctions
 - https://www.valleymotorauctions.com.au/ - Valley Motor Auctions
-- https://slatteryauctions.com.au/ - Online auctions, cars & commercial
+- https://slatteryauctions.com.au/ - Online auctions, cars & commercial (clean only)
 
 ### TIER 3: DEALER-DIRECT / WHOLESALE PLATFORMS (B2B trading)
 - https://autograb.com.au/dealer-direct - Wholesale tender from dealers/fleets/wholesalers
@@ -79,6 +126,10 @@ Browse these FIRST for every hunt:
 ### TIER 5: CARSALES-DISCOVERY MODE ONLY
 - Use carsales.com.au for DATA EXTRACTION only—NEVER as primary link
 - See CARSALES-SAFE DISCOVERY MODE rules below
+
+### EXCLUDED SOURCES (DO NOT USE):
+- https://iaai.com.au/ - SKIP (salvage/insurance focused)
+- Any "salvage", "damaged", "insurance", "hail sale" lanes on any platform
 
 ---
 
@@ -187,11 +238,12 @@ Check these in addition to the tiered auction/wholesale sources above.
     {
       "listing_url": "STABLE URL (auction house, dealer site, Gumtree/FB—NEVER direct carsales)",
       "verification_source": "original carsales URL if discovered there, otherwise null",
-      "source": "manheim|pickles|carlins|iaai|auto-auctions|f3|valley|slattery|autograb|directwholesale|autoflip|tooti|motorplatform|gumtree|facebook|carma|drive|dealer-direct|carsales-discovery",
+      "source": "manheim|pickles|carlins|auto-auctions|f3|valley|slattery|autograb|directwholesale|autoflip|tooti|motorplatform|gumtree|facebook|carma|drive|dealer-direct|carsales-discovery",
       "source_tier": "1|2|3|4|5",
       "dealer_name": "dealer name or null if private/auction",
       "dealer_license": "license number or null",
-      "auction_house": "Manheim|Pickles|Carlins|IAAI|Auto Auctions|F3|Valley|Slattery|null",
+      "auction_house": "Manheim|Pickles|Carlins|Auto Auctions|F3|Valley|Slattery|null",
+      "auction_lane": "Used Passenger|Used SUV|Wholesale|null (NEVER salvage/damaged lanes)",
       "location": "city/suburb",
       "state": "NSW|VIC|QLD|WA|SA|TAS|NT|ACT",
       "postcode": "2000",
@@ -210,17 +262,19 @@ Check these in addition to the tiered auction/wholesale sources above.
       "vin": "if available or null",
       "stock_number": "if available or null",
       "seller_type": "auction|wholesale|private|dealer|certified",
+      "condition_flag": "clean",
+      "condition_notes": "Clean title, no damage indicators. Verified from [source lane/category].",
       "confidence": "HIGH|MEDIUM|LOW",
       "evidence_snippet": "short extracted text proving the listing exists",
       "comparison_to_recent_wins": "how it stacks up vs benchmarks",
       "red_flags": "any concerns or 'none'",
-      "notes": "Source: [auction/platform name]. Geo: [exit strength]. For carsales-discovery: 'Linked to dealer site.'"
+      "notes": "Source: [auction/platform name]. Lane: [clean lane]. Geo: [exit strength]."
     }
   ],
-  "summary": "Searched Tier 1-3 auctions/wholesale first. Found X candidates. Geo insights: [regional patterns]."
+  "summary": "Searched Tier 1-3 auctions/wholesale CLEAN LANES ONLY. Excluded salvage/damaged/hail. Found X clean candidates."
 }
 
-Return 3-5 ranked opportunities (Tier 1 sources first, then Tier 2, etc.). If no matches, return empty items array. NO PROSE outside JSON.
+Return 3-5 ranked opportunities (Tier 1 sources first, then Tier 2, etc.). ALL must have condition_flag: "clean". If no clean matches, return empty items array. NO PROSE outside JSON.
 `.trim();
 }
 
@@ -367,8 +421,39 @@ serve(async (req) => {
       );
     }
 
-    const items = Array.isArray(parsed.items) ? parsed.items : [];
-    console.log("[run-grok-mission] Found", items.length, "candidates");
+    const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+    console.log("[run-grok-mission] Found", rawItems.length, "raw candidates");
+
+    // Auto-reject salvage indicators (server-side filter)
+    const cleanItems = rawItems.filter((it) => {
+      const textToCheck = [
+        it.listing_url,
+        it.evidence_snippet,
+        it.notes,
+        it.variant,
+        it.red_flags,
+      ].filter(Boolean).join(' ');
+      
+      if (hasSalvageIndicators(textToCheck)) {
+        console.log("[run-grok-mission] Rejecting salvage candidate:", it.listing_url);
+        return false;
+      }
+      
+      // Also reject if condition_flag is not 'clean'
+      if (it.condition_flag && it.condition_flag !== 'clean') {
+        console.log("[run-grok-mission] Rejecting non-clean candidate:", it.listing_url);
+        return false;
+      }
+      
+      return true;
+    });
+
+    const rejectedCount = rawItems.length - cleanItems.length;
+    if (rejectedCount > 0) {
+      console.log(`[run-grok-mission] Rejected ${rejectedCount} salvage/damaged candidates`);
+    }
+
+    console.log("[run-grok-mission] Clean candidates:", cleanItems.length);
 
     // Upsert to pickles_detail_queue for review (source='grok_search')
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -377,7 +462,7 @@ serve(async (req) => {
 
     const now = new Date().toISOString();
 
-    const rows = items.map((it) => ({
+    const rows = cleanItems.map((it) => ({
       source: "grok_search",
       source_listing_id: it.vin || it.stock_number || it.listing_url,
       detail_url: it.listing_url,
@@ -416,9 +501,11 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         mission: mission.mission_name, 
-        found: items.length,
+        found: rawItems.length,
+        clean: cleanItems.length,
+        rejected_salvage: rejectedCount,
         upserted: upsertedCount,
-        candidates: items,
+        candidates: cleanItems,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
