@@ -443,7 +443,41 @@ export default function LogSalePage() {
         shared_opt_in: formData.shared_opt_in ? 'Y' : 'N',
       });
 
-      // 3. Verify hunt was created and redirect (pass must-have data, body type, and badge)
+      // 3. Fire CaroogleAi mission to find similar vehicles
+      try {
+        const missionPayload = {
+          mission_name: `${formData.make} ${formData.model} from sale`,
+          make: formData.make.toUpperCase(),
+          model: formData.model.toUpperCase(),
+          variant_allow: formData.variant_normalised ? [formData.variant_normalised] : [],
+          year_min: formData.year - 1,
+          year_max: formData.year + 1,
+          km_max: formData.sale_km ? Math.round(formData.sale_km * 1.5) : 150000,
+          price_max: formData.sell_price ? Math.round(parseFloat(formData.sell_price) * 0.85) : null,
+          location: 'Australia',
+          seller_type: ['dealer', 'private'],
+          notes: `Auto-generated from sale: ${formData.variant_normalised || ''} ${formData.engine || ''} ${formData.transmission || ''}`.trim(),
+        };
+        
+        // Fire and forget - don't block on this
+        supabase.functions.invoke('run-grok-mission', { body: missionPayload })
+          .then(({ data, error }) => {
+            if (error) {
+              console.error('CaroogleAi mission failed:', error);
+            } else {
+              console.log('CaroogleAi mission launched:', data);
+              toast({
+                title: "🔍 CaroogleAi Hunting",
+                description: `Searching for ${formData.make} ${formData.model} opportunities...`,
+              });
+            }
+          });
+      } catch (missionError) {
+        console.error('Failed to trigger CaroogleAi:', missionError);
+        // Non-blocking - don't fail the sale
+      }
+
+      // 4. Verify hunt was created and redirect (pass must-have data, body type, and badge)
       const huntCreated = await verifyHuntAndRedirect(
         saleId,
         formData.must_have_raw,
