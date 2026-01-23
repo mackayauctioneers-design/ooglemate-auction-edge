@@ -194,7 +194,7 @@ export function GrokMissionHunter() {
     } catch (err) {
       console.error('[GrokMissionHunter] Error:', err);
       toast({
-        title: 'Mission failed',
+        title: 'Kiting Mode failed',
         description: err instanceof Error ? err.message : 'Unknown error',
         variant: 'destructive',
       });
@@ -222,11 +222,11 @@ export function GrokMissionHunter() {
             </div>
             <div>
               <CardTitle className="flex items-center gap-2">
-                CaroogleAi Mission Hunter
+                CaroogleAi Kiting Mode
                 <Badge variant="outline" className="text-xs">AI Web Search</Badge>
               </CardTitle>
               <CardDescription>
-                AI-powered sourcing with live web search — results queue for Josh to review
+                AI-powered sourcing with live web search — results queue for review
               </CardDescription>
             </div>
           </div>
@@ -389,7 +389,7 @@ export function GrokMissionHunter() {
             ) : (
               <>
                 <Sparkles className="h-4 w-4" />
-                Run Mission
+                Start Kiting
               </>
             )}
           </Button>

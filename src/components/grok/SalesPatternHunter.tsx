@@ -168,7 +168,7 @@ export function SalesPatternHunter() {
                 Hunt From Sales History
               </CardTitle>
               <CardDescription>
-                Auto-generate CaroogleAi missions from your profitable sale patterns
+                Auto-generate CaroogleAi Kiting Mode from your profitable sale patterns
               </CardDescription>
             </div>
             <Badge variant="secondary" className="gap-1">

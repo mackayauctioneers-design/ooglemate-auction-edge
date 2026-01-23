@@ -141,7 +141,7 @@ export function CaroogleAiQueue() {
               </div>
               {candidate.search_url && (
                 <CardDescription className="text-xs truncate">
-                  Mission: {candidate.search_url}
+                  Source: {candidate.search_url}
                 </CardDescription>
               )}
             </CardHeader>

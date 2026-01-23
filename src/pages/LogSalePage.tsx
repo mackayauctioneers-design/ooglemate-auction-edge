@@ -463,11 +463,11 @@ export default function LogSalePage() {
         supabase.functions.invoke('run-grok-mission', { body: missionPayload })
           .then(({ data, error }) => {
             if (error) {
-              console.error('CaroogleAi mission failed:', error);
+              console.error('CaroogleAi Kiting Mode failed:', error);
             } else {
-              console.log('CaroogleAi mission launched:', data);
+              console.log('CaroogleAi Kiting Mode launched:', data);
               toast({
-                title: "🔍 CaroogleAi Hunting",
+                title: "🪁 CaroogleAi Kiting Mode",
                 description: `Searching for ${formData.make} ${formData.model} opportunities...`,
               });
             }
