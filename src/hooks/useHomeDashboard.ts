@@ -73,6 +73,17 @@ export function useHomeDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchDashboard = useCallback(async () => {
+    // Skip ALL data fetching on mobile to prevent iOS memory crashes
+    if (isMobile) {
+      setData({
+        today_opportunities: [],
+        kiting_live: DEFAULT_KITING_LIVE,
+        watchlist_movement: []
+      });
+      setIsLoading(false);
+      return;
+    }
+
     if (!dealerId) {
       setData(null);
       setIsLoading(false);
@@ -109,7 +120,7 @@ export function useHomeDashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, [dealerId]);
+  }, [dealerId, isMobile]);
 
   useEffect(() => {
     fetchDashboard();
