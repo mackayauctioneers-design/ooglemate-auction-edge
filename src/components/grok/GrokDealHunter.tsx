@@ -131,11 +131,11 @@ export function GrokDealHunter() {
             </div>
             <div>
               <CardTitle className="flex items-center gap-2">
-                Grok Deal Hunter
-                <Badge variant="outline" className="text-xs">xAI Powered</Badge>
+                CaroogleAi Deal Hunter
+                <Badge variant="outline" className="text-xs">AI Powered</Badge>
               </CardTitle>
               <CardDescription>
-                AI-powered arbitrage analysis using xAI Grok for deep market reasoning
+                AI-powered arbitrage analysis for deep market reasoning
               </CardDescription>
             </div>
           </div>
@@ -231,7 +231,7 @@ export function GrokDealHunter() {
                 ) : (
                   <>
                     <Sparkles className="h-4 w-4" />
-                    Hunt Deals with Grok
+                    Hunt Deals with CaroogleAi
                   </>
                 )}
               </Button>
@@ -247,7 +247,7 @@ export function GrokDealHunter() {
             <div className="flex flex-col items-center justify-center gap-4">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <div className="text-center">
-                <p className="font-medium">Grok is analyzing the market...</p>
+                <p className="font-medium">CaroogleAi is analyzing the market...</p>
                 <p className="text-sm text-muted-foreground">
                   Searching dealer, private, and auction patterns across Australia
                 </p>

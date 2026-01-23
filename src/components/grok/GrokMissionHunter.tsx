@@ -222,8 +222,8 @@ export function GrokMissionHunter() {
             </div>
             <div>
               <CardTitle className="flex items-center gap-2">
-                Grok Mission Hunter
-                <Badge variant="outline" className="text-xs">xAI Web Search</Badge>
+                CaroogleAi Mission Hunter
+                <Badge variant="outline" className="text-xs">AI Web Search</Badge>
               </CardTitle>
               <CardDescription>
                 AI-powered sourcing with live web search — results queue for Josh to review
@@ -363,7 +363,7 @@ export function GrokMissionHunter() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="notes">Notes for Grok</Label>
+              <Label htmlFor="notes">Notes for AI</Label>
               <Textarea
                 id="notes"
                 placeholder="e.g. Return VIN or stock number if present. No flood damage."
@@ -384,7 +384,7 @@ export function GrokMissionHunter() {
             {isLoading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Grok is searching the web...
+                CaroogleAi is searching the web...
               </>
             ) : (
               <>
@@ -403,7 +403,7 @@ export function GrokMissionHunter() {
             <div className="flex flex-col items-center justify-center gap-4">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <div className="text-center">
-                <p className="font-medium">Grok is searching live web sources...</p>
+                <p className="font-medium">CaroogleAi is searching live web sources...</p>
                 <p className="text-sm text-muted-foreground">
                   This may take 15-30 seconds for thorough results
                 </p>
