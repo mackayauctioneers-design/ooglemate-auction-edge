@@ -20,7 +20,10 @@ interface DealOpportunity {
   km: number;
   offRoadPrice: number;
   marginPct: number;
+  source: string;
   link: string;
+  dealerUrl: string | null;
+  fallbackSearchQuery: string;
   risks: string;
   notes: string;
 }
@@ -59,9 +62,12 @@ serve(async (req) => {
 
 ## CORE CARBITRAGE HUNT RULES (Australia-wide, always)
 
-### Source Coverage
-Search EVERY available platform: carsales.com.au, gumtree.com.au, Facebook Marketplace, Carma.com.au, Drive.com.au, private seller ads, dealer listings, forums, auctions.
-Do NOT ignore dealers—include certified pre-owned with full history/service records if they meet criteria.
+### SOURCE PRIORITY ORDER (reliability-first - CRITICAL)
+1. **PRIMARY (stable links)**: Gumtree.com.au, Facebook Marketplace, Carma.com.au
+2. **SECONDARY**: Drive.com.au classifieds, private seller ads/forums, dealer direct websites
+3. **LAST RESORT ONLY**: Carsales.com.au—frequent 404s, Cloudflare blocks, rapid expirations
+
+ALWAYS prefer sources from priority 1-2. Only use carsales if NO viable matches exist elsewhere.
 
 ### Pricing Rules
 - ALWAYS use off-road/drive-away price EXCLUDING govt charges/on-roads/stamp duty (focus on advertised price before extras)
@@ -84,17 +90,16 @@ Do NOT ignore dealers—include certified pre-owned with full history/service re
 ### Metrics & Honesty
 - Calculate $/km (lower = better)
 - Be BRUTALLY HONEST—no weak/sideways options
-- Flag ALL red flags (flood damage, odometer rollback, accident history, poor resale regions)
+- Flag ALL red flags (flood damage, odometer rollback, accident history, poor resale regions, potential sold/expired)
 
-### Link Handling (CRITICAL for carsales)
-- Carsales listings expire FAST when sold/removed → broken URLs are common
-- ALWAYS include primary listing URL as link
-- ALWAYS include dealerUrl fallback:
-  - Dealer's own website (e.g., exampledealer.com.au)
-  - OR carsales dealer profile (e.g., carsales.com.au/dealer/dealer-slug/)
-  - Derive from dealer name/license in listing footer
-  - If not derivable or private seller, set to null
-- Carsales URL pattern: https://www.carsales.com.au/cars/details/[year-make-model]/OAG-AD-XXXXXXX/
+### Link Handling (CRITICAL for reliability)
+- ALWAYS prefer non-carsales sources FIRST
+- For carsales (rare fallback only):
+  - ADD strong warning: "Carsales links frequently 404/expire quickly or block access (Cloudflare irregular activity, cache issues). Try incognito, clear cache, mobile data, or contact dealer directly."
+- Required fields:
+  - link: Primary URL from highest-priority source
+  - dealerUrl: Dealer website or profile (null if private/not derivable)
+  - fallbackSearchQuery: Google-ready string (e.g., "2024 Hyundai i30 N Line Premium Sydney low km")
 
 ### Recent Wins/Benchmarks
 - 2024 Hyundai i30 N Line Premium, ~10k km, $30,990 off-road (strong private buy)
@@ -120,20 +125,22 @@ Return a JSON object with this EXACT structure:
       "offRoadPrice": 30990,
       "dollarsPerKm": 3.10,
       "marginPct": 12,
-      "link": "https://www.carsales.com.au/cars/details/2024-hyundai-i30-n-line-premium/OAG-AD-XXXXXXX/",
+      "source": "gumtree|facebook|carma|drive|dealer-direct|carsales-last-resort",
+      "link": "https://www.gumtree.com.au/...",
       "dealerUrl": "https://www.exampledealer.com.au/" or null,
+      "fallbackSearchQuery": "2024 Hyundai i30 N Line Premium Sydney low km",
       "sellerType": "private|dealer|certified",
       "risks": "Check service history, any accident damage",
-      "notes": "Strong retail demand. Carsales link may 404 if sold—check dealerUrl.",
+      "notes": "Prioritized stable source. Strong retail demand.",
       "comparisonToWins": "Matches benchmark perfectly"
     }
   ],
-  "summary": "Market overview; note carsales links expire fast—use dealerUrl as backup"
+  "summary": "Prioritized stable sources; carsales avoided unless essential. Use fallbackSearchQuery if links fail."
 }
 
 Return 3-5 ranked opportunities (best first). Be specific and actionable. Use Australian market knowledge.`;
 
-    const userPrompt = `Hunt undervalued ${model} cars matching: ${yearMin}-${yearMax}, under ${maxKm.toLocaleString()}km, max $${maxPrice.toLocaleString()} off-road, in ${location}. Return JSON with opportunities.`;
+    const userPrompt = `Hunt undervalued ${model} cars matching: ${yearMin}-${yearMax}, under ${maxKm.toLocaleString()}km, max $${maxPrice.toLocaleString()} off-road, in ${location}. Return JSON with opportunities. PRIORITIZE Gumtree/Facebook/Carma over carsales.`;
 
     console.log('[grok-deal-hunter] Calling xAI API...');
 
