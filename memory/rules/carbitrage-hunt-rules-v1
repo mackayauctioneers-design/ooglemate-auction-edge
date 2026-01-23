@@ -42,7 +42,94 @@ When using carsales.com.au:
 - Include brutal honesty—no weak/sideways options
 - Flag any red flags (e.g., accident history, poor condition, potential sold/expired status)
 
-### Output Format (Strict JSON)
+---
+
+## Geographic Intelligence (Geo Layer)
+
+### Purpose
+Carbitrage uses geographic context to understand where vehicles move, where they clear fastest, and where mispricing is most likely to occur. This prevents metro bias and unlocks regional arbitrage.
+
+### Geo Normalisation
+All vehicles are normalised to geographic identifiers:
+- State
+- Postcode
+- Suburb
+- SA2 / SA3 (ABS statistical areas)
+- Latitude / longitude
+
+This allows consistent comparison across dealer listings, auctions, private sales, and historical exits.
+
+### Regional Liquidity Mapping
+The system tracks clearance velocity by region, not just nationally.
+- Some models clear faster in QLD regional than Sydney metro
+- Certain utes / 4WDs have stronger demand in WA / NT
+- Metro pricing can be misleading for regional exits
+
+Vehicles are scored differently depending on where they are located AND where they are likely to exit.
+
+### Geo Price Dislocation Detection
+The system looks for regional price mismatches:
+- Cheap regional listings for vehicles that exit strongly in metro
+- Metro listings that are overpriced relative to nearby regions
+- Dealers consistently underpricing in certain postcodes
+
+These are treated as **geo-arbitrage opportunities**, not generic bargains.
+
+### Freight & Distance Cost Modelling
+Location is not a hard exclusion—it's a cost modifier.
+
+**Baseline freight assumptions:**
+- NSW ↔ QLD ↔ VIC: ~$1,000 freight
+- Tasmania: ~$1,300 freight
+- WA / NT: ~$1,800-2,500 freight
+
+This allows:
+- Remote vehicles to remain viable
+- Proper margin calculation after logistics
+- Avoiding knee-jerk "too far" rejections
+
+### Dealer Geo Strength Profiles
+Dealers implicitly develop regional strengths:
+- Dealer A clears Hiluxes fast in FNQ
+- Dealer B dominates metro Sydney prestige
+- Dealer C moves LandCruisers well in WA
+
+These patterns inform matching vehicles to the right dealer by region.
+
+### Geo-Aware Watchlists
+Watchlists can be geo-scoped:
+- "Only alert if in NSW/QLD"
+- "Alert if regional VIC under X price"
+- "Ignore metro Sydney noise"
+
+This reduces alert fatigue and improves signal quality.
+
+### Geo Heatmaps
+The system tracks:
+- Heatmaps of listings disappearing (sold)
+- Heatmaps of repeated auction failures
+- Model-specific regional demand maps
+
+This allows visual understanding of market flow and faster conviction on marginal deals.
+
+### Interaction with Grok (CRITICAL)
+Grok is geo-blind by default unless instructed. Carbitrage adds value by:
+- Interpreting Grok's finds through geo context
+- Discounting "cheap" cars in weak exit regions
+- Elevating "normal" priced cars in strong exit regions
+
+**Grok finds the car. Carbitrage decides if the location makes sense.**
+
+### Geo-Specific Questions for Every Hunt
+1. What's the regional clearance velocity for this model?
+2. Does the listing location match known strong exit regions?
+3. Is this "cheap" because of location (weak region) or genuine underpricing?
+4. What's the freight cost to a strong exit region?
+5. Are there dealer clusters that consistently underprice stock regionally?
+
+---
+
+## Output Format (Strict JSON)
 ```json
 {
   "opportunities": [
@@ -58,12 +145,18 @@ When using carsales.com.au:
       "dealer_license": "MD12345" | null,
       "fallback_search_query": "2024 Hyundai i30 N Line Premium Sydney low km",
       "seller_type": "private|dealer|certified",
+      "location": "Sydney NSW",
+      "state": "NSW",
+      "postcode": "2000",
+      "geo_exit_strength": "HIGH|MEDIUM|LOW|UNKNOWN",
+      "geo_notes": "Sydney metro strong exit region for i30; no freight needed",
+      "estimated_freight_cost": 0,
       "notes": "Data verified from carsales but linked to dealer site for reliability—no direct carsales click.",
       "comparison_to_recent_wins": "how it stacks up",
       "red_flags": "any concerns or 'none'"
     }
   ],
-  "summary": "Prioritized stable sources; carsales used for discovery only with dealer site links."
+  "summary": "Prioritized stable sources; carsales used for discovery only with dealer site links. Geo context applied."
 }
 ```
 
@@ -77,3 +170,4 @@ When using carsales.com.au:
 - Force source priority in queries: Gumtree/FB/Carma FIRST
 - Carsales = discovery mode only (extract data → derive dealer URL → link to dealer)
 - Add verification_source for audit trail
+- Apply geo intelligence layer to all hunt outputs

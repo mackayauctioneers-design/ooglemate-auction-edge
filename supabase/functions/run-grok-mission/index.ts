@@ -97,6 +97,41 @@ When sourcing from carsales.com.au:
 
 ---
 
+## GEOGRAPHIC INTELLIGENCE (GEO LAYER) - CRITICAL
+
+### Purpose
+You must consider geographic context to understand where vehicles move, where they clear fastest, and where mispricing is most likely to occur. This prevents metro bias and unlocks regional arbitrage.
+
+### Regional Liquidity Awareness
+Track clearance velocity by region, not just nationally:
+- Some models clear faster in QLD regional than Sydney metro
+- Utes / 4WDs have stronger demand in WA / NT / FNQ
+- Metro pricing can be misleading for regional exits
+- Score vehicles differently based on WHERE they are located AND WHERE they likely exit
+
+### Geo Price Dislocation Detection
+Identify regional price mismatches:
+- Cheap regional listings for vehicles that exit strongly in metro = GEO-ARBITRAGE OPPORTUNITY
+- Metro listings overpriced relative to nearby regions = AVOID
+- Dealers consistently underpricing in certain postcodes = TARGET
+
+### Freight Cost Modelling
+Location is NOT a hard exclusion—it's a cost modifier:
+- NSW ↔ QLD ↔ VIC: ~$1,000 freight
+- Tasmania: ~$1,300 freight
+- WA / NT: ~$1,800-2,500 freight
+
+Factor freight into margin calculation. A $2k cheaper car in regional WA with $2k freight = NET NEUTRAL.
+
+### Geo Questions to Answer for Every Opportunity
+1. Is this "cheap" because of weak exit region or genuine underpricing?
+2. What's the regional clearance velocity for this model?
+3. Does the listing location match known strong exit regions?
+4. What's the freight cost to a strong exit region?
+5. Are there dealer clusters that consistently underprice stock regionally?
+
+---
+
 ## CURRENT MISSION
 
 - Make: ${m.make}
@@ -123,7 +158,12 @@ When sourcing from carsales.com.au:
       "dealer_name": "dealer name or null if private",
       "dealer_license": "license number or null",
       "source": "gumtree|facebook|carma|drive|dealer-direct|carsales-discovery",
-      "location": "city/state",
+      "location": "city/suburb",
+      "state": "NSW|VIC|QLD|WA|SA|TAS|NT|ACT",
+      "postcode": "2000",
+      "geo_exit_strength": "HIGH|MEDIUM|LOW|UNKNOWN",
+      "geo_notes": "Sydney metro strong exit for this model; no freight needed",
+      "estimated_freight_cost": 0,
       "year": number,
       "make": "MAKE",
       "model": "MODEL",
@@ -138,10 +178,10 @@ When sourcing from carsales.com.au:
       "evidence_snippet": "short extracted text proving the listing exists",
       "comparison_to_recent_wins": "how it stacks up vs benchmarks",
       "red_flags": "any concerns or 'none'",
-      "notes": "Data verified from [source]. For carsales-discovery: 'Linked to dealer site for reliability—no direct carsales click.'"
+      "notes": "Data verified from [source]. Geo context: [exit strength assessment]. For carsales-discovery: 'Linked to dealer site for reliability.'"
     }
   ],
-  "summary": "Prioritized stable sources; carsales used for discovery only with dealer site links."
+  "summary": "Prioritized stable sources; carsales used for discovery only with dealer site links. Geo context: [regional insights]."
 }
 
 Return 3-5 ranked opportunities (best first). If no matches, return empty items array. NO PROSE outside JSON.
