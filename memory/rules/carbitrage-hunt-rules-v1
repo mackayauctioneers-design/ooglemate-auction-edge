@@ -1,0 +1,61 @@
+# Memory: rules/carbitrage-hunt-rules-v1
+Updated: 2026-01-23
+
+## Core Carbitrage Hunt Rules (Australia-wide, always)
+
+### Source Coverage
+- EVERY available platform: carsales.com.au, gumtree.com.au, Facebook Marketplace, Carma.com.au, Drive.com.au, private seller ads, dealer listings, forums, auctions
+- Do NOT ignore dealers—include certified pre-owned with full history/service records if they meet criteria
+
+### Pricing
+- ALWAYS use off-road/drive-away excluding govt charges/on-roads/stamp duty
+- Focus on advertised price before extras
+
+### Model Year Priority
+- Prefer newer (e.g., 2024/2025 MY) if price delta ≤ +$8k off-road compared to similar older equivalent
+
+### Mileage
+- Strongly prioritize <50,000 km total (ideally much lower for value)
+
+### Body Type
+- Prioritize hatchbacks and sedans
+- Avoid SUVs/crossovers unless exceptional deal (e.g., off-road price steal under $25k with low km/history)
+
+### Seller Type
+- Heavily favor private/motivated sellers (distressed sales, quick flips)
+- Include dealers only if certified pre-owned + full service history + competitive pricing
+
+### Metrics
+- Always calculate $/km (lower = better)
+- Include brutal honesty—no weak/sideways options
+- Flag any red flags (e.g., accident history, poor condition)
+
+### Output Format (Strict JSON)
+```json
+{
+  "opportunities": [
+    {
+      "make_model_year": "...",
+      "km": number,
+      "off_road_price_aud": number,
+      "dollars_per_km": number,
+      "source": "carsales/gumtree/etc",
+      "link": "url",
+      "seller_type": "private/dealer/certified",
+      "notes": "why it's a win / any caveats",
+      "comparison_to_recent_wins": "..."
+    }
+  ],
+  "summary": "brief overview"
+}
+```
+
+### Recent Wins/Benchmarks
+- 2024 Hyundai i30 N Line Premium, ~10k km, $30,990 off-road (strong private buy)
+- Considering 2025 MY25 i30 upgrade ~9k km at $37,990 off-road if delta justified
+
+### Technical Integration
+- XAI_API_KEY env var for Grok/xAI calls
+- Force JSON output via system prompt
+- Pull real-time market data via APIs where feasible
+- No source exclusion
