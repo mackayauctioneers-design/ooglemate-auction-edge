@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { KitingWingMarkVideo } from '@/components/kiting';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { GrokMissionHunter } from '@/components/grok/GrokMissionHunter';
+import { SalesPatternHunter } from '@/components/grok/SalesPatternHunter';
 
 // ============================================================================
 // MOBILE-OPTIMIZED: Reduced data fetching and simpler UI on mobile devices
@@ -295,7 +296,10 @@ export default function OpportunitiesPage() {
           <WatchlistMovementCard items={watchlist} />
         )}
 
-        {/* Grok Mission Hunter - AI-powered sourcing with web search */}
+        {/* Sales Pattern Hunter - Auto-generate missions from profitable sales */}
+        <SalesPatternHunter />
+
+        {/* Grok Mission Hunter - Manual AI-powered sourcing with web search */}
         <GrokMissionHunter />
 
         {/* Filters */}
