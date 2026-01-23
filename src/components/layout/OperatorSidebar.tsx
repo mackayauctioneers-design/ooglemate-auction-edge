@@ -57,6 +57,7 @@ const operatorSections: NavSection[] = [
     title: 'Data Ops',
     items: [
       { path: '/admin-tools/va-intake', label: 'VA Intake', icon: Upload },
+      { path: '/operator/dealer-urls', label: 'Dealer URL Intake', icon: FileStack },
       { path: '/operator/traps', label: 'Traps Registry', icon: Database },
       { path: '/operator/preflight', label: 'Preflight Queue', icon: Radar },
     ],
