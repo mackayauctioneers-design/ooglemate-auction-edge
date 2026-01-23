@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,8 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
-  Link2
+  Link2,
+  RefreshCw
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -70,19 +71,23 @@ const SELLER_TYPES = [
 ];
 
 const DEFAULT_DOMAINS = [
-  'carsales.com.au',
-  'dealer.toyota.com.au',
   'gumtree.com.au',
+  'facebook.com',
+  'carma.com.au',
   'drive.com.au',
+  'carsales.com.au',
+  'autotrader.com.au',
 ];
 
 export function GrokMissionHunter() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingDomains, setIsLoadingDomains] = useState(false);
   const [results, setResults] = useState<GrokCandidate[]>([]);
   const [lastMission, setLastMission] = useState<string | null>(null);
   const [upsertCount, setUpsertCount] = useState<number>(0);
   const [rawResponse, setRawResponse] = useState<string | null>(null);
+  const [dealerDomainCount, setDealerDomainCount] = useState<number>(0);
 
   // Form state
   const [missionName, setMissionName] = useState('');
@@ -98,6 +103,43 @@ export function GrokMissionHunter() {
   const [excludeSources, setExcludeSources] = useState<string[]>(['auction']);
   const [allowedDomains, setAllowedDomains] = useState<string>(DEFAULT_DOMAINS.join('\n'));
   const [notes, setNotes] = useState('');
+
+  // Load dealer domains from dealer_url_queue on mount
+  const loadDealerDomains = async () => {
+    setIsLoadingDomains(true);
+    try {
+      // Get unique domains from dealer_url_queue (successful or queued)
+      const { data, error } = await supabase
+        .from('dealer_url_queue')
+        .select('domain')
+        .in('status', ['queued', 'success', 'running']);
+
+      if (error) {
+        console.error('[GrokMissionHunter] Error loading dealer domains:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        // Get unique domains
+        const dealerDomains = [...new Set(data.map(d => d.domain))];
+        setDealerDomainCount(dealerDomains.length);
+        
+        // Merge with defaults (dealer domains first, then defaults)
+        const allDomains = [...new Set([...DEFAULT_DOMAINS, ...dealerDomains])];
+        setAllowedDomains(allDomains.join('\n'));
+        
+        console.log(`[GrokMissionHunter] Loaded ${dealerDomains.length} dealer domains`);
+      }
+    } catch (err) {
+      console.error('[GrokMissionHunter] Failed to load dealer domains:', err);
+    } finally {
+      setIsLoadingDomains(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDealerDomains();
+  }, []);
 
   const handleSellerTypeToggle = (type: string) => {
     setSellerTypes(prev => 
@@ -352,15 +394,40 @@ export function GrokMissionHunter() {
           {/* Row 4: Domains & Notes */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="domains">Allowed Domains (one per line)</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="domains">Allowed Domains (one per line)</Label>
+                <div className="flex items-center gap-2">
+                  {dealerDomainCount > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      +{dealerDomainCount} dealer sites
+                    </Badge>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={loadDealerDomains}
+                    disabled={isLoadingDomains}
+                    className="h-6 px-2 text-xs"
+                  >
+                    {isLoadingDomains ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3 w-3" />
+                    )}
+                  </Button>
+                </div>
+              </div>
               <Textarea
                 id="domains"
-                placeholder="carsales.com.au"
+                placeholder="gumtree.com.au"
                 value={allowedDomains}
                 onChange={(e) => setAllowedDomains(e.target.value)}
-                rows={3}
+                rows={4}
                 className="font-mono text-xs"
               />
+              <p className="text-xs text-muted-foreground">
+                Includes submitted dealer URLs from Dealer URL Intake
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="notes">Notes for AI</Label>
@@ -369,7 +436,7 @@ export function GrokMissionHunter() {
                 placeholder="e.g. Return VIN or stock number if present. No flood damage."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                rows={3}
+                rows={4}
               />
             </div>
           </div>
