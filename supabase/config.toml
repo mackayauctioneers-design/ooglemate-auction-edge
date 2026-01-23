@@ -286,3 +286,6 @@ schedule = "0 17 * * *"
 
 [functions.submit-dealer-urls]
 verify_jwt = false
+
+[functions.grok-deal-hunter]
+verify_jwt = false

@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { KitingWingMarkVideo } from '@/components/kiting';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { GrokDealHunter } from '@/components/grok/GrokDealHunter';
 
 // ============================================================================
 // MOBILE-OPTIMIZED: Reduced data fetching and simpler UI on mobile devices
@@ -293,6 +294,9 @@ export default function OpportunitiesPage() {
         {dealerProfile && watchlist.length > 0 && (
           <WatchlistMovementCard items={watchlist} />
         )}
+
+        {/* Grok Deal Hunter - AI-powered arbitrage analysis */}
+        <GrokDealHunter />
 
         {/* Filters */}
         <OpportunityFiltersPanel
