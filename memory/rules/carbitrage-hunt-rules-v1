@@ -6,6 +6,7 @@ Updated: 2026-01-23
 ### Source Coverage
 - EVERY available platform: carsales.com.au, gumtree.com.au, Facebook Marketplace, Carma.com.au, Drive.com.au, private seller ads, dealer listings, forums, auctions
 - Do NOT ignore dealers—include certified pre-owned with full history/service records if they meet criteria
+- NO exclusions
 
 ### Pricing
 - ALWAYS use off-road/drive-away excluding govt charges/on-roads/stamp duty
@@ -30,23 +31,35 @@ Updated: 2026-01-23
 - Include brutal honesty—no weak/sideways options
 - Flag any red flags (e.g., accident history, poor condition)
 
+### Link Handling (Critical for carsales)
+- Carsales listings expire FAST when sold/removed → broken URLs are common
+- ALWAYS include primary listing URL as `link`
+- ALWAYS include optional `dealer_url` fallback:
+  - Dealer's own website (e.g., exampledealer.com.au)
+  - OR carsales dealer profile (e.g., carsales.com.au/dealer/dealer-slug/)
+  - Derive from dealer name/license in listing footer
+  - If not derivable, set to null
+- Carsales URL pattern: `https://www.carsales.com.au/cars/details/[year-make-model]/OAG-AD-XXXXXXX/`
+
 ### Output Format (Strict JSON)
 ```json
 {
   "opportunities": [
     {
-      "make_model_year": "...",
-      "km": number,
-      "off_road_price_aud": number,
-      "dollars_per_km": number,
-      "source": "carsales/gumtree/etc",
-      "link": "url",
-      "seller_type": "private/dealer/certified",
-      "notes": "why it's a win / any caveats",
-      "comparison_to_recent_wins": "..."
+      "make_model_year": "2024 Hyundai i30 N Line Premium",
+      "km": 10000,
+      "off_road_price_aud": 30990,
+      "dollars_per_km": 3.099,
+      "source": "carsales",
+      "link": "https://www.carsales.com.au/cars/details/2024-hyundai-i30-n-line-premium/OAG-AD-XXXXXXX/",
+      "dealer_url": "https://www.exampledealer.com.au/" | null,
+      "seller_type": "private|dealer|certified",
+      "notes": "why it's a win / caveats / 'carsales link may 404—check dealer_url'",
+      "comparison_to_recent_wins": "how it stacks up",
+      "red_flags": "any concerns or 'none'"
     }
   ],
-  "summary": "brief overview"
+  "summary": "brief overview; note carsales links may expire post-sale"
 }
 ```
 
@@ -58,4 +71,5 @@ Updated: 2026-01-23
 - XAI_API_KEY env var for Grok/xAI calls
 - Force JSON output via system prompt
 - Pull real-time market data via APIs where feasible
+- Add dealer_url fallback logic (parse dealer name/license → search dealer site)
 - No source exclusion

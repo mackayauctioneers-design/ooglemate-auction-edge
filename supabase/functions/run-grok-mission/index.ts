@@ -78,6 +78,16 @@ Do NOT ignore dealers—include certified pre-owned with full history/service re
 - Be BRUTALLY HONEST—no weak/sideways options
 - Flag ALL red flags (accident history, poor condition, high km, overpriced)
 
+### Link Handling (CRITICAL for carsales)
+- Carsales listings expire FAST when sold/removed → broken URLs are common
+- ALWAYS include primary listing URL as listing_url
+- ALWAYS include dealer_url fallback:
+  - Dealer's own website (e.g., exampledealer.com.au)
+  - OR carsales dealer profile (e.g., carsales.com.au/dealer/dealer-slug/)
+  - Derive from dealer name/license in listing footer
+  - If not derivable, set to null
+- Carsales URL pattern: https://www.carsales.com.au/cars/details/[year-make-model]/OAG-AD-XXXXXXX/
+
 ### Recent Wins/Benchmarks to Compare Against
 - 2024 Hyundai i30 N Line Premium, ~10k km, $30,990 off-road (strong private buy)
 - 2025 MY25 i30 upgrade ~9k km at $37,990 off-road (if delta justified)
@@ -105,8 +115,9 @@ Do NOT ignore dealers—include certified pre-owned with full history/service re
   "searched_at": "ISO timestamp",
   "items": [
     {
-      "listing_url": "working URL to listing",
-      "dealer_name": "seller name or null if private",
+      "listing_url": "primary listing URL (e.g., carsales detail page)",
+      "dealer_url": "fallback dealer website or carsales dealer profile URL, or null if private/not derivable",
+      "dealer_name": "seller/dealer name or null if private",
       "location": "city/state",
       "year": number,
       "make": "MAKE",
@@ -114,17 +125,18 @@ Do NOT ignore dealers—include certified pre-owned with full history/service re
       "variant": "variant/trim or null",
       "km": number,
       "price": number (off-road AUD),
-      "dollars_per_km": number (calculated),
+      "dollars_per_km": number (calculated: price/km),
       "seller_type": "private|dealer|certified",
       "vin": "if available or null",
       "stock_number": "if available or null",
       "confidence": "HIGH|MEDIUM|LOW",
       "evidence_snippet": "short extracted text proving the listing exists",
       "comparison_to_recent_wins": "how it stacks up vs benchmarks",
-      "red_flags": "any concerns or 'none'"
+      "red_flags": "any concerns or 'none'",
+      "notes": "why it's a win / caveats / 'carsales link may 404—check dealer_url'"
     }
   ],
-  "summary": "brief market overview"
+  "summary": "brief market overview; note carsales links may expire post-sale—use dealer_url as backup"
 }
 
 Return 3-5 ranked opportunities (best first). If no matches, return empty items array. NO PROSE outside JSON.

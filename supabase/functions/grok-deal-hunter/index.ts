@@ -86,6 +86,16 @@ Do NOT ignore dealers—include certified pre-owned with full history/service re
 - Be BRUTALLY HONEST—no weak/sideways options
 - Flag ALL red flags (flood damage, odometer rollback, accident history, poor resale regions)
 
+### Link Handling (CRITICAL for carsales)
+- Carsales listings expire FAST when sold/removed → broken URLs are common
+- ALWAYS include primary listing URL as link
+- ALWAYS include dealerUrl fallback:
+  - Dealer's own website (e.g., exampledealer.com.au)
+  - OR carsales dealer profile (e.g., carsales.com.au/dealer/dealer-slug/)
+  - Derive from dealer name/license in listing footer
+  - If not derivable or private seller, set to null
+- Carsales URL pattern: https://www.carsales.com.au/cars/details/[year-make-model]/OAG-AD-XXXXXXX/
+
 ### Recent Wins/Benchmarks
 - 2024 Hyundai i30 N Line Premium, ~10k km, $30,990 off-road (strong private buy)
 - 2025 MY25 i30 upgrade ~9k km at $37,990 off-road (if delta justified)
@@ -110,14 +120,15 @@ Return a JSON object with this EXACT structure:
       "offRoadPrice": 30990,
       "dollarsPerKm": 3.10,
       "marginPct": 12,
-      "link": "Search 'i30 N Line 2024 under 15k km' on Carsales/Gumtree/Pickles",
-      "sellerType": "private",
+      "link": "https://www.carsales.com.au/cars/details/2024-hyundai-i30-n-line-premium/OAG-AD-XXXXXXX/",
+      "dealerUrl": "https://www.exampledealer.com.au/" or null,
+      "sellerType": "private|dealer|certified",
       "risks": "Check service history, any accident damage",
-      "notes": "Strong retail demand. Benchmark: recent win at $30,990.",
+      "notes": "Strong retail demand. Carsales link may 404 if sold—check dealerUrl.",
       "comparisonToWins": "Matches benchmark perfectly"
     }
   ],
-  "summary": "Market overview and top recommendation"
+  "summary": "Market overview; note carsales links expire fast—use dealerUrl as backup"
 }
 
 Return 3-5 ranked opportunities (best first). Be specific and actionable. Use Australian market knowledge.`;
