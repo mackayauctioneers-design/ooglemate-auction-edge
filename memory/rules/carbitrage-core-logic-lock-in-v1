@@ -44,4 +44,19 @@ When user provides link + extract, confirm match in table format:
 
 ---
 
+## 8. "THINK HARDER" LOGIC (Apply to EVERY hunt/valuation)
+
+For all car hunts and tests, execute this 8-step checklist:
+
+1. **Fetch public data** from provided link first
+2. **If hidden** (login wall, JS block), note limitation and use user-provided extract as ground truth
+3. **Apply filters** – check make/model/year/km/transmission/body against mandate
+4. **Check category** – Prestige/National Prestige/Collector = CLEAN unless damage explicitly stated
+5. **Calculate $/km** – use off-road price (exclude govt/on-road charges), lower = better
+6. **Value geo** – apply freight modifier (no dismissal), score regional liquidity & dislocation upside
+7. **Brutal honesty** – flag ALL red flags, weak $/km, poor exit confidence, trap inventory signs
+8. **Output** – table format for validation, strict JSON for queue-ready matches
+
+---
+
 **Confirm absorption**: Before any hunt or valuation, internally reference this block first.
