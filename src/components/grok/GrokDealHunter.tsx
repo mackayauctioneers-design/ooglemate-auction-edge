@@ -50,10 +50,12 @@ export function GrokDealHunter() {
   const loadDealerDomains = async () => {
     setIsLoadingDomains(true);
     try {
+      // Only fetch grok_safe URLs - excludes auction API-only and invalid/lemon pages
       const { data, error } = await supabase
         .from('dealer_url_queue')
         .select('domain')
-        .in('status', ['queued', 'success', 'running']);
+        .in('status', ['queued', 'success', 'running'])
+        .eq('grok_class', 'grok_safe');
 
       if (error) {
         console.error('[GrokDealHunter] Error loading dealer domains:', error);
@@ -64,7 +66,7 @@ export function GrokDealHunter() {
         const dealerDomains = [...new Set(data.map(d => d.domain).filter(Boolean))];
         setDealerDomainCount(dealerDomains.length);
         setPriorityDomains(dealerDomains);
-        console.log(`[GrokDealHunter] Loaded ${dealerDomains.length} priority dealer domains`);
+        console.log(`[GrokDealHunter] Loaded ${dealerDomains.length} Grok-safe priority dealer domains`);
       }
     } catch (err) {
       console.error('[GrokDealHunter] Failed to load dealer domains:', err);

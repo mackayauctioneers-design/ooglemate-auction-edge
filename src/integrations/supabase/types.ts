@@ -1624,6 +1624,7 @@ export type Database = {
           discovered_urls: string[] | null
           domain: string
           fail_reason: string | null
+          grok_class: string | null
           id: string
           intent: string
           last_run_at: string | null
@@ -1642,6 +1643,7 @@ export type Database = {
           discovered_urls?: string[] | null
           domain: string
           fail_reason?: string | null
+          grok_class?: string | null
           id?: string
           intent?: string
           last_run_at?: string | null
@@ -1660,6 +1662,7 @@ export type Database = {
           discovered_urls?: string[] | null
           domain?: string
           fail_reason?: string | null
+          grok_class?: string | null
           id?: string
           intent?: string
           last_run_at?: string | null
