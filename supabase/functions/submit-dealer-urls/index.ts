@@ -27,6 +27,7 @@ const GROK_SAFE_DOMAINS = [
   'gumtree.com.au',
   'facebook.com/marketplace',
   'carma.com.au',
+  'easyauto123.com.au',  // WA dealer network - confirmed Grok-safe
   'dealersolutions.com.au',
   'auto-it.com.au',
   'gforces.com.au',
