@@ -5,13 +5,28 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Known dealer platforms that we can scrape directly
-const SCRAPEABLE_DOMAINS = [
+// URL classification for Grok vs API routing
+type UrlClass = 'grok_safe' | 'api_only' | 'invalid';
+
+// Domains that should ONLY use API/scraper pipelines (not Grok)
+const API_ONLY_DOMAINS = [
+  'pickles.com.au',
+  'manheim.com.au',
+  'grays.com',
+  'graysonline.com',
+  'lloydsauctions.com.au',
+  'slattery.com.au',
+  'turners.com.au',
+];
+
+// Grok-safe marketplace/dealer domains
+const GROK_SAFE_DOMAINS = [
   'carsales.com.au',
   'autotrader.com.au',
   'drive.com.au',
   'gumtree.com.au',
   'facebook.com/marketplace',
+  'carma.com.au',
   'dealersolutions.com.au',
   'auto-it.com.au',
   'gforces.com.au',
@@ -20,8 +35,8 @@ const SCRAPEABLE_DOMAINS = [
   'redbook.com.au',
 ];
 
-// URL patterns that indicate inventory pages
-const INVENTORY_PATTERNS = [
+// Patterns that indicate a valid inventory/search page (Grok can read)
+const VALID_SEARCH_PATTERNS = [
   /\/used-cars/i,
   /\/new-cars/i,
   /\/inventory/i,
@@ -31,9 +46,31 @@ const INVENTORY_PATTERNS = [
   /\/cars-for-sale/i,
   /\/our-range/i,
   /\/showroom/i,
+  /\/used\/search/i,
+  /[?&]make=/i,
+  /[?&]model=/i,
 ];
 
-// URL patterns that indicate detail pages
+// Patterns that indicate lemon/dead pages
+const LEMON_PATTERNS = [
+  /\/page-not-found/i,
+  /\/404/i,
+  /\/error/i,
+  /\/expired/i,
+  // Pickles fake slug patterns (guessed URLs that don't exist)
+  /pickles\.com\.au\/cars\/[a-z]+-[a-z]+-[a-z]+-\d{4}$/i,
+  /pickles\.com\.au\/used\/[a-z]+-[a-z]+$/i,
+];
+
+// Auction detail patterns - API only, not Grok
+const AUCTION_DETAIL_PATTERNS = [
+  /pickles\.com\.au\/used\/details/i,
+  /pickles\.com\.au\/lot\//i,
+  /manheim\.com\.au\/lot\//i,
+  /grays\.com\/lot\//i,
+];
+
+// URL patterns that indicate detail pages (for scraping, not Grok search)
 const DETAIL_PATTERNS = [
   /\/vehicle\/\d+/i,
   /\/details\//i,
@@ -50,6 +87,7 @@ interface ParsedUrl {
   dealerSlug: string;
   intent: 'dealer_home' | 'inventory_search' | 'inventory_detail' | 'unknown';
   method: 'scrape' | 'firecrawl' | 'manual_review';
+  grokClass: UrlClass; // grok_safe, api_only, or invalid
 }
 
 function normalizeUrl(rawUrl: string): string {
@@ -108,6 +146,55 @@ function generateDealerSlug(domain: string, pathname: string): string {
   return slug || 'unknown-dealer';
 }
 
+// Classify URL for Grok routing
+function classifyUrlForGrok(url: string, domain: string): UrlClass {
+  try {
+    const fullPath = new URL(url).pathname + new URL(url).search;
+    
+    // Check for lemon/dead pages first
+    for (const pattern of LEMON_PATTERNS) {
+      if (pattern.test(url)) {
+        return 'invalid';
+      }
+    }
+    
+    // Check for auction detail pages - API only
+    for (const pattern of AUCTION_DETAIL_PATTERNS) {
+      if (pattern.test(url)) {
+        return 'api_only';
+      }
+    }
+    
+    // Check if domain is API-only (auctions)
+    const isApiOnly = API_ONLY_DOMAINS.some(d => domain.includes(d));
+    if (isApiOnly) {
+      // Exception: auction search pages CAN go to Grok for discovery
+      const hasValidSearch = VALID_SEARCH_PATTERNS.some(p => p.test(fullPath));
+      if (hasValidSearch) {
+        return 'grok_safe'; // Auction search pages are OK
+      }
+      return 'api_only';
+    }
+    
+    // Check if domain is known Grok-safe
+    const isGrokSafe = GROK_SAFE_DOMAINS.some(d => domain.includes(d));
+    if (isGrokSafe) {
+      return 'grok_safe';
+    }
+    
+    // Unknown dealer sites - assume Grok-safe if they have inventory patterns
+    const hasInventory = VALID_SEARCH_PATTERNS.some(p => p.test(fullPath));
+    if (hasInventory) {
+      return 'grok_safe';
+    }
+    
+    // Default unknown dealers to Grok-safe (worth trying)
+    return 'grok_safe';
+  } catch {
+    return 'invalid';
+  }
+}
+
 function classifyIntent(url: string): 'dealer_home' | 'inventory_search' | 'inventory_detail' | 'unknown' {
   try {
     const parsed = new URL(url);
@@ -121,7 +208,7 @@ function classifyIntent(url: string): 'dealer_home' | 'inventory_search' | 'inve
     }
     
     // Check for inventory/search patterns
-    for (const pattern of INVENTORY_PATTERNS) {
+    for (const pattern of VALID_SEARCH_PATTERNS) {
       if (pattern.test(fullPath)) {
         return 'inventory_search';
       }
@@ -139,10 +226,10 @@ function classifyIntent(url: string): 'dealer_home' | 'inventory_search' | 'inve
 }
 
 function classifyMethod(domain: string, intent: string): 'scrape' | 'firecrawl' | 'manual_review' {
-  // Check if domain matches known scrapeable platforms
-  const isScrapeable = SCRAPEABLE_DOMAINS.some(d => domain.includes(d));
+  // Check if domain matches known Grok-safe platforms
+  const isGrokSafe = GROK_SAFE_DOMAINS.some(d => domain.includes(d));
   
-  if (isScrapeable) {
+  if (isGrokSafe) {
     return 'scrape';
   }
   
@@ -167,6 +254,7 @@ function parseUrl(rawUrl: string): ParsedUrl {
   const dealerSlug = generateDealerSlug(domain, pathname);
   const intent = classifyIntent(canonical);
   const method = classifyMethod(domain, intent);
+  const grokClass = classifyUrlForGrok(canonical, domain);
   
   return {
     raw: rawUrl,
@@ -175,6 +263,7 @@ function parseUrl(rawUrl: string): ParsedUrl {
     dealerSlug,
     intent,
     method,
+    grokClass,
   };
 }
 
@@ -286,6 +375,7 @@ Deno.serve(async (req) => {
         dealer_slug: parsed.dealerSlug,
         intent: parsed.intent,
         method: parsed.method,
+        grok_class: parsed.grokClass, // grok_safe, api_only, invalid
         priority: 'normal',
         status: 'queued',
       }));
@@ -300,6 +390,11 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Count by Grok class
+    const grokSafeCount = newUrls.filter(u => u.grokClass === 'grok_safe').length;
+    const apiOnlyCount = newUrls.filter(u => u.grokClass === 'api_only').length;
+    const invalidCount = newUrls.filter(u => u.grokClass === 'invalid').length;
+
     const result = {
       submission_id: submission.id,
       urls_processed: parsedUrls.length,
@@ -308,11 +403,15 @@ Deno.serve(async (req) => {
       urls_queued_scrape: newUrls.filter(u => u.method === 'scrape').length,
       urls_queued_firecrawl: newUrls.filter(u => u.method === 'firecrawl').length,
       urls_manual_review: newUrls.filter(u => u.method === 'manual_review').length,
+      urls_grok_safe: grokSafeCount,
+      urls_api_only: apiOnlyCount,
+      urls_invalid: invalidCount,
       classified_urls: newUrls.map(u => ({
         url: u.canonical,
         dealer_slug: u.dealerSlug,
         intent: u.intent,
         method: u.method,
+        grok_class: u.grokClass,
       })),
     };
 
