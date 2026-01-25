@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, Car, TrendingUp, AlertTriangle, ExternalLink, MapPin } from 'lucide-react';
+import { Loader2, Sparkles, Car, TrendingUp, AlertTriangle, ExternalLink, MapPin, Database } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -28,8 +28,11 @@ interface GrokResponse {
 export function GrokDealHunter() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingDomains, setIsLoadingDomains] = useState(false);
   const [results, setResults] = useState<DealOpportunity[]>([]);
   const [rawResponse, setRawResponse] = useState<string | null>(null);
+  const [dealerDomainCount, setDealerDomainCount] = useState(0);
+  const [priorityDomains, setPriorityDomains] = useState<string[]>([]);
   
   // Form state
   const [model, setModel] = useState('');
@@ -38,6 +41,37 @@ export function GrokDealHunter() {
   const [maxKm, setMaxKm] = useState(100000);
   const [maxPrice, setMaxPrice] = useState(50000);
   const [location, setLocation] = useState('');
+
+  // Load dealer domains from dealer_url_queue on mount
+  useEffect(() => {
+    loadDealerDomains();
+  }, []);
+
+  const loadDealerDomains = async () => {
+    setIsLoadingDomains(true);
+    try {
+      const { data, error } = await supabase
+        .from('dealer_url_queue')
+        .select('domain')
+        .in('status', ['queued', 'success', 'running']);
+
+      if (error) {
+        console.error('[GrokDealHunter] Error loading dealer domains:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const dealerDomains = [...new Set(data.map(d => d.domain).filter(Boolean))];
+        setDealerDomainCount(dealerDomains.length);
+        setPriorityDomains(dealerDomains);
+        console.log(`[GrokDealHunter] Loaded ${dealerDomains.length} priority dealer domains`);
+      }
+    } catch (err) {
+      console.error('[GrokDealHunter] Failed to load dealer domains:', err);
+    } finally {
+      setIsLoadingDomains(false);
+    }
+  };
 
   const handleHunt = async () => {
     if (!model.trim()) {
@@ -62,6 +96,7 @@ export function GrokDealHunter() {
           maxKm,
           maxPrice,
           location: location.trim() || 'Australia-wide',
+          priority_domains: priorityDomains.length > 0 ? priorityDomains : undefined,
         },
       });
 
@@ -133,9 +168,16 @@ export function GrokDealHunter() {
               <CardTitle className="flex items-center gap-2">
                 CaroogleAi Deal Hunter
                 <Badge variant="outline" className="text-xs">AI Powered</Badge>
+                {dealerDomainCount > 0 && (
+                  <Badge variant="secondary" className="text-xs gap-1">
+                    <Database className="h-3 w-3" />
+                    {dealerDomainCount} priority sites
+                  </Badge>
+                )}
               </CardTitle>
               <CardDescription>
                 AI-powered arbitrage analysis for deep market reasoning
+                {isLoadingDomains && <span className="ml-2 text-xs">(loading priority sites...)</span>}
               </CardDescription>
             </div>
           </div>

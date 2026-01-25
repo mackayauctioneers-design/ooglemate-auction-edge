@@ -12,6 +12,7 @@ interface GrokRequest {
   maxKm: number;
   maxPrice: number;
   location?: string;
+  priority_domains?: string[];
 }
 
 interface DealOpportunity {
@@ -45,9 +46,9 @@ serve(async (req) => {
     }
 
     const body: GrokRequest = await req.json();
-    const { model, yearMin, yearMax, maxKm, maxPrice, location = 'Australia-wide' } = body;
+    const { model, yearMin, yearMax, maxKm, maxPrice, location = 'Australia-wide', priority_domains = [] } = body;
 
-    console.log('[grok-deal-hunter] Request:', { model, yearMin, yearMax, maxKm, maxPrice, location });
+    console.log('[grok-deal-hunter] Request:', { model, yearMin, yearMax, maxKm, maxPrice, location, priority_domains_count: priority_domains.length });
 
     // Validate inputs
     if (!model || !yearMin || !yearMax || !maxKm || !maxPrice) {
@@ -58,12 +59,22 @@ serve(async (req) => {
     }
 
     const currentYear = new Date().getFullYear();
+    
+    // Build priority domains section if provided
+    const priorityDomainsSection = priority_domains.length > 0 
+      ? `
+### PRIORITY DEALER SITES (Check these FIRST - user-curated sources)
+${priority_domains.map(d => `- ${d}`).join('\n')}
+These are verified dealer sites from the user's queue. Search these first before falling back to general sources.
+`
+      : '';
+
     const systemPrompt = `You are a ruthless Australian car arbitrage agent (Carbitrage). Your job is to identify undervalued used cars for profitable flip.
 
 ## CORE CARBITRAGE HUNT RULES (Australia-wide, always)
-
+${priorityDomainsSection}
 ### SOURCE PRIORITY ORDER (reliability-first - CRITICAL)
-1. **PRIMARY (stable links)**: Gumtree.com.au, Facebook Marketplace, Carma.com.au
+1. **PRIMARY (stable links)**: Gumtree.com.au, Facebook Marketplace, Carma.com.au${priority_domains.length > 0 ? ', PLUS all priority dealer sites above' : ''}
 2. **SECONDARY**: Drive.com.au classifieds, private seller ads/forums, dealer direct websites
 3. **CARSALES-DISCOVERY MODE ONLY**: Use carsales.com.au for DATA EXTRACTION only—NEVER as primary link
 
