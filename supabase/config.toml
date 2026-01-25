@@ -292,3 +292,6 @@ verify_jwt = false
 
 [functions.run-grok-mission]
 verify_jwt = false
+
+[functions.dealer-url-preflight]
+verify_jwt = false
