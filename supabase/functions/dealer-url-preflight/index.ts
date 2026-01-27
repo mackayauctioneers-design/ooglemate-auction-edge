@@ -274,6 +274,23 @@ async function validateUrl(url: string): Promise<PreflightResult> {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
+    // DNS errors and connection failures mean the domain doesn't exist - mark as INVALID, not error
+    const isDnsOrConnectionError = 
+      errorMessage.includes('dns error') ||
+      errorMessage.includes('failed to lookup') ||
+      errorMessage.includes('ENOTFOUND') ||
+      errorMessage.includes('ECONNREFUSED') ||
+      errorMessage.includes('getaddrinfo') ||
+      errorMessage.includes('Name or service not known');
+    
+    if (isDnsOrConnectionError) {
+      result.status = 'invalid';
+      result.reason = `Domain unreachable: ${errorMessage.substring(0, 100)}`;
+      result.grok_mode = 'blocked';
+      console.log(`[preflight] ${canonicalUrl} - INVALID (DNS/connection failure)`);
+      return result;
+    }
+    
     if (errorMessage.includes('abort')) {
       result.reason = 'Request timeout (15s)';
     } else {
