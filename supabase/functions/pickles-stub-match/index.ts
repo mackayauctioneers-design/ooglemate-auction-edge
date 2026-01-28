@@ -1,10 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * PICKLES STUB MATCH - Lane 2: Match stubs to hunts and trigger deep-fetch
+ * PICKLES STUB MATCH - Lane 2: Match stubs to hunts and queue for deep-fetch
  * 
- * FIX #1: Uses deep_fetch_queued_at timestamp
- * FIX #3: Uses RPC with proper JOIN instead of client-side CROSS JOIN
+ * Production hardened:
+ * - Uses normalized make_norm/model_norm columns (no LOWER() joins)
+ * - Writes to pickles_detail_queue as the driver for deep-fetch
+ * - Links stub_anchor_id for back-reference
  */
 
 const corsHeaders = {
@@ -15,8 +17,7 @@ const corsHeaders = {
 interface MatchMetrics {
   stubs_processed: number;
   matches_found: number;
-  deep_fetches_queued: number;
-  priority_stubs_queued: number;
+  queue_items_created: number;
   errors: string[];
 }
 
@@ -43,12 +44,11 @@ Deno.serve(async (req) => {
     const metrics: MatchMetrics = {
       stubs_processed: 0,
       matches_found: 0,
-      deep_fetches_queued: 0,
-      priority_stubs_queued: 0,
+      queue_items_created: 0,
       errors: [],
     };
 
-    // FIX #3: Use database RPC for JOIN-based matching (not client-side CROSS JOIN)
+    // Use RPC with normalized column JOIN (no LOWER())
     const { data: matches, error: matchError } = await supabase.rpc("match_stubs_to_specs", {
       p_batch_size: batch_size,
       p_min_score: min_match_score,
@@ -92,43 +92,57 @@ Deno.serve(async (req) => {
         .in("id", stubIds);
 
       if (stubs && stubs.length > 0) {
-        // Queue to pickles_detail_queue
+        // Queue to pickles_detail_queue (the driver for deep-fetch)
         const queueItems = stubs.map(s => ({
           source: "pickles",
           detail_url: s.detail_url,
           source_listing_id: s.source_stock_id,
           crawl_status: "pending",
+          stub_anchor_id: s.id,
+          first_seen_at: new Date().toISOString(),
         }));
 
-        const { error: queueError } = await supabase
+        const { data: upserted, error: queueError } = await supabase
           .from("pickles_detail_queue")
           .upsert(queueItems, {
             onConflict: "source,source_listing_id",
             ignoreDuplicates: false,
-          });
+          })
+          .select("id");
 
         if (queueError) {
           console.error("[MATCH] Queue error:", queueError);
           metrics.errors.push(`Queue error: ${queueError.message}`);
         } else {
-          metrics.deep_fetches_queued = stubs.length;
+          metrics.queue_items_created = upserted?.length || 0;
+          console.log(`[MATCH] Queued ${metrics.queue_items_created} items to pickles_detail_queue`);
         }
 
-        // FIX #1: Update stubs with deep_fetch_queued_at and matched_hunt_ids
-        for (const stub of stubs) {
+        // Update stubs with matched info
+        const stubUpdates = stubs.map(stub => {
           const matchInfo = matchesByStub.get(stub.id);
-          if (matchInfo) {
-            await supabase
-              .from("stub_anchors")
-              .update({
-                status: "matched",
-                deep_fetch_triggered: true,
-                deep_fetch_queued_at: new Date().toISOString(),
-                deep_fetch_reason: `hunt_match:score=${matchInfo.bestScore}`,
-                matched_hunt_ids: matchInfo.specIds,
-              })
-              .eq("id", stub.id);
-          }
+          return {
+            id: stub.id,
+            status: "matched",
+            deep_fetch_triggered: true,
+            deep_fetch_queued_at: new Date().toISOString(),
+            deep_fetch_reason: `hunt_match:score=${matchInfo?.bestScore || 0}`,
+            matched_hunt_ids: matchInfo?.specIds || [],
+          };
+        });
+
+        // Batch update stubs
+        for (const update of stubUpdates) {
+          await supabase
+            .from("stub_anchors")
+            .update({
+              status: update.status,
+              deep_fetch_triggered: update.deep_fetch_triggered,
+              deep_fetch_queued_at: update.deep_fetch_queued_at,
+              deep_fetch_reason: update.deep_fetch_reason,
+              matched_hunt_ids: update.matched_hunt_ids,
+            })
+            .eq("id", update.id);
         }
       }
     }
