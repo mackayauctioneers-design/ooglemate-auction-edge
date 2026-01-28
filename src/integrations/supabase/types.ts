@@ -5033,15 +5033,17 @@ export type Database = {
       stub_anchors: {
         Row: {
           best_match_score: number | null
-          confidence: string
           created_at: string
-          deep_fetch_at: string | null
+          deep_fetch_completed_at: string | null
+          deep_fetch_queued_at: string | null
           deep_fetch_reason: string | null
           deep_fetch_triggered: boolean
           detail_url: string
           fingerprint: string | null
+          fingerprint_confidence: string
           first_seen_at: string
           id: string
+          identity_confidence: string
           km: number | null
           last_seen_at: string
           location: string | null
@@ -5058,15 +5060,17 @@ export type Database = {
         }
         Insert: {
           best_match_score?: number | null
-          confidence?: string
           created_at?: string
-          deep_fetch_at?: string | null
+          deep_fetch_completed_at?: string | null
+          deep_fetch_queued_at?: string | null
           deep_fetch_reason?: string | null
           deep_fetch_triggered?: boolean
           detail_url: string
           fingerprint?: string | null
+          fingerprint_confidence?: string
           first_seen_at?: string
           id?: string
+          identity_confidence?: string
           km?: number | null
           last_seen_at?: string
           location?: string | null
@@ -5083,15 +5087,17 @@ export type Database = {
         }
         Update: {
           best_match_score?: number | null
-          confidence?: string
           created_at?: string
-          deep_fetch_at?: string | null
+          deep_fetch_completed_at?: string | null
+          deep_fetch_queued_at?: string | null
           deep_fetch_reason?: string | null
           deep_fetch_triggered?: boolean
           detail_url?: string
           fingerprint?: string | null
+          fingerprint_confidence?: string
           first_seen_at?: string
           id?: string
+          identity_confidence?: string
           km?: number | null
           last_seen_at?: string
           location?: string | null
@@ -8778,15 +8784,25 @@ export type Database = {
           reason: string
         }[]
       }
-      match_stubs_to_specs: {
-        Args: never
-        Returns: {
-          match_score: number
-          spec_id: string
-          spec_name: string
-          stub_id: string
-        }[]
-      }
+      match_stubs_to_specs:
+        | {
+            Args: never
+            Returns: {
+              match_score: number
+              spec_id: string
+              spec_name: string
+              stub_id: string
+            }[]
+          }
+        | {
+            Args: { p_batch_size?: number; p_min_score?: number }
+            Returns: {
+              match_score: number
+              spec_id: string
+              spec_name: string
+              stub_id: string
+            }[]
+          }
       materialize_fingerprint_outcomes: {
         Args: { p_asof?: string }
         Returns: {

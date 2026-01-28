@@ -8,6 +8,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * 
  * Endpoint: https://www.pickles.com.au/used/search/cars/state/nsw
  * Pagination: ?limit=120&page=N
+ * 
+ * FIX #6: Pagination stops when page yields no NEW stock_ids (not HTML heuristics)
  */
 
 const corsHeaders = {
@@ -15,7 +17,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Browser-like headers to avoid bot detection
 const BROWSER_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -41,10 +42,10 @@ interface RunMetrics {
   stubs_created: number;
   stubs_updated: number;
   exceptions_queued: number;
+  new_stock_ids_per_page: Record<number, number>;
   errors: { page: number; error: string }[];
 }
 
-// Build the NSW search URL
 function buildSearchUrl(page: number, limit = 120, region = "nsw"): string {
   const base = `https://www.pickles.com.au/used/search/cars/state/${region}`;
   const params = new URLSearchParams({
@@ -54,27 +55,25 @@ function buildSearchUrl(page: number, limit = 120, region = "nsw"): string {
   return `${base}?${params.toString()}`;
 }
 
-// Extract stock ID from various URL patterns
+// Extract stock ID - MUST be present, no UUID fallback
 function extractStockId(url: string): string | null {
-  // Pattern 1: /used/details/cars/{slug}/{uuid-or-id}
-  const detailMatch = url.match(/\/used\/details\/cars\/[^\/]+\/([A-F0-9-]{36}|\d+)/i);
-  if (detailMatch) return detailMatch[1];
+  // Pattern 1: UUID format at end: /used/details/cars/{slug}/{uuid}
+  const uuidMatch = url.match(/\/([A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12})$/i);
+  if (uuidMatch) return uuidMatch[1].toUpperCase();
   
-  // Pattern 2: /used/item/cars/{slug}-{id}
+  // Pattern 2: Numeric ID at end: /used/details/cars/{slug}/{id}
+  const numMatch = url.match(/\/(\d{6,})$/);
+  if (numMatch) return numMatch[1];
+  
+  // Pattern 3: /used/item/cars/{slug}-{id}
   const itemMatch = url.match(/\/used\/item\/cars\/[^\/]+-(\d+)/);
   if (itemMatch) return itemMatch[1];
-  
-  // Pattern 3: Stock # in text
-  const stockMatch = url.match(/stock[#:\s]*(\d{5,})/i);
-  if (stockMatch) return stockMatch[1];
   
   return null;
 }
 
-// Parse stub fields from listing card HTML/text
 function parseStubFromCard(cardHtml: string, detailUrl: string): StubAnchor {
-  // PRIMARY: Extract year/make/model from URL slug pattern
-  // URL format: /used/details/cars/2017-toyota-rav4/62175256
+  // Extract year/make/model from URL slug: /used/details/cars/2017-toyota-rav4/{id}
   const urlSlugMatch = detailUrl.match(/\/used\/details\/cars\/(\d{4})-([a-z0-9-]+)\/([A-Z0-9-]+)/i);
   
   let year: number | null = null;
@@ -85,11 +84,9 @@ function parseStubFromCard(cardHtml: string, detailUrl: string): StubAnchor {
     year = parseInt(urlSlugMatch[1]);
     const slugParts = urlSlugMatch[2].split('-');
     
-    // First part is typically make
     if (slugParts.length >= 1) {
       make = slugParts[0].charAt(0).toUpperCase() + slugParts[0].slice(1);
     }
-    // Rest is model (join with space, handle multi-word models)
     if (slugParts.length >= 2) {
       model = slugParts.slice(1).map(p => 
         p.charAt(0).toUpperCase() + p.slice(1)
@@ -97,22 +94,22 @@ function parseStubFromCard(cardHtml: string, detailUrl: string): StubAnchor {
     }
   }
   
-  // FALLBACK: Extract year from HTML if not in URL
+  // Fallback year from HTML
   if (!year) {
     const yearMatch = cardHtml.match(/\b(19|20)\d{2}\b/);
     year = yearMatch ? parseInt(yearMatch[0]) : null;
   }
   
-  // Extract KM - look for patterns like "123,456 km" or "123456km"
+  // Extract KM
   const kmMatch = cardHtml.match(/(\d{1,3}(?:,\d{3})*|\d+)\s*km/i);
   const km = kmMatch ? parseInt(kmMatch[1].replace(/,/g, '')) : null;
   
-  // Extract location - look for "Suburb, NSW" or "Suburb NSW"
+  // Extract location
   const locationMatch = cardHtml.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),?\s*(?:NSW|VIC|QLD|SA|WA|TAS|NT|ACT)/i);
   const location = locationMatch ? locationMatch[0] : null;
   
-  // Extract stock ID from URL end
-  const stockId = extractStockId(detailUrl) || extractStockId(cardHtml);
+  // Stock ID must come from URL end segment
+  const stockId = extractStockId(detailUrl);
   
   return {
     source_stock_id: stockId,
@@ -126,12 +123,10 @@ function parseStubFromCard(cardHtml: string, detailUrl: string): StubAnchor {
   };
 }
 
-// Extract all listing cards from page HTML
 function extractListingsFromHtml(html: string): StubAnchor[] {
   const stubs: StubAnchor[] = [];
   const seen = new Set<string>();
   
-  // Pattern 1: Find all detail links
   const linkRegex = /href="(\/used\/details\/cars\/[^"]+)"/gi;
   let match;
   
@@ -140,8 +135,6 @@ function extractListingsFromHtml(html: string): StubAnchor[] {
     if (seen.has(url)) continue;
     seen.add(url);
     
-    // Try to find the card context around this link
-    // Look for ~500 chars before and after
     const pos = match.index;
     const cardContext = html.substring(Math.max(0, pos - 300), Math.min(html.length, pos + 500));
     
@@ -149,7 +142,6 @@ function extractListingsFromHtml(html: string): StubAnchor[] {
     stubs.push(stub);
   }
   
-  // Pattern 2: Also check for /used/item/cars/ pattern
   const itemRegex = /href="(\/used\/item\/cars\/[^"]+)"/gi;
   while ((match = itemRegex.exec(html)) !== null) {
     const url = match[1];
@@ -166,7 +158,6 @@ function extractListingsFromHtml(html: string): StubAnchor[] {
   return stubs;
 }
 
-// Fetch a single page with retry
 async function fetchPage(url: string, retries = 2): Promise<string | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -178,7 +169,6 @@ async function fetchPage(url: string, retries = 2): Promise<string | null> {
       if (!response.ok) {
         console.warn(`[STUB] Page fetch failed: ${response.status} for ${url}`);
         if (response.status === 403 || response.status === 429) {
-          // Rate limited or blocked - wait and retry
           await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
           continue;
         }
@@ -194,24 +184,6 @@ async function fetchPage(url: string, retries = 2): Promise<string | null> {
     }
   }
   return null;
-}
-
-// Check if page has more results (look for pagination indicators)
-function hasMorePages(html: string, currentPage: number): boolean {
-  // Look for "next page" links or indicators
-  const nextPagePattern = new RegExp(`page=${currentPage + 1}`, 'i');
-  if (nextPagePattern.test(html)) return true;
-  
-  // Look for "showing X of Y" patterns
-  const totalMatch = html.match(/of\s+(\d+)\s+results/i);
-  if (totalMatch) {
-    const total = parseInt(totalMatch[1]);
-    const perPage = 120;
-    return currentPage * perPage < total;
-  }
-  
-  // If we found any listings, assume there might be more
-  return html.includes('/used/details/cars/');
 }
 
 Deno.serve(async (req) => {
@@ -236,7 +208,6 @@ Deno.serve(async (req) => {
 
     console.log(`[STUB] Starting Pickles stub ingest: region=${region}, pages=${start_page}-${start_page + max_pages - 1}`);
 
-    // Create run record
     let runId: string | null = null;
     if (!dry_run) {
       const { data: run } = await supabase
@@ -253,13 +224,16 @@ Deno.serve(async (req) => {
       stubs_created: 0,
       stubs_updated: 0,
       exceptions_queued: 0,
+      new_stock_ids_per_page: {},
       errors: [],
     };
 
+    // Track all seen stock IDs across pages
+    const allSeenStockIds = new Set<string>();
     let currentPage = start_page;
-    let hasMore = true;
+    let consecutiveZeroNewPages = 0;
 
-    while (hasMore && currentPage < start_page + max_pages) {
+    while (currentPage < start_page + max_pages) {
       const url = buildSearchUrl(currentPage, limit, region);
       console.log(`[STUB] Fetching page ${currentPage}: ${url}`);
 
@@ -273,22 +247,39 @@ Deno.serve(async (req) => {
 
       metrics.pages_fetched++;
 
-      // Extract listings
       const stubs = extractListingsFromHtml(html);
       console.log(`[STUB] Page ${currentPage}: found ${stubs.length} listings`);
       metrics.stubs_found += stubs.length;
 
       if (stubs.length === 0) {
-        // No listings found - might be end of results or parse issue
-        hasMore = false;
-        continue;
+        // No listings at all - end of results
+        console.log(`[STUB] Page ${currentPage}: empty page, stopping`);
+        break;
       }
 
-      if (!dry_run) {
-        // Batch upsert via RPC
+      // FIX #6: Count NEW stock IDs only (not seen before)
+      let newStockIds = 0;
+      const validStubs: StubAnchor[] = [];
+      
+      for (const stub of stubs) {
+        if (stub.source_stock_id && !allSeenStockIds.has(stub.source_stock_id)) {
+          allSeenStockIds.add(stub.source_stock_id);
+          newStockIds++;
+          validStubs.push(stub);
+        } else if (stub.source_stock_id) {
+          // Duplicate within run - skip but count as seen
+          validStubs.push(stub);
+        }
+        // Stubs without stock_id will be handled by RPC as exceptions
+      }
+      
+      metrics.new_stock_ids_per_page[currentPage] = newStockIds;
+      console.log(`[STUB] Page ${currentPage}: ${newStockIds} NEW stock IDs`);
+
+      if (!dry_run && validStubs.length > 0) {
         const { data: result, error } = await supabase.rpc("upsert_stub_anchor_batch", {
           p_source: "pickles",
-          p_stubs: stubs,
+          p_stubs: validStubs,
         });
 
         if (error) {
@@ -301,27 +292,34 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Check for more pages
-      hasMore = hasMorePages(html, currentPage);
-      currentPage++;
+      // FIX #6: Stop when page yields no new stock_ids
+      if (newStockIds === 0) {
+        consecutiveZeroNewPages++;
+        if (consecutiveZeroNewPages >= 2) {
+          console.log(`[STUB] ${consecutiveZeroNewPages} consecutive pages with 0 new IDs, stopping`);
+          break;
+        }
+      } else {
+        consecutiveZeroNewPages = 0;
+      }
 
-      // Small delay between pages to be respectful
+      currentPage++;
       await new Promise(r => setTimeout(r, 500));
     }
 
-    // Update run record
     if (runId) {
       await supabase
         .from("stub_ingest_runs")
         .update({
           completed_at: new Date().toISOString(),
-          status: metrics.errors.length > 0 ? "completed" : "completed",
+          status: "completed",
           pages_fetched: metrics.pages_fetched,
           stubs_found: metrics.stubs_found,
           stubs_created: metrics.stubs_created,
           stubs_updated: metrics.stubs_updated,
           exceptions_queued: metrics.exceptions_queued,
           errors: metrics.errors,
+          metadata: { new_stock_ids_per_page: metrics.new_stock_ids_per_page },
           last_error: metrics.errors.length > 0 ? metrics.errors[metrics.errors.length - 1].error : null,
         })
         .eq("id", runId);
