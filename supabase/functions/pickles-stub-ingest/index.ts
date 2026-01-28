@@ -3,13 +3,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 /**
  * PICKLES STUB INGEST - Lane 1: High-volume stub anchor creation
  * 
- * Fetches list pages from Pickles NSW, extracts minimal stub data,
- * and upserts to stub_anchors table. Runs hourly.
- * 
- * Endpoint: https://www.pickles.com.au/used/search/cars/state/nsw
- * Pagination: ?limit=120&page=N
- * 
- * FIX #6: Pagination stops when page yields no NEW stock_ids (not HTML heuristics)
+ * Production hardened:
+ * - Supports region_path like 'nsw/sydney' or 'nsw'
+ * - source_stock_id is numeric-only (no UUID fallback)
+ * - Uses normalized make_norm/model_norm columns
  */
 
 const corsHeaders = {
@@ -46,8 +43,10 @@ interface RunMetrics {
   errors: { page: number; error: string }[];
 }
 
-function buildSearchUrl(page: number, limit = 120, region = "nsw"): string {
-  const base = `https://www.pickles.com.au/used/search/cars/state/${region}`;
+// Support nested paths like 'nsw/sydney' or just 'nsw'
+function buildSearchUrl(page: number, limit = 120, regionPath = "nsw"): string {
+  // regionPath can be 'nsw' or 'nsw/sydney'
+  const base = `https://www.pickles.com.au/used/search/cars/state/${regionPath}`;
   const params = new URLSearchParams({
     limit: String(limit),
     page: String(page),
@@ -55,19 +54,19 @@ function buildSearchUrl(page: number, limit = 120, region = "nsw"): string {
   return `${base}?${params.toString()}`;
 }
 
-// Extract stock ID - MUST be present, no UUID fallback
+// Extract stock ID - NUMERIC ONLY (confirmed Pickles uses numeric stock IDs)
 function extractStockId(url: string): string | null {
-  // Pattern 1: UUID format at end: /used/details/cars/{slug}/{uuid}
-  const uuidMatch = url.match(/\/([A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12})$/i);
-  if (uuidMatch) return uuidMatch[1].toUpperCase();
-  
-  // Pattern 2: Numeric ID at end: /used/details/cars/{slug}/{id}
-  const numMatch = url.match(/\/(\d{6,})$/);
+  // Pattern 1: Numeric ID at end: /used/details/cars/{slug}/{numeric-id}
+  const numMatch = url.match(/\/([0-9]{6,})$/);
   if (numMatch) return numMatch[1];
   
-  // Pattern 3: /used/item/cars/{slug}-{id}
+  // Pattern 2: /used/item/cars/{slug}-{numeric-id}
   const itemMatch = url.match(/\/used\/item\/cars\/[^\/]+-(\d+)/);
   if (itemMatch) return itemMatch[1];
+  
+  // Pattern 3: UUID format - extract numeric portion if embedded
+  // e.g., "61AAFF43-505D-4B86-A216-D29B5F1C986D" - skip these entirely
+  // Pickles confirmed to use numeric stock IDs for inventory tracking
   
   return null;
 }
@@ -108,7 +107,7 @@ function parseStubFromCard(cardHtml: string, detailUrl: string): StubAnchor {
   const locationMatch = cardHtml.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),?\s*(?:NSW|VIC|QLD|SA|WA|TAS|NT|ACT)/i);
   const location = locationMatch ? locationMatch[0] : null;
   
-  // Stock ID must come from URL end segment
+  // Stock ID must come from URL - NUMERIC ONLY
   const stockId = extractStockId(detailUrl);
   
   return {
@@ -199,20 +198,20 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const {
-      region = "nsw",
+      region_path = "nsw", // Supports 'nsw' or 'nsw/sydney'
       max_pages = 10,
       limit = 120,
       start_page = 1,
       dry_run = false,
     } = body;
 
-    console.log(`[STUB] Starting Pickles stub ingest: region=${region}, pages=${start_page}-${start_page + max_pages - 1}`);
+    console.log(`[STUB] Starting Pickles stub ingest: region_path=${region_path}, pages=${start_page}-${start_page + max_pages - 1}`);
 
     let runId: string | null = null;
     if (!dry_run) {
       const { data: run } = await supabase
         .from("stub_ingest_runs")
-        .insert({ source: "pickles", region, status: "running" })
+        .insert({ source: "pickles", region: region_path, status: "running" })
         .select("id")
         .single();
       runId = run?.id;
@@ -234,7 +233,7 @@ Deno.serve(async (req) => {
     let consecutiveZeroNewPages = 0;
 
     while (currentPage < start_page + max_pages) {
-      const url = buildSearchUrl(currentPage, limit, region);
+      const url = buildSearchUrl(currentPage, limit, region_path);
       console.log(`[STUB] Fetching page ${currentPage}: ${url}`);
 
       const html = await fetchPage(url);
@@ -252,12 +251,11 @@ Deno.serve(async (req) => {
       metrics.stubs_found += stubs.length;
 
       if (stubs.length === 0) {
-        // No listings at all - end of results
         console.log(`[STUB] Page ${currentPage}: empty page, stopping`);
         break;
       }
 
-      // FIX #6: Count NEW stock IDs only (not seen before)
+      // Count NEW stock IDs only (not seen before)
       let newStockIds = 0;
       const validStubs: StubAnchor[] = [];
       
@@ -267,10 +265,9 @@ Deno.serve(async (req) => {
           newStockIds++;
           validStubs.push(stub);
         } else if (stub.source_stock_id) {
-          // Duplicate within run - skip but count as seen
           validStubs.push(stub);
         }
-        // Stubs without stock_id will be handled by RPC as exceptions
+        // Stubs without stock_id will be queued as exceptions by RPC
       }
       
       metrics.new_stock_ids_per_page[currentPage] = newStockIds;
@@ -292,7 +289,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // FIX #6: Stop when page yields no new stock_ids
+      // Stop when page yields no new stock_ids
       if (newStockIds === 0) {
         consecutiveZeroNewPages++;
         if (consecutiveZeroNewPages >= 2) {

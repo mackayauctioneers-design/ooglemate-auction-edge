@@ -1419,8 +1419,10 @@ export type Database = {
           km_max: number | null
           km_min: number | null
           make: string
+          make_norm: string | null
           min_benchmark_confidence: string | null
           model: string
+          model_norm: string | null
           name: string
           priority: string | null
           push_watchlist: boolean | null
@@ -1450,8 +1452,10 @@ export type Database = {
           km_max?: number | null
           km_min?: number | null
           make: string
+          make_norm?: string | null
           min_benchmark_confidence?: string | null
           model: string
+          model_norm?: string | null
           name: string
           priority?: string | null
           push_watchlist?: boolean | null
@@ -1481,8 +1485,10 @@ export type Database = {
           km_max?: number | null
           km_min?: number | null
           make?: string
+          make_norm?: string | null
           min_benchmark_confidence?: string | null
           model?: string
+          model_norm?: string | null
           name?: string
           priority?: string | null
           push_watchlist?: boolean | null
@@ -3452,6 +3458,7 @@ export type Database = {
           asking_price: number | null
           buy_method: string | null
           claimed_at: string | null
+          claimed_by: string | null
           claimed_run_id: string | null
           content_len: number | null
           crawl_attempts: number
@@ -3470,6 +3477,7 @@ export type Database = {
           model: string | null
           page_no: number | null
           reserve_price: number | null
+          retry_count: number | null
           run_id: string | null
           sale_close_at: string | null
           sale_status: string | null
@@ -3478,6 +3486,7 @@ export type Database = {
           source: string
           source_listing_id: string
           state: string | null
+          stub_anchor_id: string | null
           variant_raw: string | null
           year: number | null
         }
@@ -3485,6 +3494,7 @@ export type Database = {
           asking_price?: number | null
           buy_method?: string | null
           claimed_at?: string | null
+          claimed_by?: string | null
           claimed_run_id?: string | null
           content_len?: number | null
           crawl_attempts?: number
@@ -3503,6 +3513,7 @@ export type Database = {
           model?: string | null
           page_no?: number | null
           reserve_price?: number | null
+          retry_count?: number | null
           run_id?: string | null
           sale_close_at?: string | null
           sale_status?: string | null
@@ -3511,6 +3522,7 @@ export type Database = {
           source?: string
           source_listing_id: string
           state?: string | null
+          stub_anchor_id?: string | null
           variant_raw?: string | null
           year?: number | null
         }
@@ -3518,6 +3530,7 @@ export type Database = {
           asking_price?: number | null
           buy_method?: string | null
           claimed_at?: string | null
+          claimed_by?: string | null
           claimed_run_id?: string | null
           content_len?: number | null
           crawl_attempts?: number
@@ -3536,6 +3549,7 @@ export type Database = {
           model?: string | null
           page_no?: number | null
           reserve_price?: number | null
+          retry_count?: number | null
           run_id?: string | null
           sale_close_at?: string | null
           sale_status?: string | null
@@ -3544,10 +3558,19 @@ export type Database = {
           source?: string
           source_listing_id?: string
           state?: string | null
+          stub_anchor_id?: string | null
           variant_raw?: string | null
           year?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "pickles_detail_queue_stub_anchor_id_fkey"
+            columns: ["stub_anchor_id"]
+            isOneToOne: false
+            referencedRelation: "stub_anchors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pickles_detail_runs: {
         Row: {
@@ -5048,8 +5071,10 @@ export type Database = {
           last_seen_at: string
           location: string | null
           make: string | null
+          make_norm: string | null
           matched_hunt_ids: string[] | null
           model: string | null
+          model_norm: string | null
           raw_text: string | null
           source: string
           source_stock_id: string | null
@@ -5075,8 +5100,10 @@ export type Database = {
           last_seen_at?: string
           location?: string | null
           make?: string | null
+          make_norm?: string | null
           matched_hunt_ids?: string[] | null
           model?: string | null
+          model_norm?: string | null
           raw_text?: string | null
           source?: string
           source_stock_id?: string | null
@@ -5102,8 +5129,10 @@ export type Database = {
           last_seen_at?: string
           location?: string | null
           make?: string | null
+          make_norm?: string | null
           matched_hunt_ids?: string[] | null
           model?: string | null
+          model_norm?: string | null
           raw_text?: string | null
           source?: string
           source_stock_id?: string | null
@@ -7781,6 +7810,22 @@ export type Database = {
           state: string
         }[]
       }
+      claim_detail_queue_batch: {
+        Args: {
+          p_batch_size?: number
+          p_claim_by?: string
+          p_max_retries?: number
+        }
+        Returns: {
+          crawl_status: string
+          detail_url: string
+          id: string
+          retry_count: number
+          source: string
+          source_listing_id: string
+          stub_anchor_id: string
+        }[]
+      }
       claim_next_job: {
         Args: never
         Returns: {
@@ -7801,6 +7846,7 @@ export type Database = {
           asking_price: number | null
           buy_method: string | null
           claimed_at: string | null
+          claimed_by: string | null
           claimed_run_id: string | null
           content_len: number | null
           crawl_attempts: number
@@ -7819,6 +7865,7 @@ export type Database = {
           model: string | null
           page_no: number | null
           reserve_price: number | null
+          retry_count: number | null
           run_id: string | null
           sale_close_at: string | null
           sale_status: string | null
@@ -7827,6 +7874,7 @@ export type Database = {
           source: string
           source_listing_id: string
           state: string | null
+          stub_anchor_id: string | null
           variant_raw: string | null
           year: number | null
         }[]
@@ -8791,6 +8839,14 @@ export type Database = {
               match_score: number
               spec_id: string
               spec_name: string
+              stub_id: string
+            }[]
+          }
+        | {
+            Args: { p_batch_size?: number; p_min_score?: number }
+            Returns: {
+              match_score: number
+              spec_id: string
               stub_id: string
             }[]
           }
