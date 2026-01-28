@@ -1,0 +1,28 @@
+{
+  "actorSpecification": 1,
+  "name": "slattery-harvest",
+  "title": "Slattery Auctions Harvester",
+  "description": "Playwright-based harvester for slatteryauctions.com.au. Supports stub (discovery) and detail (extraction) modes.",
+  "version": "1.0.0",
+  "buildTag": "latest",
+  "dockerfile": "./Dockerfile",
+  "input": "./INPUT_SCHEMA.json",
+  "storages": {
+    "dataset": {
+      "actorSpecification": 1,
+      "title": "Slattery Harvest Results",
+      "views": {
+        "overview": {
+          "title": "Overview",
+          "transformation": {
+            "fields": ["pagesVisited", "totalDiscovered", "totalPushed", "totalSkipped", "claimed", "fetched", "errors"]
+          },
+          "display": {
+            "component": "table",
+            "properties": {}
+          }
+        }
+      }
+    }
+  }
+}
