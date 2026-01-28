@@ -336,3 +336,14 @@ verify_jwt = false
 verify_jwt = false
 # Every 15 minutes - match stubs to hunts and queue for deep-fetch
 schedule = "*/15 * * * *"
+
+[functions.slattery-stub-ingest-webhook]
+verify_jwt = false
+
+[functions.slattery-detail-ingest-webhook]
+verify_jwt = false
+
+[functions.slattery-stub-match]
+verify_jwt = false
+# Every 15 minutes - match stubs to hunts and queue for deep-fetch
+schedule = "*/15 * * * *"

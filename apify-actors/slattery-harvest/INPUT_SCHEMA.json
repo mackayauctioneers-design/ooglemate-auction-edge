@@ -1,0 +1,53 @@
+{
+  "title": "Slattery Auctions Harvester",
+  "description": "Harvests vehicle listings from slatteryauctions.com.au. Two modes: stub (discovery pages) and detail (individual assets). Requires Playwright for JavaScript rendering.",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "mode": {
+      "title": "Harvester Mode",
+      "type": "string",
+      "description": "stub = crawl category/auction pages and extract asset URLs; detail = fetch individual asset pages and extract vehicle data",
+      "default": "stub",
+      "enum": ["stub", "detail"],
+      "editor": "select"
+    },
+    "maxPages": {
+      "title": "Max Pages (stub mode)",
+      "type": "integer",
+      "description": "Maximum number of category/auction pages to crawl in stub mode",
+      "default": 10,
+      "minimum": 1,
+      "maximum": 50
+    },
+    "detailUrls": {
+      "title": "Detail URLs (detail mode)",
+      "type": "array",
+      "description": "Array of objects with source_stock_id and detail_url to process in detail mode. Can also read from pickles_detail_queue.",
+      "default": [],
+      "editor": "json"
+    },
+    "ingestKey": {
+      "title": "Ingest API Key (VMA_INGEST_KEY)",
+      "type": "string",
+      "description": "VMA_INGEST_KEY for authenticating with Edge functions (same key used by VMA/Pickles/Manheim/Grays harvesters)",
+      "editor": "textfield",
+      "isSecret": true
+    },
+    "batchSize": {
+      "title": "Batch Size",
+      "type": "integer",
+      "description": "Number of items to send per POST request",
+      "default": 50,
+      "minimum": 1,
+      "maximum": 200
+    },
+    "dryRun": {
+      "title": "Dry Run",
+      "type": "boolean",
+      "description": "If true, extract data but don't POST to Edge functions",
+      "default": false
+    }
+  },
+  "required": []
+}
