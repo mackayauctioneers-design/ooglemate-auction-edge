@@ -1,0 +1,20 @@
+{
+  "name": "grays-harvest",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Grays.com auction harvester for Carbitrage. Bypasses Cloudflare using Playwright.",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
+    "apify": "^3.1.0",
+    "crawlee": "^3.5.0",
+    "playwright": "^1.40.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "Carbitrage",
+  "license": "ISC"
+}
