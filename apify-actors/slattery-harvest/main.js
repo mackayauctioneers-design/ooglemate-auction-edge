@@ -13,41 +13,10 @@ import { PlaywrightCrawler } from 'crawlee';
 const SUPABASE_URL = 'https://xznchxsbuwngfmwvsvhq.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6bmNoeHNidXduZ2Ztd3ZzdmhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwNzY4NzIsImV4cCI6MjA4MjY1Mjg3Mn0.EAtZMU4QRmk00Gomr7R25LR0OyJqZtMQA9ZK-7M19hM';
 
-await Actor.init();
-
-const input = await Actor.getInput() || {};
-const {
-  mode = 'stub',
-  maxPages = 10,
-  detailUrls = [],
-  ingestKey = '',
-  batchSize = 50,
-  proxyCountry = 'AU',
-  dryRun = false,
-} = input;
-
-// HARD FAIL: ingestKey is required (unless dryRun)
-if (!ingestKey && !dryRun) {
-  console.error('FATAL: ingestKey (VMA_INGEST_KEY) is required. Cannot proceed without authentication.');
-  await Actor.exit({ exitCode: 1 });
-  throw new Error('ingestKey is required');
-}
-
-console.log(`Starting Slattery harvester in ${mode} mode, proxyCountry=${proxyCountry}`);
-
-// Configure proxy with country code
-const proxyConfiguration = await Actor.createProxyConfiguration({
-  groups: ['RESIDENTIAL'],
-  countryCode: proxyCountry,
-});
-
-// Collected items for batch posting
-let collectedItems = [];
-
 /**
  * Post batch to webhook
  */
-async function postBatch(endpoint, items) {
+async function postBatch(endpoint, items, ingestKey, dryRun) {
   if (dryRun || items.length === 0) {
     console.log(`[DRY RUN] Would POST ${items.length} items to ${endpoint}`);
     return;
@@ -116,7 +85,6 @@ async function fetchPendingQueueItems(limit) {
 async function markQueueProcessing(ids) {
   if (ids.length === 0) return;
   
-  // Use PATCH to update status
   for (const id of ids) {
     const url = `${SUPABASE_URL}/rest/v1/pickles_detail_queue?id=eq.${id}`;
     try {
@@ -138,7 +106,7 @@ async function markQueueProcessing(ids) {
 }
 
 /**
- * Mark queue item as error (for failed crawls)
+ * Mark queue item as error
  */
 async function markQueueError(sourceListingId) {
   const url = `${SUPABASE_URL}/rest/v1/pickles_detail_queue?source=eq.slattery&source_listing_id=eq.${encodeURIComponent(sourceListingId)}`;
@@ -160,7 +128,6 @@ async function markQueueError(sourceListingId) {
 
 /**
  * Extract consignment ID from asset URL
- * Pattern: /assets/{consignmentNo}?auctionNum={auctionNo}
  */
 function extractConsignmentId(url) {
   const match = url.match(/\/assets\/([^?\/]+)/);
@@ -202,12 +169,18 @@ function extractLocation(text) {
   return null;
 }
 
-// ============ STUB MODE ============
-if (mode === 'stub') {
+/**
+ * Run stub mode - discover vehicle listings
+ */
+async function runStubMode(config) {
+  const { maxPages, ingestKey, batchSize, dryRun, proxyConfiguration } = config;
+  
   const discoveryUrls = [
     'https://slatteryauctions.com.au/auctions?categoryGroups=Motor+Vehicles',
     'https://slatteryauctions.com.au/categories/motor-vehicles',
   ];
+
+  let collectedItems = [];
 
   const crawler = new PlaywrightCrawler({
     maxRequestsPerCrawl: maxPages * 2,
@@ -218,10 +191,8 @@ if (mode === 'stub') {
     async requestHandler({ page, request, log }) {
       log.info(`Processing: ${request.url}`);
       
-      // Wait for content to load
       await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
       
-      // Extract all asset links
       const assetLinks = await page.evaluate(() => {
         const links = [];
         document.querySelectorAll('a[href*="/assets/"]').forEach(a => {
@@ -256,9 +227,8 @@ if (mode === 'stub') {
         });
       }
 
-      // Post batch if enough items collected
       if (collectedItems.length >= batchSize) {
-        await postBatch('slattery-stub-ingest-webhook', collectedItems);
+        await postBatch('slattery-stub-ingest-webhook', collectedItems, ingestKey, dryRun);
         collectedItems = [];
       }
     },
@@ -270,17 +240,19 @@ if (mode === 'stub') {
 
   await crawler.run(discoveryUrls);
 
-  // Post remaining items
   if (collectedItems.length > 0) {
-    await postBatch('slattery-stub-ingest-webhook', collectedItems);
+    await postBatch('slattery-stub-ingest-webhook', collectedItems, ingestKey, dryRun);
   }
 
   console.log(`Stub mode complete. Total items collected: ${collectedItems.length}`);
 }
 
-// ============ DETAIL MODE ============
-else if (mode === 'detail') {
-  // AUTO-READ FROM QUEUE: Fetch pending items from pickles_detail_queue
+/**
+ * Run detail mode - extract vehicle details
+ */
+async function runDetailMode(config) {
+  const { detailUrls, ingestKey, batchSize, dryRun, proxyConfiguration } = config;
+
   let urlsToProcess = detailUrls.length > 0 ? detailUrls : [];
   
   if (urlsToProcess.length === 0) {
@@ -289,13 +261,11 @@ else if (mode === 'detail') {
     
     if (queueItems.length === 0) {
       console.log('No pending queue items found for source=slattery');
-      await Actor.exit();
+      return;
     }
     
-    // Mark as processing before crawling
     await markQueueProcessing(queueItems.map(q => q.id));
     
-    // Convert to URL list with source_stock_id
     urlsToProcess = queueItems.map(q => ({
       source_stock_id: q.source_listing_id,
       detail_url: q.detail_url,
@@ -303,6 +273,8 @@ else if (mode === 'detail') {
   }
 
   console.log(`Processing ${urlsToProcess.length} detail URLs`);
+
+  let collectedItems = [];
 
   const crawler = new PlaywrightCrawler({
     maxRequestsPerCrawl: urlsToProcess.length,
@@ -315,14 +287,12 @@ else if (mode === 'detail') {
       
       await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
 
-      // Get source_stock_id from userData or extract from URL
       const consignmentId = request.userData?.source_stock_id || extractConsignmentId(request.url);
       if (!consignmentId) {
         log.error('Could not extract consignment ID');
         return;
       }
 
-      // Extract vehicle data from page
       const data = await page.evaluate(() => {
         const result = {
           variant_raw: null,
@@ -346,11 +316,9 @@ else if (mode === 'detail') {
           sold: false,
         };
 
-        // Get title
         const title = document.querySelector('h1')?.textContent || document.title;
         result.variant_raw = title?.trim();
 
-        // Parse year/make/model from title
         const ymmMatch = title?.match(/\b(19[89]\d|20[0-2]\d)\s+([A-Z][a-z]+)\s+([A-Za-z0-9]+)/i);
         if (ymmMatch) {
           result.year = parseInt(ymmMatch[1], 10);
@@ -358,10 +326,8 @@ else if (mode === 'detail') {
           result.model = ymmMatch[3].toUpperCase();
         }
 
-        // Get all text content for parsing
         const bodyText = document.body.innerText;
 
-        // Odometer
         const kmMatch = bodyText.match(/(?:odometer|kms?|kilometres?)[:\s]*([0-9,]+)/i) ||
                        bodyText.match(/([0-9,]+)\s*(?:kms?|kilometres?)\b/i);
         if (kmMatch) {
@@ -369,7 +335,6 @@ else if (mode === 'detail') {
           if (km > 50 && km < 900000) result.km = km;
         }
 
-        // Prices
         const bidMatch = bodyText.match(/(?:current\s*bid|highest\s*bid)[:\s]*\$?([0-9,]+)/i);
         if (bidMatch) result.current_bid = parseInt(bidMatch[1].replace(/,/g, ''), 10);
 
@@ -379,28 +344,23 @@ else if (mode === 'detail') {
         const guideMatch = bodyText.match(/(?:guide|estimate)[:\s]*\$?([0-9,]+)/i);
         if (guideMatch) result.guide_price = parseInt(guideMatch[1].replace(/,/g, ''), 10);
 
-        // Sold status
         if (/\b(sold|sold\s*for|hammer|won)\b/i.test(bodyText)) {
           result.sold = true;
           const soldMatch = bodyText.match(/(?:sold\s*for|hammer)[:\s]*\$?([0-9,]+)/i);
           if (soldMatch) result.asking_price = parseInt(soldMatch[1].replace(/,/g, ''), 10);
         }
 
-        // Fuel
         if (/\bdiesel\b/i.test(bodyText)) result.fuel = 'diesel';
         else if (/\b(petrol|gasoline)\b/i.test(bodyText)) result.fuel = 'petrol';
         else if (/\bhybrid\b/i.test(bodyText)) result.fuel = 'hybrid';
         else if (/\b(electric|ev)\b/i.test(bodyText)) result.fuel = 'electric';
 
-        // Transmission
         if (/\b(automatic|auto)\b/i.test(bodyText)) result.transmission = 'automatic';
         else if (/\bmanual\b/i.test(bodyText)) result.transmission = 'manual';
 
-        // Drivetrain
         if (/\b(4x4|4wd|awd)\b/i.test(bodyText)) result.drivetrain = '4x4';
         else if (/\b(2wd|rwd|fwd)\b/i.test(bodyText)) result.drivetrain = '2wd';
 
-        // Location
         const locMatch = bodyText.match(/(?:location|yard|pickup)[:\s]*([^\n]+)/i);
         if (locMatch) {
           result.location = locMatch[1].trim().slice(0, 100);
@@ -408,7 +368,6 @@ else if (mode === 'detail') {
           if (stateMatch) result.state = stateMatch[1];
         }
 
-        // Condition flags
         if (/\b(wovr|written?\s*off|write[\s-]*off)\b/i.test(bodyText)) result.wovr_indicator = true;
         if (/\b(damage|damaged|accident|hail)\b/i.test(bodyText)) result.damage_noted = true;
         if (/\b(no\s*keys?|keys?\s*missing)\b/i.test(bodyText)) result.keys_present = false;
@@ -425,9 +384,8 @@ else if (mode === 'detail') {
         ...data,
       });
 
-      // Post batch if enough items collected
       if (collectedItems.length >= batchSize) {
-        await postBatch('slattery-detail-ingest-webhook', collectedItems);
+        await postBatch('slattery-detail-ingest-webhook', collectedItems, ingestKey, dryRun);
         collectedItems = [];
       }
     },
@@ -441,7 +399,6 @@ else if (mode === 'detail') {
     },
   });
 
-  // Build request list with userData for source_stock_id tracking
   const requests = urlsToProcess.map(u => ({
     url: u.detail_url || u,
     userData: { source_stock_id: u.source_stock_id },
@@ -449,12 +406,54 @@ else if (mode === 'detail') {
 
   await crawler.run(requests);
 
-  // Post remaining items
   if (collectedItems.length > 0) {
-    await postBatch('slattery-detail-ingest-webhook', collectedItems);
+    await postBatch('slattery-detail-ingest-webhook', collectedItems, ingestKey, dryRun);
   }
 
   console.log(`Detail mode complete. Total items processed: ${collectedItems.length}`);
 }
 
-await Actor.exit();
+// ============ MAIN ENTRY POINT ============
+Actor.main(async () => {
+  const input = await Actor.getInput() || {};
+  const {
+    mode = 'stub',
+    maxPages = 10,
+    detailUrls = [],
+    ingestKey = '',
+    batchSize = 50,
+    proxyCountry = 'AU',
+    dryRun = false,
+  } = input;
+
+  // HARD FAIL: ingestKey is required (unless dryRun)
+  if (!ingestKey && !dryRun) {
+    console.error('FATAL: ingestKey (VMA_INGEST_KEY) is required. Cannot proceed without authentication.');
+    throw new Error('ingestKey is required');
+  }
+
+  console.log(`Starting Slattery harvester in ${mode} mode, proxyCountry=${proxyCountry}`);
+
+  // Configure proxy with country code
+  const proxyConfiguration = await Actor.createProxyConfiguration({
+    groups: ['RESIDENTIAL'],
+    countryCode: proxyCountry,
+  });
+
+  const config = {
+    maxPages,
+    detailUrls,
+    ingestKey,
+    batchSize,
+    dryRun,
+    proxyConfiguration,
+  };
+
+  if (mode === 'stub') {
+    await runStubMode(config);
+  } else if (mode === 'detail') {
+    await runDetailMode(config);
+  } else {
+    throw new Error(`Unknown mode: ${mode}`);
+  }
+});
