@@ -63,6 +63,19 @@ const LEMON_PATTERNS = [
   /pickles\.com\.au\/used\/[a-z]+-[a-z]+$/i,
 ];
 
+// Patterns that indicate HOMEPAGE (not inventory) - should be rejected for Grok
+const HOMEPAGE_PATTERNS = [
+  /^https?:\/\/[^\/]+\/?$/i,          // Just domain with optional trailing slash
+  /^https?:\/\/[^\/]+\/about/i,       // About pages
+  /^https?:\/\/[^\/]+\/contact/i,     // Contact pages
+  /^https?:\/\/[^\/]+\/service/i,     // Service pages
+  /^https?:\/\/[^\/]+\/finance/i,     // Finance pages
+  /^https?:\/\/[^\/]+\/blog/i,        // Blog pages
+  /^https?:\/\/[^\/]+\/news/i,        // News pages
+  /^https?:\/\/[^\/]+\/team/i,        // Team pages
+  /^https?:\/\/[^\/]+\/careers/i,     // Careers pages
+];
+
 // Auction detail patterns - API only, not Grok
 const AUCTION_DETAIL_PATTERNS = [
   /pickles\.com\.au\/used\/details/i,
@@ -147,7 +160,7 @@ function generateDealerSlug(domain: string, pathname: string): string {
   return slug || 'unknown-dealer';
 }
 
-// Classify URL for Grok routing
+// Classify URL for Grok routing - STRICT: only inventory pages are grok_safe
 function classifyUrlForGrok(url: string, domain: string): UrlClass {
   try {
     const fullPath = new URL(url).pathname + new URL(url).search;
@@ -155,6 +168,15 @@ function classifyUrlForGrok(url: string, domain: string): UrlClass {
     // Check for lemon/dead pages first
     for (const pattern of LEMON_PATTERNS) {
       if (pattern.test(url)) {
+        console.log(`[classifyUrlForGrok] ${url} -> invalid (lemon pattern)`);
+        return 'invalid';
+      }
+    }
+    
+    // Check for homepage patterns - NOT grok_safe (must have inventory path)
+    for (const pattern of HOMEPAGE_PATTERNS) {
+      if (pattern.test(url)) {
+        console.log(`[classifyUrlForGrok] ${url} -> invalid (homepage, not inventory)`);
         return 'invalid';
       }
     }
@@ -162,6 +184,7 @@ function classifyUrlForGrok(url: string, domain: string): UrlClass {
     // Check for auction detail pages - API only
     for (const pattern of AUCTION_DETAIL_PATTERNS) {
       if (pattern.test(url)) {
+        console.log(`[classifyUrlForGrok] ${url} -> api_only (auction detail)`);
         return 'api_only';
       }
     }
@@ -172,25 +195,33 @@ function classifyUrlForGrok(url: string, domain: string): UrlClass {
       // Exception: auction search pages CAN go to Grok for discovery
       const hasValidSearch = VALID_SEARCH_PATTERNS.some(p => p.test(fullPath));
       if (hasValidSearch) {
-        return 'grok_safe'; // Auction search pages are OK
+        console.log(`[classifyUrlForGrok] ${url} -> grok_safe (auction search page)`);
+        return 'grok_safe';
       }
+      console.log(`[classifyUrlForGrok] ${url} -> api_only (auction domain)`);
       return 'api_only';
     }
     
-    // Check if domain is known Grok-safe
-    const isGrokSafe = GROK_SAFE_DOMAINS.some(d => domain.includes(d));
-    if (isGrokSafe) {
-      return 'grok_safe';
-    }
-    
-    // Unknown dealer sites - assume Grok-safe if they have inventory patterns
+    // STRICT: Only mark as grok_safe if URL has clear inventory patterns
+    // This prevents homepages and guessed slugs from being sent to Grok
     const hasInventory = VALID_SEARCH_PATTERNS.some(p => p.test(fullPath));
     if (hasInventory) {
+      console.log(`[classifyUrlForGrok] ${url} -> grok_safe (inventory pattern matched)`);
       return 'grok_safe';
     }
     
-    // Default unknown dealers to Grok-safe (worth trying)
-    return 'grok_safe';
+    // Check if domain is known Grok-safe marketplace
+    const isGrokSafeMarketplace = GROK_SAFE_DOMAINS.some(d => domain.includes(d));
+    if (isGrokSafeMarketplace && fullPath.length > 1) {
+      // Known marketplace with a path - worth trying
+      console.log(`[classifyUrlForGrok] ${url} -> grok_safe (known marketplace with path)`);
+      return 'grok_safe';
+    }
+    
+    // DEFAULT: Unknown dealer URLs without inventory patterns -> INVALID for Grok
+    // This prevents hallucinations from guessed/homepage URLs
+    console.log(`[classifyUrlForGrok] ${url} -> invalid (no inventory pattern, not a known marketplace)`);
+    return 'invalid';
   } catch {
     return 'invalid';
   }
