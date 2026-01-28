@@ -3,6 +3,6 @@
   "name": "slattery-harvest",
   "version": "1.0",
   "build": {
-    "dockerfile": "./Dockerfile"
+    "dockerfile": "../Dockerfile"
   }
 }
