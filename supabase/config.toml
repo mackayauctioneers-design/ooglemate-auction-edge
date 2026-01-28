@@ -325,3 +325,14 @@ schedule = "*/15 * * * *"
 verify_jwt = false
 # Every 10 minutes - enrich matched stubs with detail page data
 schedule = "*/10 * * * *"
+
+[functions.grays-stub-ingest-webhook]
+verify_jwt = false
+
+[functions.grays-detail-ingest-webhook]
+verify_jwt = false
+
+[functions.grays-stub-match]
+verify_jwt = false
+# Every 15 minutes - match stubs to hunts and queue for deep-fetch
+schedule = "*/15 * * * *"

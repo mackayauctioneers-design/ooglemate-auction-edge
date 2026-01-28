@@ -1,0 +1,60 @@
+{
+  "title": "Grays Auction Harvester",
+  "description": "Harvests vehicle listings from Grays.com auctions. Two modes: stub (search pages) and detail (individual lots).",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "mode": {
+      "title": "Harvester Mode",
+      "type": "string",
+      "description": "stub = crawl search pages and extract lot URLs; detail = fetch individual lot pages and extract vehicle data",
+      "default": "stub",
+      "enum": ["stub", "detail"],
+      "editor": "select"
+    },
+    "maxPages": {
+      "title": "Max Pages (stub mode)",
+      "type": "integer",
+      "description": "Maximum number of search result pages to crawl in stub mode",
+      "default": 10,
+      "minimum": 1,
+      "maximum": 100
+    },
+    "startPage": {
+      "title": "Start Page (stub mode)",
+      "type": "integer",
+      "description": "Page number to start crawling from",
+      "default": 1,
+      "minimum": 1
+    },
+    "detailUrls": {
+      "title": "Detail URLs (detail mode)",
+      "type": "array",
+      "description": "Array of objects with source_stock_id and detail_url to process in detail mode",
+      "default": [],
+      "editor": "json"
+    },
+    "ingestKey": {
+      "title": "Ingest API Key",
+      "type": "string",
+      "description": "GRAYS_INGEST_KEY for authenticating with Edge functions",
+      "editor": "textfield",
+      "isSecret": true
+    },
+    "batchSize": {
+      "title": "Batch Size",
+      "type": "integer",
+      "description": "Number of items to send per POST request",
+      "default": 50,
+      "minimum": 1,
+      "maximum": 200
+    },
+    "dryRun": {
+      "title": "Dry Run",
+      "type": "boolean",
+      "description": "If true, extract data but don't POST to Edge functions",
+      "default": false
+    }
+  },
+  "required": []
+}
