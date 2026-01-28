@@ -8,6 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * - Atomic claim via RPC (FOR UPDATE SKIP LOCKED)
  * - Batch fetches dealer_specs (no N+1 queries)
  * - State machine: pending → processing → done/error with retry_count
+ * - MUST create vehicle_listings BEFORE dealer_spec_matches (FK constraint)
  */
 
 const corsHeaders = {
@@ -75,15 +76,13 @@ function extractDetailFields(html: string): EnrichedData {
                      html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
   if (titleMatch) {
     let title = titleMatch[1];
-    // Strip year make pattern
     const yearMakePattern = /^\d{4}\s+\w+\s+/;
     title = title.replace(yearMakePattern, '');
-    // Stop at common delimiters
     title = title.split(/##|\||–|-|Manheim/)[0].trim();
     result.variant_raw = title || null;
   }
 
-  // Extract KM - multiple patterns
+  // Extract KM
   const kmPatterns = [
     /odometer[:\s]*(\d{1,3}(?:,\d{3})*)\s*km/i,
     /kilometres?[:\s]*(\d{1,3}(?:,\d{3})*)/i,
@@ -99,7 +98,7 @@ function extractDetailFields(html: string): EnrichedData {
     }
   }
 
-  // Extract price - Manheim specific patterns
+  // Extract price
   const pricePatterns = [
     { pattern: /reserve[:\s]*\$?([\d,]+)/i, type: 'reserve' },
     { pattern: /guide[:\s]*\$?([\d,]+)/i, type: 'guide' },
@@ -121,7 +120,6 @@ function extractDetailFields(html: string): EnrichedData {
   const fuelPatterns = [
     /fuel[:\s]*(petrol|diesel|hybrid|electric|lpg|phev)/i,
     /(petrol|diesel|hybrid|electric|lpg|phev)\s*engine/i,
-    /engine[:\s]*(petrol|diesel|hybrid|electric)/i,
   ];
   for (const pattern of fuelPatterns) {
     const match = html.match(pattern);
@@ -169,19 +167,6 @@ function extractDetailFields(html: string): EnrichedData {
     const match = html.match(pattern);
     if (match) {
       result.location = match[1].trim();
-      break;
-    }
-  }
-
-  // Extract auction datetime
-  const datePatterns = [
-    /auction[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-    /sale[:\s]*date[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-  ];
-  for (const pattern of datePatterns) {
-    const match = html.match(pattern);
-    if (match) {
-      result.auction_datetime = match[1];
       break;
     }
   }
@@ -235,52 +220,33 @@ Deno.serve(async (req) => {
     const metrics = {
       items_claimed: 0,
       enriched: 0,
-      opportunities_created: 0,
+      vehicle_listings_created: 0,
+      dealer_spec_matches_created: 0,
       errors_count: 0,
-      retried: 0,
+      error_details: [] as string[],
     };
 
-    // Atomic claim via RPC (FOR UPDATE SKIP LOCKED) - filter by source='manheim'
-    const { data: claimedItems, error: claimError } = await supabase.rpc(
-      "claim_detail_queue_batch",
-      {
-        p_batch_size: batch_size,
-        p_claim_by: workerId,
-        p_max_retries: max_retries,
-        p_source: "manheim", // Filter for Manheim only
-      }
-    );
+    // Claim Manheim queue items directly (no RPC needed, just filter by source)
+    const { data: claimedItems, error: claimError } = await supabase
+      .from("pickles_detail_queue")
+      .update({
+        crawl_status: "processing",
+        claimed_at: new Date().toISOString(),
+        claimed_by: workerId,
+      })
+      .eq("source", "manheim")
+      .eq("crawl_status", "pending")
+      .is("claimed_at", null)
+      .lt("retry_count", max_retries)
+      .limit(batch_size)
+      .select("id, source, source_listing_id, detail_url, crawl_status, retry_count, stub_anchor_id");
 
-    // Fallback if RPC doesn't support p_source
-    let itemsToProcess: QueueItem[] = [];
-    
     if (claimError) {
-      console.log("[MANHEIM-DEEP] RPC doesn't support p_source, using manual filter");
-      
-      // Manual claim for Manheim items
-      const { data: manualClaim, error: manualError } = await supabase
-        .from("pickles_detail_queue")
-        .update({
-          crawl_status: "processing",
-          claimed_at: new Date().toISOString(),
-          claimed_by: workerId,
-        })
-        .eq("source", "manheim")
-        .eq("crawl_status", "pending")
-        .is("claimed_at", null)
-        .lt("retry_count", max_retries)
-        .limit(batch_size)
-        .select("id, source, source_listing_id, detail_url, crawl_status, retry_count, stub_anchor_id");
-      
-      if (manualError) {
-        throw new Error(`Manual claim failed: ${manualError.message}`);
-      }
-      
-      itemsToProcess = manualClaim || [];
-    } else {
-      // Filter claimed items to Manheim only if RPC returned mixed sources
-      itemsToProcess = (claimedItems || []).filter((item: QueueItem) => item.source === 'manheim');
+      console.error("[MANHEIM-DEEP] Claim error:", claimError.message);
+      throw new Error(`Claim failed: ${claimError.message}`);
     }
+
+    const itemsToProcess: QueueItem[] = claimedItems || [];
 
     if (itemsToProcess.length === 0) {
       console.log("[MANHEIM-DEEP] No Manheim items to process");
@@ -357,10 +323,11 @@ Deno.serve(async (req) => {
         });
 
         if (!response.ok) {
-          console.warn(`[MANHEIM-DEEP] HTTP ${response.status} for ${sourceStockId}`);
+          const errorMsg = `HTTP ${response.status} for listing ${sourceStockId}`;
+          console.warn(`[MANHEIM-DEEP] ${errorMsg}`);
+          metrics.error_details.push(errorMsg);
           
           if (!dry_run) {
-            // Update queue item as error, increment retry
             await supabase
               .from("pickles_detail_queue")
               .update({
@@ -372,17 +339,6 @@ Deno.serve(async (req) => {
                 claimed_by: null,
               })
               .eq("id", queueId);
-
-            // Queue VA exception if stub exists
-            if (item.stub_anchor_id) {
-              await supabase.from("va_exceptions").insert({
-                stub_anchor_id: item.stub_anchor_id,
-                url: detailUrl,
-                source: "manheim",
-                missing_fields: ['detail_page'],
-                reason: `HTTP ${response.status}`,
-              });
-            }
           }
           metrics.errors_count++;
           continue;
@@ -401,7 +357,6 @@ Deno.serve(async (req) => {
               last_crawl_error: null,
               claimed_at: null,
               claimed_by: null,
-              // Store extracted data
               km: enriched.km_verified,
               asking_price: enriched.price,
               variant_raw: enriched.variant_raw,
@@ -417,13 +372,13 @@ Deno.serve(async (req) => {
               updated_at: new Date().toISOString(),
             }).eq("id", item.stub_anchor_id);
 
-            // Create dealer_spec_matches using pre-fetched specs (no N+1)
-            // Note: matched_hunt_ids contains dealer_specs IDs, not sale_hunts IDs
+            // Create dealer_spec_matches - MUST create vehicle_listing FIRST (FK constraint)
             const stubInfo = stubsMap.get(item.stub_anchor_id);
             if (stubInfo && stubInfo.matched_hunt_ids.length > 0) {
-              // First, upsert vehicle_listing to satisfy FK constraint
+              // STEP 1: Upsert vehicle_listing FIRST (FK constraint requirement)
+              const listingId = `manheim:${sourceStockId}`;
               const listingData = {
-                listing_id: `manheim:${sourceStockId}`,
+                listing_id: listingId,
                 source: 'manheim',
                 make: stubInfo.make || 'Unknown',
                 model: stubInfo.model || 'Unknown',
@@ -449,16 +404,26 @@ Deno.serve(async (req) => {
                 .single();
 
               if (listingError) {
-                console.warn(`[MANHEIM-DEEP] Listing upsert error for ${sourceStockId}:`, listingError.message);
+                const errorMsg = `vehicle_listings upsert failed for ${listingId}: ${listingError.message}`;
+                console.error(`[MANHEIM-DEEP] ${errorMsg}`);
+                metrics.error_details.push(errorMsg);
+                metrics.errors_count++;
                 continue;
               }
 
               const listingUuid = listingResult?.id;
               if (!listingUuid) {
-                console.warn(`[MANHEIM-DEEP] No listing UUID returned for ${sourceStockId}`);
+                const errorMsg = `No listing UUID returned for ${listingId}`;
+                console.error(`[MANHEIM-DEEP] ${errorMsg}`);
+                metrics.error_details.push(errorMsg);
+                metrics.errors_count++;
                 continue;
               }
 
+              metrics.vehicle_listings_created++;
+              console.log(`[MANHEIM-DEEP] Created vehicle_listing: ${listingId} -> UUID ${listingUuid}`);
+
+              // STEP 2: Create dealer_spec_matches for each matched spec
               for (const specId of stubInfo.matched_hunt_ids) {
                 const spec = specsMap.get(specId);
                 if (!spec) continue;
@@ -470,7 +435,6 @@ Deno.serve(async (req) => {
                 if (enriched.wovr_indicator) score -= 30;
                 if (enriched.damage_noted) score -= 15;
 
-                // Write to dealer_spec_matches with valid listing UUID
                 const matchData = {
                   dealer_spec_id: specId,
                   listing_uuid: listingUuid,
@@ -495,9 +459,12 @@ Deno.serve(async (req) => {
                   });
 
                 if (matchError) {
-                  console.warn(`[MANHEIM-DEEP] Match insert error for ${sourceStockId}:`, matchError.message);
+                  const errorMsg = `dealer_spec_matches upsert failed for spec=${specId}, listing=${listingUuid}: ${matchError.message}`;
+                  console.error(`[MANHEIM-DEEP] ${errorMsg}`);
+                  metrics.error_details.push(errorMsg);
                 } else {
-                  metrics.opportunities_created++;
+                  metrics.dealer_spec_matches_created++;
+                  console.log(`[MANHEIM-DEEP] Created match: spec=${specId}, listing=${listingUuid}`);
                 }
               }
             }
@@ -505,12 +472,13 @@ Deno.serve(async (req) => {
         }
 
         metrics.enriched++;
-        // Slightly longer delay for Manheim
         await new Promise(r => setTimeout(r, 400));
 
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
-        console.error(`[MANHEIM-DEEP] Error processing ${sourceStockId}:`, error);
+        const errorMsg = `Exception processing ${sourceStockId}: ${error}`;
+        console.error(`[MANHEIM-DEEP] ${errorMsg}`);
+        metrics.error_details.push(errorMsg);
 
         if (!dry_run) {
           await supabase
