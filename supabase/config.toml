@@ -295,3 +295,18 @@ verify_jwt = false
 
 [functions.dealer-url-preflight]
 verify_jwt = false
+
+[functions.pickles-stub-ingest]
+verify_jwt = false
+# Hourly cron - ingest stub anchors from NSW list pages
+schedule = "0 * * * *"
+
+[functions.pickles-stub-match]
+verify_jwt = false
+# Every 15 minutes - match stubs to hunts and trigger deep-fetch
+schedule = "*/15 * * * *"
+
+[functions.pickles-deep-fetch]
+verify_jwt = false
+# Every 10 minutes - enrich matched stubs with detail page data
+schedule = "*/10 * * * *"
