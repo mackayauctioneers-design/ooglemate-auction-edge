@@ -1,10 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * PICKLES DEEP-FETCH - Lane 2: Enrich matched stubs with detail page data
+ * MANHEIM DEEP-FETCH - Lane 2: Enrich matched stubs with detail page data
  * 
- * Production hardened:
- * - Uses pickles_detail_queue as the driver (not stub_anchors)
+ * Production hardened (following Pickles pattern):
+ * - Uses pickles_detail_queue as the driver (source='manheim')
  * - Atomic claim via RPC (FOR UPDATE SKIP LOCKED)
  * - Batch fetches dealer_specs (no N+1 queries)
  * - State machine: pending → processing → done/error with retry_count
@@ -19,6 +19,7 @@ const BROWSER_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
   "Accept-Language": "en-AU,en;q=0.9",
+  "Referer": "https://www.manheim.com.au/home/publicsearch",
 };
 
 interface EnrichedData {
@@ -34,6 +35,8 @@ interface EnrichedData {
   keys_present: boolean | null;
   starts_drives: boolean | null;
   damage_noted: boolean;
+  auction_datetime: string | null;
+  location: string | null;
 }
 
 interface QueueItem {
@@ -46,6 +49,9 @@ interface QueueItem {
   stub_anchor_id: string | null;
 }
 
+/**
+ * Extract detail fields from Manheim detail page HTML
+ */
 function extractDetailFields(html: string): EnrichedData {
   const result: EnrichedData = {
     variant_raw: null,
@@ -60,23 +66,30 @@ function extractDetailFields(html: string): EnrichedData {
     keys_present: null,
     starts_drives: null,
     damage_noted: false,
+    auction_datetime: null,
+    location: null,
   };
 
+  // Extract title/variant
   const titleMatch = html.match(/<title>([^<]+)<\/title>/i) || 
                      html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
   if (titleMatch) {
     let title = titleMatch[1];
+    // Strip year make pattern
     const yearMakePattern = /^\d{4}\s+\w+\s+/;
     title = title.replace(yearMakePattern, '');
-    title = title.split(/##|\||–|-/)[0].trim();
+    // Stop at common delimiters
+    title = title.split(/##|\||–|-|Manheim/)[0].trim();
     result.variant_raw = title || null;
   }
 
+  // Extract KM - multiple patterns
   const kmPatterns = [
     /odometer[:\s]*(\d{1,3}(?:,\d{3})*)\s*km/i,
     /kilometres?[:\s]*(\d{1,3}(?:,\d{3})*)/i,
     /km[:\s]*(\d{1,3}(?:,\d{3})*)/i,
     /"odometer"[:\s]*"?(\d+)"?/i,
+    /(\d{1,3}(?:,\d{3})*)\s*km\b/i,
   ];
   for (const pattern of kmPatterns) {
     const match = html.match(pattern);
@@ -86,12 +99,14 @@ function extractDetailFields(html: string): EnrichedData {
     }
   }
 
+  // Extract price - Manheim specific patterns
   const pricePatterns = [
-    { pattern: /buy\s*now[:\s]*\$?([\d,]+)/i, type: 'buy_now' },
-    { pattern: /current\s*bid[:\s]*\$?([\d,]+)/i, type: 'current_bid' },
+    { pattern: /reserve[:\s]*\$?([\d,]+)/i, type: 'reserve' },
     { pattern: /guide[:\s]*\$?([\d,]+)/i, type: 'guide' },
+    { pattern: /current\s*bid[:\s]*\$?([\d,]+)/i, type: 'current_bid' },
+    { pattern: /buy\s*now[:\s]*\$?([\d,]+)/i, type: 'buy_now' },
     { pattern: /sold[:\s]*\$?([\d,]+)/i, type: 'sold' },
-    { pattern: /price[:\s]*\$?([\d,]+)/i, type: 'price' },
+    { pattern: /\$\s*([\d,]+)/i, type: 'price' },
   ];
   for (const { pattern, type } of pricePatterns) {
     const match = html.match(pattern);
@@ -102,9 +117,11 @@ function extractDetailFields(html: string): EnrichedData {
     }
   }
 
+  // Extract fuel type
   const fuelPatterns = [
     /fuel[:\s]*(petrol|diesel|hybrid|electric|lpg|phev)/i,
     /(petrol|diesel|hybrid|electric|lpg|phev)\s*engine/i,
+    /engine[:\s]*(petrol|diesel|hybrid|electric)/i,
   ];
   for (const pattern of fuelPatterns) {
     const match = html.match(pattern);
@@ -114,6 +131,7 @@ function extractDetailFields(html: string): EnrichedData {
     }
   }
 
+  // Extract transmission
   const transPatterns = [
     /transmission[:\s]*(automatic|manual|cvt|dct)/i,
     /(automatic|manual|cvt)\s*transmission/i,
@@ -128,6 +146,7 @@ function extractDetailFields(html: string): EnrichedData {
     }
   }
 
+  // Extract drivetrain
   const drivePatterns = [
     /drive[:\s]*(awd|4wd|fwd|rwd|2wd|4x4)/i,
     /\b(awd|4wd|fwd|rwd|4x4)\b/i,
@@ -140,6 +159,34 @@ function extractDetailFields(html: string): EnrichedData {
     }
   }
 
+  // Extract location
+  const locationPatterns = [
+    /location[:\s]*([^,<]+),?\s*(?:NSW|VIC|QLD|SA|WA|TAS|NT|ACT)/i,
+    /yard[:\s]*([^,<]+)/i,
+    /branch[:\s]*([^,<]+)/i,
+  ];
+  for (const pattern of locationPatterns) {
+    const match = html.match(pattern);
+    if (match) {
+      result.location = match[1].trim();
+      break;
+    }
+  }
+
+  // Extract auction datetime
+  const datePatterns = [
+    /auction[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+    /sale[:\s]*date[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+  ];
+  for (const pattern of datePatterns) {
+    const match = html.match(pattern);
+    if (match) {
+      result.auction_datetime = match[1];
+      break;
+    }
+  }
+
+  // Condition indicators
   if (/wovr|write[ -]?off|stat[ -]?write/i.test(html)) {
     result.wovr_indicator = true;
     result.condition_notes.push('WOVR indicator');
@@ -173,7 +220,7 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
-  const workerId = `worker-${crypto.randomUUID().slice(0, 8)}`;
+  const workerId = `manheim-${crypto.randomUUID().slice(0, 8)}`;
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -183,7 +230,7 @@ Deno.serve(async (req) => {
       dry_run = false,
     } = body;
 
-    console.log(`[DEEP] Starting deep-fetch: batch=${batch_size}, worker=${workerId}`);
+    console.log(`[MANHEIM-DEEP] Starting deep-fetch: batch=${batch_size}, worker=${workerId}`);
 
     const metrics = {
       items_claimed: 0,
@@ -193,37 +240,65 @@ Deno.serve(async (req) => {
       retried: 0,
     };
 
-    // Atomic claim via RPC (FOR UPDATE SKIP LOCKED)
+    // Atomic claim via RPC (FOR UPDATE SKIP LOCKED) - filter by source='manheim'
     const { data: claimedItems, error: claimError } = await supabase.rpc(
       "claim_detail_queue_batch",
       {
         p_batch_size: batch_size,
         p_claim_by: workerId,
         p_max_retries: max_retries,
+        p_source: "manheim", // Filter for Manheim only
       }
     );
 
+    // Fallback if RPC doesn't support p_source
+    let itemsToProcess: QueueItem[] = [];
+    
     if (claimError) {
-      throw new Error(`Claim RPC failed: ${claimError.message}`);
+      console.log("[MANHEIM-DEEP] RPC doesn't support p_source, using manual filter");
+      
+      // Manual claim for Manheim items
+      const { data: manualClaim, error: manualError } = await supabase
+        .from("pickles_detail_queue")
+        .update({
+          crawl_status: "processing",
+          claimed_at: new Date().toISOString(),
+          claimed_by: workerId,
+        })
+        .eq("source", "manheim")
+        .eq("crawl_status", "pending")
+        .is("claimed_at", null)
+        .lt("retry_count", max_retries)
+        .limit(batch_size)
+        .select("id, source, source_listing_id, detail_url, crawl_status, retry_count, stub_anchor_id");
+      
+      if (manualError) {
+        throw new Error(`Manual claim failed: ${manualError.message}`);
+      }
+      
+      itemsToProcess = manualClaim || [];
+    } else {
+      // Filter claimed items to Manheim only if RPC returned mixed sources
+      itemsToProcess = (claimedItems || []).filter((item: QueueItem) => item.source === 'manheim');
     }
 
-    if (!claimedItems || claimedItems.length === 0) {
-      console.log("[DEEP] No items to process");
+    if (itemsToProcess.length === 0) {
+      console.log("[MANHEIM-DEEP] No Manheim items to process");
       return new Response(
-        JSON.stringify({ success: true, message: "No items to process", metrics }),
+        JSON.stringify({ success: true, message: "No Manheim items to process", metrics }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    metrics.items_claimed = claimedItems.length;
-    console.log(`[DEEP] Claimed ${claimedItems.length} queue items`);
+    metrics.items_claimed = itemsToProcess.length;
+    console.log(`[MANHEIM-DEEP] Processing ${itemsToProcess.length} Manheim queue items`);
 
     // Batch fetch all related stub_anchors to get matched_hunt_ids
-    const stubAnchorIds = claimedItems
+    const stubAnchorIds = itemsToProcess
       .map((item: QueueItem) => item.stub_anchor_id)
       .filter(Boolean);
     
-    let stubsMap = new Map<string, { matched_hunt_ids: string[]; year: number; make: string; model: string; km: number; location: string }>();
+    const stubsMap = new Map<string, { matched_hunt_ids: string[]; year: number; make: string; model: string; km: number; location: string }>();
     
     if (stubAnchorIds.length > 0) {
       const { data: stubs } = await supabase
@@ -253,7 +328,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    let specsMap = new Map<string, Record<string, unknown>>();
+    const specsMap = new Map<string, Record<string, unknown>>();
     
     if (allHuntIds.size > 0) {
       const { data: specs } = await supabase
@@ -266,11 +341,11 @@ Deno.serve(async (req) => {
           specsMap.set(spec.id, spec);
         }
       }
-      console.log(`[DEEP] Pre-fetched ${specsMap.size} dealer_specs`);
+      console.log(`[MANHEIM-DEEP] Pre-fetched ${specsMap.size} dealer_specs`);
     }
 
     // Process each claimed queue item
-    for (const item of claimedItems as QueueItem[]) {
+    for (const item of itemsToProcess) {
       const queueId = item.id;
       const detailUrl = item.detail_url;
       const sourceStockId = item.source_listing_id;
@@ -282,7 +357,7 @@ Deno.serve(async (req) => {
         });
 
         if (!response.ok) {
-          console.warn(`[DEEP] HTTP ${response.status} for ${sourceStockId}`);
+          console.warn(`[MANHEIM-DEEP] HTTP ${response.status} for ${sourceStockId}`);
           
           if (!dry_run) {
             // Update queue item as error, increment retry
@@ -303,7 +378,7 @@ Deno.serve(async (req) => {
               await supabase.from("va_exceptions").insert({
                 stub_anchor_id: item.stub_anchor_id,
                 url: detailUrl,
-                source: item.source,
+                source: "manheim",
                 missing_fields: ['detail_page'],
                 reason: `HTTP ${response.status}`,
               });
@@ -348,8 +423,8 @@ Deno.serve(async (req) => {
             if (stubInfo && stubInfo.matched_hunt_ids.length > 0) {
               // First, upsert vehicle_listing to satisfy FK constraint
               const listingData = {
-                listing_id: `pickles:${sourceStockId}`,
-                source: 'pickles',
+                listing_id: `manheim:${sourceStockId}`,
+                source: 'manheim',
                 make: stubInfo.make || 'Unknown',
                 model: stubInfo.model || 'Unknown',
                 year: stubInfo.year || 2020,
@@ -357,7 +432,7 @@ Deno.serve(async (req) => {
                 variant_raw: enriched.variant_raw,
                 asking_price: enriched.price,
                 listing_url: detailUrl,
-                location: stubInfo.location,
+                location: enriched.location || stubInfo.location,
                 status: 'catalogue',
                 source_class: 'auction',
                 seller_type: 'dealer',
@@ -374,13 +449,13 @@ Deno.serve(async (req) => {
                 .single();
 
               if (listingError) {
-                console.warn(`[DEEP] Listing upsert error for ${sourceStockId}:`, listingError.message);
+                console.warn(`[MANHEIM-DEEP] Listing upsert error for ${sourceStockId}:`, listingError.message);
                 continue;
               }
 
               const listingUuid = listingResult?.id;
               if (!listingUuid) {
-                console.warn(`[DEEP] No listing UUID returned for ${sourceStockId}`);
+                console.warn(`[MANHEIM-DEEP] No listing UUID returned for ${sourceStockId}`);
                 continue;
               }
 
@@ -407,7 +482,7 @@ Deno.serve(async (req) => {
                   listing_url: detailUrl,
                   variant_used: enriched.variant_raw,
                   source_class: 'auction',
-                  region_id: stubInfo.location,
+                  region_id: enriched.location || stubInfo.location,
                   match_score: score,
                   deal_label: score >= 70 ? "BUY" : score >= 50 ? "WATCH" : "SKIP",
                   matched_at: new Date().toISOString(),
@@ -420,7 +495,7 @@ Deno.serve(async (req) => {
                   });
 
                 if (matchError) {
-                  console.warn(`[DEEP] Match insert error for ${sourceStockId}:`, matchError.message);
+                  console.warn(`[MANHEIM-DEEP] Match insert error for ${sourceStockId}:`, matchError.message);
                 } else {
                   metrics.opportunities_created++;
                 }
@@ -430,11 +505,12 @@ Deno.serve(async (req) => {
         }
 
         metrics.enriched++;
-        await new Promise(r => setTimeout(r, 300));
+        // Slightly longer delay for Manheim
+        await new Promise(r => setTimeout(r, 400));
 
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
-        console.error(`[DEEP] Error processing ${sourceStockId}:`, error);
+        console.error(`[MANHEIM-DEEP] Error processing ${sourceStockId}:`, error);
 
         if (!dry_run) {
           await supabase
@@ -454,7 +530,7 @@ Deno.serve(async (req) => {
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[DEEP] Completed in ${duration}ms:`, metrics);
+    console.log(`[MANHEIM-DEEP] Completed in ${duration}ms:`, metrics);
 
     return new Response(
       JSON.stringify({
@@ -468,7 +544,7 @@ Deno.serve(async (req) => {
     );
 
   } catch (error) {
-    console.error("[DEEP] Error:", error);
+    console.error("[MANHEIM-DEEP] Error:", error);
     return new Response(
       JSON.stringify({
         success: false,
