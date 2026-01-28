@@ -35,9 +35,9 @@
       "editor": "json"
     },
     "ingestKey": {
-      "title": "Ingest API Key",
+      "title": "Ingest API Key (VMA_INGEST_KEY)",
       "type": "string",
-      "description": "GRAYS_INGEST_KEY for authenticating with Edge functions",
+      "description": "VMA_INGEST_KEY for authenticating with Edge functions (same key used by VMA/Pickles/Manheim harvesters)",
       "editor": "textfield",
       "isSecret": true
     },

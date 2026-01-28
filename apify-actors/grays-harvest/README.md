@@ -103,13 +103,13 @@ Posts to: `grays-detail-ingest-webhook`
 
 ## Authentication
 
-Both webhook endpoints require `GRAYS_INGEST_KEY` as Bearer token:
+Both webhook endpoints require `VMA_INGEST_KEY` as Bearer token (shared with VMA/Pickles/Manheim):
 
 ```
-Authorization: Bearer <GRAYS_INGEST_KEY>
+Authorization: Bearer <VMA_INGEST_KEY>
 ```
 
-Set this in Apify actor input as `ingestKey`.
+Set this in Apify actor input as `ingestKey` (use the same key value as VMA harvester).
 
 ## Proxy Configuration
 
