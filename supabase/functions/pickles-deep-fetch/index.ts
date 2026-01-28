@@ -3,9 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 /**
  * PICKLES DEEP-FETCH - Lane 2: Enrich matched stubs with detail page data
  * 
- * Fetches detail pages for stubs that matched hunts,
- * extracts variant/fuel/transmission/condition, updates stub_anchors,
- * and creates BUY_OPPORTUNITY records.
+ * FIX #1: Uses deep_fetch_queued_at and deep_fetch_completed_at timestamps
+ * FIX #2: Removed broken .or() filter, uses two separate queries
  */
 
 const corsHeaders = {
@@ -25,7 +24,7 @@ interface EnrichedData {
   transmission: string | null;
   drivetrain: string | null;
   price: number | null;
-  price_type: string | null; // 'buy_now', 'current_bid', 'guide', 'sold'
+  price_type: string | null;
   km_verified: number | null;
   condition_notes: string[];
   wovr_indicator: boolean;
@@ -34,8 +33,7 @@ interface EnrichedData {
   damage_noted: boolean;
 }
 
-// Extract detailed fields from detail page HTML
-function extractDetailFields(html: string, titleHint?: string): EnrichedData {
+function extractDetailFields(html: string): EnrichedData {
   const result: EnrichedData = {
     variant_raw: null,
     fuel: null,
@@ -51,20 +49,16 @@ function extractDetailFields(html: string, titleHint?: string): EnrichedData {
     damage_noted: false,
   };
 
-  // Extract variant from title - stop at "##" if present
   const titleMatch = html.match(/<title>([^<]+)<\/title>/i) || 
                      html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
   if (titleMatch) {
     let title = titleMatch[1];
-    // Remove year and make at start, keep model+variant
     const yearMakePattern = /^\d{4}\s+\w+\s+/;
     title = title.replace(yearMakePattern, '');
-    // Stop at ## or | or –|-
     title = title.split(/##|\||–|-/)[0].trim();
     result.variant_raw = title || null;
   }
 
-  // Extract KM - look for labeled fields
   const kmPatterns = [
     /odometer[:\s]*(\d{1,3}(?:,\d{3})*)\s*km/i,
     /kilometres?[:\s]*(\d{1,3}(?:,\d{3})*)/i,
@@ -79,7 +73,6 @@ function extractDetailFields(html: string, titleHint?: string): EnrichedData {
     }
   }
 
-  // Extract price - prioritize in order: Buy Now > Current Bid > Guide > Sold
   const pricePatterns = [
     { pattern: /buy\s*now[:\s]*\$?([\d,]+)/i, type: 'buy_now' },
     { pattern: /current\s*bid[:\s]*\$?([\d,]+)/i, type: 'current_bid' },
@@ -96,7 +89,6 @@ function extractDetailFields(html: string, titleHint?: string): EnrichedData {
     }
   }
 
-  // Extract fuel type
   const fuelPatterns = [
     /fuel[:\s]*(petrol|diesel|hybrid|electric|lpg|phev)/i,
     /(petrol|diesel|hybrid|electric|lpg|phev)\s*engine/i,
@@ -109,7 +101,6 @@ function extractDetailFields(html: string, titleHint?: string): EnrichedData {
     }
   }
 
-  // Extract transmission
   const transPatterns = [
     /transmission[:\s]*(automatic|manual|cvt|dct)/i,
     /(automatic|manual|cvt)\s*transmission/i,
@@ -124,7 +115,6 @@ function extractDetailFields(html: string, titleHint?: string): EnrichedData {
     }
   }
 
-  // Extract drivetrain
   const drivePatterns = [
     /drive[:\s]*(awd|4wd|fwd|rwd|2wd|4x4)/i,
     /\b(awd|4wd|fwd|rwd|4x4)\b/i,
@@ -137,7 +127,6 @@ function extractDetailFields(html: string, titleHint?: string): EnrichedData {
     }
   }
 
-  // Check for condition indicators
   if (/wovr|write[ -]?off|stat[ -]?write/i.test(html)) {
     result.wovr_indicator = true;
     result.condition_notes.push('WOVR indicator');
@@ -176,6 +165,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const {
       batch_size = 20,
+      include_priority_sampling = false,
       dry_run = false,
     } = body;
 
@@ -189,29 +179,40 @@ Deno.serve(async (req) => {
       errors: [] as string[],
     };
 
-    // Get matched stubs that need deep-fetch
-    const { data: stubs, error: stubError } = await supabase
+    // FIX #2: Query A - Get queued-but-not-completed stubs (proper filter)
+    const { data: queuedStubs, error: queuedError } = await supabase
       .from("stub_anchors")
       .select("*")
-      .eq("status", "matched")
       .eq("deep_fetch_triggered", true)
-      .is("deep_fetch_at", null)
-      .or("status.eq.pending,confidence.in.(low,med)")
-      .order("first_seen_at", { ascending: false })
+      .is("deep_fetch_completed_at", null)
+      .not("status", "eq", "exception")
+      .order("deep_fetch_queued_at", { ascending: true })
       .limit(batch_size);
 
-    // Fallback: get stubs with deep_fetch_triggered but not enriched yet
-    let stubsToProcess = stubs || [];
-    if (stubsToProcess.length === 0) {
-      const { data: fallbackStubs } = await supabase
+    if (queuedError) {
+      console.error("[DEEP] Query error:", queuedError);
+      throw new Error(`Query failed: ${queuedError.message}`);
+    }
+
+    let stubsToProcess = queuedStubs || [];
+    console.log(`[DEEP] Query A (queued-not-completed): ${stubsToProcess.length} stubs`);
+
+    // FIX #2: Query B - Optional low/med priority sampling (separate query)
+    if (stubsToProcess.length < batch_size && include_priority_sampling) {
+      const remaining = batch_size - stubsToProcess.length;
+      const { data: priorityStubs } = await supabase
         .from("stub_anchors")
         .select("*")
-        .eq("deep_fetch_triggered", true)
-        .neq("status", "enriched")
-        .neq("status", "exception")
-        .order("updated_at", { ascending: true })
-        .limit(batch_size);
-      stubsToProcess = fallbackStubs || [];
+        .eq("status", "pending")
+        .eq("deep_fetch_triggered", false)
+        .in("fingerprint_confidence", ["low", "med"])
+        .order("first_seen_at", { ascending: false })
+        .limit(remaining);
+
+      if (priorityStubs && priorityStubs.length > 0) {
+        console.log(`[DEEP] Query B (priority sampling): ${priorityStubs.length} stubs`);
+        stubsToProcess = [...stubsToProcess, ...priorityStubs];
+      }
     }
 
     if (stubsToProcess.length === 0) {
@@ -223,18 +224,16 @@ Deno.serve(async (req) => {
     }
 
     metrics.stubs_processed = stubsToProcess.length;
-    console.log(`[DEEP] Processing ${stubsToProcess.length} stubs`);
+    console.log(`[DEEP] Processing ${stubsToProcess.length} stubs total`);
 
     for (const stub of stubsToProcess) {
       try {
-        // Fetch detail page
         const response = await fetch(stub.detail_url, {
           headers: BROWSER_HEADERS,
           redirect: 'follow',
         });
 
         if (!response.ok) {
-          // Queue as exception
           if (!dry_run) {
             await supabase.from("va_exceptions").insert({
               stub_anchor_id: stub.id,
@@ -243,7 +242,10 @@ Deno.serve(async (req) => {
               missing_fields: ['detail_page'],
               reason: `HTTP ${response.status}`,
             });
-            await supabase.from("stub_anchors").update({ status: "exception" }).eq("id", stub.id);
+            await supabase.from("stub_anchors").update({ 
+              status: "exception",
+              deep_fetch_completed_at: new Date().toISOString(),
+            }).eq("id", stub.id);
           }
           metrics.exceptions_queued++;
           continue;
@@ -253,17 +255,17 @@ Deno.serve(async (req) => {
         const enriched = extractDetailFields(html);
 
         if (!dry_run) {
-          // Update stub_anchor with enriched data
+          // FIX #1: Set deep_fetch_completed_at on success
           await supabase.from("stub_anchors").update({
             status: "enriched",
             km: enriched.km_verified || stub.km,
+            deep_fetch_completed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }).eq("id", stub.id);
 
-          // If stub has matched hunts, create hunt_unified_candidates entry
+          // Create hunt opportunities for matched stubs
           if (stub.matched_hunt_ids && stub.matched_hunt_ids.length > 0) {
             for (const huntId of stub.matched_hunt_ids) {
-              // Get spec details
               const { data: spec } = await supabase
                 .from("dealer_specs")
                 .select("*")
@@ -271,19 +273,13 @@ Deno.serve(async (req) => {
                 .single();
 
               if (spec) {
-                // Calculate final score
                 let score = 100;
                 if (enriched.km_verified && spec.km_max && enriched.km_verified > spec.km_max) {
                   score -= 20;
                 }
-                if (enriched.wovr_indicator) {
-                  score -= 30;
-                }
-                if (enriched.damage_noted) {
-                  score -= 15;
-                }
+                if (enriched.wovr_indicator) score -= 30;
+                if (enriched.damage_noted) score -= 15;
 
-                // Upsert to hunt candidates or external candidates
                 await supabase.from("hunt_external_candidates").upsert({
                   hunt_id: huntId,
                   source_name: "pickles",
@@ -298,7 +294,7 @@ Deno.serve(async (req) => {
                   asking_price: enriched.price,
                   location: stub.location,
                   match_score: score,
-                  confidence: stub.confidence,
+                  confidence: stub.fingerprint_confidence,
                   decision: score >= 70 ? "BUY" : score >= 50 ? "WATCH" : "SKIP",
                   discovered_at: new Date().toISOString(),
                   is_listing: true,
@@ -314,8 +310,6 @@ Deno.serve(async (req) => {
         }
 
         metrics.enriched++;
-
-        // Small delay between fetches
         await new Promise(r => setTimeout(r, 300));
 
       } catch (e) {
@@ -331,7 +325,10 @@ Deno.serve(async (req) => {
             missing_fields: ['parse_error'],
             reason: error,
           });
-          await supabase.from("stub_anchors").update({ status: "exception" }).eq("id", stub.id);
+          await supabase.from("stub_anchors").update({ 
+            status: "exception",
+            deep_fetch_completed_at: new Date().toISOString(),
+          }).eq("id", stub.id);
         }
         metrics.exceptions_queued++;
       }

@@ -26,9 +26,10 @@ interface StubStats {
   matched: number;
   enriched: number;
   exception: number;
-  high_confidence: number;
-  med_confidence: number;
-  low_confidence: number;
+  identity_high: number;
+  fingerprint_high: number;
+  fingerprint_med: number;
+  fingerprint_low: number;
 }
 
 export function StubIngestMetrics() {
@@ -49,10 +50,10 @@ export function StubIngestMetrics() {
   const { data: stubStats } = useQuery({
     queryKey: ["stub-anchor-stats"],
     queryFn: async () => {
-      // Get status counts
+      // Get status counts using raw query approach
       const { data: statusData } = await supabase
         .from("stub_anchors")
-        .select("status, confidence")
+        .select("status, identity_confidence, fingerprint_confidence")
         .limit(10000);
       
       const stats: StubStats = {
@@ -61,19 +62,21 @@ export function StubIngestMetrics() {
         matched: 0,
         enriched: 0,
         exception: 0,
-        high_confidence: 0,
-        med_confidence: 0,
-        low_confidence: 0,
+        identity_high: 0,
+        fingerprint_high: 0,
+        fingerprint_med: 0,
+        fingerprint_low: 0,
       };
 
-      statusData?.forEach((row) => {
+      statusData?.forEach((row: Record<string, string>) => {
         if (row.status === "pending") stats.pending++;
         if (row.status === "matched") stats.matched++;
         if (row.status === "enriched") stats.enriched++;
         if (row.status === "exception") stats.exception++;
-        if (row.confidence === "high") stats.high_confidence++;
-        if (row.confidence === "med") stats.med_confidence++;
-        if (row.confidence === "low") stats.low_confidence++;
+        if (row.identity_confidence === "high") stats.identity_high++;
+        if (row.fingerprint_confidence === "high") stats.fingerprint_high++;
+        if (row.fingerprint_confidence === "med") stats.fingerprint_med++;
+        if (row.fingerprint_confidence === "low") stats.fingerprint_low++;
       });
 
       return stats;
@@ -98,7 +101,7 @@ export function StubIngestMetrics() {
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-yellow-500" />
+              <Clock className="h-4 w-4 text-warning" />
               <span className="text-2xl font-bold">{stubStats?.pending || 0}</span>
             </div>
             <p className="text-xs text-muted-foreground">Pending Match</p>
@@ -107,7 +110,7 @@ export function StubIngestMetrics() {
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-green-500" />
+              <TrendingUp className="h-4 w-4 text-success" />
               <span className="text-2xl font-bold">{stubStats?.matched || 0}</span>
             </div>
             <p className="text-xs text-muted-foreground">Hunt Matched</p>
@@ -116,7 +119,7 @@ export function StubIngestMetrics() {
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-red-500" />
+              <AlertCircle className="h-4 w-4 text-destructive" />
               <span className="text-2xl font-bold">{stubStats?.exception || 0}</span>
             </div>
             <p className="text-xs text-muted-foreground">Exceptions</p>
@@ -128,33 +131,36 @@ export function StubIngestMetrics() {
       {stubStats && stubStats.total > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Confidence Distribution</CardTitle>
+            <CardTitle className="text-sm">Fingerprint Confidence</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="flex items-center gap-2">
-              <Badge className="bg-green-500 w-16">High</Badge>
+              <Badge variant="default" className="w-16">High</Badge>
               <Progress 
-                value={(stubStats.high_confidence / stubStats.total) * 100} 
+                value={(stubStats.fingerprint_high / stubStats.total) * 100} 
                 className="flex-1"
               />
-              <span className="text-sm w-12 text-right">{stubStats.high_confidence}</span>
+              <span className="text-sm w-12 text-right">{stubStats.fingerprint_high}</span>
             </div>
             <div className="flex items-center gap-2">
-              <Badge className="bg-yellow-500 w-16">Med</Badge>
+              <Badge variant="secondary" className="w-16">Med</Badge>
               <Progress 
-                value={(stubStats.med_confidence / stubStats.total) * 100} 
+                value={(stubStats.fingerprint_med / stubStats.total) * 100} 
                 className="flex-1"
               />
-              <span className="text-sm w-12 text-right">{stubStats.med_confidence}</span>
+              <span className="text-sm w-12 text-right">{stubStats.fingerprint_med}</span>
             </div>
             <div className="flex items-center gap-2">
-              <Badge className="bg-red-500 w-16">Low</Badge>
+              <Badge variant="outline" className="w-16">Low</Badge>
               <Progress 
-                value={(stubStats.low_confidence / stubStats.total) * 100} 
+                value={(stubStats.fingerprint_low / stubStats.total) * 100} 
                 className="flex-1"
               />
-              <span className="text-sm w-12 text-right">{stubStats.low_confidence}</span>
+              <span className="text-sm w-12 text-right">{stubStats.fingerprint_low}</span>
             </div>
+            <p className="text-xs text-muted-foreground pt-1">
+              Identity verified: {stubStats.identity_high} / {stubStats.total}
+            </p>
           </CardContent>
         </Card>
       )}
