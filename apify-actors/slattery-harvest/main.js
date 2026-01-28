@@ -26,12 +26,20 @@ const {
   dryRun = false,
 } = input;
 
-// Validate ingestKey is provided
+// HARD FAIL: ingestKey is required (unless dryRun)
 if (!ingestKey && !dryRun) {
-  console.error('ERROR: ingestKey (VMA_INGEST_KEY) is required. All webhook calls will fail with 401.');
+  console.error('FATAL: ingestKey (VMA_INGEST_KEY) is required. Cannot proceed without authentication.');
+  await Actor.exit({ exitCode: 1 });
+  throw new Error('ingestKey is required');
 }
 
-console.log(`Starting Slattery harvester in ${mode} mode`);
+console.log(`Starting Slattery harvester in ${mode} mode, proxyCountry=${proxyCountry}`);
+
+// Configure proxy with country code
+const proxyConfiguration = await Actor.createProxyConfiguration({
+  groups: ['RESIDENTIAL'],
+  countryCode: proxyCountry,
+});
 
 // Collected items for batch posting
 let collectedItems = [];
@@ -205,6 +213,7 @@ if (mode === 'stub') {
     maxRequestsPerCrawl: maxPages * 2,
     headless: true,
     requestHandlerTimeoutSecs: 60,
+    proxyConfiguration,
     
     async requestHandler({ page, request, log }) {
       log.info(`Processing: ${request.url}`);
@@ -299,6 +308,7 @@ else if (mode === 'detail') {
     maxRequestsPerCrawl: urlsToProcess.length,
     headless: true,
     requestHandlerTimeoutSecs: 60,
+    proxyConfiguration,
 
     async requestHandler({ page, request, log }) {
       log.info(`Processing detail: ${request.url}`);
