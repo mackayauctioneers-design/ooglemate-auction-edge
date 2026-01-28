@@ -7,7 +7,7 @@
     "mode": {
       "title": "Harvester Mode",
       "type": "string",
-      "description": "stub = crawl category/auction pages and extract asset URLs; detail = fetch individual asset pages and extract vehicle data",
+      "description": "stub = crawl category/auction pages and extract asset URLs; detail = fetch individual asset pages and extract vehicle data (auto-reads from pickles_detail_queue if detailUrls empty)",
       "default": "stub",
       "enum": ["stub", "detail"],
       "editor": "select"
@@ -23,14 +23,14 @@
     "detailUrls": {
       "title": "Detail URLs (detail mode)",
       "type": "array",
-      "description": "Array of objects with source_stock_id and detail_url to process in detail mode. Can also read from pickles_detail_queue.",
+      "description": "Optional: Array of objects with source_stock_id and detail_url. If empty, auto-reads pending items from pickles_detail_queue where source='slattery'.",
       "default": [],
       "editor": "json"
     },
     "ingestKey": {
       "title": "Ingest API Key (VMA_INGEST_KEY)",
       "type": "string",
-      "description": "VMA_INGEST_KEY for authenticating with Edge functions (same key used by VMA/Pickles/Manheim/Grays harvesters)",
+      "description": "REQUIRED: VMA_INGEST_KEY for authenticating with Edge functions. Without this, all requests return 401.",
       "editor": "textfield",
       "isSecret": true
     },
@@ -42,6 +42,13 @@
       "minimum": 1,
       "maximum": 200
     },
+    "proxyCountry": {
+      "title": "Proxy Country",
+      "type": "string",
+      "description": "Country code for residential proxy (recommended: AU for Australian sites)",
+      "default": "AU",
+      "editor": "textfield"
+    },
     "dryRun": {
       "title": "Dry Run",
       "type": "boolean",
@@ -49,5 +56,5 @@
       "default": false
     }
   },
-  "required": []
+  "required": ["ingestKey"]
 }
