@@ -105,14 +105,17 @@ export function GrokMissionHunter() {
   const [notes, setNotes] = useState('');
 
   // Load dealer domains from dealer_url_queue on mount
+  // CRITICAL: Only load grok_safe URLs to prevent hallucinations from invalid/lemon domains
   const loadDealerDomains = async () => {
     setIsLoadingDomains(true);
     try {
-      // Get unique domains from dealer_url_queue (successful or queued)
+      // ONLY fetch grok_safe URLs - excludes invalid, api_only, and lemon pages
+      // This prevents Grok from receiving domains that failed preflight or are blocked
       const { data, error } = await supabase
         .from('dealer_url_queue')
         .select('domain')
-        .in('status', ['queued', 'success', 'running']);
+        .in('status', ['queued', 'success', 'running', 'validated'])
+        .eq('grok_class', 'grok_safe');
 
       if (error) {
         console.error('[GrokMissionHunter] Error loading dealer domains:', error);
@@ -120,15 +123,15 @@ export function GrokMissionHunter() {
       }
 
       if (data && data.length > 0) {
-        // Get unique domains
-        const dealerDomains = [...new Set(data.map(d => d.domain))];
+        // Get unique domains from grok_safe URLs only
+        const dealerDomains = [...new Set(data.map(d => d.domain).filter(Boolean))];
         setDealerDomainCount(dealerDomains.length);
         
         // Merge with defaults (dealer domains first, then defaults)
         const allDomains = [...new Set([...DEFAULT_DOMAINS, ...dealerDomains])];
         setAllowedDomains(allDomains.join('\n'));
         
-        console.log(`[GrokMissionHunter] Loaded ${dealerDomains.length} dealer domains`);
+        console.log(`[GrokMissionHunter] Loaded ${dealerDomains.length} grok_safe dealer domains`);
       }
     } catch (err) {
       console.error('[GrokMissionHunter] Failed to load dealer domains:', err);
