@@ -33,10 +33,10 @@ Deno.serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    // Auth check - Bearer token
+    // Auth check - Bearer token (uses shared VMA_INGEST_KEY)
     const auth = req.headers.get("authorization") || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    const expected = Deno.env.get("GRAYS_INGEST_KEY") || "";
+    const expected = Deno.env.get("VMA_INGEST_KEY") || "";
 
     console.log(`[grays-stub-webhook] Auth check: token_len=${token.length}, expected_len=${expected.length}`);
 
