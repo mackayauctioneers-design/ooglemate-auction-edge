@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
         const { error: queueError } = await supabase
           .from("pickles_detail_queue")
           .update({
-            crawl_status: "completed",
+            crawl_status: "done",
             last_crawl_http_status: 200,
             crawl_attempts: 1,
             km: item.km,

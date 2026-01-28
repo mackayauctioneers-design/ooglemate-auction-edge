@@ -30,7 +30,9 @@ POSTs to: `slattery-stub-ingest-webhook`
 
 ### Detail Mode (every 10 mins)
 
-For each pending queue item, extracts:
+**Auto-reads from pickles_detail_queue** where `source='slattery'` and `crawl_status='pending'`.
+
+For each item, extracts:
 - `variant_raw` (full title)
 - `km` (odometer)
 - `asking_price`, `guide_price`, `current_bid`
@@ -39,7 +41,7 @@ For each pending queue item, extracts:
 - `auction_datetime`
 - Condition flags: `wovr`, `damage_noted`, `keys_present`, `starts_drives`
 
-POSTs to: `slattery-detail-ingest-webhook`
+POSTs to: `slattery-detail-ingest-webhook` (which marks queue rows as `done`)
 
 ## Input Schema
 
@@ -47,11 +49,14 @@ POSTs to: `slattery-detail-ingest-webhook`
 {
   "mode": "stub",          // "stub" or "detail"
   "maxPages": 10,          // Max pages to crawl (stub mode)
-  "detailUrls": [],        // Array of {source_stock_id, detail_url} (detail mode)
+  "detailUrls": [],        // Optional: override queue auto-read (detail mode)
   "ingestKey": "...",      // VMA_INGEST_KEY for auth
-  "batchSize": 50,         // Items per POST
+  "batchSize": 50,         // Items per POST (also used as queue fetch limit in detail mode)
   "dryRun": false          // Extract but don't POST
 }
+```
+
+**Detail mode auto-reads**: If `detailUrls` is empty, the actor automatically fetches pending items from `pickles_detail_queue` where `source='slattery'`.
 ```
 
 ## Authentication

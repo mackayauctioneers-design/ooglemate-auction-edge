@@ -3,12 +3,15 @@
  * 
  * Playwright-based actor for slatteryauctions.com.au
  * Two modes: stub (discovery) and detail (extraction)
+ * 
+ * Detail mode automatically reads from pickles_detail_queue where source='slattery'
  */
 
 import { Actor } from 'apify';
 import { PlaywrightCrawler } from 'crawlee';
 
-const SUPABASE_URL = 'https://xznchxsbuwngfmwvsvhq.supabase.co/functions/v1';
+const SUPABASE_URL = 'https://xznchxsbuwngfmwvsvhq.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6bmNoeHNidXduZ2Ztd3ZzdmhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwNzY4NzIsImV4cCI6MjA4MjY1Mjg3Mn0.EAtZMU4QRmk00Gomr7R25LR0OyJqZtMQA9ZK-7M19hM';
 
 await Actor.init();
 
@@ -36,7 +39,7 @@ async function postBatch(endpoint, items) {
     return;
   }
 
-  const url = `${SUPABASE_URL}/${endpoint}`;
+  const url = `${SUPABASE_URL}/functions/v1/${endpoint}`;
   console.log(`POSTing ${items.length} items to ${url}`);
 
   try {
@@ -58,6 +61,86 @@ async function postBatch(endpoint, items) {
   } catch (error) {
     console.error('POST failed:', error);
     throw error;
+  }
+}
+
+/**
+ * Fetch pending queue items from pickles_detail_queue
+ */
+async function fetchPendingQueueItems(limit) {
+  const url = `${SUPABASE_URL}/rest/v1/pickles_detail_queue?source=eq.slattery&crawl_status=eq.pending&select=id,source_listing_id,detail_url&limit=${limit}`;
+  
+  console.log(`Fetching pending queue items: ${url}`);
+  
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`HTTP ${response.status}: ${text}`);
+    }
+
+    const items = await response.json();
+    console.log(`Fetched ${items.length} pending queue items`);
+    return items;
+  } catch (error) {
+    console.error('Failed to fetch queue items:', error);
+    return [];
+  }
+}
+
+/**
+ * Mark queue items as processing
+ */
+async function markQueueProcessing(ids) {
+  if (ids.length === 0) return;
+  
+  // Use PATCH to update status
+  for (const id of ids) {
+    const url = `${SUPABASE_URL}/rest/v1/pickles_detail_queue?id=eq.${id}`;
+    try {
+      await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify({ crawl_status: 'processing' }),
+      });
+    } catch (error) {
+      console.error(`Failed to mark ${id} as processing:`, error);
+    }
+  }
+  console.log(`Marked ${ids.length} items as processing`);
+}
+
+/**
+ * Mark queue item as error (for failed crawls)
+ */
+async function markQueueError(sourceListingId) {
+  const url = `${SUPABASE_URL}/rest/v1/pickles_detail_queue?source=eq.slattery&source_listing_id=eq.${encodeURIComponent(sourceListingId)}`;
+  try {
+    await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify({ crawl_status: 'error', crawl_attempts: 1 }),
+    });
+  } catch (error) {
+    console.error(`Failed to mark ${sourceListingId} as error:`, error);
   }
 }
 
@@ -177,18 +260,34 @@ if (mode === 'stub') {
     await postBatch('slattery-stub-ingest-webhook', collectedItems);
   }
 
-  console.log(`Stub mode complete. Total items: ${collectedItems.length}`);
+  console.log(`Stub mode complete. Total items collected: ${collectedItems.length}`);
 }
 
 // ============ DETAIL MODE ============
 else if (mode === 'detail') {
-  // Use provided URLs or would need to fetch from queue
-  const urlsToProcess = detailUrls.length > 0 ? detailUrls : [];
-
+  // AUTO-READ FROM QUEUE: Fetch pending items from pickles_detail_queue
+  let urlsToProcess = detailUrls.length > 0 ? detailUrls : [];
+  
   if (urlsToProcess.length === 0) {
-    console.log('No detail URLs provided. Pass detailUrls in input or implement queue reading.');
-    await Actor.exit();
+    console.log('No detailUrls provided, fetching from pickles_detail_queue...');
+    const queueItems = await fetchPendingQueueItems(batchSize);
+    
+    if (queueItems.length === 0) {
+      console.log('No pending queue items found for source=slattery');
+      await Actor.exit();
+    }
+    
+    // Mark as processing before crawling
+    await markQueueProcessing(queueItems.map(q => q.id));
+    
+    // Convert to URL list with source_stock_id
+    urlsToProcess = queueItems.map(q => ({
+      source_stock_id: q.source_listing_id,
+      detail_url: q.detail_url,
+    }));
   }
+
+  console.log(`Processing ${urlsToProcess.length} detail URLs`);
 
   const crawler = new PlaywrightCrawler({
     maxRequestsPerCrawl: urlsToProcess.length,
@@ -200,7 +299,8 @@ else if (mode === 'detail') {
       
       await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
 
-      const consignmentId = extractConsignmentId(request.url);
+      // Get source_stock_id from userData or extract from URL
+      const consignmentId = request.userData?.source_stock_id || extractConsignmentId(request.url);
       if (!consignmentId) {
         log.error('Could not extract consignment ID');
         return;
@@ -316,19 +416,29 @@ else if (mode === 'detail') {
       }
     },
 
-    failedRequestHandler({ request, log }) {
+    async failedRequestHandler({ request, log }) {
       log.error(`Request failed: ${request.url}`);
+      const consignmentId = request.userData?.source_stock_id || extractConsignmentId(request.url);
+      if (consignmentId) {
+        await markQueueError(consignmentId);
+      }
     },
   });
 
-  await crawler.run(urlsToProcess.map(u => u.detail_url || u));
+  // Build request list with userData for source_stock_id tracking
+  const requests = urlsToProcess.map(u => ({
+    url: u.detail_url || u,
+    userData: { source_stock_id: u.source_stock_id },
+  }));
+
+  await crawler.run(requests);
 
   // Post remaining items
   if (collectedItems.length > 0) {
     await postBatch('slattery-detail-ingest-webhook', collectedItems);
   }
 
-  console.log(`Detail mode complete. Total items: ${collectedItems.length}`);
+  console.log(`Detail mode complete. Total items processed: ${collectedItems.length}`);
 }
 
 await Actor.exit();
