@@ -533,7 +533,10 @@ async function runDetailMode(config) {
 }
 
 // ============ MAIN ENTRY POINT ============
-Actor.main(async () => {
+// Node.js Apify pattern: Actor.init() / Actor.exit()
+await Actor.init();
+
+try {
   const input = await Actor.getInput() || {};
   const {
     mode = 'stub',
@@ -587,4 +590,6 @@ Actor.main(async () => {
 
   // Store output for Apify dataset
   await Actor.pushData(result);
-});
+} finally {
+  await Actor.exit();
+}
