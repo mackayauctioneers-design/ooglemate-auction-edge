@@ -22,8 +22,14 @@ const {
   detailUrls = [],
   ingestKey = '',
   batchSize = 50,
+  proxyCountry = 'AU',
   dryRun = false,
 } = input;
+
+// Validate ingestKey is provided
+if (!ingestKey && !dryRun) {
+  console.error('ERROR: ingestKey (VMA_INGEST_KEY) is required. All webhook calls will fail with 401.');
+}
 
 console.log(`Starting Slattery harvester in ${mode} mode`);
 
