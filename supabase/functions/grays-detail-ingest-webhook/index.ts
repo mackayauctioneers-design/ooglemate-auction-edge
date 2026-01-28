@@ -60,10 +60,10 @@ Deno.serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    // Auth check
+    // Auth check (uses shared VMA_INGEST_KEY - same as VMA/Pickles pattern)
     const auth = req.headers.get("authorization") || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    const expected = Deno.env.get("GRAYS_INGEST_KEY") || "";
+    const expected = Deno.env.get("VMA_INGEST_KEY") || "";
 
     console.log(`[grays-detail-webhook] Auth check: token_len=${token.length}`);
 
