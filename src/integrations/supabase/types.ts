@@ -5030,6 +5030,138 @@ export type Database = {
         }
         Relationships: []
       }
+      stub_anchors: {
+        Row: {
+          best_match_score: number | null
+          confidence: string
+          created_at: string
+          deep_fetch_at: string | null
+          deep_fetch_reason: string | null
+          deep_fetch_triggered: boolean
+          detail_url: string
+          fingerprint: string | null
+          first_seen_at: string
+          id: string
+          km: number | null
+          last_seen_at: string
+          location: string | null
+          make: string | null
+          matched_hunt_ids: string[] | null
+          model: string | null
+          raw_text: string | null
+          source: string
+          source_stock_id: string | null
+          status: string
+          times_seen: number
+          updated_at: string
+          year: number | null
+        }
+        Insert: {
+          best_match_score?: number | null
+          confidence?: string
+          created_at?: string
+          deep_fetch_at?: string | null
+          deep_fetch_reason?: string | null
+          deep_fetch_triggered?: boolean
+          detail_url: string
+          fingerprint?: string | null
+          first_seen_at?: string
+          id?: string
+          km?: number | null
+          last_seen_at?: string
+          location?: string | null
+          make?: string | null
+          matched_hunt_ids?: string[] | null
+          model?: string | null
+          raw_text?: string | null
+          source?: string
+          source_stock_id?: string | null
+          status?: string
+          times_seen?: number
+          updated_at?: string
+          year?: number | null
+        }
+        Update: {
+          best_match_score?: number | null
+          confidence?: string
+          created_at?: string
+          deep_fetch_at?: string | null
+          deep_fetch_reason?: string | null
+          deep_fetch_triggered?: boolean
+          detail_url?: string
+          fingerprint?: string | null
+          first_seen_at?: string
+          id?: string
+          km?: number | null
+          last_seen_at?: string
+          location?: string | null
+          make?: string | null
+          matched_hunt_ids?: string[] | null
+          model?: string | null
+          raw_text?: string | null
+          source?: string
+          source_stock_id?: string | null
+          status?: string
+          times_seen?: number
+          updated_at?: string
+          year?: number | null
+        }
+        Relationships: []
+      }
+      stub_ingest_runs: {
+        Row: {
+          completed_at: string | null
+          deep_fetches_triggered: number | null
+          errors: Json | null
+          exceptions_queued: number | null
+          id: string
+          last_error: string | null
+          metadata: Json | null
+          pages_fetched: number | null
+          region: string
+          source: string
+          started_at: string
+          status: string
+          stubs_created: number | null
+          stubs_found: number | null
+          stubs_updated: number | null
+        }
+        Insert: {
+          completed_at?: string | null
+          deep_fetches_triggered?: number | null
+          errors?: Json | null
+          exceptions_queued?: number | null
+          id?: string
+          last_error?: string | null
+          metadata?: Json | null
+          pages_fetched?: number | null
+          region?: string
+          source?: string
+          started_at?: string
+          status?: string
+          stubs_created?: number | null
+          stubs_found?: number | null
+          stubs_updated?: number | null
+        }
+        Update: {
+          completed_at?: string | null
+          deep_fetches_triggered?: number | null
+          errors?: Json | null
+          exceptions_queued?: number | null
+          id?: string
+          last_error?: string | null
+          metadata?: Json | null
+          pages_fetched?: number | null
+          region?: string
+          source?: string
+          started_at?: string
+          status?: string
+          stubs_created?: number | null
+          stubs_found?: number | null
+          stubs_updated?: number | null
+        }
+        Relationships: []
+      }
       trap_crawl_jobs: {
         Row: {
           attempts: number
@@ -5421,6 +5553,74 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      va_exceptions: {
+        Row: {
+          assigned_at: string | null
+          assigned_to: string | null
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          error_details: string | null
+          id: string
+          missing_fields: string[]
+          priority: string
+          reason: string
+          resolution_notes: string | null
+          resolved_data: Json | null
+          source: string
+          status: string
+          stub_anchor_id: string | null
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          assigned_to?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          error_details?: string | null
+          id?: string
+          missing_fields?: string[]
+          priority?: string
+          reason: string
+          resolution_notes?: string | null
+          resolved_data?: Json | null
+          source?: string
+          status?: string
+          stub_anchor_id?: string | null
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          assigned_at?: string | null
+          assigned_to?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          error_details?: string | null
+          id?: string
+          missing_fields?: string[]
+          priority?: string
+          reason?: string
+          resolution_notes?: string | null
+          resolved_data?: Json | null
+          source?: string
+          status?: string
+          stub_anchor_id?: string | null
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "va_exceptions_stub_anchor_id_fkey"
+            columns: ["stub_anchor_id"]
+            isOneToOne: false
+            referencedRelation: "stub_anchors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       va_sales_tasks: {
         Row: {
@@ -8578,6 +8778,15 @@ export type Database = {
           reason: string
         }[]
       }
+      match_stubs_to_specs: {
+        Args: never
+        Returns: {
+          match_score: number
+          spec_id: string
+          spec_name: string
+          stub_id: string
+        }[]
+      }
       materialize_fingerprint_outcomes: {
         Args: { p_asof?: string }
         Returns: {
@@ -8863,6 +9072,14 @@ export type Database = {
           p_year: number
         }
         Returns: Json
+      }
+      upsert_stub_anchor_batch: {
+        Args: { p_source: string; p_stubs: Json }
+        Returns: {
+          created_count: number
+          exception_count: number
+          updated_count: number
+        }[]
       }
       year_to_band: {
         Args: { p_year: number }
