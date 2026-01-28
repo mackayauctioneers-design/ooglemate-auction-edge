@@ -7885,6 +7885,16 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_slattery_queue_batch: {
+        Args: { p_batch_size?: number; p_max_retries?: number }
+        Returns: {
+          detail_url: string
+          id: string
+          retry_count: number
+          source_listing_id: string
+          stub_anchor_id: string
+        }[]
+      }
       compute_dealer_grade:
         | {
             Args: {
