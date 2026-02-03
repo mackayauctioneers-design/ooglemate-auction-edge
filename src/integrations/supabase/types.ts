@@ -1754,6 +1754,59 @@ export type Database = {
         }
         Relationships: []
       }
+      detail_ingest_queue: {
+        Row: {
+          account_id: string
+          completed_at: string | null
+          created_at: string
+          dealer_slug: string
+          domain: string
+          id: string
+          priority: string
+          promoted_by: string
+          source_queue_id: string
+          started_at: string | null
+          status: string
+          url_canonical: string
+        }
+        Insert: {
+          account_id: string
+          completed_at?: string | null
+          created_at?: string
+          dealer_slug: string
+          domain: string
+          id?: string
+          priority?: string
+          promoted_by?: string
+          source_queue_id: string
+          started_at?: string | null
+          status?: string
+          url_canonical: string
+        }
+        Update: {
+          account_id?: string
+          completed_at?: string | null
+          created_at?: string
+          dealer_slug?: string
+          domain?: string
+          id?: string
+          priority?: string
+          promoted_by?: string
+          source_queue_id?: string
+          started_at?: string | null
+          status?: string
+          url_canonical?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "detail_ingest_queue_source_queue_id_fkey"
+            columns: ["source_queue_id"]
+            isOneToOne: true
+            referencedRelation: "dealer_url_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feeding_mode_reports: {
         Row: {
           created_at: string
