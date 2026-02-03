@@ -31,22 +31,23 @@ import { useAccounts } from "@/hooks/useAccounts";
 
 interface Candidate {
   id: string;
-  source: string;
-  detail_url: string;
-  year: number | null;
-  make: string | null;
-  model: string | null;
-  variant_raw: string | null;
-  km: number | null;
-  asking_price: number | null;
-  location: string | null;
-  state: string | null;
-  first_seen_at: string;
-  last_seen_at: string;
-  crawl_status: string;
-  va_notes: string | null;
-  reject_reason: string | null;
   account_id: string | null;
+  url_canonical: string;
+  url_raw: string;
+  domain: string;
+  dealer_slug: string;
+  status: string;
+  intent: string;
+  priority: string;
+  method: string;
+  grok_class: string | null;
+  fail_reason: string | null;
+  result_summary: Record<string, unknown> | null;
+  discovered_urls: string[] | null;
+  created_at: string;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  submission_id: string | null;
 }
 
 export default function JoshInboxPage() {
@@ -73,12 +74,11 @@ export default function JoshInboxPage() {
     queryFn: async () => {
       if (!selectedAccountId) return [];
       const { data, error } = await supabase
-        .from("pickles_detail_queue")
+        .from("dealer_url_queue")
         .select("*")
         .eq("account_id", selectedAccountId)
-        .in("source", ["grok_search", "grok_watch", "manual_watch"])
-        .eq("crawl_status", "pending")
-        .order("first_seen_at", { ascending: false })
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
       return data as Candidate[];
@@ -98,16 +98,12 @@ export default function JoshInboxPage() {
       notes?: string;
       rejectReason?: string;
     }) => {
-      const update: Record<string, any> = {
-        crawl_status: status,
-        validated_at: status === "validated" ? new Date().toISOString() : null,
-        validated_by: status === "validated" ? "josh" : null,
-      };
-      if (notes) update.va_notes = notes;
-      if (rejectReason) update.reject_reason = rejectReason;
+      const update: Record<string, unknown> = { status };
+      if (notes) update.result_summary = { notes };
+      if (rejectReason) update.fail_reason = rejectReason;
 
       const { error } = await supabase
-        .from("pickles_detail_queue")
+        .from("dealer_url_queue")
         .update(update)
         .eq("id", id);
       if (error) throw error;
@@ -134,8 +130,8 @@ export default function JoshInboxPage() {
         account_id: selectedAccountId,
         created_by: "josh",
         candidate_queue_id: candidate.id,
-        url: candidate.detail_url,
-        title: `${candidate.year || ""} ${candidate.make || ""} ${candidate.model || ""}`.trim(),
+        url: candidate.url_canonical,
+        title: `${candidate.dealer_slug} - ${candidate.domain}`,
         reason,
       });
       if (error) throw error;
@@ -200,13 +196,13 @@ export default function JoshInboxPage() {
     }
   };
 
-  const getSourceBadge = (source: string) => {
+  const getSourceBadge = (intent: string) => {
     const colors: Record<string, string> = {
-      grok_search: "bg-purple-500/10 text-purple-600 border-purple-500/20",
-      grok_watch: "bg-blue-500/10 text-blue-600 border-blue-500/20",
-      manual_watch: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+      discover: "bg-purple-500/10 text-purple-600 border-purple-500/20",
+      watch: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+      manual: "bg-amber-500/10 text-amber-600 border-amber-500/20",
     };
-    return colors[source] || "bg-muted";
+    return colors[intent] || "bg-muted";
   };
 
   return (
@@ -249,55 +245,47 @@ export default function JoshInboxPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 space-y-2">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge className={getSourceBadge(candidate.source)}>
-                          {candidate.source.replace("_", " ")}
+                        <Badge className={getSourceBadge(candidate.intent)}>
+                          {candidate.intent.replace("_", " ")}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {candidate.priority}
                         </Badge>
                         <h3 className="font-semibold">
-                          {candidate.year || "?"} {candidate.make || "Unknown"}{" "}
-                          {candidate.model || ""}
+                          {candidate.dealer_slug}
                         </h3>
-                        {candidate.variant_raw && (
-                          <span className="text-sm text-muted-foreground">
-                            {candidate.variant_raw}
-                          </span>
-                        )}
                       </div>
 
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        {candidate.km && (
-                          <span>{(candidate.km / 1000).toFixed(0)}k km</span>
-                        )}
-                        {candidate.asking_price && (
-                          <span className="font-medium text-foreground">
-                            ${candidate.asking_price.toLocaleString()}
-                          </span>
-                        )}
-                        {(candidate.location || candidate.state) && (
-                          <span className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            {candidate.location || candidate.state}
-                          </span>
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {candidate.domain}
+                        </span>
+                        {candidate.grok_class && (
+                          <Badge variant={candidate.grok_class === "grok_safe" ? "default" : "secondary"} className="text-xs">
+                            {candidate.grok_class}
+                          </Badge>
                         )}
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          {formatDistanceToNow(new Date(candidate.first_seen_at), {
+                          {formatDistanceToNow(new Date(candidate.created_at), {
                             addSuffix: true,
                           })}
                         </span>
                       </div>
 
-                      {candidate.detail_url && (
-                        <a
-                          href={candidate.detail_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          View Listing
-                        </a>
-                      )}
+                      <a
+                        href={candidate.url_canonical}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        {candidate.url_canonical.length > 60
+                          ? candidate.url_canonical.substring(0, 60) + "..."
+                          : candidate.url_canonical}
+                      </a>
                     </div>
 
                     <div className="flex gap-2 shrink-0">
@@ -358,13 +346,11 @@ export default function JoshInboxPage() {
             <div className="space-y-4">
               <div className="p-3 bg-muted rounded-lg text-sm">
                 <span className="font-medium">
-                  {actionCandidate.year} {actionCandidate.make} {actionCandidate.model}
+                  {actionCandidate.dealer_slug}
                 </span>
-                {actionCandidate.asking_price && (
-                  <span className="ml-2 text-muted-foreground">
-                    ${actionCandidate.asking_price.toLocaleString()}
-                  </span>
-                )}
+                <span className="ml-2 text-muted-foreground">
+                  {actionCandidate.domain}
+                </span>
               </div>
 
               {actionType === "alert" ? (
