@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      accounts: {
+        Row: {
+          created_at: string
+          display_name: string
+          id: string
+          slug: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          id?: string
+          slug: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          id?: string
+          slug?: string
+        }
+        Relationships: []
+      }
       alert_logs: {
         Row: {
           acknowledged_at: string | null
@@ -1625,6 +1646,7 @@ export type Database = {
       }
       dealer_url_queue: {
         Row: {
+          account_id: string | null
           created_at: string
           dealer_slug: string
           discovered_urls: string[] | null
@@ -1644,6 +1666,7 @@ export type Database = {
           url_raw: string
         }
         Insert: {
+          account_id?: string | null
           created_at?: string
           dealer_slug: string
           discovered_urls?: string[] | null
@@ -1663,6 +1686,7 @@ export type Database = {
           url_raw: string
         }
         Update: {
+          account_id?: string | null
           created_at?: string
           dealer_slug?: string
           discovered_urls?: string[] | null
@@ -2154,6 +2178,59 @@ export type Database = {
           weight?: number | null
         }
         Relationships: []
+      }
+      grok_missions: {
+        Row: {
+          account_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          criteria: Json
+          error: string | null
+          id: string
+          name: string
+          results_count: number | null
+          started_at: string | null
+          status: string
+          target_urls: string[]
+        }
+        Insert: {
+          account_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          criteria: Json
+          error?: string | null
+          id?: string
+          name: string
+          results_count?: number | null
+          started_at?: string | null
+          status?: string
+          target_urls: string[]
+        }
+        Update: {
+          account_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          criteria?: Json
+          error?: string | null
+          id?: string
+          name?: string
+          results_count?: number | null
+          started_at?: string | null
+          status?: string
+          target_urls?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grok_missions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       http_session_secrets: {
         Row: {
@@ -2882,6 +2959,56 @@ export type Database = {
         }
         Relationships: []
       }
+      josh_alerts: {
+        Row: {
+          account_id: string
+          candidate_queue_id: string | null
+          created_at: string
+          created_by: string
+          handled_at: string | null
+          handled_by: string | null
+          id: string
+          reason: string
+          status: string
+          title: string | null
+          url: string | null
+        }
+        Insert: {
+          account_id: string
+          candidate_queue_id?: string | null
+          created_at?: string
+          created_by?: string
+          handled_at?: string | null
+          handled_by?: string | null
+          id?: string
+          reason: string
+          status?: string
+          title?: string | null
+          url?: string | null
+        }
+        Update: {
+          account_id?: string
+          candidate_queue_id?: string | null
+          created_at?: string
+          created_by?: string
+          handled_at?: string | null
+          handled_by?: string | null
+          id?: string
+          reason?: string
+          status?: string
+          title?: string | null
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "josh_alerts_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       listing_classify_queue: {
         Row: {
           error: string | null
@@ -3455,6 +3582,7 @@ export type Database = {
       }
       pickles_detail_queue: {
         Row: {
+          account_id: string | null
           asking_price: number | null
           buy_method: string | null
           claimed_at: string | null
@@ -3476,6 +3604,7 @@ export type Database = {
           make: string | null
           model: string | null
           page_no: number | null
+          reject_reason: string | null
           reserve_price: number | null
           retry_count: number | null
           run_id: string | null
@@ -3487,10 +3616,14 @@ export type Database = {
           source_listing_id: string
           state: string | null
           stub_anchor_id: string | null
+          va_notes: string | null
+          validated_at: string | null
+          validated_by: string | null
           variant_raw: string | null
           year: number | null
         }
         Insert: {
+          account_id?: string | null
           asking_price?: number | null
           buy_method?: string | null
           claimed_at?: string | null
@@ -3512,6 +3645,7 @@ export type Database = {
           make?: string | null
           model?: string | null
           page_no?: number | null
+          reject_reason?: string | null
           reserve_price?: number | null
           retry_count?: number | null
           run_id?: string | null
@@ -3523,10 +3657,14 @@ export type Database = {
           source_listing_id: string
           state?: string | null
           stub_anchor_id?: string | null
+          va_notes?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
           variant_raw?: string | null
           year?: number | null
         }
         Update: {
+          account_id?: string | null
           asking_price?: number | null
           buy_method?: string | null
           claimed_at?: string | null
@@ -3548,6 +3686,7 @@ export type Database = {
           make?: string | null
           model?: string | null
           page_no?: number | null
+          reject_reason?: string | null
           reserve_price?: number | null
           retry_count?: number | null
           run_id?: string | null
@@ -3559,10 +3698,20 @@ export type Database = {
           source_listing_id?: string
           state?: string | null
           stub_anchor_id?: string | null
+          va_notes?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
           variant_raw?: string | null
           year?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "pickles_detail_queue_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pickles_detail_queue_stub_anchor_id_fkey"
             columns: ["stub_anchor_id"]
@@ -4766,6 +4915,81 @@ export type Database = {
         }
         Relationships: []
       }
+      sales_log_stage: {
+        Row: {
+          account_id: string
+          batch_id: string
+          buy_price: number | null
+          created_at: string
+          dealer_name: string
+          id: string
+          is_promoted: boolean | null
+          km: number | null
+          location: string | null
+          make: string
+          model: string
+          notes: string | null
+          promoted_to_id: string | null
+          sale_date: string
+          sale_price: number | null
+          variant: string | null
+          year: number
+        }
+        Insert: {
+          account_id: string
+          batch_id: string
+          buy_price?: number | null
+          created_at?: string
+          dealer_name: string
+          id?: string
+          is_promoted?: boolean | null
+          km?: number | null
+          location?: string | null
+          make: string
+          model: string
+          notes?: string | null
+          promoted_to_id?: string | null
+          sale_date: string
+          sale_price?: number | null
+          variant?: string | null
+          year: number
+        }
+        Update: {
+          account_id?: string
+          batch_id?: string
+          buy_price?: number | null
+          created_at?: string
+          dealer_name?: string
+          id?: string
+          is_promoted?: boolean | null
+          km?: number | null
+          location?: string | null
+          make?: string
+          model?: string
+          notes?: string | null
+          promoted_to_id?: string | null
+          sale_date?: string
+          sale_price?: number | null
+          variant?: string | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_log_stage_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_log_stage_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "upload_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_normalised: {
         Row: {
           days_in_stock: number | null
@@ -5531,6 +5755,165 @@ export type Database = {
             columns: ["identity_id"]
             isOneToOne: false
             referencedRelation: "vehicle_identities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      upload_batches: {
+        Row: {
+          account_id: string
+          created_at: string
+          error_count: number | null
+          error_report: Json | null
+          filename: string | null
+          id: string
+          promoted_at: string | null
+          promoted_by: string | null
+          row_count: number | null
+          status: string
+          upload_type: string
+          uploaded_by: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          error_count?: number | null
+          error_report?: Json | null
+          filename?: string | null
+          id?: string
+          promoted_at?: string | null
+          promoted_by?: string | null
+          row_count?: number | null
+          status?: string
+          upload_type: string
+          uploaded_by?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          error_count?: number | null
+          error_report?: Json | null
+          filename?: string | null
+          id?: string
+          promoted_at?: string | null
+          promoted_by?: string | null
+          row_count?: number | null
+          status?: string
+          upload_type?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "upload_batches_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      upload_rows_raw: {
+        Row: {
+          batch_id: string
+          created_at: string
+          id: string
+          is_valid: boolean | null
+          raw_data: Json
+          row_number: number
+          validation_errors: Json | null
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          id?: string
+          is_valid?: boolean | null
+          raw_data: Json
+          row_number: number
+          validation_errors?: Json | null
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          id?: string
+          is_valid?: boolean | null
+          raw_data?: Json
+          row_number?: number
+          validation_errors?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "upload_rows_raw_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "upload_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      url_watchlist: {
+        Row: {
+          account_id: string
+          assigned_to: string
+          created_at: string
+          created_by: string
+          domain: string | null
+          id: string
+          last_hash: string | null
+          last_scan_at: string | null
+          last_snapshot: Json | null
+          notes: string | null
+          reason_close: string | null
+          source: string
+          status: string
+          trigger_type: string
+          trigger_value: string
+          url: string
+          watch_type: string
+        }
+        Insert: {
+          account_id: string
+          assigned_to?: string
+          created_at?: string
+          created_by?: string
+          domain?: string | null
+          id?: string
+          last_hash?: string | null
+          last_scan_at?: string | null
+          last_snapshot?: Json | null
+          notes?: string | null
+          reason_close?: string | null
+          source: string
+          status?: string
+          trigger_type: string
+          trigger_value: string
+          url: string
+          watch_type: string
+        }
+        Update: {
+          account_id?: string
+          assigned_to?: string
+          created_at?: string
+          created_by?: string
+          domain?: string | null
+          id?: string
+          last_hash?: string | null
+          last_scan_at?: string | null
+          last_snapshot?: Json | null
+          notes?: string | null
+          reason_close?: string | null
+          source?: string
+          status?: string
+          trigger_type?: string
+          trigger_value?: string
+          url?: string
+          watch_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "url_watchlist_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -6753,6 +7136,48 @@ export type Database = {
           },
         ]
       }
+      watch_events: {
+        Row: {
+          account_id: string
+          created_at: string
+          details: Json | null
+          event_type: string
+          id: string
+          watch_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          details?: Json | null
+          event_type: string
+          id?: string
+          watch_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          details?: Json | null
+          event_type?: string
+          id?: string
+          watch_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watch_events_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "watch_events_watch_id_fkey"
+            columns: ["watch_id"]
+            isOneToOne: false
+            referencedRelation: "url_watchlist"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       dealer_crawl_jobs: {
@@ -7843,6 +8268,7 @@ export type Database = {
           p_run_id?: string
         }
         Returns: {
+          account_id: string | null
           asking_price: number | null
           buy_method: string | null
           claimed_at: string | null
@@ -7864,6 +8290,7 @@ export type Database = {
           make: string | null
           model: string | null
           page_no: number | null
+          reject_reason: string | null
           reserve_price: number | null
           retry_count: number | null
           run_id: string | null
@@ -7875,6 +8302,9 @@ export type Database = {
           source_listing_id: string
           state: string | null
           stub_anchor_id: string | null
+          va_notes: string | null
+          validated_at: string | null
+          validated_by: string | null
           variant_raw: string | null
           year: number | null
         }[]

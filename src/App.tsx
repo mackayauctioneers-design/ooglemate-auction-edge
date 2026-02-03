@@ -47,6 +47,14 @@ import VASalesDataPage from "./pages/operator/VASalesDataPage";
 import TriggerQAPage from "./pages/operator/TriggerQAPage";
 import DealerUrlIntakePage from "./pages/operator/DealerUrlIntakePage";
 
+// Carbitrage pages (Josh workflow)
+import JoshInboxPage from "./pages/carbitrage/JoshInboxPage";
+import WatchlistPage from "./pages/carbitrage/WatchlistPage";
+import DaveInboxPage from "./pages/carbitrage/DaveInboxPage";
+import DealerUrlBankPage from "./pages/carbitrage/DealerUrlBankPage";
+import GrokMissionPage from "./pages/carbitrage/GrokMissionPage";
+import SalesUploadPage from "./pages/carbitrage/SalesUploadPage";
+
 // Dealer spec pages
 import DealerSpecsListPage from "./pages/dealer/DealerSpecsPage";
 import DealerSpecFormPage from "./pages/dealer/DealerSpecFormPage";
@@ -91,6 +99,14 @@ const App = () => (
               <Route path="/hunts/:huntId" element={<HuntDetailPage />} />
               <Route path="/hunt-alerts" element={<HuntAlertsPage />} />
               <Route path="/alerts" element={<UnifiedAlertsPage />} />
+              
+              {/* Carbitrage - Josh Workflow */}
+              <Route path="/josh" element={<JoshInboxPage />} />
+              <Route path="/watchlist" element={<WatchlistPage />} />
+              <Route path="/dave" element={<DaveInboxPage />} />
+              <Route path="/dealer-urls" element={<DealerUrlBankPage />} />
+              <Route path="/grok-missions" element={<GrokMissionPage />} />
+              <Route path="/sales-upload" element={<SalesUploadPage />} />
               
               {/* Dealer Specs */}
               <Route path="/dealer/specs" element={<DealerSpecsListPage />} />
