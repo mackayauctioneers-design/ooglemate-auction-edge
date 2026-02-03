@@ -31,24 +31,26 @@ import { useAccounts } from "@/hooks/useAccounts";
 
 interface Candidate {
   id: string;
-  account_id: string | null;
+  account_id: string;
   url_canonical: string;
-  url_raw: string;
   domain: string;
   dealer_slug: string;
-  status: string;
   intent: string;
   priority: string;
-  method: string;
+  status: string;
   grok_class: string | null;
-  fail_reason: string | null;
   result_summary: Record<string, unknown> | null;
-  discovered_urls: string[] | null;
+  fail_reason: string | null;
   created_at: string;
   last_run_at: string | null;
   next_run_at: string | null;
-  submission_id: string | null;
 }
+
+type DealerQueueUpdate = {
+  status?: string;
+  result_summary?: { notes: string } | null;
+  fail_reason?: string | null;
+};
 
 export default function JoshInboxPage() {
   const { data: accounts } = useAccounts();
@@ -98,18 +100,18 @@ export default function JoshInboxPage() {
       notes?: string;
       rejectReason?: string;
     }) => {
-      const update: Record<string, unknown> = { status };
+      const update: DealerQueueUpdate = { status };
       if (notes) update.result_summary = { notes };
       if (rejectReason) update.fail_reason = rejectReason;
 
       const { error } = await supabase
         .from("dealer_url_queue")
-        .update(update)
+        .update(update as Record<string, unknown>)
         .eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["josh-inbox"] });
+      queryClient.invalidateQueries({ queryKey: ["josh-inbox", selectedAccountId] });
       toast.success("Candidate updated");
       closeDialog();
     },
@@ -275,16 +277,18 @@ export default function JoshInboxPage() {
                       </div>
 
                       <a
-                        href={candidate.url_canonical}
+                        href={candidate.url_canonical || "#"}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs text-primary hover:underline inline-flex items-center gap-1"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <ExternalLink className="h-3 w-3" />
-                        {candidate.url_canonical.length > 60
-                          ? candidate.url_canonical.substring(0, 60) + "..."
-                          : candidate.url_canonical}
+                        {candidate.url_canonical
+                          ? candidate.url_canonical.length > 60
+                            ? candidate.url_canonical.slice(0, 60) + "..."
+                            : candidate.url_canonical
+                          : "—"}
                       </a>
                     </div>
 
