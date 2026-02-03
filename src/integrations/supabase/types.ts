@@ -3115,6 +3115,62 @@ export type Database = {
           },
         ]
       }
+      listing_details_raw: {
+        Row: {
+          account_id: string
+          dealer_slug: string
+          domain: string
+          error: string | null
+          fetched_at: string
+          http_status: number | null
+          id: string
+          ingest_queue_id: string
+          parse_status: string
+          raw_html: string | null
+          raw_json: Json | null
+          raw_text: string | null
+          url_canonical: string
+        }
+        Insert: {
+          account_id: string
+          dealer_slug: string
+          domain: string
+          error?: string | null
+          fetched_at?: string
+          http_status?: number | null
+          id?: string
+          ingest_queue_id: string
+          parse_status?: string
+          raw_html?: string | null
+          raw_json?: Json | null
+          raw_text?: string | null
+          url_canonical: string
+        }
+        Update: {
+          account_id?: string
+          dealer_slug?: string
+          domain?: string
+          error?: string | null
+          fetched_at?: string
+          http_status?: number | null
+          id?: string
+          ingest_queue_id?: string
+          parse_status?: string
+          raw_html?: string | null
+          raw_json?: Json | null
+          raw_text?: string | null
+          url_canonical?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_details_raw_ingest_queue_id_fkey"
+            columns: ["ingest_queue_id"]
+            isOneToOne: true
+            referencedRelation: "detail_ingest_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       listing_enrichment_queue: {
         Row: {
           attempts: number | null
