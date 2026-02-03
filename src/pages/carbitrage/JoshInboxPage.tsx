@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -60,12 +60,13 @@ export default function JoshInboxPage() {
   const [notes, setNotes] = useState("");
   const [alertReason, setAlertReason] = useState("");
 
-  // Set default account when loaded
-  if (!selectedAccountId && accounts?.length) {
+  // Set default account when loaded (in useEffect to avoid render-loop)
+  useEffect(() => {
+    if (selectedAccountId) return;
+    if (!accounts?.length) return;
     const mackay = accounts.find((a) => a.slug === "mackay_traders");
-    if (mackay) setSelectedAccountId(mackay.id);
-    else setSelectedAccountId(accounts[0].id);
-  }
+    setSelectedAccountId(mackay?.id ?? accounts[0].id);
+  }, [accounts, selectedAccountId]);
 
   const { data: candidates, isLoading } = useQuery({
     queryKey: ["josh-inbox", selectedAccountId],
