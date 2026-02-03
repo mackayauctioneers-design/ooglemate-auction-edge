@@ -285,8 +285,8 @@ serve(async (req) => {
 
       const confidence = calculateConfidence(extractedFields);
 
-      // Insert normalized record
-      const { error: insertErr } = await supabase.from("listing_details_norm").insert({
+      // Upsert normalized record (idempotent - allows re-running normalization)
+      const { error: upsertErr } = await supabase.from("listing_details_norm").upsert({
         account_id: raw.account_id,
         raw_id: raw.id,
         url_canonical: raw.url_canonical,
@@ -302,18 +302,15 @@ serve(async (req) => {
         body_type: bodyType,
         extraction_confidence: confidence,
         extracted_fields: extractedFields,
-      });
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'raw_id' });
 
-      if (insertErr) {
-        // Check if it's a duplicate (already normalized)
-        if (insertErr.code === '23505') {
-          console.log(`[listing-normalizer] Already normalized: ${raw.id}`);
-        } else {
-          throw insertErr;
-        }
+      if (upsertErr) {
+        throw upsertErr;
       }
 
-      // Mark raw as parsed
+      // Always mark as parsed - weak extraction is NOT a failure
+      // Failure = system broke, not data was weak
       await supabase
         .from("listing_details_raw")
         .update({ parse_status: "parsed" })
@@ -325,10 +322,10 @@ serve(async (req) => {
       }
 
     } catch (err: unknown) {
+      // Only mark failed on real system errors (code crashes, DB issues)
       const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error(`[listing-normalizer] Failed to normalize ${raw.id}:`, errorMessage);
+      console.error(`[listing-normalizer] System error on ${raw.id}:`, errorMessage);
       
-      // Mark raw as failed
       await supabase
         .from("listing_details_raw")
         .update({ parse_status: "failed", error: errorMessage })
