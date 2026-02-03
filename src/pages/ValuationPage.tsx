@@ -1,16 +1,40 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { NetworkValuationCard } from '@/components/valuation/NetworkValuationCard';
 import { ManualFingerprintForm } from '@/components/fingerprints/ManualFingerprintForm';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Fingerprint } from 'lucide-react';
 import { KitingWingMarkVideo } from '@/components/kiting';
+import { SnapIdCapture, VehicleIntelligenceCard } from '@/components/snap-id';
+
+interface SnapIdResult {
+  sessionId: string;
+  make: string | null;
+  model: string | null;
+  yearMin: number | null;
+  yearMax: number | null;
+  variant: string | null;
+  transmission: string | null;
+  fuelType: string | null;
+  bodyType: string | null;
+  confidence: "high" | "medium" | "low";
+  knownIssues: string[];
+  avoidedIssues: string[];
+  whyThisMatters: string;
+  vin: string | null;
+}
 
 export default function ValuationPage() {
+  const [snapIdResult, setSnapIdResult] = useState<SnapIdResult | null>(null);
+
   useEffect(() => {
     document.title = 'Valuation | OogleMate';
     return () => { document.title = 'OogleMate'; };
   }, []);
+
+  const handleSnapIdResult = (result: SnapIdResult) => {
+    setSnapIdResult(result);
+  };
 
   return (
     <AppLayout>
@@ -25,8 +49,31 @@ export default function ValuationPage() {
               </p>
             </div>
           </div>
-          <ManualFingerprintForm />
+          <div className="flex items-center gap-2">
+            <SnapIdCapture onResult={handleSnapIdResult} />
+            <ManualFingerprintForm />
+          </div>
         </div>
+
+        {/* Snap-ID Result */}
+        {snapIdResult && (
+          <VehicleIntelligenceCard
+            make={snapIdResult.make}
+            model={snapIdResult.model}
+            yearMin={snapIdResult.yearMin}
+            yearMax={snapIdResult.yearMax}
+            variant={snapIdResult.variant}
+            transmission={snapIdResult.transmission}
+            fuelType={snapIdResult.fuelType}
+            bodyType={snapIdResult.bodyType}
+            confidence={snapIdResult.confidence}
+            knownIssues={snapIdResult.knownIssues}
+            avoidedIssues={snapIdResult.avoidedIssues}
+            whyThisMatters={snapIdResult.whyThisMatters}
+            vin={snapIdResult.vin}
+            className="border-primary"
+          />
+        )}
 
         {/* Network Proxy Valuation */}
         <NetworkValuationCard />
@@ -52,9 +99,9 @@ export default function ValuationPage() {
             <div>
               <strong className="text-foreground">Confidence Levels:</strong>
               <ul className="list-disc list-inside mt-1 space-y-1">
-                <li><span className="text-green-600 font-medium">HIGH</span> — Based on your own internal sales (3+ records)</li>
-                <li><span className="text-yellow-600 font-medium">MEDIUM</span> — Based on anonymised network data (3+ records)</li>
-                <li><span className="text-red-600 font-medium">LOW</span> — Insufficient data (less than 3 comparable sales)</li>
+                <li><span className="text-status-passed font-medium">HIGH</span> — Based on your own internal sales (3+ records)</li>
+                <li><span className="text-action-watch font-medium">MEDIUM</span> — Based on anonymised network data (3+ records)</li>
+                <li><span className="text-destructive font-medium">LOW</span> — Insufficient data (less than 3 comparable sales)</li>
               </ul>
             </div>
 
@@ -68,6 +115,9 @@ export default function ValuationPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Mobile FAB for Snap-ID */}
+      <SnapIdCapture variant="fab" onResult={handleSnapIdResult} />
     </AppLayout>
   );
 }
