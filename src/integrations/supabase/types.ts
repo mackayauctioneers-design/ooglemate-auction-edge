@@ -5376,6 +5376,90 @@ export type Database = {
           },
         ]
       }
+      snap_id_sessions: {
+        Row: {
+          account_id: string | null
+          avoided_issues: Json | null
+          completed_at: string | null
+          compliance_plate_path: string | null
+          created_at: string
+          error: string | null
+          extracted_vin: string | null
+          id: string
+          identified_body_type: string | null
+          identified_fuel_type: string | null
+          identified_make: string | null
+          identified_model: string | null
+          identified_transmission: string | null
+          identified_variant: string | null
+          identified_year_max: number | null
+          identified_year_min: number | null
+          known_issues: Json | null
+          ocr_raw: Json | null
+          status: string
+          updated_at: string
+          user_id: string | null
+          vehicle_confidence: string | null
+          vin_confidence: string | null
+          why_this_matters: string | null
+          windscreen_vin_path: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          avoided_issues?: Json | null
+          completed_at?: string | null
+          compliance_plate_path?: string | null
+          created_at?: string
+          error?: string | null
+          extracted_vin?: string | null
+          id?: string
+          identified_body_type?: string | null
+          identified_fuel_type?: string | null
+          identified_make?: string | null
+          identified_model?: string | null
+          identified_transmission?: string | null
+          identified_variant?: string | null
+          identified_year_max?: number | null
+          identified_year_min?: number | null
+          known_issues?: Json | null
+          ocr_raw?: Json | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+          vehicle_confidence?: string | null
+          vin_confidence?: string | null
+          why_this_matters?: string | null
+          windscreen_vin_path?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          avoided_issues?: Json | null
+          completed_at?: string | null
+          compliance_plate_path?: string | null
+          created_at?: string
+          error?: string | null
+          extracted_vin?: string | null
+          id?: string
+          identified_body_type?: string | null
+          identified_fuel_type?: string | null
+          identified_make?: string | null
+          identified_model?: string | null
+          identified_transmission?: string | null
+          identified_variant?: string | null
+          identified_year_max?: number | null
+          identified_year_min?: number | null
+          known_issues?: Json | null
+          ocr_raw?: Json | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+          vehicle_confidence?: string | null
+          vin_confidence?: string | null
+          why_this_matters?: string | null
+          windscreen_vin_path?: string | null
+        }
+        Relationships: []
+      }
       source_lane_map: {
         Row: {
           lane: string
