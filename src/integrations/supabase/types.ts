@@ -3115,6 +3115,92 @@ export type Database = {
           },
         ]
       }
+      listing_details_norm: {
+        Row: {
+          account_id: string
+          body_type: string | null
+          colour: string | null
+          created_at: string
+          dealer_slug: string
+          domain: string
+          extracted_fields: Json | null
+          extraction_confidence: string
+          extraction_errors: Json | null
+          fuel_type: string | null
+          id: string
+          km: number | null
+          make: string | null
+          model: string | null
+          price: number | null
+          raw_id: string
+          rego: string | null
+          stock_number: string | null
+          transmission: string | null
+          updated_at: string
+          url_canonical: string
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          account_id: string
+          body_type?: string | null
+          colour?: string | null
+          created_at?: string
+          dealer_slug: string
+          domain: string
+          extracted_fields?: Json | null
+          extraction_confidence?: string
+          extraction_errors?: Json | null
+          fuel_type?: string | null
+          id?: string
+          km?: number | null
+          make?: string | null
+          model?: string | null
+          price?: number | null
+          raw_id: string
+          rego?: string | null
+          stock_number?: string | null
+          transmission?: string | null
+          updated_at?: string
+          url_canonical: string
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          account_id?: string
+          body_type?: string | null
+          colour?: string | null
+          created_at?: string
+          dealer_slug?: string
+          domain?: string
+          extracted_fields?: Json | null
+          extraction_confidence?: string
+          extraction_errors?: Json | null
+          fuel_type?: string | null
+          id?: string
+          km?: number | null
+          make?: string | null
+          model?: string | null
+          price?: number | null
+          raw_id?: string
+          rego?: string | null
+          stock_number?: string | null
+          transmission?: string | null
+          updated_at?: string
+          url_canonical?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "listing_details_norm_raw_id_fkey"
+            columns: ["raw_id"]
+            isOneToOne: true
+            referencedRelation: "listing_details_raw"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       listing_details_raw: {
         Row: {
           account_id: string
