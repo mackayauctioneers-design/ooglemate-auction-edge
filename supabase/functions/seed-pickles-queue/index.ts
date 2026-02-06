@@ -235,7 +235,7 @@ serve(async (req) => {
       const { error: upsertError } = await supabase
         .from("dealer_url_queue")
         .upsert(batch, {
-          onConflict: "url_canonical",
+          onConflict: "account_id,url_canonical",
           ignoreDuplicates: false,
         });
 
