@@ -57,9 +57,23 @@ Deno.serve(async (req) => {
     );
     const startTime = Date.now();
 
-    // Step 1: Optionally refresh the materialized view
-    if (refreshFingerprints) {
-      console.log("[fingerprint-match-run] Refreshing sales_fingerprints_v1...");
+    // Step 1: Check dirty flag and refresh fingerprints if needed
+    const { data: dirtyFlag } = await supabase
+      .from("fingerprint_refresh_pending")
+      .select("dirty_since, refreshed_at")
+      .eq("account_id", accountId)
+      .maybeSingle();
+
+    const needsRefresh =
+      refreshFingerprints ||
+      (dirtyFlag &&
+        (!dirtyFlag.refreshed_at ||
+          new Date(dirtyFlag.dirty_since) > new Date(dirtyFlag.refreshed_at)));
+
+    if (needsRefresh) {
+      console.log(
+        "[fingerprint-match-run] Refreshing sales_fingerprints_v1 (dirty flag or forced)..."
+      );
       const { error: refreshErr } = await supabase.rpc(
         "refresh_sales_fingerprints"
       );
@@ -68,8 +82,24 @@ Deno.serve(async (req) => {
           "[fingerprint-match-run] Refresh warning (may be empty):",
           refreshErr.message
         );
-        // Don't fail — view may be empty on first run
+      } else {
+        // Clear dirty flag
+        await supabase
+          .from("fingerprint_refresh_pending")
+          .upsert(
+            {
+              account_id: accountId,
+              dirty_since: dirtyFlag?.dirty_since || new Date().toISOString(),
+              refreshed_at: new Date().toISOString(),
+            },
+            { onConflict: "account_id" }
+          );
+        console.log("[fingerprint-match-run] Dirty flag cleared.");
       }
+    } else {
+      console.log(
+        "[fingerprint-match-run] Fingerprints up-to-date, skipping refresh."
+      );
     }
 
     // Step 2: Load fingerprints for this account

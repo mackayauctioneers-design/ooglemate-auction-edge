@@ -1158,6 +1158,7 @@ export type Database = {
       }
       dealer_profiles: {
         Row: {
+          account_id: string | null
           created_at: string
           dealer_name: string
           id: string
@@ -1167,6 +1168,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          account_id?: string | null
           created_at?: string
           dealer_name: string
           id?: string
@@ -1176,6 +1178,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          account_id?: string | null
           created_at?: string
           dealer_name?: string
           id?: string
@@ -1184,7 +1187,15 @@ export type Database = {
           updated_at?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "dealer_profiles_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dealer_sales: {
         Row: {
@@ -1968,6 +1979,32 @@ export type Database = {
           win_rate?: number | null
         }
         Relationships: []
+      }
+      fingerprint_refresh_pending: {
+        Row: {
+          account_id: string
+          dirty_since: string
+          refreshed_at: string | null
+        }
+        Insert: {
+          account_id: string
+          dirty_since?: string
+          refreshed_at?: string | null
+        }
+        Update: {
+          account_id?: string
+          dirty_since?: string
+          refreshed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fingerprint_refresh_pending_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: true
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       franchise_dealer_candidates: {
         Row: {
