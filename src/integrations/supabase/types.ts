@@ -3548,12 +3548,16 @@ export type Database = {
         Row: {
           account_id: string
           asking_price: number | null
+          body_type: string | null
           created_at: string
+          drive_type: string | null
           fingerprint_make: string
           fingerprint_model: string
+          fuel_type: string | null
           id: string
           km: number | null
           km_band: string
+          last_search_at: string | null
           listing_norm_id: string
           make: string | null
           match_score: number
@@ -3562,19 +3566,26 @@ export type Database = {
           raw_id: string | null
           reasons: Json
           sales_count: number
+          source_match_count: number | null
+          source_searched: string | null
           status: string
+          transmission: string | null
           url_canonical: string
           year: number | null
         }
         Insert: {
           account_id: string
           asking_price?: number | null
+          body_type?: string | null
           created_at?: string
+          drive_type?: string | null
           fingerprint_make: string
           fingerprint_model: string
+          fuel_type?: string | null
           id?: string
           km?: number | null
           km_band: string
+          last_search_at?: string | null
           listing_norm_id: string
           make?: string | null
           match_score: number
@@ -3583,19 +3594,26 @@ export type Database = {
           raw_id?: string | null
           reasons?: Json
           sales_count: number
+          source_match_count?: number | null
+          source_searched?: string | null
           status?: string
+          transmission?: string | null
           url_canonical: string
           year?: number | null
         }
         Update: {
           account_id?: string
           asking_price?: number | null
+          body_type?: string | null
           created_at?: string
+          drive_type?: string | null
           fingerprint_make?: string
           fingerprint_model?: string
+          fuel_type?: string | null
           id?: string
           km?: number | null
           km_band?: string
+          last_search_at?: string | null
           listing_norm_id?: string
           make?: string | null
           match_score?: number
@@ -3604,7 +3622,10 @@ export type Database = {
           raw_id?: string | null
           reasons?: Json
           sales_count?: number
+          source_match_count?: number | null
+          source_searched?: string | null
           status?: string
+          transmission?: string | null
           url_canonical?: string
           year?: number | null
         }
@@ -7008,6 +7029,33 @@ export type Database = {
         }
         Relationships: []
       }
+      variant_aliases: {
+        Row: {
+          alias: string
+          canonical_variant: string
+          created_at: string
+          id: string
+          make: string | null
+          model: string | null
+        }
+        Insert: {
+          alias: string
+          canonical_variant: string
+          created_at?: string
+          id?: string
+          make?: string | null
+          model?: string | null
+        }
+        Update: {
+          alias?: string
+          canonical_variant?: string
+          created_at?: string
+          id?: string
+          make?: string | null
+          model?: string | null
+        }
+        Relationships: []
+      }
       variant_audit: {
         Row: {
           classified_at: string | null
@@ -7521,8 +7569,11 @@ export type Database = {
       vehicle_sales_truth: {
         Row: {
           account_id: string
+          body_type: string | null
           confidence: string
           created_at: string
+          drive_type: string | null
+          fuel_type: string | null
           id: string
           km: number | null
           make: string
@@ -7531,13 +7582,17 @@ export type Database = {
           sale_price: number | null
           sold_at: string
           source: string
+          transmission: string | null
           variant: string | null
           year: number | null
         }
         Insert: {
           account_id: string
+          body_type?: string | null
           confidence?: string
           created_at?: string
+          drive_type?: string | null
+          fuel_type?: string | null
           id?: string
           km?: number | null
           make: string
@@ -7546,13 +7601,17 @@ export type Database = {
           sale_price?: number | null
           sold_at: string
           source?: string
+          transmission?: string | null
           variant?: string | null
           year?: number | null
         }
         Update: {
           account_id?: string
+          body_type?: string | null
           confidence?: string
           created_at?: string
+          drive_type?: string | null
+          fuel_type?: string | null
           id?: string
           km?: number | null
           make?: string
@@ -7561,6 +7620,7 @@ export type Database = {
           sale_price?: number | null
           sold_at?: string
           source?: string
+          transmission?: string | null
           variant?: string | null
           year?: number | null
         }
@@ -8324,6 +8384,13 @@ export type Database = {
       sales_fingerprints_v1: {
         Row: {
           account_id: string | null
+          body_type_count: number | null
+          dominant_body_type: string | null
+          dominant_drive_type: string | null
+          dominant_fuel_type: string | null
+          dominant_transmission: string | null
+          drive_type_count: number | null
+          fuel_type_count: number | null
           km_median: number | null
           km_p25: number | null
           km_p75: number | null
@@ -8332,6 +8399,7 @@ export type Database = {
           model: string | null
           price_median: number | null
           sales_count: number | null
+          transmission_count: number | null
         }
         Relationships: []
       }

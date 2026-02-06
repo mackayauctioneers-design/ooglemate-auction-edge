@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   ExternalLink,
   Loader2,
@@ -25,6 +25,8 @@ import {
   Zap,
   TrendingUp,
   AlertTriangle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -47,6 +49,11 @@ interface MatchedOpportunity {
   reasons: Record<string, string>;
   status: string;
   created_at: string;
+  transmission: string | null;
+  body_type: string | null;
+  fuel_type: string | null;
+  drive_type: string | null;
+  source_searched: string | null;
 }
 
 function ScoreBadge({ score }: { score: number }) {
@@ -64,24 +71,12 @@ function ScoreBadge({ score }: { score: number }) {
   );
 }
 
-function KmBandBadge({ band }: { band: string }) {
+function BandBadge({ band, type }: { band: string; type: "km" | "price" }) {
+  const goodLabel = type === "price" ? "below" : "inside";
   const styles: Record<string, string> = {
-    inside: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
+    [goodLabel]: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
     near: "bg-amber-500/15 text-amber-600 border-amber-500/30",
     outside: "bg-destructive/15 text-destructive border-destructive/30",
-    unknown: "bg-muted text-muted-foreground border-border",
-  };
-  return (
-    <Badge variant="outline" className={styles[band] || styles.unknown}>
-      {band}
-    </Badge>
-  );
-}
-
-function PriceBandBadge({ band }: { band: string }) {
-  const styles: Record<string, string> = {
-    below: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
-    near: "bg-amber-500/15 text-amber-600 border-amber-500/30",
     above: "bg-destructive/15 text-destructive border-destructive/30",
     unknown: "bg-muted text-muted-foreground border-border",
   };
@@ -92,12 +87,52 @@ function PriceBandBadge({ band }: { band: string }) {
   );
 }
 
+function WhyMatchedPanel({ reasons }: { reasons: Record<string, string> }) {
+  const [expanded, setExpanded] = useState(false);
+  const entries = Object.entries(reasons || {});
+  const positiveEntries = entries.filter(([, v]) => v.includes("(+") && !v.includes("(+0)"));
+  const neutralEntries = entries.filter(([, v]) => v.includes("(+0)") || !v.includes("(+"));
+  const preview = positiveEntries.slice(0, 2);
+
+  return (
+    <div className="space-y-1">
+      {preview.map(([key, value]) => (
+        <Badge key={key} variant="secondary" className="text-[10px] leading-tight block w-fit">
+          {value}
+        </Badge>
+      ))}
+      {entries.length > 2 && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+        >
+          {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          {expanded ? "Less" : `+${entries.length - 2} more`}
+        </button>
+      )}
+      {expanded && (
+        <div className="space-y-1 mt-1">
+          {positiveEntries.slice(2).map(([key, value]) => (
+            <Badge key={key} variant="secondary" className="text-[10px] leading-tight block w-fit">
+              {value}
+            </Badge>
+          ))}
+          {neutralEntries.map(([key, value]) => (
+            <Badge key={key} variant="outline" className="text-[10px] leading-tight block w-fit text-muted-foreground">
+              {value}
+            </Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MatchesInboxPage() {
   useDocumentTitle(0);
   const { data: accounts } = useAccounts();
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
 
-  // Auto-select first account
   useEffect(() => {
     if (accounts && accounts.length > 0 && !selectedAccountId) {
       setSelectedAccountId(accounts[0].id);
@@ -163,10 +198,7 @@ export default function MatchesInboxPage() {
     }
   };
 
-  const updateStatus = async (
-    id: string,
-    newStatus: "dismissed" | "actioned"
-  ) => {
+  const updateStatus = async (id: string, newStatus: "dismissed" | "actioned") => {
     try {
       const { error } = await supabase
         .from("matched_opportunities_v1")
@@ -176,9 +208,7 @@ export default function MatchesInboxPage() {
       setOpportunities((prev) =>
         prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o))
       );
-      toast.success(
-        newStatus === "dismissed" ? "Dismissed" : "Sent to Dave"
-      );
+      toast.success(newStatus === "dismissed" ? "Dismissed" : "Sent to Dave");
     } catch (err) {
       toast.error("Failed to update status");
     }
@@ -197,16 +227,12 @@ export default function MatchesInboxPage() {
               Matches Inbox
             </h1>
             <p className="text-sm text-muted-foreground">
-              Fingerprint-matched opportunities from normalized listings
+              Supply surfaced by proven sales truth — identity-aligned scoring v1.5
             </p>
           </div>
           <div className="flex items-center gap-3">
             <AccountSelector value={selectedAccountId} onChange={setSelectedAccountId} />
-            <Button
-              onClick={runMatchEngine}
-              disabled={running || !selectedAccountId}
-              size="sm"
-            >
+            <Button onClick={runMatchEngine} disabled={running || !selectedAccountId} size="sm">
               {running ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : (
@@ -214,15 +240,8 @@ export default function MatchesInboxPage() {
               )}
               Run Match Engine
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchOpportunities}
-              disabled={loading}
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-              />
+            <Button variant="outline" size="sm" onClick={fetchOpportunities} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
           </div>
         </div>
@@ -240,9 +259,7 @@ export default function MatchesInboxPage() {
               <div className="text-2xl font-bold">
                 {opportunities.filter((o) => o.match_score >= 80).length}
               </div>
-              <div className="text-xs text-muted-foreground">
-                High Score (80+)
-              </div>
+              <div className="text-xs text-muted-foreground">High Score (80+)</div>
             </CardContent>
           </Card>
           <Card>
@@ -256,10 +273,7 @@ export default function MatchesInboxPage() {
           <Card>
             <CardContent className="pt-4 pb-3 px-4">
               <div className="text-2xl font-bold">
-                {
-                  opportunities.filter((o) => o.status === "actioned")
-                    .length
-                }
+                {opportunities.filter((o) => o.status === "actioned").length}
               </div>
               <div className="text-xs text-muted-foreground">Actioned</div>
             </CardContent>
@@ -294,9 +308,7 @@ export default function MatchesInboxPage() {
           <Card>
             <CardContent className="py-12 text-center">
               <AlertTriangle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-              <h3 className="font-medium text-foreground mb-1">
-                No matches found
-              </h3>
+              <h3 className="font-medium text-foreground mb-1">No matches found</h3>
               <p className="text-sm text-muted-foreground">
                 {statusFilter === "open"
                   ? "Run the match engine to generate opportunities from your sales fingerprints."
@@ -313,11 +325,8 @@ export default function MatchesInboxPage() {
                   <TableHead>Vehicle</TableHead>
                   <TableHead className="hidden sm:table-cell">KM</TableHead>
                   <TableHead className="hidden sm:table-cell">Price</TableHead>
-                  <TableHead>KM Band</TableHead>
-                  <TableHead>Price Band</TableHead>
-                  <TableHead className="hidden md:table-cell">
-                    Sales Count
-                  </TableHead>
+                  <TableHead>Bands</TableHead>
+                  <TableHead className="hidden md:table-cell">Identity</TableHead>
                   <TableHead className="hidden lg:table-cell">Why Matched</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -332,52 +341,57 @@ export default function MatchesInboxPage() {
                       <div className="font-medium text-sm">
                         {opp.year} {opp.make} {opp.model}
                       </div>
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
+                        <TrendingUp className="h-3 w-3" />
+                        {opp.sales_count} proven sales
+                      </div>
                       <a
                         href={opp.url_canonical}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs text-primary hover:underline flex items-center gap-1 mt-0.5"
                       >
-                        View listing{" "}
-                        <ExternalLink className="h-3 w-3" />
+                        View listing <ExternalLink className="h-3 w-3" />
                       </a>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-sm">
-                      {opp.km != null
-                        ? `${Math.round(opp.km / 1000)}k`
-                        : "—"}
+                      {opp.km != null ? `${Math.round(opp.km / 1000)}k` : "—"}
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-sm">
-                      {opp.asking_price != null
-                        ? `$${opp.asking_price.toLocaleString()}`
-                        : "—"}
+                      {opp.asking_price != null ? `$${opp.asking_price.toLocaleString()}` : "—"}
                     </TableCell>
                     <TableCell>
-                      <KmBandBadge band={opp.km_band} />
-                    </TableCell>
-                    <TableCell>
-                      <PriceBandBadge band={opp.price_band} />
+                      <div className="flex flex-col gap-1">
+                        <BandBadge band={opp.km_band} type="km" />
+                        <BandBadge band={opp.price_band} type="price" />
+                      </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      <div className="flex items-center gap-1 text-sm">
-                        <TrendingUp className="h-3 w-3 text-muted-foreground" />
-                        {opp.sales_count}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1 max-w-[200px]">
-                        {Object.entries(opp.reasons || {}).map(
-                          ([key, value]) => (
-                            <Badge
-                              key={key}
-                              variant="secondary"
-                              className="text-[10px] leading-tight"
-                            >
-                              {value}
-                            </Badge>
-                          )
+                      <div className="flex flex-wrap gap-1">
+                        {opp.transmission && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {opp.transmission}
+                          </Badge>
+                        )}
+                        {opp.body_type && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {opp.body_type}
+                          </Badge>
+                        )}
+                        {opp.fuel_type && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {opp.fuel_type}
+                          </Badge>
+                        )}
+                        {opp.source_searched && (
+                          <Badge variant="outline" className="text-[10px] bg-muted">
+                            {opp.source_searched}
+                          </Badge>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <WhyMatchedPanel reasons={opp.reasons} />
                     </TableCell>
                     <TableCell>
                       {opp.status === "open" ? (
@@ -385,9 +399,7 @@ export default function MatchesInboxPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() =>
-                              updateStatus(opp.id, "actioned")
-                            }
+                            onClick={() => updateStatus(opp.id, "actioned")}
                             title="Alert Dave"
                           >
                             <Bell className="h-3 w-3" />
@@ -395,19 +407,14 @@ export default function MatchesInboxPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() =>
-                              updateStatus(opp.id, "dismissed")
-                            }
+                            onClick={() => updateStatus(opp.id, "dismissed")}
                             title="Dismiss"
                           >
                             <XCircle className="h-3 w-3 text-muted-foreground" />
                           </Button>
                         </div>
                       ) : (
-                        <Badge
-                          variant="outline"
-                          className="text-xs capitalize"
-                        >
+                        <Badge variant="outline" className="text-xs capitalize">
                           {opp.status}
                         </Badge>
                       )}
