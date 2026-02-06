@@ -16,6 +16,7 @@ import { Navigate, Link } from 'react-router-dom';
 import { DealerOnboarding } from '@/components/admin/DealerOnboarding';
 import { DailyPipelinePanel } from '@/components/admin/DailyPipelinePanel';
 import { PicklesCsvSeeder } from '@/components/admin/PicklesCsvSeeder';
+import { ReleaseBatchCard } from '@/components/admin/ReleaseBatchCard';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -347,6 +348,7 @@ export default function AdminToolsPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {/* Pickles CSV Seeder - for testing */}
           <PicklesCsvSeeder />
+          <ReleaseBatchCard />
           {/* Dealer Onboarding */}
           <DealerOnboarding />
           <Card>
