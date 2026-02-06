@@ -207,6 +207,10 @@ export default function JoshInboxPage() {
     return colors[intent] || "bg-muted";
   };
 
+  const isPicklesCandidate = (candidate: Candidate) => {
+    return candidate.domain === "pickles.com.au" || candidate.dealer_slug === "pickles";
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -250,6 +254,16 @@ export default function JoshInboxPage() {
                         <Badge className={getSourceBadge(candidate.intent)}>
                           {candidate.intent.replace("_", " ")}
                         </Badge>
+                        {isPicklesCandidate(candidate) && (
+                          <>
+                            <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20 text-xs">
+                              Pickles
+                            </Badge>
+                            <Badge className="bg-sky-500/10 text-sky-600 border-sky-500/20 text-xs">
+                              Auction stock
+                            </Badge>
+                          </>
+                        )}
                         <Badge variant="outline" className="text-xs">
                           {candidate.priority}
                         </Badge>

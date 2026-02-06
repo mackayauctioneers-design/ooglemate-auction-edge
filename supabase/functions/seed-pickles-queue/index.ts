@@ -6,6 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const THROTTLE_PENDING_LIMIT = 50;
+
 interface PicklesRow {
   lotId: string;
   title: string;
@@ -32,16 +34,15 @@ interface PicklesRow {
 function parseCSV(content: string): PicklesRow[] {
   const lines = content.split(/\r?\n/).filter(line => line.trim());
   if (lines.length < 2) return [];
-  
+
   const headers = lines[0].split(",").map(h => h.trim());
   const rows: PicklesRow[] = [];
-  
+
   for (let i = 1; i < lines.length; i++) {
-    // Handle CSV with quoted fields containing commas
     const values: string[] = [];
     let current = "";
     let inQuotes = false;
-    
+
     for (const char of lines[i]) {
       if (char === '"') {
         inQuotes = !inQuotes;
@@ -53,17 +54,17 @@ function parseCSV(content: string): PicklesRow[] {
       }
     }
     values.push(current.trim().replace(/^"|"$/g, ""));
-    
+
     const row: Record<string, string> = {};
     headers.forEach((h, idx) => {
       row[h] = values[idx] || "";
     });
-    
+
     if (row.lotId) {
       rows.push(row as unknown as PicklesRow);
     }
   }
-  
+
   return rows;
 }
 
@@ -84,6 +85,31 @@ function parsePrice(value: string): number | null {
   if (!value) return null;
   const price = parseFloat(value.replace(/[^0-9.]/g, ""));
   return isNaN(price) ? null : Math.round(price);
+}
+
+function buildResultSummary(row: PicklesRow) {
+  return {
+    source_type: "pickles_csv",
+    lotId: row.lotId,
+    title: row.title,
+    year: parseYear(row.year),
+    make: row.make?.toUpperCase() || null,
+    model: row.model?.toUpperCase() || null,
+    variant: row.variant || null,
+    km: parseOdometer(row.odometer),
+    fuel: row.fuel || null,
+    transmission: row.transmission || null,
+    body_type: row.bodyType || null,
+    location: row.location || null,
+    state: row.state || null,
+    auction_date: row.auctionDate || null,
+    auction_status: row.status || null,
+    vin: row.vin || null,
+    engine: row.engine || null,
+    drive_type: row.driveType || null,
+    seller_notes: row.sellerNotes || null,
+    price: parsePrice(row.price),
+  };
 }
 
 serve(async (req) => {
@@ -108,7 +134,7 @@ serve(async (req) => {
     // Verify user is admin
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
+
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Invalid token" }), {
         status: 401,
@@ -129,10 +155,17 @@ serve(async (req) => {
       });
     }
 
-    const { csv_content, dry_run = false } = await req.json();
+    const { csv_content, dry_run = false, account_id } = await req.json();
 
     if (!csv_content) {
       return new Response(JSON.stringify({ error: "Missing csv_content" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!account_id) {
+      return new Response(JSON.stringify({ error: "Missing account_id" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -149,60 +182,60 @@ serve(async (req) => {
       });
     }
 
-    // Transform to pickles_detail_queue format
-    const queueItems = rows.map(row => ({
-      source: "pickles",
-      source_listing_id: row.lotId,
-      detail_url: row.listingUrl || `https://www.pickles.com.au/used/details/cars/${row.make}/${row.model}/${row.lotId}`,
-      mta: {
-        title: row.title,
-        year: parseYear(row.year),
-        make: row.make?.toUpperCase(),
-        model: row.model?.toUpperCase(),
-        variant: row.variant,
-        km: parseOdometer(row.odometer),
-        fuel: row.fuel,
-        transmission: row.transmission,
-        body_type: row.bodyType,
-        location: row.location,
-        state: row.state,
-        auction_date: row.auctionDate,
-        status: row.status,
-        vin: row.vin,
-        engine: row.engine,
-        drive_type: row.driveType,
-        seller_notes: row.sellerNotes,
-        price: parsePrice(row.price),
-      },
-      crawl_status: "pending",
-      last_seen_at: new Date().toISOString(),
-    }));
+    // Build dealer_url_queue items with throttling:
+    // First THROTTLE_PENDING_LIMIT get status='pending', rest get status='hold'
+    const queueItems = rows.map((row, idx) => {
+      const detailUrl = row.listingUrl ||
+        `https://www.pickles.com.au/used/details/cars/${row.make}/${row.model}/${row.lotId}`;
+
+      return {
+        account_id,
+        url_canonical: detailUrl,
+        url_raw: detailUrl,
+        domain: "pickles.com.au",
+        dealer_slug: "pickles",
+        intent: "discover",
+        priority: "normal",
+        method: "csv_seed",
+        status: idx < THROTTLE_PENDING_LIMIT ? "pending" : "hold",
+        grok_class: "api_only",
+        result_summary: buildResultSummary(row),
+      };
+    });
+
+    const pendingCount = queueItems.filter(q => q.status === "pending").length;
+    const holdCount = queueItems.filter(q => q.status === "hold").length;
 
     if (dry_run) {
       return new Response(JSON.stringify({
         success: true,
         dry_run: true,
         rows_parsed: rows.length,
-        sample: queueItems.slice(0, 3),
+        pending_count: pendingCount,
+        hold_count: holdCount,
+        sample: queueItems.slice(0, 3).map(item => ({
+          url_canonical: item.url_canonical,
+          status: item.status,
+          result_summary: item.result_summary,
+        })),
       }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Batch upsert into pickles_detail_queue
+    // Batch upsert into dealer_url_queue
     const batchSize = 100;
     let inserted = 0;
-    let updated = 0;
     let errors = 0;
 
     for (let i = 0; i < queueItems.length; i += batchSize) {
       const batch = queueItems.slice(i, i + batchSize);
-      
+
       const { error: upsertError } = await supabase
-        .from("pickles_detail_queue")
+        .from("dealer_url_queue")
         .upsert(batch, {
-          onConflict: "source,source_listing_id",
+          onConflict: "url_canonical",
           ignoreDuplicates: false,
         });
 
@@ -211,7 +244,7 @@ serve(async (req) => {
         errors += batch.length;
       } else {
         inserted += batch.length;
-        console.log(`Batch ${i / batchSize + 1}: ${batch.length} rows processed`);
+        console.log(`Batch ${i / batchSize + 1}: ${batch.length} rows upserted`);
       }
     }
 
@@ -219,8 +252,10 @@ serve(async (req) => {
       success: true,
       rows_parsed: rows.length,
       inserted,
+      pending_count: pendingCount,
+      hold_count: holdCount,
       errors,
-      message: `Seeded ${inserted} rows into pickles_detail_queue`,
+      message: `Seeded ${inserted} rows into dealer_url_queue (${pendingCount} pending, ${holdCount} on hold)`,
     }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
