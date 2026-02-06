@@ -17,7 +17,8 @@ import {
   Store,
   ClipboardList,
   Bell,
-  Target
+  Target,
+  FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -47,6 +48,7 @@ const dealerNavItems = [
   { path: '/dealer-urls', label: 'URL Bank', icon: Store, authOnly: true },
   { path: '/sales-upload', label: 'Sales Upload', icon: DollarSign, authOnly: true },
   { path: '/matches-inbox', label: 'Matches Inbox', icon: Target, authOnly: true },
+  { path: '/deals', label: 'Deal Ledger', icon: FileText, authOnly: true },
   { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
   { path: '/search-lots', label: 'Search Lots', icon: Search },
   { path: '/trap-inventory', label: 'Trap Inventory', icon: Store, adminOnly: true },
