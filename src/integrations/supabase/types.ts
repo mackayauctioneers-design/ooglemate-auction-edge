@@ -600,6 +600,139 @@ export type Database = {
         }
         Relationships: []
       }
+      deal_truth_artefacts: {
+        Row: {
+          artefact_type: string
+          created_at: string
+          created_by: string
+          deal_id: string
+          file_hash: string
+          file_url: string
+          id: string
+          mime_type: string
+        }
+        Insert: {
+          artefact_type: string
+          created_at?: string
+          created_by?: string
+          deal_id: string
+          file_hash: string
+          file_url: string
+          id?: string
+          mime_type?: string
+        }
+        Update: {
+          artefact_type?: string
+          created_at?: string
+          created_by?: string
+          deal_id?: string
+          file_hash?: string
+          file_url?: string
+          id?: string
+          mime_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_truth_artefacts_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_truth_ledger"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deal_truth_events: {
+        Row: {
+          created_at: string
+          created_by: string
+          deal_id: string
+          event_payload: Json
+          event_type: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          deal_id: string
+          event_payload?: Json
+          event_type: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          deal_id?: string
+          event_payload?: Json
+          event_type?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_truth_events_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deal_truth_ledger"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deal_truth_ledger: {
+        Row: {
+          account_id: string
+          asking_price: number | null
+          created_at: string
+          created_by: string
+          id: string
+          km: number | null
+          listing_norm_id: string | null
+          make: string | null
+          matched_opportunity_id: string | null
+          model: string | null
+          notes: string | null
+          source: string
+          status: string
+          url_canonical: string
+          vehicle_identifier: string | null
+          year: number | null
+        }
+        Insert: {
+          account_id: string
+          asking_price?: number | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          km?: number | null
+          listing_norm_id?: string | null
+          make?: string | null
+          matched_opportunity_id?: string | null
+          model?: string | null
+          notes?: string | null
+          source?: string
+          status?: string
+          url_canonical: string
+          vehicle_identifier?: string | null
+          year?: number | null
+        }
+        Update: {
+          account_id?: string
+          asking_price?: number | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          km?: number | null
+          listing_norm_id?: string | null
+          make?: string | null
+          matched_opportunity_id?: string | null
+          model?: string | null
+          notes?: string | null
+          source?: string
+          status?: string
+          url_canonical?: string
+          vehicle_identifier?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       dealer_fingerprints: {
         Row: {
           created_at: string

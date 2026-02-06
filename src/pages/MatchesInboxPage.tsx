@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { supabase } from "@/integrations/supabase/client";
 import { useAccounts } from "@/hooks/useAccounts";
+import { useAuth } from "@/contexts/AuthContext";
 import { AccountSelector } from "@/components/carbitrage/AccountSelector";
+import { createDealFromOpportunity } from "@/hooks/useDeals";
 import {
   Table,
   TableBody,
@@ -27,6 +30,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -131,6 +135,7 @@ function WhyMatchedPanel({ reasons }: { reasons: Record<string, string> }) {
 export default function MatchesInboxPage() {
   useDocumentTitle(0);
   const { data: accounts } = useAccounts();
+  const { currentUser } = useAuth();
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
 
   useEffect(() => {
@@ -143,6 +148,8 @@ export default function MatchesInboxPage() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"open" | "dismissed" | "actioned" | "all">("open");
+  const [existingDealMap, setExistingDealMap] = useState<Record<string, string>>({});
+  const [creatingDeal, setCreatingDeal] = useState<string | null>(null);
 
   const fetchOpportunities = useCallback(async () => {
     if (!selectedAccountId) return;
@@ -163,6 +170,19 @@ export default function MatchesInboxPage() {
       const { data, error } = await query;
       if (error) throw error;
       setOpportunities((data as MatchedOpportunity[]) || []);
+
+      // Check which opportunities already have deals
+      const { data: deals } = await supabase
+        .from("deal_truth_ledger")
+        .select("id, matched_opportunity_id")
+        .eq("account_id", selectedAccountId)
+        .not("matched_opportunity_id", "is", null);
+
+      const map: Record<string, string> = {};
+      (deals || []).forEach((d: any) => {
+        if (d.matched_opportunity_id) map[d.matched_opportunity_id] = d.id;
+      });
+      setExistingDealMap(map);
     } catch (err) {
       console.error("Failed to load opportunities:", err);
       toast.error("Failed to load matched opportunities");
@@ -211,6 +231,24 @@ export default function MatchesInboxPage() {
       toast.success(newStatus === "dismissed" ? "Dismissed" : "Sent to Dave");
     } catch (err) {
       toast.error("Failed to update status");
+    }
+  };
+
+  const handleCreateDeal = async (opp: MatchedOpportunity) => {
+    setCreatingDeal(opp.id);
+    try {
+      const deal = await createDealFromOpportunity(opp, currentUser?.email || currentUser?.dealer_name || "unknown");
+      setExistingDealMap((prev) => ({ ...prev, [opp.id]: deal.id }));
+      toast.success("Deal created — redirecting to deal page");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      if (msg.includes("duplicate")) {
+        toast.error("A deal already exists for this opportunity");
+      } else {
+        toast.error("Failed to create deal: " + msg);
+      }
+    } finally {
+      setCreatingDeal(null);
     }
   };
 
@@ -394,30 +432,59 @@ export default function MatchesInboxPage() {
                       <WhyMatchedPanel reasons={opp.reasons} />
                     </TableCell>
                     <TableCell>
-                      {opp.status === "open" ? (
-                        <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1">
+                        {/* Create Deal / Open Deal */}
+                        {existingDealMap[opp.id] ? (
+                          <Link to={`/deals/${existingDealMap[opp.id]}`}>
+                            <Button variant="outline" size="sm" title="Open Deal">
+                              <FileText className="h-3 w-3 mr-1" />
+                              <span className="hidden sm:inline text-xs">Deal</span>
+                            </Button>
+                          </Link>
+                        ) : (
                           <Button
-                            variant="outline"
+                            variant="default"
                             size="sm"
-                            onClick={() => updateStatus(opp.id, "actioned")}
-                            title="Alert Dave"
+                            onClick={() => handleCreateDeal(opp)}
+                            disabled={creatingDeal === opp.id}
+                            title="Create Deal"
                           >
-                            <Bell className="h-3 w-3" />
+                            {creatingDeal === opp.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <>
+                                <FileText className="h-3 w-3 mr-1" />
+                                <span className="hidden sm:inline text-xs">Deal</span>
+                              </>
+                            )}
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => updateStatus(opp.id, "dismissed")}
-                            title="Dismiss"
-                          >
-                            <XCircle className="h-3 w-3 text-muted-foreground" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <Badge variant="outline" className="text-xs capitalize">
-                          {opp.status}
-                        </Badge>
-                      )}
+                        )}
+                        {opp.status === "open" && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => updateStatus(opp.id, "actioned")}
+                              title="Alert Dave"
+                            >
+                              <Bell className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => updateStatus(opp.id, "dismissed")}
+                              title="Dismiss"
+                            >
+                              <XCircle className="h-3 w-3 text-muted-foreground" />
+                            </Button>
+                          </>
+                        )}
+                        {opp.status !== "open" && !existingDealMap[opp.id] && (
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {opp.status}
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
