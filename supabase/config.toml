@@ -350,3 +350,12 @@ schedule = "*/15 * * * *"
 
 [functions.seed-pickles-queue]
 verify_jwt = false
+
+[functions.release-pickles-batch]
+verify_jwt = false
+
+[functions.jess-walker]
+verify_jwt = false
+
+[functions.listing-normalizer]
+verify_jwt = false
