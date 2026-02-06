@@ -7,25 +7,144 @@ const corsHeaders = {
 };
 
 /**
- * fingerprint-match-run
+ * fingerprint-match-run v1.5
  *
  * Loads normalized listings, joins to sales_fingerprints_v1,
- * scores each match, and upserts into matched_opportunities_v1.
- *
- * Input (JSON body):
- *   account_id  — required uuid
- *   batch_size  — optional, default 200
- *   refresh_fingerprints — optional boolean, default true
+ * scores each match (including identity alignment), and upserts
+ * into matched_opportunities_v1.
  *
  * Scoring (0-100):
  *   +40  make+model match (required baseline)
  *   +25  km inside IQR (p25–p75)
  *   +10  km near band (±20k outside IQR)
  *   +15  asking price ≤ price_median
+ *   +5   asking price within 10% above median
+ *   +10  transmission matches dominant
+ *   +10  body_type matches dominant
+ *   +10  fuel_type matches dominant
+ *   +10  drive_type matches dominant
  *   +10  extraction confidence high/medium
  *
  * Only creates opportunities with score ≥ 60.
  */
+
+interface Fingerprint {
+  account_id: string;
+  make: string;
+  model: string;
+  sales_count: number;
+  km_median: number | null;
+  km_p25: number | null;
+  km_p75: number | null;
+  price_median: number | null;
+  last_sold_at: string | null;
+  dominant_transmission: string | null;
+  dominant_body_type: string | null;
+  dominant_fuel_type: string | null;
+  dominant_drive_type: string | null;
+  transmission_count: number;
+  body_type_count: number;
+  fuel_type_count: number;
+  drive_type_count: number;
+}
+
+interface NormListing {
+  id: string;
+  account_id: string;
+  raw_id: string | null;
+  url_canonical: string;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  km: number | null;
+  price: number | null;
+  extraction_confidence: string | null;
+  transmission: string | null;
+  body_type: string | null;
+  fuel_type: string | null;
+  domain: string | null;
+}
+
+function scoreKm(
+  km: number | null,
+  p25: number | null,
+  p75: number | null
+): { score: number; band: string; reason: string } {
+  if (km == null || p25 == null || p75 == null) {
+    return { score: 0, band: "unknown", reason: "km data missing (+0)" };
+  }
+  const lo = Number(p25);
+  const hi = Number(p75);
+  if (km >= lo && km <= hi) {
+    return {
+      score: 25,
+      band: "inside",
+      reason: `km ${km.toLocaleString()} inside proven range [${Math.round(lo).toLocaleString()}–${Math.round(hi).toLocaleString()}] (+25)`,
+    };
+  }
+  if (km >= lo - 20000 && km <= hi + 20000) {
+    return {
+      score: 10,
+      band: "near",
+      reason: `km ${km.toLocaleString()} near proven range ±20k (+10)`,
+    };
+  }
+  return {
+    score: 0,
+    band: "outside",
+    reason: `km ${km.toLocaleString()} outside proven range [${Math.round(lo).toLocaleString()}–${Math.round(hi).toLocaleString()}] (+0)`,
+  };
+}
+
+function scorePrice(
+  price: number | null,
+  median: number | null
+): { score: number; band: string; reason: string } {
+  if (price == null || median == null) {
+    return { score: 0, band: "unknown", reason: "price data missing (+0)" };
+  }
+  const med = Number(median);
+  if (price <= med) {
+    return {
+      score: 15,
+      band: "below",
+      reason: `$${price.toLocaleString()} ≤ median $${Math.round(med).toLocaleString()} (+15)`,
+    };
+  }
+  if (price <= med * 1.1) {
+    return {
+      score: 5,
+      band: "near",
+      reason: `$${price.toLocaleString()} near median $${Math.round(med).toLocaleString()} (+5)`,
+    };
+  }
+  return {
+    score: 0,
+    band: "above",
+    reason: `$${price.toLocaleString()} above median $${Math.round(med).toLocaleString()} (+0)`,
+  };
+}
+
+function scoreIdentity(
+  listingVal: string | null,
+  fpDominant: string | null,
+  fpCount: number,
+  label: string
+): { score: number; reason: string } {
+  if (!listingVal || !fpDominant || fpCount === 0) {
+    return { score: 0, reason: `${label} data insufficient (+0)` };
+  }
+  if (listingVal.toLowerCase().trim() === fpDominant.toLowerCase().trim()) {
+    return {
+      score: 10,
+      reason: `${label} "${listingVal}" matches sales history (+10)`,
+    };
+  }
+  return {
+    score: 0,
+    reason: `${label} "${listingVal}" differs from dominant "${fpDominant}" (+0)`,
+  };
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -53,11 +172,11 @@ Deno.serve(async (req) => {
     }
 
     console.log(
-      `[fingerprint-match-run] Starting for account=${accountId}, batch=${batchSize}`
+      `[fingerprint-match-run] v1.5 starting for account=${accountId}, batch=${batchSize}`
     );
     const startTime = Date.now();
 
-    // Step 1: Check dirty flag and refresh fingerprints if needed
+    // ── Step 1: Check dirty flag and refresh fingerprints ──
     const { data: dirtyFlag } = await supabase
       .from("fingerprint_refresh_pending")
       .select("dirty_since, refreshed_at")
@@ -71,19 +190,13 @@ Deno.serve(async (req) => {
           new Date(dirtyFlag.dirty_since) > new Date(dirtyFlag.refreshed_at)));
 
     if (needsRefresh) {
-      console.log(
-        "[fingerprint-match-run] Refreshing sales_fingerprints_v1 (dirty flag or forced)..."
-      );
+      console.log("[fingerprint-match-run] Refreshing fingerprints...");
       const { error: refreshErr } = await supabase.rpc(
         "refresh_sales_fingerprints"
       );
       if (refreshErr) {
-        console.warn(
-          "[fingerprint-match-run] Refresh warning (may be empty):",
-          refreshErr.message
-        );
+        console.warn("[fingerprint-match-run] Refresh warning:", refreshErr.message);
       } else {
-        // Clear dirty flag
         await supabase
           .from("fingerprint_refresh_pending")
           .upsert(
@@ -96,13 +209,9 @@ Deno.serve(async (req) => {
           );
         console.log("[fingerprint-match-run] Dirty flag cleared.");
       }
-    } else {
-      console.log(
-        "[fingerprint-match-run] Fingerprints up-to-date, skipping refresh."
-      );
     }
 
-    // Step 2: Load fingerprints for this account
+    // ── Step 2: Load fingerprints ──
     const { data: fingerprints, error: fpErr } = await supabase
       .from("sales_fingerprints_v1")
       .select("*")
@@ -117,9 +226,6 @@ Deno.serve(async (req) => {
     }
 
     if (!fingerprints || fingerprints.length === 0) {
-      console.log(
-        "[fingerprint-match-run] No fingerprints found for account. Need sales data first."
-      );
       return new Response(
         JSON.stringify({
           success: true,
@@ -127,33 +233,26 @@ Deno.serve(async (req) => {
           listings_checked: 0,
           matched: 0,
           skipped: 0,
-          message:
-            "No fingerprints found. Log sales into vehicle_sales_truth first.",
+          message: "No fingerprints found. Log sales into vehicle_sales_truth first.",
         }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(
-      `[fingerprint-match-run] Loaded ${fingerprints.length} fingerprints`
-    );
+    console.log(`[fingerprint-match-run] ${fingerprints.length} fingerprints loaded`);
 
-    // Build a lookup map: "MAKE|MODEL" → fingerprint
-    const fpMap = new Map<string, (typeof fingerprints)[0]>();
-    for (const fp of fingerprints) {
+    // Build lookup map
+    const fpMap = new Map<string, Fingerprint>();
+    for (const fp of fingerprints as Fingerprint[]) {
       const key = `${(fp.make || "").toUpperCase()}|${(fp.model || "").toUpperCase()}`;
       fpMap.set(key, fp);
     }
 
-    // Step 3: Load recent normalized listings for this account
-    // Only listings not already matched (left anti-join via NOT EXISTS would be ideal,
-    // but we'll use upsert with ON CONFLICT to handle duplicates)
+    // ── Step 3: Load normalized listings ──
     const { data: listings, error: listErr } = await supabase
       .from("listing_details_norm")
       .select(
-        "id, account_id, raw_id, url_canonical, make, model, year, km, price, extraction_confidence"
+        "id, account_id, raw_id, url_canonical, make, model, year, km, price, extraction_confidence, transmission, body_type, fuel_type, domain"
       )
       .eq("account_id", accountId)
       .order("created_at", { ascending: false })
@@ -168,9 +267,6 @@ Deno.serve(async (req) => {
     }
 
     if (!listings || listings.length === 0) {
-      console.log(
-        "[fingerprint-match-run] No normalized listings found for account."
-      );
       return new Response(
         JSON.stringify({
           success: true,
@@ -180,21 +276,19 @@ Deno.serve(async (req) => {
           skipped: 0,
           message: "No normalized listings to match against.",
         }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     console.log(
-      `[fingerprint-match-run] Checking ${listings.length} listings against ${fingerprints.length} fingerprints`
+      `[fingerprint-match-run] Scoring ${listings.length} listings against ${fingerprints.length} fingerprints`
     );
 
-    // Step 4: Score each listing against fingerprints
+    // ── Step 4: Score each listing ──
     const opportunities: Array<Record<string, unknown>> = [];
     let skipped = 0;
 
-    for (const listing of listings) {
+    for (const listing of listings as NormListing[]) {
       const listingMake = (listing.make || "").toUpperCase().trim();
       const listingModel = (listing.model || "").toUpperCase().trim();
 
@@ -211,69 +305,68 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // ---- Scoring ----
+      // ── Scoring ──
       let score = 40; // Base: make+model match
       const reasons: Record<string, string> = {
-        make_model: "make+model match (+40)",
+        make_model: `${listingMake} ${listingModel} matches sales history (+40)`,
       };
 
-      // KM band scoring
-      let kmBand = "unknown";
-      if (listing.km != null && fp.km_p25 != null && fp.km_p75 != null) {
-        const p25 = Number(fp.km_p25);
-        const p75 = Number(fp.km_p75);
-        if (listing.km >= p25 && listing.km <= p75) {
-          kmBand = "inside";
-          score += 25;
-          reasons.km = `km ${listing.km} inside IQR [${Math.round(p25)}–${Math.round(p75)}] (+25)`;
-        } else if (
-          listing.km >= p25 - 20000 &&
-          listing.km <= p75 + 20000
-        ) {
-          kmBand = "near";
-          score += 10;
-          reasons.km = `km ${listing.km} near IQR ±20k (+10)`;
-        } else {
-          kmBand = "outside";
-          reasons.km = `km ${listing.km} outside IQR [${Math.round(p25)}–${Math.round(p75)}] (+0)`;
-        }
-      } else {
-        reasons.km = "km data missing (+0)";
-      }
+      // KM scoring
+      const kmResult = scoreKm(listing.km, fp.km_p25, fp.km_p75);
+      score += kmResult.score;
+      reasons.km = kmResult.reason;
 
       // Price scoring
-      let priceBand = "unknown";
-      if (
-        listing.price != null &&
-        fp.price_median != null
-      ) {
-        const median = Number(fp.price_median);
-        if (listing.price <= median) {
-          priceBand = "below";
-          score += 15;
-          reasons.price = `asking $${listing.price} ≤ median $${Math.round(median)} (+15)`;
-        } else if (listing.price <= median * 1.1) {
-          priceBand = "near";
-          score += 5;
-          reasons.price = `asking $${listing.price} near median $${Math.round(median)} (+5)`;
-        } else {
-          priceBand = "above";
-          reasons.price = `asking $${listing.price} > median $${Math.round(median)} (+0)`;
-        }
-      } else {
-        reasons.price = "price data missing (+0)";
-      }
+      const priceResult = scorePrice(listing.price, fp.price_median);
+      score += priceResult.score;
+      reasons.price = priceResult.reason;
 
-      // Extraction confidence scoring
+      // Identity alignment scoring (NEW in v1.5)
+      const transResult = scoreIdentity(
+        listing.transmission,
+        fp.dominant_transmission,
+        fp.transmission_count,
+        "Transmission"
+      );
+      score += transResult.score;
+      if (transResult.score > 0) reasons.transmission = transResult.reason;
+
+      const bodyResult = scoreIdentity(
+        listing.body_type,
+        fp.dominant_body_type,
+        fp.body_type_count,
+        "Body type"
+      );
+      score += bodyResult.score;
+      if (bodyResult.score > 0) reasons.body_type = bodyResult.reason;
+
+      const fuelResult = scoreIdentity(
+        listing.fuel_type,
+        fp.dominant_fuel_type,
+        fp.fuel_type_count,
+        "Fuel type"
+      );
+      score += fuelResult.score;
+      if (fuelResult.score > 0) reasons.fuel_type = fuelResult.reason;
+
+      // drive_type: listing_details_norm may not have it yet, score if present
+      const driveResult = scoreIdentity(
+        null, // drive_type not yet in listing_details_norm
+        fp.dominant_drive_type,
+        fp.drive_type_count,
+        "Drive type"
+      );
+      score += driveResult.score;
+      if (driveResult.score > 0) reasons.drive_type = driveResult.reason;
+
+      // Extraction confidence
       const conf = (listing.extraction_confidence || "").toLowerCase();
       if (conf === "high" || conf === "medium") {
         score += 10;
-        reasons.confidence = `extraction confidence ${conf} (+10)`;
-      } else {
-        reasons.confidence = `extraction confidence ${conf || "unknown"} (+0)`;
+        reasons.confidence = `Extraction confidence ${conf} (+10)`;
       }
 
-      // ---- Threshold check ----
+      // ── Threshold ──
       if (score < 60) {
         skipped++;
         continue;
@@ -292,11 +385,19 @@ Deno.serve(async (req) => {
         fingerprint_make: fp.make,
         fingerprint_model: fp.model,
         sales_count: Number(fp.sales_count),
-        km_band: kmBand,
-        price_band: priceBand,
+        km_band: kmResult.band,
+        price_band: priceResult.band,
         match_score: score,
         reasons,
         status: "open",
+        // Identity fields
+        transmission: listing.transmission,
+        body_type: listing.body_type,
+        fuel_type: listing.fuel_type,
+        // Recall metadata
+        source_searched: listing.domain || null,
+        source_match_count: 1,
+        last_search_at: new Date().toISOString(),
       });
     }
 
@@ -304,10 +405,9 @@ Deno.serve(async (req) => {
       `[fingerprint-match-run] Scored: ${opportunities.length} matched, ${skipped} skipped`
     );
 
-    // Step 5: Upsert opportunities
+    // ── Step 5: Upsert opportunities ──
     let upserted = 0;
     if (opportunities.length > 0) {
-      // Batch in chunks of 50
       const chunkSize = 50;
       for (let i = 0; i < opportunities.length; i += chunkSize) {
         const chunk = opportunities.slice(i, i + chunkSize);
@@ -343,9 +443,7 @@ Deno.serve(async (req) => {
         skipped,
         duration_ms: durationMs,
       }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);
