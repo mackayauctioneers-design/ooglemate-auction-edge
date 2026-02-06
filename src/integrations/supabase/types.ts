@@ -3507,6 +3507,72 @@ export type Database = {
           },
         ]
       }
+      matched_opportunities_v1: {
+        Row: {
+          account_id: string
+          asking_price: number | null
+          created_at: string
+          fingerprint_make: string
+          fingerprint_model: string
+          id: string
+          km: number | null
+          km_band: string
+          listing_norm_id: string
+          make: string | null
+          match_score: number
+          model: string | null
+          price_band: string
+          raw_id: string | null
+          reasons: Json
+          sales_count: number
+          status: string
+          url_canonical: string
+          year: number | null
+        }
+        Insert: {
+          account_id: string
+          asking_price?: number | null
+          created_at?: string
+          fingerprint_make: string
+          fingerprint_model: string
+          id?: string
+          km?: number | null
+          km_band: string
+          listing_norm_id: string
+          make?: string | null
+          match_score: number
+          model?: string | null
+          price_band: string
+          raw_id?: string | null
+          reasons?: Json
+          sales_count: number
+          status?: string
+          url_canonical: string
+          year?: number | null
+        }
+        Update: {
+          account_id?: string
+          asking_price?: number | null
+          created_at?: string
+          fingerprint_make?: string
+          fingerprint_model?: string
+          id?: string
+          km?: number | null
+          km_band?: string
+          listing_norm_id?: string
+          make?: string | null
+          match_score?: number
+          model?: string | null
+          price_band?: string
+          raw_id?: string | null
+          reasons?: Json
+          sales_count?: number
+          status?: string
+          url_canonical?: string
+          year?: number | null
+        }
+        Relationships: []
+      }
       model_taxonomy: {
         Row: {
           badge_tiers: Json
@@ -7415,6 +7481,54 @@ export type Database = {
           },
         ]
       }
+      vehicle_sales_truth: {
+        Row: {
+          account_id: string
+          confidence: string
+          created_at: string
+          id: string
+          km: number | null
+          make: string
+          model: string
+          notes: string | null
+          sale_price: number | null
+          sold_at: string
+          source: string
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          account_id: string
+          confidence?: string
+          created_at?: string
+          id?: string
+          km?: number | null
+          make: string
+          model: string
+          notes?: string | null
+          sale_price?: number | null
+          sold_at: string
+          source?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          account_id?: string
+          confidence?: string
+          created_at?: string
+          id?: string
+          km?: number | null
+          make?: string
+          model?: string
+          notes?: string | null
+          sale_price?: number | null
+          sold_at?: string
+          source?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       watch_events: {
         Row: {
           account_id: string
@@ -8167,6 +8281,20 @@ export type Database = {
           source_count: number | null
           sources: string[] | null
           total_listings: number | null
+        }
+        Relationships: []
+      }
+      sales_fingerprints_v1: {
+        Row: {
+          account_id: string | null
+          km_median: number | null
+          km_p25: number | null
+          km_p75: number | null
+          last_sold_at: string | null
+          make: string | null
+          model: string | null
+          price_median: number | null
+          sales_count: number | null
         }
         Relationships: []
       }
@@ -9595,6 +9723,7 @@ export type Database = {
         Args: { p_reason?: string; p_source_key: string }
         Returns: undefined
       }
+      refresh_sales_fingerprints: { Args: never; Returns: undefined }
       refresh_watch_statuses: {
         Args: never
         Returns: {
