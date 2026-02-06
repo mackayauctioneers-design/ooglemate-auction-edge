@@ -229,7 +229,7 @@ serve(async (req) => {
     .from("listing_details_raw")
     .select("*")
     .eq("parse_status", "fetched")
-    .order("created_at", { ascending: true })
+    .order("fetched_at", { ascending: true })
     .limit(batch_size);
 
   if (fetchErr) {
