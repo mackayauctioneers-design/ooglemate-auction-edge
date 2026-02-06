@@ -359,3 +359,6 @@ verify_jwt = false
 
 [functions.listing-normalizer]
 verify_jwt = false
+
+[functions.fingerprint-match-run]
+verify_jwt = false

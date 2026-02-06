@@ -46,6 +46,7 @@ const dealerNavItems = [
   { path: '/grok-missions', label: 'Grok Missions', icon: Crosshair, authOnly: true },
   { path: '/dealer-urls', label: 'URL Bank', icon: Store, authOnly: true },
   { path: '/sales-upload', label: 'Sales Upload', icon: DollarSign, authOnly: true },
+  { path: '/matches-inbox', label: 'Matches Inbox', icon: Target, authOnly: true },
   { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
   { path: '/search-lots', label: 'Search Lots', icon: Search },
   { path: '/trap-inventory', label: 'Trap Inventory', icon: Store, adminOnly: true },
