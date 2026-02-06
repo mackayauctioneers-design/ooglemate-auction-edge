@@ -318,6 +318,7 @@ export default function MatchesInboxPage() {
                   <TableHead className="hidden md:table-cell">
                     Sales Count
                   </TableHead>
+                  <TableHead className="hidden lg:table-cell">Why Matched</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -364,6 +365,21 @@ export default function MatchesInboxPage() {
                       </div>
                     </TableCell>
                     <TableCell>
+                      <div className="flex flex-wrap gap-1 max-w-[200px]">
+                        {Object.entries(opp.reasons || {}).map(
+                          ([key, value]) => (
+                            <Badge
+                              key={key}
+                              variant="secondary"
+                              className="text-[10px] leading-tight"
+                            >
+                              {value}
+                            </Badge>
+                          )
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
                       {opp.status === "open" ? (
                         <div className="flex items-center gap-1">
                           <Button
@@ -403,31 +419,10 @@ export default function MatchesInboxPage() {
           </div>
         )}
 
-        {/* Why it matched - tooltip/expandable for first visible opportunity */}
-        {opportunities.length > 0 && (
-          <Card className="mt-4">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">
-                Match Reasoning (top result)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(opportunities[0].reasons || {}).map(
-                  ([key, value]) => (
-                    <Badge
-                      key={key}
-                      variant="secondary"
-                      className="text-xs"
-                    >
-                      {value}
-                    </Badge>
-                  )
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Guiding principle */}
+        <div className="text-xs text-muted-foreground text-center py-2">
+          Cars do not have universal value. These matches are based solely on what you've proven you can sell.
+        </div>
       </div>
     </AppLayout>
   );
