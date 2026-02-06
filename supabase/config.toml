@@ -347,3 +347,6 @@ verify_jwt = false
 verify_jwt = false
 # Every 15 minutes - match stubs to hunts and queue for deep-fetch
 schedule = "*/15 * * * *"
+
+[functions.seed-pickles-queue]
+verify_jwt = false

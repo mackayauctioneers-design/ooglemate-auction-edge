@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { Navigate, Link } from 'react-router-dom';
 import { DealerOnboarding } from '@/components/admin/DealerOnboarding';
 import { DailyPipelinePanel } from '@/components/admin/DailyPipelinePanel';
+import { PicklesCsvSeeder } from '@/components/admin/PicklesCsvSeeder';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -344,7 +345,9 @@ export default function AdminToolsPage() {
 
         {/* Tool Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {/* Dealer Onboarding - First card */}
+          {/* Pickles CSV Seeder - for testing */}
+          <PicklesCsvSeeder />
+          {/* Dealer Onboarding */}
           <DealerOnboarding />
           <Card>
             <CardHeader>
