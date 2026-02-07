@@ -138,11 +138,20 @@ export function useFileParser() {
       if (ext === "pdf") {
         // Send PDF as base64 for AI multimodal extraction
         const base64 = await readFileAsBase64(file);
+        const sizeMB = (base64.length / 1024 / 1024).toFixed(1);
+        console.log(`[useFileParser] PDF base64 size: ${sizeMB}MB`);
+
         const { data, error } = await supabase.functions.invoke("sales-document-extract", {
           body: { pdf_base64: base64, filename: file.name },
         });
-        if (error) throw error;
+        if (error) {
+          // supabase.functions.invoke wraps HTTP errors
+          const msg = typeof error === "object" && error.message ? error.message : String(error);
+          throw new Error(`PDF extraction failed: ${msg}`);
+        }
+        if (!data) throw new Error("No response from PDF extraction — the file may be too large. Try CSV or XLSX.");
         if (data.error) throw new Error(data.error);
+        if (!data.headers?.length) throw new Error(data.error || "Could not extract data from this PDF. Try CSV or XLSX.");
         return {
           headers: data.headers,
           rows: data.rows,
