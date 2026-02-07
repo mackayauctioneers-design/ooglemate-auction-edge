@@ -6,17 +6,11 @@ import {
   LogIn,
   ChevronLeft,
   ChevronRight,
-  HelpCircle,
-  Calendar,
   Search,
-  Crosshair,
   DollarSign,
   Sparkles,
   MapPin,
   Settings,
-  Store,
-  ClipboardList,
-  Bell,
   Target,
   FileText,
 } from 'lucide-react';
@@ -36,27 +30,18 @@ import { useIsMobile } from '@/hooks/use-mobile';
 // Clean dealer-focused navigation. Admin items moved to Operator Mode.
 // ============================================================================
 
+// ============================================================================
+// DEALER NAV: Outcomes & evidence only. Never machinery.
+// Max 7 items. Dealers see what they can act on — nothing else.
+// ============================================================================
 const dealerNavItems = [
   { path: '/valo', label: 'Ask Bob', icon: Sparkles, highlight: true },
   { path: '/', label: "Today's Opportunities", icon: BarChart3 },
-  { path: '/alerts', label: 'Alerts Inbox', icon: Bell },
-  { path: '/hunts', label: 'Kiting Mode', icon: Target },
-  { path: '/josh', label: 'Josh Inbox', icon: ClipboardList, authOnly: true },
-  { path: '/watchlist', label: 'Watchlist', icon: Search, authOnly: true },
-  { path: '/dave', label: 'Dave Inbox', icon: Bell, authOnly: true },
-  { path: '/grok-missions', label: 'Grok Missions', icon: Crosshair, authOnly: true },
-  { path: '/dealer-urls', label: 'URL Bank', icon: Store, authOnly: true },
-  { path: '/sales-upload', label: 'Sales Upload', icon: DollarSign, authOnly: true },
   { path: '/matches-inbox', label: 'Matches Inbox', icon: Target, authOnly: true },
   { path: '/deals', label: 'Deal Ledger', icon: FileText, authOnly: true },
-  { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
-  { path: '/search-lots', label: 'Search Lots', icon: Search },
-  { path: '/trap-inventory', label: 'Trap Inventory', icon: Store, adminOnly: true },
-  { path: '/va/tasks', label: 'VA Task Queue', icon: ClipboardList, authOnly: true },
-  { path: '/matches', label: 'Matches', icon: Crosshair },
-  { path: '/valuation', label: 'Valuation', icon: DollarSign },
-  { path: '/dealer-dashboard', label: 'My Dashboard', icon: MapPin },
-  { path: '/help', label: 'How to Use', icon: HelpCircle },
+  { path: '/watchlist', label: 'Watchlist', icon: Search, authOnly: true },
+  { path: '/sales-upload', label: 'Sales Upload', icon: DollarSign, authOnly: true },
+  { path: '/dealer-dashboard', label: 'My Dashboard', icon: MapPin, authOnly: true },
 ];
 
 export function AppSidebar() {
