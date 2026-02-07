@@ -11,11 +11,11 @@ serve(async (req) => {
   }
 
   try {
-    const { text_content, filename } = await req.json();
+    const { text_content, pdf_base64, filename } = await req.json();
 
-    if (!text_content) {
+    if (!text_content && !pdf_base64) {
       return new Response(
-        JSON.stringify({ error: "text_content required" }),
+        JSON.stringify({ error: "text_content or pdf_base64 required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -28,17 +28,18 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[sales-document-extract] Processing ${filename || "document"}, content length: ${text_content.length}`);
+    console.log(`[sales-document-extract] Processing ${filename || "document"}, mode: ${pdf_base64 ? "pdf_base64" : "text"}`);
 
     const systemPrompt = `You are a data extraction specialist for automotive dealer sales reports.
 
-Given raw text content from a PDF or document export (like EasyCars, DealerSocket, AutoPlay, etc.), extract the tabular sales data.
+Given content from a dealer sales export document (PDF, EasyCars report, DealerSocket export, etc.), extract the tabular sales data.
 
 Rules:
 - Identify column headers from the document structure
 - Extract each row of vehicle sale data
 - If there's a combined "Description" or "Vehicle" field, keep it as-is — do NOT split it
-- Clean up any formatting artefacts (page breaks, repeated headers, etc.)
+- Clean up any formatting artefacts (page breaks, repeated headers, footers, etc.)
+- Ignore totals rows, summary rows, page numbers
 - Return ONLY valid JSON
 
 Response format:
@@ -59,6 +60,28 @@ If you cannot extract tabular data, return:
   "error": "Could not identify tabular data in this document"
 }`;
 
+    // Build messages based on input type
+    const userContent: any[] = [];
+
+    if (pdf_base64) {
+      // Send PDF as inline document for Gemini to read directly
+      userContent.push({
+        type: "image_url",
+        image_url: {
+          url: `data:application/pdf;base64,${pdf_base64}`,
+        },
+      });
+      userContent.push({
+        type: "text",
+        text: `Extract all tabular sales data from this PDF document (filename: ${filename || "unknown"}). Return ONLY valid JSON with headers and rows arrays.`,
+      });
+    } else {
+      userContent.push({
+        type: "text",
+        text: `Extract tabular sales data from this document (filename: ${filename || "unknown"}):\n\n${text_content.slice(0, 15000)}`,
+      });
+    }
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -69,10 +92,7 @@ If you cannot extract tabular data, return:
         model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: `Extract tabular sales data from this document (filename: ${filename || "unknown"}):\n\n${text_content.slice(0, 15000)}`,
-          },
+          { role: "user", content: userContent },
         ],
         temperature: 0.1,
       }),
@@ -80,7 +100,8 @@ If you cannot extract tabular data, return:
 
     if (!response.ok) {
       const status = response.status;
-      console.error(`[sales-document-extract] AI gateway error: ${status}`);
+      const body = await response.text();
+      console.error(`[sales-document-extract] AI gateway error: ${status}`, body);
 
       if (status === 429) {
         return new Response(
@@ -104,12 +125,15 @@ If you cannot extract tabular data, return:
     const aiResult = await response.json();
     const content = aiResult.choices?.[0]?.message?.content || "";
 
+    console.log(`[sales-document-extract] AI response length: ${content.length}`);
+
     let extracted;
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       extracted = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-    } catch {
-      console.error("[sales-document-extract] Failed to parse AI response");
+    } catch (e) {
+      console.error("[sales-document-extract] Failed to parse AI response:", e.message);
+      console.error("[sales-document-extract] Raw content:", content.slice(0, 500));
       extracted = null;
     }
 
