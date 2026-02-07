@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +9,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle, Info, ArrowRight, Sparkles } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { CheckCircle, ArrowRight, Sparkles, ChevronDown, ChevronRight, Info } from "lucide-react";
 import { type HeaderMapping, CANONICAL_FIELDS } from "@/hooks/useHeaderMapping";
 
 interface HeaderMappingEditorProps {
@@ -22,8 +28,86 @@ interface HeaderMappingEditorProps {
   isConfirming: boolean;
 }
 
-// Key identity fields — we suggest mapping these but don't block on them
-const IDENTITY_FIELDS = ["sold_at", "make", "model", "description"];
+// Fields grouped by intent
+const REQUIRED_FIELDS = new Set([
+  "sold_at", "sale_price", "buy_price", "make", "model", "year", "description", "km",
+]);
+const HELPFUL_FIELDS = new Set([
+  "variant", "transmission", "fuel_type", "body_type", "acquired_at", "colour", "rego", "vin", "stock_no",
+]);
+// Everything else (location, dealer_name, notes, etc.) is "ignored"
+
+function classifyHeader(
+  header: string,
+  mappedTo: string | null
+): "required" | "helpful" | "ignored" {
+  if (!mappedTo) return "ignored";
+  if (REQUIRED_FIELDS.has(mappedTo)) return "required";
+  if (HELPFUL_FIELDS.has(mappedTo)) return "helpful";
+  return "ignored";
+}
+
+function MappingRow({
+  header,
+  currentValue,
+  sampleValue,
+  onChange,
+}: {
+  header: string;
+  currentValue: string | null;
+  sampleValue?: string;
+  onChange: (header: string, value: string) => void;
+}) {
+  const isMapped = !!currentValue;
+
+  return (
+    <div
+      className={`flex items-center gap-3 py-2 px-3 rounded-md ${
+        isMapped ? "bg-emerald-500/5 border border-emerald-500/20" : "bg-muted/30"
+      }`}
+    >
+      <div className="flex-1 min-w-0">
+        <p className="font-mono text-sm truncate">{header}</p>
+        {sampleValue && (
+          <p className="text-xs text-muted-foreground truncate">
+            e.g. &quot;{sampleValue}&quot;
+          </p>
+        )}
+      </div>
+
+      <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+
+      <div className="w-52">
+        <Select
+          value={currentValue || "__skip__"}
+          onValueChange={(v) => onChange(header, v)}
+        >
+          <SelectTrigger className="h-8 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__skip__">
+              <span className="text-muted-foreground italic">Not used for analysis</span>
+            </SelectItem>
+            {CANONICAL_FIELDS.map((field) => (
+              <SelectItem key={field.value} value={field.value}>
+                {field.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="w-5 shrink-0">
+        {isMapped ? (
+          <CheckCircle className="h-4 w-4 text-emerald-500" />
+        ) : (
+          <span className="h-4 w-4 block" />
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function HeaderMappingEditor({
   headers,
@@ -35,9 +119,12 @@ export function HeaderMappingEditor({
   onCancel,
   isConfirming,
 }: HeaderMappingEditorProps) {
+  const [showHelpful, setShowHelpful] = useState(false);
+  const [showIgnored, setShowIgnored] = useState(false);
+
   const mappedValues = Object.values(mapping).filter(Boolean);
 
-  // Check if we have enough identity: either make+model OR description
+  // Check if we have enough identity
   const hasMakeModel = mappedValues.includes("make") && mappedValues.includes("model");
   const hasDescription = mappedValues.includes("description");
   const hasVehicleIdentity = hasMakeModel || hasDescription;
@@ -59,21 +146,35 @@ export function HeaderMappingEditor({
     onMappingChange(newMapping);
   };
 
-  const methodLabel = aiMethod === "ai"
-    ? "AI-suggested"
-    : aiMethod === "saved_profile"
-    ? "Saved profile"
-    : aiMethod === "heuristic" || aiMethod === "heuristic_fallback"
-    ? "Auto-detected"
-    : null;
+  // Split headers into groups
+  const requiredHeaders: string[] = [];
+  const helpfulHeaders: string[] = [];
+  const ignoredHeaders: string[] = [];
+
+  for (const header of headers) {
+    const group = classifyHeader(header, mapping[header]);
+    if (group === "required") requiredHeaders.push(header);
+    else if (group === "helpful") helpfulHeaders.push(header);
+    else ignoredHeaders.push(header);
+  }
+
+  const totalMapped = mappedValues.length;
+  const methodLabel =
+    aiMethod === "ai"
+      ? "AI-interpreted"
+      : aiMethod === "saved_profile"
+      ? "Saved profile"
+      : aiMethod === "heuristic" || aiMethod === "heuristic_fallback"
+      ? "Auto-detected"
+      : null;
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2">
-              We think we've mapped your columns
+            <CardTitle className="flex items-center gap-2 text-lg">
+              We&apos;ve automatically interpreted this file
               {methodLabel && (
                 <Badge variant="secondary" className="text-xs">
                   <Sparkles className="h-3 w-3 mr-1" />
@@ -81,83 +182,111 @@ export function HeaderMappingEditor({
                 </Badge>
               )}
             </CardTitle>
-            <CardDescription>
-              Confirm or adjust how your columns map to our fields. Nothing is rejected — adjust what doesn't look right.
+            <CardDescription className="mt-1">
+              Please confirm the highlighted fields before importing.
+              {totalMapped > 0 && (
+                <span className="ml-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                  {totalMapped} field{totalMapped !== 1 ? "s" : ""} mapped automatically.
+                </span>
+              )}
             </CardDescription>
           </div>
         </div>
       </CardHeader>
+
       <CardContent className="space-y-4">
-        {/* Mapping rows */}
-        <div className="space-y-2">
-          {headers.map((header) => {
-            const currentValue = mapping[header];
-            const sampleValue = sampleRow?.[header];
-
-            return (
-              <div
-                key={header}
-                className="flex items-center gap-3 py-2 px-3 rounded-md bg-muted/30"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="font-mono text-sm truncate">{header}</p>
-                  {sampleValue && (
-                    <p className="text-xs text-muted-foreground truncate">
-                      e.g. "{sampleValue}"
-                    </p>
-                  )}
-                </div>
-
-                <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-
-                <div className="w-52">
-                  <Select
-                    value={currentValue || "__skip__"}
-                    onValueChange={(v) => handleFieldChange(header, v)}
-                  >
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__skip__">
-                        <span className="text-muted-foreground">Skip</span>
-                      </SelectItem>
-                      {CANONICAL_FIELDS.map((field) => (
-                        <SelectItem key={field.value} value={field.value}>
-                          {field.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="w-5 shrink-0">
-                  {currentValue ? (
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
-                  ) : (
-                    <span className="h-4 w-4 block" />
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Soft guidance — not blocking */}
+        {/* Soft guidance — only if critical fields missing */}
         {(!hasVehicleIdentity || !hasSaleDate) && (
           <div className="flex items-start gap-2 p-3 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm">
             <Info className="h-4 w-4 mt-0.5 shrink-0" />
             <div>
-              <p className="font-medium">Tip: Map these for best results</p>
+              <p className="font-medium">Needs your confirmation</p>
               <ul className="list-disc list-inside mt-1 space-y-0.5 text-xs">
                 {!hasSaleDate && <li>Sale Date — when the vehicle was sold</li>}
                 {!hasVehicleIdentity && (
                   <li>Vehicle Description or Make + Model — to identify the vehicle</li>
                 )}
               </ul>
-              <p className="text-xs mt-1 opacity-75">You can still import without these — we won't reject your data.</p>
             </div>
           </div>
+        )}
+
+        {/* Section 1: Required for analysis */}
+        {requiredHeaders.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-foreground">
+              Required for analysis
+            </h3>
+            {requiredHeaders.map((header) => (
+              <MappingRow
+                key={header}
+                header={header}
+                currentValue={mapping[header]}
+                sampleValue={sampleRow?.[header]}
+                onChange={handleFieldChange}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Section 2: Helpful if present (collapsible) */}
+        {helpfulHeaders.length > 0 && (
+          <Collapsible open={showHelpful} onOpenChange={setShowHelpful}>
+            <CollapsibleTrigger asChild>
+              <button className="flex items-center gap-2 text-sm font-semibold text-foreground hover:text-foreground/80 transition-colors w-full text-left py-1">
+                {showHelpful ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                Helpful if present
+                <Badge variant="outline" className="text-xs ml-1">
+                  {helpfulHeaders.length}
+                </Badge>
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-2 mt-2">
+              {helpfulHeaders.map((header) => (
+                <MappingRow
+                  key={header}
+                  header={header}
+                  currentValue={mapping[header]}
+                  sampleValue={sampleRow?.[header]}
+                  onChange={handleFieldChange}
+                />
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+
+        {/* Section 3: Not used (collapsed by default) */}
+        {ignoredHeaders.length > 0 && (
+          <Collapsible open={showIgnored} onOpenChange={setShowIgnored}>
+            <CollapsibleTrigger asChild>
+              <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground/80 transition-colors w-full text-left py-1">
+                {showIgnored ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                Not used for analysis
+                <Badge variant="outline" className="text-xs ml-1">
+                  {ignoredHeaders.length}
+                </Badge>
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-2 mt-2">
+              {ignoredHeaders.map((header) => (
+                <MappingRow
+                  key={header}
+                  header={header}
+                  currentValue={mapping[header]}
+                  sampleValue={sampleRow?.[header]}
+                  onChange={handleFieldChange}
+                />
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
         )}
 
         {/* Actions */}
@@ -165,10 +294,7 @@ export function HeaderMappingEditor({
           <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          <Button
-            onClick={onConfirm}
-            disabled={isConfirming}
-          >
+          <Button onClick={onConfirm} disabled={isConfirming}>
             {isConfirming ? "Importing…" : "Confirm & Import"}
           </Button>
         </div>
