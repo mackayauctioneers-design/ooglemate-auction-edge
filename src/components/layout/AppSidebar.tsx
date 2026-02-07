@@ -13,6 +13,7 @@ import {
   Settings,
   Target,
   FileText,
+  TrendingUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -43,6 +44,7 @@ const dealerNavItems = [
   { path: '/deals', label: 'Deal Ledger', icon: FileText, authOnly: true },
   { path: '/watchlist', label: 'Watchlist', icon: Search, authOnly: true },
   { path: '/sales-upload', label: 'Sales Upload', icon: DollarSign, authOnly: true },
+  { path: '/sales-insights', label: 'Sales Insights', icon: TrendingUp, authOnly: true },
   { path: '/dealer-dashboard', label: 'My Dashboard', icon: MapPin, authOnly: true },
 ];
 

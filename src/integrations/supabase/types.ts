@@ -7702,9 +7702,11 @@ export type Database = {
       vehicle_sales_truth: {
         Row: {
           account_id: string
+          acquired_at: string | null
           body_type: string | null
           confidence: string
           created_at: string
+          days_to_clear: number | null
           drive_type: string | null
           fuel_type: string | null
           id: string
@@ -7721,9 +7723,11 @@ export type Database = {
         }
         Insert: {
           account_id: string
+          acquired_at?: string | null
           body_type?: string | null
           confidence?: string
           created_at?: string
+          days_to_clear?: number | null
           drive_type?: string | null
           fuel_type?: string | null
           id?: string
@@ -7740,9 +7744,11 @@ export type Database = {
         }
         Update: {
           account_id?: string
+          acquired_at?: string | null
           body_type?: string | null
           confidence?: string
           created_at?: string
+          days_to_clear?: number | null
           drive_type?: string | null
           fuel_type?: string | null
           id?: string
@@ -8514,6 +8520,22 @@ export type Database = {
         }
         Relationships: []
       }
+      sales_clearance_velocity: {
+        Row: {
+          account_id: string | null
+          avg_days_to_clear: number | null
+          last_sold_at: string | null
+          make: string | null
+          median_days_to_clear: number | null
+          model: string | null
+          pct_under_30: number | null
+          pct_under_60: number | null
+          pct_under_90: number | null
+          sales_count: number | null
+          variant: string | null
+        }
+        Relationships: []
+      }
       sales_fingerprints_v1: {
         Row: {
           account_id: string | null
@@ -8533,6 +8555,32 @@ export type Database = {
           price_median: number | null
           sales_count: number | null
           transmission_count: number | null
+        }
+        Relationships: []
+      }
+      sales_variation_performance: {
+        Row: {
+          account_id: string | null
+          body_type: string | null
+          fuel_type: string | null
+          make: string | null
+          median_days_to_clear: number | null
+          median_km: number | null
+          median_sale_price: number | null
+          model: string | null
+          sales_count: number | null
+          transmission: string | null
+          variant: string | null
+        }
+        Relationships: []
+      }
+      sales_volume_trends: {
+        Row: {
+          account_id: string | null
+          make: string | null
+          model: string | null
+          month: string | null
+          sales_count: number | null
         }
         Relationships: []
       }

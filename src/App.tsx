@@ -55,6 +55,7 @@ import DaveInboxPage from "./pages/carbitrage/DaveInboxPage";
 import DealerUrlBankPage from "./pages/carbitrage/DealerUrlBankPage";
 import GrokMissionPage from "./pages/carbitrage/GrokMissionPage";
 import SalesUploadPage from "./pages/carbitrage/SalesUploadPage";
+import SalesInsightsPage from "./pages/SalesInsightsPage";
 import MatchesInboxPage from "./pages/MatchesInboxPage";
 import DealsPage from "./pages/DealsPage";
 import DealDetailPage from "./pages/DealDetailPage";
@@ -113,6 +114,7 @@ const App = () => (
               <Route path="/dealer-urls" element={<DealerUrlBankPage />} />
               <Route path="/grok-missions" element={<GrokMissionPage />} />
               <Route path="/sales-upload" element={<SalesUploadPage />} />
+              <Route path="/sales-insights" element={<SalesInsightsPage />} />
               <Route path="/matches-inbox" element={<MatchesInboxPage />} />
               <Route path="/deals" element={<DealsPage />} />
               <Route path="/deals/:dealId" element={<DealDetailPage />} />
