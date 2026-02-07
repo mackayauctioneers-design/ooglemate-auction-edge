@@ -21,6 +21,11 @@ const CANONICAL_FIELDS = [
   { name: "notes", description: "Any additional notes. Optional." },
   { name: "location", description: "Location/state/region. Optional." },
   { name: "dealer_name", description: "Dealer or yard name. Optional." },
+  { name: "description", description: "Combined vehicle description containing make, model, year, variant in a single field (e.g. '2021 Toyota Hilux SR5'). When present, the system will extract individual fields from it." },
+  { name: "rego", description: "Registration / plate number. Optional." },
+  { name: "vin", description: "Vehicle identification number (VIN / chassis). Optional." },
+  { name: "colour", description: "Exterior colour. Optional." },
+  { name: "stock_no", description: "Stock number / dealer reference. Optional." },
 ];
 
 serve(async (req) => {
@@ -71,7 +76,13 @@ Rules:
 - "Odo", "Odometer", "KMs", "Kilometres", "Mileage" → "km"
 - "Year", "Model Year", "Yr" → "year"
 - "Trans", "Gearbox" → "transmission"
-- Headers like "ID", "Stock No", "Reference" should map to null (not needed)
+- "Stock No", "Ref", "Stock #" → "stock_no"
+- "Rego", "Registration", "Plate" → "rego"
+- "VIN", "Chassis" → "vin"
+- "Colour", "Color", "Ext Colour" → "colour"
+- CRITICAL: If a column contains combined vehicle info (e.g. "Description", "Vehicle", "Vehicle Description", "Car", "Unit"), map it to "description"
+- Look at sample data values: if a column contains strings like "2021 Toyota Hilux SR5" or "Ford Ranger XLT", that is a "description" field
+- When a "description" field is present, individual make/model/year fields may be absent — that is OK
 - Return ONLY valid JSON object mapping source_header → canonical_field_or_null`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -129,7 +140,7 @@ Rules:
 function heuristicMap(headers: string[]): Record<string, string | null> {
   const mapping: Record<string, string | null> = {};
   const patterns: [RegExp, string][] = [
-    [/^(sale[_\s]?date|sold[_\s]?(date|at|on)?|date[_\s]?sold)$/i, "sold_at"],
+    [/^(sale[_\s]?date|sold[_\s]?(date|at|on)?|date[_\s]?sold|settlement[_\s]?date)$/i, "sold_at"],
     [/^(acqu|buy[_\s]?date|purchase[_\s]?date|stock[_\s]?date|date[_\s]?(bought|acquired|purchased))$/i, "acquired_at"],
     [/^(make|manufacturer|brand)$/i, "make"],
     [/^(model|model[_\s]?name)$/i, "model"],
@@ -144,6 +155,11 @@ function heuristicMap(headers: string[]): Record<string, string | null> {
     [/^(notes?|comments?|remarks?)$/i, "notes"],
     [/^(location|state|region|city|suburb)$/i, "location"],
     [/^(dealer|dealer[_\s]?name|yard|business)$/i, "dealer_name"],
+    [/^(desc|description|vehicle|vehicle[_\s]?desc|vehicle[_\s]?description|car|unit)$/i, "description"],
+    [/^(rego|registration|plate|reg[_\s]?no)$/i, "rego"],
+    [/^(vin|chassis|chassis[_\s]?no)$/i, "vin"],
+    [/^(colour|color|ext[_\s]?colou?r)$/i, "colour"],
+    [/^(stock[_\s]?no|stock[_\s]?#|ref|reference|stock)$/i, "stock_no"],
   ];
 
   for (const header of headers) {
