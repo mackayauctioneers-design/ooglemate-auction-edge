@@ -81,7 +81,6 @@ function parseXLSX(buffer: ArrayBuffer): ParsedFile {
   return { headers, rows, detectedFormat: "Excel" };
 }
 
-/** Read text from a PDF using the browser's text extraction (basic) */
 async function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -100,12 +99,26 @@ async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
   });
 }
 
+async function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      // Strip the data:...;base64, prefix
+      const base64 = dataUrl.split(",")[1] || "";
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function useFileParser() {
   const pdfExtract = useMutation({
     mutationFn: async (file: File) => {
-      const text = await readFileAsText(file);
+      const base64 = await readFileAsBase64(file);
       const { data, error } = await supabase.functions.invoke("sales-document-extract", {
-        body: { text_content: text, filename: file.name },
+        body: { pdf_base64: base64, filename: file.name },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
@@ -123,10 +136,10 @@ export function useFileParser() {
       }
 
       if (ext === "pdf") {
-        // For PDFs, send raw text to AI for extraction
-        const text = await readFileAsText(file);
+        // Send PDF as base64 for AI multimodal extraction
+        const base64 = await readFileAsBase64(file);
         const { data, error } = await supabase.functions.invoke("sales-document-extract", {
-          body: { text_content: text, filename: file.name },
+          body: { pdf_base64: base64, filename: file.name },
         });
         if (error) throw error;
         if (data.error) throw new Error(data.error);
