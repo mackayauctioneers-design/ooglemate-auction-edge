@@ -358,7 +358,7 @@ export default function SalesUploadPage() {
               Sales Upload
             </h1>
             <p className="text-muted-foreground">
-              Import sales from any system — we interpret, never reject
+              Upload your sales file — we handle the rest
             </p>
           </div>
           <div className="flex gap-2">
