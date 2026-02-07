@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import type { ClearanceVelocity } from "@/hooks/useSalesInsights";
 
 interface Props {
@@ -10,21 +13,40 @@ interface Props {
   isLoading: boolean;
 }
 
+const FAST_THRESHOLD = 45; // days — anything above this is "longer clearance"
+
 function speedBadge(days: number | null) {
   if (days === null) return <span className="text-muted-foreground">—</span>;
   if (days <= 21)
-    return <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">{days}d</Badge>;
+    return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">{days}d — clears quickly</Badge>;
   if (days <= 45)
-    return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">{days}d</Badge>;
-  return <Badge className="bg-red-500/10 text-red-600 border-red-500/20">{days}d</Badge>;
+    return <Badge variant="outline" className="bg-muted text-muted-foreground border-border">{days}d — clears consistently</Badge>;
+  return <Badge variant="outline" className="bg-muted text-muted-foreground border-border">{days}d — longer clearance observed</Badge>;
 }
 
 export function ClearanceVelocityTable({ data, isLoading }: Props) {
+  const [showSlower, setShowSlower] = useState(false);
+
+  // Best-first ordering: sorted by median_days_to_clear ascending (fastest first)
+  const sorted = [...data].sort(
+    (a, b) => (a.median_days_to_clear ?? 999) - (b.median_days_to_clear ?? 999)
+  );
+
+  const fastRows = sorted.filter(
+    (r) => r.median_days_to_clear !== null && r.median_days_to_clear <= FAST_THRESHOLD
+  );
+  const slowerRows = sorted.filter(
+    (r) => r.median_days_to_clear === null || r.median_days_to_clear > FAST_THRESHOLD
+  );
+
+  const visibleRows = showSlower ? [...fastRows, ...slowerRows] : fastRows;
+  const totalSales = data.reduce((sum, r) => sum + r.sales_count, 0);
+
   if (isLoading) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>What Clears the Fastest</CardTitle>
+          <CardTitle>What Clears Consistently</CardTitle>
         </CardHeader>
         <CardContent className="h-48 flex items-center justify-center">
           <p className="text-muted-foreground">Loading…</p>
@@ -37,10 +59,10 @@ export function ClearanceVelocityTable({ data, isLoading }: Props) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>What Clears the Fastest</CardTitle>
+          <CardTitle>What Clears Consistently</CardTitle>
         </CardHeader>
         <CardContent className="py-12 text-center text-muted-foreground">
-          Clearance velocity will appear once sales include acquisition and sale dates.
+          Clearance patterns will appear once sales include acquisition and sale dates.
         </CardContent>
       </Card>
     );
@@ -49,12 +71,12 @@ export function ClearanceVelocityTable({ data, isLoading }: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>What Clears the Fastest</CardTitle>
+        <CardTitle>What Clears Consistently</CardTitle>
         <CardDescription>
-          These vehicles typically clear quickly for you.
+          Based on {totalSales} completed sales. Fastest-clearing vehicles shown first.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
         <Table>
           <TableHeader>
             <TableRow>
@@ -66,7 +88,7 @@ export function ClearanceVelocityTable({ data, isLoading }: Props) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.map((row, i) => (
+            {visibleRows.map((row, i) => (
               <TableRow key={i}>
                 <TableCell className="font-medium">
                   {row.make} {row.model}
@@ -88,8 +110,28 @@ export function ClearanceVelocityTable({ data, isLoading }: Props) {
                 </TableCell>
               </TableRow>
             ))}
+            {!visibleRows.length && (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                  No vehicles with clearance data in this range.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
+
+        {slowerRows.length > 0 && (
+          <div className="flex items-center gap-2 pt-2 border-t border-border">
+            <Switch
+              id="show-slower"
+              checked={showSlower}
+              onCheckedChange={setShowSlower}
+            />
+            <Label htmlFor="show-slower" className="text-sm text-muted-foreground cursor-pointer">
+              Show vehicles with longer clearance times ({slowerRows.length})
+            </Label>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
