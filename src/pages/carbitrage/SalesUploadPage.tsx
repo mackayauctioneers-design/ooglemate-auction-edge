@@ -223,6 +223,26 @@ export default function SalesUploadPage() {
       const { error: stageError } = await supabase.from("sales_log_stage").insert(stageRows);
       if (stageError) throw stageError;
 
+      // Also insert into vehicle_sales_truth for insights
+      const truthRows = rows.map((r: any) => ({
+        account_id: selectedAccountId,
+        sold_at: r.raw_data.sale_date,
+        make: r.raw_data.make,
+        model: r.raw_data.model,
+        variant: r.raw_data.variant || null,
+        year: r.raw_data.year ? parseInt(r.raw_data.year) : null,
+        km: r.raw_data.km ? parseInt(r.raw_data.km) : null,
+        sale_price: r.raw_data.sale_price ? parseFloat(r.raw_data.sale_price) : null,
+        source: "dealer",
+        confidence: "high",
+        notes: r.raw_data.notes || null,
+      }));
+
+      const { error: truthError } = await supabase.from("vehicle_sales_truth").insert(truthRows);
+      if (truthError) {
+        console.error("Truth insert error (non-blocking):", truthError);
+      }
+
       // Update batch
       await supabase
         .from("upload_batches")
@@ -237,7 +257,8 @@ export default function SalesUploadPage() {
     },
     onSuccess: (count) => {
       queryClient.invalidateQueries({ queryKey: ["upload-batches"] });
-      toast.success(`Promoted ${count} records to staging`);
+      toast.success(`Promoted ${count} records. Redirecting to insights…`);
+      setTimeout(() => navigate("/sales-insights"), 1500);
     },
     onError: (err: any) => {
       toast.error(err.message);
