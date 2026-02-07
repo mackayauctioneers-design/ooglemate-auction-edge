@@ -1,0 +1,35 @@
+# Memory: features/workflow/target-conduit-system-v1
+Updated: now
+
+The Target Conduit system bridges sales uploads to daily operational work.
+
+FLOW:
+Sales Upload → build-sales-targets (edge fn) → sales_target_candidates → generate-daily-targets (edge fn) → josh_daily_targets
+
+TABLES:
+- sales_target_candidates: Vehicle shapes with proven outcomes (make/model/variant + metrics). Scored 0-100.
+  - Statuses: candidate, active, paused, retired
+  - Unique on (account_id, make, model, variant, transmission, fuel_type, body_type, drive_type) via COALESCE index
+- josh_daily_targets: Daily assignment table. Unique per (account_id, target_candidate_id, target_date).
+
+SCORING (v1):
+- Repeatability (0-40): 3 sales=15, 5=25, 10+=40
+- Velocity (0-25): median_days_to_clear ≤21d=25, ≤45d=15, else 5
+- Profitability (0-20): median_profit > 0 = 20, null = 0
+- Consistency (0-15): low DTC variance=15, medium=8
+
+CANDIDATE GATE: sales_count ≥ 3, make+model required.
+
+DAILY SELECTION: Top candidates by score, avoids repeating within 7 days.
+
+INTEGRATION: Auto-runs after sales upload completes (SalesUploadPage.tsx onSuccess).
+
+ROUTES:
+- /operator/targets → TargetsPoolPage (operator mode, rebuild/status controls)
+- /targets → JoshDailyTargetsPage (Josh daily work view)
+
+EDGE FUNCTIONS:
+- build-sales-targets: POST { account_id } → builds/refreshes candidates
+- generate-daily-targets: POST { account_id, n } → creates daily targets
+
+TRUTH PRINCIPLE: Targets derived solely from proven sales outcomes, never market data.

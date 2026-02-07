@@ -385,3 +385,9 @@ verify_jwt = false
 
 [functions.autotrader-debug-dataset]
 verify_jwt = false
+
+[functions.build-sales-targets]
+verify_jwt = false
+
+[functions.generate-daily-targets]
+verify_jwt = false

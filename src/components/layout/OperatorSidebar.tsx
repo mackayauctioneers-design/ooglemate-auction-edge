@@ -93,6 +93,7 @@ const operatorSections: NavSection[] = [
       { path: '/operator/benchmark-gaps', label: 'Benchmark Gaps', icon: Target },
       { path: '/operator/benchmark-watchlist', label: 'Benchmark Watchlist', icon: Target },
       { path: '/operator/trigger-qa', label: 'Trigger QA', icon: FlaskConical },
+      { path: '/operator/targets', label: 'Targets Pool', icon: Crosshair },
     ],
   },
   {

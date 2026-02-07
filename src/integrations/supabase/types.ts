@@ -3232,6 +3232,57 @@ export type Database = {
           },
         ]
       }
+      josh_daily_targets: {
+        Row: {
+          account_id: string
+          assigned_to: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          status: string
+          target_candidate_id: string
+          target_date: string
+        }
+        Insert: {
+          account_id: string
+          assigned_to?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          target_candidate_id: string
+          target_date?: string
+        }
+        Update: {
+          account_id?: string
+          assigned_to?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          target_candidate_id?: string
+          target_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "josh_daily_targets_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "josh_daily_targets_target_candidate_id_fkey"
+            columns: ["target_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "sales_target_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       listing_classify_queue: {
         Row: {
           error: string | null
@@ -5504,6 +5555,92 @@ export type Database = {
           year?: number | null
         }
         Relationships: []
+      }
+      sales_target_candidates: {
+        Row: {
+          account_id: string
+          avg_days_to_clear: number | null
+          body_type: string | null
+          created_at: string
+          drive_type: string | null
+          fuel_type: string | null
+          id: string
+          last_sold_at: string | null
+          make: string
+          median_days_to_clear: number | null
+          median_km: number | null
+          median_profit: number | null
+          median_sale_price: number | null
+          model: string
+          pct_under_30: number | null
+          pct_under_60: number | null
+          sales_count: number
+          score_reasons: Json
+          status: string
+          target_score: number
+          transmission: string | null
+          updated_at: string
+          variant: string | null
+        }
+        Insert: {
+          account_id: string
+          avg_days_to_clear?: number | null
+          body_type?: string | null
+          created_at?: string
+          drive_type?: string | null
+          fuel_type?: string | null
+          id?: string
+          last_sold_at?: string | null
+          make: string
+          median_days_to_clear?: number | null
+          median_km?: number | null
+          median_profit?: number | null
+          median_sale_price?: number | null
+          model: string
+          pct_under_30?: number | null
+          pct_under_60?: number | null
+          sales_count?: number
+          score_reasons?: Json
+          status?: string
+          target_score?: number
+          transmission?: string | null
+          updated_at?: string
+          variant?: string | null
+        }
+        Update: {
+          account_id?: string
+          avg_days_to_clear?: number | null
+          body_type?: string | null
+          created_at?: string
+          drive_type?: string | null
+          fuel_type?: string | null
+          id?: string
+          last_sold_at?: string | null
+          make?: string
+          median_days_to_clear?: number | null
+          median_km?: number | null
+          median_profit?: number | null
+          median_sale_price?: number | null
+          model?: string
+          pct_under_30?: number | null
+          pct_under_60?: number | null
+          sales_count?: number
+          score_reasons?: Json
+          status?: string
+          target_score?: number
+          transmission?: string | null
+          updated_at?: string
+          variant?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_target_candidates_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sales_triggers: {
         Row: {

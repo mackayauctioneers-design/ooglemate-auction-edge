@@ -282,19 +282,38 @@ export default function SalesUploadPage() {
 
       return { imported: truthRows.length, skipped: skippedRows.length };
     },
-    onSuccess: ({ imported, skipped }) => {
+    onSuccess: async ({ imported, skipped }) => {
       queryClient.invalidateQueries({ queryKey: ["upload-batches"] });
       resetState();
 
       if (skipped > 0) {
         toast.warning(
-          `Imported ${imported} records (${skipped} rows skipped — no identifiable data). Redirecting…`
+          `Imported ${imported} records (${skipped} rows skipped — no identifiable data).`
         );
       } else {
-        toast.success(
-          `Imported ${imported} records. Here's what your history tells you.`
-        );
+        toast.success(`Imported ${imported} records. Building targets…`);
       }
+
+      // Auto-run Target Conduit: build candidates then generate daily targets
+      try {
+        toast.info("Analysing sales truth → building target candidates…");
+        const { error: buildErr } = await supabase.functions.invoke(
+          "build-sales-targets",
+          { body: { account_id: selectedAccountId } }
+        );
+        if (buildErr) console.error("build-sales-targets error:", buildErr);
+
+        const { error: genErr } = await supabase.functions.invoke(
+          "generate-daily-targets",
+          { body: { account_id: selectedAccountId, n: 15 } }
+        );
+        if (genErr) console.error("generate-daily-targets error:", genErr);
+
+        toast.success("Targets generated — redirecting to insights.");
+      } catch (e) {
+        console.error("Target conduit error:", e);
+      }
+
       setTimeout(() => navigate("/sales-insights"), 1500);
     },
     onError: (err: any) => {
