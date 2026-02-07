@@ -55,9 +55,9 @@ export default function HelpPage() {
         <div className="flex items-center gap-3">
           <KitingWingMarkVideo size={48} />
           <div>
-            <h1 className="text-2xl font-bold text-foreground">How to Use OogleMate</h1>
+            <h1 className="text-2xl font-bold text-foreground">How to Use Carbitrage</h1>
             <p className="text-muted-foreground mt-1">
-              Your auction intelligence system for finding the best wholesale opportunities
+              Your auction intelligence system powered by Automotive Truth
             </p>
           </div>
         </div>
@@ -160,7 +160,7 @@ export default function HelpPage() {
             <div className="text-sm text-muted-foreground">
               <p>When a lot changes from WATCH → BUY, an alert is sent/queued:</p>
               <div className="mt-2 p-3 rounded bg-background border border-border font-mono text-xs">
-                OogleMate BUY NOW: 2021 Toyota Hilux SR5. Passed-in: 3. Est margin: $3,500. Link: [listing_url]
+                Carbitrage BUY NOW: 2021 Toyota Hilux SR5. Passed-in: 3. Est margin: $3,500. Link: [listing_url]
               </div>
             </div>
             <p className="text-xs text-muted-foreground">

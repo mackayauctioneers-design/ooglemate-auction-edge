@@ -98,12 +98,12 @@ export function AppSidebar() {
         )}>
           <div className={cn("flex items-center gap-3", collapsed && "gap-0")}>
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground font-bold text-lg">
-              O
+              C
             </div>
             {!collapsed && (
               <div>
-                <h1 className="font-semibold text-foreground">OogleMate</h1>
-                <p className="text-xs text-muted-foreground">Auction Edge</p>
+                <h1 className="font-semibold text-foreground">Carbitrage</h1>
+                <p className="text-xs text-muted-foreground">Automotive Truth</p>
               </div>
             )}
           </div>
