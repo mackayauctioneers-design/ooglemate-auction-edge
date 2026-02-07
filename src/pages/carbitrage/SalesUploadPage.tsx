@@ -169,7 +169,7 @@ export default function SalesUploadPage() {
           uploaded_by: "josh",
           row_count: parsedRows.length,
           raw_headers: parsedHeaders,
-          status: "importing",
+          status: "pending",
         } as any)
         .select()
         .single();
@@ -260,7 +260,7 @@ export default function SalesUploadPage() {
       await supabase
         .from("upload_batches")
         .update({
-          status: "imported",
+          status: "promoted",
           error_count: skippedRows.length,
           error_report: skippedRows.length ? skippedRows : null,
           promoted_at: new Date().toISOString(),
