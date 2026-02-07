@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-const BASE_TITLE = 'OogleMate';
+const BASE_TITLE = 'Carbitrage';
 
 export function useDocumentTitle(unreadCount: number) {
   useEffect(() => {

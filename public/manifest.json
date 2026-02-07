@@ -1,6 +1,6 @@
 {
-  "name": "OogleMate",
-  "short_name": "OogleMate",
+  "name": "Carbitrage",
+  "short_name": "Carbitrage",
   "description": "Vehicle auction opportunity tracker",
   "start_url": "/",
   "display": "standalone",
