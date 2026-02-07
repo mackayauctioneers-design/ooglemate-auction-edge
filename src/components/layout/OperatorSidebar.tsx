@@ -15,10 +15,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Home,
-  LayoutDashboard,
   Upload,
   Target,
-  FlaskConical
+  FlaskConical,
+  Bell,
+  ClipboardList,
+  Crosshair,
+  Calendar,
+  Search,
+  Store,
+  DollarSign,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -60,6 +66,23 @@ const operatorSections: NavSection[] = [
       { path: '/operator/dealer-urls', label: 'Dealer URL Intake', icon: FileStack },
       { path: '/operator/traps', label: 'Traps Registry', icon: Database },
       { path: '/operator/preflight', label: 'Preflight Queue', icon: Radar },
+      { path: '/va/tasks', label: 'VA Task Queue', icon: ClipboardList },
+    ],
+  },
+  {
+    title: 'Sourcing & Discovery',
+    items: [
+      { path: '/alerts', label: 'Alerts Inbox', icon: Bell },
+      { path: '/hunts', label: 'Kiting Mode', icon: Target },
+      { path: '/josh', label: 'Josh Inbox', icon: ClipboardList },
+      { path: '/dave', label: 'Dave Inbox', icon: Bell },
+      { path: '/grok-missions', label: 'Grok Missions', icon: Crosshair },
+      { path: '/dealer-urls', label: 'URL Bank', icon: Store },
+      { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
+      { path: '/search-lots', label: 'Search Lots', icon: Search },
+      { path: '/trap-inventory', label: 'Trap Inventory', icon: Store },
+      { path: '/matches', label: 'Matches (Legacy)', icon: Crosshair },
+      { path: '/valuation', label: 'Valuation', icon: DollarSign },
     ],
   },
   {
