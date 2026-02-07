@@ -6303,8 +6303,10 @@ export type Database = {
           error_report: Json | null
           filename: string | null
           id: string
+          mapping_profile_id: string | null
           promoted_at: string | null
           promoted_by: string | null
+          raw_headers: string[] | null
           row_count: number | null
           status: string
           upload_type: string
@@ -6317,8 +6319,10 @@ export type Database = {
           error_report?: Json | null
           filename?: string | null
           id?: string
+          mapping_profile_id?: string | null
           promoted_at?: string | null
           promoted_by?: string | null
+          raw_headers?: string[] | null
           row_count?: number | null
           status?: string
           upload_type: string
@@ -6331,8 +6335,10 @@ export type Database = {
           error_report?: Json | null
           filename?: string | null
           id?: string
+          mapping_profile_id?: string | null
           promoted_at?: string | null
           promoted_by?: string | null
+          raw_headers?: string[] | null
           row_count?: number | null
           status?: string
           upload_type?: string
@@ -6341,6 +6347,51 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "upload_batches_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "upload_batches_mapping_profile_id_fkey"
+            columns: ["mapping_profile_id"]
+            isOneToOne: false
+            referencedRelation: "upload_mapping_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      upload_mapping_profiles: {
+        Row: {
+          account_id: string
+          created_at: string
+          header_map: Json
+          id: string
+          profile_name: string
+          source_headers: string[]
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          header_map?: Json
+          id?: string
+          profile_name: string
+          source_headers?: string[]
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          header_map?: Json
+          id?: string
+          profile_name?: string
+          source_headers?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "upload_mapping_profiles_account_id_fkey"
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
