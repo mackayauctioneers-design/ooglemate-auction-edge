@@ -2,12 +2,10 @@ project_id = "xznchxsbuwngfmwvsvhq"
 
 [functions.benchmark-watchlist-slack]
 verify_jwt = false
-# Daily cron at 7:00am AEST (21:00 UTC previous day)
 schedule = "0 21 * * *"
 
 [functions.buy-window-slack]
 verify_jwt = false
-# Daily cron at 7:15am AEST (21:15 UTC previous day)
 schedule = "15 21 * * *"
 
 [functions.google-sheets]
@@ -54,7 +52,6 @@ verify_jwt = false
 
 [functions.geo-liquidity-pipeline]
 verify_jwt = false
-# Daily cron at 9:15am AEST (23:15 UTC) - runs after fingerprint-materialize
 schedule = "15 23 * * *"
 
 [functions.classifieds-ingest]
@@ -62,12 +59,10 @@ verify_jwt = false
 
 [functions.dealer-site-crawl]
 verify_jwt = false
-# Daily cron at 7:00am AEST (21:00 UTC previous day)
 schedule = "0 21 * * *"
 
 [functions.fingerprint-materialize]
 verify_jwt = false
-# Daily cron at 8:15am AEST (22:15 UTC) - runs after dealer-site-crawl
 schedule = "15 22 * * *"
 
 [functions.enqueue-dealer-crawl]
@@ -75,12 +70,10 @@ verify_jwt = false
 
 [functions.process-dealer-crawl-jobs]
 verify_jwt = false
-# Process job queue every 5 minutes
 schedule = "*/5 * * * *"
 
 [functions.manheim-crawl]
 verify_jwt = false
-# Daily cron at 10:15am AEST (00:15 UTC) - runs after geo-pipeline
 schedule = "15 0 * * *"
 
 [functions.manheim-ingest]
@@ -88,17 +81,14 @@ verify_jwt = false
 
 [functions.manheim-stub-ingest]
 verify_jwt = false
-# Hourly cron - national stub anchor ingestion
 schedule = "30 * * * *"
 
 [functions.manheim-stub-match]
 verify_jwt = false
-# Every 15 minutes - match stubs to hunts and queue for deep-fetch
 schedule = "*/15 * * * *"
 
 [functions.manheim-deep-fetch]
 verify_jwt = false
-# Every 10 minutes - enrich matched stubs with detail page data
 schedule = "*/10 * * * *"
 
 [functions.gumtree-cookie-refresh-apify]
@@ -110,17 +100,14 @@ verify_jwt = false
 
 [functions.feeding-mode-scheduled]
 verify_jwt = false
-# Daily cron at 10:45am AEST (00:45 UTC)
 schedule = "45 0 * * *"
 
 [functions.trap-health-alerts]
 verify_jwt = false
-# Daily cron at 8:00am AEST (22:00 UTC) - runs after dealer crawl
 schedule = "0 22 * * *"
 
 [functions.trap-preflight]
 verify_jwt = false
-# Every 15 minutes - drains pending preflight queue
 schedule = "*/15 * * * *"
 
 [functions.trap-validation-daily]
@@ -128,17 +115,14 @@ verify_jwt = false
 
 [functions.trap-deal-alerts]
 verify_jwt = false
-# Daily cron at 6:30am AEST (20:30 UTC) - enqueue validation jobs before crawl
 schedule = "30 20 * * *"
 
 [functions.f3-crawl]
 verify_jwt = false
-# Daily cron at 06:45am AEST (20:45 UTC previous day) - regional auction presence early
 schedule = "45 20 * * *"
 
 [functions.valley-crawl]
 verify_jwt = false
-# Daily cron at 06:50am AEST (20:50 UTC previous day) - regional auction presence
 schedule = "50 20 * * *"
 
 [functions.nsw-regional-ingest]
@@ -146,7 +130,6 @@ verify_jwt = false
 
 [functions.refresh-watch-statuses]
 verify_jwt = false
-# Daily cron at 08:30am AEST (22:30 UTC) - runs after fingerprint-materialize to update watch states
 schedule = "30 22 * * *"
 
 [functions.va-auction-upload]
@@ -163,7 +146,6 @@ verify_jwt = false
 
 [functions.auction-wrapper-cron]
 verify_jwt = false
-# Daily cron at 7:40am AEST (21:40 UTC) - crawl all enabled auction sources safely
 schedule = "40 21 * * *"
 
 [functions.auction-run-now]
@@ -180,37 +162,30 @@ verify_jwt = false
 
 [functions.auction-schedule-dispatch]
 verify_jwt = false
-# Every 5 minutes - dispatch scheduled auction sources
 schedule = "*/5 * * * *"
 
 [functions.va-task-spawn-cron]
 verify_jwt = false
-# Daily cron at 6:50am AEST (20:50 UTC) - spawn VA tasks before Slack ping
 schedule = "50 20 * * *"
 
 [functions.va-task-queue-slack]
 verify_jwt = false
-# Daily cron at 7:00am AEST (21:00 UTC) - VA task queue Slack ping
 schedule = "0 21 * * *"
 
 [functions.sync-sales-normalised]
 verify_jwt = false
-# Daily cron at 6:45am AEST (20:45 UTC) - sync sales before Bob/UI need them
 schedule = "45 20 * * *"
 
 [functions.sales-sync-health-slack]
 verify_jwt = false
-# Daily cron at 6:50am AEST (20:50 UTC) - alert if sales sync is stale
 schedule = "50 20 * * *"
 
 [functions.trigger-backfill-nightly]
 verify_jwt = false
-# Daily at 17:00 UTC - recompute proven exits + evaluate stale listings
 schedule = "0 17 * * *"
 
 [functions.gumtree-cookie-refresh]
 verify_jwt = false
-# Every 6 hours - refresh Gumtree session cookies for JSON API
 schedule = "0 */6 * * *"
 
 [functions.gumtree-ingest]
@@ -218,12 +193,10 @@ verify_jwt = false
 
 [functions.retail-ingest-cron]
 verify_jwt = false
-# Every 30 minutes during AU business hours (21:00-10:00 UTC = 7am-8pm AEST)
 schedule = "0,30 21,22,23,0,1,2,3,4,5,6,7,8,9,10 * * *"
 
 [functions.bulk-seed-ingest]
 verify_jwt = false
-# Every 5 minutes until cursor status=done
 schedule = "*/5 * * * *"
 
 [functions.autotrader-ingest]
@@ -231,22 +204,18 @@ verify_jwt = false
 
 [functions.autotrader-seed]
 verify_jwt = false
-# Every 5 minutes until autotrader cursor status=done - ENQUEUES runs only
 schedule = "*/5 * * * *"
 
 [functions.autotrader-fetch]
 verify_jwt = false
-# Every 2 minutes - drains apify_runs_queue, fetches completed datasets
 schedule = "*/2 * * * *"
 
 [functions.autotrader-ingest-cron]
 verify_jwt = false
-# Every 30 minutes during AU business hours (after seed complete) - maintenance
 schedule = "0,30 21,22,23,0,1,2,3,4,5,6,7,8,9,10 * * *"
 
 [functions.autotrader-api-cron]
 verify_jwt = false
-# Every 5 minutes - direct API ingestion, round-robin through cursors
 schedule = "*/5 * * * *"
 
 [functions.autotrader-api-ingest]
@@ -254,7 +223,6 @@ verify_jwt = false
 
 [functions.autotrader-stale-sweep]
 verify_jwt = false
-# Daily at 02:00 AEST (16:00 UTC) - mark unseen listings as delisted
 schedule = "0 16 * * *"
 
 [functions.run-hunt-scan]
@@ -262,7 +230,6 @@ verify_jwt = false
 
 [functions.hunt-scan-cron]
 verify_jwt = false
-# Every 15 minutes - process due hunt scans
 schedule = "*/15 * * * *"
 
 [functions.pickles-outward-crawl]
@@ -276,7 +243,6 @@ verify_jwt = false
 
 [functions.dealer-outbound-crawl]
 verify_jwt = false
-# Daily cron at 11:00am AEST (01:00 UTC) - crawl dealer sites after retail ingest
 schedule = "0 1 * * *"
 
 [functions.pickles-api-probe]
@@ -296,7 +262,6 @@ verify_jwt = false
 
 [functions.retail-heat-pipeline]
 verify_jwt = false
-# Daily at 3:00am AEST (17:00 UTC previous day) - disappearance + heat rollup
 schedule = "0 17 * * *"
 
 [functions.submit-dealer-urls]
@@ -313,17 +278,14 @@ verify_jwt = false
 
 [functions.pickles-stub-ingest]
 verify_jwt = false
-# Hourly cron - ingest stub anchors from NSW list pages
 schedule = "0 * * * *"
 
 [functions.pickles-stub-match]
 verify_jwt = false
-# Every 15 minutes - match stubs to hunts and trigger deep-fetch
 schedule = "*/15 * * * *"
 
 [functions.pickles-deep-fetch]
 verify_jwt = false
-# Every 10 minutes - enrich matched stubs with detail page data
 schedule = "*/10 * * * *"
 
 [functions.grays-stub-ingest-webhook]
@@ -334,7 +296,6 @@ verify_jwt = false
 
 [functions.grays-stub-match]
 verify_jwt = false
-# Every 15 minutes - match stubs to hunts and queue for deep-fetch
 schedule = "*/15 * * * *"
 
 [functions.slattery-stub-ingest-webhook]
@@ -345,7 +306,6 @@ verify_jwt = false
 
 [functions.slattery-stub-match]
 verify_jwt = false
-# Every 15 minutes - match stubs to hunts and queue for deep-fetch
 schedule = "*/15 * * * *"
 
 [functions.seed-pickles-queue]
@@ -361,4 +321,67 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.fingerprint-match-run]
+verify_jwt = false
+
+[functions.sales-header-mapper]
+verify_jwt = false
+
+[functions.sales-document-extract]
+verify_jwt = false
+
+[functions.alert-notifier]
+verify_jwt = false
+
+[functions.asp-auction-crawl]
+verify_jwt = false
+
+[functions.bob-site-tools]
+verify_jwt = false
+
+[functions.dealer-spec-matching-cron]
+verify_jwt = false
+
+[functions.dealer-match-alerts-slack]
+verify_jwt = false
+
+[functions.drive-ingest]
+verify_jwt = false
+
+[functions.enrich-listing]
+verify_jwt = false
+
+[functions.grays-deep-fetch]
+verify_jwt = false
+
+[functions.grays-stub-ingest]
+verify_jwt = false
+
+[functions.outward-scrape-worker]
+verify_jwt = false
+
+[functions.bidsonline-crawl]
+verify_jwt = false
+
+[functions.snap-id-process]
+verify_jwt = false
+
+[functions.send-buy-window-to-slack]
+verify_jwt = false
+
+[functions.toyota-dealer-trap-mapper]
+verify_jwt = false
+
+[functions.toyota-portal-ingest]
+verify_jwt = false
+
+[functions.toyota-used-portal-crawl]
+verify_jwt = false
+
+[functions.watch-scan]
+verify_jwt = false
+
+[functions.vma-search-harvest]
+verify_jwt = false
+
+[functions.autotrader-debug-dataset]
 verify_jwt = false

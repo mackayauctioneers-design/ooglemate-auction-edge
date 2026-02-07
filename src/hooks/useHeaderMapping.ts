@@ -19,10 +19,10 @@ export interface MappingProfile {
 const CANONICAL_FIELDS = [
   { value: "sold_at", label: "Sale Date", required: true },
   { value: "acquired_at", label: "Acquired Date", required: false },
-  { value: "make", label: "Make", required: true },
-  { value: "model", label: "Model", required: true },
+  { value: "make", label: "Make", required: false },
+  { value: "model", label: "Model", required: false },
   { value: "variant", label: "Variant", required: false },
-  { value: "year", label: "Year", required: true },
+  { value: "year", label: "Year", required: false },
   { value: "km", label: "Kilometres", required: false },
   { value: "sale_price", label: "Sale Price", required: false },
   { value: "buy_price", label: "Buy Price", required: false },
@@ -32,6 +32,11 @@ const CANONICAL_FIELDS = [
   { value: "notes", label: "Notes", required: false },
   { value: "location", label: "Location", required: false },
   { value: "dealer_name", label: "Dealer Name", required: false },
+  { value: "description", label: "Vehicle Description", required: false },
+  { value: "rego", label: "Rego / Plate", required: false },
+  { value: "vin", label: "VIN / Chassis", required: false },
+  { value: "colour", label: "Colour", required: false },
+  { value: "stock_no", label: "Stock No", required: false },
 ] as const;
 
 export { CANONICAL_FIELDS };

@@ -1,15 +1,25 @@
 import { useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload } from "lucide-react";
+import { Upload, FileSpreadsheet, FileText } from "lucide-react";
 
 interface FileDropZoneProps {
   onFileSelected: (file: File) => void;
   isProcessing: boolean;
 }
 
+const ACCEPTED_TYPES = ".csv,.xlsx,.xls,.pdf,.tsv,.txt";
+
+function getFileIcon(filename: string) {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  if (ext === "pdf") return <FileText className="h-5 w-5" />;
+  if (ext === "xlsx" || ext === "xls") return <FileSpreadsheet className="h-5 w-5" />;
+  return <FileSpreadsheet className="h-5 w-5" />;
+}
+
 export function FileDropZone({ onFileSelected, isProcessing }: FileDropZoneProps) {
   const [dragActive, setDragActive] = useState(false);
+  const [selectedName, setSelectedName] = useState<string | null>(null);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -21,21 +31,29 @@ export function FileDropZone({ onFileSelected, isProcessing }: FileDropZoneProps
     }
   }, []);
 
+  const handleFile = useCallback(
+    (file: File) => {
+      setSelectedName(file.name);
+      onFileSelected(file);
+    },
+    [onFileSelected]
+  );
+
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
       setDragActive(false);
       if (e.dataTransfer.files?.[0]) {
-        onFileSelected(e.dataTransfer.files[0]);
+        handleFile(e.dataTransfer.files[0]);
       }
     },
-    [onFileSelected]
+    [handleFile]
   );
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
-      onFileSelected(e.target.files[0]);
+      handleFile(e.target.files[0]);
     }
   };
 
@@ -53,21 +71,30 @@ export function FileDropZone({ onFileSelected, isProcessing }: FileDropZoneProps
         <Upload className="h-12 w-12 text-muted-foreground mb-4" />
         <h3 className="text-lg font-medium">Drop any sales file here</h3>
         <p className="text-sm text-muted-foreground mt-1 mb-1">
-          CSV or spreadsheet — any format, any headers
+          CSV, Excel, PDF — any format, any headers
         </p>
         <p className="text-xs text-muted-foreground mb-4">
-          We'll map your columns automatically
+          We'll interpret your columns automatically — never rejected
         </p>
+
+        {selectedName && isProcessing && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
+            {getFileIcon(selectedName)}
+            <span>{selectedName}</span>
+            <span className="animate-pulse">— interpreting…</span>
+          </div>
+        )}
+
         <input
           type="file"
-          accept=".csv,.xlsx,.xls"
+          accept={ACCEPTED_TYPES}
           onChange={handleFileInput}
           className="hidden"
           id="file-upload"
         />
         <Button asChild disabled={isProcessing}>
           <label htmlFor="file-upload" className="cursor-pointer">
-            {isProcessing ? "Processing..." : "Select File"}
+            {isProcessing ? "Interpreting file…" : "Select File"}
           </label>
         </Button>
       </CardContent>

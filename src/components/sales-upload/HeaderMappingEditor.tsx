@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle, AlertTriangle, ArrowRight, Sparkles } from "lucide-react";
+import { CheckCircle, Info, ArrowRight, Sparkles } from "lucide-react";
 import { type HeaderMapping, CANONICAL_FIELDS } from "@/hooks/useHeaderMapping";
 
 interface HeaderMappingEditorProps {
@@ -23,6 +22,9 @@ interface HeaderMappingEditorProps {
   isConfirming: boolean;
 }
 
+// Key identity fields — we suggest mapping these but don't block on them
+const IDENTITY_FIELDS = ["sold_at", "make", "model", "description"];
+
 export function HeaderMappingEditor({
   headers,
   mapping,
@@ -33,9 +35,13 @@ export function HeaderMappingEditor({
   onCancel,
   isConfirming,
 }: HeaderMappingEditorProps) {
-  const requiredFields = CANONICAL_FIELDS.filter((f) => f.required).map((f) => f.value);
   const mappedValues = Object.values(mapping).filter(Boolean);
-  const missingRequired = requiredFields.filter((f) => !mappedValues.includes(f));
+
+  // Check if we have enough identity: either make+model OR description
+  const hasMakeModel = mappedValues.includes("make") && mappedValues.includes("model");
+  const hasDescription = mappedValues.includes("description");
+  const hasVehicleIdentity = hasMakeModel || hasDescription;
+  const hasSaleDate = mappedValues.includes("sold_at");
 
   const handleFieldChange = (sourceHeader: string, canonicalField: string) => {
     const newMapping = { ...mapping };
@@ -53,22 +59,30 @@ export function HeaderMappingEditor({
     onMappingChange(newMapping);
   };
 
+  const methodLabel = aiMethod === "ai"
+    ? "AI-suggested"
+    : aiMethod === "saved_profile"
+    ? "Saved profile"
+    : aiMethod === "heuristic" || aiMethod === "heuristic_fallback"
+    ? "Auto-detected"
+    : null;
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              Map Your Columns
-              {aiMethod === "ai" && (
+              We think we've mapped your columns
+              {methodLabel && (
                 <Badge variant="secondary" className="text-xs">
                   <Sparkles className="h-3 w-3 mr-1" />
-                  AI-suggested
+                  {methodLabel}
                 </Badge>
               )}
             </CardTitle>
             <CardDescription>
-              Confirm how your file columns map to our sales fields. Adjust any that don't look right.
+              Confirm or adjust how your columns map to our fields. Nothing is rejected — adjust what doesn't look right.
             </CardDescription>
           </div>
         </div>
@@ -96,7 +110,7 @@ export function HeaderMappingEditor({
 
                 <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
 
-                <div className="w-48">
+                <div className="w-52">
                   <Select
                     value={currentValue || "__skip__"}
                     onValueChange={(v) => handleFieldChange(header, v)}
@@ -111,7 +125,6 @@ export function HeaderMappingEditor({
                       {CANONICAL_FIELDS.map((field) => (
                         <SelectItem key={field.value} value={field.value}>
                           {field.label}
-                          {field.required && " *"}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -130,16 +143,20 @@ export function HeaderMappingEditor({
           })}
         </div>
 
-        {/* Validation */}
-        {missingRequired.length > 0 && (
-          <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-            <p>
-              Required fields not mapped:{" "}
-              {missingRequired
-                .map((f) => CANONICAL_FIELDS.find((c) => c.value === f)?.label)
-                .join(", ")}
-            </p>
+        {/* Soft guidance — not blocking */}
+        {(!hasVehicleIdentity || !hasSaleDate) && (
+          <div className="flex items-start gap-2 p-3 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm">
+            <Info className="h-4 w-4 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Tip: Map these for best results</p>
+              <ul className="list-disc list-inside mt-1 space-y-0.5 text-xs">
+                {!hasSaleDate && <li>Sale Date — when the vehicle was sold</li>}
+                {!hasVehicleIdentity && (
+                  <li>Vehicle Description or Make + Model — to identify the vehicle</li>
+                )}
+              </ul>
+              <p className="text-xs mt-1 opacity-75">You can still import without these — we won't reject your data.</p>
+            </div>
           </div>
         )}
 
@@ -150,9 +167,9 @@ export function HeaderMappingEditor({
           </Button>
           <Button
             onClick={onConfirm}
-            disabled={missingRequired.length > 0 || isConfirming}
+            disabled={isConfirming}
           >
-            {isConfirming ? "Importing..." : "Confirm & Import"}
+            {isConfirming ? "Importing…" : "Confirm & Import"}
           </Button>
         </div>
       </CardContent>

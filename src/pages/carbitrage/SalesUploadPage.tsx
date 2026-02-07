@@ -12,6 +12,7 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { FileDropZone } from "@/components/sales-upload/FileDropZone";
 import { HeaderMappingEditor } from "@/components/sales-upload/HeaderMappingEditor";
 import { UploadBatchHistory } from "@/components/sales-upload/UploadBatchHistory";
+import { useFileParser } from "@/hooks/useFileParser";
 import {
   type HeaderMapping,
   useAIMapping,
@@ -20,7 +21,48 @@ import {
   findMatchingProfile,
 } from "@/hooks/useHeaderMapping";
 
-type UploadStep = "idle" | "mapping" | "importing";
+type UploadStep = "idle" | "parsing" | "mapping" | "importing";
+
+/** Extract make/model/year/variant from a combined description string */
+function parseDescription(desc: string): {
+  year?: number;
+  make?: string;
+  model?: string;
+  variant?: string;
+} {
+  if (!desc) return {};
+  const cleaned = desc.trim();
+
+  // Try pattern: "YEAR MAKE MODEL VARIANT..."
+  const yearFirst = cleaned.match(
+    /^(\d{4})\s+([A-Za-z]+)\s+([A-Za-z0-9]+(?:\s[A-Za-z0-9]+)?)\s*(.*)?$/
+  );
+  if (yearFirst) {
+    return {
+      year: parseInt(yearFirst[1]),
+      make: yearFirst[2],
+      model: yearFirst[3],
+      variant: yearFirst[4]?.trim() || undefined,
+    };
+  }
+
+  // Try pattern: "MAKE MODEL YEAR VARIANT..."
+  const makeFirst = cleaned.match(
+    /^([A-Za-z]+)\s+([A-Za-z0-9]+(?:\s[A-Za-z0-9]+)?)\s+(\d{4})\s*(.*)?$/
+  );
+  if (makeFirst) {
+    return {
+      make: makeFirst[1],
+      model: makeFirst[2],
+      year: parseInt(makeFirst[3]),
+      variant: makeFirst[4]?.trim() || undefined,
+    };
+  }
+
+  // Fallback: just try to extract year
+  const yearMatch = cleaned.match(/\b(19|20)\d{2}\b/);
+  return { year: yearMatch ? parseInt(yearMatch[0]) : undefined };
+}
 
 export default function SalesUploadPage() {
   const { data: accounts } = useAccounts();
@@ -31,11 +73,13 @@ export default function SalesUploadPage() {
   const [currentMapping, setCurrentMapping] = useState<HeaderMapping>({});
   const [aiMethod, setAiMethod] = useState<string>("");
   const [currentFile, setCurrentFile] = useState<File | null>(null);
+  const [detectedFormat, setDetectedFormat] = useState<string>("");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const aiMapping = useAIMapping();
   const saveProfile = useSaveProfile();
+  const { parseFile } = useFileParser();
 
   // Default to first account
   if (!selectedAccountId && accounts?.length) {
@@ -62,40 +106,28 @@ export default function SalesUploadPage() {
     enabled: !!selectedAccountId,
   });
 
-  // Parse CSV text into headers + rows
-  const parseCSV = useCallback((text: string) => {
-    const lines = text.split("\n").filter((l) => l.trim());
-    if (lines.length < 2) throw new Error("File must have at least a header and one data row");
-
-    const header = lines[0].split(",").map((h) => h.trim().replace(/^["']|["']$/g, ""));
-    const rows: Record<string, string>[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(",").map((v) => v.trim().replace(/^["']|["']$/g, ""));
-      const row: Record<string, string> = {};
-      header.forEach((col, idx) => {
-        row[col] = values[idx] || "";
-      });
-      rows.push(row);
-    }
-
-    return { header, rows };
-  }, []);
-
-  // Handle file selection
+  // Handle file selection — parse then map
   const handleFileSelected = useCallback(
     async (file: File) => {
       try {
         setCurrentFile(file);
-        const text = await file.text();
-        const { header, rows } = parseCSV(text);
-        setParsedHeaders(header);
-        setParsedRows(rows);
+        setStep("parsing");
+
+        // Parse file (CSV, XLSX, or PDF via AI)
+        const parsed = await parseFile(file);
+        setParsedHeaders(parsed.headers);
+        setParsedRows(parsed.rows);
+        setDetectedFormat(parsed.detectedFormat || "");
+
+        if (!parsed.rows.length) {
+          toast.error("No data rows found in file. Try a different format.");
+          setStep("idle");
+          return;
+        }
 
         // Check for saved profile match
-        const matchedProfile = findMatchingProfile(profiles || [], header);
+        const matchedProfile = findMatchingProfile(profiles || [], parsed.headers);
         if (matchedProfile) {
-          // Auto-apply saved profile
           setCurrentMapping(matchedProfile.header_map as HeaderMapping);
           setAiMethod("saved_profile");
           setStep("mapping");
@@ -105,8 +137,11 @@ export default function SalesUploadPage() {
 
         // Call AI mapper
         setStep("mapping");
-        const sampleRows = rows.slice(0, 3);
-        const result = await aiMapping.mutateAsync({ headers: header, sampleRows });
+        const sampleRows = parsed.rows.slice(0, 3);
+        const result = await aiMapping.mutateAsync({
+          headers: parsed.headers,
+          sampleRows,
+        });
         setCurrentMapping(result.mapping);
         setAiMethod(result.method);
       } catch (err: any) {
@@ -114,7 +149,7 @@ export default function SalesUploadPage() {
         setStep("idle");
       }
     },
-    [profiles, parseCSV, aiMapping]
+    [profiles, parseFile, aiMapping]
   );
 
   // Import mutation: normalize rows into vehicle_sales_truth
@@ -143,7 +178,7 @@ export default function SalesUploadPage() {
 
       // Map rows using confirmed mapping
       const truthRows: any[] = [];
-      const errors: { row: number; errors: string[] }[] = [];
+      const skippedRows: { row: number; reason: string }[] = [];
 
       for (let i = 0; i < parsedRows.length; i++) {
         const raw = parsedRows[i];
@@ -156,14 +191,19 @@ export default function SalesUploadPage() {
           }
         }
 
-        // Validate required
-        const rowErrors: string[] = [];
-        if (!mapped.sold_at) rowErrors.push("sold_at required");
-        if (!mapped.make) rowErrors.push("make required");
-        if (!mapped.model) rowErrors.push("model required");
+        // If there's a description field, extract vehicle identity from it
+        if (mapped.description && (!mapped.make || !mapped.model)) {
+          const extracted = parseDescription(mapped.description);
+          if (extracted.make && !mapped.make) mapped.make = extracted.make;
+          if (extracted.model && !mapped.model) mapped.model = extracted.model;
+          if (extracted.year && !mapped.year) mapped.year = String(extracted.year);
+          if (extracted.variant && !mapped.variant) mapped.variant = extracted.variant;
+        }
 
-        if (rowErrors.length) {
-          errors.push({ row: i + 1, errors: rowErrors });
+        // Soft validation — skip rows with zero usable data
+        const hasAnyIdentity = mapped.make || mapped.model || mapped.description;
+        if (!hasAnyIdentity && !mapped.sold_at && !mapped.sale_price) {
+          skippedRows.push({ row: i + 1, reason: "No identifiable data" });
           continue;
         }
 
@@ -173,20 +213,24 @@ export default function SalesUploadPage() {
           try {
             const acq = new Date(mapped.acquired_at);
             const sold = new Date(mapped.sold_at);
-            const diff = Math.round((sold.getTime() - acq.getTime()) / (1000 * 60 * 60 * 24));
+            const diff = Math.round(
+              (sold.getTime() - acq.getTime()) / (1000 * 60 * 60 * 24)
+            );
             if (diff >= 0) daysToCleer = diff;
           } catch {}
         }
 
         truthRows.push({
           account_id: selectedAccountId,
-          sold_at: mapped.sold_at,
+          sold_at: mapped.sold_at || null,
           acquired_at: mapped.acquired_at || null,
-          make: mapped.make,
-          model: mapped.model,
+          make: mapped.make || null,
+          model: mapped.model || null,
           variant: mapped.variant || null,
-          year: mapped.year ? parseInt(mapped.year) : null,
-          km: mapped.km ? parseInt(String(mapped.km).replace(/[^0-9]/g, "")) : null,
+          year: mapped.year ? parseInt(String(mapped.year)) : null,
+          km: mapped.km
+            ? parseInt(String(mapped.km).replace(/[^0-9]/g, ""))
+            : null,
           sale_price: mapped.sale_price
             ? parseFloat(String(mapped.sale_price).replace(/[^0-9.]/g, ""))
             : null,
@@ -195,13 +239,15 @@ export default function SalesUploadPage() {
           body_type: mapped.body_type || null,
           notes: mapped.notes || null,
           source: "dealer",
-          confidence: "high",
+          confidence: mapped.make && mapped.model ? "high" : "medium",
           days_to_clear: daysToCleer,
         });
       }
 
       if (!truthRows.length) {
-        throw new Error(`No valid rows to import (${errors.length} errors)`);
+        throw new Error(
+          `No usable rows found (${skippedRows.length} rows had no identifiable data)`
+        );
       }
 
       // Insert into vehicle_sales_truth
@@ -215,15 +261,14 @@ export default function SalesUploadPage() {
         .from("upload_batches")
         .update({
           status: "imported",
-          error_count: errors.length,
-          error_report: errors.length ? errors : null,
+          error_count: skippedRows.length,
+          error_report: skippedRows.length ? skippedRows : null,
           promoted_at: new Date().toISOString(),
           promoted_by: "josh",
         } as any)
         .eq("id", batch.id);
 
       // Save the mapping profile for future use
-      const account = accounts?.find((a) => a.id === selectedAccountId);
       const profileName = currentFile?.name
         ? `Auto: ${currentFile.name.replace(/\.[^.]+$/, "")}`
         : `Auto: ${new Date().toISOString().slice(0, 10)}`;
@@ -235,20 +280,20 @@ export default function SalesUploadPage() {
         sourceHeaders: parsedHeaders,
       });
 
-      return { imported: truthRows.length, errors: errors.length };
+      return { imported: truthRows.length, skipped: skippedRows.length };
     },
-    onSuccess: ({ imported, errors }) => {
+    onSuccess: ({ imported, skipped }) => {
       queryClient.invalidateQueries({ queryKey: ["upload-batches"] });
-      setStep("idle");
-      setParsedHeaders([]);
-      setParsedRows([]);
-      setCurrentMapping({});
-      setCurrentFile(null);
+      resetState();
 
-      if (errors > 0) {
-        toast.warning(`Imported ${imported} records (${errors} rows skipped). Redirecting…`);
+      if (skipped > 0) {
+        toast.warning(
+          `Imported ${imported} records (${skipped} rows skipped — no identifiable data). Redirecting…`
+        );
       } else {
-        toast.success(`Imported ${imported} records. Here's what your history tells you.`);
+        toast.success(
+          `Imported ${imported} records. Here's what your history tells you.`
+        );
       }
       setTimeout(() => navigate("/sales-insights"), 1500);
     },
@@ -257,12 +302,13 @@ export default function SalesUploadPage() {
     },
   });
 
-  const handleCancel = () => {
+  const resetState = () => {
     setStep("idle");
     setParsedHeaders([]);
     setParsedRows([]);
     setCurrentMapping({});
     setCurrentFile(null);
+    setDetectedFormat("");
   };
 
   const downloadTemplate = () => {
@@ -280,6 +326,8 @@ export default function SalesUploadPage() {
     URL.revokeObjectURL(url);
   };
 
+  const isProcessingFile = step === "parsing" || aiMapping.isPending;
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -291,7 +339,7 @@ export default function SalesUploadPage() {
               Sales Upload
             </h1>
             <p className="text-muted-foreground">
-              Import sales from any system — we'll handle the mapping
+              Import sales from any system — we interpret, never reject
             </p>
           </div>
           <div className="flex gap-2">
@@ -307,25 +355,35 @@ export default function SalesUploadPage() {
         </div>
 
         {/* Step: Idle → Drop Zone */}
-        {step === "idle" && (
+        {(step === "idle" || step === "parsing") && (
           <FileDropZone
             onFileSelected={handleFileSelected}
-            isProcessing={aiMapping.isPending}
+            isProcessing={isProcessingFile}
           />
         )}
 
         {/* Step: Mapping → Header Editor */}
         {step === "mapping" && (
-          <HeaderMappingEditor
-            headers={parsedHeaders}
-            mapping={currentMapping}
-            sampleRow={parsedRows[0]}
-            aiMethod={aiMethod}
-            onMappingChange={setCurrentMapping}
-            onConfirm={() => importMutation.mutate()}
-            onCancel={handleCancel}
-            isConfirming={importMutation.isPending}
-          />
+          <>
+            {detectedFormat && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Badge variant="outline">{detectedFormat}</Badge>
+                <span>
+                  {parsedRows.length} rows detected with {parsedHeaders.length} columns
+                </span>
+              </div>
+            )}
+            <HeaderMappingEditor
+              headers={parsedHeaders}
+              mapping={currentMapping}
+              sampleRow={parsedRows[0]}
+              aiMethod={aiMethod}
+              onMappingChange={setCurrentMapping}
+              onConfirm={() => importMutation.mutate()}
+              onCancel={resetState}
+              isConfirming={importMutation.isPending}
+            />
+          </>
         )}
 
         {/* Saved profiles info */}
@@ -333,7 +391,8 @@ export default function SalesUploadPage() {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Sparkles className="h-4 w-4" />
             <span>
-              {profiles.length} saved mapping{profiles.length !== 1 ? "s" : ""} — matching uploads will auto-map
+              {profiles.length} saved mapping{profiles.length !== 1 ? "s" : ""} —
+              matching uploads will auto-map
             </span>
           </div>
         )}
