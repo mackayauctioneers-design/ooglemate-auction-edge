@@ -9,27 +9,36 @@ interface Props {
   isLoading: boolean;
 }
 
+const RANGE_LABELS: Record<string, string> = {
+  "3": "3 months",
+  "6": "6 months",
+  "12": "12 months",
+};
+
 export function VolumeChart({ data, isLoading }: Props) {
   const [range, setRange] = useState<"3" | "6" | "12">("12");
 
-  const chartData = useMemo(() => {
+  const { chartData, totalSales } = useMemo(() => {
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - parseInt(range));
     const cutoffStr = cutoff.toISOString().slice(0, 10);
 
-    // Aggregate by make/model across filtered months
     const agg: Record<string, number> = {};
+    let total = 0;
     data
       .filter((d) => d.month >= cutoffStr)
       .forEach((d) => {
         const key = `${d.make} ${d.model}`;
         agg[key] = (agg[key] || 0) + d.sales_count;
+        total += d.sales_count;
       });
 
-    return Object.entries(agg)
+    const sorted = Object.entries(agg)
       .map(([vehicle, count]) => ({ vehicle, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
+
+    return { chartData: sorted, totalSales: total };
   }, [data, range]);
 
   if (isLoading) {
@@ -64,7 +73,7 @@ export function VolumeChart({ data, isLoading }: Props) {
         <div>
           <CardTitle>What You Sell the Most</CardTitle>
           <CardDescription>
-            These are the vehicles you consistently sell.
+            Based on {totalSales} sales over the last {RANGE_LABELS[range]}.
           </CardDescription>
         </div>
         <Tabs value={range} onValueChange={(v) => setRange(v as any)}>

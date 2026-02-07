@@ -20,11 +20,14 @@ function formatKm(v: number | null) {
 }
 
 export function VariationPerformanceTable({ data, isLoading }: Props) {
+  // Best-first ordering: most-sold variations first (already sorted by sales_count DESC from hook)
+  const totalSales = data.reduce((sum, r) => sum + r.sales_count, 0);
+
   if (isLoading) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Variations That Perform Best</CardTitle>
+          <CardTitle>Your Strongest Variations</CardTitle>
         </CardHeader>
         <CardContent className="h-48 flex items-center justify-center">
           <p className="text-muted-foreground">Loading…</p>
@@ -37,7 +40,7 @@ export function VariationPerformanceTable({ data, isLoading }: Props) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Variations That Perform Best</CardTitle>
+          <CardTitle>Your Strongest Variations</CardTitle>
         </CardHeader>
         <CardContent className="py-12 text-center text-muted-foreground">
           Variation insights will appear after uploading sales with variant, transmission, or fuel data.
@@ -49,9 +52,9 @@ export function VariationPerformanceTable({ data, isLoading }: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Variations That Perform Best</CardTitle>
+        <CardTitle>Your Strongest Variations</CardTitle>
         <CardDescription>
-          These variations perform best based on your actual sales.
+          Based on {totalSales} completed sales. Most consistent variations shown first.
         </CardDescription>
       </CardHeader>
       <CardContent>

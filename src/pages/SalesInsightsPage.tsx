@@ -60,9 +60,9 @@ export default function SalesInsightsPage() {
         {/* Section 4 — Trust Footer */}
         <div className="rounded-lg border border-border bg-muted/30 p-6 text-center">
           <p className="text-sm text-muted-foreground leading-relaxed">
-            These insights are derived solely from your own sales history.
+            These insights are derived solely from your completed sales history.
             <br />
-            They are used to power Automotive Truth matching — not market predictions.
+            They are used to inform Automotive Truth matching — not to judge decisions.
           </p>
         </div>
       </div>
