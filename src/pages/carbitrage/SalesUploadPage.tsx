@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -62,6 +63,7 @@ export default function SalesUploadPage() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [dragActive, setDragActive] = useState(false);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Set default account when loaded
   if (!selectedAccountId && accounts?.length) {
@@ -177,7 +179,8 @@ export default function SalesUploadPage() {
       if (errors.length) {
         toast.warning(`Uploaded with ${errors.length} validation errors`);
       } else {
-        toast.success("Upload validated successfully");
+        toast.success("Sales uploaded. Redirecting to insights…");
+        setTimeout(() => navigate("/sales-insights"), 1500);
       }
     },
     onError: (err: any) => {
