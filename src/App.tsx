@@ -47,6 +47,7 @@ import FranchisePortalFeedsPage from "./pages/operator/FranchisePortalFeedsPage"
 import VASalesDataPage from "./pages/operator/VASalesDataPage";
 import TriggerQAPage from "./pages/operator/TriggerQAPage";
 import DealerUrlIntakePage from "./pages/operator/DealerUrlIntakePage";
+import TargetsPoolPage from "./pages/operator/TargetsPoolPage";
 
 // Carbitrage pages (Josh workflow)
 import JoshInboxPage from "./pages/carbitrage/JoshInboxPage";
@@ -56,6 +57,7 @@ import DealerUrlBankPage from "./pages/carbitrage/DealerUrlBankPage";
 import GrokMissionPage from "./pages/carbitrage/GrokMissionPage";
 import SalesUploadPage from "./pages/carbitrage/SalesUploadPage";
 import SalesInsightsPage from "./pages/SalesInsightsPage";
+import JoshDailyTargetsPage from "./pages/JoshDailyTargetsPage";
 import MatchesInboxPage from "./pages/MatchesInboxPage";
 import DealsPage from "./pages/DealsPage";
 import DealDetailPage from "./pages/DealDetailPage";
@@ -115,6 +117,7 @@ const App = () => (
               <Route path="/grok-missions" element={<GrokMissionPage />} />
               <Route path="/sales-upload" element={<SalesUploadPage />} />
               <Route path="/sales-insights" element={<SalesInsightsPage />} />
+              <Route path="/targets" element={<JoshDailyTargetsPage />} />
               <Route path="/matches-inbox" element={<MatchesInboxPage />} />
               <Route path="/deals" element={<DealsPage />} />
               <Route path="/deals/:dealId" element={<DealDetailPage />} />
@@ -181,6 +184,9 @@ const App = () => (
               } />
               <Route path="/operator/dealer-urls" element={
                 <OperatorGuard><DealerUrlIntakePage /></OperatorGuard>
+              } />
+              <Route path="/operator/targets" element={
+                <OperatorGuard><TargetsPoolPage /></OperatorGuard>
               } />
               {/* === ADMIN TOOLS: Protected by RequireAdmin === */}
               <Route path="/admin-tools" element={
