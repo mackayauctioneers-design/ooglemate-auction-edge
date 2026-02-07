@@ -212,44 +212,58 @@ Deno.serve(async (req) => {
 
     console.log(`[build-sales-targets] ${candidates.length} candidates qualifying (3+ sales)`);
 
-    // 4. Delete existing candidates for this account, then insert fresh
-    //    (COALESCE-based unique index doesn't work with Supabase upsert)
+    // 4. Merge into sales_target_candidates
+    //    - Existing candidates: update metrics, PRESERVE status (never overwrite active/paused/retired)
+    //    - New shapes: insert as 'candidate'
+    //    Uses full 7-field shape_key for matching (aligned with DB unique index)
     if (candidates.length) {
-      const { error: delErr } = await supabase
-        .from("sales_target_candidates")
-        .delete()
-        .eq("account_id", account_id)
-        .in("status", ["candidate"]); // Only replace candidates, keep active/paused/retired
-
-      if (delErr) {
-        console.error("[build-sales-targets] Delete error:", delErr);
-        // Non-fatal — try insert anyway
-      }
-
-      // For active/paused/retired, update metrics in place
+      // Fetch ALL existing candidates for this account (any status)
       const { data: existing } = await supabase
         .from("sales_target_candidates")
-        .select("id, make, model, variant, transmission, fuel_type, body_type, drive_type")
+        .select("id, make, model, variant, transmission, fuel_type, body_type, drive_type, status")
         .eq("account_id", account_id);
 
-      const existingKeys = new Set(
-        (existing || []).map((e: any) =>
-          [e.make, e.model, e.variant ?? "", e.transmission ?? "", e.fuel_type ?? "", e.body_type ?? "", e.drive_type ?? ""]
-            .join("|").toLowerCase()
-        )
-      );
-
-      const toInsert = candidates.filter(c => {
-        const k = [c.make, c.model, c.variant ?? "", c.transmission ?? "", c.fuel_type ?? "", c.body_type ?? "", c.drive_type ?? ""]
+      // Build lookup map using full shape key
+      const shapeKey = (r: any) =>
+        [r.make, r.model, r.variant ?? "", r.transmission ?? "",
+         r.fuel_type ?? "", r.body_type ?? "", r.drive_type ?? ""]
           .join("|").toLowerCase();
-        return !existingKeys.has(k);
-      });
 
-      const toUpdate = candidates.filter(c => {
-        const k = [c.make, c.model, c.variant ?? "", c.transmission ?? "", c.fuel_type ?? "", c.body_type ?? "", c.drive_type ?? ""]
-          .join("|").toLowerCase();
-        return existingKeys.has(k);
-      });
+      const existingMap = new Map<string, { id: string; status: string }>();
+      for (const e of existing || []) {
+        existingMap.set(shapeKey(e), { id: e.id, status: e.status });
+      }
+
+      const toInsert: any[] = [];
+      const toUpdate: { id: string; metrics: any }[] = [];
+
+      for (const c of candidates) {
+        const k = shapeKey(c);
+        const match = existingMap.get(k);
+
+        if (match) {
+          // Existing shape — update metrics only, preserve status
+          toUpdate.push({
+            id: match.id,
+            metrics: {
+              sales_count: c.sales_count,
+              median_days_to_clear: c.median_days_to_clear,
+              avg_days_to_clear: c.avg_days_to_clear,
+              pct_under_30: c.pct_under_30,
+              pct_under_60: c.pct_under_60,
+              median_sale_price: c.median_sale_price,
+              median_profit: c.median_profit,
+              median_km: c.median_km,
+              target_score: c.target_score,
+              score_reasons: c.score_reasons,
+              last_sold_at: c.last_sold_at,
+            },
+          });
+        } else {
+          // New shape — insert as candidate
+          toInsert.push(c);
+        }
+      }
 
       // Insert new candidates
       if (toInsert.length) {
@@ -262,35 +276,15 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Update existing (active/paused/retired) with fresh metrics
-      for (const c of toUpdate) {
-        const match = (existing || []).find((e: any) =>
-          e.make?.toLowerCase() === c.make.toLowerCase() &&
-          e.model?.toLowerCase() === c.model.toLowerCase() &&
-          (e.variant ?? "") === (c.variant ?? "") &&
-          (e.transmission ?? "") === (c.transmission ?? "")
-        );
-        if (match) {
-          await supabase
-            .from("sales_target_candidates")
-            .update({
-              sales_count: c.sales_count,
-              median_days_to_clear: c.median_days_to_clear,
-              avg_days_to_clear: c.avg_days_to_clear,
-              pct_under_30: c.pct_under_30,
-              pct_under_60: c.pct_under_60,
-              median_sale_price: c.median_sale_price,
-              median_profit: c.median_profit,
-              median_km: c.median_km,
-              target_score: c.target_score,
-              score_reasons: c.score_reasons,
-              last_sold_at: c.last_sold_at,
-            })
-            .eq("id", match.id);
-        }
+      // Update existing — metrics only, status untouched
+      for (const u of toUpdate) {
+        await supabase
+          .from("sales_target_candidates")
+          .update(u.metrics)
+          .eq("id", u.id);
       }
 
-      console.log(`[build-sales-targets] Inserted ${toInsert.length}, updated ${toUpdate.length}`);
+      console.log(`[build-sales-targets] Inserted ${toInsert.length} new, updated ${toUpdate.length} existing (status preserved)`);
     }
 
     // 5. Return top 10 preview
