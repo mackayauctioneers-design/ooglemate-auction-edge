@@ -10,6 +10,7 @@ import { RequireAdmin } from "@/components/guards/RequireAdmin";
 import { RequireAuth } from "@/components/guards/RequireAuth";
 // Dealer pages
 import OpportunitiesPage from "./pages/OpportunitiesPage";
+import TodayPage from "./pages/TodayPage";
 import UpcomingAuctionsPage from "./pages/UpcomingAuctionsPage";
 import SearchLotsPage from "./pages/SearchLotsPage";
 import TrapInventoryPage from "./pages/TrapInventoryPage";
@@ -85,7 +86,9 @@ const App = () => (
             <Sonner />
             <Routes>
               {/* === DEALER ROUTES: All authenticated users === */}
-              <Route path="/" element={<OpportunitiesPage />} />
+              <Route path="/" element={<TodayPage />} />
+              <Route path="/today" element={<TodayPage />} />
+              <Route path="/opportunities-legacy" element={<OpportunitiesPage />} />
               <Route path="/upcoming-auctions" element={<UpcomingAuctionsPage />} />
               <Route path="/search-lots" element={<SearchLotsPage />} />
               <Route path="/trap-inventory" element={<TrapInventoryPage />} />
