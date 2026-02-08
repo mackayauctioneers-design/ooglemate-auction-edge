@@ -4,6 +4,7 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { AccountSelector } from "@/components/carbitrage/AccountSelector";
 import { useClearanceVelocity, useVolumeTrends, useVariationPerformance } from "@/hooks/useSalesInsights";
 import { useUnexpectedWinners } from "@/hooks/useUnexpectedWinners";
+import { useSalesInsightsSummary } from "@/hooks/useSalesInsightsSummary";
 import { useSalesScope } from "@/hooks/useSalesScope";
 import { VolumeChart } from "@/components/insights/VolumeChart";
 import { AnalysisScopeHeader } from "@/components/insights/AnalysisScopeHeader";
@@ -11,6 +12,7 @@ import { ClearanceVelocityTable } from "@/components/insights/ClearanceVelocityT
 import { VariationPerformanceTable } from "@/components/insights/VariationPerformanceTable";
 import { UnexpectedWinnersCard } from "@/components/insights/UnexpectedWinnersCard";
 import { SalesDrillDownDrawer } from "@/components/insights/SalesDrillDownDrawer";
+import { SalesInsightsSummary } from "@/components/insights/SalesInsightsSummary";
 import { TrendingUp } from "lucide-react";
 
 export default function SalesInsightsPage() {
@@ -39,6 +41,11 @@ export default function SalesInsightsPage() {
   const variation = useVariationPerformance(selectedAccountId || null);
   const unexpectedWinners = useUnexpectedWinners(selectedAccountId || null, winnersRange);
   const salesScope = useSalesScope(selectedAccountId || null);
+  const summary = useSalesInsightsSummary(
+    selectedAccountId || null,
+    clearance.data || [],
+    unexpectedWinners.data || []
+  );
 
   const handleScopeChange = useCallback((count: number, label: string) => {
     setAnalysedCount(count);
@@ -103,7 +110,14 @@ export default function SalesInsightsPage() {
           isLoading={unexpectedWinners.isLoading}
         />
 
-        {/* Section 5 — Trust Footer */}
+        {/* Section 5 — Summary */}
+        <SalesInsightsSummary
+          bullets={summary.bullets}
+          isLoading={summary.isLoading}
+          show={summary.showSummary}
+        />
+
+        {/* Section 6 — Trust Footer */}
         <div className="rounded-lg border border-border bg-muted/30 p-6 text-center">
           <p className="text-sm text-muted-foreground leading-relaxed">
             These insights are derived solely from your completed sales history.
