@@ -8,8 +8,9 @@ export interface UnexpectedWinner {
   year: number | null;
   km: number | null;
   salePrice: number | null;
+  buyPrice: number | null;
   daysToClear: number | null;
-  profitPct: number | null;
+  profitDollars: number | null;
   soldAt: string | null;
   /** How this sale compares to the dealer median */
   clearanceRatio: number | null; // < 1 means faster than median
@@ -24,6 +25,7 @@ interface RawRow {
   year: number | null;
   km: number | null;
   sale_price: number | null;
+  buy_price: number | null;
   days_to_clear: number | null;
   profit_pct: number | null;
   sold_at: string | null;
@@ -47,7 +49,7 @@ export function useUnexpectedWinners(
 
       let query = supabase
         .from("vehicle_sales_truth" as any)
-        .select("make, model, variant, year, km, sale_price, days_to_clear, profit_pct, sold_at")
+        .select("make, model, variant, year, km, sale_price, buy_price, days_to_clear, profit_pct, sold_at")
         .eq("account_id", accountId)
         .order("sold_at", { ascending: false });
 
@@ -117,9 +119,12 @@ export function useUnexpectedWinners(
           }
         }
 
-        // Check profit margin — if available and strong
-        if (r.profit_pct != null && r.profit_pct > 0.15) {
-          reasons.push(`${(r.profit_pct * 100).toFixed(0)}% realised margin`);
+        // Check profit — if available and strong (dollar figure)
+        const profitDollars = (r.sale_price != null && r.buy_price != null)
+          ? r.sale_price - r.buy_price
+          : null;
+        if (profitDollars != null && profitDollars >= 5000) {
+          reasons.push(`$${profitDollars.toLocaleString()} realised margin`);
         }
 
         // Must have at least one strong reason
@@ -132,8 +137,9 @@ export function useUnexpectedWinners(
           year: r.year,
           km: r.km,
           salePrice: r.sale_price,
+          buyPrice: r.buy_price,
           daysToClear: r.days_to_clear,
-          profitPct: r.profit_pct,
+          profitDollars,
           soldAt: r.sold_at,
           clearanceRatio,
           priceRatio,

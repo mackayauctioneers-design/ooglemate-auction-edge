@@ -20,13 +20,13 @@ function formatKm(v: number | null) {
   return `${(v / 1000).toFixed(0)}k`;
 }
 
-function marginCell(pct: number | null) {
-  if (pct == null) return <span className="text-muted-foreground">—</span>;
-  const label = `${(pct * 100).toFixed(1)}%`;
-  if (pct >= 0.15) return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">{label}</Badge>;
-  if (pct >= 0.05) return <span className="text-sm">{label}</span>;
-  if (pct >= 0) return <span className="text-sm text-muted-foreground">{label}</span>;
-  return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">{label}</Badge>;
+function marginCell(dollars: number | null) {
+  if (dollars == null) return <span className="text-muted-foreground">—</span>;
+  const label = `$${Math.abs(dollars).toLocaleString()}`;
+  if (dollars >= 5000) return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">{label}</Badge>;
+  if (dollars >= 1000) return <span className="text-sm">{label}</span>;
+  if (dollars >= 0) return <span className="text-sm text-muted-foreground">{label}</span>;
+  return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">-{label}</Badge>;
 }
 
 export function VariationPerformanceTable({ data, isLoading }: Props) {
@@ -107,7 +107,7 @@ export function VariationPerformanceTable({ data, isLoading }: Props) {
                   {formatPrice(row.median_sale_price)}
                 </TableCell>
                 <TableCell className="text-right">
-                  {marginCell(row.median_profit_pct)}
+                  {marginCell(row.median_profit_dollars)}
                 </TableCell>
                 <TableCell className="text-right">
                   {row.median_days_to_clear !== null ? `${row.median_days_to_clear}d` : "—"}

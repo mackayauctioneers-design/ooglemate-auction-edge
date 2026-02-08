@@ -8733,6 +8733,7 @@ export type Database = {
           last_sold_at: string | null
           make: string | null
           median_days_to_clear: number | null
+          median_profit_dollars: number | null
           median_profit_pct: number | null
           model: string | null
           pct_under_30: number | null
@@ -8773,6 +8774,7 @@ export type Database = {
           make: string | null
           median_days_to_clear: number | null
           median_km: number | null
+          median_profit_dollars: number | null
           median_profit_pct: number | null
           median_sale_price: number | null
           model: string | null
