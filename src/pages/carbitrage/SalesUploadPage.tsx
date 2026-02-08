@@ -164,7 +164,7 @@ export default function SalesUploadPage() {
         .from("upload_batches")
         .insert({
           account_id: selectedAccountId,
-          upload_type: "sales_log",
+          upload_type: "sales_universal",
           filename: currentFile?.name || "unknown",
           uploaded_by: "josh",
           row_count: parsedRows.length,
