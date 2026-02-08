@@ -26,6 +26,20 @@ function formatPrice(p: number | null) {
   return `$${p.toLocaleString()}`;
 }
 
+function formatProfitPct(pct: number | null) {
+  if (pct == null) return "—";
+  return `${(pct * 100).toFixed(1)}%`;
+}
+
+function profitBadge(pct: number | null) {
+  if (pct == null) return <span className="text-muted-foreground text-xs">—</span>;
+  const label = `${(pct * 100).toFixed(1)}%`;
+  if (pct >= 0.15) return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">{label} — higher margin</Badge>;
+  if (pct >= 0.05) return <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-xs">{label}</Badge>;
+  if (pct >= 0) return <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-xs">{label} — thin margin</Badge>;
+  return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">{label} — lower realised margin</Badge>;
+}
+
 function clearanceBadge(days: number | null) {
   if (days == null) return <span className="text-muted-foreground text-xs">—</span>;
   if (days <= 21) return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">{days}d — clears quickly</Badge>;
@@ -126,6 +140,7 @@ function YearBandTable({ bands, onBandClick }: { bands: YearBandRow[]; onBandCli
           <TableHead>Year Band</TableHead>
           <TableHead className="text-right">Sales</TableHead>
           <TableHead className="text-right">Median Price</TableHead>
+          <TableHead className="text-right">Median Margin</TableHead>
           <TableHead className="text-right">Clearance</TableHead>
           <TableHead className="w-8"></TableHead>
         </TableRow>
@@ -142,6 +157,7 @@ function YearBandTable({ bands, onBandClick }: { bands: YearBandRow[]; onBandCli
               <TableCell className="font-medium">{band.yearBand}</TableCell>
               <TableCell className="text-right font-mono">{band.salesCount}</TableCell>
               <TableCell className="text-right">{formatPrice(band.medianSalePrice)}</TableCell>
+              <TableCell className="text-right">{profitBadge(band.medianProfitPct)}</TableCell>
               <TableCell className="text-right">{clearanceBadge(band.medianDaysToClear)}</TableCell>
               <TableCell>
                 {canDrill ? (
@@ -174,6 +190,7 @@ function SpecBreakdownTable({ data }: { data: SpecRow[] }) {
           <TableHead>Spec</TableHead>
           <TableHead className="text-right">Sales</TableHead>
           <TableHead className="text-right">Median Price</TableHead>
+          <TableHead className="text-right">Median Margin</TableHead>
           <TableHead className="text-right">Clearance</TableHead>
         </TableRow>
       </TableHeader>
@@ -186,6 +203,11 @@ function SpecBreakdownTable({ data }: { data: SpecRow[] }) {
               <TableCell className="font-medium text-sm">{specLabel}</TableCell>
               <TableCell className="text-right font-mono">{row.salesCount}</TableCell>
               <TableCell className="text-right">{formatPrice(row.medianSalePrice)}</TableCell>
+              <TableCell className="text-right">
+                {row.medianProfitPct !== null
+                  ? profitBadge(row.medianProfitPct)
+                  : <span className="text-muted-foreground text-[10px] italic">Insufficient data</span>}
+              </TableCell>
               <TableCell className="text-right">{clearanceBadge(row.medianDaysToClear)}</TableCell>
             </TableRow>
           );

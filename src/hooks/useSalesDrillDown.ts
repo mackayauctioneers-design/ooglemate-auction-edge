@@ -8,6 +8,7 @@ export interface YearBandRow {
   salesCount: number;
   medianSalePrice: number | null;
   medianDaysToClear: number | null;
+  medianProfitPct: number | null;
   medianKm: number | null;
 }
 
@@ -18,6 +19,7 @@ export interface SpecRow {
   salesCount: number;
   medianSalePrice: number | null;
   medianDaysToClear: number | null;
+  medianProfitPct: number | null;
   medianKm: number | null;
 }
 
@@ -26,6 +28,14 @@ function median(arr: number[]): number | null {
   const s = [...arr].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
   return s.length % 2 !== 0 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+}
+
+function medianDecimal(arr: number[]): number | null {
+  if (!arr.length) return null;
+  const s = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  const val = s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  return Math.round(val * 10000) / 10000;
 }
 
 function buildYearBand(year: number): { label: string; min: number; max: number } {
@@ -41,6 +51,7 @@ interface RawRow {
   transmission: string | null;
   fuel_type: string | null;
   sale_price: number | null;
+  profit_pct: number | null;
   days_to_clear: number | null;
   km: number | null;
   sold_at: string;
@@ -59,7 +70,7 @@ export function useSalesDrillDown(
 
       let query = supabase
         .from("vehicle_sales_truth" as any)
-        .select("year, variant, transmission, fuel_type, sale_price, days_to_clear, km, sold_at")
+        .select("year, variant, transmission, fuel_type, sale_price, profit_pct, days_to_clear, km, sold_at")
         .eq("account_id", accountId)
         .eq("make", make)
         .eq("model", model)
@@ -76,17 +87,18 @@ export function useSalesDrillDown(
       const rows = (data || []) as unknown as RawRow[];
 
       // Build year bands
-      const bandMap: Record<string, { min: number; max: number; prices: number[]; days: number[]; kms: number[]; count: number }> = {};
+      const bandMap: Record<string, { min: number; max: number; prices: number[]; days: number[]; profitPcts: number[]; kms: number[]; count: number }> = {};
       rows.forEach((r) => {
         if (!r.year) return;
         const band = buildYearBand(r.year);
         if (!bandMap[band.label]) {
-          bandMap[band.label] = { min: band.min, max: band.max, prices: [], days: [], kms: [], count: 0 };
+          bandMap[band.label] = { min: band.min, max: band.max, prices: [], days: [], profitPcts: [], kms: [], count: 0 };
         }
         const b = bandMap[band.label];
         b.count++;
         if (r.sale_price) b.prices.push(r.sale_price);
         if (r.days_to_clear != null) b.days.push(r.days_to_clear);
+        if (r.profit_pct != null) b.profitPcts.push(r.profit_pct);
         if (r.km) b.kms.push(r.km);
       });
 
@@ -98,6 +110,7 @@ export function useSalesDrillDown(
           salesCount: b.count,
           medianSalePrice: median(b.prices),
           medianDaysToClear: median(b.days),
+          medianProfitPct: b.profitPcts.length ? medianDecimal(b.profitPcts) : null,
           medianKm: median(b.kms),
         }))
         .sort((a, b) => b.yearMax - a.yearMax);
@@ -115,7 +128,7 @@ export function buildSpecBreakdown(
 ): SpecRow[] {
   const filtered = rows.filter((r) => r.year >= yearMin && r.year <= yearMax);
 
-  const specMap: Record<string, { prices: number[]; days: number[]; kms: number[]; count: number; variant: string | null; transmission: string | null; fuelType: string | null }> = {};
+  const specMap: Record<string, { prices: number[]; days: number[]; profitPcts: number[]; kms: number[]; count: number; variant: string | null; transmission: string | null; fuelType: string | null }> = {};
 
   filtered.forEach((r) => {
     const v = r.variant?.trim() || null;
@@ -123,12 +136,13 @@ export function buildSpecBreakdown(
     const f = r.fuel_type?.trim() || null;
     const key = `${v || "—"}|${t || "—"}|${f || "—"}`;
     if (!specMap[key]) {
-      specMap[key] = { prices: [], days: [], kms: [], count: 0, variant: v, transmission: t, fuelType: f };
+      specMap[key] = { prices: [], days: [], profitPcts: [], kms: [], count: 0, variant: v, transmission: t, fuelType: f };
     }
     const s = specMap[key];
     s.count++;
     if (r.sale_price) s.prices.push(r.sale_price);
     if (r.days_to_clear != null) s.days.push(r.days_to_clear);
+    if (r.profit_pct != null) s.profitPcts.push(r.profit_pct);
     if (r.km) s.kms.push(r.km);
   });
 
@@ -140,6 +154,7 @@ export function buildSpecBreakdown(
       salesCount: s.count,
       medianSalePrice: median(s.prices),
       medianDaysToClear: median(s.days),
+      medianProfitPct: s.profitPcts.length >= 3 ? medianDecimal(s.profitPcts) : null,
       medianKm: median(s.kms),
     }))
     .sort((a, b) => b.salesCount - a.salesCount);

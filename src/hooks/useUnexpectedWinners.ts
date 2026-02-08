@@ -9,6 +9,7 @@ export interface UnexpectedWinner {
   km: number | null;
   salePrice: number | null;
   daysToClear: number | null;
+  profitPct: number | null;
   soldAt: string | null;
   /** How this sale compares to the dealer median */
   clearanceRatio: number | null; // < 1 means faster than median
@@ -24,6 +25,7 @@ interface RawRow {
   km: number | null;
   sale_price: number | null;
   days_to_clear: number | null;
+  profit_pct: number | null;
   sold_at: string | null;
 }
 
@@ -45,7 +47,7 @@ export function useUnexpectedWinners(
 
       let query = supabase
         .from("vehicle_sales_truth" as any)
-        .select("make, model, variant, year, km, sale_price, days_to_clear, sold_at")
+        .select("make, model, variant, year, km, sale_price, days_to_clear, profit_pct, sold_at")
         .eq("account_id", accountId)
         .order("sold_at", { ascending: false });
 
@@ -115,6 +117,11 @@ export function useUnexpectedWinners(
           }
         }
 
+        // Check profit margin — if available and strong
+        if (r.profit_pct != null && r.profit_pct > 0.15) {
+          reasons.push(`${(r.profit_pct * 100).toFixed(0)}% realised margin`);
+        }
+
         // Must have at least one strong reason
         if (reasons.length === 0) return;
 
@@ -126,6 +133,7 @@ export function useUnexpectedWinners(
           km: r.km,
           salePrice: r.sale_price,
           daysToClear: r.days_to_clear,
+          profitPct: r.profit_pct,
           soldAt: r.sold_at,
           clearanceRatio,
           priceRatio,
