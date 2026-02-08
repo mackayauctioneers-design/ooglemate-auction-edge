@@ -6,6 +6,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Percent } from "lucide-react";
 import type { ClearanceVelocity } from "@/hooks/useSalesInsights";
 
 interface Props {
@@ -22,6 +23,15 @@ function speedBadge(days: number | null) {
   if (days <= 45)
     return <Badge variant="outline" className="bg-muted text-muted-foreground border-border">{days}d — clears consistently</Badge>;
   return <Badge variant="outline" className="bg-muted text-muted-foreground border-border">{days}d — longer clearance observed</Badge>;
+}
+
+function marginCell(pct: number | null) {
+  if (pct == null) return <span className="text-muted-foreground">—</span>;
+  const label = `${(pct * 100).toFixed(1)}%`;
+  if (pct >= 0.15) return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">{label}</Badge>;
+  if (pct >= 0.05) return <span className="text-sm">{label}</span>;
+  if (pct >= 0) return <span className="text-sm text-muted-foreground">{label}</span>;
+  return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">{label}</Badge>;
 }
 
 export function ClearanceVelocityTable({ data, isLoading }: Props) {
@@ -82,6 +92,7 @@ export function ClearanceVelocityTable({ data, isLoading }: Props) {
             <TableRow>
               <TableHead>Vehicle</TableHead>
               <TableHead className="text-right">Median Days</TableHead>
+              <TableHead className="text-right">Median Margin</TableHead>
               <TableHead className="text-right">% &lt; 30d</TableHead>
               <TableHead className="text-right">% &lt; 60d</TableHead>
               <TableHead className="text-right">Sales</TableHead>
@@ -100,6 +111,9 @@ export function ClearanceVelocityTable({ data, isLoading }: Props) {
                   {speedBadge(row.median_days_to_clear)}
                 </TableCell>
                 <TableCell className="text-right">
+                  {marginCell(row.median_profit_pct)}
+                </TableCell>
+                <TableCell className="text-right">
                   {row.pct_under_30 !== null ? `${row.pct_under_30}%` : "—"}
                 </TableCell>
                 <TableCell className="text-right">
@@ -112,7 +126,7 @@ export function ClearanceVelocityTable({ data, isLoading }: Props) {
             ))}
             {!visibleRows.length && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+              <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
                   No vehicles with clearance data in this range.
                 </TableCell>
               </TableRow>
