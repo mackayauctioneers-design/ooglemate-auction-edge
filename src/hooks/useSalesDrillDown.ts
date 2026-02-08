@@ -16,6 +16,7 @@ export interface SpecRow {
   variant: string | null;
   transmission: string | null;
   fuelType: string | null;
+  driveType: string | null;
   salesCount: number;
   medianSalePrice: number | null;
   medianDaysToClear: number | null;
@@ -50,6 +51,7 @@ interface RawRow {
   variant: string | null;
   transmission: string | null;
   fuel_type: string | null;
+  drive_type: string | null;
   sale_price: number | null;
   buy_price: number | null;
   profit_pct: number | null;
@@ -71,7 +73,7 @@ export function useSalesDrillDown(
 
       let query = supabase
         .from("vehicle_sales_truth" as any)
-        .select("year, variant, transmission, fuel_type, sale_price, buy_price, profit_pct, days_to_clear, km, sold_at")
+        .select("year, variant, transmission, fuel_type, drive_type, sale_price, buy_price, profit_pct, days_to_clear, km, sold_at")
         .eq("account_id", accountId)
         .eq("make", make)
         .eq("model", model)
@@ -129,15 +131,16 @@ export function buildSpecBreakdown(
 ): SpecRow[] {
   const filtered = rows.filter((r) => r.year >= yearMin && r.year <= yearMax);
 
-  const specMap: Record<string, { prices: number[]; days: number[]; profitDollars: number[]; kms: number[]; count: number; variant: string | null; transmission: string | null; fuelType: string | null }> = {};
+  const specMap: Record<string, { prices: number[]; days: number[]; profitDollars: number[]; kms: number[]; count: number; variant: string | null; transmission: string | null; fuelType: string | null; driveType: string | null }> = {};
 
   filtered.forEach((r) => {
     const v = r.variant?.trim() || null;
     const t = r.transmission?.trim() || null;
     const f = r.fuel_type?.trim() || null;
-    const key = `${v || "—"}|${t || "—"}|${f || "—"}`;
+    const d = r.drive_type?.trim() || null;
+    const key = `${v || "—"}|${t || "—"}|${f || "—"}|${d || "—"}`;
     if (!specMap[key]) {
-      specMap[key] = { prices: [], days: [], profitDollars: [], kms: [], count: 0, variant: v, transmission: t, fuelType: f };
+      specMap[key] = { prices: [], days: [], profitDollars: [], kms: [], count: 0, variant: v, transmission: t, fuelType: f, driveType: d };
     }
     const s = specMap[key];
     s.count++;
@@ -152,11 +155,23 @@ export function buildSpecBreakdown(
       variant: s.variant,
       transmission: s.transmission,
       fuelType: s.fuelType,
+      driveType: s.driveType,
       salesCount: s.count,
       medianSalePrice: median(s.prices),
       medianDaysToClear: median(s.days),
-      medianProfitDollars: s.profitDollars.length >= 3 ? median(s.profitDollars) : null,
+      medianProfitDollars: s.profitDollars.length >= 2 ? median(s.profitDollars) : null,
       medianKm: median(s.kms),
     }))
-    .sort((a, b) => b.salesCount - a.salesCount);
+    .sort((a, b) => {
+      // 1. Sales count descending
+      if (b.salesCount !== a.salesCount) return b.salesCount - a.salesCount;
+      // 2. Median margin descending
+      const am = a.medianProfitDollars ?? -Infinity;
+      const bm = b.medianProfitDollars ?? -Infinity;
+      if (bm !== am) return bm - am;
+      // 3. Clearance ascending (faster is better)
+      const ad = a.medianDaysToClear ?? Infinity;
+      const bd = b.medianDaysToClear ?? Infinity;
+      return ad - bd;
+    });
 }
