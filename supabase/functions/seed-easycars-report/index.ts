@@ -97,17 +97,19 @@ function extractRows(markdown: string) {
     const saleDate = cells[4] || "";
     const daysInStock = cells[5] || "";
 
-    let sellingPrice: string | null = null;
-    let profit: string | null = null;
-
+    // Collect all dollar-value cells in order
+    // Table format: ... | Sold to | Selling Price | Net Over | Total Cost | GST | Profit
+    const moneyCells: string[] = [];
     for (let i = 6; i < cells.length; i++) {
       if (cells[i].includes("$")) {
-        if (!sellingPrice) {
-          sellingPrice = cells[i];
-        }
-        profit = cells[i];
+        moneyCells.push(cells[i]);
       }
     }
+
+    // Map by position: [0]=Selling Price, [1]=Net Over, [2]=Total Cost, [3]=GST, [4]=Profit
+    const sellingPrice = moneyCells[0] || null;
+    const totalCost = moneyCells.length >= 3 ? moneyCells[2] : null;  // buy price
+    const profit = moneyCells.length >= 5 ? moneyCells[4] : (moneyCells[moneyCells.length - 1] || null);
 
     const vehicle = parseDescription(description);
     if (!vehicle) continue;
@@ -117,6 +119,7 @@ function extractRows(markdown: string) {
       sold_at: parseDate(saleDate),
       days_to_clear: parseInt(daysInStock) || null,
       sale_price: parseMoney(sellingPrice || ""),
+      buy_price: parseMoney(totalCost || ""),
       stock_no: stockNo,
       description,
     });
@@ -199,6 +202,7 @@ Deno.serve(async (req) => {
         year: r.year,
         sold_at: r.sold_at,
         sale_price: r.sale_price,
+        buy_price: r.buy_price,
         days_to_clear: r.days_to_clear,
         body_type: r.body_type,
         transmission: r.transmission,
