@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,6 +10,7 @@ interface Props {
   data: VolumeTrend[];
   isLoading: boolean;
   onDrillDown?: (make: string, model: string, range: string) => void;
+  onScopeChange?: (analysedCount: number, rangeLabel: string) => void;
 }
 
 const RANGE_LABELS: Record<string, string> = {
@@ -19,7 +20,7 @@ const RANGE_LABELS: Record<string, string> = {
   "all": "all time",
 };
 
-export function VolumeChart({ data, isLoading, onDrillDown }: Props) {
+export function VolumeChart({ data, isLoading, onDrillDown, onScopeChange }: Props) {
   const [range, setRange] = useState<"3" | "6" | "12" | "all">("12");
 
   const { chartData, totalSales } = useMemo(() => {
@@ -53,6 +54,11 @@ export function VolumeChart({ data, isLoading, onDrillDown }: Props) {
 
     return { chartData: sorted, totalSales: total };
   }, [data, range]);
+
+  // Notify parent of scope changes
+  useEffect(() => {
+    onScopeChange?.(totalSales, RANGE_LABELS[range] || range);
+  }, [totalSales, range, onScopeChange]);
 
   const handleBarClick = (data: any) => {
     if (onDrillDown && data?.activePayload?.[0]?.payload) {
