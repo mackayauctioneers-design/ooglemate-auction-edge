@@ -60,7 +60,7 @@ export function SalesDrillDownDrawer({ open, onOpenChange, make, model, accountI
 
   const handleBandClick = (band: YearBandRow) => {
     if (!data?.rawRows) return;
-    if (band.salesCount < 3) return; // not enough data
+    if (band.salesCount < 2) return; // not enough data
     const specs = buildSpecBreakdown(data.rawRows as any, band.yearMin, band.yearMax);
     setSpecData(specs);
     setSelectedBand(band);
@@ -142,7 +142,7 @@ function YearBandTable({ bands, onBandClick }: { bands: YearBandRow[]; onBandCli
       </TableHeader>
       <TableBody>
         {bands.map((band) => {
-          const canDrill = band.salesCount >= 3;
+          const canDrill = band.salesCount >= 2;
           return (
             <TableRow
               key={band.yearBand}
@@ -158,7 +158,7 @@ function YearBandTable({ bands, onBandClick }: { bands: YearBandRow[]; onBandCli
                 {canDrill ? (
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 ) : (
-                  <span className="text-[10px] text-muted-foreground">n&lt;3</span>
+                  <span className="text-[10px] text-muted-foreground">n&lt;2</span>
                 )}
               </TableCell>
             </TableRow>
@@ -183,6 +183,7 @@ function SpecBreakdownTable({ data }: { data: SpecRow[] }) {
       <TableHeader>
         <TableRow>
           <TableHead>Spec</TableHead>
+          <TableHead>Drive</TableHead>
           <TableHead className="text-right">Sales</TableHead>
           <TableHead className="text-right">Median Price</TableHead>
           <TableHead className="text-right">Median Margin</TableHead>
@@ -193,17 +194,26 @@ function SpecBreakdownTable({ data }: { data: SpecRow[] }) {
         {data.map((row, i) => {
           const specParts = [row.variant, row.transmission, row.fuelType].filter(Boolean);
           const specLabel = specParts.length ? specParts.join(" · ") : "Unspecified";
+          const driveLabel = row.driveType || "—";
+          const isSufficientSample = row.salesCount >= 2;
           return (
             <TableRow key={i}>
               <TableCell className="font-medium text-sm">{specLabel}</TableCell>
+              <TableCell className="text-sm text-muted-foreground">{driveLabel}</TableCell>
               <TableCell className="text-right font-mono">{row.salesCount}</TableCell>
               <TableCell className="text-right">{formatPrice(row.medianSalePrice)}</TableCell>
               <TableCell className="text-right">
-                {row.medianProfitDollars !== null
-                  ? profitBadge(row.medianProfitDollars)
-                  : <span className="text-muted-foreground text-[10px] italic">Insufficient data</span>}
+                {!isSufficientSample
+                  ? <span className="text-muted-foreground text-[10px] italic">Limited data</span>
+                  : row.medianProfitDollars !== null
+                    ? profitBadge(row.medianProfitDollars)
+                    : <span className="text-muted-foreground text-[10px] italic">Insufficient data</span>}
               </TableCell>
-              <TableCell className="text-right">{clearanceBadge(row.medianDaysToClear)}</TableCell>
+              <TableCell className="text-right">
+                {isSufficientSample
+                  ? clearanceBadge(row.medianDaysToClear)
+                  : <span className="text-muted-foreground text-[10px] italic">Limited data</span>}
+              </TableCell>
             </TableRow>
           );
         })}
