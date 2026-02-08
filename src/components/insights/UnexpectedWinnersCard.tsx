@@ -98,10 +98,10 @@ export function UnexpectedWinnersCard({ data, isLoading }: Props) {
 
               {/* Metrics row */}
               <div className="flex flex-wrap gap-2 text-xs">
-                {w.profitPct != null && (
+                {w.profitDollars != null && (
                   <span className="flex items-center gap-1 text-muted-foreground">
                     <Percent className="h-3 w-3" />
-                    {(w.profitPct * 100).toFixed(0)}% margin
+                    ${Math.abs(w.profitDollars).toLocaleString()} {w.profitDollars >= 0 ? "margin" : "below cost"}
                   </span>
                 )}
                 {w.daysToClear != null && (
@@ -138,7 +138,7 @@ export function UnexpectedWinnersCard({ data, isLoading }: Props) {
                     Strong outcome
                   </Badge>
                 )}
-                {w.profitPct != null && w.profitPct >= 0.15 && (
+                {w.profitDollars != null && w.profitDollars >= 5000 && (
                   <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
                     Higher capital efficiency
                   </Badge>

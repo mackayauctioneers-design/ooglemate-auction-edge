@@ -26,18 +26,13 @@ function formatPrice(p: number | null) {
   return `$${p.toLocaleString()}`;
 }
 
-function formatProfitPct(pct: number | null) {
-  if (pct == null) return "—";
-  return `${(pct * 100).toFixed(1)}%`;
-}
-
-function profitBadge(pct: number | null) {
-  if (pct == null) return <span className="text-muted-foreground text-xs">—</span>;
-  const label = `${(pct * 100).toFixed(1)}%`;
-  if (pct >= 0.15) return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">{label} — higher margin</Badge>;
-  if (pct >= 0.05) return <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-xs">{label}</Badge>;
-  if (pct >= 0) return <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-xs">{label} — thin margin</Badge>;
-  return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">{label} — lower realised margin</Badge>;
+function profitBadge(dollars: number | null) {
+  if (dollars == null) return <span className="text-muted-foreground text-xs">—</span>;
+  const label = `$${Math.abs(dollars).toLocaleString()}`;
+  if (dollars >= 5000) return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">{label} — higher margin</Badge>;
+  if (dollars >= 1000) return <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-xs">{label}</Badge>;
+  if (dollars >= 0) return <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-xs">{label} — thin margin</Badge>;
+  return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">-{label} — lower realised margin</Badge>;
 }
 
 function clearanceBadge(days: number | null) {
@@ -157,7 +152,7 @@ function YearBandTable({ bands, onBandClick }: { bands: YearBandRow[]; onBandCli
               <TableCell className="font-medium">{band.yearBand}</TableCell>
               <TableCell className="text-right font-mono">{band.salesCount}</TableCell>
               <TableCell className="text-right">{formatPrice(band.medianSalePrice)}</TableCell>
-              <TableCell className="text-right">{profitBadge(band.medianProfitPct)}</TableCell>
+              <TableCell className="text-right">{profitBadge(band.medianProfitDollars)}</TableCell>
               <TableCell className="text-right">{clearanceBadge(band.medianDaysToClear)}</TableCell>
               <TableCell>
                 {canDrill ? (
@@ -204,8 +199,8 @@ function SpecBreakdownTable({ data }: { data: SpecRow[] }) {
               <TableCell className="text-right font-mono">{row.salesCount}</TableCell>
               <TableCell className="text-right">{formatPrice(row.medianSalePrice)}</TableCell>
               <TableCell className="text-right">
-                {row.medianProfitPct !== null
-                  ? profitBadge(row.medianProfitPct)
+                {row.medianProfitDollars !== null
+                  ? profitBadge(row.medianProfitDollars)
                   : <span className="text-muted-foreground text-[10px] italic">Insufficient data</span>}
               </TableCell>
               <TableCell className="text-right">{clearanceBadge(row.medianDaysToClear)}</TableCell>
