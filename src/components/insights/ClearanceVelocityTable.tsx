@@ -37,9 +37,9 @@ function marginCell(dollars: number | null) {
 export function ClearanceVelocityTable({ data, isLoading }: Props) {
   const [showSlower, setShowSlower] = useState(false);
 
-  // Best-first ordering: sorted by median_days_to_clear ascending (fastest first)
+  // Best-first ordering: sorted by median_profit_dollars descending (highest profit first)
   const sorted = [...data].sort(
-    (a, b) => (a.median_days_to_clear ?? 999) - (b.median_days_to_clear ?? 999)
+    (a, b) => (b.median_profit_dollars ?? -Infinity) - (a.median_profit_dollars ?? -Infinity)
   );
 
   const fastRows = sorted.filter(
