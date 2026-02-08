@@ -10,23 +10,19 @@ function parseDescription(desc: string) {
   if (!desc || !desc.trim()) return null;
   const cleaned = desc.trim();
 
-  // Find 4-digit year
   const yearMatch = cleaned.match(/\b(19\d{2}|20\d{2})\b/);
   if (!yearMatch) return { make: null, model: null, year: null, variant: null, body_type: null, transmission: null, fuel_type: null, drive_type: null };
 
   const year = parseInt(yearMatch[1]);
   const yearIdx = cleaned.indexOf(yearMatch[0]);
 
-  // Everything before year = make + model
   const prePart = cleaned.substring(0, yearIdx).trim();
   const postPart = cleaned.substring(yearIdx + 4).trim();
 
-  // Split pre-part into make (first word) and model (rest)
   const preWords = prePart.split(/\s+/);
   const make = preWords[0] || null;
   const model = preWords.slice(1).join(" ") || null;
 
-  // Extract body type
   const bodyTypes = ["Sedan", "Wagon", "Hatchback", "Utility", "Cab Chassis", "Van", "Bus", "Coupe", "Convertible", "Troopcarrier", "Pick-up", "Ute"];
   let body_type: string | null = null;
   for (const bt of bodyTypes) {
@@ -36,14 +32,12 @@ function parseDescription(desc: string) {
     }
   }
 
-  // Extract transmission
   let transmission: string | null = null;
   if (/\bMan\b/.test(postPart)) transmission = "Manual";
   else if (/\b(Spts Auto|Auto|Lineartronic|X-tronic|Rev-Tronic|PwrShift|9G-TRONIC)\b/i.test(postPart)) transmission = "Automatic";
   else if (/\bCVT\b/i.test(postPart)) transmission = "CVT";
   else if (/\bDSG\b/i.test(postPart)) transmission = "DSG";
 
-  // Extract drive type
   let drive_type: string | null = null;
   if (/\b4x4\b/.test(postPart) || /\b4WD\b/.test(postPart)) drive_type = "4WD";
   else if (/\bAWD\b/.test(postPart)) drive_type = "AWD";
@@ -51,14 +45,12 @@ function parseDescription(desc: string) {
   else if (/\bFWD\b/.test(postPart)) drive_type = "FWD";
   else if (/\beFour\b/.test(postPart)) drive_type = "AWD";
 
-  // Extract fuel type
   let fuel_type: string | null = null;
   if (/\bHybrid\b/i.test(postPart)) fuel_type = "Hybrid";
   else if (/\d+\.\d+DT/i.test(postPart)) fuel_type = "Diesel";
   else if (/\d+\.\d+[iI]\b/.test(postPart)) fuel_type = "Petrol";
   else if (/\d+\.\d+T\b/.test(postPart)) fuel_type = "Petrol Turbo";
 
-  // Variant = model code + trim from post-year text (first few meaningful words)
   const variantWords = postPart.split(/\s+/).slice(0, 4).join(" ") || null;
 
   return { make, model, year, variant: variantWords, body_type, transmission, fuel_type, drive_type };
@@ -90,38 +82,30 @@ function extractRows(markdown: string) {
   const rows: any[] = [];
 
   for (const line of lines) {
-    // Must be a pipe-delimited table row
     if (!line.startsWith("|")) continue;
 
     const cells = line.split("|").map((c) => c.trim()).filter((c) => c !== "");
 
-    // Skip header/separator rows
     if (cells.length < 6) continue;
     if (cells[0].includes("---") || cells[0].includes("Stock No") || cells[0].includes("Deal")) continue;
     if (cells[0].includes("Total") || cells[0].includes("AVERAGES") || cells[0].includes("Vehicles")) continue;
 
-    // Must have a numeric stock number in first cell
     const stockNo = cells[0].trim();
     if (!/^\d+$/.test(stockNo)) continue;
 
-    // Find the description cell - it's the longest cell typically at index 3
-    // Format varies but description is always index 3
     const description = cells[3] || "";
     const saleDate = cells[4] || "";
     const daysInStock = cells[5] || "";
 
-    // Price is always the cell after "Sold to" - find it by looking for $ pattern
-    // The selling price is typically cells[7]
     let sellingPrice: string | null = null;
     let profit: string | null = null;
 
-    // Find price cells by $ pattern
     for (let i = 6; i < cells.length; i++) {
       if (cells[i].includes("$")) {
         if (!sellingPrice) {
-          sellingPrice = cells[i]; // First $ cell = selling price
+          sellingPrice = cells[i];
         }
-        profit = cells[i]; // Last $ cell = profit
+        profit = cells[i];
       }
     }
 
@@ -147,11 +131,29 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { account_id, markdown_text, content_url, clear_existing = false } = await req.json();
+    const { account_id, storage_path, markdown_text, content_url, clear_existing = false } = await req.json();
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
     let content = markdown_text || "";
 
-    // Fetch from URL if provided
+    // Priority 1: Read from Supabase Storage
+    if (!content && storage_path) {
+      console.log(`Downloading from storage: sales-uploads/${storage_path}`);
+      const { data: fileData, error: fileErr } = await supabase
+        .storage
+        .from("sales-uploads")
+        .download(storage_path);
+
+      if (fileErr) throw new Error(`Storage download failed: ${fileErr.message}`);
+      content = await fileData.text();
+      console.log(`Downloaded ${content.length} chars from storage`);
+    }
+
+    // Priority 2: Fetch from URL (legacy support)
     if (!content && content_url) {
       const resp = await fetch(content_url);
       if (!resp.ok) throw new Error(`Failed to fetch content: ${resp.status}`);
@@ -159,20 +161,15 @@ Deno.serve(async (req) => {
     }
 
     if (!account_id || !content) {
-      return new Response(JSON.stringify({ error: "account_id and (markdown_text or content_url) required" }), {
+      return new Response(JSON.stringify({ error: "account_id and (storage_path, markdown_text, or content_url) required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-
     // Parse rows
     const rows = extractRows(content);
-    console.log(`Parsed ${rows.length} vehicle rows from markdown`);
+    console.log(`Parsed ${rows.length} vehicle rows from content`);
 
     if (rows.length === 0) {
       return new Response(JSON.stringify({ error: "No vehicle rows found in content", parsed: 0 }), {
@@ -193,7 +190,7 @@ Deno.serve(async (req) => {
 
     // Build insert records
     const records = rows
-      .filter((r) => r.make && r.sold_at) // Must have at minimum make and sale date
+      .filter((r) => r.make && r.sold_at)
       .map((r) => ({
         account_id,
         make: r.make?.toUpperCase() || null,
@@ -234,6 +231,7 @@ Deno.serve(async (req) => {
       parsed: rows.length,
       valid: records.length,
       inserted,
+      storage_path: storage_path || null,
       errors: errors.length > 0 ? errors : undefined,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
