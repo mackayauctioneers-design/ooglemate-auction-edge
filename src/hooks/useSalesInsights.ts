@@ -13,6 +13,7 @@ export interface ClearanceVelocity {
   pct_under_60: number | null;
   pct_under_90: number | null;
   last_sold_at: string | null;
+  median_profit_pct: number | null;
 }
 
 export interface VolumeTrend {
@@ -35,6 +36,7 @@ export interface VariationPerformance {
   median_km: number | null;
   median_sale_price: number | null;
   median_days_to_clear: number | null;
+  median_profit_pct: number | null;
 }
 
 export function useClearanceVelocity(accountId: string | null) {
