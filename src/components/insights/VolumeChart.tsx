@@ -9,6 +9,7 @@ import type { VolumeTrend } from "@/hooks/useSalesInsights";
 interface Props {
   data: VolumeTrend[];
   isLoading: boolean;
+  onDrillDown?: (make: string, model: string, range: string) => void;
 }
 
 const RANGE_LABELS: Record<string, string> = {
@@ -18,7 +19,7 @@ const RANGE_LABELS: Record<string, string> = {
   "all": "all time",
 };
 
-export function VolumeChart({ data, isLoading }: Props) {
+export function VolumeChart({ data, isLoading, onDrillDown }: Props) {
   const [range, setRange] = useState<"3" | "6" | "12" | "all">("12");
 
   const { chartData, totalSales } = useMemo(() => {
@@ -38,13 +39,29 @@ export function VolumeChart({ data, isLoading }: Props) {
       total += d.sales_count;
     });
 
+    // Store make/model mapping for click lookup
+    const makeModelMap: Record<string, { make: string; model: string }> = {};
+    filtered.forEach((d) => {
+      const key = `${d.make} ${d.model}`;
+      if (!makeModelMap[key]) makeModelMap[key] = { make: d.make, model: d.model };
+    });
+
     const sorted = Object.entries(agg)
-      .map(([vehicle, count]) => ({ vehicle, count }))
+      .map(([vehicle, count]) => ({ vehicle, count, make: makeModelMap[vehicle]?.make || "", model: makeModelMap[vehicle]?.model || "" }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
     return { chartData: sorted, totalSales: total };
   }, [data, range]);
+
+  const handleBarClick = (data: any) => {
+    if (onDrillDown && data?.activePayload?.[0]?.payload) {
+      const { make, model } = data.activePayload[0].payload;
+      if (make && model) onDrillDown(make, model, range);
+    }
+  };
+
+  
 
   if (isLoading) {
     return (
@@ -107,7 +124,7 @@ export function VolumeChart({ data, isLoading }: Props) {
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={chartData} layout="vertical" margin={{ left: 100, right: 20 }}>
+          <BarChart data={chartData} layout="vertical" margin={{ left: 100, right: 20 }} onClick={handleBarClick} className="cursor-pointer">
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
             <XAxis type="number" className="text-xs fill-muted-foreground" />
             <YAxis
@@ -130,6 +147,7 @@ export function VolumeChart({ data, isLoading }: Props) {
               fill="hsl(var(--primary))"
               radius={[0, 4, 4, 0]}
               name="Sales"
+              className="cursor-pointer"
             />
           </BarChart>
         </ResponsiveContainer>

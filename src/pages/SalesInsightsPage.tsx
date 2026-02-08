@@ -6,10 +6,15 @@ import { useClearanceVelocity, useVolumeTrends, useVariationPerformance } from "
 import { VolumeChart } from "@/components/insights/VolumeChart";
 import { ClearanceVelocityTable } from "@/components/insights/ClearanceVelocityTable";
 import { VariationPerformanceTable } from "@/components/insights/VariationPerformanceTable";
+import { SalesDrillDownDrawer } from "@/components/insights/SalesDrillDownDrawer";
 import { TrendingUp } from "lucide-react";
+
 export default function SalesInsightsPage() {
   const { data: accounts } = useAccounts();
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+
+  // Drill-down state
+  const [drillDown, setDrillDown] = useState<{ make: string; model: string; range: string } | null>(null);
 
   // Default to first account
   if (!selectedAccountId && accounts?.length) {
@@ -21,6 +26,10 @@ export default function SalesInsightsPage() {
   const clearance = useClearanceVelocity(selectedAccountId || null);
   const volume = useVolumeTrends(selectedAccountId || null);
   const variation = useVariationPerformance(selectedAccountId || null);
+
+  const handleDrillDown = (make: string, model: string, range: string) => {
+    setDrillDown({ make, model, range });
+  };
 
   return (
     <AppLayout>
@@ -43,7 +52,11 @@ export default function SalesInsightsPage() {
         </div>
 
         {/* Section 1 — Volume */}
-        <VolumeChart data={volume.data || []} isLoading={volume.isLoading} />
+        <VolumeChart
+          data={volume.data || []}
+          isLoading={volume.isLoading}
+          onDrillDown={handleDrillDown}
+        />
 
         {/* Section 2 — Clearance Velocity */}
         <ClearanceVelocityTable
@@ -66,6 +79,18 @@ export default function SalesInsightsPage() {
           </p>
         </div>
       </div>
+
+      {/* Drill-Down Drawer */}
+      {drillDown && (
+        <SalesDrillDownDrawer
+          open={!!drillDown}
+          onOpenChange={(open) => !open && setDrillDown(null)}
+          make={drillDown.make}
+          model={drillDown.model}
+          accountId={selectedAccountId}
+          range={drillDown.range}
+        />
+      )}
     </AppLayout>
   );
 }
