@@ -30,7 +30,10 @@ function marginCell(dollars: number | null) {
 }
 
 export function VariationPerformanceTable({ data, isLoading }: Props) {
-  // Best-first ordering: most-sold variations first (already sorted by sales_count DESC from hook)
+  // Best-first ordering: highest profit first
+  const sorted = [...data].sort(
+    (a, b) => (b.median_profit_dollars ?? -Infinity) - (a.median_profit_dollars ?? -Infinity)
+  );
   const totalSales = data.reduce((sum, r) => sum + r.sales_count, 0);
 
   if (isLoading) {
@@ -83,7 +86,7 @@ export function VariationPerformanceTable({ data, isLoading }: Props) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.map((row, i) => (
+            {sorted.map((row, i) => (
               <TableRow key={i}>
                 <TableCell className="font-medium">
                   {row.make} {row.model}
