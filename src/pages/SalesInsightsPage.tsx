@@ -3,15 +3,20 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { useAccounts } from "@/hooks/useAccounts";
 import { AccountSelector } from "@/components/carbitrage/AccountSelector";
 import { useClearanceVelocity, useVolumeTrends, useVariationPerformance } from "@/hooks/useSalesInsights";
+import { useUnexpectedWinners } from "@/hooks/useUnexpectedWinners";
 import { VolumeChart } from "@/components/insights/VolumeChart";
 import { ClearanceVelocityTable } from "@/components/insights/ClearanceVelocityTable";
 import { VariationPerformanceTable } from "@/components/insights/VariationPerformanceTable";
+import { UnexpectedWinnersCard } from "@/components/insights/UnexpectedWinnersCard";
 import { SalesDrillDownDrawer } from "@/components/insights/SalesDrillDownDrawer";
 import { TrendingUp } from "lucide-react";
 
 export default function SalesInsightsPage() {
   const { data: accounts } = useAccounts();
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+
+  // Time range for unexpected winners (synced concept)
+  const [winnersRange, setWinnersRange] = useState<number | null>(12); // null = all time
 
   // Drill-down state
   const [drillDown, setDrillDown] = useState<{ make: string; model: string; range: string } | null>(null);
@@ -26,6 +31,7 @@ export default function SalesInsightsPage() {
   const clearance = useClearanceVelocity(selectedAccountId || null);
   const volume = useVolumeTrends(selectedAccountId || null);
   const variation = useVariationPerformance(selectedAccountId || null);
+  const unexpectedWinners = useUnexpectedWinners(selectedAccountId || null, winnersRange);
 
   const handleDrillDown = (make: string, model: string, range: string) => {
     setDrillDown({ make, model, range });
@@ -70,7 +76,13 @@ export default function SalesInsightsPage() {
           isLoading={variation.isLoading}
         />
 
-        {/* Section 4 — Trust Footer */}
+        {/* Section 4 — Unexpected Winners */}
+        <UnexpectedWinnersCard
+          data={unexpectedWinners.data || []}
+          isLoading={unexpectedWinners.isLoading}
+        />
+
+        {/* Section 5 — Trust Footer */}
         <div className="rounded-lg border border-border bg-muted/30 p-6 text-center">
           <p className="text-sm text-muted-foreground leading-relaxed">
             These insights are derived solely from your completed sales history.
