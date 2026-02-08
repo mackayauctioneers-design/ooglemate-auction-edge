@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAccounts } from "@/hooks/useAccounts";
 import { AccountSelector } from "@/components/carbitrage/AccountSelector";
 import { useClearanceVelocity, useVolumeTrends, useVariationPerformance } from "@/hooks/useSalesInsights";
 import { useUnexpectedWinners } from "@/hooks/useUnexpectedWinners";
+import { useSalesScope } from "@/hooks/useSalesScope";
 import { VolumeChart } from "@/components/insights/VolumeChart";
+import { AnalysisScopeHeader } from "@/components/insights/AnalysisScopeHeader";
 import { ClearanceVelocityTable } from "@/components/insights/ClearanceVelocityTable";
 import { VariationPerformanceTable } from "@/components/insights/VariationPerformanceTable";
 import { UnexpectedWinnersCard } from "@/components/insights/UnexpectedWinnersCard";
@@ -17,6 +19,10 @@ export default function SalesInsightsPage() {
 
   // Time range for unexpected winners (synced concept)
   const [winnersRange, setWinnersRange] = useState<number | null>(12); // null = all time
+
+  // Scope tracking — receives analysed count & label from VolumeChart
+  const [analysedCount, setAnalysedCount] = useState(0);
+  const [rangeLabel, setRangeLabel] = useState("12 months");
 
   // Drill-down state
   const [drillDown, setDrillDown] = useState<{ make: string; model: string; range: string } | null>(null);
@@ -32,6 +38,12 @@ export default function SalesInsightsPage() {
   const volume = useVolumeTrends(selectedAccountId || null);
   const variation = useVariationPerformance(selectedAccountId || null);
   const unexpectedWinners = useUnexpectedWinners(selectedAccountId || null, winnersRange);
+  const salesScope = useSalesScope(selectedAccountId || null);
+
+  const handleScopeChange = useCallback((count: number, label: string) => {
+    setAnalysedCount(count);
+    setRangeLabel(label);
+  }, []);
 
   const handleDrillDown = (make: string, model: string, range: string) => {
     setDrillDown({ make, model, range });
@@ -57,11 +69,20 @@ export default function SalesInsightsPage() {
           />
         </div>
 
+        {/* Analysis Scope */}
+        <AnalysisScopeHeader
+          scope={salesScope.data}
+          isLoading={salesScope.isLoading}
+          analysedCount={analysedCount}
+          rangeLabel={rangeLabel}
+        />
+
         {/* Section 1 — Volume */}
         <VolumeChart
           data={volume.data || []}
           isLoading={volume.isLoading}
           onDrillDown={handleDrillDown}
+          onScopeChange={handleScopeChange}
         />
 
         {/* Section 2 — Clearance Velocity */}
