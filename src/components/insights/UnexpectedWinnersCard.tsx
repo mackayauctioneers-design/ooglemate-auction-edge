@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Info, Sparkles, Zap, TrendingUp } from "lucide-react";
+import { Info, Sparkles, Zap, TrendingUp, Percent } from "lucide-react";
 import type { UnexpectedWinner } from "@/hooks/useUnexpectedWinners";
 
 interface Props {
@@ -98,6 +98,12 @@ export function UnexpectedWinnersCard({ data, isLoading }: Props) {
 
               {/* Metrics row */}
               <div className="flex flex-wrap gap-2 text-xs">
+                {w.profitPct != null && (
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    <Percent className="h-3 w-3" />
+                    {(w.profitPct * 100).toFixed(0)}% margin
+                  </span>
+                )}
                 {w.daysToClear != null && (
                   <span className="flex items-center gap-1 text-muted-foreground">
                     <Zap className="h-3 w-3" />
@@ -130,6 +136,11 @@ export function UnexpectedWinnersCard({ data, isLoading }: Props) {
                 {w.priceRatio != null && w.priceRatio >= 1.3 && (
                   <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
                     Strong outcome
+                  </Badge>
+                )}
+                {w.profitPct != null && w.profitPct >= 0.15 && (
+                  <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
+                    Higher capital efficiency
                   </Badge>
                 )}
               </div>

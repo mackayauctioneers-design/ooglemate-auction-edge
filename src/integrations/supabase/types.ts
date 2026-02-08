@@ -5566,10 +5566,13 @@ export type Database = {
           fuel_type: string | null
           id: string
           last_sold_at: string | null
+          loss_rate: number | null
           make: string
           median_days_to_clear: number | null
           median_km: number | null
           median_profit: number | null
+          median_profit_pct: number | null
+          median_profit_per_day: number | null
           median_sale_price: number | null
           model: string
           pct_under_30: number | null
@@ -5581,6 +5584,7 @@ export type Database = {
           transmission: string | null
           updated_at: string
           variant: string | null
+          worst_case_profit_pct: number | null
         }
         Insert: {
           account_id: string
@@ -5591,10 +5595,13 @@ export type Database = {
           fuel_type?: string | null
           id?: string
           last_sold_at?: string | null
+          loss_rate?: number | null
           make: string
           median_days_to_clear?: number | null
           median_km?: number | null
           median_profit?: number | null
+          median_profit_pct?: number | null
+          median_profit_per_day?: number | null
           median_sale_price?: number | null
           model: string
           pct_under_30?: number | null
@@ -5606,6 +5613,7 @@ export type Database = {
           transmission?: string | null
           updated_at?: string
           variant?: string | null
+          worst_case_profit_pct?: number | null
         }
         Update: {
           account_id?: string
@@ -5616,10 +5624,13 @@ export type Database = {
           fuel_type?: string | null
           id?: string
           last_sold_at?: string | null
+          loss_rate?: number | null
           make?: string
           median_days_to_clear?: number | null
           median_km?: number | null
           median_profit?: number | null
+          median_profit_pct?: number | null
+          median_profit_per_day?: number | null
           median_sale_price?: number | null
           model?: string
           pct_under_30?: number | null
@@ -5631,6 +5642,7 @@ export type Database = {
           transmission?: string | null
           updated_at?: string
           variant?: string | null
+          worst_case_profit_pct?: number | null
         }
         Relationships: [
           {
@@ -7892,6 +7904,7 @@ export type Database = {
           account_id: string
           acquired_at: string | null
           body_type: string | null
+          buy_price: number | null
           confidence: string
           created_at: string
           days_to_clear: number | null
@@ -7902,6 +7915,7 @@ export type Database = {
           make: string
           model: string
           notes: string | null
+          profit_pct: number | null
           sale_price: number | null
           sold_at: string
           source: string
@@ -7913,6 +7927,7 @@ export type Database = {
           account_id: string
           acquired_at?: string | null
           body_type?: string | null
+          buy_price?: number | null
           confidence?: string
           created_at?: string
           days_to_clear?: number | null
@@ -7923,6 +7938,7 @@ export type Database = {
           make: string
           model: string
           notes?: string | null
+          profit_pct?: number | null
           sale_price?: number | null
           sold_at: string
           source?: string
@@ -7934,6 +7950,7 @@ export type Database = {
           account_id?: string
           acquired_at?: string | null
           body_type?: string | null
+          buy_price?: number | null
           confidence?: string
           created_at?: string
           days_to_clear?: number | null
@@ -7944,6 +7961,7 @@ export type Database = {
           make?: string
           model?: string
           notes?: string | null
+          profit_pct?: number | null
           sale_price?: number | null
           sold_at?: string
           source?: string

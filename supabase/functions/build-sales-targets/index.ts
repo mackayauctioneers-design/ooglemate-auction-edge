@@ -9,7 +9,8 @@ const corsHeaders = {
 // ============================================================================
 // build-sales-targets
 // Reads vehicle_sales_truth for an account, groups into vehicle shapes,
-// computes metrics + target_score, upserts into sales_target_candidates.
+// computes metrics + target_score (including profit %), upserts into
+// sales_target_candidates.
 // ============================================================================
 
 interface SaleRow {
@@ -21,6 +22,8 @@ interface SaleRow {
   transmission: string | null;
   drive_type: string | null;
   sale_price: number | null;
+  buy_price: number | null;
+  profit_pct: number | null;
   days_to_clear: number | null;
   km: number | null;
   sold_at: string | null;
@@ -51,6 +54,14 @@ function median(arr: number[]): number | null {
   return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
 }
 
+function medianDecimal(arr: number[]): number | null {
+  if (!arr.length) return null;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const val = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  return Math.round(val * 10000) / 10000;
+}
+
 function avg(arr: number[]): number | null {
   if (!arr.length) return null;
   return Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
@@ -59,8 +70,10 @@ function avg(arr: number[]): number | null {
 function computeScore(shape: {
   sales_count: number;
   median_days_to_clear: number | null;
-  median_profit: number | null;
+  median_profit_pct: number | null;
+  loss_rate: number | null;
   days_to_clear_values: number[];
+  dealer_median_profit_pct: number | null;
 }): { score: number; reasons: Record<string, any> } {
   let score = 0;
   const reasons: Record<string, any> = {};
@@ -85,13 +98,17 @@ function computeScore(shape: {
     }
   }
 
-  // Profitability (0–20)
-  if (shape.median_profit !== null) {
-    if (shape.median_profit > 0) {
-      score += 20; reasons.profitability = { pts: 20, note: "positive profit" };
+  // Profitability via profit_pct (0–20, replaces old binary check)
+  if (shape.median_profit_pct !== null) {
+    if (shape.median_profit_pct > 0.15) {
+      score += 20; reasons.profitability = { pts: 20, note: `${(shape.median_profit_pct * 100).toFixed(1)}% median margin` };
+    } else if (shape.median_profit_pct > 0.05) {
+      score += 12; reasons.profitability = { pts: 12, note: `${(shape.median_profit_pct * 100).toFixed(1)}% median margin` };
+    } else if (shape.median_profit_pct > 0) {
+      score += 5; reasons.profitability = { pts: 5, note: `${(shape.median_profit_pct * 100).toFixed(1)}% median margin — thin` };
     }
+    // negative = 0 pts
   }
-  // null = no penalty
 
   // Consistency (0–15) — based on days_to_clear variance
   if (shape.days_to_clear_values.length >= 3) {
@@ -104,7 +121,32 @@ function computeScore(shape: {
     }
   }
 
-  return { score: Math.min(score, 100), reasons };
+  // Profit % bonus — above dealer median (0–10, gated)
+  if (
+    shape.sales_count >= 3 &&
+    shape.median_profit_pct !== null &&
+    shape.dealer_median_profit_pct !== null &&
+    shape.median_profit_pct > shape.dealer_median_profit_pct &&
+    shape.median_days_to_clear !== null &&
+    shape.median_days_to_clear <= 60
+  ) {
+    score += 10;
+    reasons.profit_bonus = { pts: 10, note: "margin above dealer median with reasonable clearance" };
+  }
+
+  // Loss protection — down-weight shapes with high loss rate + slow clearance
+  if (
+    shape.loss_rate !== null &&
+    shape.loss_rate > 50 &&
+    shape.median_days_to_clear !== null &&
+    shape.median_days_to_clear > 45
+  ) {
+    const penalty = -15;
+    score += penalty;
+    reasons.loss_protection = { pts: penalty, note: `${shape.loss_rate.toFixed(0)}% loss rate with ${shape.median_days_to_clear}d clearance` };
+  }
+
+  return { score: Math.max(0, Math.min(score, 110)), reasons };
 }
 
 Deno.serve(async (req) => {
@@ -127,10 +169,10 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // 1. Fetch all sales truth for this account
+    // 1. Fetch all sales truth for this account (now includes profit fields)
     const { data: sales, error: salesErr } = await supabase
       .from("vehicle_sales_truth")
-      .select("make, model, variant, body_type, fuel_type, transmission, drive_type, sale_price, days_to_clear, km, sold_at")
+      .select("make, model, variant, body_type, fuel_type, transmission, drive_type, sale_price, buy_price, profit_pct, days_to_clear, km, sold_at")
       .eq("account_id", account_id);
 
     if (salesErr) throw salesErr;
@@ -141,6 +183,12 @@ Deno.serve(async (req) => {
     }
 
     console.log(`[build-sales-targets] Found ${sales.length} sales records`);
+
+    // Compute dealer-wide median profit %
+    const allProfitPcts = (sales as SaleRow[])
+      .map(r => r.profit_pct)
+      .filter((v): v is number => v !== null);
+    const dealerMedianProfitPct = medianDecimal(allProfitPcts);
 
     // 2. Group into shapes
     const shapes = new Map<string, { key: ShapeKey; rows: SaleRow[] }>();
@@ -168,22 +216,43 @@ Deno.serve(async (req) => {
       const dtcValues = shape.rows.map(r => r.days_to_clear).filter((v): v is number => v !== null);
       const priceValues = shape.rows.map(r => r.sale_price).filter((v): v is number => v !== null);
       const kmValues = shape.rows.map(r => r.km).filter((v): v is number => v !== null);
-
-      // We don't have buy_price in vehicle_sales_truth, so profit is null
-      const medianProfit: number | null = null;
+      const profitPctValues = shape.rows.map(r => r.profit_pct).filter((v): v is number => v !== null);
 
       const medianDtc = median(dtcValues);
       const avgDtc = avg(dtcValues);
+      const medianProfitPct = medianDecimal(profitPctValues);
       const pctUnder30 = dtcValues.length ? Math.round(dtcValues.filter(v => v <= 30).length / dtcValues.length * 100) : null;
       const pctUnder60 = dtcValues.length ? Math.round(dtcValues.filter(v => v <= 60).length / dtcValues.length * 100) : null;
+
+      // Loss metrics
+      const lossRate = profitPctValues.length
+        ? Math.round(profitPctValues.filter(v => v < 0).length / profitPctValues.length * 100)
+        : null;
+      const worstCaseProfitPct = profitPctValues.length
+        ? Math.min(...profitPctValues)
+        : null;
+
+      // Median profit per day
+      const profitPerDayValues = shape.rows
+        .filter(r => r.profit_pct !== null && r.sale_price !== null && r.days_to_clear !== null && r.days_to_clear > 0)
+        .map(r => ((r.sale_price! - (r.buy_price ?? 0)) / r.days_to_clear!));
+      const medianProfitPerDay = median(profitPerDayValues);
+
+      // Legacy median_profit (dollar amount) for backward compat
+      const profitDollarValues = shape.rows
+        .filter(r => r.buy_price !== null && r.sale_price !== null)
+        .map(r => r.sale_price! - r.buy_price!);
+      const medianProfit = median(profitDollarValues);
 
       const soldDates = shape.rows.map(r => r.sold_at).filter(Boolean).sort().reverse();
 
       const { score, reasons } = computeScore({
         sales_count: shape.rows.length,
         median_days_to_clear: medianDtc,
-        median_profit: medianProfit,
+        median_profit_pct: medianProfitPct,
+        loss_rate: lossRate,
         days_to_clear_values: dtcValues,
+        dealer_median_profit_pct: dealerMedianProfitPct,
       });
 
       candidates.push({
@@ -202,6 +271,10 @@ Deno.serve(async (req) => {
         pct_under_60: pctUnder60,
         median_sale_price: median(priceValues),
         median_profit: medianProfit,
+        median_profit_pct: medianProfitPct,
+        loss_rate: lossRate,
+        worst_case_profit_pct: worstCaseProfitPct !== null ? Math.round(worstCaseProfitPct * 10000) / 10000 : null,
+        median_profit_per_day: medianProfitPerDay,
         median_km: median(kmValues),
         target_score: score,
         score_reasons: reasons,
@@ -213,17 +286,12 @@ Deno.serve(async (req) => {
     console.log(`[build-sales-targets] ${candidates.length} candidates qualifying (3+ sales)`);
 
     // 4. Merge into sales_target_candidates
-    //    - Existing candidates: update metrics, PRESERVE status (never overwrite active/paused/retired)
-    //    - New shapes: insert as 'candidate'
-    //    Uses full 7-field shape_key for matching (aligned with DB unique index)
     if (candidates.length) {
-      // Fetch ALL existing candidates for this account (any status)
       const { data: existing } = await supabase
         .from("sales_target_candidates")
         .select("id, make, model, variant, transmission, fuel_type, body_type, drive_type, status")
         .eq("account_id", account_id);
 
-      // Build lookup map using full shape key
       const shapeKey = (r: any) =>
         [r.make, r.model, r.variant ?? "", r.transmission ?? "",
          r.fuel_type ?? "", r.body_type ?? "", r.drive_type ?? ""]
@@ -242,7 +310,6 @@ Deno.serve(async (req) => {
         const match = existingMap.get(k);
 
         if (match) {
-          // Existing shape — update metrics only, preserve status
           toUpdate.push({
             id: match.id,
             metrics: {
@@ -253,6 +320,10 @@ Deno.serve(async (req) => {
               pct_under_60: c.pct_under_60,
               median_sale_price: c.median_sale_price,
               median_profit: c.median_profit,
+              median_profit_pct: c.median_profit_pct,
+              loss_rate: c.loss_rate,
+              worst_case_profit_pct: c.worst_case_profit_pct,
+              median_profit_per_day: c.median_profit_per_day,
               median_km: c.median_km,
               target_score: c.target_score,
               score_reasons: c.score_reasons,
@@ -260,12 +331,10 @@ Deno.serve(async (req) => {
             },
           });
         } else {
-          // New shape — insert as candidate
           toInsert.push(c);
         }
       }
 
-      // Insert new candidates
       if (toInsert.length) {
         const { error: insertErr } = await supabase
           .from("sales_target_candidates")
@@ -276,7 +345,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Update existing — metrics only, status untouched
       for (const u of toUpdate) {
         await supabase
           .from("sales_target_candidates")
@@ -298,6 +366,8 @@ Deno.serve(async (req) => {
         sales_count: c.sales_count,
         target_score: c.target_score,
         median_days_to_clear: c.median_days_to_clear,
+        median_profit_pct: c.median_profit_pct,
+        loss_rate: c.loss_rate,
       }));
 
     console.log(`[build-sales-targets] Done. Built ${candidates.length} candidates.`);
@@ -305,6 +375,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       candidates_built: candidates.length,
       total_sales_analysed: sales.length,
+      dealer_median_profit_pct: dealerMedianProfitPct,
       top_10: top10,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
