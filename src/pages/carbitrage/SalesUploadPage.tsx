@@ -110,10 +110,14 @@ function parseDescription(desc: string): {
 
   return { year: yearMatch ? parseInt(yearMatch[1]) : undefined };
 }
-/** Normalise AU date formats (DD/MM/YYYY, D/M/YYYY) → YYYY-MM-DD for Postgres */
-function normaliseDateValue(raw: string): string {
-  if (!raw) return raw;
+/** Normalise AU date formats (DD/MM/YYYY, D/M/YYYY) → YYYY-MM-DD for Postgres.
+ *  Returns null for values that are clearly not dates (e.g. "0", empty, garbage). */
+function normaliseDateValue(raw: string): string | null {
+  if (!raw) return null;
   const trimmed = raw.trim();
+
+  // Reject obviously invalid values
+  if (!trimmed || /^0+$/.test(trimmed) || trimmed.length < 4) return null;
 
   // Already ISO: YYYY-MM-DD
   if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(trimmed)) return trimmed;
