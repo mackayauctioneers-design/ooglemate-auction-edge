@@ -110,7 +110,7 @@ function parseDescription(desc: string): {
 
   return { year: yearMatch ? parseInt(yearMatch[1]) : undefined };
 }
-/** Normalise AU date formats (DD/MM/YYYY, D/M/YYYY) → YYYY-MM-DD for Postgres.
+/** Normalise AU date formats (DD/MM/YYYY, D/M/YYYY, DD/MM/YY) → YYYY-MM-DD for Postgres.
  *  Returns null for values that are clearly not dates (e.g. "0", empty, garbage). */
 function normaliseDateValue(raw: string): string | null {
   if (!raw) return null;
@@ -122,17 +122,25 @@ function normaliseDateValue(raw: string): string | null {
   // Already ISO: YYYY-MM-DD
   if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(trimmed)) return trimmed;
 
-  // DD/MM/YYYY or D/M/YYYY (Australian format)
-  const slashMatch = trimmed.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
-  if (slashMatch) {
-    const day = slashMatch[1].padStart(2, "0");
-    const month = slashMatch[2].padStart(2, "0");
-    const year = slashMatch[3];
+  // DD/MM/YYYY or D/M/YYYY (Australian format, 4-digit year)
+  const slash4 = trimmed.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (slash4) {
+    const day = slash4[1].padStart(2, "0");
+    const month = slash4[2].padStart(2, "0");
+    const year = slash4[3];
     return `${year}-${month}-${day}`;
   }
 
-  // MM/DD/YYYY ambiguity: if day > 12, it's definitely DD/MM
-  // Otherwise pass through and let Postgres try
+  // DD/MM/YY or D/M/YY (2-digit year — common in AU exports like EasyCars)
+  const slash2 = trimmed.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2})$/);
+  if (slash2) {
+    const day = slash2[1].padStart(2, "0");
+    const month = slash2[2].padStart(2, "0");
+    const shortYear = parseInt(slash2[3]);
+    const year = shortYear >= 50 ? `19${slash2[3]}` : `20${slash2[3]}`;
+    return `${year}-${month}-${day}`;
+  }
+
   return trimmed;
 }
 
@@ -256,11 +264,22 @@ export default function SalesUploadPage() {
         const raw = parsedRows[i];
         const mapped: Record<string, any> = {};
 
+        // Debug first 3 rows
+        if (i < 3) {
+          console.log(`[SalesUpload] Row ${i} raw keys:`, Object.keys(raw));
+          console.log(`[SalesUpload] Row ${i} raw values:`, JSON.stringify(raw).slice(0, 300));
+          console.log(`[SalesUpload] Mapping:`, JSON.stringify(currentMapping));
+        }
+
         // Apply mapping
         for (const [sourceHeader, canonicalField] of Object.entries(currentMapping)) {
           if (canonicalField && raw[sourceHeader] !== undefined) {
             mapped[canonicalField] = raw[sourceHeader];
           }
+        }
+
+        if (i < 3) {
+          console.log(`[SalesUpload] Row ${i} mapped:`, JSON.stringify(mapped).slice(0, 300));
         }
 
         // Normalise date fields (DD/MM/YYYY → YYYY-MM-DD for Postgres)
@@ -272,7 +291,8 @@ export default function SalesUploadPage() {
 
         // If there's a description field, extract vehicle identity from it
         if (mapped.description && (!mapped.make || !mapped.model)) {
-          const extracted = parseDescription(mapped.description);
+          const extracted = parseDescription(String(mapped.description));
+          if (i < 3) console.log(`[SalesUpload] Row ${i} parseDescription result:`, extracted);
           if (extracted.make && !mapped.make) mapped.make = extracted.make;
           if (extracted.model && !mapped.model) mapped.model = extracted.model;
           if (extracted.year && !mapped.year) mapped.year = String(extracted.year);
@@ -281,11 +301,12 @@ export default function SalesUploadPage() {
 
         // Require make + model (DB NOT NULL constraint)
         if (!mapped.make || !mapped.model) {
+          if (i < 3) console.log(`[SalesUpload] Row ${i} SKIPPED — make: ${mapped.make}, model: ${mapped.model}, desc: ${mapped.description}`);
           skippedRows.push({
             row: i + 1,
             reason: mapped.description
-              ? `Could not extract make/model from "${mapped.description}"`
-              : "No make or model found",
+              ? `Could not extract make/model from "${String(mapped.description).slice(0, 60)}"`
+              : `No make or model found (mapped keys: ${Object.keys(mapped).join(", ")})`,
           });
           continue;
         }
