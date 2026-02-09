@@ -6,18 +6,18 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Percent } from "lucide-react";
 import type { ClearanceVelocity } from "@/hooks/useSalesInsights";
 
 interface Props {
   data: ClearanceVelocity[];
   isLoading: boolean;
+  fullOutcomeCount?: number;
 }
 
 const FAST_THRESHOLD = 45; // days — anything above this is "longer clearance"
 
 function speedBadge(days: number | null) {
-  if (days === null) return <span className="text-muted-foreground">—</span>;
+  if (days === null) return <span className="text-muted-foreground text-xs italic">Clearance data unavailable</span>;
   if (days <= 21)
     return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">{days}d — clears quickly</Badge>;
   if (days <= 45)
@@ -26,7 +26,7 @@ function speedBadge(days: number | null) {
 }
 
 function marginCell(dollars: number | null) {
-  if (dollars == null) return <span className="text-muted-foreground">—</span>;
+  if (dollars == null) return <span className="text-muted-foreground text-xs italic">Margin data unavailable</span>;
   const label = `$${Math.abs(dollars).toLocaleString()}`;
   if (dollars >= 5000) return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">{label}</Badge>;
   if (dollars >= 1000) return <span className="text-sm">{label}</span>;
@@ -34,7 +34,7 @@ function marginCell(dollars: number | null) {
   return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">-{label}</Badge>;
 }
 
-export function ClearanceVelocityTable({ data, isLoading }: Props) {
+export function ClearanceVelocityTable({ data, isLoading, fullOutcomeCount = 0 }: Props) {
   const [showSlower, setShowSlower] = useState(false);
 
   // Best-first ordering: sorted by median_profit_dollars descending (highest profit first)
@@ -83,7 +83,8 @@ export function ClearanceVelocityTable({ data, isLoading }: Props) {
       <CardHeader>
         <CardTitle>What Clears Consistently</CardTitle>
         <CardDescription>
-          Based on {totalSales} completed sales. Fastest-clearing vehicles shown first.
+          Based on {fullOutcomeCount > 0 ? fullOutcomeCount : totalSales} sales with full outcome data.{" "}
+          <span className="text-muted-foreground/60">(buy price, sale price, and clearance time present)</span>
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -99,35 +100,38 @@ export function ClearanceVelocityTable({ data, isLoading }: Props) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {visibleRows.map((row, i) => (
-              <TableRow key={i}>
-                <TableCell className="font-medium">
-                  {row.make} {row.model}
-                  {row.variant && (
-                    <span className="text-muted-foreground ml-1 text-xs">{row.variant}</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-right">
-                  {speedBadge(row.median_days_to_clear)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {marginCell(row.median_profit_dollars)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {row.pct_under_30 !== null ? `${row.pct_under_30}%` : "—"}
-                </TableCell>
-                <TableCell className="text-right">
-                  {row.pct_under_60 !== null ? `${row.pct_under_60}%` : "—"}
-                </TableCell>
-                <TableCell className="text-right font-mono">
-                  {row.sales_count}
-                </TableCell>
-              </TableRow>
-            ))}
+            {visibleRows.map((row, i) => {
+              const hasPartialData = row.median_days_to_clear === null || row.median_profit_dollars === null;
+              return (
+                <TableRow key={i} className={hasPartialData ? "opacity-60" : ""}>
+                  <TableCell className="font-medium">
+                    {row.make} {row.model}
+                    {row.variant && (
+                      <span className="text-muted-foreground ml-1 text-xs">{row.variant}</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {speedBadge(row.median_days_to_clear)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {marginCell(row.median_profit_dollars)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {row.pct_under_30 !== null ? `${row.pct_under_30}%` : "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {row.pct_under_60 !== null ? `${row.pct_under_60}%` : "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {row.sales_count}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
             {!visibleRows.length && (
               <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
-                  No vehicles with clearance data in this range.
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                  No vehicles with full outcome data in this range.
                 </TableCell>
               </TableRow>
             )}

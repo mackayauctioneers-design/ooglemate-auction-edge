@@ -60,7 +60,7 @@ export function UnexpectedWinnersCard({ data, isLoading }: Props) {
           Unexpected Winners
         </CardTitle>
         <CardDescription className="flex items-center gap-1.5">
-          Vehicles that sold infrequently but delivered unusually strong outcomes.
+          Low-frequency vehicles that delivered unusually strong outcomes based on available data.
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

@@ -37,7 +37,7 @@ export function SalesInsightsSummary({ bullets, isLoading, show }: Props) {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Based on your completed sales history:
+          Based on your available sales data:
         </p>
         <ul className="space-y-2">
           {bullets.map((b) => (
