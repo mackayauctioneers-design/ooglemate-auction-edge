@@ -110,6 +110,27 @@ function parseDescription(desc: string): {
 
   return { year: yearMatch ? parseInt(yearMatch[1]) : undefined };
 }
+/** Normalise AU date formats (DD/MM/YYYY, D/M/YYYY) → YYYY-MM-DD for Postgres */
+function normaliseDateValue(raw: string): string {
+  if (!raw) return raw;
+  const trimmed = raw.trim();
+
+  // Already ISO: YYYY-MM-DD
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(trimmed)) return trimmed;
+
+  // DD/MM/YYYY or D/M/YYYY (Australian format)
+  const slashMatch = trimmed.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (slashMatch) {
+    const day = slashMatch[1].padStart(2, "0");
+    const month = slashMatch[2].padStart(2, "0");
+    const year = slashMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // MM/DD/YYYY ambiguity: if day > 12, it's definitely DD/MM
+  // Otherwise pass through and let Postgres try
+  return trimmed;
+}
 
 export default function SalesUploadPage() {
   const { data: accounts } = useAccounts();
@@ -235,6 +256,13 @@ export default function SalesUploadPage() {
         for (const [sourceHeader, canonicalField] of Object.entries(currentMapping)) {
           if (canonicalField && raw[sourceHeader] !== undefined) {
             mapped[canonicalField] = raw[sourceHeader];
+          }
+        }
+
+        // Normalise date fields (DD/MM/YYYY → YYYY-MM-DD for Postgres)
+        for (const dateField of ["sold_at", "acquired_at"]) {
+          if (mapped[dateField]) {
+            mapped[dateField] = normaliseDateValue(String(mapped[dateField]));
           }
         }
 
