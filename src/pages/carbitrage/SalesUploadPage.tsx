@@ -299,15 +299,19 @@ export default function SalesUploadPage() {
           if (extracted.variant && !mapped.variant) mapped.variant = extracted.variant;
         }
 
-        // Require make + model (DB NOT NULL constraint)
+        // Require make + model + sold_at (DB NOT NULL constraints)
         if (!mapped.make || !mapped.model) {
-          if (i < 3) console.log(`[SalesUpload] Row ${i} SKIPPED — make: ${mapped.make}, model: ${mapped.model}, desc: ${mapped.description}`);
           skippedRows.push({
             row: i + 1,
             reason: mapped.description
               ? `Could not extract make/model from "${String(mapped.description).slice(0, 60)}"`
               : `No make or model found (mapped keys: ${Object.keys(mapped).join(", ")})`,
           });
+          continue;
+        }
+
+        if (!mapped.sold_at) {
+          skippedRows.push({ row: i + 1, reason: "No valid sale date" });
           continue;
         }
 
