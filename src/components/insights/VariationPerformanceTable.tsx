@@ -8,6 +8,7 @@ import type { VariationPerformance } from "@/hooks/useSalesInsights";
 interface Props {
   data: VariationPerformance[];
   isLoading: boolean;
+  fullOutcomeCount?: number;
 }
 
 function formatPrice(v: number | null) {
@@ -21,7 +22,7 @@ function formatKm(v: number | null) {
 }
 
 function marginCell(dollars: number | null) {
-  if (dollars == null) return <span className="text-muted-foreground">—</span>;
+  if (dollars == null) return <span className="text-muted-foreground text-xs italic">Margin data unavailable</span>;
   const label = `$${Math.abs(dollars).toLocaleString()}`;
   if (dollars >= 5000) return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">{label}</Badge>;
   if (dollars >= 1000) return <span className="text-sm">{label}</span>;
@@ -29,7 +30,7 @@ function marginCell(dollars: number | null) {
   return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">-{label}</Badge>;
 }
 
-export function VariationPerformanceTable({ data, isLoading }: Props) {
+export function VariationPerformanceTable({ data, isLoading, fullOutcomeCount = 0 }: Props) {
   // Best-first ordering: highest profit first
   const sorted = [...data].sort(
     (a, b) => (b.median_profit_dollars ?? -Infinity) - (a.median_profit_dollars ?? -Infinity)
@@ -67,7 +68,8 @@ export function VariationPerformanceTable({ data, isLoading }: Props) {
       <CardHeader>
         <CardTitle>Your Strongest Variations</CardTitle>
         <CardDescription>
-          Based on {totalSales} completed sales. Most consistent variations shown first.
+          Based on {fullOutcomeCount > 0 ? fullOutcomeCount : totalSales} sales with full outcome data.{" "}
+          <span className="text-muted-foreground/60">Most consistent variations shown first.</span>
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -86,37 +88,43 @@ export function VariationPerformanceTable({ data, isLoading }: Props) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sorted.map((row, i) => (
-              <TableRow key={i}>
-                <TableCell className="font-medium">
-                  {row.make} {row.model}
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm">
-                  {row.variant || "—"}
-                </TableCell>
-                <TableCell className="text-sm">
-                  {row.transmission || "—"}
-                </TableCell>
-                <TableCell className="text-sm">
-                  {row.fuel_type || "—"}
-                </TableCell>
-                <TableCell className="text-right font-mono">
-                  {row.sales_count}
-                </TableCell>
-                <TableCell className="text-right">
-                  {formatKm(row.median_km)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {formatPrice(row.median_sale_price)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {marginCell(row.median_profit_dollars)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {row.median_days_to_clear !== null ? `${row.median_days_to_clear}d` : "—"}
-                </TableCell>
-              </TableRow>
-            ))}
+            {sorted.map((row, i) => {
+              const hasPartialData = row.median_profit_dollars === null || row.median_days_to_clear === null;
+              return (
+                <TableRow key={i} className={hasPartialData ? "opacity-60" : ""}>
+                  <TableCell className="font-medium">
+                    {row.make} {row.model}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {row.variant || "—"}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {row.transmission || "—"}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {row.fuel_type || "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {row.sales_count}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatKm(row.median_km)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatPrice(row.median_sale_price)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {marginCell(row.median_profit_dollars)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {row.median_days_to_clear !== null
+                      ? `${row.median_days_to_clear}d`
+                      : <span className="text-muted-foreground text-xs italic">Clearance data unavailable</span>
+                    }
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </CardContent>

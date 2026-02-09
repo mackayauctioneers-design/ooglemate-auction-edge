@@ -7,7 +7,7 @@ import { useUnexpectedWinners } from "@/hooks/useUnexpectedWinners";
 import { useSalesInsightsSummary } from "@/hooks/useSalesInsightsSummary";
 import { useSalesScope } from "@/hooks/useSalesScope";
 import { VolumeChart } from "@/components/insights/VolumeChart";
-import { AnalysisScopeHeader } from "@/components/insights/AnalysisScopeHeader";
+import { DataCoverageSummary } from "@/components/insights/DataCoverageSummary";
 import { ClearanceVelocityTable } from "@/components/insights/ClearanceVelocityTable";
 import { VariationPerformanceTable } from "@/components/insights/VariationPerformanceTable";
 import { UnexpectedWinnersCard } from "@/components/insights/UnexpectedWinnersCard";
@@ -76,8 +76,8 @@ export default function SalesInsightsPage() {
           />
         </div>
 
-        {/* Analysis Scope */}
-        <AnalysisScopeHeader
+        {/* 1️⃣ Data Coverage Summary — always visible, neutral tone */}
+        <DataCoverageSummary
           scope={salesScope.data}
           isLoading={salesScope.isLoading}
           analysedCount={analysedCount}
@@ -96,12 +96,14 @@ export default function SalesInsightsPage() {
         <ClearanceVelocityTable
           data={clearance.data || []}
           isLoading={clearance.isLoading}
+          fullOutcomeCount={salesScope.data?.totalFullOutcome ?? 0}
         />
 
         {/* Section 3 — Variation Performance */}
         <VariationPerformanceTable
           data={variation.data || []}
           isLoading={variation.isLoading}
+          fullOutcomeCount={salesScope.data?.totalFullOutcome ?? 0}
         />
 
         {/* Section 4 — Unexpected Winners */}
@@ -120,7 +122,7 @@ export default function SalesInsightsPage() {
         {/* Section 6 — Trust Footer */}
         <div className="rounded-lg border border-border bg-muted/30 p-6 text-center">
           <p className="text-sm text-muted-foreground leading-relaxed">
-            These insights are derived solely from your completed sales history.
+            These insights are derived solely from your sales history.
             <br />
             They are used to inform Automotive Truth matching — not to judge decisions.
           </p>

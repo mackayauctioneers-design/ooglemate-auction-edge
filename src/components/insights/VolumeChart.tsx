@@ -101,18 +101,18 @@ export function VolumeChart({ data, isLoading, onDrillDown, onScopeChange }: Pro
         <div>
           <CardTitle>What You Sell the Most</CardTitle>
           <CardDescription className="flex items-center gap-1.5">
-            Based on {totalSales} completed sales with usable data over the last {RANGE_LABELS[range]}.
+            Based on {totalSales} usable records over the last {RANGE_LABELS[range]}.{" "}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-[260px] text-xs leading-relaxed">
-                  <p className="font-medium mb-1">Why this number may differ from your total sales</p>
+                  <p className="font-medium mb-1">Why this number may differ from your total</p>
                   <ul className="list-disc pl-3.5 space-y-0.5">
-                    <li>Only sales within the selected time window are included</li>
-                    <li>Sales must have a sale date and identifiable vehicle</li>
-                    <li>This avoids drawing conclusions from incomplete records</li>
+                    <li>Only usable records within the selected time window are used in this analysis</li>
+                    <li>Records require a sale date and identifiable vehicle</li>
+                    <li>All uploaded data is acknowledged — this view shows the available data for this period</li>
                   </ul>
                 </TooltipContent>
               </Tooltip>
