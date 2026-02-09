@@ -33,9 +33,9 @@ function parseDescription(desc: string): {
   if (!desc) return {};
   const cleaned = desc.trim();
 
-  // Try pattern: "YEAR MAKE MODEL VARIANT..."
+  // Try pattern: "YEAR MAKE MODEL VARIANT..." (e.g. "2023 Ford Ranger Wildtrak")
   const yearFirst = cleaned.match(
-    /^(\d{4})\s+([A-Za-z]+)\s+([A-Za-z0-9]+(?:\s[A-Za-z0-9]+)?)\s*(.*)?$/
+    /^(\d{4})\s+([A-Za-z-]+)\s+([A-Za-z0-9-]+)\s*(.*)?$/
   );
   if (yearFirst) {
     return {
@@ -46,9 +46,9 @@ function parseDescription(desc: string): {
     };
   }
 
-  // Try pattern: "MAKE MODEL YEAR VARIANT..."
+  // Try pattern: "MAKE MODEL YEAR VARIANT..." (e.g. "Ford Ranger 2023 Wildtrak")
   const makeFirst = cleaned.match(
-    /^([A-Za-z]+)\s+([A-Za-z0-9]+(?:\s[A-Za-z0-9]+)?)\s+(\d{4})\s*(.*)?$/
+    /^([A-Za-z-]+)\s+([A-Za-z0-9-]+)\s+(\d{4})\s*(.*)?$/
   );
   if (makeFirst) {
     return {
@@ -59,9 +59,56 @@ function parseDescription(desc: string): {
     };
   }
 
-  // Fallback: just try to extract year
-  const yearMatch = cleaned.match(/\b(19|20)\d{2}\b/);
-  return { year: yearMatch ? parseInt(yearMatch[0]) : undefined };
+  // Try pattern: "MAKE MODEL VARIANT YEAR" (e.g. "Toyota Hilux SR5 2021")
+  const yearLast = cleaned.match(
+    /^([A-Za-z-]+)\s+([A-Za-z0-9-]+)\s+(.*?)\s+(\d{4})$/
+  );
+  if (yearLast) {
+    return {
+      make: yearLast[1],
+      model: yearLast[2],
+      variant: yearLast[3]?.trim() || undefined,
+      year: parseInt(yearLast[4]),
+    };
+  }
+
+  // Try minimal: "MAKE MODEL" with no year (e.g. "Ford Ranger")
+  const makeModelOnly = cleaned.match(/^([A-Za-z-]+)\s+([A-Za-z0-9-]+)$/);
+  if (makeModelOnly) {
+    return {
+      make: makeModelOnly[1],
+      model: makeModelOnly[2],
+    };
+  }
+
+  // Try DMS-style: "Make Model Year Variant Extra..." with long suffixes
+  // e.g. "Toyota Landcruiser 2024 FJA300R GX Wagon 5dr ..."
+  const dmsStyle = cleaned.match(
+    /^([A-Za-z-]+)\s+([A-Za-z0-9-]+)\s+(\d{4})\s+(.+)$/
+  );
+  if (dmsStyle) {
+    return {
+      make: dmsStyle[1],
+      model: dmsStyle[2],
+      year: parseInt(dmsStyle[3]),
+      variant: dmsStyle[4]?.trim() || undefined,
+    };
+  }
+
+  // Fallback: extract year if present, and try first two words as make/model
+  const yearMatch = cleaned.match(/\b((?:19|20)\d{2})\b/);
+  const withoutYear = cleaned.replace(/\b(?:19|20)\d{2}\b/, "").trim();
+  const words = withoutYear.split(/\s+/);
+  if (words.length >= 2) {
+    return {
+      year: yearMatch ? parseInt(yearMatch[1]) : undefined,
+      make: words[0],
+      model: words[1],
+      variant: words.slice(2).join(" ") || undefined,
+    };
+  }
+
+  return { year: yearMatch ? parseInt(yearMatch[1]) : undefined };
 }
 
 export default function SalesUploadPage() {
@@ -200,10 +247,14 @@ export default function SalesUploadPage() {
           if (extracted.variant && !mapped.variant) mapped.variant = extracted.variant;
         }
 
-        // Soft validation — skip rows with zero usable data
-        const hasAnyIdentity = mapped.make || mapped.model || mapped.description;
-        if (!hasAnyIdentity && !mapped.sold_at && !mapped.sale_price) {
-          skippedRows.push({ row: i + 1, reason: "No identifiable data" });
+        // Require make + model (DB NOT NULL constraint)
+        if (!mapped.make || !mapped.model) {
+          skippedRows.push({
+            row: i + 1,
+            reason: mapped.description
+              ? `Could not extract make/model from "${mapped.description}"`
+              : "No make or model found",
+          });
           continue;
         }
 
