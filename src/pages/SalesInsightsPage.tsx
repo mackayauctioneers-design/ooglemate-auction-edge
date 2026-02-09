@@ -29,20 +29,16 @@ export default function SalesInsightsPage() {
   // Drill-down state
   const [drillDown, setDrillDown] = useState<{ make: string; model: string; range: string } | null>(null);
 
-  // Default to first account
-  if (!selectedAccountId && accounts?.length) {
-    const mackay = accounts.find((a) => a.slug === "mackay_traders");
-    if (mackay) setSelectedAccountId(mackay.id);
-    else setSelectedAccountId(accounts[0].id);
-  }
+  const activeAccountId = selectedAccountId || null;
+  const selectedAccount = accounts?.find((a) => a.id === selectedAccountId);
 
-  const clearance = useClearanceVelocity(selectedAccountId || null);
-  const volume = useVolumeTrends(selectedAccountId || null);
-  const variation = useVariationPerformance(selectedAccountId || null);
-  const unexpectedWinners = useUnexpectedWinners(selectedAccountId || null, winnersRange);
-  const salesScope = useSalesScope(selectedAccountId || null);
+  const clearance = useClearanceVelocity(activeAccountId);
+  const volume = useVolumeTrends(activeAccountId);
+  const variation = useVariationPerformance(activeAccountId);
+  const unexpectedWinners = useUnexpectedWinners(activeAccountId, winnersRange);
+  const salesScope = useSalesScope(activeAccountId);
   const summary = useSalesInsightsSummary(
-    selectedAccountId || null,
+    activeAccountId,
     clearance.data || [],
     unexpectedWinners.data || []
   );
@@ -76,6 +72,23 @@ export default function SalesInsightsPage() {
           />
         </div>
 
+        {/* Dealer context banner */}
+        {selectedAccount && (
+          <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            Viewing sales insights for: <span className="font-medium text-foreground">{selectedAccount.display_name}</span>
+          </div>
+        )}
+
+        {/* Empty state — no account selected */}
+        {!selectedAccountId && (
+          <div className="rounded-lg border border-dashed border-border bg-muted/20 p-12 text-center">
+            <p className="text-lg font-medium text-muted-foreground">Select a dealer account above to view insights</p>
+            <p className="text-sm text-muted-foreground/60 mt-1">Each dealer's data is analysed independently</p>
+          </div>
+        )}
+
+        {selectedAccountId && (
+        <>
         {/* 1️⃣ Data Coverage Summary — always visible, neutral tone */}
         <DataCoverageSummary
           scope={salesScope.data}
@@ -127,6 +140,8 @@ export default function SalesInsightsPage() {
             They are used to inform Automotive Truth matching — not to judge decisions.
           </p>
         </div>
+        </>
+        )}
       </div>
 
       {/* Drill-Down Drawer */}

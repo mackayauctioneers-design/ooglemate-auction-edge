@@ -161,12 +161,7 @@ export default function SalesUploadPage() {
   const saveProfile = useSaveProfile();
   const { parseFile } = useFileParser();
 
-  // Default to first account
-  if (!selectedAccountId && accounts?.length) {
-    const mackay = accounts.find((a) => a.slug === "mackay_traders");
-    if (mackay) setSelectedAccountId(mackay.id);
-    else setSelectedAccountId(accounts[0].id);
-  }
+  // No default — user must explicitly select a dealer account
 
   const { data: profiles } = useMappingProfiles(selectedAccountId);
 
@@ -503,8 +498,16 @@ export default function SalesUploadPage() {
           </div>
         </div>
 
+        {/* Guard — no account selected */}
+        {!selectedAccountId && step === "idle" && (
+          <div className="rounded-lg border border-dashed border-border bg-muted/20 p-12 text-center">
+            <p className="text-lg font-medium text-muted-foreground">Select a dealer account above to begin</p>
+            <p className="text-sm text-muted-foreground/60 mt-1">Uploads are scoped to a single dealer account</p>
+          </div>
+        )}
+
         {/* Step: Idle → Drop Zone */}
-        {(step === "idle" || step === "parsing") && (
+        {selectedAccountId && (step === "idle" || step === "parsing") && (
           <FileDropZone
             onFileSelected={handleFileSelected}
             isProcessing={isProcessingFile}
