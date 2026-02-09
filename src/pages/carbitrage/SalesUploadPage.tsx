@@ -329,11 +329,33 @@ export default function SalesUploadPage() {
         );
       }
 
-      // Insert into vehicle_sales_truth
-      const { error: truthError } = await supabase
-        .from("vehicle_sales_truth")
-        .insert(truthRows);
-      if (truthError) throw truthError;
+      // Deduplicate: build a signature for each row and remove duplicates within the batch
+      const seen = new Set<string>();
+      const uniqueRows = truthRows.filter((r: any) => {
+        const sig = [r.make, r.model, r.year, r.sold_at, r.sale_price, r.km]
+          .map((v) => String(v ?? "").toLowerCase().trim())
+          .join("|");
+        if (seen.has(sig)) return false;
+        seen.add(sig);
+        return true;
+      });
+
+      const dupsInBatch = truthRows.length - uniqueRows.length;
+      if (dupsInBatch > 0) {
+        console.log(`[SalesUpload] Removed ${dupsInBatch} duplicate rows within batch`);
+      }
+
+      // Insert in chunks of 200 to avoid payload limits
+      const CHUNK = 200;
+      let insertedCount = 0;
+      for (let c = 0; c < uniqueRows.length; c += CHUNK) {
+        const slice = uniqueRows.slice(c, c + CHUNK);
+        const { error: truthError } = await supabase
+          .from("vehicle_sales_truth")
+          .insert(slice);
+        if (truthError) throw truthError;
+        insertedCount += slice.length;
+      }
 
       // Update batch status
       await supabase
@@ -359,7 +381,7 @@ export default function SalesUploadPage() {
         sourceHeaders: parsedHeaders,
       });
 
-      return { imported: truthRows.length, skipped: skippedRows.length };
+      return { imported: insertedCount, skipped: skippedRows.length + dupsInBatch };
     },
     onSuccess: async ({ imported, skipped }) => {
       queryClient.invalidateQueries({ queryKey: ["upload-batches"] });
