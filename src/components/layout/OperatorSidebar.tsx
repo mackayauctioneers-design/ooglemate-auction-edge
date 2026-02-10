@@ -83,6 +83,7 @@ const operatorSections: NavSection[] = [
       { path: '/trap-inventory', label: 'Trap Inventory', icon: Store },
       { path: '/matches', label: 'Matches (Legacy)', icon: Crosshair },
       { path: '/valuation', label: 'Valuation', icon: DollarSign },
+      { path: '/scan-guide', label: 'Scan Screenshot', icon: Search },
     ],
   },
   {

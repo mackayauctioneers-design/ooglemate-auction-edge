@@ -5782,6 +5782,98 @@ export type Database = {
           },
         ]
       }
+      scan_guides: {
+        Row: {
+          account_id: string
+          completed_at: string | null
+          confidence: string | null
+          created_at: string
+          error: string | null
+          extracted_fields: Json | null
+          extracted_km: number | null
+          extracted_make: string | null
+          extracted_model: string | null
+          extracted_price: number | null
+          extracted_source: string | null
+          extracted_variant: string | null
+          extracted_year: number | null
+          guide_summary: Json | null
+          id: string
+          identity_confidence: string | null
+          identity_confirmed: boolean | null
+          image_path: string | null
+          image_type: string | null
+          sales_depth_confidence: string | null
+          sales_truth_summary: Json | null
+          status: string | null
+          supply_context_summary: Json | null
+          supply_coverage_confidence: string | null
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          completed_at?: string | null
+          confidence?: string | null
+          created_at?: string
+          error?: string | null
+          extracted_fields?: Json | null
+          extracted_km?: number | null
+          extracted_make?: string | null
+          extracted_model?: string | null
+          extracted_price?: number | null
+          extracted_source?: string | null
+          extracted_variant?: string | null
+          extracted_year?: number | null
+          guide_summary?: Json | null
+          id?: string
+          identity_confidence?: string | null
+          identity_confirmed?: boolean | null
+          image_path?: string | null
+          image_type?: string | null
+          sales_depth_confidence?: string | null
+          sales_truth_summary?: Json | null
+          status?: string | null
+          supply_context_summary?: Json | null
+          supply_coverage_confidence?: string | null
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          completed_at?: string | null
+          confidence?: string | null
+          created_at?: string
+          error?: string | null
+          extracted_fields?: Json | null
+          extracted_km?: number | null
+          extracted_make?: string | null
+          extracted_model?: string | null
+          extracted_price?: number | null
+          extracted_source?: string | null
+          extracted_variant?: string | null
+          extracted_year?: number | null
+          guide_summary?: Json | null
+          id?: string
+          identity_confidence?: string | null
+          identity_confirmed?: boolean | null
+          image_path?: string | null
+          image_type?: string | null
+          sales_depth_confidence?: string | null
+          sales_truth_summary?: Json | null
+          status?: string | null
+          supply_context_summary?: Json | null
+          supply_coverage_confidence?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_guides_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       snap_id_sessions: {
         Row: {
           account_id: string | null
