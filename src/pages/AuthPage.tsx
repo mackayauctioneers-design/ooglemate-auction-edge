@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -12,8 +12,6 @@ export default function AuthPage() {
   const navigate = useNavigate();
   const { user, isLoading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [videoFailed, setVideoFailed] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Login state
   const [loginEmail, setLoginEmail] = useState('');
@@ -49,24 +47,8 @@ export default function AuthPage() {
 
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* Video background */}
-      {!videoFailed && (
-        <video
-          ref={videoRef}
-          autoPlay
-          muted
-          loop
-          playsInline
-          onError={() => setVideoFailed(true)}
-          className="absolute inset-0 w-full h-full object-cover"
-          src="/login-bg.mp4"
-        />
-      )}
-
-      {/* Fallback static bg */}
-      {videoFailed && (
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800" />
-      )}
+      {/* Static background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800" />
 
       {/* Dark overlay */}
       <div className="absolute inset-0 bg-black/40" />
