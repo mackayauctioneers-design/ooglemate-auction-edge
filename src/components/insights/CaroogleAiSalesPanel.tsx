@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { Brain, Repeat, TrendingUp, Eye, AlertTriangle } from "lucide-react";
+import { Brain, Repeat, TrendingUp, Eye, AlertTriangle, Volume2, VolumeX, Square } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { CaroogleAiChat } from "./CaroogleAiChat";
+import { useSpokenSummary } from "@/hooks/useSpokenSummary";
 import bobAvatarSrc from "@/assets/bob-avatar.mp4";
 
 // ── Types ──
@@ -34,7 +36,43 @@ function confidenceBadgeClass(level: string): string {
   }
 }
 
+/** Build a concise spoken summary (max ~50 words, dealer tone) from assessment data */
+function buildSpokenSummary(data: AssessmentResponse, dealerName?: string): string | null {
+  const parts: string[] = [];
+  const name = dealerName || "mate";
+
+  // Opening
+  parts.push(`G'day ${name}.`);
+
+  // Core engines — mention top 1-2
+  if (data.core_engines.length > 0) {
+    const top = data.core_engines.slice(0, 2);
+    if (top.length === 1) {
+      parts.push(`Your strongest repeater is the ${top[0].vehicle}.`);
+    } else {
+      parts.push(`Your strongest repeaters are the ${top[0].vehicle} and the ${top[1].vehicle}.`);
+    }
+  }
+
+  // Outcome signals
+  if (data.outcome_signals.length > 0) {
+    parts.push(`You've got ${data.outcome_signals.length} one-off win${data.outcome_signals.length > 1 ? "s" : ""} worth watching again.`);
+  }
+
+  // Warnings
+  if (data.warnings.length > 0) {
+    parts.push("A couple of data gaps to sort out.");
+  }
+
+  // If nothing meaningful
+  if (parts.length <= 1) return null;
+
+  return parts.join(" ");
+}
+
 export function CaroogleAiSalesPanel({ accountId, dealerName }: Props) {
+  const { speak, stop, isSpeaking, isMuted, toggleMute } = useSpokenSummary();
+
   const { data, isLoading, error } = useQuery<AssessmentResponse>({
     queryKey: ["sales-assessment", accountId],
     queryFn: async () => {
@@ -64,17 +102,67 @@ export function CaroogleAiSalesPanel({ accountId, dealerName }: Props) {
     data.warnings.length > 0
   );
 
+  const spokenSummary = useMemo(() => {
+    if (!data || !hasAssessment) return null;
+    return buildSpokenSummary(data, dealerName);
+  }, [data, hasAssessment, dealerName]);
+
+  const handlePlaySummary = () => {
+    if (isSpeaking) {
+      stop();
+    } else if (spokenSummary) {
+      speak(spokenSummary);
+    }
+  };
+
   return (
     <Card className="border-primary/20">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Brain className="h-5 w-5 text-primary" />
-          Caroogle AI — Sales Assessment
-          <Badge variant="outline" className="text-xs ml-2">read-only</Badge>
-        </CardTitle>
-        <CardDescription>
-          Powered by Caroogle AI · Based solely on {dealerName ? `${dealerName}'s` : "your"} sales history and system rules.
-        </CardDescription>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Brain className="h-5 w-5 text-primary" />
+              Caroogle AI — Sales Assessment
+              <Badge variant="outline" className="text-xs ml-2">read-only</Badge>
+            </CardTitle>
+            <CardDescription>
+              Powered by Caroogle AI · Based solely on {dealerName ? `${dealerName}'s` : "your"} sales history and system rules.
+            </CardDescription>
+          </div>
+
+          {/* Speaker controls */}
+          {spokenSummary && (
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handlePlaySummary}
+                title={isSpeaking ? "Stop summary" : "Listen to summary"}
+                disabled={isMuted}
+              >
+                {isSpeaking ? (
+                  <Square className="h-4 w-4 text-primary" />
+                ) : (
+                  <Volume2 className="h-4 w-4 text-muted-foreground" />
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={toggleMute}
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                {isMuted ? (
+                  <VolumeX className="h-4 w-4 text-muted-foreground/50" />
+                ) : (
+                  <Volume2 className="h-4 w-4 text-muted-foreground/50" />
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
         {/* ── Assessment Section ── */}
