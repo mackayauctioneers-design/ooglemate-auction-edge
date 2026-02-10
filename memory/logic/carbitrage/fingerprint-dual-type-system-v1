@@ -1,0 +1,38 @@
+# Memory: logic/carbitrage/fingerprint-dual-type-system-v1
+Updated: now
+
+The fingerprint system now supports TWO types of target candidates:
+
+## Type A — Core Fingerprints
+- Built from 3+ sales of the same vehicle shape
+- Confidence: medium or high (based on sales_count)
+- Full scoring (0-110): repeatability + velocity + profitability + consistency + bonus/penalty
+- Always-on scanning, primary hunting targets
+
+## Type B — Outcome Fingerprints (NEW)
+- Built from 1-2 PROFITABLE sales of a vehicle shape
+- Confidence: low
+- Simplified scoring (0-50): outcome signal + velocity + margin quality
+- Purpose: remember what worked, watch for repeats, catch forgotten winners
+- Must NOT be auto-retired or filtered by volume gates
+- outcome_verified = true
+
+## Key Principle
+- Eligibility = did this make money? (profit_pct > 0)
+- Confidence = how often did it happen? (sales_count)
+- These are SEPARATE fields, never conflated
+
+## Database Fields (sales_target_candidates)
+- fingerprint_type: 'core' | 'outcome'
+- confidence_level: 'low' | 'medium' | 'high'
+- outcome_verified: boolean
+
+## Daily Target Generation
+- Core targets get ~80% of daily slots
+- Outcome targets get 2-3 discovery slots per day
+- Both types respect the 7-day rotation guard
+
+## UI Labels
+- Core → "Repeatable" (blue badge)
+- Outcome → "Outcome" (purple badge with eye icon)
+- Outcome cards show: "Profitable singleton — watch & re-test if found again"
