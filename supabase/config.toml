@@ -394,3 +394,6 @@ verify_jwt = false
 
 [functions.generate-daily-targets]
 verify_jwt = false
+
+[functions.sales-assessment]
+verify_jwt = false
