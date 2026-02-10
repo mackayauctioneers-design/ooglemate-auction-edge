@@ -22,7 +22,7 @@ function formatKm(v: number | null) {
 }
 
 function marginCell(dollars: number | null) {
-  if (dollars == null) return <span className="text-muted-foreground text-xs italic">Margin data unavailable</span>;
+  if (dollars == null) return <span className="text-muted-foreground text-xs italic">Unavailable (buy price not confirmed)</span>;
   const label = `$${Math.abs(dollars).toLocaleString()}`;
   if (dollars >= 5000) return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">{label}</Badge>;
   if (dollars >= 1000) return <span className="text-sm">{label}</span>;
