@@ -128,7 +128,19 @@ PRIORITY: Show repeatable, high-confidence vehicles first. Always include varian
   forgotten_winners: `INTENT: Forgotten / Hidden Winners
 The dealer wants to find profitable vehicles they may have overlooked.
 EVIDENCE FOCUS: Outcome fingerprints, single-sale profits, profit percentile vs dealer median.
-PRIORITY: Surface low-frequency but high-profit vehicles. A single $3k profit sale is a SIGNAL, not noise. These must be presented as "worth watching and re-testing".`,
+PRIORITY: Surface low-frequency but high-profit vehicles. A single profitable sale is a HYPOTHESIS, not noise.
+
+CRITICAL RULES FOR THIS INTENT:
+- You MUST always return results, even if confidence is LOW on every item.
+- If the dealer has NO true one-offs, say: "You don't have many true one-offs, but you do have some near-one-offs — here's how to think about them."
+- Present results in THREE buckets:
+  1. True one-off profitable sales (N=1)
+  2. Near one-offs (N=2)
+  3. Why they matter + how to treat them
+- For each vehicle, state: "Do not scale immediately. Do not ignore. Treat the next purchase as a test trade, not a strategy."
+- Include a concrete sourcing instruction: "If another [year range] [vehicle] under [km]km appears at auction under $[ceiling], it's worth a controlled buy."
+- If they repeat the outcome once more, explicitly say: "This moves from signal → strategy."
+- NEVER say "you don't have any" and stop. Always explain how to treat what exists.`,
 
   replication_strategy: `INTENT: Replication Strategy
 The dealer wants sourcing instructions — what to actively hunt.
@@ -269,23 +281,35 @@ serve(async (req) => {
         };
       });
 
-    // Singleton / low-frequency profitable wins
+    // Compute dealer median profit for dynamic threshold
+    const allProfits = withProfit.map((s: any) => s.sale_price - s.buy_price).filter((p: number) => p > 0);
+    const dealerMedianProfit = median(allProfits) || 0;
+    const oneOffThreshold = Math.max(dealerMedianProfit * 1.3, 2500);
+
+    // Singleton / low-frequency profitable wins — dynamic threshold
     const singleWinners = withProfit
       .filter((s: any) => {
         const profit = s.sale_price - s.buy_price;
         const key = `${s.make} ${s.model}`;
-        return profit >= 1500 && (modelGroups[key]?.count || 0) <= 2;
+        return profit >= oneOffThreshold && (modelGroups[key]?.count || 0) <= 2;
       })
+      .sort((a: any, b: any) => (b.sale_price - b.buy_price) - (a.sale_price - a.buy_price))
       .slice(0, 15)
-      .map((s: any) => ({
-        vehicle: `${s.year} ${s.make} ${s.model} ${s.variant || ""} ${s.drive_type || ""}`.trim(),
-        profit: s.sale_price - s.buy_price,
-        profitPct: s.buy_price > 0 ? Math.round(((s.sale_price - s.buy_price) / s.buy_price) * 100) : null,
-        days: s.days_to_clear,
-        km: s.km,
-        transmission: s.transmission,
-        fuel: s.fuel_type,
-      }));
+      .map((s: any) => {
+        const key = `${s.make} ${s.model}`;
+        const count = modelGroups[key]?.count || 1;
+        return {
+          vehicle: `${s.year} ${s.make} ${s.model} ${s.variant || ""} ${s.drive_type || ""}`.trim(),
+          profit: s.sale_price - s.buy_price,
+          profitPct: s.buy_price > 0 ? Math.round(((s.sale_price - s.buy_price) / s.buy_price) * 100) : null,
+          days: s.days_to_clear,
+          km: s.km,
+          transmission: s.transmission,
+          fuel: s.fuel_type,
+          salesCount: count,
+          bucket: count === 1 ? "true_one_off" : "near_one_off",
+        };
+      });
 
     // Core vs outcome fingerprint targets
     const coreTargets = candidates.filter((c: any) => c.fingerprint_type === "core");
@@ -305,10 +329,18 @@ ${topModels.map((m) =>
   `• ${m.vehicle} (${m.yearBand}): ${m.count} sales | Variants: ${m.variants} | Drivetrain: ${m.drivetrains} | Fuel: ${m.fuels} | Trans: ${m.transmissions} | Median margin: ${m.medianProfit != null ? "$" + m.medianProfit.toLocaleString() : "N/A"} | Median clearance: ${m.medianDays != null ? m.medianDays + "d" : "N/A"}`
 ).join("\n")}
 
-═══ PROFITABLE SINGLE/LOW-FREQUENCY WINS (Outcome Fingerprints) ═══
-${singleWinners.length ? singleWinners.map((w) =>
-  `• ${w.vehicle}: $${w.profit.toLocaleString()} profit${w.profitPct != null ? " (" + w.profitPct + "%)" : ""}${w.days != null ? " | " + w.days + "d clearance" : ""}${w.km != null ? " | " + w.km.toLocaleString() + "km" : ""}${w.transmission ? " | " + w.transmission : ""}${w.fuel ? " | " + w.fuel : ""}`
-).join("\n") : "None detected yet — more sales data needed."}
+DEALER MEDIAN PROFIT: ${dealerMedianProfit > 0 ? "$" + dealerMedianProfit.toLocaleString() : "N/A"}
+ONE-OFF THRESHOLD (max of median×1.3, $2500): $${oneOffThreshold.toLocaleString()}
+
+═══ TRUE ONE-OFF PROFITABLE SALES (N=1, hypothesis-grade) ═══
+${singleWinners.filter((w) => w.bucket === "true_one_off").length ? singleWinners.filter((w) => w.bucket === "true_one_off").map((w) =>
+  `• ${w.vehicle}: $${w.profit.toLocaleString()} profit${w.profitPct != null ? " (" + w.profitPct + "%)" : ""} | ${w.salesCount} sale${w.days != null ? " | " + w.days + "d clearance" : ""}${w.km != null ? " | " + w.km.toLocaleString() + "km" : ""}${w.transmission ? " | " + w.transmission : ""}${w.fuel ? " | " + w.fuel : ""}`
+).join("\n") : "No true one-offs above threshold detected."}
+
+═══ NEAR ONE-OFFS (N=2, emerging signal) ═══
+${singleWinners.filter((w) => w.bucket === "near_one_off").length ? singleWinners.filter((w) => w.bucket === "near_one_off").map((w) =>
+  `• ${w.vehicle}: $${w.profit.toLocaleString()} profit${w.profitPct != null ? " (" + w.profitPct + "%)" : ""} | ${w.salesCount} sales${w.days != null ? " | " + w.days + "d clearance" : ""}${w.km != null ? " | " + w.km.toLocaleString() + "km" : ""}${w.transmission ? " | " + w.transmission : ""}${w.fuel ? " | " + w.fuel : ""}`
+).join("\n") : "No near one-offs above threshold detected."}
 
 ═══ ACTIVE CORE TARGETS (repeatable sourcing signals) ═══
 ${coreTargets.length ? coreTargets.slice(0, 15).map((c: any) =>

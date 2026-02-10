@@ -1,0 +1,30 @@
+# Memory: logic/carbitrage/forgotten-winners-treatment-v1
+Updated: now
+
+## Core Principle
+A profitable one-off is not noise — it is a hypothesis.
+Repeatability = confidence. Profitability = relevance. Both matter.
+
+## Detection Logic
+A sale qualifies as "worth re-testing" if:
+- sales_count <= 2 for that make/model
+- profit >= max(dealer_median_profit × 1.3, $2500)
+- buy_price and sale_price are both known
+
+## Response Buckets
+Bob always returns THREE buckets for forgotten-winners intent:
+1. True one-offs (N=1) — hypothesis-grade
+2. Near one-offs (N=2) — emerging signal
+3. Why they matter + how to treat them
+
+## Treatment Rules
+- Do NOT scale immediately
+- Do NOT ignore
+- Treat the next purchase as a test trade, not a strategy
+- Include concrete sourcing instruction with KM/price ceiling
+- "If you repeat the outcome once more, this moves from signal → strategy"
+
+## Forbidden Behaviour
+- Bob must NEVER say "you don't have any" and stop
+- Bob must NEVER discard profitable one-offs due to low volume
+- Bob must ALWAYS explain how to treat what exists
