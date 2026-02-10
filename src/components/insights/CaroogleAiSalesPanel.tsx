@@ -122,11 +122,11 @@ export function CaroogleAiSalesPanel({ accountId, dealerName }: Props) {
           <div>
             <CardTitle className="flex items-center gap-2 text-lg">
               <Brain className="h-5 w-5 text-primary" />
-              Caroogle AI — Sales Assessment
+              CaroogleAi — Sales Assessment
               <Badge variant="outline" className="text-xs ml-2">read-only</Badge>
             </CardTitle>
             <CardDescription>
-              Powered by Caroogle AI · Based solely on {dealerName ? `${dealerName}'s` : "your"} sales history and system rules.
+              Powered by CaroogleAi · Based solely on {dealerName ? `${dealerName}'s` : "your"} sales history and system rules.
             </CardDescription>
           </div>
 
@@ -177,7 +177,7 @@ export function CaroogleAiSalesPanel({ accountId, dealerName }: Props) {
 
         {!isLoading && (error || !hasAssessment) && (
           <p className="text-sm text-muted-foreground">
-            Upload sales data to activate Caroogle AI insights.
+            Upload sales data to activate CaroogleAi insights.
           </p>
         )}
 
@@ -299,9 +299,9 @@ export function CaroogleAiSalesPanel({ accountId, dealerName }: Props) {
               />
             </div>
             <div>
-              <p className="text-sm font-semibold">Bob — Your Caroogle AI assistant</p>
-              <p className="text-xs text-muted-foreground">
-                Ask Caroogle AI about {dealerName ? `${dealerName}'s` : "your"} sales
+               <p className="text-sm font-semibold">Bob — Your CaroogleAi assistant</p>
+               <p className="text-xs text-muted-foreground">
+                 Ask CaroogleAi about {dealerName ? `${dealerName}'s` : "your"} sales
               </p>
             </div>
           </div>

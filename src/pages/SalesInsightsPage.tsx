@@ -73,7 +73,7 @@ export default function SalesInsightsPage() {
 
         {selectedAccountId && (
         <>
-        {/* Caroogle AI — unified assessment + chat */}
+        {/* CaroogleAi — unified assessment + chat */}
         <CaroogleAiSalesPanel accountId={selectedAccountId} dealerName={selectedAccount?.display_name} />
 
         {/* Data Coverage */}
