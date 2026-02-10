@@ -12,6 +12,7 @@ interface Props {
   data: ClearanceVelocity[];
   isLoading: boolean;
   fullOutcomeCount?: number;
+  onRowClick?: (make: string, model: string) => void;
 }
 
 const FAST_THRESHOLD = 45; // days — anything above this is "longer clearance"
@@ -41,7 +42,7 @@ function confidenceLabel(salesCount: number) {
   return <Badge variant="outline" className="text-xs bg-accent/10 text-accent-foreground border-accent/20">Low</Badge>;
 }
 
-export function ClearanceVelocityTable({ data, isLoading, fullOutcomeCount = 0 }: Props) {
+export function ClearanceVelocityTable({ data, isLoading, fullOutcomeCount = 0, onRowClick }: Props) {
   const [showSlower, setShowSlower] = useState(false);
 
   // Best-first ordering: sorted by median_profit_dollars descending (highest profit first)
@@ -111,7 +112,11 @@ export function ClearanceVelocityTable({ data, isLoading, fullOutcomeCount = 0 }
             {visibleRows.map((row, i) => {
               const hasPartialData = row.median_days_to_clear === null || row.median_profit_dollars === null;
               return (
-                <TableRow key={i} className={hasPartialData ? "opacity-60" : ""}>
+                <TableRow
+                  key={i}
+                  className={`${hasPartialData ? "opacity-60" : ""} ${onRowClick ? "cursor-pointer hover:bg-muted/50 transition-colors" : ""}`}
+                  onClick={() => onRowClick?.(row.make, row.model)}
+                >
                   <TableCell className="font-medium">
                     {row.make} {row.model}
                     {row.variant && (

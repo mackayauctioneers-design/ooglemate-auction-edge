@@ -7,6 +7,7 @@ import type { UnexpectedWinner } from "@/hooks/useUnexpectedWinners";
 interface Props {
   data: UnexpectedWinner[];
   isLoading: boolean;
+  onCardClick?: (make: string, model: string) => void;
 }
 
 function formatPrice(price: number | null) {
@@ -19,7 +20,7 @@ function formatDays(days: number | null) {
   return `${days}d`;
 }
 
-export function UnexpectedWinnersCard({ data, isLoading }: Props) {
+export function UnexpectedWinnersCard({ data, isLoading, onCardClick }: Props) {
   if (isLoading) {
     return (
       <Card>
@@ -84,7 +85,8 @@ export function UnexpectedWinnersCard({ data, isLoading }: Props) {
           {data.map((w, i) => (
             <div
               key={i}
-              className="rounded-lg border border-border bg-muted/20 p-4 space-y-2"
+              className={`rounded-lg border border-border bg-muted/20 p-4 space-y-2 ${onCardClick ? "cursor-pointer hover:bg-muted/40 transition-colors" : ""}`}
+              onClick={() => onCardClick?.(w.make, w.model)}
             >
               {/* Vehicle identity */}
               <div>

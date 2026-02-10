@@ -9,6 +9,7 @@ interface Props {
   data: VariationPerformance[];
   isLoading: boolean;
   fullOutcomeCount?: number;
+  onRowClick?: (make: string, model: string) => void;
 }
 
 function formatPrice(v: number | null) {
@@ -30,7 +31,7 @@ function marginCell(dollars: number | null) {
   return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">-{label}</Badge>;
 }
 
-export function VariationPerformanceTable({ data, isLoading, fullOutcomeCount = 0 }: Props) {
+export function VariationPerformanceTable({ data, isLoading, fullOutcomeCount = 0, onRowClick }: Props) {
   // Best-first ordering: highest profit first
   const sorted = [...data].sort(
     (a, b) => (b.median_profit_dollars ?? -Infinity) - (a.median_profit_dollars ?? -Infinity)
@@ -91,7 +92,11 @@ export function VariationPerformanceTable({ data, isLoading, fullOutcomeCount = 
             {sorted.map((row, i) => {
               const hasPartialData = row.median_profit_dollars === null || row.median_days_to_clear === null;
               return (
-                <TableRow key={i} className={hasPartialData ? "opacity-60" : ""}>
+                <TableRow
+                  key={i}
+                  className={`${hasPartialData ? "opacity-60" : ""} ${onRowClick ? "cursor-pointer hover:bg-muted/50 transition-colors" : ""}`}
+                  onClick={() => onRowClick?.(row.make, row.model)}
+                >
                   <TableCell className="font-medium">
                     {row.make} {row.model}
                   </TableCell>
