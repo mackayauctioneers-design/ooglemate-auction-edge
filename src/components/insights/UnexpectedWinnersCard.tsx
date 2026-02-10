@@ -98,10 +98,15 @@ export function UnexpectedWinnersCard({ data, isLoading }: Props) {
 
               {/* Metrics row */}
               <div className="flex flex-wrap gap-2 text-xs">
-                {w.profitDollars != null && (
+                {w.profitDollars != null && w.buyPrice != null && (
                   <span className="flex items-center gap-1 text-muted-foreground">
                     <Percent className="h-3 w-3" />
                     ${Math.abs(w.profitDollars).toLocaleString()} {w.profitDollars >= 0 ? "margin" : "below cost"}
+                  </span>
+                )}
+                {w.profitDollars == null && (
+                  <span className="flex items-center gap-1 text-muted-foreground text-xs italic">
+                    Margin unavailable (buy price not confirmed)
                   </span>
                 )}
                 {w.daysToClear != null && (

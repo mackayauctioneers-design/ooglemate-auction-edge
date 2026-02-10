@@ -25,13 +25,19 @@ function speedBadge(days: number | null) {
   return <Badge variant="outline" className="bg-muted text-muted-foreground border-border">{days}d — longer clearance observed</Badge>;
 }
 
-function marginCell(dollars: number | null) {
-  if (dollars == null) return <span className="text-muted-foreground text-xs italic">Margin data unavailable</span>;
+function marginCell(dollars: number | null, salesCount?: number) {
+  if (dollars == null) return <span className="text-muted-foreground text-xs italic">Unavailable (buy price not confirmed)</span>;
   const label = `$${Math.abs(dollars).toLocaleString()}`;
   if (dollars >= 5000) return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">{label}</Badge>;
   if (dollars >= 1000) return <span className="text-sm">{label}</span>;
   if (dollars >= 0) return <span className="text-sm text-muted-foreground">{label}</span>;
   return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">-{label}</Badge>;
+}
+
+function confidenceLabel(salesCount: number) {
+  if (salesCount >= 5) return <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">High confidence</Badge>;
+  if (salesCount >= 3) return <Badge variant="outline" className="text-xs bg-muted text-muted-foreground border-border">Medium</Badge>;
+  return <Badge variant="outline" className="text-xs bg-accent/10 text-accent-foreground border-accent/20">Low</Badge>;
 }
 
 export function ClearanceVelocityTable({ data, isLoading, fullOutcomeCount = 0 }: Props) {
@@ -97,6 +103,7 @@ export function ClearanceVelocityTable({ data, isLoading, fullOutcomeCount = 0 }
               <TableHead className="text-right">% &lt; 30d</TableHead>
               <TableHead className="text-right">% &lt; 60d</TableHead>
               <TableHead className="text-right">Sales</TableHead>
+              <TableHead className="text-right">Confidence</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -125,12 +132,15 @@ export function ClearanceVelocityTable({ data, isLoading, fullOutcomeCount = 0 }
                   <TableCell className="text-right font-mono">
                     {row.sales_count}
                   </TableCell>
+                  <TableCell className="text-right">
+                    {confidenceLabel(row.sales_count)}
+                  </TableCell>
                 </TableRow>
               );
             })}
             {!visibleRows.length && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
                   No vehicles with full outcome data in this range.
                 </TableCell>
               </TableRow>
