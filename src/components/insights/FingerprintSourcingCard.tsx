@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Repeat, Eye, Target, Clock, DollarSign, BarChart3 } from "lucide-react";
+import { Repeat, Eye, Target, Clock, DollarSign, BarChart3, AlertTriangle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -19,10 +19,12 @@ interface TargetCandidate {
   sales_count: number;
   median_profit: number | null;
   median_profit_pct: number | null;
+  median_sale_price: number | null;
   median_days_to_clear: number | null;
   target_score: number;
   fingerprint_type: string;
   confidence_level: string;
+  spec_completeness: number | null;
 }
 
 function buildDnaLabel(c: TargetCandidate): string {
@@ -48,6 +50,26 @@ function confidenceVariant(level: string): string {
   }
 }
 
+/** Is this shape fully spec'd enough to claim "identical"? */
+function isFullySpecd(c: TargetCandidate): boolean {
+  return (c.spec_completeness ?? 0) >= 3;
+}
+
+/** Profit plausibility: flag if median_profit > 30% of median_sale_price */
+function isProfitSuspicious(c: TargetCandidate): boolean {
+  if (c.median_profit == null || c.median_sale_price == null || c.median_sale_price <= 0) return false;
+  return c.median_profit > c.median_sale_price * 0.3;
+}
+
+function salesLabel(c: TargetCandidate): string {
+  const count = c.sales_count;
+  const word = count === 1 ? "sale" : "sales";
+  if (isFullySpecd(c)) {
+    return `${count} identical ${word}`;
+  }
+  return `${count} similar ${word} (mixed specs)`;
+}
+
 function profitDisplay(c: TargetCandidate): string {
   if (c.median_profit == null) return "Unavailable (data incomplete)";
   return `$${Math.abs(c.median_profit).toLocaleString()}`;
@@ -65,7 +87,7 @@ export function FingerprintSourcingCard({ accountId }: Props) {
       if (!accountId) return [];
       const { data, error } = await supabase
         .from("sales_target_candidates")
-        .select("make, model, variant, transmission, fuel_type, drive_type, body_type, sales_count, median_profit, median_profit_pct, median_days_to_clear, target_score, fingerprint_type, confidence_level")
+        .select("make, model, variant, transmission, fuel_type, drive_type, body_type, sales_count, median_profit, median_profit_pct, median_sale_price, median_days_to_clear, target_score, fingerprint_type, confidence_level, spec_completeness")
         .eq("account_id", accountId)
         .in("status", ["candidate", "active"])
         .order("target_score", { ascending: false })
@@ -142,7 +164,7 @@ export function FingerprintSourcingCard({ accountId }: Props) {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Eye className="h-5 w-5 text-purple-400" />
+              <Eye className="h-5 w-5 text-accent-foreground" />
               Watch &amp; Re-Test — Profitable Outcomes
             </CardTitle>
             <CardDescription>
@@ -163,6 +185,7 @@ export function FingerprintSourcingCard({ accountId }: Props) {
 function SourcingRow({ candidate: c, isOutcome }: { candidate: TargetCandidate; isOutcome?: boolean }) {
   const specLine = buildSpecLine(c);
   const confidence = c.confidence_level?.toUpperCase() || "LOW";
+  const suspicious = isProfitSuspicious(c);
 
   return (
     <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-2">
@@ -183,7 +206,7 @@ function SourcingRow({ candidate: c, isOutcome }: { candidate: TargetCandidate; 
       <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <BarChart3 className="h-3 w-3" />
-          {c.sales_count} {c.sales_count === 1 ? "sale" : "sales"}
+          {salesLabel(c)}
         </span>
         <span className="flex items-center gap-1">
           <DollarSign className="h-3 w-3" />
@@ -195,11 +218,26 @@ function SourcingRow({ candidate: c, isOutcome }: { candidate: TargetCandidate; 
         </span>
       </div>
 
+      {/* Profit plausibility warning */}
+      {suspicious && (
+        <p className="text-xs text-amber-400/80 flex items-center gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          Check profit source — derived or low-confidence
+        </p>
+      )}
+
+      {/* Incomplete spec warning for high-count shapes */}
+      {!isFullySpecd(c) && c.sales_count >= 5 && (
+        <p className="text-xs text-muted-foreground/70 italic">
+          Spec data incomplete — count includes similar vehicles across mixed trims/specs
+        </p>
+      )}
+
       {/* Outcome context note */}
       {isOutcome && confidence === "LOW" && (
-        <p className="text-xs text-purple-400/80 italic">
+        <p className="text-xs text-muted-foreground italic">
           {c.sales_count === 1
-            ? "Exceptional outcome from a single sale — worth re-testing"
+            ? "Low repeatability so far, but strong outcome — worth re-testing"
             : "Strong outcome from limited sales — building evidence"}
         </p>
       )}

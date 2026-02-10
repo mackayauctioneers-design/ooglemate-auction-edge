@@ -5582,6 +5582,7 @@ export type Database = {
           pct_under_60: number | null
           sales_count: number
           score_reasons: Json
+          spec_completeness: number | null
           status: string
           target_score: number
           transmission: string | null
@@ -5614,6 +5615,7 @@ export type Database = {
           pct_under_60?: number | null
           sales_count?: number
           score_reasons?: Json
+          spec_completeness?: number | null
           status?: string
           target_score?: number
           transmission?: string | null
@@ -5646,6 +5648,7 @@ export type Database = {
           pct_under_60?: number | null
           sales_count?: number
           score_reasons?: Json
+          spec_completeness?: number | null
           status?: string
           target_score?: number
           transmission?: string | null
