@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Mic, MicOff, Send, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
+import { BobSourcingLinks } from "./BobSourcingLinks";
 
 interface Props {
   accountId: string;
@@ -208,9 +209,18 @@ export function AskBobSalesTruth({ accountId, dealerName }: Props) {
                 {msg.role === "user" ? (
                   <p className="text-primary">🗣 {msg.content}</p>
                 ) : (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  </div>
+                  <>
+                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
+                    {/* Show sourcing links after complete assistant messages */}
+                    {!isLoading && msg.content.length > 50 && accountId && (
+                      <BobSourcingLinks
+                        bobResponse={msg.content}
+                        accountId={accountId}
+                      />
+                    )}
+                  </>
                 )}
               </div>
             ))}

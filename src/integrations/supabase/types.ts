@@ -6066,6 +6066,129 @@ export type Database = {
         }
         Relationships: []
       }
+      sourcing_watchlist: {
+        Row: {
+          account_id: string
+          confidence_level: string
+          created_at: string
+          drivetrain: string | null
+          fuel_type: string | null
+          id: string
+          is_active: boolean
+          linked_listing_id: string | null
+          linked_listing_url: string | null
+          make: string
+          model: string
+          originating_insight: string | null
+          transmission: string | null
+          updated_at: string
+          user_id: string
+          variant: string | null
+          watch_type: string
+          year_max: number | null
+          year_min: number | null
+        }
+        Insert: {
+          account_id: string
+          confidence_level?: string
+          created_at?: string
+          drivetrain?: string | null
+          fuel_type?: string | null
+          id?: string
+          is_active?: boolean
+          linked_listing_id?: string | null
+          linked_listing_url?: string | null
+          make: string
+          model: string
+          originating_insight?: string | null
+          transmission?: string | null
+          updated_at?: string
+          user_id: string
+          variant?: string | null
+          watch_type?: string
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          account_id?: string
+          confidence_level?: string
+          created_at?: string
+          drivetrain?: string | null
+          fuel_type?: string | null
+          id?: string
+          is_active?: boolean
+          linked_listing_id?: string | null
+          linked_listing_url?: string | null
+          make?: string
+          model?: string
+          originating_insight?: string | null
+          transmission?: string | null
+          updated_at?: string
+          user_id?: string
+          variant?: string | null
+          watch_type?: string
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sourcing_watchlist_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sourcing_watchlist_linked_listing_id_fkey"
+            columns: ["linked_listing_id"]
+            isOneToOne: false
+            referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sourcing_watchlist_linked_listing_id_fkey"
+            columns: ["linked_listing_id"]
+            isOneToOne: false
+            referencedRelation: "missed_buy_window"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sourcing_watchlist_linked_listing_id_fkey"
+            columns: ["linked_listing_id"]
+            isOneToOne: false
+            referencedRelation: "stale_dealer_grade"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sourcing_watchlist_linked_listing_id_fkey"
+            columns: ["linked_listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sourcing_watchlist_linked_listing_id_fkey"
+            columns: ["linked_listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_deals_90_plus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sourcing_watchlist_linked_listing_id_fkey"
+            columns: ["linked_listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_inventory_current"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sourcing_watchlist_linked_listing_id_fkey"
+            columns: ["linked_listing_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stub_anchors: {
         Row: {
           best_match_score: number | null
