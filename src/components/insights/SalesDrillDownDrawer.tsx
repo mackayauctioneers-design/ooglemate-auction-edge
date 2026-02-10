@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   Sheet,
   SheetContent,
@@ -11,8 +11,12 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, ArrowLeft } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ChevronRight, ArrowLeft, Search, Star, Bell, ExternalLink, Loader2 } from "lucide-react";
 import { useSalesDrillDown, buildSpecBreakdown, type YearBandRow, type SpecRow } from "@/hooks/useSalesDrillDown";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 const RANGE_LABELS: Record<string, string> = {
   "3": "3 months",
@@ -42,6 +46,30 @@ function clearanceBadge(days: number | null) {
   return <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-xs">{days}d — longer clearance observed</Badge>;
 }
 
+// ── Match quality badges ──
+const MATCH_BADGES: Record<string, { label: string; className: string }> = {
+  exact: { label: "Exact match", className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  close: { label: "Close match", className: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  loose: { label: "Loose reference", className: "bg-muted text-muted-foreground border-border" },
+};
+
+interface ScoredListing {
+  id: string;
+  listing_url: string | null;
+  make: string;
+  model: string;
+  variant_used: string | null;
+  year: number;
+  km: number | null;
+  asking_price: number | null;
+  source: string;
+  source_class: string;
+  auction_house: string | null;
+  location: string | null;
+  match_quality: "exact" | "close" | "loose";
+  match_vehicle_index: number;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -58,9 +86,14 @@ export function SalesDrillDownDrawer({ open, onOpenChange, make, model, accountI
   const [selectedBand, setSelectedBand] = useState<YearBandRow | null>(null);
   const [specData, setSpecData] = useState<SpecRow[]>([]);
 
+  // Listing search state
+  const [listings, setListings] = useState<ScoredListing[]>([]);
+  const [listingsLoading, setListingsLoading] = useState(false);
+  const [listingsFetched, setListingsFetched] = useState(false);
+
   const handleBandClick = (band: YearBandRow) => {
     if (!data?.rawRows) return;
-    if (band.salesCount < 2) return; // not enough data
+    if (band.salesCount < 2) return;
     const specs = buildSpecBreakdown(data.rawRows as any, band.yearMin, band.yearMax);
     setSpecData(specs);
     setSelectedBand(band);
@@ -75,11 +108,45 @@ export function SalesDrillDownDrawer({ open, onOpenChange, make, model, accountI
     if (!isOpen) {
       setSelectedBand(null);
       setSpecData([]);
+      setListings([]);
+      setListingsFetched(false);
     }
     onOpenChange(isOpen);
   };
 
+  const searchListings = useCallback(async () => {
+    setListingsLoading(true);
+    try {
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bob-sourcing-links`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({
+            bobResponse: `I recommend looking at ${make} ${model}`,
+            accountId,
+          }),
+        }
+      );
+      if (resp.ok) {
+        const result = await resp.json();
+        setListings(result.listings || []);
+      }
+    } catch (e) {
+      console.error("Listing search error:", e);
+      toast.error("Failed to search listings");
+    }
+    setListingsLoading(false);
+    setListingsFetched(true);
+  }, [make, model, accountId]);
+
   const totalSales = data?.yearBands?.reduce((s, b) => s + b.salesCount, 0) ?? 0;
+
+  // Derive replication summary from data
+  const replicationSummary = data?.rawRows?.length ? deriveReplicationSummary(data.rawRows) : null;
 
   return (
     <Sheet open={open} onOpenChange={handleClose}>
@@ -109,16 +176,230 @@ export function SalesDrillDownDrawer({ open, onOpenChange, make, model, accountI
         ) : selectedBand ? (
           <SpecBreakdownTable data={specData} />
         ) : (
-          <YearBandTable
-            bands={data?.yearBands || []}
-            onBandClick={handleBandClick}
-          />
+          <div className="space-y-6">
+            {/* Section A — What Actually Happened */}
+            <YearBandTable
+              bands={data?.yearBands || []}
+              onBandClick={handleBandClick}
+            />
+
+            {/* Section B — What to Replicate */}
+            {replicationSummary && totalSales >= 2 && (
+              <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-2">
+                <p className="text-xs font-medium text-foreground">What to replicate</p>
+                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                  {replicationSummary.typicalKmRange && (
+                    <div>
+                      <span className="text-foreground font-medium">Typical KM:</span>{" "}
+                      {replicationSummary.typicalKmRange}
+                    </div>
+                  )}
+                  {replicationSummary.typicalBuyCeiling && (
+                    <div>
+                      <span className="text-foreground font-medium">Buy ceiling:</span>{" "}
+                      {replicationSummary.typicalBuyCeiling}
+                    </div>
+                  )}
+                  {replicationSummary.clearanceExpectation && (
+                    <div>
+                      <span className="text-foreground font-medium">Clearance:</span>{" "}
+                      {replicationSummary.clearanceExpectation}
+                    </div>
+                  )}
+                  {replicationSummary.medianProfit && (
+                    <div>
+                      <span className="text-foreground font-medium">Median margin:</span>{" "}
+                      {replicationSummary.medianProfit}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Section C — Actions */}
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={searchListings}
+                  disabled={listingsLoading}
+                >
+                  {listingsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                  Search current listings
+                </Button>
+                <WatchlistButton make={make} model={model} accountId={accountId} />
+              </div>
+
+              {/* Live listings results */}
+              {listingsLoading && (
+                <div className="grid gap-2">
+                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 rounded-lg" />)}
+                </div>
+              )}
+
+              {listingsFetched && !listingsLoading && listings.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-4">
+                  No active listings found matching this vehicle right now.
+                </p>
+              )}
+
+              {listings.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                    <Search className="h-3 w-3 text-primary" />
+                    {listings.length} current listing{listings.length !== 1 ? "s" : ""} found
+                  </p>
+                  <div className="grid gap-2">
+                    {listings.map((listing) => (
+                      <DrawerListingCard key={listing.id} listing={listing} accountId={accountId} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </SheetContent>
     </Sheet>
   );
 }
 
+// ── Replication summary derived from raw rows ──
+function deriveReplicationSummary(rows: any[]) {
+  const kms = rows.filter(r => r.km).map(r => r.km);
+  const buyPrices = rows.filter(r => r.buy_price).map(r => r.buy_price);
+  const days = rows.filter(r => r.days_to_clear != null).map(r => r.days_to_clear);
+  const profits = rows.filter(r => r.sale_price != null && r.buy_price != null).map(r => r.sale_price - r.buy_price);
+
+  const median = (arr: number[]) => {
+    if (!arr.length) return null;
+    const s = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 !== 0 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+  };
+
+  const p25 = (arr: number[]) => {
+    if (arr.length < 2) return null;
+    const s = [...arr].sort((a, b) => a - b);
+    return s[Math.floor(s.length * 0.25)];
+  };
+
+  const p75 = (arr: number[]) => {
+    if (arr.length < 2) return null;
+    const s = [...arr].sort((a, b) => a - b);
+    return s[Math.floor(s.length * 0.75)];
+  };
+
+  const kmLow = p25(kms);
+  const kmHigh = p75(kms);
+  const buyMed = median(buyPrices);
+  const daysMed = median(days);
+  const profitMed = median(profits);
+
+  return {
+    typicalKmRange: kmLow != null && kmHigh != null ? `${(kmLow / 1000).toFixed(0)}k – ${(kmHigh / 1000).toFixed(0)}k` : null,
+    typicalBuyCeiling: buyMed != null ? `$${buyMed.toLocaleString()}` : null,
+    clearanceExpectation: daysMed != null ? `~${daysMed} days` : null,
+    medianProfit: profitMed != null ? `$${profitMed.toLocaleString()}` : null,
+  };
+}
+
+// ── Watchlist button ──
+function WatchlistButton({ make, model, accountId }: { make: string; model: string; accountId: string }) {
+  const { user } = useAuth();
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    if (!user) { toast.error("Please sign in"); return; }
+    const { error } = await supabase.from("sourcing_watchlist").insert({
+      user_id: user.id,
+      account_id: accountId,
+      make,
+      model,
+      confidence_level: "MEDIUM",
+      watch_type: "watch",
+      originating_insight: `Drill-down on ${make} ${model}`,
+    });
+    if (error) { toast.error("Failed to save"); console.error(error); }
+    else { setSaved(true); toast.success("Added to watchlist"); }
+  };
+
+  if (saved) return <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">✓ On watchlist</Badge>;
+
+  return (
+    <Button variant="outline" size="sm" className="gap-1.5" onClick={handleSave}>
+      <Star className="h-3.5 w-3.5" /> Add to watchlist
+    </Button>
+  );
+}
+
+// ── Listing card for drawer ──
+function DrawerListingCard({ listing, accountId }: { listing: ScoredListing; accountId: string }) {
+  const { user } = useAuth();
+  const matchBadge = MATCH_BADGES[listing.match_quality];
+  const sourceLabel = listing.auction_house || listing.source || "Unknown";
+  const [saved, setSaved] = useState(false);
+
+  const handleWatch = async () => {
+    if (!user) { toast.error("Please sign in"); return; }
+    const { error } = await supabase.from("sourcing_watchlist").insert({
+      user_id: user.id,
+      account_id: accountId,
+      make: listing.make,
+      model: listing.model,
+      variant: listing.variant_used,
+      confidence_level: "MEDIUM",
+      watch_type: "watch",
+      linked_listing_id: listing.id,
+      linked_listing_url: listing.listing_url,
+      originating_insight: `Drill-down listing: ${listing.year} ${listing.make} ${listing.model}`,
+    });
+    if (error) { toast.error("Failed to save"); console.error(error); }
+    else { setSaved(true); toast.success("Added to watchlist"); }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card/50 p-3 space-y-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium truncate">
+            {listing.year} {listing.make} {listing.model}
+            {listing.variant_used ? ` ${listing.variant_used}` : ""}
+          </p>
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <Badge variant="outline" className={`text-[10px] ${matchBadge.className}`}>
+              {matchBadge.label}
+            </Badge>
+            <span className="text-[10px] text-muted-foreground">{sourceLabel}</span>
+          </div>
+        </div>
+        {listing.listing_url && (
+          <a href={listing.listing_url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground shrink-0">
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </div>
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        {listing.asking_price != null && <span className="font-medium text-foreground">${listing.asking_price.toLocaleString()}</span>}
+        {listing.km != null && <span>{listing.km.toLocaleString()} km</span>}
+        {listing.location && <span>{listing.location}</span>}
+      </div>
+      {!saved ? (
+        <div className="flex items-center gap-1.5">
+          <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1" onClick={handleWatch}>
+            <Star className="h-3 w-3" /> Watch
+          </Button>
+        </div>
+      ) : (
+        <p className="text-[10px] text-primary">✓ Saved</p>
+      )}
+    </div>
+  );
+}
+
+// ── Year band table ──
 function YearBandTable({ bands, onBandClick }: { bands: YearBandRow[]; onBandClick: (b: YearBandRow) => void }) {
   if (!bands.length) {
     return (
@@ -169,6 +450,7 @@ function YearBandTable({ bands, onBandClick }: { bands: YearBandRow[]; onBandCli
   );
 }
 
+// ── Spec breakdown table ──
 function SpecBreakdownTable({ data }: { data: SpecRow[] }) {
   if (!data.length) {
     return (

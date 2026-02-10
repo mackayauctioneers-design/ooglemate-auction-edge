@@ -21,7 +21,7 @@ export default function SalesInsightsPage() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
 
   const [winnersRange, setWinnersRange] = useState<number | null>(12);
-  const [drillDown, setDrillDown] = useState<{ make: string; model: string; range: string } | null>(null);
+  const [drillDown, setDrillDown] = useState<{ make: string; model: string } | null>(null);
 
   const activeAccountId = selectedAccountId || null;
   const selectedAccount = accounts?.find((a) => a.id === selectedAccountId);
@@ -111,12 +111,14 @@ export default function SalesInsightsPage() {
           data={clearance.data || []}
           isLoading={clearance.isLoading}
           fullOutcomeCount={salesScope.data?.totalFullOutcome ?? 0}
+          onRowClick={(make, model) => setDrillDown({ make, model })}
         />
 
         <VariationPerformanceTable
           data={variation.data || []}
           isLoading={variation.isLoading}
           fullOutcomeCount={salesScope.data?.totalFullOutcome ?? 0}
+          onRowClick={(make, model) => setDrillDown({ make, model })}
         />
 
         {/* ═══════════════════════════════════════════════════════════ */}
@@ -135,6 +137,7 @@ export default function SalesInsightsPage() {
         <UnexpectedWinnersCard
           data={unexpectedWinners.data || []}
           isLoading={unexpectedWinners.isLoading}
+          onCardClick={(make, model) => setDrillDown({ make, model })}
         />
 
         {/* Ask Bob — Sales Truth */}
@@ -155,7 +158,6 @@ export default function SalesInsightsPage() {
         )}
       </div>
 
-      {/* Drill-Down Drawer */}
       {drillDown && (
         <SalesDrillDownDrawer
           open={!!drillDown}
@@ -163,7 +165,7 @@ export default function SalesInsightsPage() {
           make={drillDown.make}
           model={drillDown.model}
           accountId={selectedAccountId}
-          range={drillDown.range}
+          range="all"
         />
       )}
     </AppLayout>
