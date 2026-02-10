@@ -115,8 +115,8 @@ export function CaroogleAiChat({ accountId, dealerName }: Props) {
           }
         }
       } catch (e) {
-        console.error("Caroogle AI error:", e);
-        toast.error("Failed to connect to Caroogle AI");
+         console.error("CaroogleAi error:", e);
+         toast.error("Failed to connect to CaroogleAi");
       }
       setIsLoading(false);
     },
@@ -201,7 +201,7 @@ export function CaroogleAiChat({ accountId, dealerName }: Props) {
           {isLoading && messages[messages.length - 1]?.role === "user" && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Caroogle AI is thinking…
+              CaroogleAi is thinking…
             </div>
           )}
         </div>
@@ -241,7 +241,7 @@ export function CaroogleAiChat({ accountId, dealerName }: Props) {
               handleSend();
             }
           }}
-          placeholder="Ask Caroogle AI a question about your sales…"
+          placeholder="Ask CaroogleAi a question about your sales…"
           className="min-h-[40px] max-h-[80px] resize-none"
           rows={1}
         />

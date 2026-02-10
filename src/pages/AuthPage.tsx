@@ -62,7 +62,7 @@ export default function AuthPage() {
       >
         <img
           src={carbitrageLogo}
-          alt="Carbitrage – Powered by CarOogle AI"
+          alt="Carbitrage – Powered by CaroogleAi"
           className="w-72 sm:w-96 max-w-[80vw] object-contain"
         />
       </div>
@@ -79,7 +79,7 @@ export default function AuthPage() {
             Carbitrage
           </h1>
           <p className="text-sm text-white/50 mt-1 tracking-wide">
-            powered by <span className="text-white/70">CarOogle AI</span>
+            powered by <span className="text-white/70">CaroogleAi</span>
           </p>
         </div>
 
