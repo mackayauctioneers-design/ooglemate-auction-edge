@@ -14,6 +14,7 @@ import { UnexpectedWinnersCard } from "@/components/insights/UnexpectedWinnersCa
 import { WatchlistRecommendationsCard } from "@/components/insights/WatchlistRecommendationsCard";
 import { SalesDrillDownDrawer } from "@/components/insights/SalesDrillDownDrawer";
 import { SalesInsightsSummary } from "@/components/insights/SalesInsightsSummary";
+import { AskBobSalesTruth } from "@/components/insights/AskBobSalesTruth";
 import { TrendingUp, Repeat, Sparkles, Eye } from "lucide-react";
 
 export default function SalesInsightsPage() {
@@ -164,6 +165,12 @@ export default function SalesInsightsPage() {
         </div>
 
         <WatchlistRecommendationsCard accountId={activeAccountId} />
+
+        {/* Ask Bob — Sales Truth */}
+        <AskBobSalesTruth
+          accountId={selectedAccountId}
+          dealerName={selectedAccount?.display_name}
+        />
 
         {/* Trust Footer */}
         <div className="rounded-lg border border-border bg-muted/30 p-6 text-center">

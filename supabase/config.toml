@@ -23,6 +23,9 @@ verify_jwt = false
 [functions.bob]
 verify_jwt = false
 
+[functions.bob-sales-truth]
+verify_jwt = false
+
 [functions.bob-realtime-token]
 verify_jwt = false
 
