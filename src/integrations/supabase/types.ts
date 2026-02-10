@@ -5561,8 +5561,10 @@ export type Database = {
           account_id: string
           avg_days_to_clear: number | null
           body_type: string | null
+          confidence_level: string
           created_at: string
           drive_type: string | null
+          fingerprint_type: string
           fuel_type: string | null
           id: string
           last_sold_at: string | null
@@ -5575,6 +5577,7 @@ export type Database = {
           median_profit_per_day: number | null
           median_sale_price: number | null
           model: string
+          outcome_verified: boolean
           pct_under_30: number | null
           pct_under_60: number | null
           sales_count: number
@@ -5590,8 +5593,10 @@ export type Database = {
           account_id: string
           avg_days_to_clear?: number | null
           body_type?: string | null
+          confidence_level?: string
           created_at?: string
           drive_type?: string | null
+          fingerprint_type?: string
           fuel_type?: string | null
           id?: string
           last_sold_at?: string | null
@@ -5604,6 +5609,7 @@ export type Database = {
           median_profit_per_day?: number | null
           median_sale_price?: number | null
           model: string
+          outcome_verified?: boolean
           pct_under_30?: number | null
           pct_under_60?: number | null
           sales_count?: number
@@ -5619,8 +5625,10 @@ export type Database = {
           account_id?: string
           avg_days_to_clear?: number | null
           body_type?: string | null
+          confidence_level?: string
           created_at?: string
           drive_type?: string | null
+          fingerprint_type?: string
           fuel_type?: string | null
           id?: string
           last_sold_at?: string | null
@@ -5633,6 +5641,7 @@ export type Database = {
           median_profit_per_day?: number | null
           median_sale_price?: number | null
           model?: string
+          outcome_verified?: boolean
           pct_under_30?: number | null
           pct_under_60?: number | null
           sales_count?: number

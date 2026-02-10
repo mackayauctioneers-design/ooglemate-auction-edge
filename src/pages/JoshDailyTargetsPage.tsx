@@ -17,6 +17,7 @@ import {
   Loader2,
   RefreshCw,
   Sparkles,
+  Eye,
 } from "lucide-react";
 
 export default function JoshDailyTargetsPage() {
@@ -267,14 +268,26 @@ function TargetCard({
     >
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">
-            {c.make} {c.model}
-            {c.variant && (
-              <span className="text-muted-foreground font-normal ml-2">
-                {c.variant}
-              </span>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-lg">
+              {c.make} {c.model}
+              {c.variant && (
+                <span className="text-muted-foreground font-normal ml-2">
+                  {c.variant}
+                </span>
+              )}
+            </CardTitle>
+            {c.fingerprint_type === "outcome" ? (
+              <Badge variant="outline" className="bg-purple-500/10 text-purple-700 border-purple-300 text-xs">
+                <Eye className="h-3 w-3 mr-1" />
+                Outcome
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-300 text-xs">
+                Repeatable
+              </Badge>
             )}
-          </CardTitle>
+          </div>
           <div className="flex items-center gap-2">
             <div
               className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-bold text-sm ${
@@ -301,6 +314,11 @@ function TargetCard({
         </div>
       </CardHeader>
       <CardContent>
+        {c.fingerprint_type === "outcome" && (
+          <p className="text-xs text-purple-600/80 mb-2 italic">
+            Profitable singleton — watch &amp; re-test if found again
+          </p>
+        )}
         <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
           <span>
             Sold <strong className="text-foreground">{c.sales_count}×</strong>

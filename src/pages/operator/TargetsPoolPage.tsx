@@ -36,6 +36,7 @@ import {
   Play,
   Pause,
   XCircle,
+  Eye,
 } from "lucide-react";
 
 type CandidateStatus = "candidate" | "active" | "paused" | "retired";
@@ -51,6 +52,7 @@ export default function TargetsPoolPage() {
   const { data: accounts } = useAccounts();
   const [accountId, setAccountId] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
   const [makeFilter, setMakeFilter] = useState("");
   const queryClient = useQueryClient();
 
@@ -117,12 +119,14 @@ export default function TargetsPoolPage() {
     },
   });
 
-  const filtered = (candidates || []).filter((c: any) =>
-    makeFilter
+  const filtered = (candidates || []).filter((c: any) => {
+    const matchesMake = makeFilter
       ? c.make?.toLowerCase().includes(makeFilter.toLowerCase()) ||
         c.model?.toLowerCase().includes(makeFilter.toLowerCase())
-      : true
-  );
+      : true;
+    const matchesType = typeFilter === "all" || c.fingerprint_type === typeFilter;
+    return matchesMake && matchesType;
+  });
 
   return (
     <OperatorLayout>
@@ -174,6 +178,16 @@ export default function TargetsPoolPage() {
               <SelectItem value="retired">Retired</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="core">Core (Repeatable)</SelectItem>
+              <SelectItem value="outcome">Outcome (Watch)</SelectItem>
+            </SelectContent>
+          </Select>
           <span className="text-sm text-muted-foreground">
             {filtered.length} candidates
           </span>
@@ -199,6 +213,7 @@ export default function TargetsPoolPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Score</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Make / Model</TableHead>
                   <TableHead>Variant</TableHead>
                   <TableHead className="text-right">Sales</TableHead>
@@ -224,6 +239,18 @@ export default function TargetsPoolPage() {
                       >
                         {c.target_score}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {c.fingerprint_type === "outcome" ? (
+                        <Badge variant="outline" className="bg-purple-500/10 text-purple-700 border-purple-300 text-xs">
+                          <Eye className="h-3 w-3 mr-1" />
+                          Outcome
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-300 text-xs">
+                          Core
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="font-medium">
                       {c.make} {c.model}

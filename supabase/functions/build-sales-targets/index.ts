@@ -7,10 +7,11 @@ const corsHeaders = {
 };
 
 // ============================================================================
-// build-sales-targets
-// Reads vehicle_sales_truth for an account, groups into vehicle shapes,
-// computes metrics + target_score (including profit %), upserts into
-// sales_target_candidates.
+// build-sales-targets v2
+// Now creates TWO fingerprint types:
+//   - "core"    → 3+ profitable sales, high confidence
+//   - "outcome" → 1-2 profitable sales, low confidence, still eligible
+// Profit is the eligibility signal. Frequency is the confidence signal.
 // ============================================================================
 
 interface SaleRow {
@@ -74,10 +75,43 @@ function computeScore(shape: {
   loss_rate: number | null;
   days_to_clear_values: number[];
   dealer_median_profit_pct: number | null;
+  fingerprint_type: "core" | "outcome";
 }): { score: number; reasons: Record<string, any> } {
   let score = 0;
   const reasons: Record<string, any> = {};
 
+  if (shape.fingerprint_type === "outcome") {
+    // Outcome fingerprints: simplified scoring
+    // Base: profitable outcome exists (+20)
+    if (shape.median_profit_pct !== null && shape.median_profit_pct > 0) {
+      score += 20;
+      reasons.outcome_signal = { pts: 20, note: `Profitable outcome (${(shape.median_profit_pct * 100).toFixed(1)}% margin)` };
+    }
+
+    // Velocity bonus for outcomes
+    if (shape.median_days_to_clear !== null) {
+      if (shape.median_days_to_clear <= 21) {
+        score += 15; reasons.velocity = { pts: 15, note: "≤21d clear" };
+      } else if (shape.median_days_to_clear <= 45) {
+        score += 10; reasons.velocity = { pts: 10, note: "≤45d clear" };
+      } else {
+        score += 3; reasons.velocity = { pts: 3, note: ">45d clear" };
+      }
+    }
+
+    // Margin quality for outcomes
+    if (shape.median_profit_pct !== null) {
+      if (shape.median_profit_pct > 0.15) {
+        score += 10; reasons.margin_quality = { pts: 10, note: "Strong margin" };
+      } else if (shape.median_profit_pct > 0.05) {
+        score += 5; reasons.margin_quality = { pts: 5, note: "Decent margin" };
+      }
+    }
+
+    return { score: Math.max(0, Math.min(score, 50)), reasons };
+  }
+
+  // Core fingerprints: full scoring (unchanged)
   // Repeatability (0–40)
   if (shape.sales_count >= 10) {
     score += 40; reasons.repeatability = { pts: 40, note: "10+ sales" };
@@ -98,7 +132,7 @@ function computeScore(shape: {
     }
   }
 
-  // Profitability via profit_pct (0–20, replaces old binary check)
+  // Profitability via profit_pct (0–20)
   if (shape.median_profit_pct !== null) {
     if (shape.median_profit_pct > 0.15) {
       score += 20; reasons.profitability = { pts: 20, note: `${(shape.median_profit_pct * 100).toFixed(1)}% median margin` };
@@ -107,10 +141,9 @@ function computeScore(shape: {
     } else if (shape.median_profit_pct > 0) {
       score += 5; reasons.profitability = { pts: 5, note: `${(shape.median_profit_pct * 100).toFixed(1)}% median margin — thin` };
     }
-    // negative = 0 pts
   }
 
-  // Consistency (0–15) — based on days_to_clear variance
+  // Consistency (0–15)
   if (shape.days_to_clear_values.length >= 3) {
     const m = avg(shape.days_to_clear_values)!;
     const variance = avg(shape.days_to_clear_values.map(v => Math.abs(v - m)))!;
@@ -121,7 +154,7 @@ function computeScore(shape: {
     }
   }
 
-  // Profit % bonus — above dealer median (0–10, gated)
+  // Profit % bonus — above dealer median (0–10)
   if (
     shape.sales_count >= 3 &&
     shape.median_profit_pct !== null &&
@@ -134,7 +167,7 @@ function computeScore(shape: {
     reasons.profit_bonus = { pts: 10, note: "margin above dealer median with reasonable clearance" };
   }
 
-  // Loss protection — down-weight shapes with high loss rate + slow clearance
+  // Loss protection
   if (
     shape.loss_rate !== null &&
     shape.loss_rate > 50 &&
@@ -147,6 +180,13 @@ function computeScore(shape: {
   }
 
   return { score: Math.max(0, Math.min(score, 110)), reasons };
+}
+
+function determineConfidence(salesCount: number, fingerType: "core" | "outcome"): "low" | "medium" | "high" {
+  if (fingerType === "outcome") return "low";
+  if (salesCount >= 10) return "high";
+  if (salesCount >= 5) return "medium";
+  return "high"; // 3-4 sales core = still high confidence
 }
 
 Deno.serve(async (req) => {
@@ -162,14 +202,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log(`[build-sales-targets] Starting for account ${account_id}`);
+    console.log(`[build-sales-targets] v2 starting for account ${account_id}`);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // 1. Fetch all sales truth for this account (now includes profit fields)
+    // 1. Fetch all sales truth
     const { data: sales, error: salesErr } = await supabase
       .from("vehicle_sales_truth")
       .select("make, model, variant, body_type, fuel_type, transmission, drive_type, sale_price, buy_price, profit_pct, days_to_clear, km, sold_at")
@@ -177,14 +217,14 @@ Deno.serve(async (req) => {
 
     if (salesErr) throw salesErr;
     if (!sales?.length) {
-      return new Response(JSON.stringify({ candidates_built: 0, message: "No sales truth data found" }), {
+      return new Response(JSON.stringify({ candidates_built: 0, outcome_candidates_built: 0, message: "No sales truth data found" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     console.log(`[build-sales-targets] Found ${sales.length} sales records`);
 
-    // Compute dealer-wide median profit %
+    // Dealer-wide median profit %
     const allProfitPcts = (sales as SaleRow[])
       .map(r => r.profit_pct)
       .filter((v): v is number => v !== null);
@@ -208,11 +248,23 @@ Deno.serve(async (req) => {
       shapes.get(k)!.rows.push(row);
     }
 
-    // 3. Compute metrics and score for each shape with sales_count >= 3
+    // 3. Build candidates for ALL shapes (core >= 3 sales, outcome = 1-2 profitable sales)
     const candidates: any[] = [];
-    for (const [, shape] of shapes) {
-      if (shape.rows.length < 3) continue;
+    let coreCount = 0;
+    let outcomeCount = 0;
 
+    for (const [, shape] of shapes) {
+      const profitableRows = shape.rows.filter(r =>
+        r.profit_pct !== null && r.profit_pct > 0
+      );
+
+      // Determine fingerprint type
+      const isCore = shape.rows.length >= 3;
+      const isOutcome = !isCore && profitableRows.length > 0;
+
+      if (!isCore && !isOutcome) continue; // No profitable sales & < 3 total = skip
+
+      const fingerType = isCore ? "core" : "outcome";
       const dtcValues = shape.rows.map(r => r.days_to_clear).filter((v): v is number => v !== null);
       const priceValues = shape.rows.map(r => r.sale_price).filter((v): v is number => v !== null);
       const kmValues = shape.rows.map(r => r.km).filter((v): v is number => v !== null);
@@ -224,7 +276,6 @@ Deno.serve(async (req) => {
       const pctUnder30 = dtcValues.length ? Math.round(dtcValues.filter(v => v <= 30).length / dtcValues.length * 100) : null;
       const pctUnder60 = dtcValues.length ? Math.round(dtcValues.filter(v => v <= 60).length / dtcValues.length * 100) : null;
 
-      // Loss metrics
       const lossRate = profitPctValues.length
         ? Math.round(profitPctValues.filter(v => v < 0).length / profitPctValues.length * 100)
         : null;
@@ -232,13 +283,11 @@ Deno.serve(async (req) => {
         ? Math.min(...profitPctValues)
         : null;
 
-      // Median profit per day
       const profitPerDayValues = shape.rows
         .filter(r => r.profit_pct !== null && r.sale_price !== null && r.days_to_clear !== null && r.days_to_clear > 0)
         .map(r => ((r.sale_price! - (r.buy_price ?? 0)) / r.days_to_clear!));
       const medianProfitPerDay = median(profitPerDayValues);
 
-      // Legacy median_profit (dollar amount) for backward compat
       const profitDollarValues = shape.rows
         .filter(r => r.buy_price !== null && r.sale_price !== null)
         .map(r => r.sale_price! - r.buy_price!);
@@ -253,7 +302,13 @@ Deno.serve(async (req) => {
         loss_rate: lossRate,
         days_to_clear_values: dtcValues,
         dealer_median_profit_pct: dealerMedianProfitPct,
+        fingerprint_type: fingerType,
       });
+
+      const confidenceLevel = determineConfidence(shape.rows.length, fingerType);
+
+      if (fingerType === "core") coreCount++;
+      else outcomeCount++;
 
       candidates.push({
         account_id,
@@ -280,16 +335,19 @@ Deno.serve(async (req) => {
         score_reasons: reasons,
         last_sold_at: soldDates[0] || null,
         status: "candidate",
+        fingerprint_type: fingerType,
+        confidence_level: confidenceLevel,
+        outcome_verified: profitableRows.length > 0,
       });
     }
 
-    console.log(`[build-sales-targets] ${candidates.length} candidates qualifying (3+ sales)`);
+    console.log(`[build-sales-targets] ${coreCount} core, ${outcomeCount} outcome candidates`);
 
-    // 4. Merge into sales_target_candidates
+    // 4. Merge into sales_target_candidates (preserve manual statuses)
     if (candidates.length) {
       const { data: existing } = await supabase
         .from("sales_target_candidates")
-        .select("id, make, model, variant, transmission, fuel_type, body_type, drive_type, status")
+        .select("id, make, model, variant, transmission, fuel_type, body_type, drive_type, status, fingerprint_type")
         .eq("account_id", account_id);
 
       const shapeKey = (r: any) =>
@@ -310,6 +368,10 @@ Deno.serve(async (req) => {
         const match = existingMap.get(k);
 
         if (match) {
+          // Preserve manual operator statuses
+          const preserveStatuses = ["active", "paused", "retired"];
+          const newStatus = preserveStatuses.includes(match.status) ? undefined : c.status;
+
           toUpdate.push({
             id: match.id,
             metrics: {
@@ -328,6 +390,10 @@ Deno.serve(async (req) => {
               target_score: c.target_score,
               score_reasons: c.score_reasons,
               last_sold_at: c.last_sold_at,
+              fingerprint_type: c.fingerprint_type,
+              confidence_level: c.confidence_level,
+              outcome_verified: c.outcome_verified,
+              ...(newStatus ? { status: newStatus } : {}),
             },
           });
         } else {
@@ -352,10 +418,10 @@ Deno.serve(async (req) => {
           .eq("id", u.id);
       }
 
-      console.log(`[build-sales-targets] Inserted ${toInsert.length} new, updated ${toUpdate.length} existing (status preserved)`);
+      console.log(`[build-sales-targets] Inserted ${toInsert.length} new, updated ${toUpdate.length} existing`);
     }
 
-    // 5. Return top 10 preview
+    // 5. Return summary
     const top10 = candidates
       .sort((a, b) => b.target_score - a.target_score)
       .slice(0, 10)
@@ -365,15 +431,19 @@ Deno.serve(async (req) => {
         variant: c.variant,
         sales_count: c.sales_count,
         target_score: c.target_score,
+        fingerprint_type: c.fingerprint_type,
+        confidence_level: c.confidence_level,
         median_days_to_clear: c.median_days_to_clear,
         median_profit_pct: c.median_profit_pct,
         loss_rate: c.loss_rate,
       }));
 
-    console.log(`[build-sales-targets] Done. Built ${candidates.length} candidates.`);
+    console.log(`[build-sales-targets] Done. ${coreCount} core + ${outcomeCount} outcome = ${candidates.length} total.`);
 
     return new Response(JSON.stringify({
-      candidates_built: candidates.length,
+      candidates_built: coreCount,
+      outcome_candidates_built: outcomeCount,
+      total_candidates: candidates.length,
       total_sales_analysed: sales.length,
       dealer_median_profit_pct: dealerMedianProfitPct,
       top_10: top10,

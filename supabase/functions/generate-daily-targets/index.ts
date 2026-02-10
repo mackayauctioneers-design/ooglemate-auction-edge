@@ -7,9 +7,9 @@ const corsHeaders = {
 };
 
 // ============================================================================
-// generate-daily-targets
-// Selects 10–15 daily targets from sales_target_candidates for Josh.
-// Avoids repeating the same target within the last 7 days where possible.
+// generate-daily-targets v2
+// Selects daily targets from BOTH core and outcome fingerprints.
+// Core targets fill the majority; outcome targets get 2-3 slots for discovery.
 // ============================================================================
 
 Deno.serve(async (req) => {
@@ -25,8 +25,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const targetCount = Math.min(Math.max(n, 5), 25); // clamp 5–25
-    console.log(`[generate-daily-targets] Account ${account_id}, requesting ${targetCount} targets`);
+    const targetCount = Math.min(Math.max(n, 5), 25);
+    console.log(`[generate-daily-targets] v2 Account ${account_id}, requesting ${targetCount} targets`);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -46,7 +46,6 @@ Deno.serve(async (req) => {
     if (existErr) throw existErr;
 
     if (existingToday && existingToday.length > 0) {
-      // Already generated — return existing
       const { data: todayTargets, error: fetchErr } = await supabase
         .from("josh_daily_targets")
         .select("*, sales_target_candidates(*)")
@@ -65,7 +64,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 2. Get all eligible candidates
+    // 2. Get all eligible candidates — BOTH types
     const { data: candidates, error: candErr } = await supabase
       .from("sales_target_candidates")
       .select("*")
@@ -95,23 +94,43 @@ Deno.serve(async (req) => {
       .gte("target_date", sevenDaysAgo.toISOString().slice(0, 10));
 
     if (recentErr) throw recentErr;
-
     const recentIds = new Set((recentTargets || []).map(t => t.target_candidate_id));
 
-    // 4. Select targets: prefer non-recent, then fill with recent if needed
-    const nonRecent = candidates.filter(c => !recentIds.has(c.id));
-    const recent = candidates.filter(c => recentIds.has(c.id));
+    // 4. Split candidates by type
+    const coreCandidates = candidates.filter((c: any) => c.fingerprint_type !== 'outcome');
+    const outcomeCandidates = candidates.filter((c: any) => c.fingerprint_type === 'outcome');
 
-    const selected: any[] = [];
-    // First add non-recent candidates
-    for (const c of nonRecent) {
-      if (selected.length >= targetCount) break;
-      selected.push(c);
-    }
-    // Fill remaining from recent if needed
-    for (const c of recent) {
-      if (selected.length >= targetCount) break;
-      selected.push(c);
+    // Reserve 2-3 slots for outcome fingerprints (discovery)
+    const outcomeSlots = Math.min(3, Math.max(1, Math.floor(targetCount * 0.2)));
+    const coreSlots = targetCount - outcomeSlots;
+
+    // Select core targets (prefer non-recent)
+    const selectFromPool = (pool: any[], maxCount: number) => {
+      const nonRecent = pool.filter(c => !recentIds.has(c.id));
+      const recent = pool.filter(c => recentIds.has(c.id));
+      const selected: any[] = [];
+      for (const c of nonRecent) {
+        if (selected.length >= maxCount) break;
+        selected.push(c);
+      }
+      for (const c of recent) {
+        if (selected.length >= maxCount) break;
+        selected.push(c);
+      }
+      return selected;
+    };
+
+    const selectedCore = selectFromPool(coreCandidates, coreSlots);
+    const selectedOutcome = selectFromPool(outcomeCandidates, outcomeSlots);
+
+    // If we have unfilled core slots, fill with more outcomes (and vice versa)
+    const selected = [...selectedCore, ...selectedOutcome];
+    if (selected.length < targetCount) {
+      const remaining = candidates.filter(c => !selected.some(s => s.id === c.id) && !recentIds.has(c.id));
+      for (const c of remaining) {
+        if (selected.length >= targetCount) break;
+        selected.push(c);
+      }
     }
 
     if (!selected.length) {
@@ -142,7 +161,7 @@ Deno.serve(async (req) => {
       throw insertErr;
     }
 
-    // 6. Fetch inserted targets with candidate details
+    // 6. Fetch inserted targets
     const { data: createdTargets, error: fetchErr } = await supabase
       .from("josh_daily_targets")
       .select("*, sales_target_candidates(*)")
@@ -152,10 +171,12 @@ Deno.serve(async (req) => {
 
     if (fetchErr) throw fetchErr;
 
-    console.log(`[generate-daily-targets] Created ${selected.length} daily targets for ${today}`);
+    console.log(`[generate-daily-targets] Created ${selected.length} targets (${selectedCore.length} core, ${selectedOutcome.length} outcome) for ${today}`);
 
     return new Response(JSON.stringify({
       created: selected.length,
+      core_count: selectedCore.length,
+      outcome_count: selectedOutcome.length,
       target_date: today,
       targets: createdTargets,
     }), {
