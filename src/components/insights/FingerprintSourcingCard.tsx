@@ -1,8 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Repeat, Eye, Target, Clock, DollarSign, BarChart3, AlertTriangle } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Repeat, Eye, Target, Clock, DollarSign, BarChart3, AlertTriangle, Search, Star } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useCallback, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 interface Props {
   accountId: string | null;
@@ -128,6 +132,41 @@ function clearanceDisplay(c: TargetCandidate): string {
 }
 
 export function FingerprintSourcingCard({ accountId }: Props) {
+  const { user } = useAuth();
+  const [savedShapes, setSavedShapes] = useState<Set<string>>(new Set());
+
+  const handleSearch = useCallback((c: TargetCandidate) => {
+    const q = encodeURIComponent(`${c.make} ${c.model} ${c.variant || ""}`.trim());
+    window.open(`https://www.pickles.com.au/cars/search?q=${q}`, "_blank");
+  }, []);
+
+  const handleWatch = useCallback(async (c: TargetCandidate) => {
+    if (!user || !accountId) {
+      toast.error("Please sign in to save to watchlist");
+      return;
+    }
+    const key = `${c.make}-${c.model}-${c.variant || ""}`;
+    const { error } = await supabase.from("sourcing_watchlist").insert({
+      user_id: user.id,
+      account_id: accountId,
+      make: c.make,
+      model: c.model,
+      variant: c.variant || null,
+      drivetrain: c.drive_type || null,
+      fuel_type: c.fuel_type || null,
+      transmission: c.transmission || null,
+      confidence_level: effectiveConfidence(c),
+      watch_type: c.fingerprint_type === "core" ? "hunt" : "watch",
+      originating_insight: `Fingerprint sourcing: ${buildDnaLabel(c)} — ${salesLabel(c)}, median profit ${profitDisplay(c)}`,
+    });
+    if (error) {
+      console.error("Save error:", error);
+      toast.error("Failed to save");
+    } else {
+      setSavedShapes((prev) => new Set([...prev, key]));
+      toast.success(c.fingerprint_type === "core" ? "Added to hunt list" : "Added to watchlist");
+    }
+  }, [user, accountId]);
   const { data, isLoading } = useQuery({
     queryKey: ["fingerprint-sourcing", accountId],
     queryFn: async () => {
@@ -200,7 +239,7 @@ export function FingerprintSourcingCard({ accountId }: Props) {
           </CardHeader>
           <CardContent className="space-y-3">
             {coreItems.map((c, i) => (
-              <SourcingRow key={`core-${i}`} candidate={c} />
+              <SourcingRow key={`core-${i}`} candidate={c} onSearch={handleSearch} onWatch={handleWatch} isSaved={savedShapes.has(`${c.make}-${c.model}-${c.variant || ""}`)} />
             ))}
           </CardContent>
         </Card>
@@ -220,7 +259,7 @@ export function FingerprintSourcingCard({ accountId }: Props) {
           </CardHeader>
           <CardContent className="space-y-3">
             {outcomeItems.map((c, i) => (
-              <SourcingRow key={`outcome-${i}`} candidate={c} isOutcome />
+              <SourcingRow key={`outcome-${i}`} candidate={c} isOutcome onSearch={handleSearch} onWatch={handleWatch} isSaved={savedShapes.has(`${c.make}-${c.model}-${c.variant || ""}`)} />
             ))}
           </CardContent>
         </Card>
@@ -229,7 +268,7 @@ export function FingerprintSourcingCard({ accountId }: Props) {
   );
 }
 
-function SourcingRow({ candidate: c, isOutcome }: { candidate: TargetCandidate; isOutcome?: boolean }) {
+function SourcingRow({ candidate: c, isOutcome, onSearch, onWatch, isSaved }: { candidate: TargetCandidate; isOutcome?: boolean; onSearch?: (c: TargetCandidate) => void; onWatch?: (c: TargetCandidate) => void; isSaved?: boolean }) {
   const specLine = buildSpecLine(c);
   const confidence = effectiveConfidence(c);
   const suspicious = isProfitSuspicious(c);
@@ -288,6 +327,25 @@ function SourcingRow({ candidate: c, isOutcome }: { candidate: TargetCandidate; 
             : "Strong outcome from limited sales — building evidence"}
         </p>
       )}
+
+      {/* Action buttons */}
+      <div className="flex items-center gap-2 pt-1">
+        {onSearch && (
+          <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5" onClick={() => onSearch(c)}>
+            <Search className="h-3 w-3" />
+            Search current listings
+          </Button>
+        )}
+        {onWatch && !isSaved && (
+          <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5" onClick={() => onWatch(c)}>
+            <Star className="h-3 w-3" />
+            {isOutcome ? "Watch for similar vehicles" : "Add to sourcing list"}
+          </Button>
+        )}
+        {isSaved && (
+          <span className="text-xs text-primary">✓ Saved to watchlist</span>
+        )}
+      </div>
     </div>
   );
 }
