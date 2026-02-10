@@ -329,105 +329,128 @@ serve(async (req) => {
     let fullText = "";
 
     if (pdf_base64) {
-      const rawBytes = Uint8Array.from(atob(pdf_base64), c => c.charCodeAt(0));
-      const pdfText = extractTextFromPdfBytes(rawBytes);
-      
-      if (pdfText && pdfText.length > 100) {
-        console.log(`[sales-document-extract] Extracted ${pdfText.length} chars of text from PDF`);
-        fullText = pdfText;
-      } else {
-        // Fallback: send PDF as file for multimodal processing (small PDFs only)
-        console.log(`[sales-document-extract] No text extracted, sending as multimodal file`);
-        
-        const userContent: any[] = [
-          {
-            type: "file",
-            file: {
-              filename: filename || "document.pdf",
-              file_data: `data:application/pdf;base64,${pdf_base64}`,
-            },
+      // Always use Gemini's native multimodal PDF vision for reliable extraction.
+      // The raw byte text extractor is too unreliable for complex dealer reports.
+      console.log(`[sales-document-extract] Using multimodal PDF extraction for ${filename || "document"}`);
+
+      const systemPrompt = `You are a data extraction specialist for automotive dealer sales reports.
+Extract ALL tabular sales data from this PDF as CSV format.
+
+Rules:
+- The FIRST line must be the CSV header row
+- Extract EVERY row of vehicle sale data — do not skip, summarise, or truncate
+- If there's a combined "Description" or "Vehicle" field, keep it as-is
+- Clean up formatting artefacts (page breaks, repeated headers, footers, page numbers)
+- Ignore totals rows, summary rows, page numbers, report headers/footers
+- Quote fields that contain commas
+- Include ALL rows from ALL pages, no matter how many there are
+- For currency values, preserve the exact format from the document (e.g. "$6,100.00", "-$6,184.79")
+
+After ALL CSV data rows, on a new line write: FORMAT: <detected format name>`;
+
+      const userContent: any[] = [
+        {
+          type: "file",
+          file: {
+            filename: filename || "document.pdf",
+            file_data: `data:application/pdf;base64,${pdf_base64}`,
           },
-          {
-            type: "text",
-            text: `Extract all tabular sales data from this PDF document. Return as CSV with header row first, then all data rows. After the CSV, write FORMAT: <detected format>`,
+        },
+        {
+          type: "text",
+          text: `Extract ALL tabular sales data from every page of this dealer report (filename: ${filename || "document"}). Return as CSV. Do NOT truncate — include every single row.`,
+        },
+      ];
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min for large PDFs
+
+      try {
+        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
           },
-        ];
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userContent },
+            ],
+            temperature: 0.1,
+            max_tokens: 65000,
+          }),
+          signal: controller.signal,
+        });
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 55000);
+        clearTimeout(timeoutId);
 
-        try {
-          const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${LOVABLE_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
-              messages: [
-                { role: "system", content: "You are a data extraction specialist. Extract tabular sales data as CSV." },
-                { role: "user", content: userContent },
-              ],
-              temperature: 0.1,
-              max_tokens: 16000,
-            }),
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
-
-          if (!response.ok) {
-            const status = response.status;
-            return new Response(
-              JSON.stringify({ error: `AI extraction failed (status ${status})` }),
-              { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-          }
-
-          const aiResult = await response.json();
-          const content = aiResult.choices?.[0]?.message?.content || "";
-          
-          // Parse the response
-          const formatMatch = content.match(/FORMAT:\s*(.+)/i);
-          const detected_format = formatMatch?.[1]?.trim() || "PDF";
-          let csvContent = content.replace(/FORMAT:\s*.+/gi, "").replace(/```csv\s*/gi, "").replace(/```\s*/g, "").trim();
-          
-          const csvResult = parseCSVOutput(csvContent);
-          if (csvResult.headers.length > 0) {
-            console.log(`[sales-document-extract] Multimodal extracted ${csvResult.rows.length} rows`);
-            return new Response(
-              JSON.stringify({ ...csvResult, detected_format }),
-              { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-          }
-
-          // Try JSON fallback
-          try {
-            const jsonStr = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-            const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              const parsed = JSON.parse(jsonMatch[0]);
-              if (parsed.headers?.length) {
-                return new Response(JSON.stringify(parsed), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-              }
-            }
-          } catch {}
-
+        if (!response.ok) {
+          const status = response.status;
+          const body = await response.text();
+          console.error(`[sales-document-extract] AI error: ${status}`, body.slice(0, 500));
           return new Response(
-            JSON.stringify({ headers: [], rows: [], detected_format: "unrecognised", error: "Could not extract data." }),
+            JSON.stringify({ error: `AI extraction failed (status ${status})` }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const aiResult = await response.json();
+        const content: string = aiResult.choices?.[0]?.message?.content || "";
+        console.log(`[sales-document-extract] Multimodal response length: ${content.length}`);
+
+        // Parse the response
+        const formatMatch = content.match(/FORMAT:\s*(.+)/i);
+        const detected_format = formatMatch?.[1]?.trim() || "PDF";
+        let csvContent = content
+          .replace(/FORMAT:\s*.+/gi, "")
+          .replace(/```csv\s*/gi, "")
+          .replace(/```\s*/g, "")
+          .trim();
+
+        const csvResult = parseCSVOutput(csvContent);
+        if (csvResult.headers.length > 0 && csvResult.rows.length > 0) {
+          console.log(`[sales-document-extract] Multimodal extracted ${csvResult.rows.length} rows with ${csvResult.headers.length} columns`);
+          return new Response(
+            JSON.stringify({ ...csvResult, detected_format }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
-        } catch (fetchErr: any) {
-          clearTimeout(timeoutId);
-          if (fetchErr.name === "AbortError") {
-            return new Response(
-              JSON.stringify({ error: "AI extraction timed out." }),
-              { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-          }
-          throw fetchErr;
         }
+
+        // Fallback: try JSON parse
+        try {
+          const jsonStr = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+          const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.headers?.length) {
+              console.log(`[sales-document-extract] JSON fallback: ${parsed.rows?.length || 0} rows`);
+              return new Response(JSON.stringify(parsed), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+          }
+        } catch {}
+
+        // Fallback: truncated JSON recovery
+        const recovered = recoverTruncatedJson(content);
+        if (recovered) {
+          console.log(`[sales-document-extract] Recovered ${recovered.rows.length} rows from truncated response`);
+          return new Response(JSON.stringify(recovered), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        return new Response(
+          JSON.stringify({ headers: [], rows: [], detected_format: "unrecognised", error: "Could not extract data from PDF. Try CSV or XLSX instead." }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        if (fetchErr.name === "AbortError") {
+          return new Response(
+            JSON.stringify({ error: "AI extraction timed out. For large PDFs, try exporting as CSV or XLSX." }),
+            { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        throw fetchErr;
       }
     } else {
       fullText = text_content || "";
