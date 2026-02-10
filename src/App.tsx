@@ -89,42 +89,42 @@ const App = () => (
             <Sonner />
             <Routes>
               {/* === DEALER ROUTES: All authenticated users === */}
-              <Route path="/" element={<TodayPage />} />
-              <Route path="/today" element={<TodayPage />} />
-              <Route path="/opportunities-legacy" element={<OpportunitiesPage />} />
-              <Route path="/upcoming-auctions" element={<UpcomingAuctionsPage />} />
-              <Route path="/search-lots" element={<SearchLotsPage />} />
-              <Route path="/trap-inventory" element={<TrapInventoryPage />} />
-              <Route path="/matches" element={<MatchesPage />} />
-              <Route path="/valuation" element={<ValuationPage />} />
-              <Route path="/valo" element={<ValoPage />} />
-              <Route path="/dealer-dashboard" element={<DealerDashboardPage />} />
-              <Route path="/log-sale" element={<LogSalePage />} />
-              <Route path="/help" element={<HelpPage />} />
+              <Route path="/" element={<RequireAuth><TodayPage /></RequireAuth>} />
+              <Route path="/today" element={<RequireAuth><TodayPage /></RequireAuth>} />
+              <Route path="/opportunities-legacy" element={<RequireAuth><OpportunitiesPage /></RequireAuth>} />
+              <Route path="/upcoming-auctions" element={<RequireAuth><UpcomingAuctionsPage /></RequireAuth>} />
+              <Route path="/search-lots" element={<RequireAuth><SearchLotsPage /></RequireAuth>} />
+              <Route path="/trap-inventory" element={<RequireAuth><TrapInventoryPage /></RequireAuth>} />
+              <Route path="/matches" element={<RequireAuth><MatchesPage /></RequireAuth>} />
+              <Route path="/valuation" element={<RequireAuth><ValuationPage /></RequireAuth>} />
+              <Route path="/valo" element={<RequireAuth><ValoPage /></RequireAuth>} />
+              <Route path="/dealer-dashboard" element={<RequireAuth><DealerDashboardPage /></RequireAuth>} />
+              <Route path="/log-sale" element={<RequireAuth><LogSalePage /></RequireAuth>} />
+              <Route path="/help" element={<RequireAuth><HelpPage /></RequireAuth>} />
               <Route path="/auth" element={<AuthPage />} />
               
               {/* Hunts */}
-              <Route path="/hunts" element={<HuntsPage />} />
-              <Route path="/hunts/:huntId" element={<HuntDetailPage />} />
-              <Route path="/hunt-alerts" element={<HuntAlertsPage />} />
-              <Route path="/alerts" element={<UnifiedAlertsPage />} />
+              <Route path="/hunts" element={<RequireAuth><HuntsPage /></RequireAuth>} />
+              <Route path="/hunts/:huntId" element={<RequireAuth><HuntDetailPage /></RequireAuth>} />
+              <Route path="/hunt-alerts" element={<RequireAuth><HuntAlertsPage /></RequireAuth>} />
+              <Route path="/alerts" element={<RequireAuth><UnifiedAlertsPage /></RequireAuth>} />
               
               {/* Carbitrage - Josh Workflow */}
-              <Route path="/josh" element={<JoshInboxPage />} />
-              <Route path="/watchlist" element={<WatchlistPage />} />
-              <Route path="/dave" element={<DaveInboxPage />} />
-              <Route path="/dealer-urls" element={<DealerUrlBankPage />} />
-              <Route path="/grok-missions" element={<GrokMissionPage />} />
-              <Route path="/sales-upload" element={<SalesUploadPage />} />
-              <Route path="/sales-insights" element={<SalesInsightsPage />} />
-              <Route path="/targets" element={<JoshDailyTargetsPage />} />
-              <Route path="/matches-inbox" element={<MatchesInboxPage />} />
-              <Route path="/deals" element={<DealsPage />} />
-              <Route path="/deals/:dealId" element={<DealDetailPage />} />
+              <Route path="/josh" element={<RequireAuth><JoshInboxPage /></RequireAuth>} />
+              <Route path="/watchlist" element={<RequireAuth><WatchlistPage /></RequireAuth>} />
+              <Route path="/dave" element={<RequireAuth><DaveInboxPage /></RequireAuth>} />
+              <Route path="/dealer-urls" element={<RequireAuth><DealerUrlBankPage /></RequireAuth>} />
+              <Route path="/grok-missions" element={<RequireAuth><GrokMissionPage /></RequireAuth>} />
+              <Route path="/sales-upload" element={<RequireAuth><SalesUploadPage /></RequireAuth>} />
+              <Route path="/sales-insights" element={<RequireAuth><SalesInsightsPage /></RequireAuth>} />
+              <Route path="/targets" element={<RequireAuth><JoshDailyTargetsPage /></RequireAuth>} />
+              <Route path="/matches-inbox" element={<RequireAuth><MatchesInboxPage /></RequireAuth>} />
+              <Route path="/deals" element={<RequireAuth><DealsPage /></RequireAuth>} />
+              <Route path="/deals/:dealId" element={<RequireAuth><DealDetailPage /></RequireAuth>} />
               {/* Dealer Specs */}
-              <Route path="/dealer/specs" element={<DealerSpecsListPage />} />
-              <Route path="/dealer/specs/new" element={<DealerSpecFormPage />} />
-              <Route path="/dealer/specs/:id" element={<DealerSpecFormPage />} />
+              <Route path="/dealer/specs" element={<RequireAuth><DealerSpecsListPage /></RequireAuth>} />
+              <Route path="/dealer/specs/new" element={<RequireAuth><DealerSpecFormPage /></RequireAuth>} />
+              <Route path="/dealer/specs/:id" element={<RequireAuth><DealerSpecFormPage /></RequireAuth>} />
 
               {/* === OPERATOR ROUTES: Admin/Internal only === */}
               {/* Dashboard */}
