@@ -27,7 +27,7 @@ export default function AuthPage() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      navigate('/');
+      navigate('/today', { replace: true });
     }
   }, [authLoading, user, navigate]);
 
@@ -43,7 +43,7 @@ export default function AuthPage() {
 
     setLoading(false);
     if (error) { toast.error(error.message); return; }
-    if (data.user) { toast.success('Account created! You are now signed in.'); navigate('/'); }
+    if (data.user) { toast.success('Account created! You are now signed in.'); navigate('/today', { replace: true }); }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -57,7 +57,7 @@ export default function AuthPage() {
 
     setLoading(false);
     if (error) { toast.error(error.message); return; }
-    if (data.user) { toast.success(`Signed in as ${data.user.email}`); navigate('/'); }
+    if (data.user) { toast.success(`Signed in as ${data.user.email}`); navigate('/today', { replace: true }); }
   };
 
   if (authLoading) {
