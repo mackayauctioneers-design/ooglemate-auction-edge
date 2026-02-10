@@ -7,13 +7,14 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import carbitrageLogo from '@/assets/carbitrage-logo.jpg';
 
 export default function AuthPage() {
   const navigate = useNavigate();
   const { user, isLoading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
 
-  // Login state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
@@ -22,6 +23,12 @@ export default function AuthPage() {
       navigate('/today', { replace: true });
     }
   }, [authLoading, user, navigate]);
+
+  // Splash → login transition
+  useEffect(() => {
+    const timer = setTimeout(() => setShowLogin(true), 2000);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,23 +46,34 @@ export default function AuthPage() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <Loader2 className="h-8 w-8 animate-spin text-white/40" />
       </div>
     );
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* Static background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800" />
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-black">
+      {/* Stage 1: Brand Splash */}
+      <div
+        className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-700 ease-in-out ${
+          showLogin ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'
+        }`}
+      >
+        <img
+          src={carbitrageLogo}
+          alt="Carbitrage – Powered by CarOogle AI"
+          className="w-72 sm:w-96 max-w-[80vw] object-contain"
+        />
+      </div>
 
-      {/* Dark overlay */}
-      <div className="absolute inset-0 bg-black/40" />
-
-      {/* Content */}
-      <div className="relative z-10 w-full max-w-md px-4">
-        {/* Branding */}
+      {/* Stage 2: Login Reveal */}
+      <div
+        className={`relative z-10 w-full max-w-md px-4 transition-all duration-700 ease-in-out delay-200 ${
+          showLogin ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6 pointer-events-none'
+        }`}
+      >
+        {/* Small branding above card */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold tracking-tight text-white">
             Carbitrage
@@ -65,8 +83,8 @@ export default function AuthPage() {
           </p>
         </div>
 
-        {/* Card */}
-        <div className="rounded-xl border border-white/10 bg-black/50 backdrop-blur-xl p-6 shadow-2xl">
+        {/* Login card */}
+        <div className="rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-6 shadow-2xl">
           <div className="text-center mb-5">
             <h2 className="text-lg font-semibold text-white">Sign in to your account</h2>
             <p className="text-sm text-white/40 mt-0.5">Access your dealer intelligence</p>
