@@ -35,7 +35,8 @@ function marginCell(dollars: number | null, salesCount?: number) {
 }
 
 function confidenceLabel(salesCount: number) {
-  if (salesCount >= 5) return <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">High confidence</Badge>;
+  // This table groups by make/model (mixed specs), so max confidence is MEDIUM
+  if (salesCount >= 5) return <Badge variant="outline" className="text-xs bg-muted text-muted-foreground border-border">Medium (mixed specs)</Badge>;
   if (salesCount >= 3) return <Badge variant="outline" className="text-xs bg-muted text-muted-foreground border-border">Medium</Badge>;
   return <Badge variant="outline" className="text-xs bg-accent/10 text-accent-foreground border-accent/20">Low</Badge>;
 }
