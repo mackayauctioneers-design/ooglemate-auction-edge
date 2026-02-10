@@ -182,11 +182,26 @@ function computeScore(shape: {
   return { score: Math.max(0, Math.min(score, 110)), reasons };
 }
 
-function determineConfidence(salesCount: number, fingerType: "core" | "outcome"): "low" | "medium" | "high" {
+function countSpecFields(key: ShapeKey): number {
+  let count = 0;
+  if (key.variant) count++;
+  if (key.body_type) count++;
+  if (key.fuel_type) count++;
+  if (key.transmission) count++;
+  if (key.drive_type) count++;
+  return count;
+}
+
+function determineConfidence(salesCount: number, fingerType: "core" | "outcome", specCompleteness: number): "low" | "medium" | "high" {
   if (fingerType === "outcome") return "low";
-  if (salesCount >= 10) return "high";
-  if (salesCount >= 5) return "medium";
-  return "high"; // 3-4 sales core = still high confidence
+  // Spec completeness affects confidence: incomplete specs = can't claim "identical"
+  if (specCompleteness <= 1) {
+    // Very incomplete specs — even high volume is only medium confidence
+    return salesCount >= 5 ? "medium" : "low";
+  }
+  if (salesCount >= 5) return "high";
+  if (salesCount >= 3) return "medium";
+  return "low";
 }
 
 Deno.serve(async (req) => {
@@ -305,7 +320,8 @@ Deno.serve(async (req) => {
         fingerprint_type: fingerType,
       });
 
-      const confidenceLevel = determineConfidence(shape.rows.length, fingerType);
+      const specCompleteness = countSpecFields(shape.key);
+      const confidenceLevel = determineConfidence(shape.rows.length, fingerType, specCompleteness);
 
       if (fingerType === "core") coreCount++;
       else outcomeCount++;
@@ -338,6 +354,7 @@ Deno.serve(async (req) => {
         fingerprint_type: fingerType,
         confidence_level: confidenceLevel,
         outcome_verified: profitableRows.length > 0,
+        spec_completeness: specCompleteness,
       });
     }
 

@@ -111,10 +111,10 @@ export function useSalesInsightsSummary(
       const pct = Math.round((topSalesSum / totalSales) * 100);
       if (pct >= 20) {
         const names = topTwo.map((m) => `${m.make} ${m.model}`);
-        const joined = names.length === 2 ? `${names[0]}s and ${names[1]}s` : `${names[0]}s`;
+        const joined = names.length === 2 ? `${names[0]} and ${names[1]}` : `${names[0]}`;
         result.push({
           key: "core-sellers",
-          text: `You most consistently sell ${joined}`,
+          text: `${joined} vehicles represent ${pct}% of your analysed sales across mixed trims and specs`,
         });
       }
     }
