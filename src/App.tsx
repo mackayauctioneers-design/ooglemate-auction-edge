@@ -61,6 +61,7 @@ import JoshDailyTargetsPage from "./pages/JoshDailyTargetsPage";
 import MatchesInboxPage from "./pages/MatchesInboxPage";
 import DealsPage from "./pages/DealsPage";
 import DealDetailPage from "./pages/DealDetailPage";
+import ScanGuidePage from "./pages/ScanGuidePage";
 
 // Dealer spec pages
 import DealerSpecsListPage from "./pages/dealer/DealerSpecsPage";
@@ -117,6 +118,7 @@ const App = () => (
               <Route path="/grok-missions" element={<RequireAuth><GrokMissionPage /></RequireAuth>} />
               <Route path="/sales-upload" element={<RequireAuth><SalesUploadPage /></RequireAuth>} />
               <Route path="/sales-insights" element={<RequireAuth><SalesInsightsPage /></RequireAuth>} />
+              <Route path="/scan-guide" element={<RequireAuth><ScanGuidePage /></RequireAuth>} />
               <Route path="/targets" element={<RequireAuth><JoshDailyTargetsPage /></RequireAuth>} />
               <Route path="/matches-inbox" element={<RequireAuth><MatchesInboxPage /></RequireAuth>} />
               <Route path="/deals" element={<RequireAuth><DealsPage /></RequireAuth>} />
