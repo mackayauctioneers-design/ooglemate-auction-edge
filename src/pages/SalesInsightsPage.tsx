@@ -11,22 +11,18 @@ import { DataCoverageSummary } from "@/components/insights/DataCoverageSummary";
 import { ClearanceVelocityTable } from "@/components/insights/ClearanceVelocityTable";
 import { VariationPerformanceTable } from "@/components/insights/VariationPerformanceTable";
 import { UnexpectedWinnersCard } from "@/components/insights/UnexpectedWinnersCard";
+import { WatchlistRecommendationsCard } from "@/components/insights/WatchlistRecommendationsCard";
 import { SalesDrillDownDrawer } from "@/components/insights/SalesDrillDownDrawer";
 import { SalesInsightsSummary } from "@/components/insights/SalesInsightsSummary";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, Repeat, Sparkles, Eye } from "lucide-react";
 
 export default function SalesInsightsPage() {
   const { data: accounts } = useAccounts();
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
 
-  // Time range for unexpected winners (synced concept)
-  const [winnersRange, setWinnersRange] = useState<number | null>(12); // null = all time
-
-  // Scope tracking — receives analysed count & label from VolumeChart
+  const [winnersRange, setWinnersRange] = useState<number | null>(12);
   const [analysedCount, setAnalysedCount] = useState(0);
   const [rangeLabel, setRangeLabel] = useState("12 months");
-
-  // Drill-down state
   const [drillDown, setDrillDown] = useState<{ make: string; model: string; range: string } | null>(null);
 
   const activeAccountId = selectedAccountId || null;
@@ -63,7 +59,7 @@ export default function SalesInsightsPage() {
               Sales Insights
             </h1>
             <p className="text-muted-foreground">
-              What your sales history reveals about your business
+              What your sales history proves about your business
             </p>
           </div>
           <AccountSelector
@@ -79,7 +75,7 @@ export default function SalesInsightsPage() {
           </div>
         )}
 
-        {/* Empty state — no account selected */}
+        {/* Empty state */}
         {!selectedAccountId && (
           <div className="rounded-lg border border-dashed border-border bg-muted/20 p-12 text-center">
             <p className="text-lg font-medium text-muted-foreground">Select a dealer account above to view insights</p>
@@ -89,7 +85,7 @@ export default function SalesInsightsPage() {
 
         {selectedAccountId && (
         <>
-        {/* 1️⃣ Data Coverage Summary — always visible, neutral tone */}
+        {/* Data Coverage */}
         <DataCoverageSummary
           scope={salesScope.data}
           isLoading={salesScope.isLoading}
@@ -97,7 +93,26 @@ export default function SalesInsightsPage() {
           rangeLabel={rangeLabel}
         />
 
-        {/* Section 1 — Volume */}
+        {/* Summary — compressed memory */}
+        <SalesInsightsSummary
+          bullets={summary.bullets}
+          isLoading={summary.isLoading}
+          show={summary.showSummary}
+        />
+
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 1 — What You Reliably Sell                        */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="space-y-1 pt-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Repeat className="h-5 w-5 text-primary" />
+            What You Reliably Sell
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Volume-weighted patterns from your proven sales — broken down by clearance speed, margin, and specification.
+          </p>
+        </div>
+
         <VolumeChart
           data={volume.data || []}
           isLoading={volume.isLoading}
@@ -105,39 +120,57 @@ export default function SalesInsightsPage() {
           onScopeChange={handleScopeChange}
         />
 
-        {/* Section 2 — Clearance Velocity */}
         <ClearanceVelocityTable
           data={clearance.data || []}
           isLoading={clearance.isLoading}
           fullOutcomeCount={salesScope.data?.totalFullOutcome ?? 0}
         />
 
-        {/* Section 3 — Variation Performance */}
         <VariationPerformanceTable
           data={variation.data || []}
           isLoading={variation.isLoading}
           fullOutcomeCount={salesScope.data?.totalFullOutcome ?? 0}
         />
 
-        {/* Section 4 — Unexpected Winners */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 2 — Profit Wins You Might Have Forgotten           */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="space-y-1 pt-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-purple-400" />
+            Profit Wins You Might Have Forgotten
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            These vehicles sold fewer times but produced strong profit. They should be watched and replicated.
+          </p>
+        </div>
+
         <UnexpectedWinnersCard
           data={unexpectedWinners.data || []}
           isLoading={unexpectedWinners.isLoading}
         />
 
-        {/* Section 5 — Summary */}
-        <SalesInsightsSummary
-          bullets={summary.bullets}
-          isLoading={summary.isLoading}
-          show={summary.showSummary}
-        />
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 3 — What You Should Be Watching                   */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="space-y-1 pt-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Eye className="h-5 w-5 text-accent-foreground" />
+            What You Should Be Watching
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Direct sourcing instructions derived from your sales truth — not market averages.
+          </p>
+        </div>
 
-        {/* Section 6 — Trust Footer */}
+        <WatchlistRecommendationsCard accountId={activeAccountId} />
+
+        {/* Trust Footer */}
         <div className="rounded-lg border border-border bg-muted/30 p-6 text-center">
           <p className="text-sm text-muted-foreground leading-relaxed">
             These insights are derived solely from your sales history.
             <br />
-            They are used to inform Automotive Truth matching — not to judge decisions.
+            They reflect what you've proven you can sell — not what we think you should.
           </p>
         </div>
         </>
