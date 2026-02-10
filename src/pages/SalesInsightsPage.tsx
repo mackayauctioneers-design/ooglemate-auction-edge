@@ -13,8 +13,7 @@ import { UnexpectedWinnersCard } from "@/components/insights/UnexpectedWinnersCa
 import { FingerprintSourcingCard } from "@/components/insights/FingerprintSourcingCard";
 import { SalesDrillDownDrawer } from "@/components/insights/SalesDrillDownDrawer";
 import { SalesInsightsSummary } from "@/components/insights/SalesInsightsSummary";
-import { SalesAssessmentPanel } from "@/components/insights/SalesAssessmentPanel";
-import { AskBobSalesTruth } from "@/components/insights/AskBobSalesTruth";
+import { CaroogleAiSalesPanel } from "@/components/insights/CaroogleAiSalesPanel";
 import { TrendingUp, Target, Sparkles } from "lucide-react";
 
 export default function SalesInsightsPage() {
@@ -74,8 +73,8 @@ export default function SalesInsightsPage() {
 
         {selectedAccountId && (
         <>
-        {/* AI Sales Assessment */}
-        <SalesAssessmentPanel accountId={selectedAccountId} />
+        {/* Caroogle AI — unified assessment + chat */}
+        <CaroogleAiSalesPanel accountId={selectedAccountId} dealerName={selectedAccount?.display_name} />
 
         {/* Data Coverage */}
         <DataCoverageSummary
@@ -142,12 +141,6 @@ export default function SalesInsightsPage() {
           data={unexpectedWinners.data || []}
           isLoading={unexpectedWinners.isLoading}
           onCardClick={(make, model) => setDrillDown({ make, model })}
-        />
-
-        {/* Ask Bob — Sales Truth */}
-        <AskBobSalesTruth
-          accountId={selectedAccountId}
-          dealerName={selectedAccount?.display_name}
         />
 
         {/* Trust Footer */}
