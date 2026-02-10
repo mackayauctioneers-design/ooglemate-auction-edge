@@ -1,13 +1,19 @@
+import { useCallback, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Info, Sparkles, Zap, TrendingUp, Percent } from "lucide-react";
+import { Info, Sparkles, Zap, TrendingUp, Percent, Star, Search } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import type { UnexpectedWinner } from "@/hooks/useUnexpectedWinners";
 
 interface Props {
   data: UnexpectedWinner[];
   isLoading: boolean;
   onCardClick?: (make: string, model: string) => void;
+  accountId?: string | null;
 }
 
 function formatPrice(price: number | null) {
@@ -20,7 +26,39 @@ function formatDays(days: number | null) {
   return `${days}d`;
 }
 
-export function UnexpectedWinnersCard({ data, isLoading, onCardClick }: Props) {
+export function UnexpectedWinnersCard({ data, isLoading, onCardClick, accountId }: Props) {
+  const { user } = useAuth();
+  const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set());
+
+  const handleWatch = useCallback(async (w: UnexpectedWinner) => {
+    if (!user || !accountId) {
+      toast.error("Please sign in to save to watchlist");
+      return;
+    }
+    const key = `${w.make}-${w.model}-${w.variant || ""}`;
+    const { error } = await supabase.from("sourcing_watchlist").insert({
+      user_id: user.id,
+      account_id: accountId,
+      make: w.make,
+      model: w.model,
+      variant: w.variant || null,
+      confidence_level: "LOW",
+      watch_type: "watch",
+      originating_insight: `Unexpected winner: ${w.make} ${w.model} ${w.variant || ""} — ${w.profitDollars != null ? "$" + w.profitDollars.toLocaleString() + " profit" : "strong outcome"}`,
+    });
+    if (error) {
+      console.error("Save error:", error);
+      toast.error("Failed to save");
+    } else {
+      setSavedKeys((prev) => new Set([...prev, key]));
+      toast.success("Added to watchlist");
+    }
+  }, [user, accountId]);
+
+  const handleSearch = useCallback((w: UnexpectedWinner) => {
+    const q = encodeURIComponent(`${w.make} ${w.model} ${w.variant || ""}`.trim());
+    window.open(`https://www.pickles.com.au/cars/search?q=${q}`, "_blank");
+  }, []);
   if (isLoading) {
     return (
       <Card>
@@ -159,6 +197,22 @@ export function UnexpectedWinnersCard({ data, isLoading, onCardClick }: Props) {
                     {r}
                   </p>
                 ))}
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 pt-1">
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5" onClick={(e) => { e.stopPropagation(); handleSearch(w); }}>
+                  <Search className="h-3 w-3" />
+                  Search listings
+                </Button>
+                {!savedKeys.has(`${w.make}-${w.model}-${w.variant || ""}`) ? (
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5" onClick={(e) => { e.stopPropagation(); handleWatch(w); }}>
+                    <Star className="h-3 w-3" />
+                    Watch for similar
+                  </Button>
+                ) : (
+                  <span className="text-xs text-primary">✓ Saved</span>
+                )}
               </div>
             </div>
           ))}

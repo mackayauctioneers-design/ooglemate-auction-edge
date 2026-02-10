@@ -92,7 +92,7 @@ export default function SalesInsightsPage() {
         />
 
         {/* ═══════════════════════════════════════════════════════════ */}
-        {/* SECTION 1 — What You Should Be Buying Again               */}
+        {/* SECTION 1 — Proven Repeatable Winners                     */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <div className="space-y-1 pt-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -100,7 +100,7 @@ export default function SalesInsightsPage() {
             What You Should Be Buying Again
           </h2>
           <p className="text-sm text-muted-foreground">
-            Each item below is a sourcing instruction derived from your proven sales outcomes — not market averages.
+            These vehicles have repeated profitable outcomes. You can actively hunt these with confidence.
           </p>
         </div>
 
@@ -130,10 +130,10 @@ export default function SalesInsightsPage() {
         <div className="space-y-1 pt-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-purple-400" />
-            Profitable Outcomes Worth Repeating
+            Profitable One-Offs (Worth Re-Testing)
           </h2>
           <p className="text-sm text-muted-foreground">
-            These vehicles sold fewer times, but produced strong profit. These outcomes should be watched and opportunistically repeated.
+            These vehicles sold only once or twice but delivered above-average profit. Low confidence — but absolutely worth trying again.
           </p>
         </div>
 
@@ -141,6 +141,7 @@ export default function SalesInsightsPage() {
           data={unexpectedWinners.data || []}
           isLoading={unexpectedWinners.isLoading}
           onCardClick={(make, model) => setDrillDown({ make, model })}
+          accountId={activeAccountId}
         />
 
         {/* Trust Footer */}

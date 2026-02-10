@@ -1,0 +1,32 @@
+# Memory: logic/carbitrage/hypothesis-vs-noise-principle
+Updated: now
+
+## Core Principle
+A profitable one-off sale is never treated as noise to be discarded, but as a hypothesis to be replicated.
+Repeatability = confidence. Profitability = relevance. Both matter.
+The system must downgrade confidence, not discard intent.
+
+## One-Off Worth Re-Testing Criteria
+- sales_count <= 2
+- profit >= max(dealer_median_profit × 1.3, $2500)
+- buy_price and sale_price both known
+
+## Confidence Levels (Canonical)
+- HIGH: ≥5 sales AND spec_completeness ≥3
+- MEDIUM: 3-4 sales OR mixed specs (never HIGH if specs incomplete)
+- LOW: 1-2 sales — always LOW, never discarded
+
+## Fingerprint Types
+- Core (sales_count ≥ 3, positive profit): "Actively hunt these vehicles"
+- Outcome (sales_count 1-2, above threshold): "Worth re-testing — buy one more to validate"
+
+## UI Actions (Non-Negotiable)
+Every vehicle insight must have at least one action button:
+- Search current listings
+- Watch for similar vehicles / Add to sourcing list
+No dead insights. Ever.
+
+## Page Sections (Locked)
+1. Proven Repeatable Winners — "You can actively hunt these with confidence"
+2. Profitable One-Offs (Worth Re-Testing) — "Low confidence — but absolutely worth trying again"
+3. What You Should Be Watching — unified sourcing list (core=hunt, outcome=watch)
