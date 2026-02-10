@@ -141,7 +141,7 @@ export default function SalesInsightsPage() {
             Profit Wins You Might Have Forgotten
           </h2>
           <p className="text-sm text-muted-foreground">
-            These vehicles sold fewer times but produced strong profit. They should be watched and replicated.
+            These vehicles sold fewer times but produced strong profit. They should be watched and re-tested.
           </p>
         </div>
 
@@ -159,7 +159,7 @@ export default function SalesInsightsPage() {
             What You Should Be Watching
           </h2>
           <p className="text-sm text-muted-foreground">
-            Direct sourcing instructions derived from your sales truth — not market averages.
+            These are sourcing instructions derived from your sales truth — not suggestions or market averages.
           </p>
         </div>
 
