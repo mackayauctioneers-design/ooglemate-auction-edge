@@ -136,22 +136,36 @@ export function useFileParser() {
       }
 
       if (ext === "pdf") {
-        // Send PDF as base64 for AI multimodal extraction
+        // Send PDF as base64 for AI extraction (text extraction + chunked AI)
         const base64 = await readFileAsBase64(file);
         const sizeMB = (base64.length / 1024 / 1024).toFixed(1);
-        console.log(`[useFileParser] PDF base64 size: ${sizeMB}MB`);
+        console.log(`[useFileParser] PDF base64 size: ${sizeMB}MB, sending to extraction…`);
 
-        const { data, error } = await supabase.functions.invoke("sales-document-extract", {
-          body: { pdf_base64: base64, filename: file.name },
-        });
+        let data: any;
+        let error: any;
+        try {
+          const result = await supabase.functions.invoke("sales-document-extract", {
+            body: { pdf_base64: base64, filename: file.name },
+          });
+          data = result.data;
+          error = result.error;
+        } catch (fetchErr: any) {
+          console.error("[useFileParser] PDF fetch error:", fetchErr);
+          throw new Error("PDF processing timed out. The file may be too large — try exporting as CSV or XLSX from your DMS.");
+        }
+
         if (error) {
-          // supabase.functions.invoke wraps HTTP errors
           const msg = typeof error === "object" && error.message ? error.message : String(error);
+          console.error("[useFileParser] PDF extraction error:", msg);
+          if (msg.includes("Failed to send") || msg.includes("FunctionsFetchError")) {
+            throw new Error("PDF processing timed out. Try exporting as CSV or XLSX from your DMS instead.");
+          }
           throw new Error(`PDF extraction failed: ${msg}`);
         }
-        if (!data) throw new Error("No response from PDF extraction — the file may be too large. Try CSV or XLSX.");
+        if (!data) throw new Error("No response from PDF extraction — try CSV or XLSX.");
         if (data.error) throw new Error(data.error);
         if (!data.headers?.length) throw new Error(data.error || "Could not extract data from this PDF. Try CSV or XLSX.");
+        console.log(`[useFileParser] PDF extracted: ${data.rows?.length} rows, ${data.headers?.length} columns`);
         return {
           headers: data.headers,
           rows: data.rows,
