@@ -13,6 +13,7 @@ import { UnexpectedWinnersCard } from "@/components/insights/UnexpectedWinnersCa
 import { FingerprintSourcingCard } from "@/components/insights/FingerprintSourcingCard";
 import { SalesDrillDownDrawer } from "@/components/insights/SalesDrillDownDrawer";
 import { SalesInsightsSummary } from "@/components/insights/SalesInsightsSummary";
+import { SalesAssessmentPanel } from "@/components/insights/SalesAssessmentPanel";
 import { AskBobSalesTruth } from "@/components/insights/AskBobSalesTruth";
 import { TrendingUp, Target, Sparkles } from "lucide-react";
 
@@ -73,6 +74,9 @@ export default function SalesInsightsPage() {
 
         {selectedAccountId && (
         <>
+        {/* AI Sales Assessment */}
+        <SalesAssessmentPanel accountId={selectedAccountId} />
+
         {/* Data Coverage */}
         <DataCoverageSummary
           scope={salesScope.data}
