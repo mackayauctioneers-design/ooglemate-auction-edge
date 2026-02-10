@@ -50,15 +50,62 @@ function confidenceVariant(level: string): string {
   }
 }
 
+/** Compute spec completeness from raw fields (fallback when DB value is 0/null) */
+function computeSpecCompleteness(c: TargetCandidate): number {
+  // If DB has a positive value, use it; otherwise derive from fields
+  if (c.spec_completeness != null && c.spec_completeness > 0) return c.spec_completeness;
+  let count = 0;
+  if (c.variant) count++;
+  if (c.body_type) count++;
+  if (c.fuel_type) count++;
+  if (c.transmission) count++;
+  if (c.drive_type) count++;
+  return count;
+}
+
 /** Is this shape fully spec'd enough to claim "identical"? */
 function isFullySpecd(c: TargetCandidate): boolean {
-  return (c.spec_completeness ?? 0) >= 3;
+  return computeSpecCompleteness(c) >= 3;
 }
 
 /** Profit plausibility: flag if median_profit > 30% of median_sale_price */
 function isProfitSuspicious(c: TargetCandidate): boolean {
   if (c.median_profit == null || c.median_sale_price == null || c.median_sale_price <= 0) return false;
   return c.median_profit > c.median_sale_price * 0.3;
+}
+
+/**
+ * Client-side confidence hardening.
+ * Applies spec_completeness and profit plausibility rules to override
+ * stale DB confidence values. This is the single source of truth for display.
+ *
+ * Rules:
+ * - ≥5 sales AND spec ≥3 → HIGH
+ * - 3-4 sales OR spec <3 → MEDIUM (max)
+ * - 1-2 sales → LOW
+ * - Profit suspicious → downgrade by one level, never HIGH
+ */
+function effectiveConfidence(c: TargetCandidate): "HIGH" | "MEDIUM" | "LOW" {
+  const spec = computeSpecCompleteness(c);
+  const suspicious = isProfitSuspicious(c);
+
+  let level: "HIGH" | "MEDIUM" | "LOW";
+
+  if (c.sales_count <= 2) {
+    level = "LOW";
+  } else if (c.sales_count >= 5 && spec >= 3) {
+    level = "HIGH";
+  } else {
+    level = "MEDIUM";
+  }
+
+  // Profit plausibility downgrade
+  if (suspicious) {
+    if (level === "HIGH") level = "MEDIUM";
+    else if (level === "MEDIUM") level = "LOW";
+  }
+
+  return level;
 }
 
 function salesLabel(c: TargetCandidate): string {
@@ -184,7 +231,7 @@ export function FingerprintSourcingCard({ accountId }: Props) {
 
 function SourcingRow({ candidate: c, isOutcome }: { candidate: TargetCandidate; isOutcome?: boolean }) {
   const specLine = buildSpecLine(c);
-  const confidence = c.confidence_level?.toUpperCase() || "LOW";
+  const confidence = effectiveConfidence(c);
   const suspicious = isProfitSuspicious(c);
 
   return (
@@ -220,9 +267,9 @@ function SourcingRow({ candidate: c, isOutcome }: { candidate: TargetCandidate; 
 
       {/* Profit plausibility warning */}
       {suspicious && (
-        <p className="text-xs text-amber-400/80 flex items-center gap-1">
+        <p className="text-xs flex items-center gap-1 text-amber-400/80">
           <AlertTriangle className="h-3 w-3" />
-          Check profit source — derived or low-confidence
+          Derived or low-confidence profit — verify source
         </p>
       )}
 
@@ -234,10 +281,10 @@ function SourcingRow({ candidate: c, isOutcome }: { candidate: TargetCandidate; 
       )}
 
       {/* Outcome context note */}
-      {isOutcome && confidence === "LOW" && (
+      {isOutcome && (
         <p className="text-xs text-muted-foreground italic">
           {c.sales_count === 1
-            ? "Low repeatability so far, but strong outcome — worth re-testing"
+            ? "Strong outcome, low repeatability so far — worth re-testing"
             : "Strong outcome from limited sales — building evidence"}
         </p>
       )}
