@@ -1,36 +1,32 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAccounts } from "@/hooks/useAccounts";
 import { AccountSelector } from "@/components/carbitrage/AccountSelector";
-import { useClearanceVelocity, useVolumeTrends, useVariationPerformance } from "@/hooks/useSalesInsights";
+import { useClearanceVelocity, useVariationPerformance } from "@/hooks/useSalesInsights";
 import { useUnexpectedWinners } from "@/hooks/useUnexpectedWinners";
 import { useSalesInsightsSummary } from "@/hooks/useSalesInsightsSummary";
 import { useSalesScope } from "@/hooks/useSalesScope";
-import { VolumeChart } from "@/components/insights/VolumeChart";
 import { DataCoverageSummary } from "@/components/insights/DataCoverageSummary";
 import { ClearanceVelocityTable } from "@/components/insights/ClearanceVelocityTable";
 import { VariationPerformanceTable } from "@/components/insights/VariationPerformanceTable";
 import { UnexpectedWinnersCard } from "@/components/insights/UnexpectedWinnersCard";
-import { WatchlistRecommendationsCard } from "@/components/insights/WatchlistRecommendationsCard";
+import { FingerprintSourcingCard } from "@/components/insights/FingerprintSourcingCard";
 import { SalesDrillDownDrawer } from "@/components/insights/SalesDrillDownDrawer";
 import { SalesInsightsSummary } from "@/components/insights/SalesInsightsSummary";
 import { AskBobSalesTruth } from "@/components/insights/AskBobSalesTruth";
-import { TrendingUp, Repeat, Sparkles, Eye } from "lucide-react";
+import { TrendingUp, Target, Sparkles } from "lucide-react";
 
 export default function SalesInsightsPage() {
   const { data: accounts } = useAccounts();
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
 
   const [winnersRange, setWinnersRange] = useState<number | null>(12);
-  const [analysedCount, setAnalysedCount] = useState(0);
-  const [rangeLabel, setRangeLabel] = useState("12 months");
   const [drillDown, setDrillDown] = useState<{ make: string; model: string; range: string } | null>(null);
 
   const activeAccountId = selectedAccountId || null;
   const selectedAccount = accounts?.find((a) => a.id === selectedAccountId);
 
   const clearance = useClearanceVelocity(activeAccountId);
-  const volume = useVolumeTrends(activeAccountId);
   const variation = useVariationPerformance(activeAccountId);
   const unexpectedWinners = useUnexpectedWinners(activeAccountId, winnersRange);
   const salesScope = useSalesScope(activeAccountId);
@@ -39,15 +35,6 @@ export default function SalesInsightsPage() {
     clearance.data || [],
     unexpectedWinners.data || []
   );
-
-  const handleScopeChange = useCallback((count: number, label: string) => {
-    setAnalysedCount(count);
-    setRangeLabel(label);
-  }, []);
-
-  const handleDrillDown = (make: string, model: string, range: string) => {
-    setDrillDown({ make, model, range });
-  };
 
   return (
     <AppLayout>
@@ -90,8 +77,8 @@ export default function SalesInsightsPage() {
         <DataCoverageSummary
           scope={salesScope.data}
           isLoading={salesScope.isLoading}
-          analysedCount={analysedCount}
-          rangeLabel={rangeLabel}
+          analysedCount={0}
+          rangeLabel=""
         />
 
         {/* Summary — compressed memory */}
@@ -102,24 +89,23 @@ export default function SalesInsightsPage() {
         />
 
         {/* ═══════════════════════════════════════════════════════════ */}
-        {/* SECTION 1 — What You Reliably Sell                        */}
+        {/* SECTION 1 — What You Should Be Buying Again               */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <div className="space-y-1 pt-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Repeat className="h-5 w-5 text-primary" />
-            Proven Repeatable Winners
+            <Target className="h-5 w-5 text-primary" />
+            What You Should Be Buying Again
           </h2>
           <p className="text-sm text-muted-foreground">
-            These vehicles have repeated outcomes. You can actively hunt these with confidence.
+            Each item below is a sourcing instruction derived from your proven sales outcomes — not market averages.
           </p>
         </div>
 
-        <VolumeChart
-          data={volume.data || []}
-          isLoading={volume.isLoading}
-          onDrillDown={handleDrillDown}
-          onScopeChange={handleScopeChange}
-        />
+        <FingerprintSourcingCard accountId={activeAccountId} />
+
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* SECTION 2 — Clearance & Variation Detail                  */}
+        {/* ═══════════════════════════════════════════════════════════ */}
 
         <ClearanceVelocityTable
           data={clearance.data || []}
@@ -134,7 +120,7 @@ export default function SalesInsightsPage() {
         />
 
         {/* ═══════════════════════════════════════════════════════════ */}
-        {/* SECTION 2 — Profit Wins You Might Have Forgotten           */}
+        {/* SECTION 3 — Profitable Outcomes Worth Repeating            */}
         {/* ═══════════════════════════════════════════════════════════ */}
         <div className="space-y-1 pt-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -150,21 +136,6 @@ export default function SalesInsightsPage() {
           data={unexpectedWinners.data || []}
           isLoading={unexpectedWinners.isLoading}
         />
-
-        {/* ═══════════════════════════════════════════════════════════ */}
-        {/* SECTION 3 — What You Should Be Watching                   */}
-        {/* ═══════════════════════════════════════════════════════════ */}
-        <div className="space-y-1 pt-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Eye className="h-5 w-5 text-accent-foreground" />
-            What You Should Be Watching
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            These are sourcing instructions derived from your sales truth — not suggestions or market averages.
-          </p>
-        </div>
-
-        <WatchlistRecommendationsCard accountId={activeAccountId} />
 
         {/* Ask Bob — Sales Truth */}
         <AskBobSalesTruth
