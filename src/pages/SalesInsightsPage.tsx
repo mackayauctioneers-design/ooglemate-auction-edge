@@ -106,10 +106,10 @@ export default function SalesInsightsPage() {
         <div className="space-y-1 pt-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Repeat className="h-5 w-5 text-primary" />
-            What You Reliably Sell
+            Proven Repeatable Winners
           </h2>
           <p className="text-sm text-muted-foreground">
-            Volume-weighted patterns from your proven sales — broken down by clearance speed, margin, and specification.
+            These vehicles have repeated outcomes. You can actively hunt these with confidence.
           </p>
         </div>
 
@@ -138,10 +138,10 @@ export default function SalesInsightsPage() {
         <div className="space-y-1 pt-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-purple-400" />
-            Profit Wins You Might Have Forgotten
+            Profitable Outcomes Worth Repeating
           </h2>
           <p className="text-sm text-muted-foreground">
-            These vehicles sold fewer times but produced strong profit. They should be watched and re-tested.
+            These vehicles sold fewer times, but produced strong profit. These outcomes should be watched and opportunistically repeated.
           </p>
         </div>
 
@@ -168,7 +168,7 @@ export default function SalesInsightsPage() {
         {/* Trust Footer */}
         <div className="rounded-lg border border-border bg-muted/30 p-6 text-center">
           <p className="text-sm text-muted-foreground leading-relaxed">
-            These insights are derived solely from your sales history.
+            These insights are derived solely from your completed sales outcomes.
             <br />
             They reflect what you've proven you can sell — not what we think you should.
           </p>

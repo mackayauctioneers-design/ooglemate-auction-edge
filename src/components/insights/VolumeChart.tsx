@@ -73,7 +73,7 @@ export function VolumeChart({ data, isLoading, onDrillDown, onScopeChange }: Pro
     return (
       <Card>
         <CardHeader>
-          <CardTitle>What You Sell the Most</CardTitle>
+          <CardTitle>What You Should Be Buying Again</CardTitle>
         </CardHeader>
         <CardContent className="h-64 flex items-center justify-center">
           <p className="text-muted-foreground">Loading…</p>
@@ -86,10 +86,10 @@ export function VolumeChart({ data, isLoading, onDrillDown, onScopeChange }: Pro
     return (
       <Card>
         <CardHeader>
-          <CardTitle>What You Sell the Most</CardTitle>
+          <CardTitle>What You Should Be Buying Again</CardTitle>
         </CardHeader>
         <CardContent className="py-12 text-center text-muted-foreground">
-          Upload sales data to see what you consistently sell.
+          Upload sales data to see what you've proven you can sell.
         </CardContent>
       </Card>
     );
@@ -99,7 +99,7 @@ export function VolumeChart({ data, isLoading, onDrillDown, onScopeChange }: Pro
     <Card>
       <CardHeader className="flex flex-row items-start justify-between">
         <div>
-          <CardTitle>What You Sell the Most</CardTitle>
+          <CardTitle>What You Should Be Buying Again</CardTitle>
           <CardDescription className="flex items-center gap-1.5">
             Based on {totalSales} usable records over the last {RANGE_LABELS[range]}.{" "}
             <TooltipProvider>

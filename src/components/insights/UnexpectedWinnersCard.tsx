@@ -26,7 +26,7 @@ export function UnexpectedWinnersCard({ data, isLoading }: Props) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5" />
-            Unexpected Winners
+            Profitable Outcomes Worth Repeating
           </CardTitle>
         </CardHeader>
         <CardContent className="h-48 flex items-center justify-center">
@@ -42,11 +42,11 @@ export function UnexpectedWinnersCard({ data, isLoading }: Props) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5" />
-            Unexpected Winners
+            Profitable Outcomes Worth Repeating
           </CardTitle>
         </CardHeader>
         <CardContent className="py-12 text-center text-muted-foreground">
-          No standout one-offs detected in this time window. As more sales are recorded, outliers will surface here.
+          No low-frequency profitable outcomes detected yet. As more sales are recorded, singleton wins will surface here.
         </CardContent>
       </Card>
     );
@@ -56,11 +56,11 @@ export function UnexpectedWinnersCard({ data, isLoading }: Props) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5" />
-          Unexpected Winners
-        </CardTitle>
-        <CardDescription className="flex items-center gap-1.5">
-          Low-frequency vehicles that delivered unusually strong outcomes based on available data.
+            <Sparkles className="h-5 w-5" />
+            Profitable Outcomes Worth Repeating
+          </CardTitle>
+          <CardDescription className="flex items-center gap-1.5">
+            These vehicles sold fewer times, but produced strong profit. These outcomes should be watched and opportunistically repeated.
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -126,7 +126,7 @@ export function UnexpectedWinnersCard({ data, isLoading }: Props) {
               {/* Badges */}
               <div className="flex flex-wrap gap-1.5">
                 <Badge variant="outline" className="text-xs bg-accent/10 text-accent-foreground border-accent/20">
-                  Low frequency
+                  Outcome fingerprint — low frequency, high signal
                 </Badge>
                 {w.clearanceRatio != null && w.clearanceRatio <= 0.6 && (
                   <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
