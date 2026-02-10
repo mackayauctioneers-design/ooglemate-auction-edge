@@ -310,9 +310,13 @@ export default function SalesUploadPage() {
           continue;
         }
 
-        // Compute days_to_clear
+        // Compute days_to_clear from mapped field OR from date difference
         let daysToCleer: number | null = null;
-        if (mapped.acquired_at && mapped.sold_at) {
+        if (mapped.days_to_clear) {
+          const parsed = parseInt(String(mapped.days_to_clear).replace(/[^0-9]/g, ""));
+          if (!isNaN(parsed) && parsed >= 0) daysToCleer = parsed;
+        }
+        if (daysToCleer == null && mapped.acquired_at && mapped.sold_at) {
           try {
             const acq = new Date(mapped.acquired_at);
             const sold = new Date(mapped.sold_at);
@@ -322,6 +326,32 @@ export default function SalesUploadPage() {
             if (diff >= 0) daysToCleer = diff;
           } catch {}
         }
+
+        // Parse currency values robustly: strip $, commas, handle (negatives)
+        const parseCurrency = (val: any): number | null => {
+          if (val == null || val === "") return null;
+          let s = String(val).trim();
+          // Handle parenthetical negatives: (3,200) → -3200
+          const isNeg = s.startsWith("(") && s.endsWith(")");
+          s = s.replace(/[($,)]/g, "");
+          const num = parseFloat(s);
+          if (isNaN(num)) return null;
+          return isNeg ? -num : num;
+        };
+
+        const salePriceVal = parseCurrency(mapped.sale_price);
+        let buyPriceVal = parseCurrency(mapped.buy_price);
+        const grossProfitVal = parseCurrency(mapped.gross_profit);
+
+        // Derive buy_price from sale_price - gross_profit when buy_price is missing
+        if (buyPriceVal == null && salePriceVal != null && grossProfitVal != null) {
+          buyPriceVal = salePriceVal - grossProfitVal;
+        }
+
+        const profitPct =
+          buyPriceVal && buyPriceVal > 0 && salePriceVal != null
+            ? Math.round(((salePriceVal - buyPriceVal) / buyPriceVal) * 1000) / 10
+            : null;
 
         truthRows.push({
           account_id: selectedAccountId,
@@ -334,9 +364,9 @@ export default function SalesUploadPage() {
           km: mapped.km
             ? parseInt(String(mapped.km).replace(/[^0-9]/g, ""))
             : null,
-          sale_price: mapped.sale_price
-            ? parseFloat(String(mapped.sale_price).replace(/[^0-9.]/g, ""))
-            : null,
+          sale_price: salePriceVal,
+          buy_price: buyPriceVal,
+          profit_pct: profitPct,
           transmission: mapped.transmission || null,
           fuel_type: mapped.fuel_type || null,
           body_type: mapped.body_type || null,
@@ -405,19 +435,31 @@ export default function SalesUploadPage() {
         sourceHeaders: parsedHeaders,
       });
 
-      return { imported: insertedCount, skipped: skippedRows.length + dupsInBatch };
+      // Count outcome coverage for audit summary
+      const withBuyPrice = uniqueRows.filter(
+        (r: any) => r.buy_price != null && r.sale_price != null
+      ).length;
+      const withClearance = uniqueRows.filter(
+        (r: any) => r.days_to_clear != null
+      ).length;
+
+      return {
+        imported: insertedCount,
+        skipped: skippedRows.length + dupsInBatch,
+        withBuyPrice,
+        withClearance,
+      };
     },
-    onSuccess: async ({ imported, skipped }) => {
+    onSuccess: async ({ imported, skipped, withBuyPrice, withClearance }) => {
       queryClient.invalidateQueries({ queryKey: ["upload-batches"] });
       resetState();
 
-      if (skipped > 0) {
-        toast.warning(
-          `Imported ${imported} records (${skipped} rows skipped — no identifiable data).`
-        );
-      } else {
-        toast.success(`Imported ${imported} records. Building targets…`);
-      }
+      // Show detailed audit summary
+      const parts = [`${imported} records imported`];
+      if (withBuyPrice != null) parts.push(`${withBuyPrice} with buy + sale price`);
+      if (withClearance != null) parts.push(`${withClearance} with clearance data`);
+      if (skipped > 0) parts.push(`${skipped} rows skipped`);
+      toast.success(parts.join(" · "));
 
       // Auto-run Target Conduit: build candidates then generate daily targets
       try {

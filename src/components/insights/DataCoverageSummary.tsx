@@ -22,6 +22,8 @@ export function DataCoverageSummary({ scope, isLoading, analysedCount, rangeLabe
 
   const { totalUploaded, totalUsable, totalFullOutcome } = scope;
 
+  const { totalWithClearance = 0, totalMissingBuyPrice = 0 } = scope as any;
+
   const items = [
     {
       value: totalUploaded,
@@ -33,16 +35,21 @@ export function DataCoverageSummary({ scope, isLoading, analysedCount, rangeLabe
       sub: "vehicle identity + sale date present",
     },
     {
-      value: analysedCount,
-      label: `within selected period`,
-      sub: rangeLabel,
+      value: totalFullOutcome,
+      label: "with profit data",
+      sub: "buy price + sale price present",
     },
     {
-      value: totalFullOutcome,
-      label: "with full outcome data",
-      sub: "buy price, sale price, and clearance time",
+      value: totalWithClearance,
+      label: "with clearance data",
+      sub: "days to clear present",
     },
   ];
+
+  const exclusionNote =
+    totalMissingBuyPrice > 0
+      ? `${totalMissingBuyPrice} record${totalMissingBuyPrice !== 1 ? "s" : ""} excluded from profit analysis (missing buy price)`
+      : null;
 
   return (
     <Card>
@@ -68,6 +75,11 @@ export function DataCoverageSummary({ scope, isLoading, analysedCount, rangeLabe
             </div>
           ))}
         </div>
+        {exclusionNote && (
+          <p className="text-xs text-muted-foreground/60 mt-3 pt-2 border-t border-border">
+            {exclusionNote}
+          </p>
+        )}
       </CardContent>
     </Card>
   );

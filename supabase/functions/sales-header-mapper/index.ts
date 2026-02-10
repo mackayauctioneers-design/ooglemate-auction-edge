@@ -13,8 +13,10 @@ const CANONICAL_FIELDS = [
   { name: "variant", description: "Trim/variant (SR5, XLS, N-Line, etc.). Optional." },
   { name: "year", description: "Model year (2020, 2021, etc.)" },
   { name: "km", description: "Odometer reading in kilometres" },
-  { name: "sale_price", description: "Sale price / sell price in dollars" },
-  { name: "buy_price", description: "Purchase/buy price. Optional." },
+  { name: "sale_price", description: "Sale price / sell price / selling price in dollars" },
+  { name: "buy_price", description: "Purchase/buy price / cost price / total cost. Optional." },
+  { name: "gross_profit", description: "Gross profit / profit / margin — the dollar profit on the sale. Optional. If present and buy_price is absent, buy_price can be derived as sale_price - gross_profit." },
+  { name: "days_to_clear", description: "Days to sell / days in stock / clearance days — how many days the vehicle was held before sale. Optional." },
   { name: "transmission", description: "Auto/Manual. Optional." },
   { name: "fuel_type", description: "Petrol/Diesel/Hybrid/Electric. Optional." },
   { name: "body_type", description: "Sedan/SUV/Ute/Hatch etc. Optional." },
@@ -72,10 +74,11 @@ Rules:
 - Map each source header to exactly one canonical field, or null if no match
 - Be flexible with naming (e.g. "Sale Date", "SaleDate", "date_sold", "Sold" all map to "sold_at")
 - "Price", "Selling Price", "Sell Price", "Sale Price" → "sale_price"
-- "Purchase Price", "Cost", "Buy Price", "Cost Price" → "buy_price"  
+- "Purchase Price", "Cost", "Buy Price", "Cost Price", "Total Cost" → "buy_price"
+- "Profit", "Gross Profit", "Margin", "GP" → "gross_profit"
 - "Odo", "Odometer", "KMs", "Kilometres", "Mileage" → "km"
 - "Year", "Model Year", "Yr" → "year"
-- "Trans", "Gearbox" → "transmission"
+- "Days in Stock", "Days to Sell", "Days to Clear", "DIS", "Stock Days" → "days_to_clear"
 - "Stock No", "Ref", "Stock #" → "stock_no"
 - "Rego", "Registration", "Plate" → "rego"
 - "VIN", "Chassis" → "vin"
@@ -148,7 +151,9 @@ function heuristicMap(headers: string[]): Record<string, string | null> {
     [/^(year|model[_\s]?year|yr)$/i, "year"],
     [/^(km|kms|kilometres?|kilometers?|odo|odometer|mileage)$/i, "km"],
     [/^(sale[_\s]?price|sell[_\s]?price|selling[_\s]?price|sold[_\s]?for|price)$/i, "sale_price"],
-    [/^(buy[_\s]?price|purchase[_\s]?price|cost[_\s]?price|cost|bought[_\s]?for)$/i, "buy_price"],
+    [/^(buy[_\s]?price|purchase[_\s]?price|cost[_\s]?price|cost|bought[_\s]?for|total[_\s]?cost)$/i, "buy_price"],
+    [/^(gross[_\s]?profit|profit|margin|gp|net[_\s]?profit)$/i, "gross_profit"],
+    [/^(days[_\s]?(in[_\s]?stock|to[_\s]?(sell|clear|deposit))|dis|stock[_\s]?days|clearance[_\s]?days)$/i, "days_to_clear"],
     [/^(trans|transmission|gearbox|gear)$/i, "transmission"],
     [/^(fuel|fuel[_\s]?type|engine[_\s]?type)$/i, "fuel_type"],
     [/^(body|body[_\s]?type|body[_\s]?style|type)$/i, "body_type"],

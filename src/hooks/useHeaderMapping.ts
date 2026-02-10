@@ -26,6 +26,8 @@ const CANONICAL_FIELDS = [
   { value: "km", label: "Kilometres", required: false },
   { value: "sale_price", label: "Sale Price", required: false },
   { value: "buy_price", label: "Buy Price", required: false },
+  { value: "gross_profit", label: "Gross Profit", required: false },
+  { value: "days_to_clear", label: "Days to Clear", required: false },
   { value: "transmission", label: "Transmission", required: false },
   { value: "fuel_type", label: "Fuel Type", required: false },
   { value: "body_type", label: "Body Type", required: false },
