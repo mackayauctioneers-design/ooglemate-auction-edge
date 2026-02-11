@@ -2139,6 +2139,108 @@ export type Database = {
           },
         ]
       }
+      fingerprint_targets: {
+        Row: {
+          account_id: string
+          body_type: string | null
+          confidence_level: string
+          created_at: string
+          drive_type: string | null
+          fuel_type: string | null
+          id: string
+          last_promoted_at: string | null
+          make: string
+          median_days_to_clear: number | null
+          median_km: number | null
+          median_profit: number | null
+          median_profit_pct: number | null
+          median_sale_price: number | null
+          model: string
+          origin: string
+          source_candidate_id: string | null
+          spec_completeness: number
+          status: string
+          target_score: number
+          total_sales: number
+          transmission: string | null
+          updated_at: string
+          variant: string | null
+          year_from: number | null
+          year_to: number | null
+        }
+        Insert: {
+          account_id: string
+          body_type?: string | null
+          confidence_level?: string
+          created_at?: string
+          drive_type?: string | null
+          fuel_type?: string | null
+          id?: string
+          last_promoted_at?: string | null
+          make: string
+          median_days_to_clear?: number | null
+          median_km?: number | null
+          median_profit?: number | null
+          median_profit_pct?: number | null
+          median_sale_price?: number | null
+          model: string
+          origin?: string
+          source_candidate_id?: string | null
+          spec_completeness?: number
+          status?: string
+          target_score?: number
+          total_sales?: number
+          transmission?: string | null
+          updated_at?: string
+          variant?: string | null
+          year_from?: number | null
+          year_to?: number | null
+        }
+        Update: {
+          account_id?: string
+          body_type?: string | null
+          confidence_level?: string
+          created_at?: string
+          drive_type?: string | null
+          fuel_type?: string | null
+          id?: string
+          last_promoted_at?: string | null
+          make?: string
+          median_days_to_clear?: number | null
+          median_km?: number | null
+          median_profit?: number | null
+          median_profit_pct?: number | null
+          median_sale_price?: number | null
+          model?: string
+          origin?: string
+          source_candidate_id?: string | null
+          spec_completeness?: number
+          status?: string
+          target_score?: number
+          total_sales?: number
+          transmission?: string | null
+          updated_at?: string
+          variant?: string | null
+          year_from?: number | null
+          year_to?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fingerprint_targets_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fingerprint_targets_source_candidate_id_fkey"
+            columns: ["source_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "sales_target_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       franchise_dealer_candidates: {
         Row: {
           brand: string

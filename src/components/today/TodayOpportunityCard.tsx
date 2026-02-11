@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, FileText, Loader2 } from "lucide-react";
+import { ExternalLink, FileText, Loader2, Crosshair } from "lucide-react";
 import type { TodayOpportunity } from "@/hooks/useTodayOpportunities";
 
 // ============================================================================
@@ -42,9 +42,22 @@ export function TodayOpportunityCard({ opportunity: opp, existingDealId, onCreat
           </Badge>
         </div>
 
+        {/* Fingerprint source badge */}
+        {opp.fingerprint_make && opp.fingerprint_model && (
+          <div className="flex items-center gap-1">
+            <Badge variant="outline" className="text-xs gap-1 bg-primary/5 border-primary/20">
+              <Crosshair className="h-3 w-3" />
+              From Buy Again Target
+            </Badge>
+          </div>
+        )}
+
         {/* Why it surfaced — truth-based */}
         <p className="text-xs text-muted-foreground leading-relaxed">
           Surfaced because you've sold <span className="font-medium text-foreground">{opp.sales_count}</span> similar vehicles.
+          {opp.asking_price != null && opp.fingerprint_make && (
+            <span> · Asking <span className="font-medium text-foreground">${opp.asking_price.toLocaleString()}</span></span>
+          )}
         </p>
 
         {/* Listing link */}
