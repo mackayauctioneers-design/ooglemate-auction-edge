@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, ExternalLink, TrendingDown } from "lucide-react";
@@ -28,6 +29,7 @@ interface ListingMatch {
   price: number | null;
   url: string | null;
   source: string | null;
+  status: string | null;
   days_listed: number | null;
   below_median: boolean;
   delta_pct: number | null;
@@ -45,9 +47,8 @@ export function ListingsSearchModal({ target, open, onOpenChange }: Props) {
         .select("id, make, model, variant_raw, variant_family, year, km, asking_price, listing_url, source, first_seen_at, status")
         .ilike("make", target.make)
         .ilike("model", target.model)
-        .in("status", ["catalogue", "listed"])
         .order("asking_price", { ascending: true, nullsFirst: false })
-        .limit(20);
+        .limit(40);
 
       if (target.year_from) q = q.gte("year", target.year_from);
       if (target.year_to) q = q.lte("year", target.year_to);
@@ -75,6 +76,7 @@ export function ListingsSearchModal({ target, open, onOpenChange }: Props) {
           price: l.asking_price,
           url: l.listing_url,
           source: l.source,
+          status: l.status,
           days_listed: daysListed,
           below_median: belowMedian,
           delta_pct: deltaPct,
@@ -87,6 +89,71 @@ export function ListingsSearchModal({ target, open, onOpenChange }: Props) {
   if (!target) return null;
 
   const dna = [target.make, target.model, target.variant].filter(Boolean).join(" ");
+
+  const ACTIVE_STATUSES = ["catalogue", "listed"];
+  const SOLD_STATUSES = ["sold", "cleared", "closed"];
+
+  const activeListings = listings?.filter((l) => ACTIVE_STATUSES.includes(l.status ?? "")) ?? [];
+  const soldListings = listings?.filter((l) => SOLD_STATUSES.includes(l.status ?? "")) ?? [];
+  const otherListings = listings?.filter(
+    (l) => !ACTIVE_STATUSES.includes(l.status ?? "") && !SOLD_STATUSES.includes(l.status ?? "")
+  ) ?? [];
+
+  const renderList = (items: ListingMatch[]) => {
+    if (!items.length) {
+      return (
+        <p className="text-sm text-muted-foreground py-8 text-center">
+          No listings in this category.
+        </p>
+      );
+    }
+    return (
+      <div className="space-y-2">
+        {items.map((l) => (
+          <div
+            key={l.id}
+            className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+          >
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">
+                {[l.year, l.make, l.model, l.variant].filter(Boolean).join(" ")}
+              </p>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                {l.km != null && <span>{(l.km / 1000).toFixed(0)}k km</span>}
+                {l.source && <span>{l.source}</span>}
+                {l.days_listed != null && <span>{l.days_listed}d listed</span>}
+                {l.status && (
+                  <Badge variant="outline" className="text-[10px] px-1 py-0">
+                    {l.status}
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-sm font-semibold">
+                  {l.price ? `$${l.price.toLocaleString()}` : "N/A"}
+                </p>
+                {l.below_median && l.delta_pct != null && (
+                  <p className="text-xs text-green-600 flex items-center gap-0.5 justify-end">
+                    <TrendingDown className="h-3 w-3" />
+                    {Math.abs(l.delta_pct).toFixed(0)}% below median
+                  </p>
+                )}
+              </div>
+              {l.url && (
+                <Button size="sm" variant="ghost" asChild>
+                  <a href={l.url} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -108,52 +175,23 @@ export function ListingsSearchModal({ target, open, onOpenChange }: Props) {
           </div>
         ) : !listings?.length ? (
           <p className="text-sm text-muted-foreground py-8 text-center">
-            No active listings found matching this fingerprint.
+            No listings found matching this fingerprint.
           </p>
         ) : (
-          <div className="space-y-2">
-            {listings.map((l) => (
-              <div
-                key={l.id}
-                className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
-              >
-                <div className="space-y-0.5">
-                  <p className="text-sm font-medium">
-                    {[l.year, l.make, l.model, l.variant].filter(Boolean).join(" ")}
-                  </p>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    {l.km != null && <span>{(l.km / 1000).toFixed(0)}k km</span>}
-                    {l.source && <span>{l.source}</span>}
-                    {l.days_listed != null && <span>{l.days_listed}d listed</span>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <p className="text-sm font-semibold">
-                      {l.price ? `$${l.price.toLocaleString()}` : "N/A"}
-                    </p>
-                    {l.below_median && l.delta_pct != null && (
-                      <p className="text-xs text-green-600 flex items-center gap-0.5 justify-end">
-                        <TrendingDown className="h-3 w-3" />
-                        {Math.abs(l.delta_pct).toFixed(0)}% below median
-                      </p>
-                    )}
-                  </div>
-                  {l.url && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      asChild
-                    >
-                      <a href={l.url} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <Tabs defaultValue="active">
+            <TabsList>
+              <TabsTrigger value="active">Active ({activeListings.length})</TabsTrigger>
+              <TabsTrigger value="sold">Sold ({soldListings.length})</TabsTrigger>
+              {otherListings.length > 0 && (
+                <TabsTrigger value="other">Other ({otherListings.length})</TabsTrigger>
+              )}
+            </TabsList>
+            <TabsContent value="active">{renderList(activeListings)}</TabsContent>
+            <TabsContent value="sold">{renderList(soldListings)}</TabsContent>
+            {otherListings.length > 0 && (
+              <TabsContent value="other">{renderList(otherListings)}</TabsContent>
+            )}
+          </Tabs>
         )}
       </DialogContent>
     </Dialog>
