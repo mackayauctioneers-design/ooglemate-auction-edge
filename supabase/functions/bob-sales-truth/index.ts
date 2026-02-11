@@ -154,7 +154,8 @@ function computeSpecLabel(specCompleteness: number, totalSales: number): string 
 }
 
 function computeConfidence(totalSales: number, specCompleteness: number): "HIGH" | "MEDIUM" | "LOW" {
-  if (totalSales >= 5 && specCompleteness >= 3) return "HIGH";
+  if (totalSales >= 5 && specCompleteness >= 4) return "HIGH";
+  if (specCompleteness < 3) return "MEDIUM"; // hard cap
   if (totalSales >= 3) return "MEDIUM";
   return "LOW";
 }
@@ -165,15 +166,14 @@ function validateTargets(targets: StructuredTarget[]): StructuredTarget[] {
     let confidence = t.confidence;
 
     // Rule 1: spec_completeness < 3 → confidence cannot be HIGH
-    const specCompleteness = t.spec_label === "identical" ? 3 : 2;
-    if (specCompleteness < 3 && confidence === "HIGH") {
+    if (t.spec_label !== "identical" && confidence === "HIGH") {
       confidence = "MEDIUM";
     }
 
-    // Rule 2: profit > 30% of median sale price → downgrade confidence
+    // Rule 2: profit > 35% of implied sale price → downgrade confidence
     if (t.median_profit != null && t.buy_ceiling != null) {
       const impliedSalePrice = (t.buy_ceiling || 0) + (t.median_profit || 0);
-      if (impliedSalePrice > 0 && t.median_profit > impliedSalePrice * 0.3) {
+      if (impliedSalePrice > 0 && t.median_profit > impliedSalePrice * 0.35) {
         if (confidence === "HIGH") confidence = "MEDIUM";
       }
     }
