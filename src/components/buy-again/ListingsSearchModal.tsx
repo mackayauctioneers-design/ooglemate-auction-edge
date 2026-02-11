@@ -42,11 +42,11 @@ export function ListingsSearchModal({ target, open, onOpenChange }: Props) {
       // Build query against vehicle_listings
       let q = supabase
         .from("vehicle_listings")
-        .select("id, make, model, variant, year, km, price, url, source, first_seen_at")
+        .select("id, make, model, variant_raw, variant_family, year, km, asking_price, listing_url, source, first_seen_at, status")
         .ilike("make", target.make)
         .ilike("model", target.model)
-        .eq("status", "active")
-        .order("price", { ascending: true })
+        .in("status", ["catalogue", "listed"])
+        .order("asking_price", { ascending: true, nullsFirst: false })
         .limit(20);
 
       if (target.year_from) q = q.gte("year", target.year_from);
@@ -58,7 +58,7 @@ export function ListingsSearchModal({ target, open, onOpenChange }: Props) {
 
       const medianSale = target.median_sale_price || 0;
       return (data || []).map((l: any) => {
-        const price = l.price || 0;
+        const price = l.asking_price || 0;
         const belowMedian = medianSale > 0 && price < medianSale;
         const deltaPct = medianSale > 0 ? ((price - medianSale) / medianSale) * 100 : null;
         const daysListed = l.first_seen_at
@@ -69,11 +69,11 @@ export function ListingsSearchModal({ target, open, onOpenChange }: Props) {
           id: l.id,
           make: l.make,
           model: l.model,
-          variant: l.variant,
+          variant: l.variant_raw || l.variant_family,
           year: l.year,
           km: l.km,
-          price: l.price,
-          url: l.url,
+          price: l.asking_price,
+          url: l.listing_url,
           source: l.source,
           days_listed: daysListed,
           below_median: belowMedian,
