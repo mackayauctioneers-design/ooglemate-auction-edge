@@ -1,0 +1,46 @@
+# Memory: features/workflow/buy-again-targets-v1
+Updated: now
+
+The Buy Again Targets system is the missing structural layer between sales insights and daily operations.
+
+## FLOW
+Sales Upload → Sales Insights → Buy Again Targets → Search Listings → Today's Opportunities
+
+## TABLE: fingerprint_targets
+- Core fields: account_id, make, model, variant, year_from, year_to, transmission, fuel_type, drive_type, body_type
+- Performance: median_profit, median_profit_pct, median_days_to_clear, median_sale_price, median_km, total_sales
+- Scoring: confidence_level (HIGH/MEDIUM/LOW), spec_completeness, target_score
+- Workflow: origin (sales_truth/bob/manual), status (candidate/active/paused/retired), last_promoted_at
+- Links: source_candidate_id → sales_target_candidates(id)
+- RLS: authenticated users can CRUD
+
+## SEEDING
+On "Seed From Sales" button click:
+- Pulls from sales_target_candidates (status = candidate or active, top 30 by score)
+- Creates fingerprint_targets with origin = "sales_truth", status = "candidate"
+- Skips if targets already exist for the account
+
+## CONFIDENCE GUARDRAILS
+- HIGH requires: total_sales >= 5 AND spec_completeness >= 3
+- Amber warning shown if: median_profit > 30% of median_sale_price
+
+## WORKFLOW
+1. Candidates appear from sales data
+2. Dealer reviews and promotes strong ones to "active"
+3. Active targets can be searched against vehicle_listings
+4. Listings below median sale price highlighted
+5. Paused targets can be reactivated
+
+## PAGES & ROUTES
+- /buy-again → BuyAgainTargetsPage (dealer nav, under Sales Insights)
+- Nav icon: Crosshair
+
+## COMPONENTS
+- src/pages/BuyAgainTargetsPage.tsx — main page
+- src/components/buy-again/TargetCard.tsx — card for each target
+- src/components/buy-again/ListingsSearchModal.tsx — search results modal
+- src/hooks/useBuyAgainTargets.ts — data hook
+
+## TODAY'S OPPORTUNITIES INTEGRATION
+- TodayOpportunityCard shows "From Buy Again Target" badge when fingerprint_make/model present
+- Shows asking price alongside the badge

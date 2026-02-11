@@ -15,6 +15,7 @@ import {
   Target,
   FileText,
   TrendingUp,
+  Crosshair,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -45,6 +46,7 @@ const dealerNavItems = [
   { path: '/watchlist', label: 'Watchlist', icon: Search, authOnly: true },
   { path: '/sales-upload', label: 'Sales Upload', icon: DollarSign, authOnly: true },
   { path: '/sales-insights', label: 'Sales Insights', icon: TrendingUp, authOnly: true },
+  { path: '/buy-again', label: 'Buy Again Targets', icon: Crosshair, authOnly: true },
   { path: '/dealer-dashboard', label: 'My Dashboard', icon: MapPin, authOnly: true },
 ];
 

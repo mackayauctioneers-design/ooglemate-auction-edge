@@ -58,6 +58,7 @@ import GrokMissionPage from "./pages/carbitrage/GrokMissionPage";
 import SalesUploadPage from "./pages/carbitrage/SalesUploadPage";
 import SalesInsightsPage from "./pages/SalesInsightsPage";
 import JoshDailyTargetsPage from "./pages/JoshDailyTargetsPage";
+import BuyAgainTargetsPage from "./pages/BuyAgainTargetsPage";
 import MatchesInboxPage from "./pages/MatchesInboxPage";
 import DealsPage from "./pages/DealsPage";
 import DealDetailPage from "./pages/DealDetailPage";
@@ -120,6 +121,7 @@ const App = () => (
               <Route path="/sales-insights" element={<RequireAuth><SalesInsightsPage /></RequireAuth>} />
               <Route path="/scan-guide" element={<RequireAuth><ScanGuidePage /></RequireAuth>} />
               <Route path="/targets" element={<RequireAuth><JoshDailyTargetsPage /></RequireAuth>} />
+              <Route path="/buy-again" element={<RequireAuth><BuyAgainTargetsPage /></RequireAuth>} />
               <Route path="/matches-inbox" element={<RequireAuth><MatchesInboxPage /></RequireAuth>} />
               <Route path="/deals" element={<RequireAuth><DealsPage /></RequireAuth>} />
               <Route path="/deals/:dealId" element={<RequireAuth><DealDetailPage /></RequireAuth>} />
