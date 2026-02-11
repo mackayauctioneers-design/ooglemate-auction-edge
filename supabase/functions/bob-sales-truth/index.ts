@@ -150,7 +150,6 @@ interface StructuredTarget {
 // ── Guardrail: deterministic spec label ──
 function computeSpecLabel(specCompleteness: number, totalSales: number): string {
   if (specCompleteness >= 3) return "identical";
-  if (totalSales > 3 && specCompleteness < 3) return "similar (mixed specs)";
   return "similar (mixed specs)";
 }
 
@@ -158,6 +157,34 @@ function computeConfidence(totalSales: number, specCompleteness: number): "HIGH"
   if (totalSales >= 5 && specCompleteness >= 3) return "HIGH";
   if (totalSales >= 3) return "MEDIUM";
   return "LOW";
+}
+
+// ── Post-processing validator (deterministic, NOT left to model) ──
+function validateTargets(targets: StructuredTarget[]): StructuredTarget[] {
+  return targets.map((t) => {
+    let confidence = t.confidence;
+
+    // Rule 1: spec_completeness < 3 → confidence cannot be HIGH
+    const specCompleteness = t.spec_label === "identical" ? 3 : 2;
+    if (specCompleteness < 3 && confidence === "HIGH") {
+      confidence = "MEDIUM";
+    }
+
+    // Rule 2: profit > 30% of median sale price → downgrade confidence
+    if (t.median_profit != null && t.buy_ceiling != null) {
+      const impliedSalePrice = (t.buy_ceiling || 0) + (t.median_profit || 0);
+      if (impliedSalePrice > 0 && t.median_profit > impliedSalePrice * 0.3) {
+        if (confidence === "HIGH") confidence = "MEDIUM";
+      }
+    }
+
+    // Rule 3: sales_count < 3 → confidence max = LOW
+    if (t.total_sales < 3) {
+      confidence = "LOW";
+    }
+
+    return { ...t, confidence };
+  });
 }
 
 // ── Build structured targets from evidence ──
@@ -185,8 +212,8 @@ function buildStructuredTargets(
       fuel_type: c.fuel_type || null,
       drive_type: c.drive_type || null,
       body_type: c.body_type || null,
-      buy_ceiling: c.median_profit != null && c.median_days_to_clear != null
-        ? Math.round((c.median_profit || 0) * 0.7) // buy ceiling = ~70% of median profit margin below typical sale
+      buy_ceiling: c.median_sale_price != null && c.median_profit != null
+        ? Math.round(c.median_sale_price - c.median_profit)
         : null,
       median_profit: c.median_profit,
       median_profit_pct: c.median_profit_pct,
@@ -267,7 +294,7 @@ serve(async (req) => {
         .limit(500),
       supabase
         .from("sales_target_candidates")
-        .select("make, model, variant, transmission, fuel_type, drive_type, body_type, sales_count, median_profit, median_profit_pct, median_days_to_clear, target_score, fingerprint_type, confidence_level, spec_completeness")
+        .select("make, model, variant, transmission, fuel_type, drive_type, body_type, sales_count, median_profit, median_profit_pct, median_days_to_clear, median_sale_price, target_score, fingerprint_type, confidence_level, spec_completeness")
         .eq("account_id", accountId)
         .in("status", ["candidate", "active"])
         .order("target_score", { ascending: false })
@@ -362,8 +389,10 @@ serve(async (req) => {
     const coreTargets = candidates.filter((c: any) => c.fingerprint_type === "core");
     const outcomeTargets = candidates.filter((c: any) => c.fingerprint_type === "outcome");
 
-    // ── 5. Build STRUCTURED targets payload ──
-    const structuredTargets = buildStructuredTargets(candidates, modelGroups, singleWinners);
+    // ── 5. Build STRUCTURED targets payload + validate ──
+    const rawTargets = buildStructuredTargets(candidates, modelGroups, singleWinners);
+    const structuredTargets = validateTargets(rawTargets);
+    const dataCoveragePct = totalSales > 0 ? Math.round((withProfit.length / totalSales) * 100) : 0;
 
     // ── 6. Build evidence context block ──
     const dealerName = account?.display_name || "this dealer";
@@ -496,6 +525,13 @@ ${contextBlock}`;
       targets: structuredTargets,
       intent,
       dealer_name: dealerName,
+      metadata: {
+        data_coverage_pct: dataCoveragePct,
+        profit_integrity_checked: true,
+        spec_guard_applied: true,
+        total_sales: totalSales,
+        targets_validated: structuredTargets.length,
+      },
     })}\n\n`;
 
     const aiBody = aiResponse.body;
