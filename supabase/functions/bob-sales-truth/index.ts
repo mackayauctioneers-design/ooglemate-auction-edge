@@ -3,7 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 // ============================================================================
 // BOB-SALES-TRUTH — Governed reasoning engine over dealer sales data
-// Architecture: Intent Classifier → Evidence Builder → Bob-Core (AI) → Response
+// Architecture: Intent Classifier → Evidence Builder → Structured Targets
+//   → Bob-Core (AI streaming) → Post-Processing Guardrails → Response
 // ============================================================================
 
 const corsHeaders = {
@@ -12,9 +13,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ── BOB'S OPERATING CONSTITUTION v1.0 ──
+// ── BOB'S OPERATING CONSTITUTION v2.1 ──
 const BOB_CONSTITUTION = `
-BOB'S OPERATING CONSTITUTION — Carbitrage v2.0 (Deal Captain Mode)
+BOB'S OPERATING CONSTITUTION — Carbitrage v2.1 (Deal Captain Mode)
 
 PURPOSE: Bob is a commercial buyer and deal captain. His job is to move capital into proven winners.
 Bob does not predict markets. Bob does not give opinions. Bob gives buying instructions.
@@ -33,6 +34,12 @@ HARD RULES:
 4. Outliers must be remembered. Dealers forget winners. Bob remembers them.
 5. Bob outputs buying instructions, not observations.
 6. Bob ends every response with a follow-up question to keep momentum.
+
+AUCTION INTELLIGENCE:
+When asked about Pickles, Manheim, Grays, or any auction house:
+- If matching listings exist in the data: lead with the top 3 matches, price, and buy ceiling.
+- If no matching listings are indexed: say ONE sentence — "No live Pickles inventory indexed right now" — then IMMEDIATELY pivot to: "Here are the exact shapes to hunt there:" followed by top 3 fingerprints with buy ceilings. End with "Want me to scan Pickles now?"
+- NEVER say "I can't see your Pickles list" and stop. Always give an action.
 
 FORBIDDEN:
 - Never rank cars purely by volume
@@ -61,66 +68,31 @@ type BobIntent =
 function classifyIntent(question: string): BobIntent {
   const q = question.toLowerCase();
 
-  // Forgotten / hidden winners
   if (
-    q.includes("forgot") ||
-    q.includes("only sold once") ||
-    q.includes("hidden") ||
-    q.includes("overlooked") ||
-    q.includes("one sale") ||
-    q.includes("singleton") ||
-    q.includes("outlier") ||
-    q.includes("surprising") ||
-    q.includes("remember")
-  ) {
-    return "forgotten_winners";
-  }
+    q.includes("forgot") || q.includes("only sold once") || q.includes("hidden") ||
+    q.includes("overlooked") || q.includes("one sale") || q.includes("singleton") ||
+    q.includes("outlier") || q.includes("surprising") || q.includes("remember")
+  ) return "forgotten_winners";
 
-  // Replication / sourcing strategy
   if (
-    q.includes("buy again") ||
-    q.includes("hunt") ||
-    q.includes("source") ||
-    q.includes("watch") ||
-    q.includes("should be buying") ||
-    q.includes("look for") ||
-    q.includes("try to buy") ||
-    q.includes("replicate") ||
-    q.includes("repeat")
-  ) {
-    return "replication_strategy";
-  }
+    q.includes("buy again") || q.includes("hunt") || q.includes("source") ||
+    q.includes("watch") || q.includes("should be buying") || q.includes("look for") ||
+    q.includes("try to buy") || q.includes("replicate") || q.includes("repeat") ||
+    q.includes("pickles") || q.includes("manheim") || q.includes("grays") || q.includes("auction")
+  ) return "replication_strategy";
 
-  // Risk / confidence
   if (
-    q.includes("risk") ||
-    q.includes("unsure") ||
-    q.includes("confident") ||
-    q.includes("variance") ||
-    q.includes("slow") ||
-    q.includes("worst") ||
-    q.includes("longest") ||
-    q.includes("problem")
-  ) {
-    return "risk_confidence";
-  }
+    q.includes("risk") || q.includes("unsure") || q.includes("confident") ||
+    q.includes("variance") || q.includes("slow") || q.includes("worst") ||
+    q.includes("longest") || q.includes("problem")
+  ) return "risk_confidence";
 
-  // Winner identification
   if (
-    q.includes("best") ||
-    q.includes("most profitable") ||
-    q.includes("top") ||
-    q.includes("winner") ||
-    q.includes("strongest") ||
-    q.includes("fastest") ||
-    q.includes("money") ||
-    q.includes("profit") ||
-    q.includes("quickly") ||
-    q.includes("reliable") ||
-    q.includes("repeatable")
-  ) {
-    return "winner_identification";
-  }
+    q.includes("best") || q.includes("most profitable") || q.includes("top") ||
+    q.includes("winner") || q.includes("strongest") || q.includes("fastest") ||
+    q.includes("money") || q.includes("profit") || q.includes("quickly") ||
+    q.includes("reliable") || q.includes("repeatable")
+  ) return "winner_identification";
 
   return "freeform";
 }
@@ -152,6 +124,106 @@ function median(arr: number[]): number | null {
   const sorted = [...arr].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+// ── Structured target types ──
+interface StructuredTarget {
+  make: string;
+  model: string;
+  variant: string | null;
+  year_from: number | null;
+  year_to: number | null;
+  transmission: string | null;
+  fuel_type: string | null;
+  drive_type: string | null;
+  body_type: string | null;
+  buy_ceiling: number | null;
+  median_profit: number | null;
+  median_profit_pct: number | null;
+  median_days_to_clear: number | null;
+  total_sales: number;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  tier: "hunt" | "watch";
+  spec_label: string; // "identical" or "similar (mixed specs)"
+}
+
+// ── Guardrail: deterministic spec label ──
+function computeSpecLabel(specCompleteness: number, totalSales: number): string {
+  if (specCompleteness >= 3) return "identical";
+  if (totalSales > 3 && specCompleteness < 3) return "similar (mixed specs)";
+  return "similar (mixed specs)";
+}
+
+function computeConfidence(totalSales: number, specCompleteness: number): "HIGH" | "MEDIUM" | "LOW" {
+  if (totalSales >= 5 && specCompleteness >= 3) return "HIGH";
+  if (totalSales >= 3) return "MEDIUM";
+  return "LOW";
+}
+
+// ── Build structured targets from evidence ──
+function buildStructuredTargets(
+  candidates: any[],
+  modelGroups: Record<string, any>,
+  singleWinners: any[]
+): StructuredTarget[] {
+  const targets: StructuredTarget[] = [];
+
+  // Core targets from candidates
+  for (const c of candidates.slice(0, 10)) {
+    const specCompleteness = c.spec_completeness || 0;
+    const totalSales = c.sales_count || 0;
+    const confidence = computeConfidence(totalSales, specCompleteness);
+    const tier = confidence === "LOW" ? "watch" : "hunt";
+
+    targets.push({
+      make: c.make,
+      model: c.model,
+      variant: c.variant || null,
+      year_from: null,
+      year_to: null,
+      transmission: c.transmission || null,
+      fuel_type: c.fuel_type || null,
+      drive_type: c.drive_type || null,
+      body_type: c.body_type || null,
+      buy_ceiling: c.median_profit != null && c.median_days_to_clear != null
+        ? Math.round((c.median_profit || 0) * 0.7) // buy ceiling = ~70% of median profit margin below typical sale
+        : null,
+      median_profit: c.median_profit,
+      median_profit_pct: c.median_profit_pct,
+      median_days_to_clear: c.median_days_to_clear,
+      total_sales: totalSales,
+      confidence,
+      tier,
+      spec_label: computeSpecLabel(specCompleteness, totalSales),
+    });
+  }
+
+  // Outcome targets from single winners
+  for (const w of singleWinners.slice(0, 5)) {
+    const parts = w.vehicle.split(" ");
+    const year = parseInt(parts[0]) || null;
+    targets.push({
+      make: parts[1] || "",
+      model: parts[2] || "",
+      variant: parts.slice(3).join(" ") || null,
+      year_from: year,
+      year_to: year,
+      transmission: w.transmission || null,
+      fuel_type: w.fuel || null,
+      drive_type: null,
+      body_type: null,
+      buy_ceiling: w.profit > 0 ? Math.round(w.profit * 0.6) : null,
+      median_profit: w.profit,
+      median_profit_pct: w.profitPct,
+      median_days_to_clear: w.days,
+      total_sales: w.salesCount || 1,
+      confidence: "LOW",
+      tier: "watch",
+      spec_label: "outcome — worth re-testing",
+    });
+  }
+
+  return targets;
 }
 
 serve(async (req) => {
@@ -195,7 +267,7 @@ serve(async (req) => {
         .limit(500),
       supabase
         .from("sales_target_candidates")
-        .select("make, model, variant, transmission, fuel_type, drive_type, body_type, sales_count, median_profit, median_profit_pct, median_days_to_clear, target_score, fingerprint_type, confidence_level")
+        .select("make, model, variant, transmission, fuel_type, drive_type, body_type, sales_count, median_profit, median_profit_pct, median_days_to_clear, target_score, fingerprint_type, confidence_level, spec_completeness")
         .eq("account_id", accountId)
         .in("status", ["candidate", "active"])
         .order("target_score", { ascending: false })
@@ -210,7 +282,6 @@ serve(async (req) => {
     const withProfit = sales.filter((s: any) => s.buy_price != null && s.sale_price != null);
     const withClearance = sales.filter((s: any) => s.days_to_clear != null);
 
-    // Variant-level grouping (Make → Model → Variant → Year Band → Drivetrain)
     type VehicleGroup = {
       count: number;
       profits: number[];
@@ -223,14 +294,11 @@ serve(async (req) => {
     };
 
     const modelGroups: Record<string, VehicleGroup> = {};
-    const variantGroups: Record<string, VehicleGroup> = {};
 
     sales.forEach((s: any) => {
       const modelKey = `${s.make} ${s.model}`;
-      const variantKey = `${s.year} ${s.make} ${s.model} ${s.variant || ""} ${s.drive_type || ""}`.trim();
       const profit = (s.buy_price != null && s.sale_price != null) ? s.sale_price - s.buy_price : null;
 
-      // Model level
       if (!modelGroups[modelKey]) modelGroups[modelKey] = { count: 0, profits: [], days: [], years: [], variants: new Set(), drivetrains: new Set(), fuels: new Set(), transmissions: new Set() };
       const mg = modelGroups[modelKey];
       mg.count++;
@@ -241,13 +309,6 @@ serve(async (req) => {
       if (s.drive_type) mg.drivetrains.add(s.drive_type);
       if (s.fuel_type) mg.fuels.add(s.fuel_type);
       if (s.transmission) mg.transmissions.add(s.transmission);
-
-      // Variant level
-      if (!variantGroups[variantKey]) variantGroups[variantKey] = { count: 0, profits: [], days: [], years: [], variants: new Set(), drivetrains: new Set(), fuels: new Set(), transmissions: new Set() };
-      const vg = variantGroups[variantKey];
-      vg.count++;
-      if (profit != null) vg.profits.push(profit);
-      if (s.days_to_clear != null) vg.days.push(s.days_to_clear);
     });
 
     // Top models with full DNA
@@ -259,9 +320,7 @@ serve(async (req) => {
         const yearMax = Math.max(...g.years);
         const yearBand = yearMin === yearMax ? `${yearMin}` : `${yearMin}-${yearMax}`;
         return {
-          vehicle,
-          count: g.count,
-          yearBand,
+          vehicle, count: g.count, yearBand,
           variants: [...g.variants].join(", ") || "N/A",
           drivetrains: [...g.drivetrains].join(", ") || "N/A",
           fuels: [...g.fuels].join(", ") || "N/A",
@@ -276,7 +335,7 @@ serve(async (req) => {
     const dealerMedianProfit = median(allProfits) || 0;
     const oneOffThreshold = Math.max(dealerMedianProfit * 1.3, 2500);
 
-    // Singleton / low-frequency profitable wins — dynamic threshold
+    // Singleton / low-frequency profitable wins
     const singleWinners = withProfit
       .filter((s: any) => {
         const profit = s.sale_price - s.buy_price;
@@ -292,10 +351,8 @@ serve(async (req) => {
           vehicle: `${s.year} ${s.make} ${s.model} ${s.variant || ""} ${s.drive_type || ""}`.trim(),
           profit: s.sale_price - s.buy_price,
           profitPct: s.buy_price > 0 ? Math.round(((s.sale_price - s.buy_price) / s.buy_price) * 100) : null,
-          days: s.days_to_clear,
-          km: s.km,
-          transmission: s.transmission,
-          fuel: s.fuel_type,
+          days: s.days_to_clear, km: s.km,
+          transmission: s.transmission, fuel: s.fuel_type,
           salesCount: count,
           bucket: count === 1 ? "true_one_off" : "near_one_off",
         };
@@ -305,7 +362,10 @@ serve(async (req) => {
     const coreTargets = candidates.filter((c: any) => c.fingerprint_type === "core");
     const outcomeTargets = candidates.filter((c: any) => c.fingerprint_type === "outcome");
 
-    // ── 5. Build evidence context block ──
+    // ── 5. Build STRUCTURED targets payload ──
+    const structuredTargets = buildStructuredTargets(candidates, modelGroups, singleWinners);
+
+    // ── 6. Build evidence context block ──
     const dealerName = account?.display_name || "this dealer";
     const contextBlock = `
 DEALER: ${dealerName}
@@ -348,7 +408,7 @@ ${sales.slice(0, 50).map((s: any) =>
 ).join("\n")}
 `.trim();
 
-    // ── 6. Compose system prompt with constitution + intent ──
+    // ── 7. Compose system prompt with constitution + intent ──
     const intentDirective = INTENT_INSTRUCTIONS[intent];
 
     const systemPrompt = `${BOB_CONSTITUTION}
@@ -379,12 +439,16 @@ CONFIDENCE LABELS (use inline, don't over-explain):
 - MEDIUM: 3-4 sales → speak assertively
 - LOW: 1-2 sales → "strong outcome, worth re-testing"
 
+SPEC COMPLETENESS RULE (MANDATORY — you must follow this):
+- When spec_completeness < 3 for a vehicle group, you MUST label it "similar sales (mixed specs)" — never present it as a single trim.
+- When making a trim-level claim (e.g. "TDI550" specifically), you must have spec data proving that exact trim. If not, say "subset signal" instead.
+
 Keep it tight. Buyer tone. No essays. If you can say it in 3 lines, don't use 10.
 
 ═══ DEALER SALES DATA ═══
 ${contextBlock}`;
 
-    // ── 7. Call Lovable AI (streaming) ──
+    // ── 8. Stream AI response with structured prefix ──
     const aiResponse = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
       {
@@ -425,7 +489,39 @@ ${contextBlock}`;
       );
     }
 
-    return new Response(aiResponse.body, {
+    // Create a composite stream: structured event first, then AI stream
+    const encoder = new TextEncoder();
+    const structuredEvent = `data: ${JSON.stringify({
+      type: "structured_targets",
+      targets: structuredTargets,
+      intent,
+      dealer_name: dealerName,
+    })}\n\n`;
+
+    const aiBody = aiResponse.body;
+    const compositeStream = new ReadableStream({
+      async start(controller) {
+        // Emit structured targets as first SSE event
+        controller.enqueue(encoder.encode(structuredEvent));
+
+        // Pipe through AI stream
+        if (aiBody) {
+          const reader = aiBody.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              controller.enqueue(value);
+            }
+          } catch (e) {
+            console.error("Stream read error:", e);
+          }
+        }
+        controller.close();
+      },
+    });
+
+    return new Response(compositeStream, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
