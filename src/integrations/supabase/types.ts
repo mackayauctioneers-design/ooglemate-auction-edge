@@ -2679,6 +2679,11 @@ export type Database = {
           is_stale: boolean
           km: number | null
           km_verified: boolean
+          last_lifecycle_check_at: string | null
+          lifecycle_error: string | null
+          lifecycle_http_status: number | null
+          lifecycle_reason: string | null
+          lifecycle_status: string
           listing_intent: string | null
           listing_intent_reason: string | null
           listing_kind: string | null
@@ -2729,6 +2734,11 @@ export type Database = {
           is_stale?: boolean
           km?: number | null
           km_verified?: boolean
+          last_lifecycle_check_at?: string | null
+          lifecycle_error?: string | null
+          lifecycle_http_status?: number | null
+          lifecycle_reason?: string | null
+          lifecycle_status?: string
           listing_intent?: string | null
           listing_intent_reason?: string | null
           listing_kind?: string | null
@@ -2779,6 +2789,11 @@ export type Database = {
           is_stale?: boolean
           km?: number | null
           km_verified?: boolean
+          last_lifecycle_check_at?: string | null
+          lifecycle_error?: string | null
+          lifecycle_http_status?: number | null
+          lifecycle_reason?: string | null
+          lifecycle_status?: string
           listing_intent?: string | null
           listing_intent_reason?: string | null
           listing_kind?: string | null
@@ -10744,6 +10759,16 @@ export type Database = {
       rpc_get_upcoming_auction_cards: {
         Args: { p_dealer_id: string; p_filters?: Json }
         Returns: Json
+      }
+      rpc_get_verify_batch: {
+        Args: { p_limit?: number }
+        Returns: {
+          id: string
+          identity_key: string
+          last_lifecycle_check_at: string
+          source_name: string
+          source_url: string
+        }[]
       }
       rpc_get_watchlist: { Args: { p_dealer_id: string }; Returns: Json }
       rpc_reset_hunt_results: { Args: { p_hunt_id: string }; Returns: Json }
