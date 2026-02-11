@@ -472,12 +472,26 @@ Deno.serve(async (req) => {
       }
 
       if (toInsert.length) {
-        const { error: insertErr } = await supabase
-          .from("sales_target_candidates")
-          .insert(toInsert);
-        if (insertErr) {
-          console.error("[build-sales-targets] Insert error:", insertErr);
-          throw insertErr;
+        // Insert new candidates; handle any remaining duplicates gracefully
+        for (const record of toInsert) {
+          const { error: insErr } = await supabase
+            .from("sales_target_candidates")
+            .insert(record);
+          if (insErr) {
+            if (insErr.code === "23505") {
+              // Duplicate shape — update metrics instead
+              console.log(`[build-sales-targets] Duplicate detected for ${record.make} ${record.model} ${record.variant ?? ""} — updating instead`);
+              const sk = shapeKey(record);
+              const match = existingMap.get(sk);
+              if (match) {
+                const { status: _s, account_id: _a, ...metrics } = record;
+                await supabase.from("sales_target_candidates").update(metrics).eq("id", match.id);
+              }
+            } else {
+              console.error("[build-sales-targets] Insert error:", insErr);
+              throw insErr;
+            }
+          }
         }
       }
 
