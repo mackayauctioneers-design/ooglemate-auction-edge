@@ -38,13 +38,55 @@ interface ShapeKey {
   fuel_type: string | null;
   transmission: string | null;
   drive_type: string | null;
+  engine_code: string | null;
+}
+
+// ── Engine code extractor (deterministic, not AI) ──
+function extractEngineCode(variant: string | null): string | null {
+  if (!variant) return null;
+  const v = variant.toLowerCase();
+
+  // Diesel engine codes (VW Amarok, etc.)
+  const tdiMatch = v.match(/tdi\s*(\d{3})/i);
+  if (tdiMatch) return `TDI${tdiMatch[1]}`;
+
+  // Turbo diesel generic
+  if (/\btdi\b/i.test(v)) return "TDI";
+
+  // Common engine displacement patterns
+  const enginePatterns: [RegExp, string][] = [
+    [/\bv6\b/i, "V6"],
+    [/\bv8\b/i, "V8"],
+    [/\bi4\b/i, "I4"],
+    [/\bi6\b/i, "I6"],
+    [/\b2\.0[lt]?\b/i, "2.0L"],
+    [/\b2\.4[lt]?\b/i, "2.4L"],
+    [/\b2\.5[lt]?\b/i, "2.5L"],
+    [/\b2\.8[lt]?\b/i, "2.8L"],
+    [/\b3\.0[lt]?\b/i, "3.0L"],
+    [/\b3\.5[lt]?\b/i, "3.5L"],
+    [/\b4\.0[lt]?\b/i, "4.0L"],
+    [/\b5\.0[lt]?\b/i, "5.0L"],
+    [/\bbiturbo\b/i, "BITURBO"],
+    [/\btwin.?turbo\b/i, "TWINTURBO"],
+    [/\bturbo\b/i, "TURBO"],
+    [/\bhybrid\b/i, "HYBRID"],
+    [/\bev\b/i, "EV"],
+    [/\bphev\b/i, "PHEV"],
+  ];
+
+  for (const [pattern, code] of enginePatterns) {
+    if (pattern.test(v)) return code;
+  }
+
+  return null;
 }
 
 function shapeKeyStr(s: ShapeKey): string {
   return [
     s.make, s.model,
-    s.variant ?? "", s.body_type ?? "", s.fuel_type ?? "",
-    s.transmission ?? "", s.drive_type ?? "",
+    s.engine_code ?? "", s.variant ?? "", s.body_type ?? "",
+    s.fuel_type ?? "", s.transmission ?? "", s.drive_type ?? "",
   ].join("|").toLowerCase();
 }
 
@@ -184,6 +226,7 @@ function computeScore(shape: {
 
 function countSpecFields(key: ShapeKey): number {
   let count = 0;
+  if (key.engine_code) count++;
   if (key.variant) count++;
   if (key.body_type) count++;
   if (key.fuel_type) count++;
@@ -194,12 +237,10 @@ function countSpecFields(key: ShapeKey): number {
 
 function determineConfidence(salesCount: number, fingerType: "core" | "outcome", specCompleteness: number): "low" | "medium" | "high" {
   if (fingerType === "outcome") return "low";
-  // Spec completeness affects confidence: incomplete specs = can't claim "identical"
-  if (specCompleteness <= 1) {
-    // Very incomplete specs — even high volume is only medium confidence
-    return salesCount >= 5 ? "medium" : "low";
-  }
-  if (salesCount >= 5) return "high";
+  if (salesCount <= 2) return "low";
+  // HIGH requires both volume AND spec richness
+  if (salesCount >= 5 && specCompleteness >= 4) return "high";
+  if (specCompleteness < 3) return "medium"; // hard cap: incomplete specs = max MEDIUM
   if (salesCount >= 3) return "medium";
   return "low";
 }
@@ -249,6 +290,7 @@ Deno.serve(async (req) => {
     const shapes = new Map<string, { key: ShapeKey; rows: SaleRow[] }>();
     for (const row of sales as SaleRow[]) {
       if (!row.make || !row.model) continue;
+      const engineCode = extractEngineCode(row.variant);
       const key: ShapeKey = {
         make: row.make.trim().toUpperCase(),
         model: row.model.trim().toUpperCase(),
@@ -257,6 +299,7 @@ Deno.serve(async (req) => {
         fuel_type: row.fuel_type?.trim() || null,
         transmission: row.transmission?.trim() || null,
         drive_type: row.drive_type?.trim() || null,
+        engine_code: engineCode,
       };
       const k = shapeKeyStr(key);
       if (!shapes.has(k)) shapes.set(k, { key, rows: [] });
@@ -321,7 +364,15 @@ Deno.serve(async (req) => {
       });
 
       const specCompleteness = countSpecFields(shape.key);
-      const confidenceLevel = determineConfidence(shape.rows.length, fingerType, specCompleteness);
+      let confidenceLevel = determineConfidence(shape.rows.length, fingerType, specCompleteness);
+
+      // Profit plausibility guard: median_profit > 35% of median_sale_price → downgrade
+      const medianSalePrice = median(priceValues);
+      if (medianProfit !== null && medianSalePrice !== null && medianSalePrice > 0) {
+        if (medianProfit > medianSalePrice * 0.35) {
+          if (confidenceLevel === "high") confidenceLevel = "medium";
+        }
+      }
 
       if (fingerType === "core") coreCount++;
       else outcomeCount++;
@@ -335,12 +386,13 @@ Deno.serve(async (req) => {
         fuel_type: shape.key.fuel_type,
         transmission: shape.key.transmission,
         drive_type: shape.key.drive_type,
+        engine_code: shape.key.engine_code,
         sales_count: shape.rows.length,
         median_days_to_clear: medianDtc,
         avg_days_to_clear: avgDtc,
         pct_under_30: pctUnder30,
         pct_under_60: pctUnder60,
-        median_sale_price: median(priceValues),
+        median_sale_price: medianSalePrice,
         median_profit: medianProfit,
         median_profit_pct: medianProfitPct,
         loss_rate: lossRate,
@@ -364,11 +416,11 @@ Deno.serve(async (req) => {
     if (candidates.length) {
       const { data: existing } = await supabase
         .from("sales_target_candidates")
-        .select("id, make, model, variant, transmission, fuel_type, body_type, drive_type, status, fingerprint_type")
+        .select("id, make, model, variant, transmission, fuel_type, body_type, drive_type, engine_code, status, fingerprint_type")
         .eq("account_id", account_id);
 
       const shapeKey = (r: any) =>
-        [r.make, r.model, r.variant ?? "", r.transmission ?? "",
+        [r.make, r.model, r.engine_code ?? "", r.variant ?? "", r.transmission ?? "",
          r.fuel_type ?? "", r.body_type ?? "", r.drive_type ?? ""]
           .join("|").toLowerCase();
 
@@ -410,6 +462,7 @@ Deno.serve(async (req) => {
               fingerprint_type: c.fingerprint_type,
               confidence_level: c.confidence_level,
               outcome_verified: c.outcome_verified,
+              engine_code: c.engine_code,
               ...(newStatus ? { status: newStatus } : {}),
             },
           });

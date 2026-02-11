@@ -2146,6 +2146,7 @@ export type Database = {
           confidence_level: string
           created_at: string
           drive_type: string | null
+          engine_code: string | null
           fuel_type: string | null
           id: string
           last_promoted_at: string | null
@@ -2174,6 +2175,7 @@ export type Database = {
           confidence_level?: string
           created_at?: string
           drive_type?: string | null
+          engine_code?: string | null
           fuel_type?: string | null
           id?: string
           last_promoted_at?: string | null
@@ -2202,6 +2204,7 @@ export type Database = {
           confidence_level?: string
           created_at?: string
           drive_type?: string | null
+          engine_code?: string | null
           fuel_type?: string | null
           id?: string
           last_promoted_at?: string | null
@@ -5666,6 +5669,7 @@ export type Database = {
           confidence_level: string
           created_at: string
           drive_type: string | null
+          engine_code: string | null
           fingerprint_type: string
           fuel_type: string | null
           id: string
@@ -5699,6 +5703,7 @@ export type Database = {
           confidence_level?: string
           created_at?: string
           drive_type?: string | null
+          engine_code?: string | null
           fingerprint_type?: string
           fuel_type?: string | null
           id?: string
@@ -5732,6 +5737,7 @@ export type Database = {
           confidence_level?: string
           created_at?: string
           drive_type?: string | null
+          engine_code?: string | null
           fingerprint_type?: string
           fuel_type?: string | null
           id?: string
