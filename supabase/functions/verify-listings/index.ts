@@ -61,10 +61,14 @@ function detectGeneric(html: string): VerifyOutcome | null {
   const explicitSold = [
     "this vehicle has been sold",
     "this item has sold",
-    "no longer available",
+    "this listing has been sold",
     "listing has ended",
     "ad has been removed",
     "this listing has been removed",
+  ];
+  const expiredOrGone = [
+    "no longer available",
+    "this lot is no longer available",
   ];
   const expiredSignals = [
     "page not found",
@@ -75,6 +79,9 @@ function detectGeneric(html: string): VerifyOutcome | null {
 
   if (explicitSold.some((s) => lower.includes(s))) {
     return { lifecycle_status: "sold", http_status: 200, reason: "generic:explicit_sold" };
+  }
+  if (expiredOrGone.some((s) => lower.includes(s))) {
+    return { lifecycle_status: "expired", http_status: 200, reason: "generic:no_longer_available" };
   }
   if (expiredSignals.some((s) => lower.includes(s))) {
     return { lifecycle_status: "expired", http_status: 200, reason: "generic:expired_signal" };
@@ -216,16 +223,30 @@ serve(async (req) => {
       const outcome = await verifyOne(row);
 
       // Update the row
+      const now = new Date().toISOString();
+      const statusPatch: Record<string, unknown> = {
+        lifecycle_status: outcome.lifecycle_status,
+        last_lifecycle_check_at: now,
+        lifecycle_http_status: outcome.http_status,
+        lifecycle_reason: outcome.reason,
+        lifecycle_error: outcome.error ?? null,
+      };
+
+      if (outcome.lifecycle_status === "expired") {
+        statusPatch.is_stale = true;
+        statusPatch.expired_at = now;
+      } else if (outcome.lifecycle_status === "sold") {
+        statusPatch.sold_at = now;
+      } else if (outcome.lifecycle_status === "active") {
+        // Clear stale markers if re-activated
+        statusPatch.is_stale = false;
+        statusPatch.expired_at = null;
+        statusPatch.sold_at = null;
+      }
+
       const { error: updateErr } = await supabase
         .from("hunt_external_candidates")
-        .update({
-          lifecycle_status: outcome.lifecycle_status,
-          last_lifecycle_check_at: new Date().toISOString(),
-          lifecycle_http_status: outcome.http_status,
-          lifecycle_reason: outcome.reason,
-          lifecycle_error: outcome.error ?? null,
-          ...(outcome.lifecycle_status === "expired" ? { is_stale: true, expired_at: new Date().toISOString() } : {}),
-        })
+        .update(statusPatch)
         .eq("id", row.id);
 
       if (updateErr) {

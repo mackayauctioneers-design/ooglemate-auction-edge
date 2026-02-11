@@ -2697,6 +2697,7 @@ export type Database = {
           reject_reason: string | null
           scored_at: string | null
           series_family: string | null
+          sold_at: string | null
           source_name: string
           source_tier: number | null
           source_url: string
@@ -2752,6 +2753,7 @@ export type Database = {
           reject_reason?: string | null
           scored_at?: string | null
           series_family?: string | null
+          sold_at?: string | null
           source_name: string
           source_tier?: number | null
           source_url: string
@@ -2807,6 +2809,7 @@ export type Database = {
           reject_reason?: string | null
           scored_at?: string | null
           series_family?: string | null
+          sold_at?: string | null
           source_name?: string
           source_tier?: number | null
           source_url?: string
