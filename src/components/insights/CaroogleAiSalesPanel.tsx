@@ -36,35 +36,28 @@ function confidenceBadgeClass(level: string): string {
   }
 }
 
-/** Build a concise spoken summary (max ~50 words, dealer tone) from assessment data */
+/** Build a concise spoken summary (max ~50 words, deal captain tone) from assessment data */
 function buildSpokenSummary(data: AssessmentResponse, dealerName?: string): string | null {
   const parts: string[] = [];
   const name = dealerName || "mate";
 
-  // Opening
   parts.push(`G'day ${name}.`);
 
-  // Core engines — mention top 1-2
+  // Core engines — mention top 1-2 with conviction
   if (data.core_engines.length > 0) {
     const top = data.core_engines.slice(0, 2);
     if (top.length === 1) {
-      parts.push(`Your strongest repeater is the ${top[0].vehicle}.`);
+      parts.push(`Your money maker is the ${top[0].vehicle}. That's where your edge lives.`);
     } else {
-      parts.push(`Your strongest repeaters are the ${top[0].vehicle} and the ${top[1].vehicle}.`);
+      parts.push(`Right now I'd be hunting ${top[0].vehicle} and ${top[1].vehicle}. That's where your margin sits.`);
     }
   }
 
-  // Outcome signals
+  // Outcome signals — brief mention
   if (data.outcome_signals.length > 0) {
-    parts.push(`You've got ${data.outcome_signals.length} one-off win${data.outcome_signals.length > 1 ? "s" : ""} worth watching again.`);
+    parts.push(`Plus ${data.outcome_signals.length} one-off win${data.outcome_signals.length > 1 ? "s" : ""} worth chasing again.`);
   }
 
-  // Warnings
-  if (data.warnings.length > 0) {
-    parts.push("A couple of data gaps to sort out.");
-  }
-
-  // If nothing meaningful
   if (parts.length <= 1) return null;
 
   return parts.join(" ");
