@@ -284,15 +284,15 @@ export default function SalesUploadPage() {
           }
         }
 
-        // If there's a description field, extract vehicle identity from it
-        if (mapped.description && (!mapped.make || !mapped.model)) {
-          const extracted = parseDescription(String(mapped.description));
-          if (i < 3) console.log(`[SalesUpload] Row ${i} parseDescription result:`, extracted);
-          if (extracted.make && !mapped.make) mapped.make = extracted.make;
-          if (extracted.model && !mapped.model) mapped.model = extracted.model;
-          if (extracted.year && !mapped.year) mapped.year = String(extracted.year);
-          if (extracted.variant && !mapped.variant) mapped.variant = extracted.variant;
-        }
+        // Standardise case formatting for structured fields
+        if (mapped.make) mapped.make = String(mapped.make).trim().replace(/\b\w/g, c => c.toUpperCase()).replace(/\s+/g, ' ');
+        if (mapped.model) mapped.model = String(mapped.model).trim().replace(/\b\w/g, c => c.toUpperCase()).replace(/\s+/g, ' ');
+        if (mapped.series) mapped.series = String(mapped.series).trim();
+        if (mapped.badge) mapped.badge = String(mapped.badge).trim();
+        if (mapped.variant) mapped.variant = String(mapped.variant).trim();
+
+        // Store raw description for reference only — NOT used for matching
+        // Description-based parsing removed: structured fields drive replication engine
 
         // Require make + model + sold_at (DB NOT NULL constraints)
         if (!mapped.make || !mapped.model) {
@@ -359,6 +359,8 @@ export default function SalesUploadPage() {
           acquired_at: mapped.acquired_at || null,
           make: mapped.make || null,
           model: mapped.model || null,
+          series: mapped.series || null,
+          badge: mapped.badge || null,
           variant: mapped.variant || null,
           year: mapped.year ? parseInt(String(mapped.year)) : null,
           km: mapped.km
@@ -370,6 +372,7 @@ export default function SalesUploadPage() {
           transmission: mapped.transmission || null,
           fuel_type: mapped.fuel_type || null,
           body_type: mapped.body_type || null,
+          description_raw: mapped.description || null,
           notes: mapped.notes || null,
           source: "dealer",
           confidence: mapped.make && mapped.model ? "high" : "medium",
@@ -386,7 +389,7 @@ export default function SalesUploadPage() {
       // Deduplicate: build a signature for each row and remove duplicates within the batch
       const seen = new Set<string>();
       const uniqueRows = truthRows.filter((r: any) => {
-        const sig = [r.make, r.model, r.year, r.sold_at, r.sale_price, r.km]
+        const sig = [r.make, r.model, r.year, r.badge, r.sold_at, r.sale_price, r.km]
           .map((v) => String(v ?? "").toLowerCase().trim())
           .join("|");
         if (seen.has(sig)) return false;
@@ -499,8 +502,9 @@ export default function SalesUploadPage() {
 
   const downloadTemplate = () => {
     const cols = [
-      "dealer_name", "sale_date", "year", "make", "model",
-      "variant", "km", "sale_price", "buy_price", "location", "notes",
+      "sale_date", "year", "make", "model", "series", "badge",
+      "body_type", "transmission", "fuel_type", "km", "sale_price",
+      "buy_price", "location", "notes",
     ];
     const csv = cols.join(",") + "\n";
     const blob = new Blob([csv], { type: "text/csv" });

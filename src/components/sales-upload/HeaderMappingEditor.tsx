@@ -30,10 +30,11 @@ interface HeaderMappingEditorProps {
 
 // Fields grouped by intent
 const REQUIRED_FIELDS = new Set([
-  "sold_at", "sale_price", "buy_price", "make", "model", "year", "description", "km",
+  "sold_at", "sale_price", "make", "model", "series", "badge", "year", "km",
 ]);
 const HELPFUL_FIELDS = new Set([
-  "variant", "transmission", "fuel_type", "body_type", "acquired_at", "colour", "rego", "vin", "stock_no",
+  "variant", "buy_price", "gross_profit", "transmission", "fuel_type", "body_type",
+  "acquired_at", "colour", "rego", "vin", "stock_no", "description",
 ]);
 // Everything else (location, dealer_name, notes, etc.) is "ignored"
 
@@ -124,11 +125,13 @@ export function HeaderMappingEditor({
 
   const mappedValues = Object.values(mapping).filter(Boolean);
 
-  // Check if we have enough identity
+  // Check if we have enough identity — structured fields required
   const hasMakeModel = mappedValues.includes("make") && mappedValues.includes("model");
-  const hasDescription = mappedValues.includes("description");
-  const hasVehicleIdentity = hasMakeModel || hasDescription;
+  const hasSeries = mappedValues.includes("series");
+  const hasBadge = mappedValues.includes("badge");
+  const hasVehicleIdentity = hasMakeModel;
   const hasSaleDate = mappedValues.includes("sold_at");
+  const hasYear = mappedValues.includes("year");
 
   const handleFieldChange = (sourceHeader: string, canonicalField: string) => {
     const newMapping = { ...mapping };
@@ -196,7 +199,7 @@ export function HeaderMappingEditor({
 
       <CardContent className="space-y-4">
         {/* Soft guidance — only if critical fields missing */}
-        {(!hasVehicleIdentity || !hasSaleDate) && (
+        {(!hasVehicleIdentity || !hasSaleDate || !hasYear) && (
           <div className="flex items-start gap-2 p-3 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm">
             <Info className="h-4 w-4 mt-0.5 shrink-0" />
             <div>
@@ -204,9 +207,15 @@ export function HeaderMappingEditor({
               <ul className="list-disc list-inside mt-1 space-y-0.5 text-xs">
                 {!hasSaleDate && <li>Sale Date — when the vehicle was sold</li>}
                 {!hasVehicleIdentity && (
-                  <li>Vehicle Description or Make + Model — to identify the vehicle</li>
+                  <li>Make + Model — required structured fields for replication engine</li>
                 )}
+                {!hasYear && <li>Year — required for matching</li>}
+                {!hasSeries && <li>Series — recommended for precise fingerprinting</li>}
+                {!hasBadge && <li>Badge — recommended for precise fingerprinting</li>}
               </ul>
+              <p className="text-xs text-muted-foreground mt-2 italic">
+                💡 Structured fields drive the replication engine. Description is display only.
+              </p>
             </div>
           </div>
         )}

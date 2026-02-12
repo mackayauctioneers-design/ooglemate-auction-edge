@@ -2169,6 +2169,13 @@ export type Database = {
             foreignKeyName: "fingerprint_search_urls_fingerprint_id_fkey"
             columns: ["fingerprint_id"]
             isOneToOne: false
+            referencedRelation: "fingerprint_opportunities"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "fingerprint_search_urls_fingerprint_id_fkey"
+            columns: ["fingerprint_id"]
+            isOneToOne: false
             referencedRelation: "sales_target_candidates"
             referencedColumns: ["id"]
           },
@@ -2274,6 +2281,13 @@ export type Database = {
             foreignKeyName: "fingerprint_targets_source_candidate_id_fkey"
             columns: ["source_candidate_id"]
             isOneToOne: false
+            referencedRelation: "fingerprint_opportunities"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "fingerprint_targets_source_candidate_id_fkey"
+            columns: ["source_candidate_id"]
+            isOneToOne: false
             referencedRelation: "sales_target_candidates"
             referencedColumns: ["id"]
           },
@@ -2347,6 +2361,13 @@ export type Database = {
           year?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "firecrawl_candidates_fingerprint_id_fkey"
+            columns: ["fingerprint_id"]
+            isOneToOne: false
+            referencedRelation: "fingerprint_opportunities"
+            referencedColumns: ["candidate_id"]
+          },
           {
             foreignKeyName: "firecrawl_candidates_fingerprint_id_fkey"
             columns: ["fingerprint_id"]
@@ -3508,6 +3529,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "accounts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "josh_daily_targets_target_candidate_id_fkey"
+            columns: ["target_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "fingerprint_opportunities"
+            referencedColumns: ["candidate_id"]
           },
           {
             foreignKeyName: "josh_daily_targets_target_candidate_id_fkey"
@@ -5795,6 +5823,7 @@ export type Database = {
         Row: {
           account_id: string
           avg_days_to_clear: number | null
+          badge: string | null
           body_type: string | null
           confidence_level: string
           created_at: string
@@ -5818,6 +5847,7 @@ export type Database = {
           pct_under_60: number | null
           sales_count: number
           score_reasons: Json
+          series: string | null
           spec_completeness: number | null
           status: string
           target_score: number
@@ -5829,6 +5859,7 @@ export type Database = {
         Insert: {
           account_id: string
           avg_days_to_clear?: number | null
+          badge?: string | null
           body_type?: string | null
           confidence_level?: string
           created_at?: string
@@ -5852,6 +5883,7 @@ export type Database = {
           pct_under_60?: number | null
           sales_count?: number
           score_reasons?: Json
+          series?: string | null
           spec_completeness?: number | null
           status?: string
           target_score?: number
@@ -5863,6 +5895,7 @@ export type Database = {
         Update: {
           account_id?: string
           avg_days_to_clear?: number | null
+          badge?: string | null
           body_type?: string | null
           confidence_level?: string
           created_at?: string
@@ -5886,6 +5919,7 @@ export type Database = {
           pct_under_60?: number | null
           sales_count?: number
           score_reasons?: Json
+          series?: string | null
           spec_completeness?: number | null
           status?: string
           target_score?: number
@@ -8368,11 +8402,13 @@ export type Database = {
         Row: {
           account_id: string
           acquired_at: string | null
+          badge: string | null
           body_type: string | null
           buy_price: number | null
           confidence: string
           created_at: string
           days_to_clear: number | null
+          description_raw: string | null
           drive_type: string | null
           fuel_type: string | null
           id: string
@@ -8382,6 +8418,7 @@ export type Database = {
           notes: string | null
           profit_pct: number | null
           sale_price: number | null
+          series: string | null
           sold_at: string
           source: string
           transmission: string | null
@@ -8391,11 +8428,13 @@ export type Database = {
         Insert: {
           account_id: string
           acquired_at?: string | null
+          badge?: string | null
           body_type?: string | null
           buy_price?: number | null
           confidence?: string
           created_at?: string
           days_to_clear?: number | null
+          description_raw?: string | null
           drive_type?: string | null
           fuel_type?: string | null
           id?: string
@@ -8405,6 +8444,7 @@ export type Database = {
           notes?: string | null
           profit_pct?: number | null
           sale_price?: number | null
+          series?: string | null
           sold_at: string
           source?: string
           transmission?: string | null
@@ -8414,11 +8454,13 @@ export type Database = {
         Update: {
           account_id?: string
           acquired_at?: string | null
+          badge?: string | null
           body_type?: string | null
           buy_price?: number | null
           confidence?: string
           created_at?: string
           days_to_clear?: number | null
+          description_raw?: string | null
           drive_type?: string | null
           fuel_type?: string | null
           id?: string
@@ -8428,6 +8470,7 @@ export type Database = {
           notes?: string | null
           profit_pct?: number | null
           sale_price?: number | null
+          series?: string | null
           sold_at?: string
           source?: string
           transmission?: string | null
@@ -8729,47 +8772,32 @@ export type Database = {
       }
       fingerprint_opportunities: {
         Row: {
-          account_id: string | null
+          badge: string | null
           candidate_id: string | null
-          candidate_kms: number | null
-          candidate_make: string | null
-          candidate_model: string | null
-          candidate_price: number | null
-          candidate_variant: string | null
-          candidate_year: number | null
+          candidate_listing_id: string | null
           downgrade_flag: boolean | null
-          fingerprint_id: string | null
-          fp_body_type: string | null
-          fp_fuel_type: string | null
-          fp_make: string | null
-          fp_median_km: number | null
-          fp_median_profit: number | null
-          fp_median_sale_price: number | null
-          fp_model: string | null
-          fp_sales_count: number | null
-          fp_target_score: number | null
-          fp_transmission: string | null
-          fp_type: string | null
-          fp_variant: string | null
-          location: string | null
+          listing_kms: number | null
+          listing_location: string | null
+          listing_make: string | null
+          listing_model: string | null
+          listing_price: number | null
+          listing_seller: string | null
+          listing_source: string | null
+          listing_url: string | null
+          listing_variant: string | null
+          listing_year: number | null
+          make: string | null
           match_score: number | null
-          score_reasons: Json | null
+          median_km: number | null
+          median_sale_price: number | null
+          model: string | null
           scraped_at: string | null
-          seller: string | null
-          source: string | null
-          status: string | null
+          series: string | null
+          target_score: number | null
           upgrade_flag: boolean | null
-          url: string | null
+          variant: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "firecrawl_candidates_fingerprint_id_fkey"
-            columns: ["fingerprint_id"]
-            isOneToOne: false
-            referencedRelation: "sales_target_candidates"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       fingerprint_outcomes_latest: {
         Row: {

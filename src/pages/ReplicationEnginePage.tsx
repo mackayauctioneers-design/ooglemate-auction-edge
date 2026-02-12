@@ -73,10 +73,9 @@ export default function ReplicationEnginePage() {
     setFingerprints(fps || []);
 
     // Load candidates via the view
-    const { data: cands } = await supabase
-      .from("fingerprint_opportunities")
-      .select("*")
-      .eq("account_id", selectedAccountId);
+    const { data: cands } = await (supabase
+      .from("fingerprint_opportunities" as any)
+      .select("*") as any);
 
     const grouped: Record<string, Candidate[]> = {};
     for (const c of (cands || []) as any[]) {
