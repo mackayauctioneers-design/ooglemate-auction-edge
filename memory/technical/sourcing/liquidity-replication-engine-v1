@@ -1,0 +1,43 @@
+# Memory: technical/sourcing/liquidity-replication-engine-v1
+Updated: now
+
+## Architecture
+dealer_sales → v_sales_truth_normalized (view) → dealer_liquidity_profiles (seeded table) → pickles-buy-now-scan (edge fn) → pickles_buy_now_listings (matched) → Slack alerts
+
+## Tables
+- dealer_liquidity_profiles: grouped by dealer/make/model/badge/year_band/km_band with flip_count, median_sell_price, median_profit, confidence_tier (HIGH/MED/LOW), min_viable_profit_floor
+- pickles_buy_now_listings: added matched_profile_id, match_tier, match_expected_resale, match_expected_profit, match_dealer_key
+- v_sales_truth_normalized: view normalizing dealer_sales with INITCAP casing
+
+## Confidence Tiers & Profit Floors
+- HIGH: flip_count >= 5, last sale within 365d → floor $1,000
+- MED: flip_count 2-4, last sale within 730d → floor $2,000  
+- LOW: everything else → floor $3,000
+- "Market-obvious" override: if profit gap >= $7,000, alert regardless
+
+## Matching Logic
+- Case-insensitive make/model match
+- Year within profile year_min–year_max (center ±1)
+- KMs within profile km_band
+- Best profile selected by: tier > flip_count > recency
+- Alert if expected_profit >= min_viable_profit_floor
+- No re-alerting same listing_url
+
+## Edge Function
+- pickles-buy-now-scan: markdown scrape + deterministic parse + liquidity matching + Slack alerts
+- Schedule: */30 * * * * (every 30 min)
+- Business hours gate: AEST 8am–6pm, ?force=true override
+- Content hash change detection (skips parse if unchanged, still runs matching)
+
+## UI
+- /live-alerts → LiveAlertsPage with tier/dealer/min-profit filters + Run Now button
+
+## Current Profiles (Mackay Traders/Dave)
+- Toyota Landcruiser GXL: HIGH, 16 flips, median sell $115k, median profit $10k
+- Hyundai I30 N Line: HIGH, 6 flips, median sell $35k
+- Hyundai I30 Premium: HIGH, 5 flips, median sell $34k
+- Toyota RAV4 GX: MED, 3 flips, median sell $36k
+- Plus LOW tier: Corolla, Camry, Silverado, Ranger
+
+## Hardy Traders
+- Not yet loaded — needs sales data ingested first

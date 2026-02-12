@@ -64,6 +64,7 @@ import DealsPage from "./pages/DealsPage";
 import DealDetailPage from "./pages/DealDetailPage";
 import ScanGuidePage from "./pages/ScanGuidePage";
 import ReplicationEnginePage from "./pages/ReplicationEnginePage";
+import LiveAlertsPage from "./pages/LiveAlertsPage";
 
 // Dealer spec pages
 import DealerSpecsListPage from "./pages/dealer/DealerSpecsPage";
@@ -111,6 +112,7 @@ const App = () => (
               <Route path="/hunts/:huntId" element={<RequireAuth><HuntDetailPage /></RequireAuth>} />
               <Route path="/hunt-alerts" element={<RequireAuth><HuntAlertsPage /></RequireAuth>} />
               <Route path="/alerts" element={<RequireAuth><UnifiedAlertsPage /></RequireAuth>} />
+              <Route path="/live-alerts" element={<RequireAuth><LiveAlertsPage /></RequireAuth>} />
               
               {/* Carbitrage - Josh Workflow */}
               <Route path="/josh" element={<RequireAuth><JoshInboxPage /></RequireAuth>} />
