@@ -4346,6 +4346,75 @@ export type Database = {
           },
         ]
       }
+      pickles_buy_now_listings: {
+        Row: {
+          first_seen_at: string
+          id: string
+          kms: number | null
+          last_seen_at: string
+          listing_id: string | null
+          listing_url: string
+          location: string | null
+          make: string | null
+          match_alerted_at: string | null
+          matched_fingerprint_id: string | null
+          model: string | null
+          price: number | null
+          scraped_at: string
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          first_seen_at?: string
+          id?: string
+          kms?: number | null
+          last_seen_at?: string
+          listing_id?: string | null
+          listing_url: string
+          location?: string | null
+          make?: string | null
+          match_alerted_at?: string | null
+          matched_fingerprint_id?: string | null
+          model?: string | null
+          price?: number | null
+          scraped_at?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          first_seen_at?: string
+          id?: string
+          kms?: number | null
+          last_seen_at?: string
+          listing_id?: string | null
+          listing_url?: string
+          location?: string | null
+          make?: string | null
+          match_alerted_at?: string | null
+          matched_fingerprint_id?: string | null
+          model?: string | null
+          price?: number | null
+          scraped_at?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickles_buy_now_listings_matched_fingerprint_id_fkey"
+            columns: ["matched_fingerprint_id"]
+            isOneToOne: false
+            referencedRelation: "fingerprint_opportunities"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "pickles_buy_now_listings_matched_fingerprint_id_fkey"
+            columns: ["matched_fingerprint_id"]
+            isOneToOne: false
+            referencedRelation: "sales_target_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pickles_detail_queue: {
         Row: {
           account_id: string | null
