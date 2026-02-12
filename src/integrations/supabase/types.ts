@@ -831,6 +831,81 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_liquidity_profiles: {
+        Row: {
+          badge: string | null
+          confidence_tier: string
+          created_at: string
+          dealer_key: string
+          dealer_name: string
+          flip_count: number
+          id: string
+          km_band: string
+          km_max: number
+          km_min: number
+          last_sale_date: string | null
+          make: string
+          median_profit: number | null
+          median_sell_price: number | null
+          min_viable_profit_floor: number
+          model: string
+          p75_profit: number | null
+          recency_days: number | null
+          updated_at: string
+          year_center: number
+          year_max: number
+          year_min: number
+        }
+        Insert: {
+          badge?: string | null
+          confidence_tier?: string
+          created_at?: string
+          dealer_key: string
+          dealer_name: string
+          flip_count?: number
+          id?: string
+          km_band?: string
+          km_max?: number
+          km_min?: number
+          last_sale_date?: string | null
+          make: string
+          median_profit?: number | null
+          median_sell_price?: number | null
+          min_viable_profit_floor?: number
+          model: string
+          p75_profit?: number | null
+          recency_days?: number | null
+          updated_at?: string
+          year_center: number
+          year_max: number
+          year_min: number
+        }
+        Update: {
+          badge?: string | null
+          confidence_tier?: string
+          created_at?: string
+          dealer_key?: string
+          dealer_name?: string
+          flip_count?: number
+          id?: string
+          km_band?: string
+          km_max?: number
+          km_min?: number
+          last_sale_date?: string | null
+          make?: string
+          median_profit?: number | null
+          median_sell_price?: number | null
+          min_viable_profit_floor?: number
+          model?: string
+          p75_profit?: number | null
+          recency_days?: number | null
+          updated_at?: string
+          year_center?: number
+          year_max?: number
+          year_min?: number
+        }
+        Relationships: []
+      }
       dealer_match_alerts: {
         Row: {
           alert_date: string
@@ -4390,7 +4465,12 @@ export type Database = {
           location: string | null
           make: string | null
           match_alerted_at: string | null
+          match_dealer_key: string | null
+          match_expected_profit: number | null
+          match_expected_resale: number | null
+          match_tier: string | null
           matched_fingerprint_id: string | null
+          matched_profile_id: string | null
           model: string | null
           price: number | null
           scrape_content_hash: string | null
@@ -4408,7 +4488,12 @@ export type Database = {
           location?: string | null
           make?: string | null
           match_alerted_at?: string | null
+          match_dealer_key?: string | null
+          match_expected_profit?: number | null
+          match_expected_resale?: number | null
+          match_tier?: string | null
           matched_fingerprint_id?: string | null
+          matched_profile_id?: string | null
           model?: string | null
           price?: number | null
           scrape_content_hash?: string | null
@@ -4426,7 +4511,12 @@ export type Database = {
           location?: string | null
           make?: string | null
           match_alerted_at?: string | null
+          match_dealer_key?: string | null
+          match_expected_profit?: number | null
+          match_expected_resale?: number | null
+          match_tier?: string | null
           matched_fingerprint_id?: string | null
+          matched_profile_id?: string | null
           model?: string | null
           price?: number | null
           scrape_content_hash?: string | null
@@ -4447,6 +4537,13 @@ export type Database = {
             columns: ["matched_fingerprint_id"]
             isOneToOne: false
             referencedRelation: "sales_target_candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickles_buy_now_listings_matched_profile_id_fkey"
+            columns: ["matched_profile_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_liquidity_profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -9672,6 +9769,48 @@ export type Database = {
           sent_at: string | null
           trigger_type: string | null
           year: number | null
+        }
+        Relationships: []
+      }
+      v_sales_truth_normalized: {
+        Row: {
+          badge: string | null
+          buy_price: number | null
+          dealer_key: string | null
+          dealer_name: string | null
+          kms: number | null
+          make: string | null
+          model: string | null
+          profit: number | null
+          sale_date: string | null
+          sold_price: number | null
+          year: number | null
+        }
+        Insert: {
+          badge?: never
+          buy_price?: number | null
+          dealer_key?: string | null
+          dealer_name?: never
+          kms?: number | null
+          make?: never
+          model?: never
+          profit?: never
+          sale_date?: string | null
+          sold_price?: number | null
+          year?: number | null
+        }
+        Update: {
+          badge?: never
+          buy_price?: number | null
+          dealer_key?: string | null
+          dealer_name?: never
+          kms?: number | null
+          make?: never
+          model?: never
+          profit?: never
+          sale_date?: string | null
+          sold_price?: number | null
+          year?: number | null
         }
         Relationships: []
       }
