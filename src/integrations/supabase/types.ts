@@ -9776,6 +9776,7 @@ export type Database = {
         Row: {
           badge: string | null
           buy_price: number | null
+          days_to_clear: number | null
           dealer_key: string | null
           dealer_name: string | null
           kms: number | null
@@ -9785,32 +9786,6 @@ export type Database = {
           sale_date: string | null
           sold_price: number | null
           year: number | null
-        }
-        Insert: {
-          badge?: never
-          buy_price?: number | null
-          dealer_key?: string | null
-          dealer_name?: never
-          kms?: number | null
-          make?: never
-          model?: never
-          profit?: never
-          sale_date?: string | null
-          sold_price?: number | null
-          year?: number | null
-        }
-        Update: {
-          badge?: never
-          buy_price?: number | null
-          dealer_key?: string | null
-          dealer_name?: never
-          kms?: number | null
-          make?: never
-          model?: never
-          profit?: never
-          sale_date?: string | null
-          sold_price?: number | null
-          year?: number | null
         }
         Relationships: []
       }
