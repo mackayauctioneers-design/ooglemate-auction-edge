@@ -1,5 +1,9 @@
 project_id = "xznchxsbuwngfmwvsvhq"
 
+[functions.pickles-buy-now-scan]
+verify_jwt = false
+schedule = "*/30 * * * *"
+
 [functions.benchmark-watchlist-slack]
 verify_jwt = false
 schedule = "0 21 * * *"
