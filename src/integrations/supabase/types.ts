@@ -2377,6 +2377,39 @@ export type Database = {
           },
         ]
       }
+      firecrawl_credit_log: {
+        Row: {
+          created_at: string
+          endpoint: string
+          estimated_credits: number
+          format_used: string
+          function_name: string
+          id: string
+          note: string | null
+          url_scraped: string | null
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          estimated_credits?: number
+          format_used: string
+          function_name: string
+          id?: string
+          note?: string | null
+          url_scraped?: string | null
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          estimated_credits?: number
+          format_used?: string
+          function_name?: string
+          id?: string
+          note?: string | null
+          url_scraped?: string | null
+        }
+        Relationships: []
+      }
       franchise_dealer_candidates: {
         Row: {
           brand: string
@@ -4360,6 +4393,7 @@ export type Database = {
           matched_fingerprint_id: string | null
           model: string | null
           price: number | null
+          scrape_content_hash: string | null
           scraped_at: string
           variant: string | null
           year: number | null
@@ -4377,6 +4411,7 @@ export type Database = {
           matched_fingerprint_id?: string | null
           model?: string | null
           price?: number | null
+          scrape_content_hash?: string | null
           scraped_at?: string
           variant?: string | null
           year?: number | null
@@ -4394,6 +4429,7 @@ export type Database = {
           matched_fingerprint_id?: string | null
           model?: string | null
           price?: number | null
+          scrape_content_hash?: string | null
           scraped_at?: string
           variant?: string | null
           year?: number | null
