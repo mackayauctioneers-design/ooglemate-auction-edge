@@ -1,0 +1,30 @@
+# Memory: logic/sourcing/fingerprint-replication-engine-phase-1
+Updated: now
+
+## Architecture
+Sales Target Candidates → generate-search-urls (edge fn) → fingerprint_search_urls → run-firecrawl-fingerprint (edge fn) → firecrawl_candidates (scored) → fingerprint_opportunities (view, score ≥ 6)
+
+## Tables
+- fingerprint_search_urls: generated Carsales/Autotrader/Pickles URLs per fingerprint
+- firecrawl_candidates: scraped listings with match_score (0-10), upgrade_flag, downgrade_flag
+- fingerprint_opportunities: view joining candidates ≥ 6 with fingerprint details, sorted by upgrade + score
+
+## Scoring (0-10)
+- +3 exact make/model
+- +2 exact variant / +1 upgrade trim / -2 downgrade trim
+- +2 KMs within adaptive band (±15k for ≤80k, ±20% for 80-150k, ±25% for 150k+)
+- +2 price below target buy (sold - profit)
+- +1 price below sold median
+
+## Edge Functions
+- generate-search-urls: POST { account_id, fingerprint_id? } → generates URLs
+- run-firecrawl-fingerprint: POST { account_id, fingerprint_id? } → scrapes + scores + stores
+
+## UI
+- /replication → ReplicationEnginePage
+- AccountSelector + per-fingerprint "Run Search" + "Run All" button
+- Candidates table with score badge, upgrade/downgrade indicators, external links
+
+## Trigger Mode
+- Currently manual (button per fingerprint or Run All)
+- User wants 3x daily — cron not yet implemented (Phase 2)

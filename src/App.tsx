@@ -63,6 +63,7 @@ import MatchesInboxPage from "./pages/MatchesInboxPage";
 import DealsPage from "./pages/DealsPage";
 import DealDetailPage from "./pages/DealDetailPage";
 import ScanGuidePage from "./pages/ScanGuidePage";
+import ReplicationEnginePage from "./pages/ReplicationEnginePage";
 
 // Dealer spec pages
 import DealerSpecsListPage from "./pages/dealer/DealerSpecsPage";
@@ -125,6 +126,7 @@ const App = () => (
               <Route path="/matches-inbox" element={<RequireAuth><MatchesInboxPage /></RequireAuth>} />
               <Route path="/deals" element={<RequireAuth><DealsPage /></RequireAuth>} />
               <Route path="/deals/:dealId" element={<RequireAuth><DealDetailPage /></RequireAuth>} />
+              <Route path="/replication" element={<RequireAuth><ReplicationEnginePage /></RequireAuth>} />
               {/* Dealer Specs */}
               <Route path="/dealer/specs" element={<RequireAuth><DealerSpecsListPage /></RequireAuth>} />
               <Route path="/dealer/specs/new" element={<RequireAuth><DealerSpecFormPage /></RequireAuth>} />
