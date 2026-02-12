@@ -17,6 +17,8 @@ const corsHeaders = {
 interface SaleRow {
   make: string;
   model: string;
+  series: string | null;
+  badge: string | null;
   variant: string | null;
   body_type: string | null;
   fuel_type: string | null;
@@ -33,6 +35,8 @@ interface SaleRow {
 interface ShapeKey {
   make: string;
   model: string;
+  series: string | null;
+  badge: string | null;
   variant: string | null;
   body_type: string | null;
   fuel_type: string | null;
@@ -85,6 +89,7 @@ function extractEngineCode(variant: string | null): string | null {
 function shapeKeyStr(s: ShapeKey): string {
   return [
     s.make, s.model,
+    s.series ?? "", s.badge ?? "",
     s.engine_code ?? "", s.variant ?? "", s.body_type ?? "",
     s.fuel_type ?? "", s.transmission ?? "", s.drive_type ?? "",
   ].join("|").toLowerCase();
@@ -226,6 +231,8 @@ function computeScore(shape: {
 
 function countSpecFields(key: ShapeKey): number {
   let count = 0;
+  if (key.series) count++;
+  if (key.badge) count++;
   if (key.engine_code) count++;
   if (key.variant) count++;
   if (key.body_type) count++;
@@ -268,7 +275,7 @@ Deno.serve(async (req) => {
     // 1. Fetch all sales truth
     const { data: sales, error: salesErr } = await supabase
       .from("vehicle_sales_truth")
-      .select("make, model, variant, body_type, fuel_type, transmission, drive_type, sale_price, buy_price, profit_pct, days_to_clear, km, sold_at")
+      .select("make, model, series, badge, variant, body_type, fuel_type, transmission, drive_type, sale_price, buy_price, profit_pct, days_to_clear, km, sold_at")
       .eq("account_id", account_id);
 
     if (salesErr) throw salesErr;
@@ -294,6 +301,8 @@ Deno.serve(async (req) => {
       const key: ShapeKey = {
         make: row.make.trim().toUpperCase(),
         model: row.model.trim().toUpperCase(),
+        series: row.series?.trim() || null,
+        badge: row.badge?.trim() || null,
         variant: row.variant?.trim() || null,
         body_type: row.body_type?.trim() || null,
         fuel_type: row.fuel_type?.trim() || null,
@@ -381,6 +390,8 @@ Deno.serve(async (req) => {
         account_id,
         make: shape.key.make,
         model: shape.key.model,
+        series: shape.key.series,
+        badge: shape.key.badge,
         variant: shape.key.variant,
         body_type: shape.key.body_type,
         fuel_type: shape.key.fuel_type,
@@ -416,11 +427,11 @@ Deno.serve(async (req) => {
     if (candidates.length) {
       const { data: existing } = await supabase
         .from("sales_target_candidates")
-        .select("id, make, model, variant, transmission, fuel_type, body_type, drive_type, engine_code, status, fingerprint_type")
+        .select("id, make, model, series, badge, variant, transmission, fuel_type, body_type, drive_type, engine_code, status, fingerprint_type")
         .eq("account_id", account_id);
 
       const shapeKey = (r: any) =>
-        [r.make, r.model, r.engine_code ?? "", r.variant ?? "", r.transmission ?? "",
+        [r.make, r.model, r.series ?? "", r.badge ?? "", r.engine_code ?? "", r.variant ?? "", r.transmission ?? "",
          r.fuel_type ?? "", r.body_type ?? "", r.drive_type ?? ""]
           .join("|").toLowerCase();
 
