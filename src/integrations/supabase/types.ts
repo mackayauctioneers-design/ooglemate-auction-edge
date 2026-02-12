@@ -2139,6 +2139,41 @@ export type Database = {
           },
         ]
       }
+      fingerprint_search_urls: {
+        Row: {
+          account_id: string
+          created_at: string
+          fingerprint_id: string
+          id: string
+          search_url: string
+          source: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          fingerprint_id: string
+          id?: string
+          search_url: string
+          source: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          fingerprint_id?: string
+          id?: string
+          search_url?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fingerprint_search_urls_fingerprint_id_fkey"
+            columns: ["fingerprint_id"]
+            isOneToOne: false
+            referencedRelation: "sales_target_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fingerprint_targets: {
         Row: {
           account_id: string
@@ -2238,6 +2273,83 @@ export type Database = {
           {
             foreignKeyName: "fingerprint_targets_source_candidate_id_fkey"
             columns: ["source_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "sales_target_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      firecrawl_candidates: {
+        Row: {
+          account_id: string
+          created_at: string
+          downgrade_flag: boolean | null
+          fingerprint_id: string
+          id: string
+          kms: number | null
+          location: string | null
+          make: string | null
+          match_score: number | null
+          model: string | null
+          price: number | null
+          score_reasons: Json | null
+          scraped_at: string
+          seller: string | null
+          source: string
+          status: string
+          upgrade_flag: boolean | null
+          url: string | null
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          downgrade_flag?: boolean | null
+          fingerprint_id: string
+          id?: string
+          kms?: number | null
+          location?: string | null
+          make?: string | null
+          match_score?: number | null
+          model?: string | null
+          price?: number | null
+          score_reasons?: Json | null
+          scraped_at?: string
+          seller?: string | null
+          source: string
+          status?: string
+          upgrade_flag?: boolean | null
+          url?: string | null
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          downgrade_flag?: boolean | null
+          fingerprint_id?: string
+          id?: string
+          kms?: number | null
+          location?: string | null
+          make?: string | null
+          match_score?: number | null
+          model?: string | null
+          price?: number | null
+          score_reasons?: Json | null
+          scraped_at?: string
+          seller?: string | null
+          source?: string
+          status?: string
+          upgrade_flag?: boolean | null
+          url?: string | null
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "firecrawl_candidates_fingerprint_id_fkey"
+            columns: ["fingerprint_id"]
             isOneToOne: false
             referencedRelation: "sales_target_candidates"
             referencedColumns: ["id"]
@@ -8614,6 +8726,50 @@ export type Database = {
           year_min: number | null
         }
         Relationships: []
+      }
+      fingerprint_opportunities: {
+        Row: {
+          account_id: string | null
+          candidate_id: string | null
+          candidate_kms: number | null
+          candidate_make: string | null
+          candidate_model: string | null
+          candidate_price: number | null
+          candidate_variant: string | null
+          candidate_year: number | null
+          downgrade_flag: boolean | null
+          fingerprint_id: string | null
+          fp_body_type: string | null
+          fp_fuel_type: string | null
+          fp_make: string | null
+          fp_median_km: number | null
+          fp_median_profit: number | null
+          fp_median_sale_price: number | null
+          fp_model: string | null
+          fp_sales_count: number | null
+          fp_target_score: number | null
+          fp_transmission: string | null
+          fp_type: string | null
+          fp_variant: string | null
+          location: string | null
+          match_score: number | null
+          score_reasons: Json | null
+          scraped_at: string | null
+          seller: string | null
+          source: string | null
+          status: string | null
+          upgrade_flag: boolean | null
+          url: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "firecrawl_candidates_fingerprint_id_fkey"
+            columns: ["fingerprint_id"]
+            isOneToOne: false
+            referencedRelation: "sales_target_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       fingerprint_outcomes_latest: {
         Row: {
