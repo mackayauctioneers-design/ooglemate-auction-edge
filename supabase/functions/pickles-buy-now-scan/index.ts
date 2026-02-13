@@ -1,5 +1,5 @@
-// Pickles Buy Now Scanner v2.1 — Liquidity Profile Matching
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Pickles Buy Now Scanner v2.3 — Liquidity Profile Matching
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
