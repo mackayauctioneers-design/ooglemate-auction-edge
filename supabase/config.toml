@@ -1,6 +1,6 @@
 project_id = "xznchxsbuwngfmwvsvhq"
 
-[functions.pickles-buy-now-scan]
+[functions.pickles-buynow-scanner]
 verify_jwt = false
 schedule = "*/30 * * * *"
 
