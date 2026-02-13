@@ -2,12 +2,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
-async function sha256(text: string): Promise<string> {
-  const data = new TextEncoder().encode(text);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 function isBusinessHours(force: boolean): boolean {
   if (force) return true;
   const now = new Date();
@@ -22,55 +16,80 @@ function fmtMoney(n: any): string {
 
 const tierOrder: Record<string, number> = { HIGH: 3, MED: 2, LOW: 1 };
 
-async function fetchPicklesListings(): Promise<any[]> {
+async function fetchPicklesMarkdown(): Promise<string> {
   try {
-    const response = await fetch("https://pickles.com.au/used/search/cars?filter=%7B%22buyMethod%22:%22Buy%20Now%22%7D", {
-      headers: { "User-Agent": "Mozilla/5.0" }
-    });
-    if (!response.ok) return [];
-    const html = await response.text();
-    
-    const listings: any[] = [];
-    const listingMatches = html.matchAll(/"inventory":\s*({[^}]*"make":"([^"]+)"[^}]*"model":"([^"]+)"[^}]*"price":(\d+)[^}]*})/g);
-    
-    for (const match of listingMatches) {
-      try {
-        const listing = JSON.parse(match[1]);
-        listings.push({
-          id: `pickles-${Date.now()}-${Math.random()}`,
-          make: listing.make || "",
-          model: listing.model || "",
-          year: listing.year || null,
-          price: listing.price || 0,
-          kms: listing.kms || null,
-          location: listing.location || "",
-          variant: listing.variant || null,
-          listing_url: listing.url || "",
-          scraped_at: new Date().toISOString()
-        });
-      } catch {
-        continue;
-      }
+    const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
+    if (!firecrawlKey) {
+      console.error("FIRECRAWL_API_KEY not configured");
+      return "";
     }
-    return listings;
-  } catch {
-    return [];
+
+    const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${firecrawlKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        url: "https://pickles.com.au/used/search/cars?filter=%7B%22buyMethod%22:%22Buy%20Now%22%7D",
+        formats: ["markdown"]
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error("Firecrawl error:", error);
+      return "";
+    }
+
+    const data = await response.json();
+    return data.markdown || "";
+  } catch (error) {
+    console.error("Fetch markdown error:", error);
+    return "";
   }
 }
 
-async function matchToProfiles(listing: any, profiles: any[]): Promise<any | null> {
-  const baseCriteria: Record<string, number> = {};
+async function extractListingsFromMarkdown(markdown: string): Promise<any[]> {
+  const listings: any[] = [];
   
+  // Extract links matching Pickles detail URL pattern
+  const urlPattern = /https:\/\/www\.pickles\.com\.au\/used\/details\/cars\/(\d{4})-([a-z]+)-([a-z0-9\-]+)\/(\d+)/gi;
+  let match;
+  
+  while ((match = urlPattern.exec(markdown)) !== null) {
+    const year = parseInt(match[1]);
+    const make = match[2].charAt(0).toUpperCase() + match[2].slice(1);
+    const model = match[3].split("-").map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+    
+    listings.push({
+      id: `pickles-${match[4]}`,
+      year,
+      make,
+      model,
+      variant: null,
+      price: 0,
+      kms: null,
+      location: null,
+      listing_url: match[0],
+      scraped_at: new Date().toISOString()
+    });
+  }
+  
+  return listings;
+}
+
+async function matchToProfiles(listing: any, profiles: any[]): Promise<any | null> {
   for (const profile of profiles) {
     let score = 0;
     if (listing.make === profile.make) score += 30;
     if (listing.model === profile.model) score += 30;
     if (listing.year >= profile.year_min && listing.year <= profile.year_max) score += 20;
-    if (listing.kms >= profile.km_min && listing.kms <= profile.km_max) score += 20;
+    if (listing.kms >= (profile.km_min || 0) && listing.kms <= (profile.km_max || 999999)) score += 20;
     
     if (score >= 50) {
       const expectedResale = profile.median_sell_price || listing.price * 1.15;
-      const expectedProfit = Math.max(0, expectedResale - listing.price);
+      const expectedProfit = Math.max(0, expectedResale - (listing.price || 0));
       
       return {
         ...listing,
@@ -100,7 +119,8 @@ async function logToSlack(message: string): Promise<boolean> {
       body: JSON.stringify({ text: message })
     });
     return response.ok;
-  } catch {
+  } catch (error) {
+    console.error("Slack error:", error);
     return false;
   }
 }
@@ -116,9 +136,21 @@ Deno.serve(async (req) => {
   }
   
   try {
-    const listings = await fetchPicklesListings();
+    console.log("Starting Pickles scanner...");
+    
+    const markdown = await fetchPicklesMarkdown();
+    if (!markdown) {
+      console.warn("No markdown returned from Firecrawl");
+      return new Response(JSON.stringify({ ok: true, listings_found: 0, matched: 0, slack_sent: 0 }), { headers: { ...cors, "Content-Type": "application/json" } });
+    }
+    
+    console.log(`Markdown length: ${markdown.length}`);
+    
+    const listings = await extractListingsFromMarkdown(markdown);
+    console.log(`Extracted ${listings.length} listings`);
     
     const { data: profiles } = await sb.from("dealer_liquidity_profiles").select("*");
+    console.log(`Loaded ${(profiles || []).length} liquidity profiles`);
     
     const matched: any[] = [];
     for (const listing of listings) {
@@ -128,11 +160,15 @@ Deno.serve(async (req) => {
       }
     }
     
+    console.log(`Matched ${matched.length} listings`);
+    
     let alertsSent = 0;
     for (const match of matched) {
-      const msg = `🔥 Pickles Alert\n${match.year} ${match.make} ${match.model}\nPrice: ${fmtMoney(match.price)} | Est. Resale: ${fmtMoney(match.match_expected_resale)} | Profit: +${fmtMoney(match.match_expected_profit)}\nTier: ${match.match_tier}`;
+      const msg = `🔥 Pickles Alert\n${match.year} ${match.make} ${match.model}\nPrice: ${fmtMoney(match.price)} | Est. Resale: ${fmtMoney(match.match_expected_resale)} | Profit: +${fmtMoney(match.match_expected_profit)}\nTier: ${match.match_tier}\nLink: ${match.listing_url}`;
       if (await logToSlack(msg)) alertsSent++;
     }
+    
+    console.log(`Sent ${alertsSent} Slack alerts`);
     
     return new Response(JSON.stringify({ ok: true, listings_found: listings.length, matched: matched.length, slack_sent: alertsSent }), { headers: { ...cors, "Content-Type": "application/json" } });
   } catch (error) {
