@@ -32,7 +32,7 @@ async function fetchPicklesMarkdown(): Promise<string> {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        url: "https://pickles.com.au/used/search/cars?filter=%7B%22buyMethod%22:%22Buy%20Now%22%7D",
+        url: "https://www.pickles.com.au/used/search/cars?filter=%7B%22buyMethod%22%3A%22Buy%20Now%22%2C%22category%22%3A%22Cars%22%7D",
         formats: ["markdown"],
         waitFor: 5000,
         onlyMainContent: false
@@ -97,7 +97,7 @@ async function matchToProfiles(listing: any, profiles: any[]): Promise<any | nul
     if (listing.year >= profile.year_min && listing.year <= profile.year_max) score += 20;
     if (listing.kms >= (profile.km_min || 0) && listing.kms <= (profile.km_max || 999999)) score += 20;
     
-    if (score >= 50) {
+    if (score >= 70) {
       const expectedResale = profile.median_sell_price || listing.price * 1.15;
       const expectedProfit = Math.max(0, expectedResale - (listing.price || 0));
       
@@ -174,25 +174,39 @@ Deno.serve(async (req) => {
     const { data: profiles } = await sb.from("dealer_liquidity_profiles").select("*");
     console.log(`Loaded ${(profiles || []).length} liquidity profiles`);
     
+    // Filter: require price > 0 and exclude salvage keywords
+    const salvagePattern = /salvage|write.?off|wovr|repairable|hail|insurance/i;
+    const validListings = listings.filter((l: any) => {
+      if (!l.price || l.price <= 0) return false;
+      const text = `${l.make} ${l.model} ${l.variant || ""}`;
+      if (salvagePattern.test(text)) return false;
+      return true;
+    });
+    console.log(`Valid listings after price/salvage filter: ${validListings.length} (from ${listings.length})`);
+
     const matched: any[] = [];
-    for (const listing of listings) {
+    for (const listing of validListings) {
       const match = await matchToProfiles(listing, profiles || []);
       if (match) {
         matched.push(match);
       }
     }
     
+    // Sort by expected profit descending, cap at top 5
+    matched.sort((a: any, b: any) => (b.match_expected_profit || 0) - (a.match_expected_profit || 0));
+    const topMatches = matched.slice(0, 5);
+    
     console.log(`Matched ${matched.length} listings`);
     
     let alertsSent = 0;
-    for (const match of matched) {
+    for (const match of topMatches) {
       const msg = `🔥 Pickles Alert\n${match.year} ${match.make} ${match.model}\nPrice: ${fmtMoney(match.price)} | Est. Resale: ${fmtMoney(match.match_expected_resale)} | Profit: +${fmtMoney(match.match_expected_profit)}\nTier: ${match.match_tier}\nLink: ${match.listing_url}`;
       if (await logToSlack(msg)) alertsSent++;
     }
     
     console.log(`Sent ${alertsSent} Slack alerts`);
     
-    return new Response(JSON.stringify({ ok: true, listings_found: listings.length, matched: matched.length, slack_sent: alertsSent }), { headers: { ...cors, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: true, listings_found: listings.length, valid: validListings.length, matched: matched.length, alerted: topMatches.length, slack_sent: alertsSent }), { headers: { ...cors, "Content-Type": "application/json" } });
   } catch (error) {
     console.error("Scanner error:", error);
     return new Response(JSON.stringify({ ok: false, error: String(error) }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
