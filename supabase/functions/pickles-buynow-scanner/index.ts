@@ -24,6 +24,7 @@ async function fetchPicklesMarkdown(): Promise<string> {
       return "";
     }
 
+    console.log("Calling Firecrawl with waitFor...");
     const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: {
@@ -32,10 +33,14 @@ async function fetchPicklesMarkdown(): Promise<string> {
       },
       body: JSON.stringify({
         url: "https://pickles.com.au/used/search/cars?filter=%7B%22buyMethod%22:%22Buy%20Now%22%7D",
-        formats: ["markdown"]
+        formats: ["markdown"],
+        waitFor: 5000,
+        onlyMainContent: false
       })
     });
 
+    console.log(`Firecrawl response status: ${response.status}`);
+    
     if (!response.ok) {
       const error = await response.text();
       console.error("Firecrawl error:", error);
@@ -43,7 +48,12 @@ async function fetchPicklesMarkdown(): Promise<string> {
     }
 
     const data = await response.json();
-    return data.markdown || "";
+    console.log(`Firecrawl data keys: ${Object.keys(data).join(", ")}`);
+    
+    // Handle nested data structure
+    const markdown = data.data?.markdown || data.markdown || "";
+    console.log(`Markdown length: ${markdown.length}`);
+    return markdown;
   } catch (error) {
     console.error("Fetch markdown error:", error);
     return "";
@@ -145,6 +155,18 @@ Deno.serve(async (req) => {
     }
     
     console.log(`Markdown length: ${markdown.length}`);
+    console.log("=== MARKDOWN START (first 3000 chars) ===");
+    console.log(markdown.substring(0, 3000));
+    console.log("=== MARKDOWN END ===");
+    
+    // Try generic Pickles URL pattern
+    const genericUrlPattern = /https:\/\/www\.pickles\.com\.au\/used\/[^\s)"]+/gi;
+    const allUrls = markdown.match(genericUrlPattern) || [];
+    console.log(`Found ${allUrls.length} generic Pickles URLs`);
+    if (allUrls.length > 0) {
+      console.log("First 5 URLs found:");
+      allUrls.slice(0, 5).forEach((url: string) => console.log(`  ${url}`));
+    }
     
     const listings = await extractListingsFromMarkdown(markdown);
     console.log(`Extracted ${listings.length} listings`);
