@@ -14,6 +14,8 @@ const corsHeaders = {
 var BN_SEARCH_URL = "https://www.pickles.com.au/used/search/cars?filter=and%255B0%255D%255Bor%255D%255B0%255D%255BbuyMethod%255D%3DBuy%2520Now&contentkey=cars-to-buy-now";
 var BN_MAX_PAGES = 10;
 var BN_MAX_DETAIL = 15;
+var BN_DEVIATION_FLOOR = 4000;
+var BN_DAILY_CAP = 5;
 
 function fmtMoney(n: number): string {
   return "$" + Math.round(n).toLocaleString();
@@ -85,6 +87,56 @@ async function fetchDetailPrice(url: string, key: string) {
   }
 }
 
+function isPatternStrong(profile: any): boolean {
+  if ((profile.flip_count || 0) < 5) return false;
+  if ((profile.median_profit || 0) < 3000) return false;
+  if (!profile.last_sale_date) return false;
+  var lastSale = new Date(profile.last_sale_date);
+  var daysSince = (Date.now() - lastSale.getTime()) / (1000 * 60 * 60 * 24);
+  return daysSince <= 365;
+}
+
+async function callGrokWholesale(listing: any, profile: any, openaiKey: string): Promise<number> {
+  try {
+    var prompt = "You are a conservative Australian wholesale vehicle pricing analyst.\n\nVehicle:\nYear: " + listing.year + "\nMake: " + listing.make + "\nModel: " + listing.model + "\nKM: " + (listing.kms || "unknown") + "\nBuy Now Price: $" + listing.price + "\n\nInternal Data:\nDealer median sell price: $" + (profile.median_sell_price || 0) + "\nDealer median profit: $" + (profile.median_profit || 0) + "\n\nTask:\n1. Estimate realistic dealer-to-dealer wholesale value (conservative).\n2. Return ONLY the estimated wholesale value as a number. No text, no dollar sign, just the number.";
+    var resp = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + openaiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.2,
+        max_tokens: 50
+      })
+    });
+    if (!resp.ok) { console.error("[BN] Grok API err " + resp.status); return 0; }
+    var data = await resp.json();
+    var text = (data.choices?.[0]?.message?.content || "").trim();
+    var numMatch = text.match(/[\d,]+/);
+    if (!numMatch) return 0;
+    return parseInt(numMatch[0].replace(/,/g, ""));
+  } catch (e) {
+    console.error("[BN] Grok call failed: " + String(e));
+    return 0;
+  }
+}
+
+async function getTodayAlertCount(sb: any): Promise<number> {
+  var today = new Date().toISOString().split("T")[0];
+  var res = await sb.from("cron_audit_log").select("id", { count: "exact", head: true }).eq("cron_name", "buynow-radar-alert").eq("run_date", today);
+  return res.count || 0;
+}
+
+async function logAlert(sb: any, listing: any) {
+  var today = new Date().toISOString().split("T")[0];
+  await sb.from("cron_audit_log").insert({
+    cron_name: "buynow-radar-alert",
+    run_date: today,
+    success: true,
+    result: { listing_id: listing.id, make: listing.make, model: listing.model, price: listing.price }
+  });
+}
+
 async function runBuyNowRadar(force: boolean) {
   var sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   if (!force) {
@@ -94,9 +146,21 @@ async function runBuyNowRadar(force: boolean) {
     }
   }
   var fcKey = Deno.env.get("FIRECRAWL_API_KEY");
+  var openaiKey = Deno.env.get("OPENAI_API_KEY");
   if (!fcKey) {
     return new Response(JSON.stringify({ ok: false, error: "FIRECRAWL_API_KEY missing" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
+  if (!openaiKey) {
+    return new Response(JSON.stringify({ ok: false, error: "OPENAI_API_KEY missing" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  // Check daily cap
+  var alertsSentToday = await getTodayAlertCount(sb);
+  console.log("[BN] Alerts sent today so far: " + alertsSentToday);
+  if (alertsSentToday >= BN_DAILY_CAP) {
+    return new Response(JSON.stringify({ ok: true, capped: true, alerts_sent_today: alertsSentToday }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
   var urlMap = await collectBuyNowUrls(fcKey);
   console.log("[BN] " + urlMap.size + " unique URLs");
   var salvageRe = /salvage|write.?off|wovr|repairable|hail|insurance/i;
@@ -115,10 +179,14 @@ async function runBuyNowRadar(force: boolean) {
     await new Promise(function(r) { setTimeout(r, 200); });
   }
   console.log("[BN] " + listings.length + " priced from " + toFetch.length + " detail fetches");
+
+  // Load liquidity profiles
   var pr = await sb.from("dealer_liquidity_profiles").select("*");
   var profiles = pr.data || [];
   console.log("[BN] " + profiles.length + " profiles");
-  var matched: any[] = [];
+
+  // STEP 1: Match + compute deviation with hard $4k gate
+  var qualified: any[] = [];
   for (var li = 0; li < listings.length; li++) {
     var l = listings[li];
     for (var pi = 0; pi < profiles.length; pi++) {
@@ -128,28 +196,92 @@ async function runBuyNowRadar(force: boolean) {
       if (l.model.toLowerCase() === (p.model || "").toLowerCase()) score += 30;
       if (l.year >= p.year_min && l.year <= p.year_max) score += 20;
       if (l.kms !== null && l.kms >= (p.km_min || 0) && l.kms <= (p.km_max || 999999)) score += 20;
-      if (score >= 70) {
-        var resale = p.median_sell_price || l.price * 1.15;
-        var profit = Math.max(0, resale - l.price);
-        matched.push({ id: l.id, year: l.year, make: l.make, model: l.model, price: l.price, listing_url: l.listing_url, match_tier: profit > (p.p75_profit || 5000) ? "HIGH" : profit > 2000 ? "MED" : "LOW", match_dealer_key: p.dealer_key, match_expected_profit: profit, match_expected_resale: resale, match_score: score });
-        break;
-      }
+      if (score < 70) continue;
+
+      var liquidity_gap = (p.median_sell_price || 0) - l.price;
+      var deviation = Math.max(0, liquidity_gap);
+
+      // HARD DEVIATION GATE
+      if (deviation < BN_DEVIATION_FLOOR) continue;
+
+      var strong = isPatternStrong(p);
+
+      // CLEAN TRIGGER RULE
+      var passes_trigger = (deviation >= 6000) || (deviation >= 4500 && strong);
+      if (!passes_trigger) continue;
+
+      qualified.push({
+        id: l.id, year: l.year, make: l.make, model: l.model,
+        price: l.price, kms: l.kms, listing_url: l.listing_url,
+        deviation: deviation, pattern_strong: strong,
+        dealer_key: p.dealer_key, dealer_name: p.dealer_name,
+        median_sell_price: p.median_sell_price || 0,
+        median_profit: p.median_profit || 0,
+        flip_count: p.flip_count || 0,
+        match_score: score
+      });
+      break;
     }
   }
-  matched.sort(function(a: any, b: any) { return (b.match_expected_profit || 0) - (a.match_expected_profit || 0); });
-  var top = matched.slice(0, 5);
+  qualified.sort(function(a: any, b: any) { return b.deviation - a.deviation; });
+  console.log("[BN] " + qualified.length + " qualified before Grok (passed deviation + trigger)");
+
+  // STEP 2: Grok confirmation layer
+  var grokPassed: any[] = [];
+  var remainingSlots = BN_DAILY_CAP - alertsSentToday;
+  // Only send top candidates to Grok (cap at remaining slots + buffer)
+  var toGrok = qualified.slice(0, Math.min(qualified.length, remainingSlots + 3));
+  for (var gi = 0; gi < toGrok.length; gi++) {
+    var q = toGrok[gi];
+    var grokEstimate = await callGrokWholesale(q, q, openaiKey);
+    var grok_gap = grokEstimate - q.price;
+    console.log("[BN] Grok: " + q.year + " " + q.make + " " + q.model + " estimate=" + grokEstimate + " gap=" + grok_gap);
+    if (grok_gap >= 3500) {
+      grokPassed.push({ ...q, grok_estimate: grokEstimate, grok_gap: grok_gap });
+    }
+  }
+  console.log("[BN] " + grokPassed.length + " passed Grok confirmation");
+
+  // STEP 3: Send Slack alerts (capped)
   var wh = Deno.env.get("SLACK_WEBHOOK_URL");
   var sent = 0;
-  if (wh && top.length > 0) {
-    for (var k = 0; k < top.length; k++) {
-      var m = top[k];
+  var toAlert = grokPassed.slice(0, remainingSlots);
+  if (wh && toAlert.length > 0) {
+    for (var k = 0; k < toAlert.length; k++) {
+      var m = toAlert[k];
       try {
-        var r = await fetch(wh, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: "Pickles Buy Now Alert\n" + m.year + " " + m.make + " " + m.model + "\nPrice: " + fmtMoney(m.price) + " | Resale: " + fmtMoney(m.match_expected_resale) + " | Profit: +" + fmtMoney(m.match_expected_profit) + "\nTier: " + m.match_tier + "\n" + m.listing_url }) });
-        if (r.ok) sent++;
+        var slackText = "HIGH-CONVICTION BUY NOW SIGNAL\n\n"
+          + "Vehicle: " + m.year + " " + m.make + " " + m.model + "\n"
+          + "Buy Now: " + fmtMoney(m.price) + "\n"
+          + "Dealer Median: " + fmtMoney(m.median_sell_price) + "\n"
+          + "Spread: +" + fmtMoney(m.deviation) + "\n"
+          + "Grok Wholesale: " + fmtMoney(m.grok_estimate) + "\n"
+          + "AI Gap: +" + fmtMoney(m.grok_gap) + "\n"
+          + "History: " + m.flip_count + " flips | Median profit " + fmtMoney(m.median_profit) + "\n\n"
+          + m.listing_url;
+        var r = await fetch(wh, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: slackText })
+        });
+        if (r.ok) {
+          sent++;
+          await logAlert(sb, m);
+        }
       } catch (_e) {}
     }
   }
-  var result = { ok: true, urls_found: urlMap.size, detail_fetched: toFetch.length, priced: listings.length, matched: matched.length, alerted: top.length, slack_sent: sent };
+
+  var result = {
+    ok: true,
+    urls_found: urlMap.size,
+    detail_fetched: toFetch.length,
+    priced: listings.length,
+    qualified_before_grok: qualified.length,
+    grok_passed: grokPassed.length,
+    alerts_sent_today: alertsSentToday + sent,
+    slack_sent: sent
+  };
   console.log("[BN] Done: " + JSON.stringify(result));
   return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
