@@ -1,9 +1,6 @@
 project_id = "xznchxsbuwngfmwvsvhq"
 
-[functions.buynow-scan]
-verify_jwt = false
-
-[functions.pickles-scanner]
+[functions.pickles-buynow-radar]
 verify_jwt = false
 
 [functions.benchmark-watchlist-slack]
