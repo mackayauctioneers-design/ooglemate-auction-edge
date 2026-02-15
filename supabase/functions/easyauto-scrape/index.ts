@@ -163,23 +163,37 @@ async function scrapePage(firecrawlKey: string, pageNum: number): Promise<string
   return data?.data?.markdown || data?.markdown || "";
 }
 
-// ─── Winner Watchlist Check ───
-async function checkWinnerMatch(sb: any, make: string, model: string, year: number): Promise<{ match: boolean; avg_profit: number; times_sold: number; last_sale_price: number } | null> {
+// ─── Winner Watchlist Check (multi-account) ───
+interface WinnerRow {
+  account_id: string;
+  make: string;
+  model: string;
+  variant: string | null;
+  avg_profit: number;
+  times_sold: number;
+  last_sale_price: number;
+  year_min: number | null;
+  year_max: number | null;
+}
+
+async function loadAllWinners(sb: any): Promise<WinnerRow[]> {
   const { data } = await sb.from("winners_watchlist")
-    .select("avg_profit, times_sold, last_sale_price, year_min, year_max")
-    .ilike("make", make)
-    .ilike("model", model)
-    .limit(5);
+    .select("account_id, make, model, variant, avg_profit, times_sold, last_sale_price, year_min, year_max");
+  return (data || []) as WinnerRow[];
+}
 
-  if (!data || data.length === 0) return null;
-
-  for (const w of data) {
+function findWinnerMatches(winners: WinnerRow[], make: string, model: string, year: number): WinnerRow[] {
+  return winners.filter(w => {
+    const makeOk = w.make.toUpperCase() === make.toUpperCase();
+    const modelOk = w.model.toUpperCase() === model.toUpperCase();
     const yearOk = !w.year_min || !w.year_max || (year >= w.year_min - 1 && year <= w.year_max + 1);
-    if (yearOk) {
-      return { match: true, avg_profit: Number(w.avg_profit), times_sold: w.times_sold, last_sale_price: Number(w.last_sale_price) };
-    }
-  }
-  return null;
+    return makeOk && modelOk && yearOk;
+  });
+}
+
+async function getAccountName(sb: any, accountId: string): Promise<string> {
+  const { data } = await sb.from("accounts").select("display_name").eq("id", accountId).single();
+  return data?.display_name || "Unknown";
 }
 
 serve(async (req) => {
@@ -244,16 +258,33 @@ serve(async (req) => {
       }, { onConflict: "listing_url" });
     }
 
-    // ─── STEP 2.5: Winner Watchlist Check (before cheap filter) ───
+    // ─── STEP 2.5: Winner Watchlist Check (multi-account) ───
+    const allWinners = await loadAllWinners(sb);
+    console.log(`[EASYAUTO] Loaded ${allWinners.length} winners across all accounts`);
+    const accountNames = new Map<string, string>();
     const remainingAfterWinners: ParsedListing[] = [];
+    const winnerMatched = new Set<string>(); // track URLs already matched
+
     for (const l of passed) {
-      const winner = await checkWinnerMatch(sb, l.make, l.model, l.year);
-      if (winner) {
-        // Compare against last_sale_price (historical buy ceiling)
-        const historicalBuy = winner.last_sale_price - winner.avg_profit;
+      const matches = findWinnerMatches(allWinners, l.make, l.model, l.year);
+      let matched = false;
+
+      for (const winner of matches) {
+        const avgSell = Number(winner.last_sale_price);
+        const avgProfit = Number(winner.avg_profit);
+        const historicalBuy = avgSell - avgProfit;
         const delta = historicalBuy - l.price;
         if (delta >= 3000) {
+          matched = true;
           stats.winner_hits++;
+
+          // Get dealer name
+          if (!accountNames.has(winner.account_id)) {
+            accountNames.set(winner.account_id, await getAccountName(sb, winner.account_id));
+          }
+          const dealerName = accountNames.get(winner.account_id)!;
+          const targetBuy = Math.round(l.price - delta * 0.6);
+
           await sb.from("opportunities").upsert({
             source_type: "winner_replication",
             listing_url: l.url,
@@ -266,7 +297,8 @@ serve(async (req) => {
             confidence_score: delta,
             confidence_tier: "HIGH",
             status: "new",
-            notes: `PROVEN WINNER - avg profit $${winner.avg_profit.toLocaleString()} from ${winner.times_sold} sales`,
+            account_id: winner.account_id,
+            notes: `PROVEN WINNER for ${dealerName} — avg profit ${fmtMoney(avgProfit)} from ${winner.times_sold} sales. Their avg sell: ${fmtMoney(avgSell)}. Target buy: ${fmtMoney(targetBuy)}`,
           }, { onConflict: "listing_url" });
           stats.opportunities++;
 
@@ -276,16 +308,15 @@ serve(async (req) => {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  text: `🔴 PROVEN WINNER REPLICATION\n\n${l.year} ${l.make} ${l.model} ${l.badge || ""}\nPrice: ${fmtMoney(l.price)}\nUnder historical buy by: +${fmtMoney(delta)}\nPrevious avg profit: ${fmtMoney(winner.avg_profit)} from ${winner.times_sold} sales\n\n${l.url}`,
+                  text: `🔴 DEALER PROVEN WINNER\n\n${l.year} ${l.make} ${l.model} ${l.badge || ""}\nAsking: ${fmtMoney(l.price)}\nTheir avg sell: ${fmtMoney(avgSell)}\nMargin edge: +${fmtMoney(delta)}\nTarget buy: ${fmtMoney(targetBuy)}\nPrevious avg profit: ${fmtMoney(avgProfit)} from ${winner.times_sold} sales\nDealer: ${dealerName}\n\n${l.url}`,
                 }),
               });
               stats.slack_sent++;
             } catch (_) { /* ignore */ }
           }
-          continue; // Stop processing — proven winner found
         }
       }
-      remainingAfterWinners.push(l);
+      if (!matched) remainingAfterWinners.push(l);
     }
 
     // ─── STEP 3: Bottom 40% Cheap Filter ───

@@ -235,23 +235,32 @@ async function getRetailDelta(listing: Listing, supabaseUrl: string, supabaseKey
   }
 }
 
-// ─── Winner Watchlist Check ───
-async function checkWinnerMatch(sb: any, make: string, model: string, year: number): Promise<{ match: boolean; avg_profit: number; times_sold: number; last_sale_price: number } | null> {
+// ─── Winner Watchlist Check (multi-account) ───
+interface WinnerRow {
+  account_id: string;
+  make: string; model: string; variant: string | null;
+  avg_profit: number; times_sold: number; last_sale_price: number;
+  year_min: number | null; year_max: number | null;
+}
+
+async function loadAllWinners(sb: any): Promise<WinnerRow[]> {
   const { data } = await sb.from("winners_watchlist")
-    .select("avg_profit, times_sold, last_sale_price, year_min, year_max")
-    .ilike("make", make)
-    .ilike("model", model)
-    .limit(5);
+    .select("account_id, make, model, variant, avg_profit, times_sold, last_sale_price, year_min, year_max");
+  return (data || []) as WinnerRow[];
+}
 
-  if (!data || data.length === 0) return null;
-
-  for (const w of data) {
+function findWinnerMatches(winners: WinnerRow[], make: string, model: string, year: number): WinnerRow[] {
+  return winners.filter(w => {
+    const makeOk = w.make.toUpperCase() === make.toUpperCase();
+    const modelOk = w.model.toUpperCase() === model.toUpperCase();
     const yearOk = !w.year_min || !w.year_max || (year >= w.year_min - 1 && year <= w.year_max + 1);
-    if (yearOk) {
-      return { match: true, avg_profit: Number(w.avg_profit), times_sold: w.times_sold, last_sale_price: Number(w.last_sale_price) };
-    }
-  }
-  return null;
+    return makeOk && modelOk && yearOk;
+  });
+}
+
+async function getAccountName(sb: any, accountId: string): Promise<string> {
+  const { data } = await sb.from("accounts").select("display_name").eq("id", accountId).single();
+  return data?.display_name || "Unknown";
 }
 
 // ─── MAIN ──────────────────────────────────────────────────────────────────
@@ -354,15 +363,31 @@ Deno.serve(async (req) => {
       remainingAfterReplication.push(li);
     }
 
-    // ─── STEP 1.5: Winner Watchlist Check ───
+    // ─── STEP 1.5: Winner Watchlist Check (multi-account) ───
+    const allWinners = await loadAllWinners(sb);
+    console.log(`[RADAR] Loaded ${allWinners.length} winners across all accounts`);
+    const accountNames = new Map<string, string>();
     const remainingAfterWinners: Listing[] = [];
+
     for (const li of remainingAfterReplication) {
-      const winner = await checkWinnerMatch(sb, li.make, li.model, li.year);
-      if (winner) {
-        const historicalBuy = winner.last_sale_price - winner.avg_profit;
+      const matches = findWinnerMatches(allWinners, li.make, li.model, li.year);
+      let matched = false;
+
+      for (const winner of matches) {
+        const avgSell = Number(winner.last_sale_price);
+        const avgProfit = Number(winner.avg_profit);
+        const historicalBuy = avgSell - avgProfit;
         const delta = historicalBuy - li.price;
         if (delta >= 3000) {
+          matched = true;
           stats.winner_hits++;
+
+          if (!accountNames.has(winner.account_id)) {
+            accountNames.set(winner.account_id, await getAccountName(sb, winner.account_id));
+          }
+          const dealerName = accountNames.get(winner.account_id)!;
+          const targetBuy = Math.round(li.price - delta * 0.6);
+
           await sb.from("opportunities").upsert({
             source_type: "winner_replication",
             listing_url: li.listing_url,
@@ -375,7 +400,8 @@ Deno.serve(async (req) => {
             confidence_score: delta,
             confidence_tier: "HIGH",
             status: "new",
-            notes: `PROVEN WINNER - avg profit $${winner.avg_profit.toLocaleString()} from ${winner.times_sold} sales`,
+            account_id: winner.account_id,
+            notes: `PROVEN WINNER for ${dealerName} — avg profit ${fmtMoney(avgProfit)} from ${winner.times_sold} sales. Their avg sell: ${fmtMoney(avgSell)}. Target buy: ${fmtMoney(targetBuy)}`,
           }, { onConflict: "listing_url" });
           stats.opportunities++;
 
@@ -385,16 +411,15 @@ Deno.serve(async (req) => {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  text: `🔴 PROVEN WINNER REPLICATION\n\n${li.year} ${li.make} ${li.model} ${li.variant || ""}\nPrice: ${fmtMoney(li.price)}\nUnder historical buy by: +${fmtMoney(delta)}\nPrevious avg profit: ${fmtMoney(winner.avg_profit)} from ${winner.times_sold} sales\n\n${li.listing_url}`,
+                  text: `🔴 DEALER PROVEN WINNER\n\n${li.year} ${li.make} ${li.model} ${li.variant || ""}\nAsking: ${fmtMoney(li.price)}\nTheir avg sell: ${fmtMoney(avgSell)}\nMargin edge: +${fmtMoney(delta)}\nTarget buy: ${fmtMoney(targetBuy)}\nPrevious avg profit: ${fmtMoney(avgProfit)} from ${winner.times_sold} sales\nDealer: ${dealerName}\n\n${li.listing_url}`,
                 }),
               });
               stats.slack_sent++;
             } catch (_) { /* ignore */ }
           }
-          continue;
         }
       }
-      remainingAfterWinners.push(li);
+      if (!matched) remainingAfterWinners.push(li);
     }
 
     // ─── STEP 2: Cheap Filter — bottom 40% by price ───

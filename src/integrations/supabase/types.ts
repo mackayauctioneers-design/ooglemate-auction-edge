@@ -4245,6 +4245,7 @@ export type Database = {
           make: string | null
           median_profit: number | null
           model: string | null
+          notes: string | null
           pattern_strong: boolean | null
           priority_level: number | null
           retail_gap: number | null
@@ -4275,6 +4276,7 @@ export type Database = {
           make?: string | null
           median_profit?: number | null
           model?: string | null
+          notes?: string | null
           pattern_strong?: boolean | null
           priority_level?: number | null
           retail_gap?: number | null
@@ -4305,6 +4307,7 @@ export type Database = {
           make?: string | null
           median_profit?: number | null
           model?: string | null
+          notes?: string | null
           pattern_strong?: boolean | null
           priority_level?: number | null
           retail_gap?: number | null
