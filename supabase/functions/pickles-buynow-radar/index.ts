@@ -279,15 +279,15 @@ interface WinnerMatch {
 
 function normalizeVariant(v: string | null | undefined): string {
   if (!v) return "";
-  // Strip engine codes, chassis codes, drivetrains — keep badge
   return v.toUpperCase()
     .replace(/\b(4X[24]|AWD|2WD|RWD|4WD)\b/g, "")
-    .replace(/\b\d+\.\d+[A-Z]*\b/g, "") // e.g. 3.2DT, 2.0T
+    .replace(/\b\d+\.\d+[A-Z]*\b/g, "")              // 3.2DT, 2.0T
     .replace(/\b(AUTO|MANUAL|CVT|DCT|DSG)\b/g, "")
     .replace(/\b(DIESEL|PETROL|TURBO|HYBRID)\b/g, "")
     .replace(/\b(DUAL\s*CAB|SINGLE\s*CAB|DOUBLE\s*CAB|CREW\s*CAB|CAB\s*CHASSIS|UTE|WAGON|SEDAN|HATCH)\b/g, "")
-    .replace(/\b(MY\d{2,4})\b/g, "") // MY14, MY2014
-    .replace(/\b[A-Z]{2}\d{2,4}[A-Z]{0,3}\b/g, "") // chassis codes like PX, D23, WK
+    .replace(/\b(MY\d{2,4})\b/g, "")                  // MY14, MY2014
+    .replace(/\b[A-Z]{2}\d{2,4}[A-Z]{0,3}\b/g, "")    // chassis codes PX, D23, WK
+    .replace(/[-]+/g, " ")                              // hyphens to spaces for matching
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -444,6 +444,9 @@ Deno.serve(async (req) => {
 
     for (const li of remainingAfterReplication) {
       const matches = findWinnerMatches(allWinners, li.make, li.model, li.year, li.variant);
+      if (matches.length > 0) {
+        console.log(`[PICKLES] ${li.make} ${li.model} ${li.variant || ""} → variantScore ${matches[0].variantScore}`);
+      }
       let matched = false;
 
       for (const { winner, variantScore } of matches) {
