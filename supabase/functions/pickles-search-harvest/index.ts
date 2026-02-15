@@ -215,7 +215,6 @@ async function runBuyNowRadar(force: boolean) {
       if (l.kms !== null && l.kms >= (p.km_min || 0) && l.kms <= (p.km_max || 999999)) score += 20;
       if (score < 70) continue;
 
-      console.log("[PICKLES] " + l.make + " " + l.model + " " + (l.variant || "") + " → badgeScore " + badgeScore + " vs profile " + (p.badge || "none"));
       // Badge/variant scoring
       var badgeScore = 0.5; // default: no badge data
       var listingVariant = normalizeVariantSH(l.variant);
@@ -227,6 +226,7 @@ async function runBuyNowRadar(force: boolean) {
       } else if (profileBadge && !listingVariant) {
         badgeScore = 0.3; // Profile has badge but listing doesn't — low confidence
       }
+      console.log("[PICKLES] " + l.make + " " + l.model + " " + (l.variant || "") + " → badgeScore " + badgeScore + " vs profile " + (p.badge || "none"));
       if (badgeScore === 0.0) continue; // Hard badge mismatch
 
       var liquidity_gap = (p.median_sell_price || 0) - l.price;
