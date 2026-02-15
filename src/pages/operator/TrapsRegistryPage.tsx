@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, Search, CheckCircle, AlertTriangle, Plus, List, Radio, Satellite, Users, Moon } from 'lucide-react';
+import { RefreshCw, Search, CheckCircle, AlertTriangle, Plus, List, Radio, Satellite, Users, Moon, Play } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { TrapCandidateIntake } from '@/components/operator/TrapCandidateIntake';
+import { TrapCrawlPreviewDrawer } from '@/components/operator/TrapCrawlPreviewDrawer';
 import { toast } from 'sonner';
 
 type TrapMode = 'auto' | 'portal' | 'va' | 'dormant';
@@ -66,6 +67,8 @@ export default function TrapsRegistryPage() {
   const [traps, setTraps] = useState<Trap[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [crawlDrawerOpen, setCrawlDrawerOpen] = useState(false);
+  const [selectedTrap, setSelectedTrap] = useState<{ slug: string; name: string } | null>(null);
 
   useEffect(() => {
     document.title = 'Traps Registry | Operator';
@@ -253,7 +256,8 @@ export default function TrapsRegistryPage() {
                     <th className="text-left py-2 pr-4">Status</th>
                     <th className="text-left py-2 pr-4">Parser</th>
                     <th className="text-left py-2 pr-4">Last Crawl</th>
-                    <th className="text-left py-2">Vehicles</th>
+                    <th className="text-left py-2 pr-4">Vehicles</th>
+                    <th className="text-left py-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -334,8 +338,22 @@ export default function TrapsRegistryPage() {
                             ? format(parseISO(trap.last_crawl_at), 'dd MMM HH:mm') 
                             : trap.trap_mode !== 'auto' ? '—' : '—'}
                         </td>
-                        <td className="py-3 font-mono text-sm">
+                        <td className="py-3 pr-4 font-mono text-sm">
                           {trap.trap_mode === 'auto' ? (trap.last_vehicle_count ?? '—') : '—'}
+                        </td>
+                        <td className="py-3">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => {
+                              setSelectedTrap({ slug: trap.trap_slug, name: trap.dealer_name });
+                              setCrawlDrawerOpen(true);
+                            }}
+                          >
+                            <Play className="h-3 w-3 mr-1" />
+                            Run
+                          </Button>
                         </td>
                       </tr>
                     );
@@ -350,6 +368,16 @@ export default function TrapsRegistryPage() {
         </Card>
           </TabsContent>
         </Tabs>
+
+        {selectedTrap && (
+          <TrapCrawlPreviewDrawer
+            open={crawlDrawerOpen}
+            onOpenChange={setCrawlDrawerOpen}
+            trapSlug={selectedTrap.slug}
+            dealerName={selectedTrap.name}
+            onCrawlComplete={fetchTraps}
+          />
+        )}
       </div>
     </OperatorLayout>
   );
