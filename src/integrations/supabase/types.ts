@@ -5640,6 +5640,63 @@ export type Database = {
         }
         Relationships: []
       }
+      retail_source_listings: {
+        Row: {
+          badge: string | null
+          created_at: string
+          grok_estimate: number | null
+          grok_estimated_at: string | null
+          id: string
+          kms: number | null
+          listing_url: string
+          location: string | null
+          make: string | null
+          model: string | null
+          price: number | null
+          price_at_grok: number | null
+          scraped_at: string
+          source: string
+          updated_at: string
+          year: number | null
+        }
+        Insert: {
+          badge?: string | null
+          created_at?: string
+          grok_estimate?: number | null
+          grok_estimated_at?: string | null
+          id?: string
+          kms?: number | null
+          listing_url: string
+          location?: string | null
+          make?: string | null
+          model?: string | null
+          price?: number | null
+          price_at_grok?: number | null
+          scraped_at?: string
+          source?: string
+          updated_at?: string
+          year?: number | null
+        }
+        Update: {
+          badge?: string | null
+          created_at?: string
+          grok_estimate?: number | null
+          grok_estimated_at?: string | null
+          id?: string
+          kms?: number | null
+          listing_url?: string
+          location?: string | null
+          make?: string | null
+          model?: string | null
+          price?: number | null
+          price_at_grok?: number | null
+          scraped_at?: string
+          source?: string
+          updated_at?: string
+          year?: number | null
+        }
+        Relationships: []
+      }
       sale_hunts: {
         Row: {
           badge: string | null
