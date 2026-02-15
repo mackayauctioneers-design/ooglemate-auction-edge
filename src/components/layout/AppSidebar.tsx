@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Crosshair,
   Flame,
+  Brain,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -51,6 +52,7 @@ const dealerNavItems = [
   { path: '/sales-insights', label: 'Sales Insights', icon: TrendingUp, authOnly: true },
   { path: '/buy-again', label: 'Buy Again Targets', icon: Crosshair, authOnly: true },
   { path: '/retail-signals', label: 'Retail Signals', icon: TrendingUp, authOnly: true },
+  { path: '/intelligence', label: 'Dealer Intelligence', icon: Brain, authOnly: true },
   { path: '/dealer-dashboard', label: 'My Dashboard', icon: MapPin, authOnly: true },
 ];
 
