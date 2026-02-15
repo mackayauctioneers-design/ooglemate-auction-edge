@@ -45,8 +45,10 @@ async function collectBuyNowUrls(key: string) {
       if (!sm) continue;
       var yr = parseInt(sm[1]);
       var mk = sm[2].charAt(0).toUpperCase() + sm[2].slice(1);
-      var ml = sm[3].split("-").map(function(w: string) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(" ");
-      allUrls.set(u, { id: "pickles-" + sm[4], year: yr, make: mk, model: ml, url: u });
+      var mlParts = sm[3].split("-");
+      var ml = mlParts[0].charAt(0).toUpperCase() + mlParts[0].slice(1);
+      var variant = mlParts.slice(1).map(function(w: string) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(" ");
+      allUrls.set(u, { id: "pickles-" + sm[4], year: yr, make: mk, model: ml, variant: variant, url: u });
     }
   }
   return allUrls;
@@ -185,7 +187,7 @@ async function runBuyNowRadar(force: boolean) {
   var profiles = pr.data || [];
   console.log("[BN] " + profiles.length + " profiles");
 
-  // STEP 1: Match + compute deviation with hard $4k gate
+  // STEP 1: Match + compute deviation with hard $4k gate + badge awareness
   var qualified: any[] = [];
   for (var li = 0; li < listings.length; li++) {
     var l = listings[li];
@@ -197,6 +199,19 @@ async function runBuyNowRadar(force: boolean) {
       if (l.year >= p.year_min && l.year <= p.year_max) score += 20;
       if (l.kms !== null && l.kms >= (p.km_min || 0) && l.kms <= (p.km_max || 999999)) score += 20;
       if (score < 70) continue;
+
+      // Badge/variant scoring
+      var badgeScore = 0.5; // default: no badge data
+      var listingVariant = (l.variant || "").toUpperCase().replace(/\b(4X[24]|AWD|2WD|RWD|4WD|AUTO|MANUAL|CVT|DIESEL|PETROL|TURBO|DUAL\s*CAB|SINGLE\s*CAB|DOUBLE\s*CAB|UTE|WAGON|SEDAN|HATCH)\b/g, "").replace(/\s+/g, " ").trim();
+      var profileBadge = (p.badge || "").toUpperCase().trim();
+      if (listingVariant && profileBadge) {
+        if (listingVariant === profileBadge) badgeScore = 1.0;
+        else if (listingVariant.includes(profileBadge) || profileBadge.includes(listingVariant)) badgeScore = 0.7;
+        else badgeScore = 0.0; // Badge mismatch — skip
+      } else if (profileBadge && !listingVariant) {
+        badgeScore = 0.3; // Profile has badge but listing doesn't — low confidence
+      }
+      if (badgeScore === 0.0) continue; // Hard badge mismatch
 
       var liquidity_gap = (p.median_sell_price || 0) - l.price;
       var deviation = Math.max(0, liquidity_gap);
@@ -210,15 +225,18 @@ async function runBuyNowRadar(force: boolean) {
       var passes_trigger = (deviation >= 6000) || (deviation >= 4500 && strong);
       if (!passes_trigger) continue;
 
+      var badgeLabel = badgeScore >= 1.0 ? "EXACT BADGE" : badgeScore >= 0.7 ? "CLOSE BADGE" : "MAKE/MODEL ONLY";
+
       qualified.push({
         id: l.id, year: l.year, make: l.make, model: l.model,
+        variant: l.variant || null, badge_label: badgeLabel, badge_score: badgeScore,
         price: l.price, kms: l.kms, listing_url: l.listing_url,
         deviation: deviation, pattern_strong: strong,
         dealer_key: p.dealer_key, dealer_name: p.dealer_name,
         median_sell_price: p.median_sell_price || 0,
         median_profit: p.median_profit || 0,
         flip_count: p.flip_count || 0,
-        match_score: score
+        match_score: score * badgeScore
       });
       break;
     }
@@ -284,8 +302,8 @@ async function runBuyNowRadar(force: boolean) {
       var m = toAlert[k];
       try {
         var confScoreSlack = (m.deviation * 0.5) + (m.grok_gap * 0.4) + (m.pattern_strong ? 1000 : 0);
-        var slackText = "HIGH-CONVICTION BUY NOW SIGNAL\n\n"
-          + "Vehicle: " + m.year + " " + m.make + " " + m.model + "\n"
+        var slackText = "HIGH-CONVICTION BUY NOW SIGNAL" + (m.badge_label ? " (" + m.badge_label + ")" : "") + "\n\n"
+          + "Vehicle: " + m.year + " " + m.make + " " + m.model + " " + (m.variant || "") + "\n"
           + "Buy Now: " + fmtMoney(m.price) + "\n"
           + "Dealer Median: " + fmtMoney(m.median_sell_price) + "\n"
           + "Spread: +" + fmtMoney(m.deviation) + "\n"

@@ -141,20 +141,32 @@ async function getHistoricalBands(sb: any): Promise<Map<string, HistoricalBand>>
     console.log("[RADAR] RPC not available, querying vehicle_sales_truth directly");
     const { data: raw } = await sb
       .from("vehicle_sales_truth")
-      .select("make, model, buy_price")
+      .select("make, model, badge, buy_price")
       .gt("buy_price", 0);
 
     const map = new Map<string, { prices: number[] }>();
     for (const r of (raw || [])) {
-      const key = `${(r.make || "").toUpperCase()}|${(r.model || "").toUpperCase()}`;
-      if (!map.has(key)) map.set(key, { prices: [] });
-      map.get(key)!.prices.push(Number(r.buy_price));
+      // Build make|model band
+      const mmKey = `${(r.make || "").toUpperCase()}|${(r.model || "").toUpperCase()}`;
+      if (!map.has(mmKey)) map.set(mmKey, { prices: [] });
+      map.get(mmKey)!.prices.push(Number(r.buy_price));
+
+      // Build make|model|badge band if badge exists
+      if (r.badge) {
+        const badgeNorm = (r.badge || "").toUpperCase().trim();
+        if (badgeNorm) {
+          const vKey = `${mmKey}|${badgeNorm}`;
+          if (!map.has(vKey)) map.set(vKey, { prices: [] });
+          map.get(vKey)!.prices.push(Number(r.buy_price));
+        }
+      }
     }
 
     const bands = new Map<string, HistoricalBand>();
     for (const [key, val] of map) {
       if (val.prices.length < 3) continue; // need at least 3 sales
-      const [make, model] = key.split("|");
+      const parts = key.split("|");
+      const [make, model] = parts;
       val.prices.sort((a, b) => a - b);
       const median = val.prices[Math.floor(val.prices.length / 2)];
       bands.set(key, { make, model, median_buy: median, count: val.prices.length });
@@ -171,6 +183,17 @@ async function getHistoricalBands(sb: any): Promise<Map<string, HistoricalBand>>
 }
 
 function checkReplication(listing: Listing, bands: Map<string, HistoricalBand>): { hit: boolean; delta: number; median_buy: number } {
+  // Try variant-specific band first (more accurate)
+  const variantNorm = normalizeVariant(listing.variant);
+  if (variantNorm) {
+    const variantKey = `${listing.make.toUpperCase()}|${listing.model.toUpperCase()}|${variantNorm}`;
+    const variantBand = bands.get(variantKey);
+    if (variantBand) {
+      const delta = variantBand.median_buy - listing.price;
+      return { hit: delta >= 5000, delta, median_buy: variantBand.median_buy };
+    }
+  }
+  // Fall back to make/model only
   const key = `${listing.make.toUpperCase()}|${listing.model.toUpperCase()}`;
   const band = bands.get(key);
   if (!band) return { hit: false, delta: 0, median_buy: 0 };
@@ -249,13 +272,63 @@ async function loadAllWinners(sb: any): Promise<WinnerRow[]> {
   return (data || []) as WinnerRow[];
 }
 
-function findWinnerMatches(winners: WinnerRow[], make: string, model: string, year: number): WinnerRow[] {
-  return winners.filter(w => {
+interface WinnerMatch {
+  winner: WinnerRow;
+  variantScore: number; // 1.0 = exact, 0.7 = close, 0.3 = no variant data
+}
+
+function normalizeVariant(v: string | null | undefined): string {
+  if (!v) return "";
+  // Strip engine codes, chassis codes, drivetrains — keep badge
+  return v.toUpperCase()
+    .replace(/\b(4X[24]|AWD|2WD|RWD|4WD)\b/g, "")
+    .replace(/\b\d+\.\d+[A-Z]*\b/g, "") // e.g. 3.2DT, 2.0T
+    .replace(/\b(AUTO|MANUAL|CVT|DCT|DSG)\b/g, "")
+    .replace(/\b(DIESEL|PETROL|TURBO|HYBRID)\b/g, "")
+    .replace(/\b(DUAL\s*CAB|SINGLE\s*CAB|DOUBLE\s*CAB|CREW\s*CAB|CAB\s*CHASSIS|UTE|WAGON|SEDAN|HATCH)\b/g, "")
+    .replace(/\b(MY\d{2,4})\b/g, "") // MY14, MY2014
+    .replace(/\b[A-Z]{2}\d{2,4}[A-Z]{0,3}\b/g, "") // chassis codes like PX, D23, WK
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function scoreVariantMatch(listingVariant: string | null, winnerVariant: string | null): number {
+  const lv = normalizeVariant(listingVariant);
+  const wv = normalizeVariant(winnerVariant);
+
+  // Both empty = generic match (acceptable but lower confidence)
+  if (!lv && !wv) return 0.5;
+  // Winner has no variant = matches any (spec-agnostic winner)
+  if (!wv) return 0.5;
+  // Listing has no variant but winner does = can't confirm badge
+  if (!lv) return 0.3;
+
+  // Exact badge match
+  if (lv === wv) return 1.0;
+  // One contains the other (e.g. "XLT" in "XLT HI RIDER", or "LT" in "LT-R")
+  if (lv.includes(wv) || wv.includes(lv)) return 0.7;
+
+  // No badge alignment
+  return 0.0;
+}
+
+function findWinnerMatches(winners: WinnerRow[], make: string, model: string, year: number, variant: string | null): WinnerMatch[] {
+  const results: WinnerMatch[] = [];
+  for (const w of winners) {
     const makeOk = w.make.toUpperCase() === make.toUpperCase();
     const modelOk = w.model.toUpperCase() === model.toUpperCase();
     const yearOk = !w.year_min || !w.year_max || (year >= w.year_min - 1 && year <= w.year_max + 1);
-    return makeOk && modelOk && yearOk;
-  });
+    if (!makeOk || !modelOk || !yearOk) continue;
+
+    const variantScore = scoreVariantMatch(variant, w.variant);
+    // Only match if variant score >= 0.3 (at least partial alignment)
+    if (variantScore >= 0.3) {
+      results.push({ winner: w, variantScore });
+    }
+  }
+  // Sort: exact variant matches first, then by profit
+  results.sort((a, b) => b.variantScore - a.variantScore || Number(b.winner.avg_profit) - Number(a.winner.avg_profit));
+  return results;
 }
 
 async function getAccountName(sb: any, accountId: string): Promise<string> {
@@ -370,10 +443,10 @@ Deno.serve(async (req) => {
     const remainingAfterWinners: Listing[] = [];
 
     for (const li of remainingAfterReplication) {
-      const matches = findWinnerMatches(allWinners, li.make, li.model, li.year);
+      const matches = findWinnerMatches(allWinners, li.make, li.model, li.year, li.variant);
       let matched = false;
 
-      for (const winner of matches) {
+      for (const { winner, variantScore } of matches) {
         const avgSell = Number(winner.last_sale_price);
         const avgProfit = Number(winner.avg_profit);
         const historicalBuy = avgSell - avgProfit;
@@ -388,6 +461,10 @@ Deno.serve(async (req) => {
           const dealerName = accountNames.get(winner.account_id)!;
           const targetBuy = Math.round(li.price - delta * 0.6);
 
+          // Confidence tier now factors in variant match quality
+          const confTier = variantScore >= 0.7 ? "HIGH" : variantScore >= 0.5 ? "MEDIUM" : "LOW";
+          const badgeLabel = variantScore >= 1.0 ? "EXACT BADGE" : variantScore >= 0.7 ? "CLOSE BADGE" : "MAKE/MODEL ONLY";
+
           await sb.from("opportunities").upsert({
             source_type: "winner_replication",
             listing_url: li.listing_url,
@@ -396,27 +473,29 @@ Deno.serve(async (req) => {
             buy_price: li.price,
             dealer_median_price: historicalBuy,
             deviation: delta, retail_gap: delta,
-            priority_level: 1,
-            confidence_score: delta,
-            confidence_tier: "HIGH",
+            priority_level: variantScore >= 0.7 ? 1 : 2,
+            confidence_score: delta * variantScore,
+            confidence_tier: confTier,
             status: "new",
             account_id: winner.account_id,
-            notes: `PROVEN WINNER for ${dealerName} — avg profit ${fmtMoney(avgProfit)} from ${winner.times_sold} sales. Their avg sell: ${fmtMoney(avgSell)}. Target buy: ${fmtMoney(targetBuy)}`,
+            notes: `${badgeLabel} for ${dealerName} — ${li.variant || li.model} vs winner ${winner.variant || winner.model}. Avg profit ${fmtMoney(avgProfit)} from ${winner.times_sold} sales. Avg sell: ${fmtMoney(avgSell)}. Target buy: ${fmtMoney(targetBuy)}`,
           }, { onConflict: "listing_url" });
           stats.opportunities++;
 
-          if (slackWebhook) {
+          if (slackWebhook && variantScore >= 0.5) {
+            const emoji = variantScore >= 0.7 ? "🔴 PROVEN WINNER" : "🟡 CLOSE MATCH";
             try {
               await fetch(slackWebhook, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  text: `🔴 DEALER PROVEN WINNER\n\n${li.year} ${li.make} ${li.model} ${li.variant || ""}\nAsking: ${fmtMoney(li.price)}\nTheir avg sell: ${fmtMoney(avgSell)}\nMargin edge: +${fmtMoney(delta)}\nTarget buy: ${fmtMoney(targetBuy)}\nPrevious avg profit: ${fmtMoney(avgProfit)} from ${winner.times_sold} sales\nDealer: ${dealerName}\n\n${li.listing_url}`,
+                  text: `${emoji} (${badgeLabel})\n\n${li.year} ${li.make} ${li.model} ${li.variant || ""}\nAsking: ${fmtMoney(li.price)}\nTheir avg sell: ${fmtMoney(avgSell)}\nMargin edge: +${fmtMoney(delta)}\nTarget buy: ${fmtMoney(targetBuy)}\nPrevious avg profit: ${fmtMoney(avgProfit)} from ${winner.times_sold} sales\nDealer: ${dealerName}\n\n${li.listing_url}`,
                 }),
               });
               stats.slack_sent++;
             } catch (_) { /* ignore */ }
           }
+          break; // Use best variant match only (already sorted)
         }
       }
       if (!matched) remainingAfterWinners.push(li);
