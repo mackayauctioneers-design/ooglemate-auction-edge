@@ -2,12 +2,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 const SEARCH_URL = "https://www.pickles.com.au/used/search/cars?filter=and%255B0%255D%255Bor%255D%255B0%255D%255BbuyMethod%255D%3DBuy%2520Now&contentkey=cars-to-buy-now";
 const MAX_PAGES = 10;
 const MAX_DETAIL_FETCHES = 50;
+
+const SALVAGE_RE = /salvage|write.?off|wovr|repairable|hail|insurance|damaged|statutory/i;
 
 function fmtMoney(n: number): string {
   return "$" + Math.round(n).toLocaleString();
@@ -18,14 +20,25 @@ interface Listing {
   year: number;
   make: string;
   model: string;
+  variant: string;
   price: number;
   kms: number | null;
+  location: string;
   listing_url: string;
 }
 
-/** Phase 1: Scrape search pages, collect detail URLs only */
-async function collectDetailUrls(firecrawlKey: string): Promise<Map<string, { id: string; year: number; make: string; model: string; url: string }>> {
-  const allUrls = new Map<string, { id: string; year: number; make: string; model: string; url: string }>();
+interface HistoricalBand {
+  make: string;
+  model: string;
+  median_buy: number;
+  count: number;
+}
+
+// ─── PHASE 1: Scrape search pages ──────────────────────────────────────────
+
+async function collectListings(firecrawlKey: string): Promise<Listing[]> {
+  const allListings: Listing[] = [];
+  const seen = new Set<string>();
 
   for (let page = 1; page <= MAX_PAGES; page++) {
     const pageUrl = SEARCH_URL + "&page=" + page;
@@ -34,101 +47,202 @@ async function collectDetailUrls(firecrawlKey: string): Promise<Map<string, { id
     const resp = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: { "Authorization": "Bearer " + firecrawlKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ url: pageUrl, formats: ["markdown"], waitFor: 5000, onlyMainContent: false })
+      body: JSON.stringify({ url: pageUrl, formats: ["markdown"], waitFor: 5000, onlyMainContent: false }),
     });
 
     if (!resp.ok) { console.error(`[SEARCH] Firecrawl error page ${page}`); break; }
 
     const data = await resp.json();
     const md = data.data?.markdown || data.markdown || "";
-    if (!md || md.length < 200) { console.log(`[SEARCH] No content page ${page}, stopping`); break; }
+    if (!md || md.length < 200) { console.log(`[SEARCH] No content page ${page}`); break; }
 
     const urls = md.match(/https:\/\/www\.pickles\.com\.au\/used\/details\/cars\/[^\s)"]+/gi) || [];
-    console.log(`[SEARCH] Page ${page}: ${urls.length} URLs`);
     if (urls.length === 0) break;
 
     for (const url of urls) {
-      if (allUrls.has(url)) continue;
+      if (seen.has(url)) continue;
+      seen.add(url);
+
       const slugMatch = url.match(/\/(\d{4})-([a-z]+)-([a-z0-9-]+)\/(\d+)/i);
       if (!slugMatch) continue;
 
       const year = parseInt(slugMatch[1]);
       const make = slugMatch[2].charAt(0).toUpperCase() + slugMatch[2].slice(1);
-      const model = slugMatch[3].split("-").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+      const modelParts = slugMatch[3].split("-");
+      const model = modelParts[0].charAt(0).toUpperCase() + modelParts[0].slice(1);
+      const variant = modelParts.slice(1).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
-      allUrls.set(url, { id: "pickles-" + slugMatch[4], year, make, model, url });
+      if (SALVAGE_RE.test(make + " " + model + " " + variant)) continue;
+      if (year < 2008) continue;
+
+      allListings.push({
+        id: "pickles-" + slugMatch[4],
+        year, make, model, variant,
+        price: 0, kms: null, location: "",
+        listing_url: url,
+      });
     }
+    console.log(`[SEARCH] Page ${page}: ${urls.length} URLs, ${allListings.length} total`);
   }
 
-  return allUrls;
+  return allListings;
 }
 
-/** Phase 2: Scrape individual detail pages for price */
-async function fetchDetailPrice(url: string, firecrawlKey: string): Promise<{ price: number; kms: number | null }> {
+// ─── PHASE 2: Fetch detail page for price/km ───────────────────────────────
+
+async function fetchDetailPrice(url: string, firecrawlKey: string): Promise<{ price: number; kms: number | null; location: string }> {
   try {
     const resp = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: { "Authorization": "Bearer " + firecrawlKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ url, formats: ["markdown"], waitFor: 3000, onlyMainContent: false })
+      body: JSON.stringify({ url, formats: ["markdown"], waitFor: 3000, onlyMainContent: false }),
     });
 
-    if (!resp.ok) return { price: 0, kms: null };
+    if (!resp.ok) return { price: 0, kms: null, location: "" };
 
     const data = await resp.json();
     const md = data.data?.markdown || data.markdown || "";
 
-    // Price extraction - detail pages have clear price labels
     let price = 0;
-    const pricePatterns = [
-      /buy\s*now[:\s]*\$\s*([\d,]+)/i,
-      /price[:\s]*\$\s*([\d,]+)/i,
-      /\$\s*([\d,]+(?:\.\d{2})?)\s*/g,
-    ];
-
-    for (const pattern of pricePatterns) {
-      const match = md.match(pattern);
-      if (match) {
-        const raw = (match[1] || "").replace(/,/g, "");
-        const parsed = parseInt(raw);
-        // Only accept prices in realistic vehicle range
-        if (parsed >= 2000 && parsed <= 200000) {
-          price = parsed;
-          break;
-        }
-      }
+    const pricePatterns = [/buy\s*now[:\s]*\$\s*([\d,]+)/i, /price[:\s]*\$\s*([\d,]+)/i];
+    for (const p of pricePatterns) {
+      const m = md.match(p);
+      if (m) { const v = parseInt(m[1].replace(/,/g, "")); if (v >= 2000 && v <= 200000) { price = v; break; } }
     }
-
-    // If no labeled price found, collect all dollar amounts and pick the most likely
     if (price === 0) {
-      const allPrices: number[] = [];
-      const globalPattern = /\$\s*([\d,]+)/g;
-      let m;
-      while ((m = globalPattern.exec(md)) !== null) {
-        const val = parseInt(m[1].replace(/,/g, ""));
-        if (val >= 2000 && val <= 200000) allPrices.push(val);
-      }
-      if (allPrices.length > 0) {
-        // Most prominent price is usually the first large one
-        price = allPrices[0];
-      }
+      const all: number[] = [];
+      let m; const g = /\$\s*([\d,]+)/g;
+      while ((m = g.exec(md)) !== null) { const v = parseInt(m[1].replace(/,/g, "")); if (v >= 2000 && v <= 200000) all.push(v); }
+      if (all.length > 0) price = all[0];
     }
 
-    // KM extraction
     let kms: number | null = null;
     const kmMatch = md.match(/(\d{1,3}(?:,\d{3})*)\s*km/i);
     if (kmMatch) kms = parseInt(kmMatch[1].replace(/,/g, ""));
 
-    return { price, kms };
+    let location = "";
+    const locMatch = md.match(/(?:NSW|VIC|QLD|SA|WA|TAS|NT|ACT)/i);
+    if (locMatch) location = locMatch[0].toUpperCase();
+
+    return { price, kms, location };
   } catch (e) {
-    console.error(`[DETAIL] Error fetching ${url}:`, e);
-    return { price: 0, kms: null };
+    console.error(`[DETAIL] Error ${url}:`, e);
+    return { price: 0, kms: null, location: "" };
   }
 }
+
+// ─── STEP A: Historical Replication Check ──────────────────────────────────
+
+async function getHistoricalBands(sb: any): Promise<Map<string, HistoricalBand>> {
+  const { data, error } = await sb.rpc("get_historical_buy_bands");
+  
+  // Fallback: query directly if RPC doesn't exist
+  if (error) {
+    console.log("[RADAR] RPC not available, querying vehicle_sales_truth directly");
+    const { data: raw } = await sb
+      .from("vehicle_sales_truth")
+      .select("make, model, buy_price")
+      .gt("buy_price", 0);
+
+    const map = new Map<string, { prices: number[] }>();
+    for (const r of (raw || [])) {
+      const key = `${(r.make || "").toUpperCase()}|${(r.model || "").toUpperCase()}`;
+      if (!map.has(key)) map.set(key, { prices: [] });
+      map.get(key)!.prices.push(Number(r.buy_price));
+    }
+
+    const bands = new Map<string, HistoricalBand>();
+    for (const [key, val] of map) {
+      if (val.prices.length < 3) continue; // need at least 3 sales
+      const [make, model] = key.split("|");
+      val.prices.sort((a, b) => a - b);
+      const median = val.prices[Math.floor(val.prices.length / 2)];
+      bands.set(key, { make, model, median_buy: median, count: val.prices.length });
+    }
+    return bands;
+  }
+
+  const bands = new Map<string, HistoricalBand>();
+  for (const r of (data || [])) {
+    const key = `${r.make.toUpperCase()}|${r.model.toUpperCase()}`;
+    bands.set(key, r);
+  }
+  return bands;
+}
+
+function checkReplication(listing: Listing, bands: Map<string, HistoricalBand>): { hit: boolean; delta: number; median_buy: number } {
+  const key = `${listing.make.toUpperCase()}|${listing.model.toUpperCase()}`;
+  const band = bands.get(key);
+  if (!band) return { hit: false, delta: 0, median_buy: 0 };
+
+  const delta = band.median_buy - listing.price;
+  return { hit: delta >= 5000, delta, median_buy: band.median_buy };
+}
+
+// ─── STEP B: AI Retail Deviation ───────────────────────────────────────────
+
+async function getRetailDelta(listing: Listing, supabaseUrl: string, supabaseKey: string): Promise<number> {
+  const prompt = `Return ONLY a single integer.\n\nHow many dollars UNDER current Australian retail market is this vehicle?\n\nYear: ${listing.year}\nMake: ${listing.make}\nModel: ${listing.model}\nVariant: ${listing.variant || "N/A"}\nKM: ${listing.kms || "Unknown"}\nState: ${listing.location || "NSW"}\nAsking Price: $${listing.price.toLocaleString()}\n\nIf not under market, return 0.\nReturn only the number.`;
+
+  try {
+    const resp = await fetch(`${supabaseUrl}/functions/v1/bob-sales-truth`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${supabaseKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: "You are an Australian used car pricing expert. Return ONLY a single integer. No text, no currency, no explanation." },
+          { role: "user", content: prompt },
+        ],
+        max_tokens: 20,
+        temperature: 0.1,
+      }),
+    });
+
+    if (!resp.ok) {
+      // Fallback to OpenAI
+      const openaiKey = Deno.env.get("OPENAI_API_KEY");
+      if (!openaiKey) return 0;
+
+      const oResp = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: "You are an Australian used car pricing expert. Return ONLY a single integer. No text, no currency, no explanation." },
+            { role: "user", content: prompt },
+          ],
+          max_tokens: 20,
+          temperature: 0.1,
+        }),
+      });
+      if (!oResp.ok) return 0;
+      const oData = await oResp.json();
+      const raw = oData.choices?.[0]?.message?.content?.trim() || "0";
+      return parseInt(raw.replace(/[^0-9]/g, ""), 10) || 0;
+    }
+
+    const data = await resp.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || data.content || data.text || "0";
+    return parseInt(String(raw).replace(/[^0-9]/g, ""), 10) || 0;
+  } catch (e) {
+    console.error("[AI] Error:", e);
+    return 0;
+  }
+}
+
+// ─── MAIN ──────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const force = new URL(req.url).searchParams.get("force") === "true";
 
   if (!force) {
@@ -140,87 +254,133 @@ Deno.serve(async (req) => {
 
   try {
     const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
-    if (!firecrawlKey) {
-      return new Response(JSON.stringify({ ok: false, error: "FIRECRAWL_API_KEY missing" }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
-    }
+    if (!firecrawlKey) return new Response(JSON.stringify({ ok: false, error: "FIRECRAWL_API_KEY missing" }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
 
-    // Phase 1: Collect all detail URLs from search pages
-    const urlMap = await collectDetailUrls(firecrawlKey);
-    console.log(`[RADAR] Collected ${urlMap.size} unique detail URLs`);
+    const slackWebhook = Deno.env.get("SLACK_WEBHOOK_URL") || "";
+    const body = await req.json().catch(() => ({}));
+    const maxAiCalls = body.max_ai_calls || 20;
 
-    // Filter salvage before wasting detail fetches
-    const salvageRe = /salvage|write.?off|wovr|repairable|hail|insurance/i;
-    const candidates = Array.from(urlMap.values()).filter(
-      (item) => !salvageRe.test(item.make + " " + item.model)
-    );
-    console.log(`[RADAR] ${candidates.length} non-salvage candidates`);
+    const stats = {
+      urls_found: 0, detail_fetched: 0, priced: 0,
+      replication_hits: 0, ai_called: 0, ai_signals: 0,
+      opportunities: 0, slack_sent: 0,
+    };
 
-    // Phase 2: Fetch detail pages for price (capped)
-    const toFetch = candidates.slice(0, MAX_DETAIL_FETCHES);
-    const listings: Listing[] = [];
+    // Phase 1: Collect listings from search pages
+    const listings = await collectListings(firecrawlKey);
+    stats.urls_found = listings.length;
+    console.log(`[RADAR] ${listings.length} candidate URLs`);
 
-    for (const item of toFetch) {
-      const { price, kms } = await fetchDetailPrice(item.url, firecrawlKey);
-      if (price > 0) {
-        listings.push({ id: item.id, year: item.year, make: item.make, model: item.model, price, kms, listing_url: item.url });
-      }
-      // Small delay to be polite
-      await new Promise(r => setTimeout(r, 200));
-    }
+    // Phase 2: Fetch detail pages for prices (capped)
+    const toFetch = listings.slice(0, MAX_DETAIL_FETCHES);
+    const pricedListings: Listing[] = [];
 
-    console.log(`[RADAR] ${listings.length} listings with valid prices from ${toFetch.length} detail fetches`);
-
-    // Phase 3: Match against liquidity profiles
-    const { data: profiles } = await sb.from("dealer_liquidity_profiles").select("*");
-    console.log(`[RADAR] ${(profiles || []).length} liquidity profiles`);
-
-    const matched: any[] = [];
-    for (const li of listings) {
-      for (const p of (profiles || [])) {
-        let score = 0;
-        if (li.make.toLowerCase() === (p.make || "").toLowerCase()) score += 30;
-        if (li.model.toLowerCase() === (p.model || "").toLowerCase()) score += 30;
-        if (li.year >= p.year_min && li.year <= p.year_max) score += 20;
-        if (li.kms !== null && li.kms >= (p.km_min || 0) && li.kms <= (p.km_max || 999999)) score += 20;
-        if (score >= 70) {
-          const resale = p.median_sell_price || li.price * 1.15;
-          const profit = Math.max(0, resale - li.price);
-          matched.push({
-            id: li.id, year: li.year, make: li.make, model: li.model,
-            price: li.price, listing_url: li.listing_url,
-            match_tier: profit > (p.p75_profit || 5000) ? "HIGH" : profit > 2000 ? "MED" : "LOW",
-            match_dealer_key: p.dealer_key,
-            match_expected_profit: profit, match_expected_resale: resale, match_score: score
-          });
-          break;
+    for (const li of toFetch) {
+      const { price, kms, location } = await fetchDetailPrice(li.listing_url, firecrawlKey);
+      stats.detail_fetched++;
+      if (price > 0 && price >= 8000 && price <= 120000) {
+        li.price = price;
+        li.kms = kms;
+        li.location = location;
+        if (kms === null || kms < 250000) {
+          pricedListings.push(li);
         }
       }
+      await new Promise(r => setTimeout(r, 200));
     }
+    stats.priced = pricedListings.length;
+    console.log(`[RADAR] ${pricedListings.length} priced listings passing structural filter`);
 
-    matched.sort((a, b) => (b.match_expected_profit || 0) - (a.match_expected_profit || 0));
-    const top = matched.slice(0, 5);
+    // Load historical buy bands
+    const bands = await getHistoricalBands(sb);
+    console.log(`[RADAR] ${bands.size} historical make/model bands`);
 
-    // Phase 4: Slack alerts
-    const wh = Deno.env.get("SLACK_WEBHOOK_URL");
-    let sent = 0;
-    if (wh && top.length > 0) {
-      for (const m of top) {
+    let aiCalls = 0;
+
+    for (const li of pricedListings) {
+      // ─── STEP A: Historical Replication ───
+      const rep = checkReplication(li, bands);
+      if (rep.hit) {
+        stats.replication_hits++;
+        await sb.from("opportunities").upsert({
+          source_type: "replication",
+          listing_url: li.listing_url,
+          year: li.year, make: li.make, model: li.model, variant: li.variant || null,
+          kms: li.kms, location: li.location || null,
+          buy_price: li.price,
+          dealer_median_price: rep.median_buy,
+          deviation: rep.delta,
+          retail_gap: rep.delta,
+          priority_level: 1,
+          confidence_score: rep.delta,
+          confidence_tier: "HIGH",
+          status: "new",
+        }, { onConflict: "listing_url" });
+        stats.opportunities++;
+
+        // 🔴 CODE RED Slack
+        if (slackWebhook) {
+          try {
+            await fetch(slackWebhook, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                text: `🔴 CODE RED\n\n${li.year} ${li.make} ${li.model} ${li.variant || ""}\nPrice: ${fmtMoney(li.price)}\nBelow historical buy band by: +${fmtMoney(rep.delta)}\n\n${li.listing_url}`,
+              }),
+            });
+            stats.slack_sent++;
+          } catch (_) { /* ignore */ }
+        }
+        continue; // Don't also AI-check replication hits
+      }
+
+      // ─── STEP B: AI Retail Deviation (if replication didn't trigger) ───
+      if (aiCalls >= maxAiCalls) continue;
+      aiCalls++;
+      stats.ai_called++;
+
+      const delta = await getRetailDelta(li, supabaseUrl, supabaseKey);
+      if (delta < 4000) continue;
+
+      stats.ai_signals++;
+      const priorityLevel = delta >= 8000 ? 1 : 2;
+
+      await sb.from("opportunities").upsert({
+        source_type: "retail_deviation",
+        listing_url: li.listing_url,
+        year: li.year, make: li.make, model: li.model, variant: li.variant || null,
+        kms: li.kms, location: li.location || null,
+        buy_price: li.price,
+        retail_median_price: li.price + delta,
+        deviation: delta,
+        retail_gap: delta,
+        priority_level: priorityLevel,
+        confidence_score: delta,
+        confidence_tier: priorityLevel === 1 ? "HIGH" : "MEDIUM",
+        status: "new",
+      }, { onConflict: "listing_url" });
+      stats.opportunities++;
+
+      // Slack alert
+      if (slackWebhook) {
+        const emoji = delta >= 8000 ? "🔴 CODE RED" : "🟢 Under Market";
         try {
-          const r = await fetch(wh, {
+          await fetch(slackWebhook, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              text: `🟢 Pickles Buy Now Alert\n${m.year} ${m.make} ${m.model}\nPrice: ${fmtMoney(m.price)} | Resale: ${fmtMoney(m.match_expected_resale)} | Profit: +${fmtMoney(m.match_expected_profit)}\nTier: ${m.match_tier}\n${m.listing_url}`
-            })
+              text: `${emoji}\n\n${li.year} ${li.make} ${li.model} ${li.variant || ""}\nPrice: ${fmtMoney(li.price)}\nUnder Market: +${fmtMoney(delta)}\n\n${li.listing_url}`,
+            }),
           });
-          if (r.ok) sent++;
-        } catch (_e) { /* ignore slack errors */ }
+          stats.slack_sent++;
+        } catch (_) { /* ignore */ }
       }
+
+      await new Promise(r => setTimeout(r, 500));
     }
 
-    const result = { ok: true, urls_found: urlMap.size, detail_fetched: toFetch.length, priced: listings.length, matched: matched.length, alerted: top.length, slack_sent: sent };
-    console.log("[RADAR] Done:", result);
-    return new Response(JSON.stringify(result), { headers: { ...cors, "Content-Type": "application/json" } });
+    console.log("[RADAR] Done:", stats);
+    return new Response(JSON.stringify({ ok: true, ...stats }), { headers: { ...cors, "Content-Type": "application/json" } });
 
   } catch (error) {
     console.error("[RADAR] Error:", error);
