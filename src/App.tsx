@@ -65,6 +65,7 @@ import DealDetailPage from "./pages/DealDetailPage";
 import ScanGuidePage from "./pages/ScanGuidePage";
 import ReplicationEnginePage from "./pages/ReplicationEnginePage";
 import LiveAlertsPage from "./pages/LiveAlertsPage";
+import UnifiedOpportunitiesPage from "./pages/UnifiedOpportunitiesPage";
 
 // Dealer spec pages
 import DealerSpecsListPage from "./pages/dealer/DealerSpecsPage";
@@ -96,6 +97,7 @@ const App = () => (
               <Route path="/" element={<RequireAuth><TodayPage /></RequireAuth>} />
               <Route path="/today" element={<RequireAuth><TodayPage /></RequireAuth>} />
               <Route path="/opportunities-legacy" element={<RequireAuth><OpportunitiesPage /></RequireAuth>} />
+              <Route path="/opportunities" element={<RequireAuth><UnifiedOpportunitiesPage /></RequireAuth>} />
               <Route path="/upcoming-auctions" element={<RequireAuth><UpcomingAuctionsPage /></RequireAuth>} />
               <Route path="/search-lots" element={<RequireAuth><SearchLotsPage /></RequireAuth>} />
               <Route path="/trap-inventory" element={<RequireAuth><TrapInventoryPage /></RequireAuth>} />

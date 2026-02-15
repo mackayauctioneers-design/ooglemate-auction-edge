@@ -242,7 +242,40 @@ async function runBuyNowRadar(force: boolean) {
   }
   console.log("[BN] " + grokPassed.length + " passed Grok confirmation");
 
-  // STEP 3: Send Slack alerts (capped)
+  // STEP 3: Insert ALL grok-passed into opportunities table (no cap on DB)
+  var dbInserted = 0;
+  for (var di = 0; di < grokPassed.length; di++) {
+    var d = grokPassed[di];
+    var confScore = (d.deviation * 0.5) + (d.grok_gap * 0.4) + (d.pattern_strong ? 1000 : 0);
+    var confTier = confScore >= 5000 ? "HIGH" : confScore >= 3000 ? "MEDIUM" : "LOW";
+    var oppRow = {
+      source_type: "buy_now",
+      listing_url: d.listing_url,
+      stock_id: d.id,
+      year: d.year,
+      make: d.make,
+      model: d.model,
+      kms: d.kms,
+      buy_price: d.price,
+      dealer_median_price: d.median_sell_price,
+      liquidity_gap: d.deviation,
+      deviation: d.deviation,
+      grok_wholesale_estimate: d.grok_estimate,
+      grok_gap: d.grok_gap,
+      flip_count: d.flip_count,
+      median_profit: d.median_profit,
+      pattern_strong: d.pattern_strong,
+      confidence_score: confScore,
+      confidence_tier: confTier,
+      status: "new"
+    };
+    var upsertRes = await sb.from("opportunities").upsert(oppRow, { onConflict: "listing_url", ignoreDuplicates: false });
+    if (!upsertRes.error) dbInserted++;
+    else console.error("[BN] Opp upsert err: " + JSON.stringify(upsertRes.error));
+  }
+  console.log("[BN] " + dbInserted + " opportunities upserted");
+
+  // STEP 4: Send Slack alerts (capped)
   var wh = Deno.env.get("SLACK_WEBHOOK_URL");
   var sent = 0;
   var toAlert = grokPassed.slice(0, remainingSlots);
@@ -250,6 +283,7 @@ async function runBuyNowRadar(force: boolean) {
     for (var k = 0; k < toAlert.length; k++) {
       var m = toAlert[k];
       try {
+        var confScoreSlack = (m.deviation * 0.5) + (m.grok_gap * 0.4) + (m.pattern_strong ? 1000 : 0);
         var slackText = "HIGH-CONVICTION BUY NOW SIGNAL\n\n"
           + "Vehicle: " + m.year + " " + m.make + " " + m.model + "\n"
           + "Buy Now: " + fmtMoney(m.price) + "\n"
@@ -257,7 +291,8 @@ async function runBuyNowRadar(force: boolean) {
           + "Spread: +" + fmtMoney(m.deviation) + "\n"
           + "Grok Wholesale: " + fmtMoney(m.grok_estimate) + "\n"
           + "AI Gap: +" + fmtMoney(m.grok_gap) + "\n"
-          + "History: " + m.flip_count + " flips | Median profit " + fmtMoney(m.median_profit) + "\n\n"
+          + "History: " + m.flip_count + " flips | Median profit " + fmtMoney(m.median_profit) + "\n"
+          + "Source: buy_now\n\n"
           + m.listing_url;
         var r = await fetch(wh, {
           method: "POST",
@@ -279,6 +314,7 @@ async function runBuyNowRadar(force: boolean) {
     priced: listings.length,
     qualified_before_grok: qualified.length,
     grok_passed: grokPassed.length,
+    db_inserted: dbInserted,
     alerts_sent_today: alertsSentToday + sent,
     slack_sent: sent
   };

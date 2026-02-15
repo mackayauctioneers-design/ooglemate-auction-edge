@@ -4225,6 +4225,104 @@ export type Database = {
         }
         Relationships: []
       }
+      opportunities: {
+        Row: {
+          account_id: string | null
+          buy_price: number | null
+          confidence_score: number
+          confidence_tier: string
+          created_at: string
+          dealer_median_price: number | null
+          deviation: number | null
+          flip_count: number | null
+          grok_gap: number | null
+          grok_wholesale_estimate: number | null
+          id: string
+          kms: number | null
+          liquidity_gap: number | null
+          listing_url: string
+          location: string | null
+          make: string | null
+          median_profit: number | null
+          model: string | null
+          pattern_strong: boolean | null
+          retail_gap: number | null
+          retail_median_price: number | null
+          source_type: string
+          status: string
+          stock_id: string | null
+          updated_at: string
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          account_id?: string | null
+          buy_price?: number | null
+          confidence_score?: number
+          confidence_tier?: string
+          created_at?: string
+          dealer_median_price?: number | null
+          deviation?: number | null
+          flip_count?: number | null
+          grok_gap?: number | null
+          grok_wholesale_estimate?: number | null
+          id?: string
+          kms?: number | null
+          liquidity_gap?: number | null
+          listing_url: string
+          location?: string | null
+          make?: string | null
+          median_profit?: number | null
+          model?: string | null
+          pattern_strong?: boolean | null
+          retail_gap?: number | null
+          retail_median_price?: number | null
+          source_type: string
+          status?: string
+          stock_id?: string | null
+          updated_at?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          account_id?: string | null
+          buy_price?: number | null
+          confidence_score?: number
+          confidence_tier?: string
+          created_at?: string
+          dealer_median_price?: number | null
+          deviation?: number | null
+          flip_count?: number | null
+          grok_gap?: number | null
+          grok_wholesale_estimate?: number | null
+          id?: string
+          kms?: number | null
+          liquidity_gap?: number | null
+          listing_url?: string
+          location?: string | null
+          make?: string | null
+          median_profit?: number | null
+          model?: string | null
+          pattern_strong?: boolean | null
+          retail_gap?: number | null
+          retail_median_price?: number | null
+          source_type?: string
+          status?: string
+          stock_id?: string | null
+          updated_at?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opportunities_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       outward_candidate_links: {
         Row: {
           candidate_id: string
