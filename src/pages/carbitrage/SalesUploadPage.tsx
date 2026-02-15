@@ -464,9 +464,17 @@ export default function SalesUploadPage() {
       if (skipped > 0) parts.push(`${skipped} rows skipped`);
       toast.success(parts.join(" · "));
 
-      // Auto-run Target Conduit: build candidates then generate daily targets
+      // Auto-run Winners Watchlist + Target Conduit
       try {
-        toast.info("Analysing sales truth → building target candidates…");
+        toast.info("Updating winners watchlist…");
+        const { error: winnersErr } = await supabase.functions.invoke(
+          "update-winners-watchlist",
+          { body: { account_id: selectedAccountId } }
+        );
+        if (winnersErr) console.error("update-winners-watchlist error:", winnersErr);
+        else toast.success("Winners watchlist updated");
+
+        toast.info("Building target candidates…");
         const { error: buildErr } = await supabase.functions.invoke(
           "build-sales-targets",
           { body: { account_id: selectedAccountId } }
@@ -481,7 +489,7 @@ export default function SalesUploadPage() {
 
         toast.success("Targets generated — redirecting to insights.");
       } catch (e) {
-        console.error("Target conduit error:", e);
+        console.error("Post-upload pipeline error:", e);
       }
 
       setTimeout(() => navigate("/sales-insights"), 1500);

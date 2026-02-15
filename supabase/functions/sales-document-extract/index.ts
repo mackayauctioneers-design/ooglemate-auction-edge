@@ -203,28 +203,30 @@ async function extractChunk(
   filename: string,
   isFirstChunk: boolean
 ): Promise<{ headers: string[]; rows: Record<string, string>[]; detected_format: string }> {
-  const systemPrompt = `You are a data extraction specialist for automotive dealer sales reports.
+  const systemPrompt = `You are a data extraction specialist for Australian automotive dealer sales reports.
 
-Given content from a dealer sales export document, extract the tabular sales data as CSV.
+Given content from a dealer sales export document (commonly EasyCars, Dealertrack, AutoMate, or custom Excel), extract the tabular sales data as CSV.
 
 Rules:
 - Identify column headers from the document structure
 - Extract EVERY row of vehicle sale data — do not skip or summarise
 - If there's a combined "Description" or "Vehicle" field, keep it as-is — do NOT split it
-- Clean up any formatting artefacts (page breaks, repeated headers, footers, page numbers)
-- Ignore totals rows, summary rows, page numbers, report headers/footers
+- Clean up any formatting artefacts (page breaks, repeated headers, footers like "Printed using EasyCars", page numbers "Page X of Y")
+- Ignore totals rows, summary rows, averages rows, page numbers, report headers/footers
 - Return the data as CSV format with the FIRST LINE being the header row
 - Quote fields that contain commas
 - Include ALL rows, no matter how many there are
+- For currency: preserve the exact format including negatives (e.g. "-$6,184.79")
+- For dates: preserve the exact format (e.g. "05/06/25")
 
 ${headerHint ? `Use these exact column headers (from the first chunk): ${headerHint}` : ""}
 
 After the CSV data, on a new line write: FORMAT: <detected format name>
 
-Example output:
-Stock No,Description,Sale Date,Days in Stock,Selling Price,Profit
-642,"Ford Ranger 2010 PK XLT Utility",05/06/25,629,"$6,100.00","-$6,184.79"
-FORMAT: EasyCars PDF`;
+Example input/output for EasyCars "Sold Stock Profit" report:
+Input row: | 642 | 2217 | AB12CD | Ford Ranger 2010 PK XLT (4x4) Super Cab Utility Man 5sp 4x4 3.0DT | 05/06/25 | 629 | John Smith | $6,100.00 | $0.00 | $12,284.79 | $0.00 | -$6,184.79 |
+Output CSV: 642,2217,AB12CD,"Ford Ranger 2010 PK XLT (4x4) Super Cab Utility Man 5sp 4x4 3.0DT",05/06/25,629,John Smith,"$6,100.00","$0.00","$12,284.79","$0.00","-$6,184.79"
+FORMAT: EasyCars Sold Stock Profit`;
 
   const userText = isFirstChunk
     ? `Extract ALL tabular sales data from this dealer report (filename: ${filename}):\n\n${textChunk}`
@@ -241,7 +243,7 @@ FORMAT: EasyCars PDF`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
+        model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userText },
@@ -350,16 +352,17 @@ serve(async (req) => {
       if (pdfSizeKB <= USE_MULTIMODAL_THRESHOLD_KB) {
         console.log(`[sales-document-extract] Small PDF (${pdfSizeKB}KB) — using multimodal vision`);
 
-        const systemPrompt = `You are a data extraction specialist for automotive dealer sales reports.
+        const systemPrompt = `You are a data extraction specialist for Australian automotive dealer sales reports (EasyCars, Dealertrack, AutoMate formats).
 Extract ALL tabular sales data from this PDF as CSV format.
 Rules:
 - The FIRST line must be the CSV header row
 - Extract EVERY row — do not skip, summarise, or truncate
-- If there's a combined "Description" or "Vehicle" field, keep it as-is
-- Clean up page breaks, repeated headers, footers
-- Ignore totals/summary rows
+- If there's a combined "Description" or "Vehicle" field, keep it as-is (e.g. "Toyota Hilux 2015 GUN126R SR Double Cab Utility 4dr Spts Auto 6sp 4x4 2.8DT")
+- Clean up page breaks, repeated headers, footers like "Printed using EasyCars", "Page X of Y"
+- Ignore totals/summary/averages rows
 - Quote fields that contain commas
-- For currency values, preserve exact format
+- For currency values, preserve exact format including negatives (e.g. "-$6,184.79")
+- For dates, preserve exact format (e.g. "05/06/25")
 After ALL CSV rows, write: FORMAT: <detected format name>`;
 
         const userContent: any[] = [
@@ -375,7 +378,7 @@ After ALL CSV rows, write: FORMAT: <detected format name>`;
             method: "POST",
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash-lite",
+              model: "google/gemini-3-flash-preview",
               messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userContent }],
               temperature: 0.0,
               max_tokens: 32000,
@@ -443,7 +446,7 @@ After ALL CSV rows, write: FORMAT: <detected format name>`;
             method: "POST",
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash-lite",
+              model: "google/gemini-3-flash-preview",
               messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userContent }],
               temperature: 0.0,
               max_tokens: 65000,
