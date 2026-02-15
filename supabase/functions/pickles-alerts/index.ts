@@ -331,6 +331,26 @@ Deno.serve(async (req) => {
         alertsCreated++;
         console.log(`[pickles-alerts] Created ${alertType} alert for ${fp.dealer_name}: ${messageText}`);
 
+        // Also insert into unified opportunities table
+        try {
+          const oppRow = {
+            source_type: 'auction' as const,
+            listing_url: listing.listing_url || `pickles://${listing.listing_id}`,
+            stock_id: listing.listing_id,
+            year: listing.year,
+            make: listing.make,
+            model: listing.model,
+            variant: listing.variant_family || listing.variant_raw || null,
+            location: listing.location,
+            confidence_score: 0,
+            confidence_tier: 'MEDIUM',
+            status: 'new',
+          };
+          await supabase.from('opportunities').upsert(oppRow, { onConflict: 'listing_url', ignoreDuplicates: true });
+        } catch (oppErr) {
+          console.error(`[pickles-alerts] Opp upsert err:`, oppErr);
+        }
+
         // Send push notification (only on new insert)
         const pushResult = await sendPushNotification(
           supabaseUrl, 

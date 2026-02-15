@@ -41,6 +41,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 const dealerNavItems = [
   { path: '/valo', label: 'Ask Bob', icon: Sparkles, highlight: true },
   { path: '/', label: "Today's Opportunities", icon: BarChart3 },
+  { path: '/opportunities', label: 'Opportunities', icon: Target, authOnly: true },
   { path: '/live-alerts', label: 'Live Alerts', icon: Flame, authOnly: true },
   { path: '/scan-guide', label: 'Scan Screenshot', icon: ScanLine, authOnly: true },
   { path: '/matches-inbox', label: 'Matches Inbox', icon: Target, authOnly: true },
