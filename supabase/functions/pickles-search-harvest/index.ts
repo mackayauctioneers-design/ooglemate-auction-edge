@@ -17,6 +17,21 @@ var BN_MAX_DETAIL = 15;
 var BN_DEVIATION_FLOOR = 4000;
 var BN_DAILY_CAP = 5;
 
+function normalizeVariantSH(v: string | null | undefined): string {
+  if (!v) return "";
+  return v.toUpperCase()
+    .replace(/\b(4X[24]|AWD|2WD|RWD|4WD)\b/g, "")
+    .replace(/\b\d+\.\d+[A-Z]*\b/g, "")
+    .replace(/\b(AUTO|MANUAL|CVT|DCT|DSG)\b/g, "")
+    .replace(/\b(DIESEL|PETROL|TURBO|HYBRID)\b/g, "")
+    .replace(/\b(DUAL\s*CAB|SINGLE\s*CAB|DOUBLE\s*CAB|CREW\s*CAB|CAB\s*CHASSIS|UTE|WAGON|SEDAN|HATCH)\b/g, "")
+    .replace(/\b(MY\d{2,4})\b/g, "")
+    .replace(/\b[A-Z]{2}\d{2,4}[A-Z]{0,3}\b/g, "")
+    .replace(/[-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function fmtMoney(n: number): string {
   return "$" + Math.round(n).toLocaleString();
 }
@@ -200,10 +215,11 @@ async function runBuyNowRadar(force: boolean) {
       if (l.kms !== null && l.kms >= (p.km_min || 0) && l.kms <= (p.km_max || 999999)) score += 20;
       if (score < 70) continue;
 
+      console.log("[PICKLES] " + l.make + " " + l.model + " " + (l.variant || "") + " → badgeScore " + badgeScore + " vs profile " + (p.badge || "none"));
       // Badge/variant scoring
       var badgeScore = 0.5; // default: no badge data
-      var listingVariant = (l.variant || "").toUpperCase().replace(/\b(4X[24]|AWD|2WD|RWD|4WD|AUTO|MANUAL|CVT|DIESEL|PETROL|TURBO|DUAL\s*CAB|SINGLE\s*CAB|DOUBLE\s*CAB|UTE|WAGON|SEDAN|HATCH)\b/g, "").replace(/\s+/g, " ").trim();
-      var profileBadge = (p.badge || "").toUpperCase().trim();
+      var listingVariant = normalizeVariantSH(l.variant);
+      var profileBadge = normalizeVariantSH(p.badge);
       if (listingVariant && profileBadge) {
         if (listingVariant === profileBadge) badgeScore = 1.0;
         else if (listingVariant.includes(profileBadge) || profileBadge.includes(listingVariant)) badgeScore = 0.7;
