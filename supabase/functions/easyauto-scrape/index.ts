@@ -163,6 +163,25 @@ async function scrapePage(firecrawlKey: string, pageNum: number): Promise<string
   return data?.data?.markdown || data?.markdown || "";
 }
 
+// ─── Winner Watchlist Check ───
+async function checkWinnerMatch(sb: any, make: string, model: string, year: number): Promise<{ match: boolean; avg_profit: number; times_sold: number; last_sale_price: number } | null> {
+  const { data } = await sb.from("winners_watchlist")
+    .select("avg_profit, times_sold, last_sale_price, year_min, year_max")
+    .ilike("make", make)
+    .ilike("model", model)
+    .limit(5);
+
+  if (!data || data.length === 0) return null;
+
+  for (const w of data) {
+    const yearOk = !w.year_min || !w.year_max || (year >= w.year_min - 1 && year <= w.year_max + 1);
+    if (yearOk) {
+      return { match: true, avg_profit: Number(w.avg_profit), times_sold: w.times_sold, last_sale_price: Number(w.last_sale_price) };
+    }
+  }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -177,7 +196,7 @@ serve(async (req) => {
     const maxPages = body.max_pages || 10;
     const maxAiCalls = body.max_ai_calls || 30;
 
-    const stats = { pages_scraped: 0, parsed: 0, structural_passed: 0, cheap_filter_passed: 0, ai_called: 0, opportunities: 0, slack_sent: 0 };
+    const stats = { pages_scraped: 0, parsed: 0, structural_passed: 0, cheap_filter_passed: 0, ai_called: 0, opportunities: 0, slack_sent: 0, winner_hits: 0 };
 
     // ─── STEP 1: Paginate pages 1–10 ───
     const allListings: ParsedListing[] = [];
@@ -225,12 +244,56 @@ serve(async (req) => {
       }, { onConflict: "listing_url" });
     }
 
+    // ─── STEP 2.5: Winner Watchlist Check (before cheap filter) ───
+    const remainingAfterWinners: ParsedListing[] = [];
+    for (const l of passed) {
+      const winner = await checkWinnerMatch(sb, l.make, l.model, l.year);
+      if (winner) {
+        // Compare against last_sale_price (historical buy ceiling)
+        const historicalBuy = winner.last_sale_price - winner.avg_profit;
+        const delta = historicalBuy - l.price;
+        if (delta >= 3000) {
+          stats.winner_hits++;
+          await sb.from("opportunities").upsert({
+            source_type: "winner_replication",
+            listing_url: l.url,
+            year: l.year, make: l.make, model: l.model, variant: l.badge || null,
+            kms: l.kms || null, location: l.location || null,
+            buy_price: l.price,
+            dealer_median_price: historicalBuy,
+            deviation: delta, retail_gap: delta,
+            priority_level: 1,
+            confidence_score: delta,
+            confidence_tier: "HIGH",
+            status: "new",
+            notes: `PROVEN WINNER - avg profit $${winner.avg_profit.toLocaleString()} from ${winner.times_sold} sales`,
+          }, { onConflict: "listing_url" });
+          stats.opportunities++;
+
+          if (slackWebhook) {
+            try {
+              await fetch(slackWebhook, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  text: `🔴 PROVEN WINNER REPLICATION\n\n${l.year} ${l.make} ${l.model} ${l.badge || ""}\nPrice: ${fmtMoney(l.price)}\nUnder historical buy by: +${fmtMoney(delta)}\nPrevious avg profit: ${fmtMoney(winner.avg_profit)} from ${winner.times_sold} sales\n\n${l.url}`,
+                }),
+              });
+              stats.slack_sent++;
+            } catch (_) { /* ignore */ }
+          }
+          continue; // Stop processing — proven winner found
+        }
+      }
+      remainingAfterWinners.push(l);
+    }
+
     // ─── STEP 3: Bottom 40% Cheap Filter ───
-    passed.sort((a, b) => a.price - b.price);
-    const cutoff = Math.ceil(passed.length * 0.4);
-    const cheapest = passed.slice(0, cutoff);
+    remainingAfterWinners.sort((a, b) => a.price - b.price);
+    const cutoff = Math.ceil(remainingAfterWinners.length * 0.4);
+    const cheapest = remainingAfterWinners.slice(0, cutoff);
     stats.cheap_filter_passed = cheapest.length;
-    console.log(`[EASYAUTO] Bottom 40%: ${cheapest.length} of ${passed.length}`);
+    console.log(`[EASYAUTO] Winners: ${stats.winner_hits}, Bottom 40%: ${cheapest.length} of ${remainingAfterWinners.length}`);
 
     // ─── STEP 4: Grok Retail Deviation ───
     let aiCalls = 0;
