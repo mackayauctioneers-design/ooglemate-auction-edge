@@ -11,6 +11,7 @@ import { RefreshCw, Search, CheckCircle, AlertTriangle, Plus, List, Radio, Satel
 import { format, parseISO } from 'date-fns';
 import { TrapCandidateIntake } from '@/components/operator/TrapCandidateIntake';
 import { TrapCrawlPreviewDrawer } from '@/components/operator/TrapCrawlPreviewDrawer';
+import { QuickAddTrapModal } from '@/components/operator/QuickAddTrapModal';
 import { toast } from 'sonner';
 
 type TrapMode = 'auto' | 'portal' | 'va' | 'dormant';
@@ -68,6 +69,7 @@ export default function TrapsRegistryPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [crawlDrawerOpen, setCrawlDrawerOpen] = useState(false);
+  const [addModalOpen, setAddModalOpen] = useState(false);
   const [selectedTrap, setSelectedTrap] = useState<{ slug: string; name: string } | null>(null);
 
   useEffect(() => {
@@ -135,10 +137,16 @@ export default function TrapsRegistryPage() {
             <h1 className="text-2xl font-bold text-foreground">Traps Registry</h1>
             <p className="text-muted-foreground">Manage dealer trap configurations and operating modes</p>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchTraps} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => setAddModalOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Trap
+            </Button>
+            <Button variant="outline" size="sm" onClick={fetchTraps} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {/* Stats - Reframed for operational clarity */}
@@ -378,6 +386,12 @@ export default function TrapsRegistryPage() {
             onCrawlComplete={fetchTraps}
           />
         )}
+
+        <QuickAddTrapModal
+          open={addModalOpen}
+          onOpenChange={setAddModalOpen}
+          onAdded={fetchTraps}
+        />
       </div>
     </OperatorLayout>
   );
