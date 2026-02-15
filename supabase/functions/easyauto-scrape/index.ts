@@ -6,18 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-/**
- * EasyAuto123 Retail Under-Market Engine (Simplified)
- * 
- * 1. Scrape via Firecrawl
- * 2. Structural filter (price, km, year, salvage)
- * 3. AI: "How many dollars under market?" → single integer
- * 4. delta ≥ $4k → opportunity, delta ≥ $8k → CODE RED
- */
-
 const SALVAGE_KEYWORDS = [
   "salvage", "write-off", "writeoff", "write off", "hail",
-  "damaged", "repairable", "stat write", "wovr", "statutory",
+  "damaged", "repairable", "stat write", "wovr", "statutory", "insurance",
 ];
 
 interface ParsedListing {
@@ -102,10 +93,9 @@ function fmtMoney(n: number): string {
 }
 
 async function getRetailDelta(listing: ParsedListing, supabaseUrl: string, supabaseKey: string): Promise<number> {
-  const prompt = `Return ONLY a single integer.\n\nHow many dollars UNDER current Australian retail market is this vehicle?\n\nYear: ${listing.year}\nMake: ${listing.make}\nModel: ${listing.model}\nBadge: ${listing.badge || "N/A"}\nKM: ${listing.kms || "Unknown"}\nState: ${listing.location || "NSW"}\nAsking Price: $${listing.price.toLocaleString()}\n\nIf not under market, return 0.\nReturn only the number.`;
+  const prompt = `Return ONLY a single integer.\n\nHow many dollars UNDER current Australian retail market is this vehicle?\n\nYear: ${listing.year}\nMake: ${listing.make}\nModel: ${listing.model}\nVariant: ${listing.badge || "N/A"}\nKM: ${listing.kms || "Unknown"}\nState: ${listing.location || "NSW"}\nAsking Price: $${listing.price.toLocaleString()}\n\nIf not under market, return 0.\nReturn only the number.`;
 
   try {
-    // Try Lovable AI first
     const resp = await fetch(`${supabaseUrl}/functions/v1/bob-sales-truth`, {
       method: "POST",
       headers: { "Authorization": `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
@@ -115,7 +105,7 @@ async function getRetailDelta(listing: ParsedListing, supabaseUrl: string, supab
           { role: "system", content: "You are an Australian used car pricing expert. Return ONLY a single integer. No text, no currency, no explanation." },
           { role: "user", content: prompt },
         ],
-        max_tokens: 20,
+        max_tokens: 25,
         temperature: 0.1,
       }),
     });
@@ -126,7 +116,6 @@ async function getRetailDelta(listing: ParsedListing, supabaseUrl: string, supab
       return parseInt(String(raw).replace(/[^0-9]/g, ""), 10) || 0;
     }
 
-    // Fallback to OpenAI
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
     if (!openaiKey) return 0;
 
@@ -139,7 +128,7 @@ async function getRetailDelta(listing: ParsedListing, supabaseUrl: string, supab
           { role: "system", content: "You are an Australian used car pricing expert. Return ONLY a single integer. No text, no currency, no explanation." },
           { role: "user", content: prompt },
         ],
-        max_tokens: 20,
+        max_tokens: 25,
         temperature: 0.1,
       }),
     });
@@ -150,6 +139,28 @@ async function getRetailDelta(listing: ParsedListing, supabaseUrl: string, supab
     console.error("[AI] Error:", e);
     return 0;
   }
+}
+
+async function scrapePage(firecrawlKey: string, pageNum: number): Promise<string> {
+  const url = `https://easyauto123.com.au/buy/used-cars?page=${pageNum}&limit=20`;
+  console.log(`[SCRAPE] Page ${pageNum}: ${url}`);
+
+  const resp = await fetch("https://api.firecrawl.dev/v1/scrape", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${firecrawlKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url, formats: ["markdown"], waitFor: 8000, onlyMainContent: false,
+      actions: [
+        { type: "wait", milliseconds: 3000 },
+        { type: "scroll", direction: "down", amount: 3 },
+        { type: "wait", milliseconds: 2000 },
+      ],
+    }),
+  });
+
+  if (!resp.ok) throw new Error(`Firecrawl page ${pageNum}: ${resp.status}`);
+  const data = await resp.json();
+  return data?.data?.markdown || data?.markdown || "";
 }
 
 serve(async (req) => {
@@ -163,33 +174,46 @@ serve(async (req) => {
     const sb = createClient(supabaseUrl, serviceKey);
 
     const body = await req.json().catch(() => ({}));
-    const searchUrl = body.url || "https://easyauto123.com.au/buy/used-cars?limit=48&page=1";
+    const maxPages = body.max_pages || 10;
     const maxAiCalls = body.max_ai_calls || 30;
 
-    const stats = { parsed: 0, structural_passed: 0, ai_called: 0, opportunities: 0, slack_sent: 0, errors: [] as string[] };
+    const stats = { pages_scraped: 0, parsed: 0, structural_passed: 0, cheap_filter_passed: 0, ai_called: 0, opportunities: 0, slack_sent: 0 };
 
-    // Scrape
-    console.log("Scraping:", searchUrl);
-    const scrapeResp = await fetch("https://api.firecrawl.dev/v1/scrape", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${firecrawlKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: searchUrl, formats: ["markdown"], waitFor: 8000, onlyMainContent: false,
-        actions: [{ type: "wait", milliseconds: 3000 }, { type: "scroll", direction: "down", amount: 3 }, { type: "wait", milliseconds: 2000 }],
-      }),
-    });
+    // ─── STEP 1: Paginate pages 1–10 ───
+    const allListings: ParsedListing[] = [];
 
-    if (!scrapeResp.ok) throw new Error(`Firecrawl error: ${scrapeResp.status}`);
-    const scrapeData = await scrapeResp.json();
-    const markdown = scrapeData?.data?.markdown || scrapeData?.markdown || "";
-    if (!markdown) throw new Error("No content from Firecrawl");
+    for (let page = 1; page <= maxPages; page++) {
+      try {
+        const markdown = await scrapePage(firecrawlKey, page);
+        stats.pages_scraped++;
 
-    const allListings = parseListingsFromMarkdown(markdown);
+        if (!markdown || markdown.length < 300) {
+          console.log(`[SCRAPE] Page ${page}: empty/short — stopping`);
+          break;
+        }
+
+        const pageParsed = parseListingsFromMarkdown(markdown);
+        console.log(`[SCRAPE] Page ${page}: ${pageParsed.length} listings`);
+
+        if (pageParsed.length === 0) {
+          console.log(`[SCRAPE] Page ${page}: 0 listings — stopping`);
+          break;
+        }
+
+        allListings.push(...pageParsed);
+        await new Promise(r => setTimeout(r, 1500)); // polite delay
+      } catch (e) {
+        console.error(`[SCRAPE] Page ${page} error:`, e);
+        break;
+      }
+    }
+
     stats.parsed = allListings.length;
+    console.log(`[EASYAUTO] Total parsed: ${allListings.length} from ${stats.pages_scraped} pages`);
 
+    // ─── STEP 2: Structural Filter ───
     const passed = allListings.filter(passesStructuralFilter);
     stats.structural_passed = passed.length;
-    console.log(`Parsed ${allListings.length}, structural pass ${passed.length}`);
 
     // Upsert all scraped into retail_source_listings
     for (const l of allListings) {
@@ -201,9 +225,17 @@ serve(async (req) => {
       }, { onConflict: "listing_url" });
     }
 
-    // AI valuation for structural-passed listings
+    // ─── STEP 3: Bottom 40% Cheap Filter ───
+    passed.sort((a, b) => a.price - b.price);
+    const cutoff = Math.ceil(passed.length * 0.4);
+    const cheapest = passed.slice(0, cutoff);
+    stats.cheap_filter_passed = cheapest.length;
+    console.log(`[EASYAUTO] Bottom 40%: ${cheapest.length} of ${passed.length}`);
+
+    // ─── STEP 4: Grok Retail Deviation ───
     let aiCalls = 0;
-    for (const l of passed) {
+
+    for (const l of cheapest) {
       if (aiCalls >= maxAiCalls) break;
       if (!l.url.startsWith("http")) continue;
 
@@ -214,9 +246,8 @@ serve(async (req) => {
       const needsEval = !existing?.grok_estimate || (existing.price_at_grok && l.price < existing.price_at_grok - 2000);
 
       if (!needsEval && existing?.grok_estimate) {
-        // Use cached — the "estimate" here is the delta directly
         const delta = existing.grok_estimate;
-        if (delta >= 4000) {
+        if (delta >= 4000 && delta <= 25000 && delta <= l.price * 0.4) {
           const priority = delta >= 8000 ? 1 : 2;
           await upsertOpp(sb, l, delta, priority);
           stats.opportunities++;
@@ -234,6 +265,12 @@ serve(async (req) => {
         grok_estimate: delta, grok_estimated_at: new Date().toISOString(), price_at_grok: l.price,
       }).eq("listing_url", l.url);
 
+      // Guardrails
+      if (delta < 0 || delta > 25000 || delta > l.price * 0.4) {
+        console.log(`[EASYAUTO] Guardrail rejected delta=${delta} for ${l.make} ${l.model} @ ${fmtMoney(l.price)}`);
+        continue;
+      }
+
       if (delta < 4000) continue;
 
       const priority = delta >= 8000 ? 1 : 2;
@@ -247,11 +284,11 @@ serve(async (req) => {
     // Audit log
     await sb.from("cron_audit_log").insert({ cron_name: "easyauto-scrape", success: true, result: stats, run_date: new Date().toISOString().split("T")[0] });
 
-    console.log("Done:", stats);
+    console.log("[EASYAUTO] Done:", stats);
     return new Response(JSON.stringify({ success: true, ...stats }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("Error:", msg);
+    console.error("[EASYAUTO] Error:", msg);
     return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

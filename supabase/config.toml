@@ -403,3 +403,7 @@ verify_jwt = false
 
 [functions.verify-listings]
 verify_jwt = false
+
+[functions.easyauto-scrape]
+verify_jwt = false
+schedule = "0 * * * *"
