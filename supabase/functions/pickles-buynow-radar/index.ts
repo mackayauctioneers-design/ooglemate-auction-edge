@@ -295,10 +295,10 @@ Deno.serve(async (req) => {
     const bands = await getHistoricalBands(sb);
     console.log(`[RADAR] ${bands.size} historical make/model bands`);
 
-    let aiCalls = 0;
+    // ─── STEP 1: Historical Replication (runs on 100% of listings) ───
+    const remainingAfterReplication: Listing[] = [];
 
     for (const li of pricedListings) {
-      // ─── STEP A: Historical Replication ───
       const rep = checkReplication(li, bands);
       if (rep.hit) {
         stats.replication_hits++;
@@ -318,7 +318,6 @@ Deno.serve(async (req) => {
         }, { onConflict: "listing_url" });
         stats.opportunities++;
 
-        // 🔴 CODE RED Slack
         if (slackWebhook) {
           try {
             await fetch(slackWebhook, {
@@ -331,15 +330,33 @@ Deno.serve(async (req) => {
             stats.slack_sent++;
           } catch (_) { /* ignore */ }
         }
-        continue; // Don't also AI-check replication hits
+        continue; // Stop processing — no AI needed
       }
+      remainingAfterReplication.push(li);
+    }
 
-      // ─── STEP B: AI Retail Deviation (if replication didn't trigger) ───
+    // ─── STEP 2: Cheap Filter — bottom 40% by price ───
+    remainingAfterReplication.sort((a, b) => a.price - b.price);
+    const cutoff = Math.ceil(remainingAfterReplication.length * 0.4);
+    const cheapest = remainingAfterReplication.slice(0, cutoff);
+    console.log(`[RADAR] Bottom 40% filter: ${cheapest.length} of ${remainingAfterReplication.length} go to AI`);
+
+    // ─── STEP 3: Grok Retail Deviation (only bottom 40%) ───
+    let aiCalls = 0;
+
+    for (const li of cheapest) {
       if (aiCalls >= maxAiCalls) continue;
       aiCalls++;
       stats.ai_called++;
 
       const delta = await getRetailDelta(li, supabaseUrl, supabaseKey);
+
+      // Guardrails: reject nonsense
+      if (delta < 0 || delta > 25000 || delta > li.price * 0.4) {
+        console.log(`[RADAR] Guardrail rejected delta=${delta} for ${li.make} ${li.model} @ ${fmtMoney(li.price)}`);
+        continue;
+      }
+
       if (delta < 4000) continue;
 
       stats.ai_signals++;
