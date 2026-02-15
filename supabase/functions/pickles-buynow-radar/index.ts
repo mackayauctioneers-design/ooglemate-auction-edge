@@ -235,6 +235,25 @@ async function getRetailDelta(listing: Listing, supabaseUrl: string, supabaseKey
   }
 }
 
+// ─── Winner Watchlist Check ───
+async function checkWinnerMatch(sb: any, make: string, model: string, year: number): Promise<{ match: boolean; avg_profit: number; times_sold: number; last_sale_price: number } | null> {
+  const { data } = await sb.from("winners_watchlist")
+    .select("avg_profit, times_sold, last_sale_price, year_min, year_max")
+    .ilike("make", make)
+    .ilike("model", model)
+    .limit(5);
+
+  if (!data || data.length === 0) return null;
+
+  for (const w of data) {
+    const yearOk = !w.year_min || !w.year_max || (year >= w.year_min - 1 && year <= w.year_max + 1);
+    if (yearOk) {
+      return { match: true, avg_profit: Number(w.avg_profit), times_sold: w.times_sold, last_sale_price: Number(w.last_sale_price) };
+    }
+  }
+  return null;
+}
+
 // ─── MAIN ──────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -262,7 +281,7 @@ Deno.serve(async (req) => {
 
     const stats = {
       urls_found: 0, detail_fetched: 0, priced: 0,
-      replication_hits: 0, ai_called: 0, ai_signals: 0,
+      replication_hits: 0, winner_hits: 0, ai_called: 0, ai_signals: 0,
       opportunities: 0, slack_sent: 0,
     };
 
@@ -335,11 +354,54 @@ Deno.serve(async (req) => {
       remainingAfterReplication.push(li);
     }
 
+    // ─── STEP 1.5: Winner Watchlist Check ───
+    const remainingAfterWinners: Listing[] = [];
+    for (const li of remainingAfterReplication) {
+      const winner = await checkWinnerMatch(sb, li.make, li.model, li.year);
+      if (winner) {
+        const historicalBuy = winner.last_sale_price - winner.avg_profit;
+        const delta = historicalBuy - li.price;
+        if (delta >= 3000) {
+          stats.winner_hits++;
+          await sb.from("opportunities").upsert({
+            source_type: "winner_replication",
+            listing_url: li.listing_url,
+            year: li.year, make: li.make, model: li.model, variant: li.variant || null,
+            kms: li.kms, location: li.location || null,
+            buy_price: li.price,
+            dealer_median_price: historicalBuy,
+            deviation: delta, retail_gap: delta,
+            priority_level: 1,
+            confidence_score: delta,
+            confidence_tier: "HIGH",
+            status: "new",
+            notes: `PROVEN WINNER - avg profit $${winner.avg_profit.toLocaleString()} from ${winner.times_sold} sales`,
+          }, { onConflict: "listing_url" });
+          stats.opportunities++;
+
+          if (slackWebhook) {
+            try {
+              await fetch(slackWebhook, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  text: `🔴 PROVEN WINNER REPLICATION\n\n${li.year} ${li.make} ${li.model} ${li.variant || ""}\nPrice: ${fmtMoney(li.price)}\nUnder historical buy by: +${fmtMoney(delta)}\nPrevious avg profit: ${fmtMoney(winner.avg_profit)} from ${winner.times_sold} sales\n\n${li.listing_url}`,
+                }),
+              });
+              stats.slack_sent++;
+            } catch (_) { /* ignore */ }
+          }
+          continue;
+        }
+      }
+      remainingAfterWinners.push(li);
+    }
+
     // ─── STEP 2: Cheap Filter — bottom 40% by price ───
-    remainingAfterReplication.sort((a, b) => a.price - b.price);
-    const cutoff = Math.ceil(remainingAfterReplication.length * 0.4);
-    const cheapest = remainingAfterReplication.slice(0, cutoff);
-    console.log(`[RADAR] Bottom 40% filter: ${cheapest.length} of ${remainingAfterReplication.length} go to AI`);
+    remainingAfterWinners.sort((a, b) => a.price - b.price);
+    const cutoff = Math.ceil(remainingAfterWinners.length * 0.4);
+    const cheapest = remainingAfterWinners.slice(0, cutoff);
+    console.log(`[RADAR] Winners: ${stats.winner_hits}, Bottom 40%: ${cheapest.length} of ${remainingAfterWinners.length} go to AI`);
 
     // ─── STEP 3: Grok Retail Deviation (only bottom 40%) ───
     let aiCalls = 0;

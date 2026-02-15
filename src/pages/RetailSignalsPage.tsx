@@ -42,7 +42,7 @@ export default function RetailSignalsPage() {
       let query = supabase
         .from('opportunities')
         .select('*')
-        .in('source_type', ['replication', 'retail_deviation', 'market_deviation'])
+        .in('source_type', ['replication', 'retail_deviation', 'market_deviation', 'winner_replication'])
         .order('priority_level', { ascending: true, nullsFirst: false })
         .order('deviation', { ascending: false, nullsFirst: true })
         .order('created_at', { ascending: false })
@@ -76,6 +76,7 @@ export default function RetailSignalsPage() {
       case 'replication': return 'Historical';
       case 'retail_deviation': return 'Retail AI';
       case 'market_deviation': return 'Market AI';
+      case 'winner_replication': return '🏆 Winner';
       default: return t;
     }
   };
@@ -124,6 +125,7 @@ export default function RetailSignalsPage() {
                 <SelectItem value="replication">Historical</SelectItem>
                 <SelectItem value="retail_deviation">Retail AI</SelectItem>
                 <SelectItem value="market_deviation">Market AI</SelectItem>
+                <SelectItem value="winner_replication">🏆 Winner</SelectItem>
               </SelectContent>
             </Select>
           </div>

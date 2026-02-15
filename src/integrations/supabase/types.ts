@@ -8881,6 +8881,60 @@ export type Database = {
           },
         ]
       }
+      winners_watchlist: {
+        Row: {
+          account_id: string
+          avg_profit: number | null
+          created_at: string
+          id: string
+          last_sale_date: string | null
+          last_sale_price: number | null
+          make: string
+          model: string
+          rank: number | null
+          times_sold: number | null
+          total_profit: number | null
+          updated_at: string
+          variant: string | null
+          year_max: number | null
+          year_min: number | null
+        }
+        Insert: {
+          account_id: string
+          avg_profit?: number | null
+          created_at?: string
+          id?: string
+          last_sale_date?: string | null
+          last_sale_price?: number | null
+          make: string
+          model: string
+          rank?: number | null
+          times_sold?: number | null
+          total_profit?: number | null
+          updated_at?: string
+          variant?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          account_id?: string
+          avg_profit?: number | null
+          created_at?: string
+          id?: string
+          last_sale_date?: string | null
+          last_sale_price?: number | null
+          make?: string
+          model?: string
+          rank?: number | null
+          times_sold?: number | null
+          total_profit?: number | null
+          updated_at?: string
+          variant?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       dealer_crawl_jobs: {

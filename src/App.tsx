@@ -67,6 +67,7 @@ import ReplicationEnginePage from "./pages/ReplicationEnginePage";
 import LiveAlertsPage from "./pages/LiveAlertsPage";
 import UnifiedOpportunitiesPage from "./pages/UnifiedOpportunitiesPage";
 import RetailSignalsPage from "./pages/RetailSignalsPage";
+import WinnersWatchlistPage from "./pages/WinnersWatchlistPage";
 
 // Dealer spec pages
 import DealerSpecsListPage from "./pages/dealer/DealerSpecsPage";
@@ -133,6 +134,7 @@ const App = () => (
               <Route path="/deals/:dealId" element={<RequireAuth><DealDetailPage /></RequireAuth>} />
               <Route path="/replication" element={<RequireAuth><ReplicationEnginePage /></RequireAuth>} />
               <Route path="/retail-signals" element={<RequireAuth><RetailSignalsPage /></RequireAuth>} />
+              <Route path="/winners" element={<RequireAuth><WinnersWatchlistPage /></RequireAuth>} />
               {/* Dealer Specs */}
               <Route path="/dealer/specs" element={<RequireAuth><DealerSpecsListPage /></RequireAuth>} />
               <Route path="/dealer/specs/new" element={<RequireAuth><DealerSpecFormPage /></RequireAuth>} />
