@@ -60,6 +60,7 @@ export default function TrapsRegistryPage() {
       const { data, error } = await supabase
         .from('dealer_traps')
         .select('id, trap_slug, dealer_name, region_id, enabled, validation_status, preflight_status, parser_mode, parser_confidence, anchor_trap, last_crawl_at, last_vehicle_count, consecutive_failures, trap_mode')
+        .neq('trap_mode', 'dormant')
         .order('created_at', { ascending: false })
         .limit(300);
       if (error) throw error;
