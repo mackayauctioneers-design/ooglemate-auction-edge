@@ -63,6 +63,41 @@ interface NormListing {
   body_type: string | null;
   fuel_type: string | null;
   domain: string | null;
+  variant: string | null;
+}
+
+// ── Badge/Variant helpers ──
+function normalizeVariant(v: string | null | undefined): string {
+  if (!v) return "";
+  return v.toUpperCase()
+    .replace(/\b(4X[24]|AWD|2WD|RWD|4WD|AUTO|MANUAL|CVT|DCT|DSG)\b/g, "")
+    .replace(/\b\d+\.\d+[A-Z]*\b/g, "")
+    .replace(/\b(DIESEL|PETROL|TURBO|HYBRID)\b/g, "")
+    .replace(/\b(DUAL\s*CAB|SINGLE\s*CAB|DOUBLE\s*CAB|CREW\s*CAB|CAB\s*CHASSIS|UTE|WAGON|SEDAN|HATCH)\b/g, "")
+    .replace(/\b(MY\d{2,4})\b/g, "")
+    .replace(/\b[A-Z]{2}\d{2,4}[A-Z]{0,3}\b/g, "")
+    .replace(/[-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function scoreVariantMatch(listingVariant: string | null, fpVariant: string | null): { score: number; label: string; reason: string } {
+  const lv = normalizeVariant(listingVariant);
+  const fv = normalizeVariant(fpVariant);
+  if (!lv && !fv) return { score: 5, label: "no_badge_data", reason: "No badge data on either side (+5)" };
+  if (!fv) return { score: 5, label: "no_fp_badge", reason: "No fingerprint badge to compare (+5)" };
+  if (!lv) return { score: 0, label: "missing_listing_badge", reason: `Listing missing badge, fingerprint has "${fv}" (+0)` };
+  if (lv === fv) return { score: 15, label: "exact_badge", reason: `Badge "${lv}" exact match (+15)` };
+  if (lv.includes(fv) || fv.includes(lv)) return { score: 10, label: "close_badge", reason: `Badge "${lv}" close to "${fv}" (+10)` };
+  return { score: -20, label: "badge_mismatch", reason: `Badge "${lv}" ≠ "${fv}" (-20 penalty)` };
+}
+
+// ── KM extraction helper ──
+function extractKmFromText(text: string): number | null {
+  const m = text.match(/(\d{1,3}(?:,\d{3})*|\d+)\s*(?:km|kms|kilometers|odometer|ODO|km's)/i);
+  if (!m) return null;
+  const val = parseInt(m[1].replace(/,/g, ""), 10);
+  return val > 0 && val < 1000000 ? val : null;
 }
 
 function scoreKm(
@@ -252,7 +287,7 @@ Deno.serve(async (req) => {
     const { data: listings, error: listErr } = await supabase
       .from("listing_details_norm")
       .select(
-        "id, account_id, raw_id, url_canonical, make, model, year, km, price, extraction_confidence, transmission, body_type, fuel_type, domain"
+        "id, account_id, raw_id, url_canonical, make, model, year, km, price, extraction_confidence, transmission, body_type, fuel_type, domain, variant"
       )
       .eq("account_id", accountId)
       .order("created_at", { ascending: false })
@@ -311,17 +346,26 @@ Deno.serve(async (req) => {
         make_model: `${listingMake} ${listingModel} matches sales history (+40)`,
       };
 
+      // Badge/Variant scoring (NEW in v1.6)
+      const variantResult = scoreVariantMatch(listing.variant, null); // TODO: fp needs dominant_variant
+      score += variantResult.score;
+      reasons.variant = variantResult.reason;
+      console.log(`[VARIANT MATCH] ${listingMake} ${listingModel} variant="${listing.variant || ""}" → ${variantResult.label} (${variantResult.score > 0 ? "+" : ""}${variantResult.score})`);
+
       // KM scoring
       const kmResult = scoreKm(listing.km, fp.km_p25, fp.km_p75);
       score += kmResult.score;
       reasons.km = kmResult.reason;
+      if (listing.km) {
+        console.log(`[KM MATCH] ${listingMake} ${listingModel} km=${listing.km} → ${kmResult.band} (${kmResult.score > 0 ? "+" : ""}${kmResult.score})`);
+      }
 
       // Price scoring
       const priceResult = scorePrice(listing.price, fp.price_median);
       score += priceResult.score;
       reasons.price = priceResult.reason;
 
-      // Identity alignment scoring (NEW in v1.5)
+      // Identity alignment scoring
       const transResult = scoreIdentity(
         listing.transmission,
         fp.dominant_transmission,

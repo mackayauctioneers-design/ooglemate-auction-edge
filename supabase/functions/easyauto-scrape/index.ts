@@ -182,6 +182,32 @@ async function loadAllWinners(sb: any): Promise<WinnerRow[]> {
   return (data || []) as WinnerRow[];
 }
 
+// Badge/variant matching helpers
+function normalizeVariant(v: string | null | undefined): string {
+  if (!v) return "";
+  return v.toUpperCase()
+    .replace(/\b(4X[24]|AWD|2WD|RWD|4WD|AUTO|MANUAL|CVT|DCT|DSG)\b/g, "")
+    .replace(/\b\d+\.\d+[A-Z]*\b/g, "")
+    .replace(/\b(DIESEL|PETROL|TURBO|HYBRID)\b/g, "")
+    .replace(/\b(DUAL\s*CAB|SINGLE\s*CAB|DOUBLE\s*CAB|CREW\s*CAB|CAB\s*CHASSIS|UTE|WAGON|SEDAN|HATCH)\b/g, "")
+    .replace(/\b(MY\d{2,4})\b/g, "")
+    .replace(/\b[A-Z]{2}\d{2,4}[A-Z]{0,3}\b/g, "")
+    .replace(/[-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function scoreVariantMatch(listingVariant: string | null, winnerVariant: string | null): number {
+  const lv = normalizeVariant(listingVariant);
+  const wv = normalizeVariant(winnerVariant);
+  if (!lv && !wv) return 0.5;
+  if (!wv) return 0.5;
+  if (!lv) return 0.3;
+  if (lv === wv) return 1.0;
+  if (lv.includes(wv) || wv.includes(lv)) return 0.7;
+  return 0.0;
+}
+
 function findWinnerMatches(winners: WinnerRow[], make: string, model: string, year: number): WinnerRow[] {
   return winners.filter(w => {
     const makeOk = w.make.toUpperCase() === make.toUpperCase();
@@ -270,51 +296,77 @@ serve(async (req) => {
       let matched = false;
 
       for (const winner of matches) {
+        // Badge/variant scoring
+        const badgeScore = scoreVariantMatch(l.badge, winner.variant);
+        console.log(`[EASYAUTO BADGE] ${l.year} ${l.make} ${l.model} "${l.badge || ""}" vs winner "${winner.variant || ""}" → score ${badgeScore}`);
+        
+        // Hard badge mismatch → skip this winner
+        if (badgeScore === 0.0) {
+          console.log(`[EASYAUTO BADGE] Skipping — badge mismatch`);
+          continue;
+        }
+
         const avgSell = Number(winner.last_sale_price);
         const avgProfit = Number(winner.avg_profit);
         const historicalBuy = avgSell - avgProfit;
         const delta = historicalBuy - l.price;
-        if (delta >= 3000) {
-          matched = true;
-          stats.winner_hits++;
+        
+        // Adjust delta threshold by badge confidence
+        const adjustedThreshold = badgeScore >= 1.0 ? 3000 : badgeScore >= 0.7 ? 3500 : 4500;
+        if (delta < adjustedThreshold) continue;
 
-          // Get dealer name
-          if (!accountNames.has(winner.account_id)) {
-            accountNames.set(winner.account_id, await getAccountName(sb, winner.account_id));
+        // KM band check (if winner has km data and listing has km)
+        let kmNote = "";
+        if (l.kms && l.kms > 0) {
+          console.log(`[KM EXTRACT] ${l.year} ${l.make} ${l.model} → ${l.kms} km`);
+          if (l.kms > 250000) {
+            console.log(`[EASYAUTO KM] Skipping — ${l.kms}km exceeds 250k ceiling`);
+            continue;
           }
-          const dealerName = accountNames.get(winner.account_id)!;
-          const targetBuy = Math.round(l.price - delta * 0.6);
-
-          await sb.from("opportunities").upsert({
-            source_type: "winner_replication",
-            listing_url: l.url,
-            year: l.year, make: l.make, model: l.model, variant: l.badge || null,
-            kms: l.kms || null, location: l.location || null,
-            buy_price: l.price,
-            dealer_median_price: historicalBuy,
-            deviation: delta, retail_gap: delta,
-            priority_level: 1,
-            confidence_score: delta,
-            confidence_tier: "HIGH",
-            status: "new",
-            account_id: winner.account_id,
-            notes: `PROVEN WINNER for ${dealerName} — avg profit ${fmtMoney(avgProfit)} from ${winner.times_sold} sales. Their avg sell: ${fmtMoney(avgSell)}. Target buy: ${fmtMoney(targetBuy)}`,
-          }, { onConflict: "listing_url" });
-          stats.opportunities++;
-
-          if (slackWebhook) {
-            try {
-              await fetch(slackWebhook, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  text: `🔴 DEALER PROVEN WINNER\n\n${l.year} ${l.make} ${l.model} ${l.badge || ""}\nAsking: ${fmtMoney(l.price)}\nTheir avg sell: ${fmtMoney(avgSell)}\nMargin edge: +${fmtMoney(delta)}\nTarget buy: ${fmtMoney(targetBuy)}\nPrevious avg profit: ${fmtMoney(avgProfit)} from ${winner.times_sold} sales\nDealer: ${dealerName}\n\n${l.url}`,
-                }),
-              });
-              stats.slack_sent++;
-            } catch (_) { /* ignore */ }
-          }
+          kmNote = ` | ${l.kms.toLocaleString()}km`;
         }
+
+        matched = true;
+        stats.winner_hits++;
+
+        // Get dealer name
+        if (!accountNames.has(winner.account_id)) {
+          accountNames.set(winner.account_id, await getAccountName(sb, winner.account_id));
+        }
+        const dealerName = accountNames.get(winner.account_id)!;
+        const targetBuy = Math.round(l.price - delta * 0.6);
+        const badgeLabel = badgeScore >= 1.0 ? "EXACT BADGE" : badgeScore >= 0.7 ? "CLOSE BADGE" : "MAKE/MODEL ONLY";
+
+        await sb.from("opportunities").upsert({
+          source_type: "winner_replication",
+          listing_url: l.url,
+          year: l.year, make: l.make, model: l.model, variant: l.badge || null,
+          kms: l.kms || null, location: l.location || null,
+          buy_price: l.price,
+          dealer_median_price: historicalBuy,
+          deviation: delta, retail_gap: delta,
+          priority_level: badgeScore >= 0.7 ? 1 : 2,
+          confidence_score: Math.round(delta * badgeScore),
+          confidence_tier: badgeScore >= 0.7 ? "HIGH" : "MEDIUM",
+          status: "new",
+          account_id: winner.account_id,
+          notes: `${badgeLabel} WINNER for ${dealerName} — ${l.badge || "no badge"}${kmNote} — avg profit ${fmtMoney(avgProfit)} from ${winner.times_sold} sales. Their avg sell: ${fmtMoney(avgSell)}. Target buy: ${fmtMoney(targetBuy)}`,
+        }, { onConflict: "listing_url" });
+        stats.opportunities++;
+
+        if (slackWebhook) {
+          try {
+            await fetch(slackWebhook, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                text: `🔴 ${badgeLabel} WINNER\n\n${l.year} ${l.make} ${l.model} ${l.badge || ""}${kmNote}\nAsking: ${fmtMoney(l.price)}\nTheir avg sell: ${fmtMoney(avgSell)}\nMargin edge: +${fmtMoney(delta)}\nTarget buy: ${fmtMoney(targetBuy)}\nPrevious avg profit: ${fmtMoney(avgProfit)} from ${winner.times_sold} sales\nDealer: ${dealerName}\nMatch: ${badgeLabel}\n\n${l.url}`,
+              }),
+            });
+            stats.slack_sent++;
+          } catch (_) { /* ignore */ }
+        }
+        break; // Best winner matched, stop checking others
       }
       if (!matched) remainingAfterWinners.push(l);
     }

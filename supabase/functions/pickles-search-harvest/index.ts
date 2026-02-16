@@ -191,7 +191,10 @@ async function runBuyNowRadar(force: boolean) {
     var item = toFetch[i];
     var det = await fetchDetailPrice(item.url, fcKey);
     if (det.price > 0) {
-      listings.push({ id: item.id, year: item.year, make: item.make, model: item.model, price: det.price, kms: det.kms, listing_url: item.url });
+      listings.push({ id: item.id, year: item.year, make: item.make, model: item.model, variant: item.variant, price: det.price, kms: det.kms, listing_url: item.url });
+      if (det.kms !== null) {
+        console.log("[KM EXTRACT] " + item.year + " " + item.make + " " + item.model + " → " + det.kms + " km");
+      }
     }
     await new Promise(function(r) { setTimeout(r, 200); });
   }
@@ -252,6 +255,7 @@ async function runBuyNowRadar(force: boolean) {
         median_sell_price: p.median_sell_price || 0,
         median_profit: p.median_profit || 0,
         flip_count: p.flip_count || 0,
+        km_band: l.kms !== null ? (l.kms >= (p.km_min || 0) && l.kms <= (p.km_max || 999999) ? "inside" : "outside") : "unknown",
         match_score: score * badgeScore
       });
       break;
@@ -321,6 +325,7 @@ async function runBuyNowRadar(force: boolean) {
         var slackText = "HIGH-CONVICTION BUY NOW SIGNAL" + (m.badge_label ? " (" + m.badge_label + ")" : "") + "\n\n"
           + "Vehicle: " + m.year + " " + m.make + " " + m.model + " " + (m.variant || "") + "\n"
           + "Buy Now: " + fmtMoney(m.price) + "\n"
+          + (m.kms ? "KM: " + m.kms.toLocaleString() + " (" + (m.km_band || "unknown") + ")\n" : "")
           + "Dealer Median: " + fmtMoney(m.median_sell_price) + "\n"
           + "Spread: +" + fmtMoney(m.deviation) + "\n"
           + "Grok Wholesale: " + fmtMoney(m.grok_estimate) + "\n"
