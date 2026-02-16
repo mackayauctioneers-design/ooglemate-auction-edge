@@ -26,10 +26,11 @@ interface TrapCrawlPreviewDrawerProps {
   onOpenChange: (open: boolean) => void;
   trapSlug: string;
   dealerName: string;
+  parserMode?: string;
   onCrawlComplete?: () => void;
 }
 
-export function TrapCrawlPreviewDrawer({ open, onOpenChange, trapSlug, dealerName, onCrawlComplete }: TrapCrawlPreviewDrawerProps) {
+export function TrapCrawlPreviewDrawer({ open, onOpenChange, trapSlug, dealerName, parserMode, onCrawlComplete }: TrapCrawlPreviewDrawerProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CrawlResult | null>(null);
 
@@ -37,6 +38,36 @@ export function TrapCrawlPreviewDrawer({ open, onOpenChange, trapSlug, dealerNam
     setLoading(true);
     setResult(null);
     try {
+      // Route to dedicated crawl functions based on parser mode
+      if (parserMode === 'toyota_portal') {
+        const { data, error } = await supabase.functions.invoke('toyota-used-portal-crawl', {
+          body: { state: 'NSW', maxPages: 1 },
+        });
+
+        if (error) throw error;
+
+        const crawlResult: CrawlResult = {
+          dealer: dealerName,
+          slug: trapSlug,
+          parserMode: 'toyota_portal',
+          vehiclesFound: data?.listings_found || 0,
+          vehiclesIngested: data?.ingest_result?.ingested || 0,
+          vehiclesDropped: 0,
+          dropReasons: {},
+          healthAlert: false,
+          error: data?.error || undefined,
+        };
+        setResult(crawlResult);
+        if (crawlResult.error) {
+          toast.error(`Crawl failed: ${crawlResult.error}`);
+        } else {
+          toast.success(`Found ${crawlResult.vehiclesFound} vehicles from Toyota portal`);
+        }
+        onCrawlComplete?.();
+        return;
+      }
+
+      // Default: use dealer-site-crawl
       const { data, error } = await supabase.functions.invoke('dealer-site-crawl', {
         body: { dealer_slugs: [trapSlug] },
       });
