@@ -38,7 +38,7 @@ export function TrapCrawlPreviewDrawer({ open, onOpenChange, trapSlug, dealerNam
     setResult(null);
     try {
       const { data, error } = await supabase.functions.invoke('dealer-site-crawl', {
-        body: { dealer_slugs: [trapSlug], validate: true },
+        body: { dealer_slugs: [trapSlug] },
       });
 
       if (error) throw error;
