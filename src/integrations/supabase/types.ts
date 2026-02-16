@@ -8887,9 +8887,12 @@ export type Database = {
       winners_watchlist: {
         Row: {
           account_id: string
+          avg_km: number | null
           avg_profit: number | null
           created_at: string
           id: string
+          km_band_high: number | null
+          km_band_low: number | null
           last_sale_date: string | null
           last_sale_price: number | null
           make: string
@@ -8904,9 +8907,12 @@ export type Database = {
         }
         Insert: {
           account_id: string
+          avg_km?: number | null
           avg_profit?: number | null
           created_at?: string
           id?: string
+          km_band_high?: number | null
+          km_band_low?: number | null
           last_sale_date?: string | null
           last_sale_price?: number | null
           make: string
@@ -8921,9 +8927,12 @@ export type Database = {
         }
         Update: {
           account_id?: string
+          avg_km?: number | null
           avg_profit?: number | null
           created_at?: string
           id?: string
+          km_band_high?: number | null
+          km_band_low?: number | null
           last_sale_date?: string | null
           last_sale_price?: number | null
           make?: string

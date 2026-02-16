@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
     // Pull all sales with profit data
     const { data: sales, error } = await sb
       .from("vehicle_sales_truth")
-      .select("make, model, variant, year, sale_price, buy_price, profit_pct, sold_at")
+      .select("make, model, variant, year, sale_price, buy_price, profit_pct, sold_at, km")
       .eq("account_id", accountId)
       .gt("sale_price", 0)
       .gt("buy_price", 0);
@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     const groups = new Map<string, {
       make: string; model: string; variant: string | null;
       profits: number[]; sale_prices: number[]; years: number[];
-      sale_dates: string[];
+      sale_dates: string[]; kms: number[];
     }>();
 
     for (const s of sales) {
@@ -54,13 +54,14 @@ Deno.serve(async (req) => {
       const key = `${make}|${model}|${variant || ""}`;
 
       if (!groups.has(key)) {
-        groups.set(key, { make, model, variant, profits: [], sale_prices: [], years: [], sale_dates: [] });
+        groups.set(key, { make, model, variant, profits: [], sale_prices: [], years: [], sale_dates: [], kms: [] });
       }
       const g = groups.get(key)!;
       g.profits.push(profit);
       g.sale_prices.push(Number(s.sale_price));
       if (s.year) g.years.push(Number(s.year));
       if (s.sold_at) g.sale_dates.push(s.sold_at);
+      if (s.km && Number(s.km) > 0) g.kms.push(Number(s.km));
     }
 
     // Calculate stats and rank
@@ -75,6 +76,11 @@ Deno.serve(async (req) => {
           ? g.sale_dates.sort().reverse()[0]
           : null;
 
+        const avgKm = g.kms.length > 0 ? Math.round(g.kms.reduce((a, b) => a + b, 0) / g.kms.length) : null;
+        const kmSorted = [...g.kms].sort((a, b) => a - b);
+        const kmBandLow = kmSorted.length > 0 ? kmSorted[0] : null;
+        const kmBandHigh = kmSorted.length > 0 ? kmSorted[kmSorted.length - 1] : null;
+
         return {
           make: g.make,
           model: g.model,
@@ -86,6 +92,9 @@ Deno.serve(async (req) => {
           last_sale_date: lastSaleDate,
           year_min: Math.min(...years),
           year_max: Math.max(...years),
+          avg_km: avgKm,
+          km_band_low: kmBandLow,
+          km_band_high: kmBandHigh,
         };
       })
       .sort((a, b) => b.total_profit - a.total_profit)
@@ -109,6 +118,9 @@ Deno.serve(async (req) => {
         times_sold: w.times_sold,
         last_sale_price: w.last_sale_price,
         last_sale_date: w.last_sale_date,
+        avg_km: w.avg_km,
+        km_band_low: w.km_band_low,
+        km_band_high: w.km_band_high,
         rank: i + 1,
         updated_at: new Date().toISOString(),
       }, { onConflict: "account_id,make,model,variant" });

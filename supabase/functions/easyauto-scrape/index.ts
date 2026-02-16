@@ -174,11 +174,14 @@ interface WinnerRow {
   last_sale_price: number;
   year_min: number | null;
   year_max: number | null;
+  avg_km: number | null;
+  km_band_low: number | null;
+  km_band_high: number | null;
 }
 
 async function loadAllWinners(sb: any): Promise<WinnerRow[]> {
   const { data } = await sb.from("winners_watchlist")
-    .select("account_id, make, model, variant, avg_profit, times_sold, last_sale_price, year_min, year_max");
+    .select("account_id, make, model, variant, avg_profit, times_sold, last_sale_price, year_min, year_max, avg_km, km_band_low, km_band_high");
   return (data || []) as WinnerRow[];
 }
 
@@ -315,7 +318,8 @@ serve(async (req) => {
         const adjustedThreshold = badgeScore >= 1.0 ? 3000 : badgeScore >= 0.7 ? 3500 : 4500;
         if (delta < adjustedThreshold) continue;
 
-        // KM band check (if winner has km data and listing has km)
+        // KM scoring against winner's historical KM band
+        let kmScore = 0.5; // default neutral
         let kmNote = "";
         if (l.kms && l.kms > 0) {
           console.log(`[KM EXTRACT] ${l.year} ${l.make} ${l.model} → ${l.kms} km`);
@@ -324,7 +328,16 @@ serve(async (req) => {
             continue;
           }
           kmNote = ` | ${l.kms.toLocaleString()}km`;
+          if (winner.avg_km && winner.avg_km > 0) {
+            const diff = Math.abs(l.kms - winner.avg_km);
+            kmScore = diff <= 30000 ? 1.0 : diff <= 60000 ? 0.7 : 0.3;
+            console.log(`[EASYAUTO KM SCORE] ${l.kms}km vs avg ${winner.avg_km}km → diff ${diff} → score ${kmScore}`);
+          }
         }
+
+        // Combined confidence: badge 60%, KM 40%
+        const totalScore = badgeScore * 0.6 + kmScore * 0.4;
+        console.log(`[MATCH] ${l.year} ${l.make} ${l.model} ${l.badge || ""} ${l.kms || 0}km → badge ${badgeScore}, km ${kmScore}, total ${totalScore.toFixed(2)}`);
 
         matched = true;
         stats.winner_hits++;
@@ -345,9 +358,9 @@ serve(async (req) => {
           buy_price: l.price,
           dealer_median_price: historicalBuy,
           deviation: delta, retail_gap: delta,
-          priority_level: badgeScore >= 0.7 ? 1 : 2,
-          confidence_score: Math.round(delta * badgeScore),
-          confidence_tier: badgeScore >= 0.7 ? "HIGH" : "MEDIUM",
+          priority_level: totalScore >= 0.7 ? 1 : 2,
+          confidence_score: Math.round(delta * totalScore),
+          confidence_tier: totalScore >= 0.7 ? "HIGH" : totalScore >= 0.5 ? "MEDIUM" : "LOW",
           status: "new",
           account_id: winner.account_id,
           notes: `${badgeLabel} WINNER for ${dealerName} — ${l.badge || "no badge"}${kmNote} — avg profit ${fmtMoney(avgProfit)} from ${winner.times_sold} sales. Their avg sell: ${fmtMoney(avgSell)}. Target buy: ${fmtMoney(targetBuy)}`,
