@@ -47,7 +47,7 @@ export default function TrapsRegistryPage() {
   const [search, setSearch] = useState('');
   const [crawlDrawerOpen, setCrawlDrawerOpen] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
-  const [selectedTrap, setSelectedTrap] = useState<{ slug: string; name: string } | null>(null);
+  const [selectedTrap, setSelectedTrap] = useState<{ slug: string; name: string; parserMode?: string } | null>(null);
   const [quickFilter, setQuickFilter] = useState<'all' | 'failing' | 'auto' | 'portal'>('all');
   const [cleaningUp, setCleaningUp] = useState(false);
   const isMobile = useIsMobile();
@@ -272,7 +272,7 @@ export default function TrapsRegistryPage() {
                     </thead>
                     <tbody>
                       {filtered.map((trap) => (
-                        <TrapRow key={trap.id} trap={trap} onRun={(slug, name) => { setSelectedTrap({ slug, name }); setCrawlDrawerOpen(true); }} onModeChange={updateTrapMode} />
+                        <TrapRow key={trap.id} trap={trap} onRun={(slug, name) => { setSelectedTrap({ slug, name, parserMode: trap.parser_mode }); setCrawlDrawerOpen(true); }} onModeChange={updateTrapMode} />
                       ))}
                     </tbody>
                   </table>
@@ -281,7 +281,7 @@ export default function TrapsRegistryPage() {
                 {/* Mobile cards */}
                 <div className="md:hidden divide-y divide-border">
                   {filtered.map((trap) => (
-                    <TrapMobileCard key={trap.id} trap={trap} onRun={(slug, name) => { setSelectedTrap({ slug, name }); setCrawlDrawerOpen(true); }} onModeChange={updateTrapMode} />
+                    <TrapMobileCard key={trap.id} trap={trap} onRun={(slug, name) => { setSelectedTrap({ slug, name, parserMode: trap.parser_mode }); setCrawlDrawerOpen(true); }} onModeChange={updateTrapMode} />
                   ))}
                 </div>
 
@@ -296,7 +296,7 @@ export default function TrapsRegistryPage() {
         </Tabs>
 
         {selectedTrap && (
-          <TrapCrawlPreviewDrawer open={crawlDrawerOpen} onOpenChange={setCrawlDrawerOpen} trapSlug={selectedTrap.slug} dealerName={selectedTrap.name} onCrawlComplete={fetchTraps} />
+          <TrapCrawlPreviewDrawer open={crawlDrawerOpen} onOpenChange={setCrawlDrawerOpen} trapSlug={selectedTrap.slug} dealerName={selectedTrap.name} parserMode={selectedTrap.parserMode} onCrawlComplete={fetchTraps} />
         )}
         <QuickAddTrapModal open={addModalOpen} onOpenChange={setAddModalOpen} onAdded={fetchTraps} />
       </div>
