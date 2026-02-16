@@ -39,6 +39,34 @@ export function TrapCrawlPreviewDrawer({ open, onOpenChange, trapSlug, dealerNam
     setResult(null);
     try {
       // Route to dedicated crawl functions based on parser mode
+      if (parserMode === 'easyauto_scrape') {
+        const { data, error } = await supabase.functions.invoke('easyauto-scrape', {
+          body: { maxPages: 2 },
+        });
+
+        if (error) throw error;
+
+        const crawlResult: CrawlResult = {
+          dealer: dealerName,
+          slug: trapSlug,
+          parserMode: 'easyauto_scrape',
+          vehiclesFound: data?.totalFound || data?.listings_found || 0,
+          vehiclesIngested: data?.ingested || data?.opportunities_created || 0,
+          vehiclesDropped: data?.dropped || data?.filtered_out || 0,
+          dropReasons: {},
+          healthAlert: false,
+          error: data?.error || undefined,
+        };
+        setResult(crawlResult);
+        if (crawlResult.error) {
+          toast.error(`Crawl failed: ${crawlResult.error}`);
+        } else {
+          toast.success(`Found ${crawlResult.vehiclesFound} EasyAuto123 vehicles`);
+        }
+        onCrawlComplete?.();
+        return;
+      }
+
       if (parserMode === 'pickles_buynow') {
         const { data, error } = await supabase.functions.invoke('pickles-search-harvest', {
           body: { mode: 'buynow' },
