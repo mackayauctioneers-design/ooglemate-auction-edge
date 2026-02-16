@@ -90,7 +90,54 @@ async function collectListings(firecrawlKey: string): Promise<Listing[]> {
 
 // ─── PHASE 2: Fetch detail page for price/km ───────────────────────────────
 
-async function fetchDetailPrice(url: string, firecrawlKey: string): Promise<{ price: number; kms: number | null; location: string }> {
+// Known badge tokens that indicate a variant/trim level
+const KNOWN_BADGES = [
+  "XLT", "XL", "XLS", "XLS+", "WILDTRAK", "RAPTOR", "SPORT",
+  "ST-X", "ST", "STX", "SL", "RX", "PRO-4X", "N-TREK", "N-SPORT",
+  "SR", "SR5", "ROGUE", "GR", "RUGGED", "CRUISER",
+  "LIMITED", "OVERLAND", "LAREDO", "TRAILHAWK", "NIGHT EAGLE", "S-LIMITED", "SUMMIT",
+  "XTR", "XT", "GT", "GSX", "EXCEED", "GLX", "GLX+", "GLS", "LS",
+  "LT", "LT-R", "LTZ", "Z71", "HIGH COUNTRY", "STORM",
+  "TITANIUM", "TREND", "AMBIENTE", "ST-LINE",
+  "HIGHLANDER", "SAHARA", "GXL", "EDGE",
+  "VARIS", "VX", "SX", "EX", "DX",
+];
+const BADGE_SET = new Set(KNOWN_BADGES.map(b => b.toUpperCase()));
+// Also match multi-word badges
+const MULTI_BADGES = KNOWN_BADGES.filter(b => b.includes(" ") || b.includes("-")).map(b => b.toUpperCase());
+
+function extractVariantFromTitle(title: string, make: string, model: string): string {
+  // Remove year, make, model from start of title to isolate variant area
+  let remainder = title.toUpperCase()
+    .replace(/^\d{4}\s+/, "")
+    .replace(new RegExp("^" + make.toUpperCase() + "\\s+", "i"), "")
+    .replace(new RegExp("^" + model.toUpperCase() + "\\s+", "i"), "")
+    .trim();
+
+  // Check multi-word badges first (e.g. "HIGH COUNTRY", "N-TREK")
+  for (const mb of MULTI_BADGES) {
+    if (remainder.includes(mb)) return mb;
+  }
+
+  // Check single-word badges
+  const words = remainder.split(/[\s]+/);
+  for (const w of words) {
+    const clean = w.replace(/[^A-Z0-9+-]/g, "");
+    if (BADGE_SET.has(clean)) return clean;
+  }
+
+  // Fallback: first word if it looks like a badge (2-6 uppercase chars, not a spec)
+  if (words.length > 0) {
+    const first = words[0].replace(/[^A-Z0-9+-]/g, "");
+    if (first.length >= 2 && first.length <= 8 && !/^\d/.test(first) &&
+        !/^(UTILITY|WAGON|SEDAN|HATCH|CAB|DUAL|SINGLE|CREW|DOUBLE|AUTO|MANUAL|DIESEL|PETROL|TURBO)$/.test(first)) {
+      return first;
+    }
+  }
+  return "";
+}
+
+async function fetchDetailPrice(url: string, firecrawlKey: string, make: string, model: string): Promise<{ price: number; kms: number | null; location: string; variant: string }> {
   try {
     const resp = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
@@ -98,7 +145,7 @@ async function fetchDetailPrice(url: string, firecrawlKey: string): Promise<{ pr
       body: JSON.stringify({ url, formats: ["markdown"], waitFor: 3000, onlyMainContent: false }),
     });
 
-    if (!resp.ok) return { price: 0, kms: null, location: "" };
+    if (!resp.ok) return { price: 0, kms: null, location: "", variant: "" };
 
     const data = await resp.json();
     const md = data.data?.markdown || data.markdown || "";
@@ -124,10 +171,44 @@ async function fetchDetailPrice(url: string, firecrawlKey: string): Promise<{ pr
     const locMatch = md.match(/(?:NSW|VIC|QLD|SA|WA|TAS|NT|ACT)/i);
     if (locMatch) location = locMatch[0].toUpperCase();
 
-    return { price, kms, location };
+    // Extract variant from the detail page title
+    // Pickles titles typically: "Year Make Model Variant Specs" e.g. "2019 Ford Ranger XLT 3.2DT Utility Dual Cab"
+    let variant = "";
+    // Try h1/title patterns in markdown
+    const titlePatterns = [
+      new RegExp(`\\d{4}\\s+${make}\\s+${model}\\s+(.+?)(?:\\s*\\||\\s*-|$)`, "i"),
+      /^#\s*(.+)/m,
+      /title[:\s]*["']?([^"'\n]+)/i,
+    ];
+    for (const tp of titlePatterns) {
+      const tm = md.match(tp);
+      if (tm) {
+        variant = extractVariantFromTitle(tm[1] || tm[0], make, model);
+        if (variant) break;
+      }
+    }
+    // Fallback: search for known badge anywhere in first 2000 chars
+    if (!variant) {
+      const head = md.substring(0, 2000).toUpperCase();
+      for (const mb of MULTI_BADGES) {
+        if (head.includes(mb)) { variant = mb; break; }
+      }
+      if (!variant) {
+        for (const b of KNOWN_BADGES) {
+          const bu = b.toUpperCase();
+          // Must appear near the make/model context
+          const contextRe = new RegExp(`${model}\\s+(?:\\S+\\s+){0,3}${bu.replace(/[+-]/g, "\\$&")}\\b`, "i");
+          if (contextRe.test(md.substring(0, 3000))) { variant = bu; break; }
+        }
+      }
+    }
+
+    if (variant) console.log(`[DETAIL] ${make} ${model} → variant "${variant}" from detail page`);
+
+    return { price, kms, location, variant };
   } catch (e) {
     console.error(`[DETAIL] Error ${url}:`, e);
-    return { price: 0, kms: null, location: "" };
+    return { price: 0, kms: null, location: "", variant: "" };
   }
 }
 
@@ -377,13 +458,18 @@ Deno.serve(async (req) => {
     const pricedListings: Listing[] = [];
 
     for (const li of toFetch) {
-      const { price, kms, location } = await fetchDetailPrice(li.listing_url, firecrawlKey);
+      const detail = await fetchDetailPrice(li.listing_url, firecrawlKey, li.make, li.model);
       stats.detail_fetched++;
-      if (price > 0 && price >= 8000 && price <= 120000) {
-        li.price = price;
-        li.kms = kms;
-        li.location = location;
-        if (kms === null || kms < 250000) {
+      if (detail.price > 0 && detail.price >= 8000 && detail.price <= 120000) {
+        li.price = detail.price;
+        li.kms = detail.kms;
+        li.location = detail.location;
+        // Override slug-derived variant with detail-page extracted variant (much more accurate)
+        if (detail.variant) {
+          li.variant = detail.variant;
+          console.log(`[RADAR] ${li.make} ${li.model} variant set to "${detail.variant}" from detail page`);
+        }
+        if (li.kms === null || li.kms < 250000) {
           pricedListings.push(li);
         }
       }
