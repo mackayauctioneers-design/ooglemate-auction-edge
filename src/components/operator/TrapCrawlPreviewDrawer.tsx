@@ -39,6 +39,34 @@ export function TrapCrawlPreviewDrawer({ open, onOpenChange, trapSlug, dealerNam
     setResult(null);
     try {
       // Route to dedicated crawl functions based on parser mode
+      if (parserMode === 'pickles_buynow') {
+        const { data, error } = await supabase.functions.invoke('pickles-search-harvest', {
+          body: { mode: 'buynow' },
+        });
+
+        if (error) throw error;
+
+        const crawlResult: CrawlResult = {
+          dealer: dealerName,
+          slug: trapSlug,
+          parserMode: 'pickles_buynow',
+          vehiclesFound: data?.listings_found || data?.total_found || 0,
+          vehiclesIngested: data?.ingested || data?.detail_pages_scraped || 0,
+          vehiclesDropped: data?.dropped || 0,
+          dropReasons: {},
+          healthAlert: false,
+          error: data?.error || undefined,
+        };
+        setResult(crawlResult);
+        if (crawlResult.error) {
+          toast.error(`Crawl failed: ${crawlResult.error}`);
+        } else {
+          toast.success(`Found ${crawlResult.vehiclesFound} Pickles Buy Now vehicles`);
+        }
+        onCrawlComplete?.();
+        return;
+      }
+
       if (parserMode === 'toyota_portal') {
         const { data, error } = await supabase.functions.invoke('toyota-used-portal-crawl', {
           body: { state: 'NSW', maxPages: 1 },
