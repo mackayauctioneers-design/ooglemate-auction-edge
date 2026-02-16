@@ -95,17 +95,23 @@ export default function TrapsRegistryPage() {
     finally { setCleaningUp(false); }
   };
 
-  // Metrics
+  // Active traps (exclude dormant from default view)
+  const activeTraps = traps.filter(t => t.trap_mode !== 'dormant');
+  const dormantCount = traps.length - activeTraps.length;
+
+  // Metrics (based on active only)
   const sevenDaysAgo = subDays(new Date(), 7).toISOString();
-  const operationalCount = traps.filter(t => t.enabled || t.trap_mode === 'portal' || t.trap_mode === 'va').length;
-  const failingCount = traps.filter(t => t.consecutive_failures > 0 && t.trap_mode === 'auto').length;
-  const vehiclesLast7d = traps
+  const operationalCount = activeTraps.filter(t => t.enabled || t.trap_mode === 'portal' || t.trap_mode === 'va').length;
+  const failingCount = activeTraps.filter(t => t.consecutive_failures > 0 && t.trap_mode === 'auto').length;
+  const vehiclesLast7d = activeTraps
     .filter(t => t.last_crawl_at && t.last_crawl_at > sevenDaysAgo && t.last_vehicle_count)
     .reduce((sum, t) => sum + (t.last_vehicle_count || 0), 0);
-  const cleanupTargets = traps.filter(t => t.consecutive_failures >= 3 && t.trap_mode === 'auto' && t.enabled);
+  const cleanupTargets = activeTraps.filter(t => t.consecutive_failures >= 3 && t.trap_mode === 'auto' && t.enabled);
 
-  // Filters
-  const filtered = traps.filter(t => {
+  // Filters (default hides dormant)
+  const [showDormant, setShowDormant] = useState(false);
+  const baseTraps = showDormant ? traps : activeTraps;
+  const filtered = baseTraps.filter(t => {
     const matchesSearch = t.dealer_name.toLowerCase().includes(search.toLowerCase()) || t.trap_slug.toLowerCase().includes(search.toLowerCase());
     if (!matchesSearch) return false;
     if (quickFilter === 'failing') return t.consecutive_failures > 0 && t.trap_mode === 'auto';
@@ -141,8 +147,8 @@ export default function TrapsRegistryPage() {
                 <Activity className="h-4 w-4 text-muted-foreground" />
                 <span className="text-xs font-medium text-muted-foreground">Total</span>
               </div>
-              <div className="text-3xl font-bold">{traps.length}</div>
-              <div className="text-xs text-muted-foreground mt-1">{operationalCount} operational</div>
+              <div className="text-3xl font-bold">{activeTraps.length}</div>
+              <div className="text-xs text-muted-foreground mt-1">{operationalCount} operational{dormantCount > 0 ? ` · ${dormantCount} dormant` : ''}</div>
             </CardContent>
           </Card>
 
@@ -199,29 +205,36 @@ export default function TrapsRegistryPage() {
         )}
 
         {/* Consolidation banner */}
-        {traps.length > 30 && (
+        {activeTraps.length > 15 && (
           <div className="text-sm bg-amber-500/10 border border-amber-500/20 rounded-md p-3 flex items-start gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
             <div>
               <span className="font-medium text-amber-600 dark:text-amber-400">
-                {traps.length} traps — consider consolidating.
+                {activeTraps.length} active traps — keep only high-value sources.
               </span>
               <p className="text-xs text-muted-foreground mt-1">
-                For chains like EasyAuto123, one main <code className="bg-muted px-1 rounded">/used-cars</code> trap beats per-location traps. Less noise, fewer failures.
+                For chains like EasyAuto123, one main <code className="bg-muted px-1 rounded">/used-cars</code> trap beats per-location traps.
               </p>
             </div>
           </div>
         )}
 
-        {/* Active filter */}
-        {quickFilter !== 'all' && (
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="gap-1">
-              {quickFilter} ({filtered.length})
-            </Badge>
-            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setQuickFilter('all')}>Clear</Button>
-          </div>
-        )}
+        {/* Active filter + dormant toggle */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {quickFilter !== 'all' && (
+            <>
+              <Badge variant="secondary" className="gap-1">
+                {quickFilter} ({filtered.length})
+              </Badge>
+              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setQuickFilter('all')}>Clear</Button>
+            </>
+          )}
+          {dormantCount > 0 && (
+            <Button variant="ghost" size="sm" className="h-6 text-xs ml-auto" onClick={() => setShowDormant(!showDormant)}>
+              <Moon className="h-3 w-3 mr-1" /> {showDormant ? 'Hide' : 'Show'} {dormantCount} dormant
+            </Button>
+          )}
+        </div>
 
         <Tabs defaultValue="list" className="w-full">
           <TabsList>
