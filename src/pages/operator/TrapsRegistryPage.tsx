@@ -330,10 +330,18 @@ export default function TrapsRegistryPage() {
           />
         </div>
 
-        {/* Consolidation tip */}
-        {traps.length > 50 && (
-          <div className="text-xs text-muted-foreground bg-muted/50 border border-border rounded-md p-3">
-            💡 <span className="font-medium">Tip:</span> For chains like EasyAuto123, use the main <code className="bg-muted px-1 rounded">/used-cars</code> page instead of individual location pages to reduce noise and failures.
+        {/* Consolidation warning */}
+        {traps.length > 40 && (
+          <div className="text-sm bg-amber-500/10 border border-amber-500/20 rounded-md p-3 flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+            <div>
+              <span className="font-medium text-amber-600 dark:text-amber-400">
+                {traps.length} traps detected — consider consolidating.
+              </span>
+              <p className="text-xs text-muted-foreground mt-1">
+                For chains like EasyAuto123, one main <code className="bg-muted px-1 rounded">/used-cars</code> trap is better than per-location traps. Fewer failures, cleaner signal, less credit burn.
+              </p>
+            </div>
           </div>
         )}
 

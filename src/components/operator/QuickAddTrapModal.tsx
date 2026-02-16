@@ -130,8 +130,10 @@ export function QuickAddTrapModal({ open, onOpenChange, onAdded }: QuickAddTrapM
         }).eq('trap_slug', slug);
 
         setVehicleCount(count);
-        setState('success');
-        toast.success(`Trap added! Found ${count} vehicles on first crawl.`);
+                setState('success');
+                toast.success(`Trap added! Found ${count} vehicles on first crawl.`, {
+                  description: 'Tip: For chains, one main trap beats many location traps.',
+                });
         onAdded();
       } else {
         setVehicleCount(0);
@@ -156,6 +158,9 @@ export function QuickAddTrapModal({ open, onOpenChange, onAdded }: QuickAddTrapM
           <DialogDescription>
             Enter a used cars listing page URL — we'll crawl it automatically for vehicle data.
           </DialogDescription>
+          <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
+            💡 <span className="font-medium">Best practice:</span> For chains (EasyAuto123, Brian Hilton, etc.), use the main <code className="bg-muted px-1 rounded">/used-cars</code> page instead of individual store locations — fewer failures, less noise.
+          </div>
         </DialogHeader>
 
         {state === 'success' ? (
@@ -206,7 +211,7 @@ export function QuickAddTrapModal({ open, onOpenChange, onAdded }: QuickAddTrapM
                   disabled={state !== 'idle' && state !== 'error'}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Must be the page showing multiple vehicle cards (not a single vehicle page).
+                  Paste a page showing multiple vehicle cards — not a single vehicle page or homepage.
                 </p>
               </div>
 
