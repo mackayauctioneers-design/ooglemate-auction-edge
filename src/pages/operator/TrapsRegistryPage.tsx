@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, Search, CheckCircle, AlertTriangle, Plus, List, Radio, Satellite, Users, Moon, Play } from 'lucide-react';
+import { RefreshCw, Search, CheckCircle, AlertTriangle, Plus, List, Radio, Satellite, Users, Moon, Play, Trash2, ShieldAlert } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { TrapCandidateIntake } from '@/components/operator/TrapCandidateIntake';
 import { TrapCrawlPreviewDrawer } from '@/components/operator/TrapCrawlPreviewDrawer';
@@ -71,6 +71,8 @@ export default function TrapsRegistryPage() {
   const [crawlDrawerOpen, setCrawlDrawerOpen] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [selectedTrap, setSelectedTrap] = useState<{ slug: string; name: string } | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'failing' | 'dormant' | 'auto-disabled'>('all');
+  const [cleaningUp, setCleaningUp] = useState(false);
 
   useEffect(() => {
     document.title = 'Traps Registry | Operator';
@@ -115,19 +117,55 @@ export default function TrapsRegistryPage() {
     }
   };
 
-  const filtered = traps.filter((t) =>
-    t.dealer_name.toLowerCase().includes(search.toLowerCase()) ||
-    t.trap_slug.toLowerCase().includes(search.toLowerCase()) ||
-    t.region_id.toLowerCase().includes(search.toLowerCase())
-  );
+  const handleBulkCleanup = async () => {
+    const failingTraps = traps.filter(t => t.consecutive_failures >= 3 && t.trap_mode === 'auto' && t.enabled);
+    if (failingTraps.length === 0) {
+      toast.info('No traps with 3+ consecutive failures to clean up');
+      return;
+    }
 
-  // Metrics - reframed for operational clarity
+    setCleaningUp(true);
+    try {
+      const ids = failingTraps.map(t => t.id);
+      const { error } = await supabase
+        .from('dealer_traps')
+        .update({ enabled: false, trap_mode: 'dormant' as string })
+        .in('id', ids);
+
+      if (error) throw error;
+
+      toast.success(`Disabled ${failingTraps.length} failing trap${failingTraps.length > 1 ? 's' : ''}`);
+      fetchTraps();
+    } catch (err) {
+      console.error('Bulk cleanup failed:', err);
+      toast.error('Failed to clean up traps');
+    } finally {
+      setCleaningUp(false);
+    }
+  };
+
+  // Apply filters
+  const filtered = traps.filter((t) => {
+    const matchesSearch =
+      t.dealer_name.toLowerCase().includes(search.toLowerCase()) ||
+      t.trap_slug.toLowerCase().includes(search.toLowerCase()) ||
+      t.region_id.toLowerCase().includes(search.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (statusFilter === 'failing') return t.consecutive_failures > 0 && t.trap_mode === 'auto';
+    if (statusFilter === 'dormant') return t.trap_mode === 'dormant' || (!t.enabled && t.trap_mode === 'auto' && t.consecutive_failures === 0);
+    if (statusFilter === 'auto-disabled') return !t.enabled && t.consecutive_failures >= 3;
+    return true;
+  });
+
+  // Metrics
   const operationalCount = traps.filter((t) => t.enabled || t.trap_mode === 'portal' || t.trap_mode === 'va').length;
   const autoCrawlingCount = traps.filter((t) => t.enabled && t.trap_mode === 'auto' && t.validation_status === 'validated').length;
   const portalBackedCount = traps.filter((t) => t.trap_mode === 'portal').length;
-  const vaFedCount = traps.filter((t) => t.trap_mode === 'va').length;
-  const dormantCount = traps.filter((t) => t.trap_mode === 'dormant' || (!t.enabled && t.trap_mode === 'auto')).length;
   const failingCount = traps.filter((t) => t.consecutive_failures > 0 && t.trap_mode === 'auto').length;
+  const autoDisabledCount = traps.filter((t) => !t.enabled && t.consecutive_failures >= 3).length;
+  const dormantCount = traps.filter((t) => t.trap_mode === 'dormant' || (!t.enabled && t.trap_mode === 'auto' && t.consecutive_failures === 0)).length;
 
   return (
     <OperatorLayout>
@@ -142,6 +180,17 @@ export default function TrapsRegistryPage() {
               <Plus className="h-4 w-4 mr-2" />
               Add Trap
             </Button>
+            {failingCount >= 3 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkCleanup}
+                disabled={cleaningUp}
+              >
+                <Trash2 className={`h-4 w-4 mr-2 ${cleaningUp ? 'animate-spin' : ''}`} />
+                {cleaningUp ? 'Cleaning...' : `Clean ${traps.filter(t => t.consecutive_failures >= 3 && t.trap_mode === 'auto' && t.enabled).length} Failing`}
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={fetchTraps} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
@@ -149,78 +198,108 @@ export default function TrapsRegistryPage() {
           </div>
         </div>
 
-        {/* Stats - Reframed for operational clarity */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Total Traps</CardTitle>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
+          <Card className="cursor-pointer hover:border-foreground/20 transition-colors" onClick={() => setStatusFilter('all')}>
+            <CardHeader className="pb-1 pt-3 px-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground">Total</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{traps.length}</div>
+            <CardContent className="px-3 pb-3">
+              <div className="text-2xl font-bold">{traps.length}</div>
             </CardContent>
           </Card>
-          <Card className="border-emerald-500/30">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-emerald-500" /> Operational
+
+          <Card
+            className={`cursor-pointer transition-colors border-emerald-500/30 hover:border-emerald-500/50 ${statusFilter === 'all' ? 'ring-1 ring-emerald-500/40' : ''}`}
+            onClick={() => setStatusFilter('all')}
+          >
+            <CardHeader className="pb-1 pt-3 px-3">
+              <CardTitle className="text-xs font-medium flex items-center gap-1">
+                <CheckCircle className="h-3 w-3 text-emerald-500" /> Operational
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-emerald-500">{operationalCount}</div>
-              <div className="text-xs text-muted-foreground mt-1">Contributing signal</div>
+            <CardContent className="px-3 pb-3">
+              <div className="text-2xl font-bold text-emerald-500">{operationalCount}</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Radio className="h-4 w-4 text-emerald-400" /> Auto-Crawling
+
+          <Card className="cursor-pointer hover:border-foreground/20 transition-colors" onClick={() => setStatusFilter('all')}>
+            <CardHeader className="pb-1 pt-3 px-3">
+              <CardTitle className="text-xs font-medium flex items-center gap-1">
+                <Radio className="h-3 w-3 text-emerald-400" /> Auto
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{autoCrawlingCount}</div>
-              <div className="text-xs text-muted-foreground mt-1">Site scrape active</div>
+            <CardContent className="px-3 pb-3">
+              <div className="text-2xl font-bold">{autoCrawlingCount}</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Satellite className="h-4 w-4 text-amber-400" /> Portal-backed
+
+          <Card className="cursor-pointer hover:border-foreground/20 transition-colors" onClick={() => setStatusFilter('all')}>
+            <CardHeader className="pb-1 pt-3 px-3">
+              <CardTitle className="text-xs font-medium flex items-center gap-1">
+                <Satellite className="h-3 w-3 text-amber-400" /> Portal
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-amber-500">{portalBackedCount}</div>
-              <div className="text-xs text-muted-foreground mt-1">OEM feed source</div>
+            <CardContent className="px-3 pb-3">
+              <div className="text-2xl font-bold text-amber-500">{portalBackedCount}</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Users className="h-4 w-4 text-blue-400" /> VA-fed
+
+          <Card
+            className={`cursor-pointer transition-colors ${failingCount > 0 ? 'border-red-500/30 hover:border-red-500/50' : 'hover:border-foreground/20'} ${statusFilter === 'failing' ? 'ring-1 ring-red-500/40' : ''}`}
+            onClick={() => setStatusFilter(statusFilter === 'failing' ? 'all' : 'failing')}
+          >
+            <CardHeader className="pb-1 pt-3 px-3">
+              <CardTitle className="text-xs font-medium flex items-center gap-1">
+                <AlertTriangle className={`h-3 w-3 ${failingCount > 0 ? 'text-red-500' : 'text-muted-foreground'}`} /> Failing
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-blue-500">{vaFedCount}</div>
-              <div className="text-xs text-muted-foreground mt-1">Manual assist</div>
+            <CardContent className="px-3 pb-3">
+              <div className={`text-2xl font-bold ${failingCount > 0 ? 'text-red-500' : 'text-muted-foreground'}`}>{failingCount}</div>
+              {failingCount > 0 && <div className="text-[10px] text-red-400/70">Click to filter</div>}
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                {failingCount > 0 ? (
-                  <AlertTriangle className="h-4 w-4 text-red-500" />
-                ) : (
-                  <Moon className="h-4 w-4 text-muted-foreground" />
-                )}
-                {failingCount > 0 ? 'Failing' : 'Dormant'}
+
+          <Card
+            className={`cursor-pointer transition-colors ${autoDisabledCount > 0 ? 'border-orange-500/30 hover:border-orange-500/50' : 'hover:border-foreground/20'} ${statusFilter === 'auto-disabled' ? 'ring-1 ring-orange-500/40' : ''}`}
+            onClick={() => setStatusFilter(statusFilter === 'auto-disabled' ? 'all' : 'auto-disabled')}
+          >
+            <CardHeader className="pb-1 pt-3 px-3">
+              <CardTitle className="text-xs font-medium flex items-center gap-1">
+                <ShieldAlert className={`h-3 w-3 ${autoDisabledCount > 0 ? 'text-orange-500' : 'text-muted-foreground'}`} /> Auto-Off
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className={`text-3xl font-bold ${failingCount > 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                {failingCount > 0 ? failingCount : dormantCount}
-              </div>
+            <CardContent className="px-3 pb-3">
+              <div className={`text-2xl font-bold ${autoDisabledCount > 0 ? 'text-orange-500' : 'text-muted-foreground'}`}>{autoDisabledCount}</div>
+            </CardContent>
+          </Card>
+
+          <Card
+            className={`cursor-pointer transition-colors hover:border-foreground/20 ${statusFilter === 'dormant' ? 'ring-1 ring-muted-foreground/40' : ''}`}
+            onClick={() => setStatusFilter(statusFilter === 'dormant' ? 'all' : 'dormant')}
+          >
+            <CardHeader className="pb-1 pt-3 px-3">
+              <CardTitle className="text-xs font-medium flex items-center gap-1">
+                <Moon className="h-3 w-3 text-muted-foreground" /> Dormant
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-3 pb-3">
+              <div className="text-2xl font-bold text-muted-foreground">{dormantCount}</div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Active filter indicator */}
+        {statusFilter !== 'all' && (
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="gap-1">
+              Showing: {statusFilter} ({filtered.length})
+            </Badge>
+            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setStatusFilter('all')}>
+              Clear filter
+            </Button>
+          </div>
+        )}
 
         <Tabs defaultValue="list" className="w-full">
           <TabsList>
@@ -251,6 +330,13 @@ export default function TrapsRegistryPage() {
           />
         </div>
 
+        {/* Consolidation tip */}
+        {traps.length > 50 && (
+          <div className="text-xs text-muted-foreground bg-muted/50 border border-border rounded-md p-3">
+            💡 <span className="font-medium">Tip:</span> For chains like EasyAuto123, use the main <code className="bg-muted px-1 rounded">/used-cars</code> page instead of individual location pages to reduce noise and failures.
+          </div>
+        )}
+
         {/* Table */}
         <Card>
           <CardContent className="pt-6">
@@ -271,8 +357,9 @@ export default function TrapsRegistryPage() {
                 <tbody>
                   {filtered.map((trap) => {
                     const modeConfig = TRAP_MODE_CONFIG[trap.trap_mode] || TRAP_MODE_CONFIG.auto;
+                    const isCriticallyFailing = trap.consecutive_failures >= 3 && trap.trap_mode === 'auto';
                     return (
-                      <tr key={trap.id} className="border-b last:border-b-0">
+                      <tr key={trap.id} className={`border-b last:border-b-0 ${isCriticallyFailing ? 'bg-red-500/5' : ''}`}>
                         <td className="py-3 pr-4">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{trap.dealer_name}</span>
@@ -314,7 +401,6 @@ export default function TrapsRegistryPage() {
                         <td className="py-3 pr-4">
                           <div className="flex items-center gap-2">
                             {trap.trap_mode === 'auto' ? (
-                              // Show crawl status for auto mode
                               trap.enabled ? (
                                 <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30">enabled</Badge>
                               ) : trap.preflight_status === 'fail' ? (
@@ -325,13 +411,14 @@ export default function TrapsRegistryPage() {
                                 <Badge variant="outline">{trap.validation_status}</Badge>
                               )
                             ) : (
-                              // For non-auto modes, show simpler status
                               <Badge variant="outline" className={`${modeConfig.bgColor} ${modeConfig.color} ${modeConfig.borderColor}`}>
                                 {trap.trap_mode === 'portal' ? 'OEM feed' : trap.trap_mode === 'va' ? 'VA queue' : 'inactive'}
                               </Badge>
                             )}
                             {trap.consecutive_failures > 0 && trap.trap_mode === 'auto' && (
-                              <Badge variant="destructive">{trap.consecutive_failures} fails</Badge>
+                              <Badge variant="destructive" className={isCriticallyFailing ? 'animate-pulse' : ''}>
+                                {trap.consecutive_failures} fail{trap.consecutive_failures > 1 ? 's' : ''}
+                              </Badge>
                             )}
                           </div>
                         </td>
@@ -344,7 +431,7 @@ export default function TrapsRegistryPage() {
                         <td className="py-3 pr-4 text-muted-foreground text-sm">
                           {trap.trap_mode === 'auto' && trap.last_crawl_at 
                             ? format(parseISO(trap.last_crawl_at), 'dd MMM HH:mm') 
-                            : trap.trap_mode !== 'auto' ? '—' : '—'}
+                            : '—'}
                         </td>
                         <td className="py-3 pr-4 font-mono text-sm">
                           {trap.trap_mode === 'auto' ? (trap.last_vehicle_count ?? '—') : '—'}
@@ -369,7 +456,9 @@ export default function TrapsRegistryPage() {
                 </tbody>
               </table>
               {filtered.length === 0 && !loading && (
-                <div className="text-center py-8 text-muted-foreground">No traps found</div>
+                <div className="text-center py-8 text-muted-foreground">
+                  {statusFilter !== 'all' ? `No ${statusFilter} traps found` : 'No traps found'}
+                </div>
               )}
             </div>
           </CardContent>
