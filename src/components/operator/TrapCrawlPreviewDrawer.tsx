@@ -69,7 +69,7 @@ export function TrapCrawlPreviewDrawer({ open, onOpenChange, trapSlug, dealerNam
 
       if (parserMode === 'pickles_buynow') {
         const { data, error } = await supabase.functions.invoke('pickles-search-harvest', {
-          body: { mode: 'buynow' },
+          body: { mode: 'buynow', force: true },
         });
 
         if (error) throw error;
@@ -78,9 +78,9 @@ export function TrapCrawlPreviewDrawer({ open, onOpenChange, trapSlug, dealerNam
           dealer: dealerName,
           slug: trapSlug,
           parserMode: 'pickles_buynow',
-          vehiclesFound: data?.listings_found || data?.total_found || 0,
-          vehiclesIngested: data?.ingested || data?.detail_pages_scraped || 0,
-          vehiclesDropped: data?.dropped || 0,
+          vehiclesFound: data?.urls_found || data?.listings_found || data?.total_found || 0,
+          vehiclesIngested: data?.priced || data?.detail_fetched || data?.ingested || 0,
+          vehiclesDropped: data?.qualified_before_grok || 0,
           dropReasons: {},
           healthAlert: false,
           error: data?.error || undefined,
