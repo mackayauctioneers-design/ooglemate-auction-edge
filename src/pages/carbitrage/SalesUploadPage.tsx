@@ -141,7 +141,8 @@ function normaliseDateValue(raw: string): string | null {
     return `${year}-${month}-${day}`;
   }
 
-  return trimmed;
+  // If no date pattern matched, it's not a valid date — return null to avoid DB errors
+  return null;
 }
 
 export default function SalesUploadPage() {
