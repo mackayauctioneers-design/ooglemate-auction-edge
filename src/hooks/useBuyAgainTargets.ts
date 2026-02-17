@@ -54,11 +54,12 @@ export function useBuyAgainTargets(accountId: string) {
   // Seed from sales_target_candidates if no targets exist
   const seedMutation = useMutation({
     mutationFn: async () => {
-      // Check if targets already exist
+      // Check if non-retired targets already exist
       const { count } = await supabase
         .from("fingerprint_targets")
         .select("id", { count: "exact", head: true })
-        .eq("account_id", accountId);
+        .eq("account_id", accountId)
+        .in("status", ["candidate", "active", "paused"]);
 
       if (count && count > 0) {
         return { seeded: 0, message: "Targets already exist" };
