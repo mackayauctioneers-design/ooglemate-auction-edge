@@ -93,6 +93,11 @@ Deno.serve(async (req) => {
         const kmSorted = [...g.kms].sort((a, b) => a - b);
         const kmBandLow = kmSorted.length > 0 ? kmSorted[0] : null;
         const kmBandHigh = kmSorted.length > 0 ? kmSorted[kmSorted.length - 1] : null;
+        const medianKm = kmSorted.length > 0
+          ? (kmSorted.length % 2
+            ? kmSorted[Math.floor(kmSorted.length / 2)]
+            : Math.round((kmSorted[Math.floor(kmSorted.length / 2) - 1] + kmSorted[Math.floor(kmSorted.length / 2)]) / 2))
+          : null;
 
         return {
           make: g.make,
@@ -107,6 +112,7 @@ Deno.serve(async (req) => {
           year_min: Math.min(...years),
           year_max: Math.max(...years),
           avg_km: avgKm,
+          median_km: medianKm,
           km_band_low: kmBandLow,
           km_band_high: kmBandHigh,
         };
@@ -134,6 +140,7 @@ Deno.serve(async (req) => {
         last_sale_price: w.last_sale_price,
         last_sale_date: w.last_sale_date,
         avg_km: w.avg_km,
+        median_km: w.median_km,
         km_band_low: w.km_band_low,
         km_band_high: w.km_band_high,
         rank: i + 1,

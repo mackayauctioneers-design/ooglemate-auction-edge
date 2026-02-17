@@ -345,17 +345,32 @@ interface WinnerRow {
   make: string; model: string; variant: string | null;
   avg_profit: number; times_sold: number; last_sale_price: number;
   year_min: number | null; year_max: number | null;
+  avg_km: number | null; median_km: number | null;
+  drivetrain: string | null;
 }
 
 async function loadAllWinners(sb: any): Promise<WinnerRow[]> {
   const { data } = await sb.from("winners_watchlist")
-    .select("account_id, make, model, variant, avg_profit, times_sold, last_sale_price, year_min, year_max");
+    .select("account_id, make, model, variant, avg_profit, times_sold, last_sale_price, year_min, year_max, avg_km, median_km, drivetrain");
   return (data || []) as WinnerRow[];
+}
+
+const KM_TOLERANCE = 10000;
+
+function scoreKm(listingKms: number | null, winnerMedianKm: number | null): number {
+  if (listingKms == null || winnerMedianKm == null) return 0.5; // no data → neutral
+  const diff = Math.abs(listingKms - winnerMedianKm);
+  if (diff <= KM_TOLERANCE) return 1.0;
+  if (diff <= KM_TOLERANCE * 1.5) return 0.7;
+  if (diff <= KM_TOLERANCE * 2) return 0.4;
+  return 0.0;
 }
 
 interface WinnerMatch {
   winner: WinnerRow;
-  variantScore: number; // 1.0 = exact, 0.7 = close, 0.3 = no variant data
+  variantScore: number;
+  kmScore: number;
+  totalScore: number;
 }
 
 function normalizeVariant(v: string | null | undefined): string {
@@ -393,7 +408,7 @@ function scoreVariantMatch(listingVariant: string | null, winnerVariant: string 
   return 0.0;
 }
 
-function findWinnerMatches(winners: WinnerRow[], make: string, model: string, year: number, variant: string | null): WinnerMatch[] {
+function findWinnerMatches(winners: WinnerRow[], make: string, model: string, year: number, variant: string | null, kms: number | null = null): WinnerMatch[] {
   const results: WinnerMatch[] = [];
   for (const w of winners) {
     const makeOk = w.make.toUpperCase() === make.toUpperCase();
@@ -402,13 +417,20 @@ function findWinnerMatches(winners: WinnerRow[], make: string, model: string, ye
     if (!makeOk || !modelOk || !yearOk) continue;
 
     const variantScore = scoreVariantMatch(variant, w.variant);
-    // Only match if variant score >= 0.3 (at least partial alignment)
-    if (variantScore >= 0.3) {
-      results.push({ winner: w, variantScore });
-    }
+    if (variantScore < 0.3) continue;
+
+    const kmSc = scoreKm(kms, w.median_km ?? w.avg_km);
+    // totalScore: variant 50%, KM 30%, base 20%
+    const totalScore = variantScore * 0.5 + kmSc * 0.3 + 0.2;
+
+    console.log(`[MATCH KM] ${make} ${model} ${kms ?? '?'}km vs winner median ${w.median_km ?? w.avg_km ?? '?'}km → kmScore ${kmSc}, totalScore ${totalScore.toFixed(2)}`);
+
+    // Skip if KM is way off (hard mismatch)
+    if (kmSc === 0.0 && kms != null && (w.median_km ?? w.avg_km) != null) continue;
+
+    results.push({ winner: w, variantScore, kmScore: kmSc, totalScore });
   }
-  // Sort: exact variant matches first, then by profit
-  results.sort((a, b) => b.variantScore - a.variantScore || Number(b.winner.avg_profit) - Number(a.winner.avg_profit));
+  results.sort((a, b) => b.totalScore - a.totalScore || Number(b.winner.avg_profit) - Number(a.winner.avg_profit));
   return results;
 }
 
@@ -529,13 +551,13 @@ Deno.serve(async (req) => {
     const remainingAfterWinners: Listing[] = [];
 
     for (const li of remainingAfterReplication) {
-      const matches = findWinnerMatches(allWinners, li.make, li.model, li.year, li.variant);
+      const matches = findWinnerMatches(allWinners, li.make, li.model, li.year, li.variant, li.kms);
       if (matches.length > 0) {
-        console.log(`[PICKLES] ${li.make} ${li.model} ${li.variant || ""} → variantScore ${matches[0].variantScore}`);
+        console.log(`[PICKLES] ${li.make} ${li.model} ${li.variant || ""} ${li.kms ?? '?'}km → totalScore ${matches[0].totalScore.toFixed(2)} (variant ${matches[0].variantScore}, km ${matches[0].kmScore})`);
       }
       let matched = false;
 
-      for (const { winner, variantScore } of matches) {
+      for (const { winner, variantScore, kmScore, totalScore } of matches) {
         const avgSell = Number(winner.last_sale_price);
         const avgProfit = Number(winner.avg_profit);
         const historicalBuy = avgSell - avgProfit;
@@ -550,9 +572,13 @@ Deno.serve(async (req) => {
           const dealerName = accountNames.get(winner.account_id)!;
           const targetBuy = Math.round(li.price - delta * 0.6);
 
-          // Confidence tier now factors in variant match quality
-          const confTier = variantScore >= 0.7 ? "HIGH" : variantScore >= 0.5 ? "MEDIUM" : "LOW";
+          // Confidence tier now factors in variant + KM match quality
+          const confTier = totalScore >= 0.85 ? "HIGH" : totalScore >= 0.6 ? "MEDIUM" : "LOW";
           const badgeLabel = variantScore >= 1.0 ? "EXACT BADGE" : variantScore >= 0.7 ? "CLOSE BADGE" : "MAKE/MODEL ONLY";
+          const kmDiff = (li.kms != null && (winner.median_km ?? winner.avg_km) != null)
+            ? Math.abs(li.kms - (winner.median_km ?? winner.avg_km)!)
+            : null;
+          const kmNote = kmDiff != null ? ` KM diff: ${kmDiff.toLocaleString()}km (±${KM_TOLERANCE / 1000}k tolerance).` : "";
 
           await sb.from("opportunities").upsert({
             source_type: "winner_replication",
@@ -562,12 +588,12 @@ Deno.serve(async (req) => {
             buy_price: li.price,
             dealer_median_price: historicalBuy,
             deviation: delta, retail_gap: delta,
-            priority_level: variantScore >= 0.7 ? 1 : 2,
-            confidence_score: delta * variantScore,
+            priority_level: totalScore >= 0.85 ? 1 : 2,
+            confidence_score: delta * totalScore,
             confidence_tier: confTier,
             status: "new",
             account_id: winner.account_id,
-            notes: `${badgeLabel} for ${dealerName} — ${li.variant || li.model} vs winner ${winner.variant || winner.model}. Avg profit ${fmtMoney(avgProfit)} from ${winner.times_sold} sales. Avg sell: ${fmtMoney(avgSell)}. Target buy: ${fmtMoney(targetBuy)}`,
+            notes: `${badgeLabel} for ${dealerName} — ${li.variant || li.model} vs winner ${winner.variant || winner.model}. Avg profit ${fmtMoney(avgProfit)} from ${winner.times_sold} sales. Avg sell: ${fmtMoney(avgSell)}. Target buy: ${fmtMoney(targetBuy)}.${kmNote}`,
           }, { onConflict: "listing_url" });
           stats.opportunities++;
 

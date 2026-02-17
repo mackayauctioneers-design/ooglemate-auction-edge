@@ -170,21 +170,40 @@ interface WinnerRow {
   make: string; model: string; variant: string | null;
   avg_profit: number; times_sold: number; last_sale_price: number;
   year_min: number | null; year_max: number | null;
+  avg_km: number | null; median_km: number | null;
 }
 
 async function loadAllWinners(sb: any): Promise<WinnerRow[]> {
   const { data } = await sb.from("winners_watchlist")
-    .select("account_id, make, model, variant, avg_profit, times_sold, last_sale_price, year_min, year_max");
+    .select("account_id, make, model, variant, avg_profit, times_sold, last_sale_price, year_min, year_max, avg_km, median_km");
   return (data || []) as WinnerRow[];
 }
 
-function findWinnerMatches(winners: WinnerRow[], make: string, model: string, year: number): WinnerRow[] {
-  return winners.filter(w => {
+const KM_TOLERANCE = 10000;
+
+function scoreKm(listingKms: number | null, winnerMedianKm: number | null): number {
+  if (listingKms == null || winnerMedianKm == null) return 0.5;
+  const diff = Math.abs(listingKms - winnerMedianKm);
+  if (diff <= KM_TOLERANCE) return 1.0;
+  if (diff <= KM_TOLERANCE * 1.5) return 0.7;
+  if (diff <= KM_TOLERANCE * 2) return 0.4;
+  return 0.0;
+}
+
+function findWinnerMatches(winners: WinnerRow[], make: string, model: string, year: number, kms: number | null = null): { winner: WinnerRow; kmScore: number }[] {
+  const results: { winner: WinnerRow; kmScore: number }[] = [];
+  for (const w of winners) {
     const makeOk = w.make.toUpperCase() === make.toUpperCase();
     const modelOk = w.model.toUpperCase() === model.toUpperCase();
     const yearOk = !w.year_min || !w.year_max || (year >= w.year_min - 1 && year <= w.year_max + 1);
-    return makeOk && modelOk && yearOk;
-  });
+    if (!makeOk || !modelOk || !yearOk) continue;
+
+    const kmSc = scoreKm(kms, w.median_km ?? w.avg_km);
+    if (kmSc === 0.0 && kms != null && (w.median_km ?? w.avg_km) != null) continue;
+
+    results.push({ winner: w, kmScore: kmSc });
+  }
+  return results;
 }
 
 async function getAccountName(sb: any, accountId: string): Promise<string> {
@@ -260,10 +279,10 @@ serve(async (req) => {
     const remainingAfterWinners: ParsedListing[] = [];
 
     for (const l of passed) {
-      const matches = findWinnerMatches(allWinners, l.make, l.model, l.year);
+      const matches = findWinnerMatches(allWinners, l.make, l.model, l.year, l.kms);
       let matched = false;
 
-      for (const winner of matches) {
+      for (const { winner, kmScore } of matches) {
         const avgSell = Number(winner.last_sale_price);
         const avgProfit = Number(winner.avg_profit);
         const historicalBuy = avgSell - avgProfit;
