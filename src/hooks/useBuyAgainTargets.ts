@@ -1,35 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-export interface WinnerFingerprint {
+export interface ProfitableSale {
   id: string;
   account_id: string;
   make: string;
   model: string;
+  badge: string | null;
   variant: string | null;
-  drivetrain: string | null;
-  year_min: number | null;
-  year_max: number | null;
-  avg_profit: number | null;
-  total_profit: number | null;
-  avg_km: number | null;
-  median_km: number | null;
-  times_sold: number;
-  last_sale_price: number | null;
-  last_sale_date: string | null;
-  rank: number | null;
-}
-
-export interface BestSale {
-  id: string;
-  profit: number;
-  sale_price: number;
-  buy_price: number;
+  description_raw: string | null;
   year: number | null;
   km: number | null;
+  sale_price: number;
+  buy_price: number;
+  profit: number;
   sold_at: string | null;
-  description_raw: string | null;
-  badge: string | null;
+  drive_type: string | null;
+  drivetrain: string | null; // extracted from description_raw
 }
 
 export interface LiveMatch {
@@ -50,15 +37,31 @@ export interface LiveMatch {
   est_profit: number | null;
 }
 
-export interface FingerprintWithMatches {
-  fingerprint: WinnerFingerprint;
-  bestSale: BestSale | null;
+export interface SaleWithMatches {
+  sale: ProfitableSale;
   matches: LiveMatch[];
 }
 
-function scoreKm(listingKm: number | null, winnerKm: number | null): { score: number; diff: number | null } {
-  if (listingKm == null || winnerKm == null) return { score: 0.5, diff: null };
-  const diff = Math.abs(listingKm - winnerKm);
+function extractDrivetrain(raw: string | null): string | null {
+  if (!raw) return null;
+  if (/\b4x4\b/i.test(raw)) return "4X4";
+  if (/\b4wd\b/i.test(raw)) return "4WD";
+  if (/\bawd\b/i.test(raw)) return "AWD";
+  if (/\bfwd\b/i.test(raw)) return "FWD";
+  if (/\b2wd\b/i.test(raw)) return "2WD";
+  if (/\brwd\b/i.test(raw)) return "RWD";
+  return null;
+}
+
+export function extractBadge(raw: string | null): string | null {
+  if (!raw) return null;
+  const match = raw.match(/\b(GXL|GX|VX|Sahara|GR\s*Sport|SR5|SR|XLT|XLS|XL|Wildtrak|Raptor|Sport|DX|RV|STX|Titanium|Trend|Ambiente|Laramie|N-TREK|ST-X|ST-L|ST|SL|Pro-4X|Warrior)\b/i);
+  return match ? match[1] : null;
+}
+
+function scoreKm(listingKm: number | null, saleKm: number | null): { score: number; diff: number | null } {
+  if (listingKm == null || saleKm == null) return { score: 0.5, diff: null };
+  const diff = Math.abs(listingKm - saleKm);
   if (diff <= 10000) return { score: 1.0, diff };
   if (diff <= 15000) return { score: 0.7, diff };
   if (diff <= 20000) return { score: 0.4, diff };
@@ -66,20 +69,50 @@ function scoreKm(listingKm: number | null, winnerKm: number | null): { score: nu
 }
 
 export function useBuyAgainTargets(accountId: string) {
-  const queryKey = ["buy-again-grouped", accountId];
+  const queryKey = ["buy-again-sales", accountId];
 
   const { data, isLoading, refetch } = useQuery({
     queryKey,
-    queryFn: async (): Promise<FingerprintWithMatches[]> => {
-      // 1. Pull winners sorted by total_profit desc
-      const { data: winners, error: wErr } = await supabase
-        .from("winners_watchlist")
-        .select("*")
+    queryFn: async (): Promise<SaleWithMatches[]> => {
+      // 1. Pull top profitable individual sales
+      const { data: sales, error: sErr } = await supabase
+        .from("vehicle_sales_truth")
+        .select("id, account_id, make, model, badge, variant, description_raw, year, km, sale_price, buy_price, sold_at, drive_type")
         .eq("account_id", accountId)
-        .order("total_profit", { ascending: false, nullsFirst: false })
-        .limit(20);
-      if (wErr) throw wErr;
-      if (!winners?.length) return [];
+        .not("buy_price", "is", null)
+        .not("sale_price", "is", null)
+        .order("sale_price", { ascending: false })
+        .limit(200);
+      if (sErr) throw sErr;
+      if (!sales?.length) return [];
+
+      // Compute profit and filter to top profitable sales (profit > $5k or top 15)
+      const enriched: ProfitableSale[] = sales
+        .map((s) => {
+          const profit = (s.sale_price || 0) - Number(s.buy_price || 0);
+          return {
+            id: s.id,
+            account_id: s.account_id,
+            make: s.make,
+            model: s.model,
+            badge: s.badge || extractBadge(s.description_raw),
+            variant: s.variant,
+            description_raw: s.description_raw,
+            year: s.year,
+            km: s.km,
+            sale_price: s.sale_price!,
+            buy_price: Number(s.buy_price!),
+            profit,
+            sold_at: s.sold_at,
+            drive_type: s.drive_type,
+            drivetrain: s.drive_type || extractDrivetrain(s.description_raw),
+          };
+        })
+        .filter((s) => s.profit > 0)
+        .sort((a, b) => b.profit - a.profit)
+        .slice(0, 15);
+
+      if (!enriched.length) return [];
 
       // 2. Pull active listings
       const { data: listings, error: lErr } = await supabase
@@ -90,82 +123,32 @@ export function useBuyAgainTargets(accountId: string) {
         .limit(1000);
       if (lErr) throw lErr;
 
-      // 3. Pull best sale per fingerprint from vehicle_sales_truth
-      const makes = [...new Set(winners.map(w => w.make.toUpperCase()))];
-      const { data: sales } = await supabase
-        .from("vehicle_sales_truth")
-        .select("id, make, model, badge, variant, year, km, sale_price, buy_price, sold_at, description_raw")
-        .eq("account_id", accountId)
-        .not("buy_price", "is", null);
+      // 3. For each sale, find top 3 cheapest matches
+      const results: SaleWithMatches[] = [];
 
-      // Build best-sale lookup by make+model
-      const bestSaleMap = new Map<string, BestSale>();
-      for (const s of (sales || [])) {
-        if (!s.make || !s.model || !s.sale_price || !s.buy_price) continue;
-        const key = `${s.make.toUpperCase()}|${s.model.toUpperCase()}`;
-        const profit = s.sale_price - s.buy_price;
-        const existing = bestSaleMap.get(key);
-        if (!existing || profit > existing.profit) {
-          bestSaleMap.set(key, {
-            id: s.id,
-            profit,
-            sale_price: s.sale_price,
-            buy_price: s.buy_price,
-            year: s.year,
-            km: s.km,
-            sold_at: s.sold_at,
-            description_raw: s.description_raw,
-            badge: s.badge,
-          });
-        }
-      }
-
-      // 4. For each winner, find top 3 cheapest matches
-      const results: FingerprintWithMatches[] = [];
-
-      for (const w of winners) {
-        const fp: WinnerFingerprint = {
-          id: w.id,
-          account_id: w.account_id,
-          make: w.make,
-          model: w.model,
-          variant: w.variant,
-          drivetrain: w.drivetrain,
-          year_min: w.year_min,
-          year_max: w.year_max,
-          avg_profit: w.avg_profit,
-          total_profit: w.total_profit,
-          avg_km: w.avg_km,
-          median_km: w.median_km,
-          times_sold: w.times_sold,
-          last_sale_price: w.last_sale_price,
-          last_sale_date: w.last_sale_date,
-          rank: w.rank,
-        };
-
-        const refKm = w.median_km || w.avg_km;
-        const saleKey = `${w.make.toUpperCase()}|${w.model.toUpperCase()}`;
-        const bestSale = bestSaleMap.get(saleKey) || null;
-
+      for (const sale of enriched) {
         const scored: LiveMatch[] = [];
-        for (const l of (listings || [])) {
+        for (const l of listings || []) {
           if (!l.make || !l.model) continue;
-          if (l.make.toUpperCase() !== w.make.toUpperCase()) continue;
-          if (l.model.toUpperCase() !== w.model.toUpperCase()) continue;
+          if (l.make.toUpperCase() !== sale.make.toUpperCase()) continue;
+          if (l.model.toUpperCase() !== sale.model.toUpperCase()) continue;
 
-          if (w.year_min && l.year && l.year < w.year_min) continue;
-          if (w.year_max && l.year && l.year > w.year_max) continue;
+          // Year filter: ±2 years of the sale
+          if (sale.year && l.year) {
+            if (Math.abs(l.year - sale.year) > 2) continue;
+          }
 
+          // Drivetrain hard-skip
           const ld = (l.drivetrain || "").toUpperCase();
-          const wd = (w.drivetrain || "").toUpperCase();
-          if (["2WD", "FWD"].includes(ld) && ["4X4", "4WD", "AWD"].includes(wd)) continue;
+          const sd = (sale.drivetrain || "").toUpperCase();
+          if (["2WD", "FWD"].includes(ld) && ["4X4", "4WD", "AWD"].includes(sd)) continue;
 
-          const { score: kmScore, diff: kmDiff } = scoreKm(l.km, refKm);
+          // KM scoring
+          const { score: kmScore, diff: kmDiff } = scoreKm(l.km, sale.km);
           if (kmScore === 0.0) continue;
 
           const price = l.asking_price || 0;
-          const lastSale = w.last_sale_price || 0;
-          const estProfit = lastSale > 0 && price > 0 ? lastSale - price : null;
+          const estProfit = sale.sale_price > 0 && price > 0 ? sale.sale_price - price : null;
 
           scored.push({
             id: l.id,
@@ -187,7 +170,7 @@ export function useBuyAgainTargets(accountId: string) {
         }
 
         scored.sort((a, b) => (a.price || Infinity) - (b.price || Infinity));
-        results.push({ fingerprint: fp, bestSale, matches: scored.slice(0, 3) });
+        results.push({ sale, matches: scored.slice(0, 3) });
       }
 
       return results;

@@ -1,23 +1,14 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAccounts } from "@/hooks/useAccounts";
-import { useBuyAgainTargets, WinnerFingerprint, LiveMatch, BestSale } from "@/hooks/useBuyAgainTargets";
+import { useBuyAgainTargets, extractBadge, ProfitableSale, LiveMatch } from "@/hooks/useBuyAgainTargets";
 import { AccountSelector } from "@/components/carbitrage/AccountSelector";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Loader2,
-  Crosshair,
-  ExternalLink,
-  TrendingUp,
-  AlertTriangle,
-  MapPin,
-  RefreshCw,
-  Eye,
-  ShoppingCart,
-  XCircle,
-  Trophy,
+  Loader2, Crosshair, ExternalLink, TrendingUp, AlertTriangle,
+  MapPin, RefreshCw, Eye, XCircle, Trophy, Calendar, DollarSign,
 } from "lucide-react";
 
 /* ── variant cleaner ── */
@@ -32,27 +23,19 @@ function cleanVariant(v: string | null): string | null {
     .replace(/\b\d+dr\b/gi, "")
     .replace(/\b\d+st\b/gi, "")
     .replace(/\b(auto|manual|spts\s*auto|cvt|dsg|amt)\b/gi, "")
+    .replace(/\b\d+\.\d+D?T{0,2}\b/gi, "")
+    .replace(/\b\d+kg\b/gi, "")
+    .replace(/\b(man|spts)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim() || null;
 }
 
-function extractBadge(raw: string | null): string | null {
-  if (!raw) return null;
-  // Try to extract the badge/trim from description_raw like "... VX Wagon ..."
-  const match = raw.match(/\b(GXL|GX|VX|Sahara|GR\s*Sport|SR5|SR|XLT|XLS|XL|Wildtrak|Raptor|Sport|DX|RV|STX|Titanium|Trend|Ambiente)\b/i);
-  return match ? match[1] : null;
-}
-
-/* ── Fingerprint Header ── */
-function FingerprintHeader({ fp, bestSale }: { fp: WinnerFingerprint; bestSale: BestSale | null }) {
-  const label = [fp.make, fp.model, cleanVariant(fp.variant)].filter(Boolean).join(" ");
-  const driveLabel = fp.drivetrain?.toUpperCase();
+/* ── Sale Header ── */
+function SaleHeader({ sale }: { sale: ProfitableSale }) {
+  const badge = sale.badge || extractBadge(sale.description_raw);
+  const label = [sale.year, sale.make, sale.model, badge].filter(Boolean).join(" ");
+  const driveLabel = sale.drivetrain?.toUpperCase();
   const show4wd = driveLabel && ["4WD", "AWD", "4X4"].includes(driveLabel);
-  const refKm = fp.median_km || fp.avg_km;
-
-  const bestBadge = bestSale ? extractBadge(bestSale.description_raw) : null;
-  const bestYear = bestSale?.year;
-  const bestLabel = [bestYear, fp.make, fp.model, bestBadge].filter(Boolean).join(" ");
 
   return (
     <div className="space-y-1.5">
@@ -67,29 +50,26 @@ function FingerprintHeader({ fp, bestSale }: { fp: WinnerFingerprint; bestSale: 
           )}
         </div>
       </div>
+      {/* Sale details */}
+      <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-500/10 rounded-md px-2 py-1 w-fit">
+        <Trophy className="h-3 w-3 shrink-0" />
+        <span>
+          Sold for <strong>${sale.sale_price.toLocaleString()}</strong>, profit <strong>${sale.profit.toLocaleString()}</strong>
+          {sale.sold_at && <span className="text-muted-foreground ml-1">on {sale.sold_at}</span>}
+        </span>
+      </div>
       {/* Stats row */}
       <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-        <span>Sold <strong className="text-foreground">{fp.times_sold}×</strong></span>
-        {fp.total_profit != null && (
-          <span>Total profit <strong className="text-foreground">${fp.total_profit.toLocaleString()}</strong></span>
+        {sale.km != null && (
+          <span>KM from sale: <strong className="text-foreground">{Math.round(sale.km / 1000)}k</strong> <span className="text-[10px]">(±10k)</span></span>
         )}
-        {fp.avg_profit != null && (
-          <span>Avg <strong className="text-foreground">${fp.avg_profit.toLocaleString()}</strong>/unit</span>
+        {sale.buy_price > 0 && (
+          <span className="flex items-center gap-0.5"><DollarSign className="h-3 w-3" />Bought at <strong className="text-foreground">${sale.buy_price.toLocaleString()}</strong></span>
         )}
-        {refKm != null && (
-          <span>KM sweet spot <strong className="text-foreground">{Math.round(refKm / 1000)}k</strong> <span className="text-[10px]">(±10k)</span></span>
+        {sale.sold_at && (
+          <span className="flex items-center gap-0.5"><Calendar className="h-3 w-3" />{sale.sold_at}</span>
         )}
       </div>
-      {/* Best sale reference */}
-      {bestSale && bestSale.profit > 0 && (
-        <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-500/10 rounded-md px-2 py-1 w-fit">
-          <Trophy className="h-3 w-3 shrink-0" />
-          <span>
-            Replicates your best sale: <strong>${bestSale.profit.toLocaleString()}</strong> profit on {bestLabel}
-            {bestSale.sold_at && <span className="text-muted-foreground ml-1">({bestSale.sold_at})</span>}
-          </span>
-        </div>
-      )}
     </div>
   );
 }
@@ -188,7 +168,7 @@ export default function BuyAgainTargetsPage() {
               Buy Again Targets
             </h1>
             <p className="text-sm text-muted-foreground">
-              Top 3 cheapest live listings per proven winner, ranked by profitability.
+              Top 3 cheapest live listings per high-profit sale, ranked by price.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -209,14 +189,14 @@ export default function BuyAgainTargetsPage() {
           <div className="text-center py-12 text-muted-foreground">
             <Crosshair className="h-12 w-12 mx-auto mb-3 opacity-30" />
             <p className="font-medium">No active targets yet</p>
-            <p className="text-sm mt-1">Run traps or seed from sales to generate fingerprints.</p>
+            <p className="text-sm mt-1">Run traps or seed from sales to generate targets.</p>
           </div>
         ) : (
           <div className="space-y-4">
             {withMatches.map((g) => (
-              <Card key={g.fingerprint.id} className="border-primary/20">
+              <Card key={g.sale.id} className="border-primary/20">
                 <CardHeader className="pb-2">
-                  <FingerprintHeader fp={g.fingerprint} bestSale={g.bestSale} />
+                  <SaleHeader sale={g.sale} />
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {g.matches.map((m) => (
@@ -233,13 +213,14 @@ export default function BuyAgainTargetsPage() {
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {withoutMatches.map((g) => {
-                    const fp = g.fingerprint;
-                    const label = [fp.make, fp.model, cleanVariant(fp.variant)].filter(Boolean).join(" ");
+                    const sale = g.sale;
+                    const badge = sale.badge || extractBadge(sale.description_raw);
+                    const label = [sale.year, sale.make, sale.model, badge].filter(Boolean).join(" ");
                     return (
-                      <div key={fp.id} className="p-3 rounded-lg border bg-muted/30 text-sm">
+                      <div key={sale.id} className="p-3 rounded-lg border bg-muted/30 text-sm">
                         <span className="font-medium">{label}</span>
                         <span className="text-muted-foreground ml-2">
-                          (sold {fp.times_sold}× · total ${fp.total_profit?.toLocaleString() || "?"})
+                          (profit ${sale.profit.toLocaleString()} · sold {sale.sold_at || "?"})
                         </span>
                       </div>
                     );
