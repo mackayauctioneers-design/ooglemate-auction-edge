@@ -11268,19 +11268,10 @@ export type Database = {
           fingerprints_updated: number
         }[]
       }
-      rebuild_platform_clusters:
-        | {
-            Args: { p_account_id: string }
-            Returns: {
-              error: true
-            } & "Could not choose the best candidate function between: public.rebuild_platform_clusters(p_account_id => text), public.rebuild_platform_clusters(p_account_id => uuid). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
-          }
-        | {
-            Args: { p_account_id: string }
-            Returns: {
-              error: true
-            } & "Could not choose the best candidate function between: public.rebuild_platform_clusters(p_account_id => text), public.rebuild_platform_clusters(p_account_id => uuid). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
-          }
+      rebuild_platform_clusters: {
+        Args: { p_account_id: string }
+        Returns: number
+      }
       reenable_auction_source: {
         Args: { p_reason?: string; p_source_key: string }
         Returns: undefined
