@@ -1,185 +1,160 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 
-export interface FingerprintTarget {
+export interface WinnerFingerprint {
   id: string;
   account_id: string;
   make: string;
   model: string;
   variant: string | null;
-  year_from: number | null;
-  year_to: number | null;
-  transmission: string | null;
-  fuel_type: string | null;
-  drive_type: string | null;
-  body_type: string | null;
-  median_profit: number | null;
-  median_profit_pct: number | null;
-  median_days_to_clear: number | null;
-  median_sale_price: number | null;
+  drivetrain: string | null;
+  year_min: number | null;
+  year_max: number | null;
+  avg_profit: number | null;
+  avg_km: number | null;
   median_km: number | null;
-  total_sales: number;
-  confidence_level: string;
-  spec_completeness: number;
-  target_score: number;
-  origin: string;
-  status: string;
-  source_candidate_id: string | null;
-  last_promoted_at: string | null;
-  created_at: string;
-  updated_at: string;
+  times_sold: number;
+  last_sale_price: number | null;
+  last_sale_date: string | null;
+  rank: number | null;
+}
+
+export interface LiveMatch {
+  id: string;
+  make: string | null;
+  model: string | null;
+  variant: string | null;
+  year: number | null;
+  km: number | null;
+  price: number | null;
+  url: string | null;
+  source: string | null;
+  status: string | null;
+  first_seen_at: string | null;
+  drivetrain: string | null;
+  km_diff: number | null;
+  km_score: number;
+  est_profit: number | null;
+}
+
+export interface FingerprintWithMatches {
+  fingerprint: WinnerFingerprint;
+  matches: LiveMatch[];
+}
+
+function scoreKm(listingKm: number | null, winnerKm: number | null): { score: number; diff: number | null } {
+  if (listingKm == null || winnerKm == null) return { score: 0.5, diff: null };
+  const diff = Math.abs(listingKm - winnerKm);
+  if (diff <= 10000) return { score: 1.0, diff };
+  if (diff <= 15000) return { score: 0.7, diff };
+  if (diff <= 20000) return { score: 0.4, diff };
+  return { score: 0.0, diff };
 }
 
 export function useBuyAgainTargets(accountId: string) {
-  const queryClient = useQueryClient();
-  const queryKey = ["buy-again-targets", accountId];
+  const queryKey = ["buy-again-grouped", accountId];
 
-  const { data: targets, isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("fingerprint_targets")
+    queryFn: async (): Promise<FingerprintWithMatches[]> => {
+      // 1. Pull winners for this account
+      const { data: winners, error: wErr } = await supabase
+        .from("winners_watchlist")
         .select("*")
         .eq("account_id", accountId)
-        .in("status", ["candidate", "active", "paused"])
-        .order("target_score", { ascending: false })
-        .limit(30);
-      if (error) throw error;
-      return data as FingerprintTarget[];
+        .order("rank", { ascending: true })
+        .limit(20);
+      if (wErr) throw wErr;
+      if (!winners?.length) return [];
+
+      // 2. Pull active listings (catalogue/listed)
+      const { data: listings, error: lErr } = await supabase
+        .from("vehicle_listings")
+        .select("id, make, model, variant_raw, variant_family, year, km, asking_price, listing_url, source, status, first_seen_at, drivetrain")
+        .in("status", ["catalogue", "listed"])
+        .order("asking_price", { ascending: true, nullsFirst: false })
+        .limit(1000);
+      if (lErr) throw lErr;
+
+      // 3. For each winner, find top 3 cheapest matches
+      const results: FingerprintWithMatches[] = [];
+
+      for (const w of winners) {
+        const fp: WinnerFingerprint = {
+          id: w.id,
+          account_id: w.account_id,
+          make: w.make,
+          model: w.model,
+          variant: w.variant,
+          drivetrain: w.drivetrain,
+          year_min: w.year_min,
+          year_max: w.year_max,
+          avg_profit: w.avg_profit,
+          avg_km: w.avg_km,
+          median_km: w.median_km,
+          times_sold: w.times_sold,
+          last_sale_price: w.last_sale_price,
+          last_sale_date: w.last_sale_date,
+          rank: w.rank,
+        };
+
+        const refKm = w.median_km || w.avg_km;
+
+        const scored: LiveMatch[] = [];
+        for (const l of (listings || [])) {
+          // Make/model must match
+          if (!l.make || !l.model) continue;
+          if (l.make.toUpperCase() !== w.make.toUpperCase()) continue;
+          if (l.model.toUpperCase() !== w.model.toUpperCase()) continue;
+
+          // Year range check
+          if (w.year_min && l.year && l.year < w.year_min) continue;
+          if (w.year_max && l.year && l.year > w.year_max) continue;
+
+          // Drivetrain hard skip: listing 2WD/FWD against winner 4x4/AWD/4WD
+          const ld = (l.drivetrain || "").toUpperCase();
+          const wd = (w.drivetrain || "").toUpperCase();
+          if (["2WD", "FWD"].includes(ld) && ["4X4", "4WD", "AWD"].includes(wd)) continue;
+
+          // KM scoring
+          const { score: kmScore, diff: kmDiff } = scoreKm(l.km, refKm);
+          if (kmScore === 0.0) continue; // hard skip >20k diff
+
+          const price = l.asking_price || 0;
+          const lastSale = w.last_sale_price || 0;
+          const estProfit = lastSale > 0 && price > 0 ? lastSale - price : null;
+
+          scored.push({
+            id: l.id,
+            make: l.make,
+            model: l.model,
+            variant: l.variant_raw || l.variant_family,
+            year: l.year,
+            km: l.km,
+            price: l.asking_price,
+            url: l.listing_url,
+            source: l.source,
+            status: l.status,
+            first_seen_at: l.first_seen_at,
+            drivetrain: l.drivetrain,
+            km_diff: kmDiff,
+            km_score: kmScore,
+            est_profit: estProfit,
+          });
+        }
+
+        // Sort by price ascending, take top 3
+        scored.sort((a, b) => (a.price || Infinity) - (b.price || Infinity));
+        results.push({ fingerprint: fp, matches: scored.slice(0, 3) });
+      }
+
+      return results;
     },
     enabled: !!accountId,
   });
 
-  // Seed from sales_target_candidates if no targets exist
-  const seedMutation = useMutation({
-    mutationFn: async () => {
-      // Check if non-retired targets already exist
-      const { count } = await supabase
-        .from("fingerprint_targets")
-        .select("id", { count: "exact", head: true })
-        .eq("account_id", accountId)
-        .in("status", ["candidate", "active", "paused"]);
-
-      if (count && count > 0) {
-        return { seeded: 0, message: "Targets already exist — use Clear & Re-Seed to refresh" };
-      }
-
-      return await doSeed();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey });
-      if (data.seeded > 0) {
-        toast.success(`Seeded ${data.seeded} targets from sales history`);
-      } else {
-        toast.info(data.message || "No new targets to seed");
-      }
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
-
-  // Clear & Re-Seed: retire all existing, then seed fresh
-  const clearAndReseedMutation = useMutation({
-    mutationFn: async () => {
-      // Retire all non-retired targets for this account
-      const { data: retired, error: rErr } = await supabase
-        .from("fingerprint_targets")
-        .update({ status: "retired" })
-        .eq("account_id", accountId)
-        .in("status", ["candidate", "active", "paused"])
-        .select("id");
-      if (rErr) throw rErr;
-      const retiredCount = retired?.length || 0;
-
-      const result = await doSeed();
-      return { ...result, retiredCount };
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey });
-      toast.success(
-        `Cleared ${data.retiredCount} old targets, seeded ${data.seeded} fresh`
-      );
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
-
-  async function doSeed() {
-    // Pull from sales_target_candidates
-    const { data: candidates, error: cErr } = await supabase
-      .from("sales_target_candidates")
-      .select("*")
-      .eq("account_id", accountId)
-      .in("status", ["candidate", "active"])
-      .order("target_score", { ascending: false })
-      .limit(30);
-
-    if (cErr) throw cErr;
-    if (!candidates?.length) return { seeded: 0, message: "No candidates found in sales data" };
-
-    const rows = candidates.map((c: any) => ({
-      account_id: accountId,
-      make: c.make,
-      model: c.model,
-      variant: c.variant,
-      transmission: c.transmission,
-      fuel_type: c.fuel_type,
-      drive_type: c.drive_type,
-      body_type: c.body_type,
-      median_profit: c.median_profit,
-      median_profit_pct: c.median_profit_pct,
-      median_days_to_clear: c.median_days_to_clear,
-      median_sale_price: c.median_sale_price,
-      median_km: c.median_km,
-      total_sales: c.sales_count,
-      confidence_level: c.confidence_level?.toUpperCase() || "LOW",
-      spec_completeness: c.spec_completeness || 0,
-      target_score: c.target_score || 0,
-      origin: "sales_truth" as const,
-      status: "candidate" as const,
-      source_candidate_id: c.id,
-    }));
-
-    const { error: iErr } = await supabase
-      .from("fingerprint_targets")
-      .insert(rows);
-    if (iErr) throw iErr;
-
-    return { seeded: rows.length };
-  }
-
-  const updateStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const update: any = { status };
-      if (status === "active") update.last_promoted_at = new Date().toISOString();
-      const { error } = await supabase
-        .from("fingerprint_targets")
-        .update(update)
-        .eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey });
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
-
-  const candidates = (targets || []).filter((t) => t.status === "candidate");
-  const active = (targets || []).filter((t) => t.status === "active");
-  const paused = (targets || []).filter((t) => t.status === "paused");
-
   return {
-    candidates,
-    active,
-    paused,
+    groups: data || [],
     isLoading,
-    seed: seedMutation.mutate,
-    isSeeding: seedMutation.isPending,
-    clearAndReseed: clearAndReseedMutation.mutate,
-    isClearing: clearAndReseedMutation.isPending,
-    promote: (id: string) => updateStatus.mutate({ id, status: "active" }),
-    dismiss: (id: string) => updateStatus.mutate({ id, status: "retired" }),
-    pause: (id: string) => updateStatus.mutate({ id, status: "paused" }),
-    retire: (id: string) => updateStatus.mutate({ id, status: "retired" }),
-    reactivate: (id: string) => updateStatus.mutate({ id, status: "active" }),
   };
 }
