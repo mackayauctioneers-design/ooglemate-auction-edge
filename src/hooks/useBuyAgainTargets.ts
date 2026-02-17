@@ -138,7 +138,7 @@ export function useBuyAgainTargets(accountId: string) {
             drivetrain: s.drive_type || extractDrivetrain(s.description_raw),
           };
         })
-        .filter((s) => s.profit >= 5000)
+        .filter((s) => s.profit > 0)
         .sort((a, b) => b.profit - a.profit)
         .slice(0, 20);
 
