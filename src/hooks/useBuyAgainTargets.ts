@@ -43,6 +43,14 @@ export interface SaleWithMatches {
   matches: LiveMatch[];
 }
 
+function kmMatchesSmart(saleKm: number, listingKm: number): boolean {
+  if (!listingKm) return false;
+  if (saleKm <= 5000) return listingKm <= 25000;
+  if (saleKm <= 40000) return listingKm <= 60000;
+  if (saleKm <= 120000) return Math.abs(listingKm - saleKm) <= 30000;
+  return Math.abs(listingKm - saleKm) <= 40000;
+}
+
 function extractDrivetrain(raw: string | null): string | null {
   if (!raw) return null;
   if (/\b4x4\b/i.test(raw)) return "4X4";
@@ -255,9 +263,9 @@ export function useBuyAgainTargets(accountId: string) {
             if (Math.abs(l.year - sale.year) > 1) continue;
           }
 
-          // KM ± 10,000
+          // Smart KM replication bands
           if (sale.km != null && l.km != null) {
-            if (Math.abs(l.km - sale.km) > 10000) continue;
+            if (!kmMatchesSmart(sale.km, l.km)) continue;
           }
 
           // Drivetrain must match (hard skip mismatches)
