@@ -17,7 +17,7 @@ export interface ProfitableSale {
   profit: number;
   sold_at: string | null;
   drive_type: string | null;
-  drivetrain: string | null; // extracted from description_raw
+  drivetrain: string | null;
 }
 
 export interface LiveMatch {
@@ -33,8 +33,7 @@ export interface LiveMatch {
   status: string | null;
   first_seen_at: string | null;
   drivetrain: string | null;
-  km_diff: number | null;
-  km_score: number;
+  price_delta: number | null; // historical buy - current asking (positive = cheaper than what we paid)
   est_profit: number | null;
 }
 
@@ -60,32 +59,32 @@ export function extractBadge(raw: string | null): string | null {
   return match ? match[1] : null;
 }
 
-function scoreKm(listingKm: number | null, saleKm: number | null): { score: number; diff: number | null } {
-  if (listingKm == null || saleKm == null) return { score: 0.5, diff: null };
-  const diff = Math.abs(listingKm - saleKm);
-  if (diff <= 10000) return { score: 1.0, diff };
-  if (diff <= 15000) return { score: 0.7, diff };
-  if (diff <= 20000) return { score: 0.4, diff };
-  return { score: 0.0, diff };
+/** Normalize variant for comparison: uppercase, strip chassis codes & body noise */
+function normalizeVariant(v: string | null): string {
+  if (!v) return "";
+  return v
+    .toUpperCase()
+    .replace(/\b[A-Z]{2,3}\d{2,3}[A-Z]?\b/g, "") // chassis codes like VDJ200R, PX, D23
+    .replace(/\b(UTILITY|WAGON|DUAL CAB|SINGLE CAB|EXTRA CAB|DOUBLE CAB|CAB CHASSIS|HARDTOP|\d+ST)\b/gi, "")
+    .replace(/\b(SPTS?\s*AUTO|AUTO|MANUAL|CVT|4WD|AWD|2WD|FWD|RWD|4X4|4X2)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function getDismissedKey(accountId: string) {
   return `buy-again-dismissed-${accountId}`;
 }
-
 function getDismissedIds(accountId: string): Set<string> {
   try {
     const raw = localStorage.getItem(getDismissedKey(accountId));
     return raw ? new Set(JSON.parse(raw)) : new Set();
   } catch { return new Set(); }
 }
-
 function persistDismissedIds(accountId: string, ids: Set<string>) {
   localStorage.setItem(getDismissedKey(accountId), JSON.stringify([...ids]));
 }
 
 export function useBuyAgainTargets(accountId: string) {
-  const queryKey = ["buy-again-sales", accountId];
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => getDismissedIds(accountId));
 
   const dismissSale = useCallback((saleId: string) => {
@@ -103,9 +102,9 @@ export function useBuyAgainTargets(accountId: string) {
   }, [accountId]);
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey,
+    queryKey: ["buy-again-sales", accountId],
     queryFn: async (): Promise<SaleWithMatches[]> => {
-      // 1. Pull top profitable individual sales
+      // 1. Pull profitable sales
       const { data: sales, error: sErr } = await supabase
         .from("vehicle_sales_truth")
         .select("id, account_id, make, model, badge, variant, description_raw, year, km, sale_price, buy_price, sold_at, drive_type")
@@ -140,7 +139,7 @@ export function useBuyAgainTargets(accountId: string) {
         })
         .filter((s) => s.profit > 0)
         .sort((a, b) => b.profit - a.profit)
-        .slice(0, 30); // fetch more, we'll filter dismissed client-side
+        .slice(0, 40);
 
       if (!enriched.length) return [];
 
@@ -153,31 +152,50 @@ export function useBuyAgainTargets(accountId: string) {
         .limit(1000);
       if (lErr) throw lErr;
 
-      // 3. For each sale, find top 3 cheapest matches
+      // 3. For each sale, find matching listings
       const results: SaleWithMatches[] = [];
 
       for (const sale of enriched) {
-        const scored: LiveMatch[] = [];
+        const matched: LiveMatch[] = [];
+
         for (const l of listings || []) {
           if (!l.make || !l.model) continue;
+
+          // Make must match
           if (l.make.toUpperCase() !== sale.make.toUpperCase()) continue;
+
+          // Model must match
           if (l.model.toUpperCase() !== sale.model.toUpperCase()) continue;
 
+          // Variant: exact or normalized match
+          const saleVariant = normalizeVariant(sale.variant || sale.badge || sale.description_raw);
+          const listingVariant = normalizeVariant(l.variant_raw || l.variant_family);
+          if (saleVariant && listingVariant && saleVariant !== listingVariant) continue;
+
+          // Year ± 1
           if (sale.year && l.year) {
-            if (Math.abs(l.year - sale.year) > 2) continue;
+            if (Math.abs(l.year - sale.year) > 1) continue;
           }
 
-          const ld = (l.drivetrain || "").toUpperCase();
-          const sd = (sale.drivetrain || "").toUpperCase();
-          if (["2WD", "FWD"].includes(ld) && ["4X4", "4WD", "AWD"].includes(sd)) continue;
+          // KM ± 10,000
+          if (sale.km != null && l.km != null) {
+            if (Math.abs(l.km - sale.km) > 10000) continue;
+          }
 
-          const { score: kmScore, diff: kmDiff } = scoreKm(l.km, sale.km);
-          if (kmScore === 0.0) continue;
+          // Drivetrain must match (hard skip mismatches)
+          const sd = (sale.drivetrain || "").toUpperCase();
+          const ld = (l.drivetrain || "").toUpperCase();
+          if (sd && ld) {
+            const is4x4Sale = ["4X4", "4WD", "AWD"].includes(sd);
+            const is4x4Listing = ["4X4", "4WD", "AWD"].includes(ld);
+            if (is4x4Sale !== is4x4Listing) continue;
+          }
 
           const price = l.asking_price || 0;
+          const priceDelta = sale.buy_price > 0 && price > 0 ? sale.buy_price - price : null;
           const estProfit = sale.sale_price > 0 && price > 0 ? sale.sale_price - price : null;
 
-          scored.push({
+          matched.push({
             id: l.id,
             make: l.make,
             model: l.model,
@@ -190,23 +208,37 @@ export function useBuyAgainTargets(accountId: string) {
             status: l.status,
             first_seen_at: l.first_seen_at,
             drivetrain: l.drivetrain,
-            km_diff: kmDiff,
-            km_score: kmScore,
+            price_delta: priceDelta,
             est_profit: estProfit,
           });
         }
 
-        scored.sort((a, b) => (a.price || Infinity) - (b.price || Infinity));
-        results.push({ sale, matches: scored.slice(0, 3) });
+        // Sort: biggest price_delta first (cheapest relative to historical buy), then lowest price
+        matched.sort((a, b) => {
+          const da = a.price_delta ?? -Infinity;
+          const db = b.price_delta ?? -Infinity;
+          if (db !== da) return db - da;
+          return (a.price || Infinity) - (b.price || Infinity);
+        });
+
+        if (matched.length > 0) {
+          results.push({ sale, matches: matched.slice(0, 3) });
+        }
       }
+
+      // Sort results: biggest price delta of best match first
+      results.sort((a, b) => {
+        const da = a.matches[0]?.price_delta ?? -Infinity;
+        const db = b.matches[0]?.price_delta ?? -Infinity;
+        return db - da;
+      });
 
       return results;
     },
     enabled: !!accountId,
   });
 
-  // Filter dismissed sales client-side from cached data — instant, no re-fetch
-  const filtered = (data || []).filter((g) => !dismissedIds.has(g.sale.id)).slice(0, 15);
+  const filtered = (data || []).filter((g) => !dismissedIds.has(g.sale.id)).slice(0, 20);
 
   return {
     groups: filtered,
