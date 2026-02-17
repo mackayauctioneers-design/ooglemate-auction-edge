@@ -1,0 +1,20 @@
+# Memory: logic/carbitrage/trim-upgrade-matching-v1
+Updated: now
+
+The Buy Again Targets engine supports ONE-STEP TRIM UPGRADE matching (never downgrades).
+
+## Trim Ladder
+- Table: `trim_ladder` (make, model, trim_class, trim_rank)
+- Seeded for: LandCruiser 70/200/300, Prado, Hilux, HiAce, Ranger, Everest, D-Max, MU-X, Triton, Navara, Patrol
+- `trim_rank` is an integer (1 = base, higher = more premium)
+
+## Matching Rules
+1. **EXACT**: listing trim_class == pattern trim_class → always allowed
+2. **UPGRADE**: listing trim_rank == pattern trim_rank + 1 → allowed (one step up only)
+3. **DOWNGRADE**: listing trim_rank < pattern trim_rank → REJECTED
+4. **TOO FAR**: listing trim_rank > pattern trim_rank + 1 → REJECTED
+5. If trim_class not in trim_ladder → falls back to exact-only matching
+
+## UI
+- Each match card shows a badge: `EXACT` (green) or `⬆ UPGRADE` (blue)
+- No scoring, no AI, purely deterministic ladder lookup

@@ -7426,6 +7426,33 @@ export type Database = {
           },
         ]
       }
+      trim_ladder: {
+        Row: {
+          created_at: string
+          id: string
+          make: string
+          model: string
+          trim_class: string
+          trim_rank: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          make: string
+          model: string
+          trim_class: string
+          trim_rank: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          make?: string
+          model?: string
+          trim_class?: string
+          trim_rank?: number
+        }
+        Relationships: []
+      }
       upload_batches: {
         Row: {
           account_id: string
