@@ -23,6 +23,31 @@ interface TargetCardProps {
   onReactivate?: () => void;
 }
 
+// Clean noisy variant strings: strip chassis codes, body types, trans, drivetrain
+function cleanVariant(v: string | null): string | null {
+  if (!v) return null;
+  const NOISE_RE = /\b(cab\s*chassis|double\s*cab|dual\s*cab|crew\s*cab|single\s*cab|super\s*cab|extra\s*cab|king\s*cab|wagon|utility|ute|sedan|hatch(?:back)?|coupe|van|bus|troopcarrier|wellside|wellbody|tray|flatbed|suv|pick-?up)\b/gi;
+  const CHASSIS_RE = /\b[A-Z]{2,5}\d{2,4}[A-Z]?\b/g;
+  const MY_RE = /\bMY\d{2,4}\b/gi;
+  const SPEED_RE = /\b\d{1,2}sp\b/gi;
+  const DRIVETRAIN_RE = /\b(4x4|4x2|4wd|2wd|awd|rwd|fwd)\b/gi;
+  const DOOR_RE = /\b\d+dr\b/gi;
+  const SEAT_RE = /\b\d+st\b/gi;
+  const AUTO_RE = /\b(auto|manual|spts\s*auto|cvt|dsg|amt)\b/gi;
+  let cleaned = v
+    .replace(CHASSIS_RE, "")
+    .replace(MY_RE, "")
+    .replace(NOISE_RE, "")
+    .replace(SPEED_RE, "")
+    .replace(DRIVETRAIN_RE, "")
+    .replace(DOOR_RE, "")
+    .replace(SEAT_RE, "")
+    .replace(AUTO_RE, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || null;
+}
+
 export function TargetCard({
   target: t,
   mode,
@@ -33,14 +58,14 @@ export function TargetCard({
   onRetire,
   onReactivate,
 }: TargetCardProps) {
+  const cleanedVariant = cleanVariant(t.variant);
   const dnaLabel = [
     t.year_from && t.year_to
       ? `${t.year_from}–${t.year_to}`
       : t.year_from || t.year_to || null,
     t.make,
     t.model,
-    t.variant,
-    t.drive_type,
+    cleanedVariant,
   ]
     .filter(Boolean)
     .join(" ");
