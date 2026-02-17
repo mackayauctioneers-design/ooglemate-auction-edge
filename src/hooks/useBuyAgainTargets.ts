@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useState, useCallback } from "react";
 
 export interface ProfitableSale {
   id: string;
@@ -68,8 +69,41 @@ function scoreKm(listingKm: number | null, saleKm: number | null): { score: numb
   return { score: 0.0, diff };
 }
 
+function getDismissedKey(accountId: string) {
+  return `buy-again-dismissed-${accountId}`;
+}
+
+function getDismissedIds(accountId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(getDismissedKey(accountId));
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch { return new Set(); }
+}
+
+function persistDismissedIds(accountId: string, ids: Set<string>) {
+  localStorage.setItem(getDismissedKey(accountId), JSON.stringify([...ids]));
+}
+
 export function useBuyAgainTargets(accountId: string) {
   const queryKey = ["buy-again-sales", accountId];
+  const queryClient = useQueryClient();
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => getDismissedIds(accountId));
+
+  const dismissSale = useCallback((saleId: string) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      next.add(saleId);
+      persistDismissedIds(accountId, next);
+      return next;
+    });
+    queryClient.invalidateQueries({ queryKey });
+  }, [accountId, queryClient, queryKey]);
+
+  const clearDismissed = useCallback(() => {
+    setDismissedIds(new Set());
+    localStorage.removeItem(getDismissedKey(accountId));
+    queryClient.invalidateQueries({ queryKey });
+  }, [accountId, queryClient, queryKey]);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey,
@@ -108,7 +142,7 @@ export function useBuyAgainTargets(accountId: string) {
             drivetrain: s.drive_type || extractDrivetrain(s.description_raw),
           };
         })
-        .filter((s) => s.profit > 0)
+        .filter((s) => s.profit > 0 && !dismissedIds.has(s.id))
         .sort((a, b) => b.profit - a.profit)
         .slice(0, 15);
 
@@ -182,5 +216,8 @@ export function useBuyAgainTargets(accountId: string) {
     groups: data || [],
     isLoading,
     refetch,
+    dismissSale,
+    clearDismissed,
+    dismissedCount: dismissedIds.size,
   };
 }

@@ -8,8 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Loader2, Crosshair, ExternalLink, TrendingUp, AlertTriangle,
-  MapPin, RefreshCw, Eye, XCircle, Trophy, Calendar, DollarSign,
+  MapPin, RefreshCw, Eye, XCircle, Trophy, Calendar, DollarSign, Trash2, RotateCcw,
 } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 /* ── variant cleaner ── */
 function cleanVariant(v: string | null): string | null {
@@ -152,7 +157,7 @@ export default function BuyAgainTargetsPage() {
     setAccountId(mackay?.id || accounts[0].id);
   }
 
-  const { groups, isLoading, refetch } = useBuyAgainTargets(accountId);
+  const { groups, isLoading, refetch, dismissSale, clearDismissed, dismissedCount } = useBuyAgainTargets(accountId);
 
   const withMatches = groups.filter((g) => g.matches.length > 0);
   const withoutMatches = groups.filter((g) => g.matches.length === 0);
@@ -172,6 +177,12 @@ export default function BuyAgainTargetsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {dismissedCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={clearDismissed} className="text-muted-foreground">
+                <RotateCcw className="h-4 w-4 mr-1.5" />
+                Restore {dismissedCount} dismissed
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
               <RefreshCw className={`h-4 w-4 mr-1.5 ${isLoading ? "animate-spin" : ""}`} />
               Refresh Targets
@@ -196,7 +207,30 @@ export default function BuyAgainTargetsPage() {
             {withMatches.map((g) => (
               <Card key={g.sale.id} className="border-primary/20">
                 <CardHeader className="pb-2">
-                  <SaleHeader sale={g.sale} />
+                  <div className="flex items-start justify-between gap-2">
+                    <SaleHeader sale={g.sale} />
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive" title="Remove from targets">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Remove this target?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will hide "{g.sale.year} {g.sale.make} {g.sale.model}" from your Buy Again list. You can restore dismissed targets later.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => dismissSale(g.sale.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Remove
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {g.matches.map((m) => (
@@ -205,6 +239,7 @@ export default function BuyAgainTargetsPage() {
                 </CardContent>
               </Card>
             ))}
+
 
             {withoutMatches.length > 0 && (
               <div className="space-y-2 pt-4">
