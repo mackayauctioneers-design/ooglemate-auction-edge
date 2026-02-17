@@ -10375,6 +10375,10 @@ export type Database = {
           went_missing: number
         }[]
       }
+      derive_trim_class: {
+        Args: { p_make: string; p_model: string; p_variant: string }
+        Returns: string
+      }
       detect_geo_heat_alerts: {
         Args: {
           p_asof?: string

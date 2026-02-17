@@ -60,16 +60,93 @@ export function extractBadge(raw: string | null): string | null {
   return match ? match[1] : null;
 }
 
-/** Normalize variant for comparison: uppercase, strip chassis codes & body noise */
-function normalizeVariant(v: string | null): string {
-  if (!v) return "";
-  return v
-    .toUpperCase()
-    .replace(/\b[A-Z]{2,3}\d{2,3}[A-Z]?\b/g, "") // chassis codes like VDJ200R, PX, D23
-    .replace(/\b(UTILITY|WAGON|DUAL CAB|SINGLE CAB|EXTRA CAB|DOUBLE CAB|CAB CHASSIS|HARDTOP|\d+ST)\b/gi, "")
-    .replace(/\b(SPTS?\s*AUTO|AUTO|MANUAL|CVT|4WD|AWD|2WD|FWD|RWD|4X4|4X2)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
+/** Derive trim class — mirrors DB derive_trim_class() */
+function deriveTrimClass(make: string, model: string, variant: string | null): string {
+  const m = make.toUpperCase().trim();
+  const mo = model.toUpperCase().trim();
+  const v = (variant || "").toUpperCase();
+
+  if (m === "TOYOTA") {
+    if (mo === "LANDCRUISER") {
+      if (v.includes("WORKMATE")) return "LC70_BASE";
+      if (v.includes("GXL")) return "LC70_GXL";
+      if (v.includes("GX")) return "LC70_GX";
+      if (v.includes("VX")) return "LC70_VX";
+      if (v.includes("SAHARA")) return "LC70_SAHARA";
+      if (v.includes("70TH")) return "LC70_SPECIAL";
+    }
+    if (mo === "LANDCRUISER 200") {
+      if (v.includes("GXL")) return "LC200_GXL";
+      if (v.includes("GX")) return "LC200_GX";
+      if (v.includes("VX")) return "LC200_VX";
+      if (v.includes("SAHARA")) return "LC200_SAHARA";
+    }
+    if (mo === "LANDCRUISER 300") {
+      if (v.includes("GXL")) return "LC300_GXL";
+      if (v.includes("GX")) return "LC300_GX";
+      if (v.includes("VX")) return "LC300_VX";
+      if (v.includes("SAHARA")) return "LC300_SAHARA";
+    }
+    if (mo.includes("PRADO")) {
+      if (v.includes("GXL")) return "PRADO_GXL";
+      if (v.includes("GX")) return "PRADO_GX";
+      if (v.includes("VX")) return "PRADO_VX";
+      if (v.includes("KAKADU")) return "PRADO_KAKADU";
+    }
+    if (mo === "HILUX") {
+      if (v.includes("SR5")) return "HILUX_SR5";
+      if (v.includes("SR")) return "HILUX_SR";
+      if (v.includes("ROGUE")) return "HILUX_ROGUE";
+      if (v.includes("RUGGED")) return "HILUX_RUGGED";
+      if (v.includes("WORKMATE")) return "HILUX_BASE";
+    }
+  }
+  if (m === "FORD") {
+    if (mo === "RANGER") {
+      if (v.includes("RAPTOR")) return "RANGER_RAPTOR";
+      if (v.includes("WILDTRAK")) return "RANGER_WILDTRAK";
+      if (v.includes("XLT")) return "RANGER_XLT";
+      if (v.includes("XLS")) return "RANGER_XLS";
+      if (v.includes("XL")) return "RANGER_XL";
+    }
+    if (mo === "EVEREST") {
+      if (v.includes("TITANIUM")) return "EVEREST_TITANIUM";
+      if (v.includes("TREND")) return "EVEREST_TREND";
+      if (v.includes("AMBIENTE")) return "EVEREST_AMBIENTE";
+    }
+  }
+  if (m === "ISUZU") {
+    if (mo === "D-MAX" || mo === "DMAX") {
+      if (v.includes("X-TERRAIN") || v.includes("XTERRAIN")) return "DMAX_XTERRAIN";
+      if (v.includes("LS-U") || v.includes("LSU")) return "DMAX_LSU";
+      if (v.includes("LS-M") || v.includes("LSM")) return "DMAX_LSM";
+      if (v.includes("SX")) return "DMAX_SX";
+    }
+    if (mo === "MU-X" || mo === "MUX") {
+      if (v.includes("LS-T") || v.includes("LST")) return "MUX_LST";
+      if (v.includes("LS-U") || v.includes("LSU")) return "MUX_LSU";
+      if (v.includes("LS-M") || v.includes("LSM")) return "MUX_LSM";
+    }
+  }
+  if (m === "MITSUBISHI" && mo === "TRITON") {
+    if (v.includes("GLS")) return "TRITON_GLS";
+    if (v.includes("GLX+") || v.includes("GLX PLUS")) return "TRITON_GLXPLUS";
+    if (v.includes("GLX")) return "TRITON_GLX";
+  }
+  if (m === "NISSAN") {
+    if (mo === "NAVARA") {
+      if (v.includes("PRO-4X") || v.includes("PRO4X")) return "NAVARA_PRO4X";
+      if (v.includes("ST-X") || v.includes("STX")) return "NAVARA_STX";
+      if (v.includes("ST-L") || v.includes("STL")) return "NAVARA_STL";
+      if (v.includes("ST")) return "NAVARA_ST";
+      if (v.includes("SL")) return "NAVARA_SL";
+    }
+    if (mo === "PATROL") {
+      if (v.includes("TI-L") || v.includes("TIL")) return "PATROL_TIL";
+      if (v.includes("TI")) return "PATROL_TI";
+    }
+  }
+  return mo + "_STANDARD";
 }
 
 function getDismissedKey(accountId: string) {
@@ -168,10 +245,10 @@ export function useBuyAgainTargets(accountId: string) {
           // Model must match
           if (l.model.toUpperCase() !== sale.model.toUpperCase()) continue;
 
-          // Variant: soft indicator only, NOT a hard filter
-          const saleVariant = normalizeVariant(sale.variant || sale.badge || sale.description_raw);
-          const listingVariant = normalizeVariant(l.variant_raw || l.variant_family);
-          const variantMatch = !!(saleVariant && listingVariant && saleVariant === listingVariant);
+          // TRIM CLASS — HARD BOUNDARY
+          const saleTrim = deriveTrimClass(sale.make, sale.model, sale.variant || sale.badge || sale.description_raw);
+          const listingTrim = deriveTrimClass(l.make, l.model, l.variant_raw || l.variant_family);
+          if (saleTrim !== listingTrim) continue;
 
           // Year ± 1
           if (sale.year && l.year) {
@@ -211,7 +288,7 @@ export function useBuyAgainTargets(accountId: string) {
             drivetrain: l.drivetrain,
             price_delta: priceDelta,
             est_profit: estProfit,
-            variant_match: variantMatch,
+            variant_match: saleTrim === listingTrim,
           });
         }
 
