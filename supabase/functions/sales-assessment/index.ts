@@ -296,6 +296,11 @@ TASK: Produce a DEEP, ACTIONABLE sales assessment from the pre-aggregated data p
 
 CRITICAL RULES:
 - READ-ONLY. NEVER invent numbers. Only reference what is in the provided data.
+- The "overall" object contains EXACT pre-computed totals. You MUST use these exact figures in your executive_summary — do NOT estimate, round differently, or invent ranges.
+  - Use overall.total_sales as the exact sales count
+  - Use overall.net_profit as the exact net profit (with $ sign)
+  - Use overall.avg_profit as the exact average profit per vehicle (with $ sign)
+  - Use overall.pct_profitable as the exact % profitable
 - ALWAYS use specific badge/variant names (e.g. "VX Landcruiser", "XLT Ranger", "ST-X Navara", "Ti Pathfinder") — NEVER just "Toyota Landcruiser" or "Ford Ranger".
 - Dollar figures with $ sign, rounded to nearest $100.
 - Frame as "your business" and "you've proven".
@@ -304,7 +309,7 @@ CRITICAL RULES:
 
 OUTPUT: Return valid JSON matching this EXACT schema — no markdown, no extra text:
 {
-  "executive_summary": "string — 3-5 sentences. MUST include: (1) exact total sales count, (2) net profit with $ sign, (3) avg profit per vehicle with $ sign, (4) % profitable vehicles. Then a specific insight naming the top 2-3 badge/variants that drive profits and why (e.g. 'Profits concentrated in VX Landcruiser ($13k avg) and XLT Ranger ($4k avg); base-spec models like XL Ranger and GLX-R Triton consistently lose $1k-$3k.').",
+  "executive_summary": "string — 3-5 sentences. Sentence 1 MUST be: '[overall.total_sales] vehicles analysed. Net profit: $[overall.net_profit]. Average profit: $[overall.avg_profit] per vehicle. [overall.pct_profitable]% profitable.' Then 1-2 sentences naming the top 2-3 badge/variants driving profits and the bottom 1-2 causing losses, with exact avg_profit figures from the top_winners and loss_makers data.",
   "proven_fingerprints": [
     {
       "make": "string",
@@ -317,47 +322,46 @@ OUTPUT: Return valid JSON matching this EXACT schema — no markdown, no extra t
       "total_profit": "number — exact from data",
       "avg_days": "number — exact from data",
       "turnover_speed": "Fast|Medium|Slow",
-      "recommendation": "string — 5-15 words, actionable (e.g. 'High-priority sourcing target — proven $13k avg return')"
+      "recommendation": "string — 5-15 words, actionable"
     }
   ],
-  "loss_patterns": ["string — MUST name specific badge/variant and dollar range (e.g. 'GLX-R Triton (Mitsubishi) — avg loss $2,100 across 4 sales')"],
+  "loss_patterns": ["string — MUST name specific badge/variant and exact dollar figures from loss_makers data (e.g. 'GLX-R Triton (Mitsubishi) — avg loss $2,100 across 4 sales')"],
   "km_insight": {
-    "has_km_data": "boolean",
-    "summary": "string — if coverage < 20%: 'KM rarely reported (X% coverage) — recommend adding odometer to future uploads for tighter matching.' If good coverage: 'Winners average Xk km at sale. Sweet spot is X-Xk km — above Xk km margins compress.'"
+    "has_km_data": "boolean — true if km_stats.coverage_pct >= 20",
+    "coverage_pct": "number — from km_stats.coverage_pct",
+    "avg_km_on_winners": "number or null — from km_stats.avg_km_on_winners",
+    "summary": "string — if coverage < 20%: 'KM rarely reported (X% coverage) — recommend adding odometer to future uploads for tighter matching.' If good coverage: 'Winners average Xk km. Sweet spot appears to be X-Xk km based on profitable sales.'"
   },
-  "recommendations": ["string — each MUST reference a specific badge/variant (e.g. 'Prioritize VX Landcruiser in sourcing — proven $13,000 avg profit across X sales')"],
-  "comparison_note": "string or null — only if cross_dealer_overlap has entries",
-  "warnings": ["string — data quality warnings only (e.g. 'X sales missing buy price — profit calculations based on Y sales with complete data')"]
+  "recommendations": ["string — each MUST reference a specific badge/variant with exact profit figure"],
+  "comparison_note": "string or null — only if cross_dealer_overlap has entries. Name shared models with badge specificity.",
+  "warnings": ["string — data quality warnings only"]
 }
 
 PROVEN FINGERPRINTS (up to 10):
-- Copy values directly from top_winners data. Sort by total_profit desc.
+- Copy values EXACTLY from top_winners data. Sort by total_profit desc.
 - Turnover Speed: "Fast" if avg_days < 60, "Medium" if 60-120, "Slow" if > 120.
 - ALWAYS use the badge field from the data — never collapse to just make/model.
 - Include avg_km from data (null if not available).
-- Recommendation must be specific: "High-priority" if avg_profit >= $5k, "Strong repeater" if >= $2k, "Worth repeating" otherwise.
+- Recommendation: "High-priority sourcing target — proven $X avg return" if avg_profit >= $5k, "Strong repeater — $X avg across Y sales" if >= $2k, "Worth repeating — $X avg" otherwise.
 
 LOSS PATTERNS (3-6 bullets):
-- Use the loss_makers data. MUST name specific badge (e.g. "GLX-R Triton", "XL Ranger", "SX Vivo").
-- Include exact avg loss dollar figure from data.
-- Include count (e.g. "across 4 sales").
+- Use the loss_makers data. MUST name specific badge.
+- Include EXACT avg loss dollar figure and count from data.
 
 KM INSIGHT:
-- Use km_stats.coverage_pct and avg_km_on_winners from the data.
-- If coverage < 20%: note low coverage and recommend adding odometer.
-- If decent coverage: state the avg KM on winners and note if high-km listings show lower margins.
+- Use km_stats data directly: coverage_pct, avg_km_on_winners.
+- If coverage < 20%: note low coverage.
+- If decent coverage: state avg KM on winners.
 
 COMPARISON (comparison_note):
-- If cross_dealer_overlap provided with entries: note which models appear across dealers and compare profit patterns.
+- If cross_dealer_overlap provided with entries: name shared badge/variants.
 - If null or empty: set comparison_note to null.
 
 RECOMMENDATIONS (3-5 items):
-- Each must name a specific badge/variant.
-- "Prioritize [badge] [model] — proven $X avg profit across Y sales"
-- "Avoid [badge] [model] — consistent $X losses across Y sales"
-- "Check traps for [model] — strong performer with limited supply"
+- "Prioritize [badge] [model] — proven $[exact avg_profit] avg profit across [count] sales"
+- "Avoid [badge] [model] — consistent $[exact avg_loss] losses across [count] sales"
 
-Keep total output under 600 words. Concise, commercial, replication-oriented.`,
+Keep total output under 500 words. Concise, commercial, replication-oriented. Use ONLY numbers from the data provided.`,
           },
           {
             role: "user",
