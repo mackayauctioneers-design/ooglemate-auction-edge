@@ -41,10 +41,13 @@ export function ListingsSearchModal({ target, open, onOpenChange }: Props) {
     queryFn: async () => {
       if (!target) return [];
 
-      // Build query against vehicle_listings
+      // Build query against vehicle_listings (7-day freshness enforced)
+      const freshCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
       let q = supabase
         .from("vehicle_listings")
         .select("id, make, model, variant_raw, variant_family, year, km, asking_price, listing_url, source, first_seen_at, status")
+        .in("status", ["catalogue", "listed"])
+        .gte("last_seen_at", freshCutoff)
         .ilike("make", target.make)
         .ilike("model", target.model)
         .order("asking_price", { ascending: true, nullsFirst: false })
