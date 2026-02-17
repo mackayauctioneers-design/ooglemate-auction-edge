@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { FingerprintTarget } from "@/hooks/useBuyAgainTargets";
+import { FingerprintTarget } from "@/components/buy-again/TargetCard";
 import {
   Dialog,
   DialogContent,

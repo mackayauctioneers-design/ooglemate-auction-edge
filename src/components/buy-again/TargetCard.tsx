@@ -1,4 +1,31 @@
-import { FingerprintTarget } from "@/hooks/useBuyAgainTargets";
+export interface FingerprintTarget {
+  id: string;
+  account_id: string;
+  make: string;
+  model: string;
+  variant: string | null;
+  year_from: number | null;
+  year_to: number | null;
+  transmission: string | null;
+  fuel_type: string | null;
+  drive_type: string | null;
+  body_type: string | null;
+  median_profit: number | null;
+  median_profit_pct: number | null;
+  median_days_to_clear: number | null;
+  median_sale_price: number | null;
+  median_km: number | null;
+  total_sales: number;
+  confidence_level: string;
+  spec_completeness: number;
+  target_score: number;
+  origin: string;
+  status: string;
+  source_candidate_id: string | null;
+  last_promoted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
