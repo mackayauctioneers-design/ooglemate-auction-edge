@@ -94,9 +94,6 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
 
     const data = await resp.json();
     const md = data.data?.markdown || data.markdown || "";
-    console.log(`[PICKLES DEBUG] Markdown length: ${md.length}`);
-    console.log(`[PICKLES DEBUG] Markdown sample (first 1000 chars):`);
-    console.log(md.substring(0, 1000));
     if (!md || md.length < 200) {
       console.log(`[PICKLES] Empty page ${page}, stopping`);
       break;
@@ -104,18 +101,6 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
 
     // Extract listing URLs from markdown
     const urls = md.match(/https:\/\/www\.pickles\.com\.au\/used\/(details|item)\/cars\/[^\s)"]+/gi) || [];
-    console.log(`[PICKLES DEBUG] URLs matched: ${urls.length}`);
-    if (urls.length > 0) {
-      console.log(`[PICKLES DEBUG] First 3 URLs: ${JSON.stringify(urls.slice(0, 3))}`);
-    }
-    if (urls.length === 0) {
-      // Try to find ANY pickles URLs to diagnose
-      const anyPicklesUrls = md.match(/https:\/\/www\.pickles\.com\.au\/[^\s)"]+/gi) || [];
-      console.log(`[PICKLES DEBUG] Any pickles URLs found: ${anyPicklesUrls.length}`);
-      if (anyPicklesUrls.length > 0) {
-        console.log(`[PICKLES DEBUG] Sample URLs:`, anyPicklesUrls.slice(0, 5));
-      }
-    }
     if (urls.length === 0) {
       console.log(`[PICKLES] No URLs on page ${page}, stopping`);
       break;
@@ -128,10 +113,7 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
 
       // Parse from URL slug: /2024-toyota-hilux-sr5/12345
       const slugMatch = url.match(/\/(\d{4})-([a-z]+)-([a-z0-9-]+)\/(\d+)/i);
-      if (!slugMatch) {
-        if (seen.size <= 3) console.log(`[PICKLES DEBUG] Slug FAILED: ${url}`);
-        continue;
-      }
+      if (!slugMatch) continue;
 
       const year = parseInt(slugMatch[1]);
       if (year < 2008) continue;
