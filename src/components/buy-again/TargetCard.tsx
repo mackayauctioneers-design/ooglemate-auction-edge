@@ -159,6 +159,15 @@ export function TargetCard({
               </strong>
             </span>
           )}
+          {t.median_km != null && (
+            <span>
+              KM{" "}
+              <strong className="text-foreground">
+                {Math.round(t.median_km / 1000)}k
+              </strong>
+              <span className="text-xs ml-0.5">(±10k)</span>
+            </span>
+          )}
         </div>
 
         {/* Warnings */}

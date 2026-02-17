@@ -8897,6 +8897,7 @@ export type Database = {
           last_sale_date: string | null
           last_sale_price: number | null
           make: string
+          median_km: number | null
           model: string
           rank: number | null
           times_sold: number | null
@@ -8918,6 +8919,7 @@ export type Database = {
           last_sale_date?: string | null
           last_sale_price?: number | null
           make: string
+          median_km?: number | null
           model: string
           rank?: number | null
           times_sold?: number | null
@@ -8939,6 +8941,7 @@ export type Database = {
           last_sale_date?: string | null
           last_sale_price?: number | null
           make?: string
+          median_km?: number | null
           model?: string
           rank?: number | null
           times_sold?: number | null
