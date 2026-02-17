@@ -43,6 +43,85 @@ export interface ClusterWithMatches {
   matches: ClusterMatch[];
 }
 
+/** Derive generation bucket — must mirror DB derive_generation() */
+function deriveGeneration(make: string, model: string, year: number): string {
+  const m = make.toUpperCase();
+  const mod = model.toUpperCase();
+  if (m === "TOYOTA") {
+    if (mod === "LANDCRUISER") {
+      if (year >= 1990 && year <= 1997) return "LC80";
+      if (year >= 1998 && year <= 2007) return "LC100";
+      if (year >= 2008 && year <= 2021) return "LC200";
+      if (year >= 2022) return "LC300";
+    }
+    if (mod === "LANDCRUISER PRADO" || mod === "PRADO") {
+      if (year >= 2002 && year <= 2009) return "Prado120";
+      if (year >= 2009 && year <= 2023) return "Prado150";
+      if (year >= 2024) return "Prado250";
+    }
+    if (mod.includes("70 SERIES") || mod === "LANDCRUISER 70") {
+      return "LC70";
+    }
+    if (mod === "HILUX") {
+      if (year >= 2005 && year <= 2015) return "HiluxN70";
+      if (year >= 2015 && year <= 2023) return "HiluxAN120";
+      if (year >= 2024) return "HiluxAN130";
+    }
+    if (mod === "RAV4") {
+      if (year >= 2019) return "RAV4-5";
+      if (year >= 2013) return "RAV4-4";
+    }
+    if (mod === "FORTUNER") return "Fortuner";
+  }
+  if (m === "FORD") {
+    if (mod === "RANGER") {
+      if (year >= 2011 && year <= 2022) return "RangerPX";
+      if (year >= 2022) return "RangerV2";
+    }
+    if (mod === "EVEREST") {
+      if (year >= 2015 && year <= 2022) return "EverestUA";
+      if (year >= 2022) return "EverestV2";
+    }
+  }
+  if (m === "MAZDA" && mod === "BT-50") {
+    if (year >= 2011 && year <= 2020) return "BT50-UR";
+    if (year >= 2020) return "BT50-TF";
+  }
+  if (m === "MITSUBISHI" && mod === "TRITON") {
+    if (year >= 2015 && year <= 2024) return "TritonMQ";
+    if (year >= 2024) return "TritonMR2";
+  }
+  if (m === "NISSAN") {
+    if (mod === "NAVARA") {
+      if (year >= 2015) return "NavaraNP300";
+    }
+    if (mod === "PATROL") {
+      if (year >= 2010) return "PatrolY62";
+    }
+  }
+  if (m === "ISUZU") {
+    if (mod === "D-MAX" || mod === "DMAX") {
+      if (year >= 2012 && year <= 2020) return "DMax-RT";
+      if (year >= 2020) return "DMax-RG";
+    }
+    if (mod === "MU-X" || mod === "MUX") {
+      if (year >= 2013 && year <= 2021) return "MUX-1";
+      if (year >= 2021) return "MUX-2";
+    }
+  }
+  if (m === "VOLKSWAGEN" && mod === "AMAROK") {
+    if (year >= 2011 && year <= 2022) return "AmarokV1";
+    if (year >= 2023) return "AmarokV2";
+  }
+  if (m === "HYUNDAI" && (mod === "TUCSON" || mod === "SANTA FE" || mod === "PALISADE")) {
+    return mod.replace(/ /g, "") + "Gen";
+  }
+  if (m === "KIA" && (mod === "SORENTO" || mod === "SPORTAGE")) {
+    return mod + "Gen";
+  }
+  return "GEN_UNKNOWN";
+}
+
 function getDismissedKey(accountId: string) {
   return `cluster-dismissed-${accountId}`;
 }
@@ -102,14 +181,12 @@ export function usePlatformClusters(accountId: string) {
         const matches: ClusterMatch[] = [];
 
         for (const l of listings || []) {
-          if (!l.make || !l.model) continue;
+          if (!l.make || !l.model || !l.year) continue;
           if (l.make.toUpperCase() !== c.make.toUpperCase()) continue;
-          if (l.model.toUpperCase() !== c.model.toUpperCase()) continue;
 
-          // Year within cluster range (±1 buffer on edges)
-          if (l.year) {
-            if (l.year < c.year_min - 1 || l.year > c.year_max + 1) continue;
-          }
+          // Derive generation for listing — must EXACTLY match cluster generation
+          const listingGen = deriveGeneration(l.make, l.model, l.year);
+          if (listingGen !== c.generation) continue;
 
           // Drivetrain: hard skip 2WD listing for 4X4 cluster
           if (c.drivetrain === "4X4") {
