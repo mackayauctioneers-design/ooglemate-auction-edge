@@ -1284,6 +1284,69 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_platform_clusters: {
+        Row: {
+          account_id: string
+          avg_days_to_sell: number | null
+          created_at: string
+          drivetrain: string
+          engine_type: string
+          generation: string
+          id: string
+          last_sale_date: string | null
+          make: string
+          median_buy_price: number | null
+          median_km: number | null
+          median_profit: number | null
+          median_sell_price: number | null
+          model: string
+          total_flips: number
+          updated_at: string
+          year_max: number
+          year_min: number
+        }
+        Insert: {
+          account_id: string
+          avg_days_to_sell?: number | null
+          created_at?: string
+          drivetrain?: string
+          engine_type?: string
+          generation: string
+          id?: string
+          last_sale_date?: string | null
+          make: string
+          median_buy_price?: number | null
+          median_km?: number | null
+          median_profit?: number | null
+          median_sell_price?: number | null
+          model: string
+          total_flips?: number
+          updated_at?: string
+          year_max: number
+          year_min: number
+        }
+        Update: {
+          account_id?: string
+          avg_days_to_sell?: number | null
+          created_at?: string
+          drivetrain?: string
+          engine_type?: string
+          generation?: string
+          id?: string
+          last_sale_date?: string | null
+          make?: string
+          median_buy_price?: number | null
+          median_km?: number | null
+          median_profit?: number | null
+          median_sell_price?: number | null
+          model?: string
+          total_flips?: number
+          updated_at?: string
+          year_max?: number
+          year_min?: number
+        }
+        Relationships: []
+      }
       dealer_profile: {
         Row: {
           created_at: string | null
@@ -10287,6 +10350,10 @@ export type Database = {
           listings_processed: number
         }[]
       }
+      derive_generation: {
+        Args: { p_make: string; p_model: string; p_year: number }
+        Returns: string
+      }
       derive_presence_events: {
         Args: { p_run_id: string; p_source?: string; p_stale_hours?: number }
         Returns: {
@@ -11201,6 +11268,19 @@ export type Database = {
           fingerprints_updated: number
         }[]
       }
+      rebuild_platform_clusters:
+        | {
+            Args: { p_account_id: string }
+            Returns: {
+              error: true
+            } & "Could not choose the best candidate function between: public.rebuild_platform_clusters(p_account_id => text), public.rebuild_platform_clusters(p_account_id => uuid). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
+          }
+        | {
+            Args: { p_account_id: string }
+            Returns: {
+              error: true
+            } & "Could not choose the best candidate function between: public.rebuild_platform_clusters(p_account_id => text), public.rebuild_platform_clusters(p_account_id => uuid). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
+          }
       reenable_auction_source: {
         Args: { p_reason?: string; p_source_key: string }
         Returns: undefined
