@@ -1,0 +1,26 @@
+# Memory: features/buy-again/replication-engine-logic-v1
+Updated: now
+
+The 'Buy Again Targets' engine operates as a PATTERN-BASED replication system (not sale-by-sale). It groups profitable sales from 'vehicle_sales_truth' into trading pattern bands defined by: Make, Model, Trim Class (via derive_trim_class), 3-year windows, and KM bands (0-50k, 50-100k, 100-150k, 150k+).
+
+## Pattern Requirements
+- Minimum 2 flips per pattern
+- Minimum $2,000 median profit
+- Patterns sorted by median_profit DESC, then total_flips DESC
+
+## Matching Rules
+- Make: exact match
+- Model: exact match
+- Trim class: HARD boundary (derive_trim_class) — GX never sees GXL, Workmate never sees VX
+- Year: must fall within pattern's year_min–year_max band
+- KM: must fall within pattern's km_min–km_max band
+- Drivetrain: hard filter (2WD never matches 4X4/AWD patterns)
+
+## UI
+Pattern cards show: year range, make model trim, flips count, median profit, median buy/sell, KM band.
+Under each card: top 5 cheapest matching live listings sorted by asking_price ASC.
+Each listing shows: est profit (median_sell - asking), under median buy delta.
+
+## Database
+- dealer_profit_patterns table stores materialized patterns (for future cron use)
+- Currently patterns are computed client-side from vehicle_sales_truth on each query

@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAccounts } from "@/hooks/useAccounts";
-import { useBuyAgainTargets, ProfitableSale, LiveMatch } from "@/hooks/useBuyAgainTargets";
+import { useBuyAgainTargets, ProfitPattern, LiveMatch } from "@/hooks/useBuyAgainTargets";
 import { AccountSelector } from "@/components/carbitrage/AccountSelector";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Loader2, Crosshair, ExternalLink, TrendingUp,
-  MapPin, RefreshCw, Eye, XCircle, RotateCcw, DollarSign,
+  MapPin, RefreshCw, Eye, XCircle, RotateCcw, DollarSign, BarChart3,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -16,34 +16,39 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-/* ── Sale Header ── */
-function SaleHeader({ sale }: { sale: ProfitableSale }) {
-  const label = [sale.year, sale.make, sale.model, sale.badge || sale.variant].filter(Boolean).join(" ");
-  const driveLabel = sale.drivetrain && sale.drivetrain !== "UNKNOWN" ? sale.drivetrain : null;
+/* ── Pattern Header ── */
+function PatternHeader({ pattern }: { pattern: ProfitPattern }) {
+  const yearLabel = pattern.year_min === pattern.year_max
+    ? `${pattern.year_min}`
+    : `${pattern.year_min}–${pattern.year_max}`;
+  const kmLabel = pattern.km_max >= 999999
+    ? `${Math.round(pattern.km_min / 1000)}k+`
+    : `${Math.round(pattern.km_min / 1000)}–${Math.round(pattern.km_max / 1000)}k`;
+  const trimLabel = pattern.trim_class.replace(/_/g, " ");
 
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="font-semibold text-base">{label}</h3>
-        <div className="flex items-center gap-1.5">
-          {driveLabel && (
-            <Badge variant="outline" className="text-xs bg-sky-500/10 text-sky-700 border-sky-300">{driveLabel}</Badge>
-          )}
-        </div>
+        <h3 className="font-semibold text-base">
+          {yearLabel} {pattern.make} {pattern.model} {trimLabel}
+        </h3>
       </div>
-      <div className="flex items-center gap-4 text-xs flex-wrap">
+      <div className="flex items-center gap-3 text-xs flex-wrap">
         <span className="flex items-center gap-0.5 text-muted-foreground">
-          <DollarSign className="h-3 w-3" />Bought: <strong className="text-foreground">${sale.buy_price.toLocaleString()}</strong>
-        </span>
-        <span className="text-muted-foreground">
-          Sold: <strong className="text-foreground">${sale.sale_price.toLocaleString()}</strong>
+          <BarChart3 className="h-3 w-3" />
+          Flips: <strong className="text-foreground">{pattern.total_flips}</strong>
         </span>
         <span className="flex items-center gap-0.5 text-green-700 bg-green-500/10 rounded px-1.5 py-0.5">
-          <TrendingUp className="h-3 w-3" />Profit: <strong>${sale.profit.toLocaleString()}</strong>
+          <TrendingUp className="h-3 w-3" />
+          Med Profit: <strong>${pattern.median_profit.toLocaleString()}</strong>
         </span>
-        {sale.km != null && (
-          <span className="text-muted-foreground">KM: <strong className="text-foreground">{Math.round(sale.km / 1000)}k</strong></span>
-        )}
+        <span className="text-muted-foreground">
+          Med Buy: <strong className="text-foreground">${pattern.median_buy_price.toLocaleString()}</strong>
+        </span>
+        <span className="text-muted-foreground">
+          Med Sell: <strong className="text-foreground">${pattern.median_sell_price.toLocaleString()}</strong>
+        </span>
+        <Badge variant="outline" className="text-[10px]">KM: {kmLabel}</Badge>
       </div>
     </div>
   );
@@ -69,9 +74,9 @@ function MatchCard({ match }: { match: LiveMatch }) {
           <span className="flex items-center gap-0.5"><MapPin className="h-3 w-3" />{source}</span>
           {daysListed != null && <span>{daysListed}d listed</span>}
         </div>
-        {match.price_delta != null && match.price_delta > 0 && (
+        {match.under_median_buy != null && match.under_median_buy > 0 && (
           <p className="text-[10px] text-green-600 mt-0.5">
-            ${match.price_delta.toLocaleString()} under historical buy
+            ${match.under_median_buy.toLocaleString()} under median buy
           </p>
         )}
       </div>
@@ -114,7 +119,7 @@ export default function BuyAgainTargetsPage() {
     setAccountId(mackay?.id || accounts[0].id);
   }
 
-  const { groups, isLoading, refetch, dismissSale, clearDismissed, dismissedCount } = useBuyAgainTargets(accountId);
+  const { groups, isLoading, refetch, dismissPattern, clearDismissed, dismissedCount } = useBuyAgainTargets(accountId);
 
   return (
     <AppLayout>
@@ -127,7 +132,7 @@ export default function BuyAgainTargetsPage() {
               Buy Again Targets
             </h1>
             <p className="text-sm text-muted-foreground">
-              Direct replication — matching live listings to your exact past winners.
+              Pattern-based replication — profitable trading bands matched to live supply.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -153,16 +158,19 @@ export default function BuyAgainTargetsPage() {
         ) : groups.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Crosshair className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="font-medium">No replication matches found</p>
-            <p className="text-sm mt-1">No live listings match your past profitable sales right now.</p>
+            <p className="font-medium">No tradable patterns found</p>
+            <p className="text-sm mt-1">Need profitable sales data with enough volume to form patterns.</p>
           </div>
         ) : (
           <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              {groups.length} tradable patterns · {groups.reduce((t, g) => t + g.matches.length, 0)} live matches
+            </p>
             {groups.map((g) => (
-              <Card key={g.sale.id} className="border-primary/20">
+              <Card key={g.pattern.id} className="border-primary/20">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
-                    <SaleHeader sale={g.sale} />
+                    <PatternHeader pattern={g.pattern} />
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive" title="Dismiss">
@@ -171,14 +179,14 @@ export default function BuyAgainTargetsPage() {
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Dismiss this target?</AlertDialogTitle>
+                          <AlertDialogTitle>Dismiss this pattern?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This will hide {g.sale.year} {g.sale.make} {g.sale.model}. You can restore later.
+                            This will hide {g.pattern.make} {g.pattern.model} {g.pattern.trim_class.replace(/_/g, " ")}. You can restore later.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => dismissSale(g.sale.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                          <AlertDialogAction onClick={() => dismissPattern(g.pattern.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                             Dismiss
                           </AlertDialogAction>
                         </AlertDialogFooter>
