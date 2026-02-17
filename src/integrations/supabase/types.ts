@@ -1468,6 +1468,63 @@ export type Database = {
           },
         ]
       }
+      dealer_profit_patterns: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          km_max: number
+          km_min: number
+          make: string
+          median_buy_price: number | null
+          median_km: number | null
+          median_profit: number | null
+          median_sell_price: number | null
+          model: string
+          total_flips: number
+          trim_class: string
+          updated_at: string
+          year_max: number
+          year_min: number
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          km_max: number
+          km_min: number
+          make: string
+          median_buy_price?: number | null
+          median_km?: number | null
+          median_profit?: number | null
+          median_sell_price?: number | null
+          model: string
+          total_flips?: number
+          trim_class: string
+          updated_at?: string
+          year_max: number
+          year_min: number
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          km_max?: number
+          km_min?: number
+          make?: string
+          median_buy_price?: number | null
+          median_km?: number | null
+          median_profit?: number | null
+          median_sell_price?: number | null
+          model?: string
+          total_flips?: number
+          trim_class?: string
+          updated_at?: string
+          year_max?: number
+          year_min?: number
+        }
+        Relationships: []
+      }
       dealer_sales: {
         Row: {
           buy_price: number | null
