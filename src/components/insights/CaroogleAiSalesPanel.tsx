@@ -23,6 +23,7 @@ interface ProvenFingerprint {
   model: string;
   badge_variant: string;
   engine_spec: string | null;
+  avg_km: number | null;
   count: number;
   avg_profit: number;
   total_profit: number;
@@ -213,6 +214,7 @@ export function CaroogleAiSalesPanel({ accountId, dealerName }: Props) {
                       <TableRow>
                         <TableHead className="text-xs">Vehicle</TableHead>
                         <TableHead className="text-xs text-right">Count</TableHead>
+                        <TableHead className="text-xs text-right">Avg KM</TableHead>
                         <TableHead className="text-xs text-right">Avg Profit</TableHead>
                         <TableHead className="text-xs text-right">Total Profit</TableHead>
                         <TableHead className="text-xs text-right">Avg Days</TableHead>
@@ -237,6 +239,11 @@ export function CaroogleAiSalesPanel({ accountId, dealerName }: Props) {
                             )}
                           </TableCell>
                           <TableCell className="text-right text-sm py-2">{fp.count}</TableCell>
+                          <TableCell className="text-right text-xs text-muted-foreground py-2">
+                            {fp.avg_km != null && fp.avg_km > 100
+                              ? `${Math.round(fp.avg_km / 1000).toLocaleString()}k`
+                              : "—"}
+                          </TableCell>
                           <TableCell className={`text-right text-sm font-medium py-2 ${fp.avg_profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                             {formatDollars(fp.avg_profit)}
                           </TableCell>
