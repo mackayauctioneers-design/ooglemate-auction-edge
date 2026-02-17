@@ -36,9 +36,21 @@ Deno.serve(async (req) => {
 
     console.log(`[WINNERS] ${sales.length} sales records for ${accountId}`);
 
-    // Group by make + model + variant (normalised)
+    // Extract drivetrain from description/variant
+    function extractDrivetrain(text: string | null): string | null {
+      if (!text) return null;
+      const m = text.match(/\b(4x4|4WD|AWD|2WD|FWD|4x2|RWD)\b/i);
+      if (!m) return null;
+      const v = m[1].toUpperCase();
+      if (v === "4X4" || v === "4WD") return "4WD";
+      if (v === "AWD") return "AWD";
+      if (v === "4X2" || v === "2WD" || v === "FWD" || v === "RWD") return "2WD";
+      return v;
+    }
+
+    // Group by make + model + variant + drivetrain (normalised)
     const groups = new Map<string, {
-      make: string; model: string; variant: string | null;
+      make: string; model: string; variant: string | null; drivetrain: string | null;
       profits: number[]; sale_prices: number[]; years: number[];
       sale_dates: string[]; kms: number[];
     }>();
@@ -51,10 +63,11 @@ Deno.serve(async (req) => {
       const make = String(s.make).toUpperCase().trim();
       const model = String(s.model).toUpperCase().trim();
       const variant = s.variant ? String(s.variant).toUpperCase().trim() : null;
-      const key = `${make}|${model}|${variant || ""}`;
+      const drivetrain = extractDrivetrain(s.variant) || extractDrivetrain(s.model) || (s as any).drive_type?.toUpperCase() || null;
+      const key = `${make}|${model}|${variant || ""}|${drivetrain || ""}`;
 
       if (!groups.has(key)) {
-        groups.set(key, { make, model, variant, profits: [], sale_prices: [], years: [], sale_dates: [], kms: [] });
+        groups.set(key, { make, model, variant, drivetrain, profits: [], sale_prices: [], years: [], sale_dates: [], kms: [] });
       }
       const g = groups.get(key)!;
       g.profits.push(profit);
@@ -85,6 +98,7 @@ Deno.serve(async (req) => {
           make: g.make,
           model: g.model,
           variant: g.variant,
+          drivetrain: g.drivetrain,
           total_profit: Math.round(totalProfit),
           avg_profit: Math.round(avgProfit),
           times_sold: g.profits.length,
@@ -111,6 +125,7 @@ Deno.serve(async (req) => {
         make: w.make,
         model: w.model,
         variant: w.variant,
+        drivetrain: w.drivetrain,
         year_min: w.year_min,
         year_max: w.year_max,
         total_profit: w.total_profit,
@@ -123,7 +138,7 @@ Deno.serve(async (req) => {
         km_band_high: w.km_band_high,
         rank: i + 1,
         updated_at: new Date().toISOString(),
-      }, { onConflict: "account_id,make,model,variant" });
+      }, { onConflict: "account_id,make,model,variant,drivetrain" });
 
       if (uErr) {
         console.error(`[WINNERS] Upsert error for ${w.make} ${w.model}:`, uErr.message);
@@ -133,14 +148,14 @@ Deno.serve(async (req) => {
     }
 
     // Clean out old entries not in top N
-    const keepKeys = ranked.map(w => `${w.make}|${w.model}|${w.variant || ""}`);
+    const keepKeys = ranked.map(w => `${w.make}|${w.model}|${w.variant || ""}|${w.drivetrain || ""}`);
     const { data: existing } = await sb.from("winners_watchlist")
-      .select("id, make, model, variant")
+      .select("id, make, model, variant, drivetrain")
       .eq("account_id", accountId);
 
     if (existing) {
       for (const e of existing) {
-        const key = `${e.make}|${e.model}|${e.variant || ""}`;
+        const key = `${e.make}|${e.model}|${e.variant || ""}|${(e as any).drivetrain || ""}`;
         if (!keepKeys.includes(key)) {
           await sb.from("winners_watchlist").delete().eq("id", e.id);
         }

@@ -59,6 +59,8 @@ export function TargetCard({
   onReactivate,
 }: TargetCardProps) {
   const cleanedVariant = cleanVariant(t.variant);
+  const driveLabel = t.drive_type?.toUpperCase();
+  const showDrivetrain = driveLabel && ["4WD", "AWD", "4X4"].includes(driveLabel);
   const dnaLabel = [
     t.year_from && t.year_to
       ? `${t.year_from}–${t.year_to}`
@@ -97,6 +99,16 @@ export function TargetCard({
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-base leading-tight">{dnaLabel}</CardTitle>
           <div className="flex items-center gap-1.5 shrink-0">
+            {showDrivetrain && (
+              <Badge variant="outline" className="text-xs bg-sky-500/10 text-sky-700 border-sky-300">
+                {driveLabel}
+              </Badge>
+            )}
+            {driveLabel && ["2WD", "FWD", "RWD"].includes(driveLabel) && (
+              <Badge variant="outline" className="text-xs bg-muted text-muted-foreground border-border">
+                {driveLabel}
+              </Badge>
+            )}
             <Badge variant="outline" className={confidenceBadge + " text-xs"}>
               {t.confidence_level}
             </Badge>

@@ -224,6 +224,11 @@ export default function LiveAlertsPage() {
                                 {opp.variant}
                               </Badge>
                             )}
+                            {opp.drivetrain && (
+                              <Badge variant="outline" className="text-xs bg-sky-500/10 text-sky-600 border-sky-300">
+                                {opp.drivetrain}
+                              </Badge>
+                            )}
                           </div>
                           <h3 className="font-semibold text-foreground">
                             {opp.year ?? "?"} {opp.make} {opp.model} {opp.variant || ""}

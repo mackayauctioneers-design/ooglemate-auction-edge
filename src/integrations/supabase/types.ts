@@ -8890,6 +8890,7 @@ export type Database = {
           avg_km: number | null
           avg_profit: number | null
           created_at: string
+          drivetrain: string | null
           id: string
           km_band_high: number | null
           km_band_low: number | null
@@ -8910,6 +8911,7 @@ export type Database = {
           avg_km?: number | null
           avg_profit?: number | null
           created_at?: string
+          drivetrain?: string | null
           id?: string
           km_band_high?: number | null
           km_band_low?: number | null
@@ -8930,6 +8932,7 @@ export type Database = {
           avg_km?: number | null
           avg_profit?: number | null
           created_at?: string
+          drivetrain?: string | null
           id?: string
           km_band_high?: number | null
           km_band_low?: number | null
