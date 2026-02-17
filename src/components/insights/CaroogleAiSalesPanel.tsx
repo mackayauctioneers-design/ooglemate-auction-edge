@@ -37,7 +37,18 @@ interface KmInsight {
   summary: string;
 }
 
+interface OverallStats {
+  total_sales: number;
+  net_profit: number;
+  avg_profit: number;
+  pct_profitable: number;
+  sales_with_profit_data: number;
+  sales_with_km: number;
+  km_coverage_pct: number;
+}
+
 interface AssessmentResponseV2 {
+  overall_stats?: OverallStats;
   executive_summary: string;
   proven_fingerprints: ProvenFingerprint[];
   loss_patterns: string[];
@@ -45,7 +56,6 @@ interface AssessmentResponseV2 {
   recommendations: string[];
   comparison_note: string | null;
   warnings: string[];
-  // Legacy fields (ignored but present)
   summary?: string[];
   core_engines?: any[];
   shape_winners?: any[];
@@ -190,6 +200,42 @@ export function CaroogleAiSalesPanel({ accountId, dealerName }: Props) {
         {/* ── Deep Assessment Content ── */}
         {!isLoading && hasAssessment && data && (
           <>
+            {/* Real Stats Header */}
+            {data.overall_stats && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-md border border-border bg-muted/30 p-3 text-center">
+                  <p className="text-2xl font-bold">{data.overall_stats.total_sales.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">Total Sales</p>
+                </div>
+                <div className="rounded-md border border-border bg-muted/30 p-3 text-center">
+                  <p className={`text-2xl font-bold ${data.overall_stats.net_profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {formatDollars(data.overall_stats.net_profit)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Net Profit</p>
+                </div>
+                <div className="rounded-md border border-border bg-muted/30 p-3 text-center">
+                  <p className={`text-2xl font-bold ${data.overall_stats.avg_profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {formatDollars(data.overall_stats.avg_profit)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Avg Profit / Vehicle</p>
+                </div>
+                <div className="rounded-md border border-border bg-muted/30 p-3 text-center">
+                  <p className="text-2xl font-bold">{data.overall_stats.pct_profitable}%</p>
+                  <p className="text-xs text-muted-foreground">Profitable</p>
+                </div>
+              </div>
+            )}
+
+            {/* KM Coverage Warning */}
+            {data.overall_stats && data.overall_stats.km_coverage_pct < 20 && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
+                <p className="text-xs text-amber-400/90">
+                  KM data limited — only {data.overall_stats.km_coverage_pct}% of sales have odometer readings. Recommend adding KM to future uploads for tighter matching.
+                </p>
+              </div>
+            )}
+
             {/* Executive Summary */}
             {data.executive_summary && (
               <div className="rounded-md border border-primary/20 bg-primary/5 p-4">

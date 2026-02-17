@@ -194,6 +194,7 @@ serve(async (req) => {
     if (rawSales.length < 3) {
       return new Response(
         JSON.stringify({
+          overall_stats: computeOverallStats(rawSales),
           executive_summary: "",
           proven_fingerprints: [],
           loss_patterns: [],
@@ -446,6 +447,7 @@ Keep total output under 600 words. Concise, commercial, replication-oriented.`,
     }
 
     const result = {
+      overall_stats: overallStats,
       executive_summary: typeof assessment.executive_summary === "string" ? assessment.executive_summary : "",
       proven_fingerprints: Array.isArray(assessment.proven_fingerprints) ? assessment.proven_fingerprints.slice(0, 10) : [],
       loss_patterns: Array.isArray(assessment.loss_patterns) ? assessment.loss_patterns.slice(0, 6) : [],
