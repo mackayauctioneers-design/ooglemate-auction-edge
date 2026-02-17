@@ -33,8 +33,9 @@ export interface LiveMatch {
   status: string | null;
   first_seen_at: string | null;
   drivetrain: string | null;
-  price_delta: number | null; // historical buy - current asking (positive = cheaper than what we paid)
+  price_delta: number | null;
   est_profit: number | null;
+  variant_match: boolean;
 }
 
 export interface SaleWithMatches {
@@ -137,9 +138,9 @@ export function useBuyAgainTargets(accountId: string) {
             drivetrain: s.drive_type || extractDrivetrain(s.description_raw),
           };
         })
-        .filter((s) => s.profit > 0)
+        .filter((s) => s.profit >= 5000)
         .sort((a, b) => b.profit - a.profit)
-        .slice(0, 40);
+        .slice(0, 20);
 
       if (!enriched.length) return [];
 
@@ -167,10 +168,10 @@ export function useBuyAgainTargets(accountId: string) {
           // Model must match
           if (l.model.toUpperCase() !== sale.model.toUpperCase()) continue;
 
-          // Variant: exact or normalized match
+          // Variant: soft indicator only, NOT a hard filter
           const saleVariant = normalizeVariant(sale.variant || sale.badge || sale.description_raw);
           const listingVariant = normalizeVariant(l.variant_raw || l.variant_family);
-          if (saleVariant && listingVariant && saleVariant !== listingVariant) continue;
+          const variantMatch = !!(saleVariant && listingVariant && saleVariant === listingVariant);
 
           // Year ± 1
           if (sale.year && l.year) {
@@ -210,6 +211,7 @@ export function useBuyAgainTargets(accountId: string) {
             drivetrain: l.drivetrain,
             price_delta: priceDelta,
             est_profit: estProfit,
+            variant_match: variantMatch,
           });
         }
 
