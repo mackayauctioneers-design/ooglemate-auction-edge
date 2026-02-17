@@ -165,11 +165,13 @@ export function usePlatformClusters(accountId: string) {
       if (cErr) throw cErr;
       if (!clusters?.length) return [];
 
-      // 2. Pull active listings
+      // 2. Pull active listings (7-day freshness enforced)
+      const freshCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
       const { data: listings, error: lErr } = await supabase
         .from("vehicle_listings")
         .select("id, make, model, variant_raw, variant_family, year, km, asking_price, listing_url, source, status, first_seen_at, drivetrain")
         .in("status", ["catalogue", "listed"])
+        .gte("last_seen_at", freshCutoff)
         .order("asking_price", { ascending: true, nullsFirst: false })
         .limit(1000);
       if (lErr) throw lErr;
