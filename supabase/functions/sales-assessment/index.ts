@@ -47,19 +47,73 @@ interface AggBadge {
   profits: number[];
 }
 
+// Noise tokens to strip from description-derived badge names
+const NOISE_TOKENS = new Set([
+  "cab", "chassis", "single", "double", "dual", "wagon", "ute", "utility",
+  "hatchback", "sedan", "coupe", "convertible", "van", "bus", "troopcarrier",
+  "pick-up", "pickup", "suv", "tray", "wellside", "wellbody", "flatbed",
+  "4dr", "5dr", "3dr", "2dr", "7st", "8st", "5st", "12st", "10st",
+  "man", "auto", "spts", "cvt", "dsg", "amt",
+  "4x4", "4x2", "4wd", "2wd", "awd", "rwd", "fwd",
+  "sp", "spd",
+  "seat", "seats",
+  "high", "roof", "super", "lwb", "swb", "commuter",
+  "dr", "st",
+]);
+
+// Match chassis codes like VDJ200R, VDJL79R, FJA300R, GDJ150R, MY17 etc.
+const CHASSIS_RE = /^[A-Z]{2,5}\d{2,4}[A-Z]?$/;
+const MY_RE = /^MY\d{2,4}$/i;
+// Match engine specs like 4.5DT, 3.3DTT, 2.8DT, 4.5i, 2.0T
+const ENGINE_RE = /^\d\.\d[A-Za-z]{1,4}$/;
+// Match seat counts like "(5", "(2", "Seat)", etc.
+const SEAT_PAREN_RE = /^\(?\d+\)?$/;
+
+// Match transmission speed patterns like "5sp", "6sp", "10sp"
+const SPEED_RE = /^\d{1,2}sp$/i;
+// Match weight/towing like "744kg", "3500kg"
+const WEIGHT_RE = /^\d+kg$/i;
+// Match seat patterns in parens like "(5" or "Seat)"
+const SEAT_DETAIL_RE = /^\(?(\d+)\s*seat\)?$/i;
+
+function cleanBadgeToken(t: string): boolean {
+  const lower = t.toLowerCase().replace(/[(),]/g, "");
+  if (!lower || lower.length < 2) return false;
+  if (NOISE_TOKENS.has(lower)) return false;
+  if (CHASSIS_RE.test(t)) return false;
+  if (MY_RE.test(t)) return false;
+  if (ENGINE_RE.test(t)) return false;
+  if (SEAT_PAREN_RE.test(t.replace(/[()]/g, ""))) return false;
+  if (SPEED_RE.test(t)) return false;
+  if (WEIGHT_RE.test(t)) return false;
+  if (SEAT_DETAIL_RE.test(t)) return false;
+  // Pure numbers like speed "5", "6", "10"
+  if (/^\d{1,2}$/.test(t)) return false;
+  // Parenthesized tokens like "(5" or "Seat)"
+  if (/^\(.*\)$/.test(t) || /^\(\d/.test(t) || /\d\)$/.test(t)) return false;
+  return true;
+}
+
 function extractBadge(r: RawSale): string {
-  // Prefer badge, then variant, then series, fallback to description snippet
+  // Prefer badge, then variant, then series if they exist
   if (r.badge && r.badge.trim()) return r.badge.trim();
   if (r.variant && r.variant.trim()) return r.variant.trim();
   if (r.series && r.series.trim()) return r.series.trim();
-  // Try to extract from description_raw (first meaningful word after make/model)
+
+  // Extract clean badge from description_raw
+  // Pattern: "Make Model Year [ChassisCode] Badge BodyType Doors Trans Speed Drivetrain Engine"
   if (r.description_raw) {
     const desc = r.description_raw.trim();
-    // Common pattern: "2021 Toyota Landcruiser VDJ200R VX" — extract after model
     const parts = desc.split(/\s+/);
     if (parts.length >= 4) {
-      // Skip year, make, model — take the rest
-      return parts.slice(3).join(" ").substring(0, 40);
+      // Skip Make (index 0), Model (index 1), Year (index 2) — rest is badge + noise
+      // But first token after year is often chassis code (e.g. VDJ200R)
+      const afterMakeModelYear = parts.slice(3);
+      const cleaned = afterMakeModelYear.filter(cleanBadgeToken);
+      if (cleaned.length > 0) {
+        // Take first 1-3 meaningful tokens as badge
+        return cleaned.slice(0, 3).join(" ");
+      }
     }
   }
   return "(unspecified)";
