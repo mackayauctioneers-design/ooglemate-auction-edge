@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useCallback } from "react";
 
@@ -86,7 +86,6 @@ function persistDismissedIds(accountId: string, ids: Set<string>) {
 
 export function useBuyAgainTargets(accountId: string) {
   const queryKey = ["buy-again-sales", accountId];
-  const queryClient = useQueryClient();
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => getDismissedIds(accountId));
 
   const dismissSale = useCallback((saleId: string) => {
@@ -96,14 +95,12 @@ export function useBuyAgainTargets(accountId: string) {
       persistDismissedIds(accountId, next);
       return next;
     });
-    queryClient.invalidateQueries({ queryKey });
-  }, [accountId, queryClient, queryKey]);
+  }, [accountId]);
 
   const clearDismissed = useCallback(() => {
     setDismissedIds(new Set());
     localStorage.removeItem(getDismissedKey(accountId));
-    queryClient.invalidateQueries({ queryKey });
-  }, [accountId, queryClient, queryKey]);
+  }, [accountId]);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey,
@@ -120,7 +117,6 @@ export function useBuyAgainTargets(accountId: string) {
       if (sErr) throw sErr;
       if (!sales?.length) return [];
 
-      // Compute profit and filter to top profitable sales (profit > $5k or top 15)
       const enriched: ProfitableSale[] = sales
         .map((s) => {
           const profit = (s.sale_price || 0) - Number(s.buy_price || 0);
@@ -142,9 +138,9 @@ export function useBuyAgainTargets(accountId: string) {
             drivetrain: s.drive_type || extractDrivetrain(s.description_raw),
           };
         })
-        .filter((s) => s.profit > 0 && !dismissedIds.has(s.id))
+        .filter((s) => s.profit > 0)
         .sort((a, b) => b.profit - a.profit)
-        .slice(0, 15);
+        .slice(0, 30); // fetch more, we'll filter dismissed client-side
 
       if (!enriched.length) return [];
 
@@ -167,17 +163,14 @@ export function useBuyAgainTargets(accountId: string) {
           if (l.make.toUpperCase() !== sale.make.toUpperCase()) continue;
           if (l.model.toUpperCase() !== sale.model.toUpperCase()) continue;
 
-          // Year filter: ±2 years of the sale
           if (sale.year && l.year) {
             if (Math.abs(l.year - sale.year) > 2) continue;
           }
 
-          // Drivetrain hard-skip
           const ld = (l.drivetrain || "").toUpperCase();
           const sd = (sale.drivetrain || "").toUpperCase();
           if (["2WD", "FWD"].includes(ld) && ["4X4", "4WD", "AWD"].includes(sd)) continue;
 
-          // KM scoring
           const { score: kmScore, diff: kmDiff } = scoreKm(l.km, sale.km);
           if (kmScore === 0.0) continue;
 
@@ -212,8 +205,11 @@ export function useBuyAgainTargets(accountId: string) {
     enabled: !!accountId,
   });
 
+  // Filter dismissed sales client-side from cached data — instant, no re-fetch
+  const filtered = (data || []).filter((g) => !dismissedIds.has(g.sale.id)).slice(0, 15);
+
   return {
-    groups: data || [],
+    groups: filtered,
     isLoading,
     refetch,
     dismissSale,
