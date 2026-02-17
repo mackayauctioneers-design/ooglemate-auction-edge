@@ -62,50 +62,10 @@ export function useBuyAgainTargets(accountId: string) {
         .in("status", ["candidate", "active", "paused"]);
 
       if (count && count > 0) {
-        return { seeded: 0, message: "Targets already exist" };
+        return { seeded: 0, message: "Targets already exist — use Clear & Re-Seed to refresh" };
       }
 
-      // Pull from sales_target_candidates
-      const { data: candidates, error: cErr } = await supabase
-        .from("sales_target_candidates")
-        .select("*")
-        .eq("account_id", accountId)
-        .in("status", ["candidate", "active"])
-        .order("target_score", { ascending: false })
-        .limit(30);
-
-      if (cErr) throw cErr;
-      if (!candidates?.length) return { seeded: 0, message: "No candidates found" };
-
-      const rows = candidates.map((c: any) => ({
-        account_id: accountId,
-        make: c.make,
-        model: c.model,
-        variant: c.variant,
-        transmission: c.transmission,
-        fuel_type: c.fuel_type,
-        drive_type: c.drive_type,
-        body_type: c.body_type,
-        median_profit: c.median_profit,
-        median_profit_pct: c.median_profit_pct,
-        median_days_to_clear: c.median_days_to_clear,
-        median_sale_price: c.median_sale_price,
-        median_km: c.median_km,
-        total_sales: c.sales_count,
-        confidence_level: c.confidence_level?.toUpperCase() || "LOW",
-        spec_completeness: c.spec_completeness || 0,
-        target_score: c.target_score || 0,
-        origin: "sales_truth" as const,
-        status: "candidate" as const,
-        source_candidate_id: c.id,
-      }));
-
-      const { error: iErr } = await supabase
-        .from("fingerprint_targets")
-        .insert(rows);
-      if (iErr) throw iErr;
-
-      return { seeded: rows.length };
+      return await doSeed();
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey });
@@ -117,6 +77,75 @@ export function useBuyAgainTargets(accountId: string) {
     },
     onError: (err: any) => toast.error(err.message),
   });
+
+  // Clear & Re-Seed: retire all existing, then seed fresh
+  const clearAndReseedMutation = useMutation({
+    mutationFn: async () => {
+      // Retire all non-retired targets for this account
+      const { data: retired, error: rErr } = await supabase
+        .from("fingerprint_targets")
+        .update({ status: "retired" })
+        .eq("account_id", accountId)
+        .in("status", ["candidate", "active", "paused"])
+        .select("id");
+      if (rErr) throw rErr;
+      const retiredCount = retired?.length || 0;
+
+      const result = await doSeed();
+      return { ...result, retiredCount };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey });
+      toast.success(
+        `Cleared ${data.retiredCount} old targets, seeded ${data.seeded} fresh`
+      );
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  async function doSeed() {
+    // Pull from sales_target_candidates
+    const { data: candidates, error: cErr } = await supabase
+      .from("sales_target_candidates")
+      .select("*")
+      .eq("account_id", accountId)
+      .in("status", ["candidate", "active"])
+      .order("target_score", { ascending: false })
+      .limit(30);
+
+    if (cErr) throw cErr;
+    if (!candidates?.length) return { seeded: 0, message: "No candidates found in sales data" };
+
+    const rows = candidates.map((c: any) => ({
+      account_id: accountId,
+      make: c.make,
+      model: c.model,
+      variant: c.variant,
+      transmission: c.transmission,
+      fuel_type: c.fuel_type,
+      drive_type: c.drive_type,
+      body_type: c.body_type,
+      median_profit: c.median_profit,
+      median_profit_pct: c.median_profit_pct,
+      median_days_to_clear: c.median_days_to_clear,
+      median_sale_price: c.median_sale_price,
+      median_km: c.median_km,
+      total_sales: c.sales_count,
+      confidence_level: c.confidence_level?.toUpperCase() || "LOW",
+      spec_completeness: c.spec_completeness || 0,
+      target_score: c.target_score || 0,
+      origin: "sales_truth" as const,
+      status: "candidate" as const,
+      source_candidate_id: c.id,
+    }));
+
+    const { error: iErr } = await supabase
+      .from("fingerprint_targets")
+      .insert(rows);
+    if (iErr) throw iErr;
+
+    return { seeded: rows.length };
+  }
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -145,6 +174,8 @@ export function useBuyAgainTargets(accountId: string) {
     isLoading,
     seed: seedMutation.mutate,
     isSeeding: seedMutation.isPending,
+    clearAndReseed: clearAndReseedMutation.mutate,
+    isClearing: clearAndReseedMutation.isPending,
     promote: (id: string) => updateStatus.mutate({ id, status: "active" }),
     dismiss: (id: string) => updateStatus.mutate({ id, status: "retired" }),
     pause: (id: string) => updateStatus.mutate({ id, status: "paused" }),

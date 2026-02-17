@@ -7,7 +7,7 @@ import { TargetCard } from "@/components/buy-again/TargetCard";
 import { ListingsSearchModal } from "@/components/buy-again/ListingsSearchModal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, RefreshCw, Crosshair, Zap, Pause } from "lucide-react";
+import { Loader2, RefreshCw, Crosshair, Zap, Pause, Trash2 } from "lucide-react";
 
 export default function BuyAgainTargetsPage() {
   const { data: accounts } = useAccounts();
@@ -27,6 +27,8 @@ export default function BuyAgainTargetsPage() {
     isLoading,
     seed,
     isSeeding,
+    clearAndReseed,
+    isClearing,
     promote,
     dismiss,
     pause,
@@ -35,6 +37,7 @@ export default function BuyAgainTargetsPage() {
   } = useBuyAgainTargets(accountId);
 
   const totalTargets = candidates.length + active.length + paused.length;
+  const isBusy = isSeeding || isClearing;
 
   return (
     <AppLayout>
@@ -50,12 +53,13 @@ export default function BuyAgainTargetsPage() {
               Your live sourcing engine — built from what you've already proven you can sell.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <AccountSelector value={accountId} onChange={setAccountId} />
             <Button
               onClick={() => seed()}
-              disabled={isSeeding || !accountId}
+              disabled={isBusy || !accountId}
               variant="outline"
+              size="sm"
             >
               {isSeeding ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-1" />
@@ -63,6 +67,20 @@ export default function BuyAgainTargetsPage() {
                 <RefreshCw className="h-4 w-4 mr-1" />
               )}
               Seed From Sales
+            </Button>
+            <Button
+              onClick={() => clearAndReseed()}
+              disabled={isBusy || !accountId}
+              variant="outline"
+              size="sm"
+              className="border-destructive/30 text-destructive hover:bg-destructive/10"
+            >
+              {isClearing ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-1" />
+              )}
+              Clear &amp; Re-Seed
             </Button>
           </div>
         </div>
@@ -74,9 +92,10 @@ export default function BuyAgainTargetsPage() {
         ) : totalTargets === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Crosshair className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="font-medium">No targets yet</p>
-            <p className="text-sm">
-              Click "Seed From Sales" to generate targets from your sales history.
+            <p className="font-medium">No active targets</p>
+            <p className="text-sm mt-1">
+              Click <strong>"Seed From Sales"</strong> to generate targets from your sales history,
+              <br />or <strong>"Clear &amp; Re-Seed"</strong> to retire old ones and start fresh.
             </p>
           </div>
         ) : (
