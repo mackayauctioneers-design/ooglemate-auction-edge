@@ -65,7 +65,18 @@ function MatchCard({ match }: { match: LiveMatch }) {
   return (
     <div className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors gap-3">
       <div className="space-y-0.5 min-w-0 flex-1">
-        <p className="text-sm font-medium truncate">{label}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium truncate">{label}</p>
+          {match.match_type === "exact" ? (
+            <Badge variant="outline" className="text-[10px] px-1 py-0 bg-green-500/10 text-green-700 border-green-300 shrink-0">
+              EXACT
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-[10px] px-1 py-0 bg-sky-500/10 text-sky-700 border-sky-300 shrink-0">
+              ⬆ UPGRADE
+            </Badge>
+          )}
+        </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
           {match.km != null && <span>{Math.round(match.km / 1000)}k km</span>}
           {match.drivetrain && (

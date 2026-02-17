@@ -36,6 +36,7 @@ export interface LiveMatch {
   drivetrain: string | null;
   est_profit: number | null;
   under_median_buy: number | null;
+  match_type: "exact" | "upgrade";
 }
 
 export interface PatternWithMatches {
@@ -291,7 +292,16 @@ export function useBuyAgainTargets(accountId: string) {
 
       if (!patterns.length) return [];
 
-      // ─── STEP 2: Pull active listings (fresh only — last 14 days) ───
+      // ─── STEP 2: Load trim ladder for upgrade matching ───
+      const { data: trimLadder } = await supabase
+        .from("trim_ladder")
+        .select("make, model, trim_class, trim_rank");
+      const trimRankMap = new Map<string, number>();
+      for (const row of trimLadder || []) {
+        trimRankMap.set(`${row.make}|${row.model}|${row.trim_class}`, row.trim_rank);
+      }
+
+      // ─── STEP 3: Pull active listings (fresh only — last 7 days) ───
       const freshCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
       const { data: listings, error: lErr } = await supabase
         .from("vehicle_listings")
@@ -315,9 +325,24 @@ export function useBuyAgainTargets(accountId: string) {
           if (l.make.toUpperCase() !== pattern.make.toUpperCase()) continue;
           // Model exact
           if (l.model.toUpperCase() !== pattern.model.toUpperCase()) continue;
-          // Trim class exact
+          // Trim class: exact or one-step upgrade (never downgrade)
           const listingTrim = deriveTrimClass(l.make, l.model, l.variant_raw || l.variant_family);
-          if (listingTrim !== pattern.trim_class) continue;
+          let matchType: "exact" | "upgrade" | null = null;
+
+          if (listingTrim === pattern.trim_class) {
+            matchType = "exact";
+          } else {
+            // Check trim ladder for one-step upgrade
+            const makeUp = l.make.toUpperCase();
+            const modelUp = l.model.toUpperCase();
+            const patternRank = trimRankMap.get(`${makeUp}|${modelUp}|${pattern.trim_class}`);
+            const listingRank = trimRankMap.get(`${makeUp}|${modelUp}|${listingTrim}`);
+            if (patternRank != null && listingRank != null && listingRank === patternRank + 1) {
+              matchType = "upgrade";
+            }
+          }
+          if (!matchType) continue;
+
           // Year within band
           if (l.year && (l.year < pattern.year_min || l.year > pattern.year_max)) continue;
           // KM within band
@@ -352,6 +377,7 @@ export function useBuyAgainTargets(accountId: string) {
             drivetrain: l.drivetrain,
             est_profit: estProfit,
             under_median_buy: underMedianBuy,
+            match_type: matchType,
           });
         }
 
