@@ -291,11 +291,13 @@ export function useBuyAgainTargets(accountId: string) {
 
       if (!patterns.length) return [];
 
-      // ─── STEP 2: Pull active listings ───
+      // ─── STEP 2: Pull active listings (fresh only — last 14 days) ───
+      const freshCutoff = new Date(Date.now() - 14 * 86400000).toISOString();
       const { data: listings, error: lErr } = await supabase
         .from("vehicle_listings")
         .select("id, make, model, variant_raw, variant_family, year, km, asking_price, listing_url, source, status, first_seen_at, drivetrain")
         .in("status", ["catalogue", "listed"])
+        .gte("first_seen_at", freshCutoff)
         .order("asking_price", { ascending: true, nullsFirst: false })
         .limit(1000);
       if (lErr) throw lErr;
