@@ -32,6 +32,7 @@ import UnifiedAlertsPage from "./pages/UnifiedAlertsPage";
 // Operator pages
 import OperatorDashboardPage from "./pages/operator/OperatorDashboardPage";
 import OperatorIngestionHealthPage from "./pages/operator/OperatorIngestionHealthPage";
+import IngestionAuditPage from "./pages/operator/IngestionAuditPage";
 import CronAuditPage from "./pages/operator/CronAuditPage";
 import TrapHealthAlertsPage from "./pages/operator/TrapHealthAlertsPage";
 import JobQueuePage from "./pages/operator/JobQueuePage";
@@ -151,6 +152,9 @@ const App = () => (
               {/* Monitoring */}
               <Route path="/operator/ingestion-health" element={
                 <OperatorGuard><OperatorIngestionHealthPage /></OperatorGuard>
+              } />
+              <Route path="/operator/ingestion-audit" element={
+                <OperatorGuard><IngestionAuditPage /></OperatorGuard>
               } />
               <Route path="/operator/cron-audit" element={
                 <OperatorGuard><CronAuditPage /></OperatorGuard>

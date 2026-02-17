@@ -54,6 +54,7 @@ const operatorSections: NavSection[] = [
     title: 'Monitoring',
     items: [
       { path: '/operator/ingestion-health', label: 'Ingestion Health', icon: Activity },
+      { path: '/operator/ingestion-audit', label: 'Ingestion Audit', icon: Database },
       { path: '/operator/cron-audit', label: 'Cron Audit Log', icon: Clock },
       { path: '/operator/trap-health', label: 'Trap Health Alerts', icon: AlertTriangle },
       { path: '/operator/job-queue', label: 'Job Queue', icon: ListOrdered },
