@@ -146,8 +146,30 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
 
       const make = slugMatch[2].charAt(0).toUpperCase() + slugMatch[2].slice(1);
       const modelParts = slugMatch[3].split("-");
-      const model = modelParts[0].charAt(0).toUpperCase() + modelParts[0].slice(1);
-      const variant = modelParts.slice(1).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
+      // ── Multi-word model detection (e.g. landcruiser-prado, pajero-sport, bt-50, d-max, mu-x) ──
+      const MULTI_WORD_MODELS: Record<string, string[]> = {
+        "landcruiser": ["prado"],
+        "pajero": ["sport"],
+        "bt": ["50"],
+        "d": ["max"],
+        "mu": ["x"],
+        "cx": ["3", "5", "8", "9", "30", "50", "60"],
+        "x": ["trail"],
+        "rav": ["4"],
+      };
+
+      let modelWordCount = 1;
+      const firstPart = modelParts[0].toLowerCase();
+      if (MULTI_WORD_MODELS[firstPart] && modelParts.length > 1) {
+        const nextPart = modelParts[1].toLowerCase();
+        if (MULTI_WORD_MODELS[firstPart].includes(nextPart)) {
+          modelWordCount = 2;
+        }
+      }
+
+      const model = modelParts.slice(0, modelWordCount).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+      const variant = modelParts.slice(modelWordCount).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
       const lotId = slugMatch[4];
 
       if (SALVAGE_RE.test(`${item.title || ""} ${make} ${model} ${variant}`)) continue;
