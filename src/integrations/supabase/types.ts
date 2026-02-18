@@ -9888,6 +9888,7 @@ export type Database = {
           last_sold_at: string | null
           make: string | null
           model: string | null
+          platform_class: string | null
           price_median: number | null
           sales_count: number | null
           transmission_count: number | null
