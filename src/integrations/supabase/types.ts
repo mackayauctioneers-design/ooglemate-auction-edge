@@ -10438,6 +10438,10 @@ export type Database = {
         Args: { p_make: string; p_model: string; p_year: number }
         Returns: string
       }
+      derive_platform: {
+        Args: { p_make: string; p_model: string; p_year: number }
+        Returns: string
+      }
       derive_presence_events: {
         Args: { p_run_id: string; p_source?: string; p_stale_hours?: number }
         Returns: {
