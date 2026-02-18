@@ -258,7 +258,7 @@ async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ ne
         updates.variant_family = badgeFromTitle.toUpperCase();
       }
       if (driveFromTitle !== "UNKNOWN" && !existing.drivetrain) {
-        updates.drivetrain = driveFromTitle === "4X4" ? "4x4" : "2WD";
+        updates.drivetrain = driveFromTitle === "4WD" ? "4x4" : "2WD";
       }
 
       const { error } = await sb.from("vehicle_listings").update(updates).eq("id", existing.id);
@@ -278,7 +278,7 @@ async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ ne
         model: l.model.toUpperCase(),
         variant_raw: badgeFromTitle,
         variant_family: badgeFromTitle ? badgeFromTitle.toUpperCase() : null,
-        drivetrain: driveFromTitle !== "UNKNOWN" ? (driveFromTitle === "4X4" ? "4x4" : "2WD") : null,
+        drivetrain: driveFromTitle !== "UNKNOWN" ? (driveFromTitle === "4WD" ? "4x4" : "2WD") : null,
         year: l.year,
         km: l.kms,
         asking_price: l.price > 0 ? l.price : null,
@@ -317,17 +317,13 @@ async function markStaleInactive(sb: any): Promise<number> {
 
 // ─── DERIVE PLATFORM (mirrors DB function) ──────────────────────────────────
 
-function derivePlatform(make: string, model: string, year: number): string {
+function derivePlatform(make: string, model: string, _year: number): string {
   const m = (make || "").toUpperCase().trim();
   const mo = (model || "").toUpperCase().trim();
 
   if (m === "TOYOTA") {
     if (mo.includes("PRADO")) return "PRADO";
-    if (mo.includes("LANDCRUISER")) {
-      if (year >= 2022) return "LC300";
-      if (year >= 2008) return "LC200";
-      return "LC_OTHER";
-    }
+    if (mo.includes("LANDCRUISER")) return "LANDCRUISER";
   }
   if (m === "MITSUBISHI" && mo === "OUTLANDER") return "OUTLANDER";
   return `${m}:${mo}`;
@@ -447,7 +443,7 @@ function deriveTrimClass(make: string, model: string, variant: string): string {
 function drivetrainBucket(val: string | null): string {
   if (!val) return "UNKNOWN";
   const v = val.toUpperCase();
-  if (/4X4|4WD|AWD/.test(v)) return "4X4";
+  if (/4X4|4WD|AWD/.test(v)) return "4WD";
   if (/2WD|2X4|FWD|RWD|4X2/.test(v)) return "2WD";
   return "UNKNOWN";
 }
@@ -496,36 +492,35 @@ function extractBadgeFromDescription(descRaw: string | null): string {
 function extractDriveFromDescription(descRaw: string | null): string {
   if (!descRaw) return "UNKNOWN";
   const d = descRaw.toUpperCase();
-  if (/\b4X4\b|\b4WD\b|\bAWD\b/.test(d)) return "4X4";
+  if (/\b4X4\b|\b4WD\b|\bAWD\b/.test(d)) return "4WD";
   if (/\b2WD\b|\b4X2\b|\bFWD\b|\bRWD\b/.test(d)) return "2WD";
   return "UNKNOWN";
 }
 
-// ─── TRIM LADDER (one-step upgrade matching) ─────────────────────────────────
+// ─── TRIM LADDER (clean badge names, matching DB derive_trim_from_text) ───────
 
 const TRIM_LADDER: Record<string, Record<string, number>> = {
-  "TOYOTA:LANDCRUISER": { LC70_BASE: 1, LC70_GX: 2, LC70_GXL: 3, LC70_VX: 4, LC70_SAHARA: 5, LC70_SPECIAL: 6 },
-  "TOYOTA:LANDCRUISER 200": { LC200_GX: 1, LC200_GXL: 2, LC200_VX: 3, LC200_SAHARA: 4 },
-  "TOYOTA:LANDCRUISER 300": { LC300_GX: 1, LC300_GXL: 2, LC300_VX: 3, LC300_SAHARA: 4 },
-  "TOYOTA:PRADO": { PRADO_GX: 1, PRADO_GXL: 2, PRADO_VX: 3, PRADO_KAKADU: 4 },
-  "TOYOTA:HILUX": { HILUX_BASE: 1, HILUX_SR: 2, HILUX_SR5: 3, HILUX_ROGUE: 4, HILUX_RUGGED: 5 },
-  "TOYOTA:HIACE": { HIACE_LWB: 1, HIACE_SLWB: 2, HIACE_COMMUTER: 3 },
-  "FORD:RANGER": { RANGER_XL: 1, RANGER_XLS: 2, RANGER_XLT: 3, RANGER_WILDTRAK: 4, RANGER_RAPTOR: 5 },
-  "FORD:EVEREST": { EVEREST_AMBIENTE: 1, EVEREST_TREND: 2, EVEREST_TITANIUM: 3 },
-  "ISUZU:D-MAX": { DMAX_SX: 1, DMAX_LSM: 2, DMAX_LSU: 3, DMAX_XTERRAIN: 4 },
-  "ISUZU:DMAX": { DMAX_SX: 1, DMAX_LSM: 2, DMAX_LSU: 3, DMAX_XTERRAIN: 4 },
-  "ISUZU:MU-X": { MUX_LSM: 1, MUX_LSU: 2, MUX_LST: 3 },
-  "ISUZU:MUX": { MUX_LSM: 1, MUX_LSU: 2, MUX_LST: 3 },
-  "MITSUBISHI:TRITON": { TRITON_GLX: 1, TRITON_GLXPLUS: 2, TRITON_GLS: 3 },
-  "MITSUBISHI:OUTLANDER": { OUTLANDER_ES: 1, OUTLANDER_LS: 2, OUTLANDER_ASPIRE: 3, OUTLANDER_EXCEED: 4, OUTLANDER_EXCEED_TOURER: 5 },
-  "NISSAN:NAVARA": { NAVARA_SL: 1, NAVARA_ST: 2, NAVARA_STL: 3, NAVARA_STX: 4, NAVARA_PRO4X: 5 },
-  "NISSAN:PATROL": { PATROL_TI: 1, PATROL_TIL: 2 },
+  "LANDCRUISER": { WORKMATE: 1, GX: 2, GXL: 3, VX: 4, SAHARA: 5 },
+  "PRADO": { GX: 1, GXL: 2, VX: 3, KAKADU: 4 },
+  "TOYOTA:HILUX": { WORKMATE: 1, SR: 2, SR5: 3, ROGUE: 4, RUGGED: 5 },
+  "TOYOTA:HIACE": { LWB: 1, SLWB: 2, COMMUTER: 3 },
+  "FORD:RANGER": { XL: 1, XLS: 2, XLT: 3, WILDTRAK: 4, RAPTOR: 5 },
+  "FORD:EVEREST": { AMBIENTE: 1, TREND: 2, TITANIUM: 3 },
+  "ISUZU:D-MAX": { SX: 1, "LS-M": 2, "LS-U": 3, "X-TERRAIN": 4 },
+  "ISUZU:DMAX": { SX: 1, "LS-M": 2, "LS-U": 3, "X-TERRAIN": 4 },
+  "ISUZU:MU-X": { "LS-M": 1, "LS-U": 2, "LS-T": 3 },
+  "ISUZU:MUX": { "LS-M": 1, "LS-U": 2, "LS-T": 3 },
+  "MITSUBISHI:TRITON": { GLX: 1, "GLX+": 2, "GLX-R": 3, GLS: 4 },
+  "OUTLANDER": { ES: 1, LS: 2, ASPIRE: 3, EXCEED: 4, EXCEED_TOURER: 5 },
+  "NISSAN:NAVARA": { SL: 1, ST: 2, "ST-L": 3, "ST-X": 4, "PRO-4X": 5 },
+  "NISSAN:PATROL": { TI: 1, "TI-L": 2 },
+  "HOLDEN:COLORADO": { LS: 1, LT: 2, LTZ: 3, Z71: 4 },
 };
 
-function trimAllowed(listingMake: string, listingModel: string, listingTrim: string, saleTrim: string): "EXACT" | "UPGRADE" | false {
+function trimAllowed(platformClass: string, listingTrim: string, saleTrim: string): "EXACT" | "UPGRADE" | false {
   if (saleTrim === listingTrim) return "EXACT";
-  const key = `${listingMake}:${listingModel}`;
-  const ladder = TRIM_LADDER[key];
+  // Try platform_class as ladder key first, then make:model
+  const ladder = TRIM_LADDER[platformClass];
   if (!ladder) return false; // trim not in ladder → exact only, already failed
   const listingRank = ladder[listingTrim];
   const saleRank = ladder[saleTrim];
@@ -568,10 +563,10 @@ async function runFingerprintReplication(sb: any): Promise<{
 
   console.log(`[REPLICATION] Running STRICT fingerprint match for ${listings.length} priced listings`);
 
-  // Load all profitable sales (one query) — include description_raw for badge extraction
+  // Load all profitable sales — use pre-computed trim_class, platform_class, drivetrain_bucket
   const { data: allSales } = await sb
     .from("vehicle_sales_truth")
-    .select("id, make, model, variant, badge, year, km, buy_price, sale_price, sold_at, drive_type, description_raw")
+    .select("id, make, model, year, km, buy_price, sale_price, sold_at, trim_class, platform_class, drivetrain_bucket")
     .not("buy_price", "is", null)
     .not("sale_price", "is", null);
 
@@ -583,28 +578,9 @@ async function runFingerprintReplication(sb: any): Promise<{
   const profitableSales = allSales.filter((s: any) => (s.sale_price - Number(s.buy_price)) > 0);
   console.log(`[REPLICATION] ${profitableSales.length} profitable sales loaded`);
 
-  // Pre-compute trim classes + platform for all sales
-  // CRITICAL: variant/badge are often NULL — extract from description_raw
-  const salesWithTrim = profitableSales.map((s: any) => {
-    const variantText = s.variant || s.badge || extractBadgeFromDescription(s.description_raw) || "";
-    const driveText = s.drive_type || "";
-    const driveFromDesc = driveText ? drivetrainBucket(driveText) : extractDriveFromDescription(s.description_raw);
-    return {
-      ...s,
-      _trim: deriveTrimClass(s.make, s.model, variantText),
-      _drive: driveFromDesc,
-      _platform: derivePlatform(s.make, s.model, s.year),
-      _badge_source: s.variant ? "variant" : s.badge ? "badge" : s.description_raw ? "description_raw" : "none",
-    };
-  });
-
-  // Log trim extraction stats
-  const trimStats = { known: 0, unknown: 0, fromDesc: 0 };
-  for (const s of salesWithTrim) {
-    if (s._trim === "UNKNOWN") trimStats.unknown++;
-    else { trimStats.known++; if (s._badge_source === "description_raw") trimStats.fromDesc++; }
-  }
-  console.log(`[REPLICATION] Trim extraction: ${trimStats.known} known (${trimStats.fromDesc} from description_raw), ${trimStats.unknown} unknown`);
+  // Stats: how many have known trim
+  const knownTrim = profitableSales.filter((s: any) => s.trim_class && s.trim_class !== "UNKNOWN").length;
+  console.log(`[REPLICATION] Trim coverage: ${knownTrim}/${profitableSales.length} known`);
 
   const slackWebhook = Deno.env.get("SLACK_WEBHOOK_URL");
 
@@ -614,8 +590,11 @@ async function runFingerprintReplication(sb: any): Promise<{
     const listingYear = listing.year;
     const listingKm = listing.km;
     const listingPrice = listing.asking_price;
-    const listingTrim = deriveTrimClass(listing.make, listing.model, listing.variant_raw || listing.variant_family || "");
+    // Use extractBadgeFromDescription for clean badge name (matching DB derive_trim_from_text output)
+    const listingBadgeText = listing.variant_raw || listing.variant_family || "";
+    const listingTrim = extractBadgeFromDescription(listingBadgeText) || "UNKNOWN";
     const listingDrive = drivetrainBucket(listing.drivetrain);
+    // Platform: use derive_platform_class style (no year needed)
     const listingPlatform = derivePlatform(listing.make, listing.model, listingYear);
 
     if (!listingYear || !listingKm || !listingPrice) continue;
@@ -623,21 +602,21 @@ async function runFingerprintReplication(sb: any): Promise<{
     // BLOCK: Unknown trims never enter replication
     if (listingTrim === "UNKNOWN") continue;
 
-    // STRICT FILTERS (platform + trim + year + km + drivetrain)
-    const candidates = salesWithTrim.filter((s: any) => {
+    // STRICT FILTERS using pre-computed columns from vehicle_sales_truth
+    const candidates = profitableSales.filter((s: any) => {
       // Platform must match (Prado ≠ LandCruiser, etc.)
-      if (s._platform !== listingPlatform) return false;
+      if (s.platform_class !== listingPlatform) return false;
       // Block unknown sale trims
-      if (s._trim === "UNKNOWN") return false;
+      if (!s.trim_class || s.trim_class === "UNKNOWN") return false;
       // Trim class: exact or one-step upgrade only (never downgrade)
-      const trimResult = trimAllowed(listingMake, listingModel, listingTrim, s._trim);
+      const trimResult = trimAllowed(s.platform_class, listingTrim, s.trim_class);
       if (!trimResult) return false;
       // Year within ±1 (STRICT)
       if (Math.abs(s.year - listingYear) > 1) return false;
       // KM within ±15,000
       if (s.km && Math.abs(s.km - listingKm) > 15000) return false;
-      // Drivetrain: 4x4 never matches 2wd
-      if (listingDrive !== "UNKNOWN" && s._drive !== "UNKNOWN" && listingDrive !== s._drive) return false;
+      // Drivetrain: 4WD never matches 2WD
+      if (listingDrive !== "UNKNOWN" && s.drivetrain_bucket && s.drivetrain_bucket !== "UNKNOWN" && listingDrive !== s.drivetrain_bucket) return false;
       return true;
     });
 
