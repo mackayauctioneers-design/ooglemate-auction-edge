@@ -362,10 +362,44 @@ function drivetrainBucket(val: string | null): string {
   return "UNKNOWN";
 }
 
+// ─── TRIM LADDER (one-step upgrade matching) ─────────────────────────────────
+
+const TRIM_LADDER: Record<string, Record<string, number>> = {
+  "TOYOTA:LANDCRUISER": { LC70_BASE: 1, LC70_GX: 2, LC70_GXL: 3, LC70_VX: 4, LC70_SAHARA: 5, LC70_SPECIAL: 6 },
+  "TOYOTA:LANDCRUISER 200": { LC200_GX: 1, LC200_GXL: 2, LC200_VX: 3, LC200_SAHARA: 4 },
+  "TOYOTA:LANDCRUISER 300": { LC300_GX: 1, LC300_GXL: 2, LC300_VX: 3, LC300_SAHARA: 4 },
+  "TOYOTA:PRADO": { PRADO_GX: 1, PRADO_GXL: 2, PRADO_VX: 3, PRADO_KAKADU: 4 },
+  "TOYOTA:HILUX": { HILUX_BASE: 1, HILUX_SR: 2, HILUX_SR5: 3, HILUX_ROGUE: 4, HILUX_RUGGED: 5 },
+  "TOYOTA:HIACE": { HIACE_LWB: 1, HIACE_SLWB: 2, HIACE_COMMUTER: 3 },
+  "FORD:RANGER": { RANGER_XL: 1, RANGER_XLS: 2, RANGER_XLT: 3, RANGER_WILDTRAK: 4, RANGER_RAPTOR: 5 },
+  "FORD:EVEREST": { EVEREST_AMBIENTE: 1, EVEREST_TREND: 2, EVEREST_TITANIUM: 3 },
+  "ISUZU:D-MAX": { DMAX_SX: 1, DMAX_LSM: 2, DMAX_LSU: 3, DMAX_XTERRAIN: 4 },
+  "ISUZU:DMAX": { DMAX_SX: 1, DMAX_LSM: 2, DMAX_LSU: 3, DMAX_XTERRAIN: 4 },
+  "ISUZU:MU-X": { MUX_LSM: 1, MUX_LSU: 2, MUX_LST: 3 },
+  "ISUZU:MUX": { MUX_LSM: 1, MUX_LSU: 2, MUX_LST: 3 },
+  "MITSUBISHI:TRITON": { TRITON_GLX: 1, TRITON_GLXPLUS: 2, TRITON_GLS: 3 },
+  "NISSAN:NAVARA": { NAVARA_SL: 1, NAVARA_ST: 2, NAVARA_STL: 3, NAVARA_STX: 4, NAVARA_PRO4X: 5 },
+  "NISSAN:PATROL": { PATROL_TI: 1, PATROL_TIL: 2 },
+};
+
+function trimAllowed(listingMake: string, listingModel: string, listingTrim: string, saleTrim: string): "EXACT" | "UPGRADE" | false {
+  if (saleTrim === listingTrim) return "EXACT";
+  const key = `${listingMake}:${listingModel}`;
+  const ladder = TRIM_LADDER[key];
+  if (!ladder) return false; // trim not in ladder → exact only, already failed
+  const listingRank = ladder[listingTrim];
+  const saleRank = ladder[saleTrim];
+  if (listingRank == null || saleRank == null) return false;
+  // Allow listing to be exactly one step ABOVE the sale (upgrade)
+  if (listingRank === saleRank + 1) return "UPGRADE";
+  return false; // downgrade or multi-step → rejected
+}
+
 // ─── FINGERPRINT REPLICATION ENGINE (STRICT MODE) ────────────────────────────
 // For each priced Pickles listing, find the SINGLE nearest historical sale
 // using strict filters + deterministic sort (year → km → recency).
 // No medians. No clusters. No fuzzy scoring.
+// Trim class: exact or one-step upgrade only (never downgrade).
 
 async function runFingerprintReplication(sb: any): Promise<{
   matched: number;
@@ -429,14 +463,15 @@ async function runFingerprintReplication(sb: any): Promise<{
 
     if (!listingYear || !listingKm || !listingPrice) continue;
 
-    // STRICT FILTERS
+    // STRICT FILTERS (with trim ladder: exact or one-step upgrade only)
     const candidates = salesWithTrim.filter((s: any) => {
       // Make exact
       if ((s.make || "").toUpperCase() !== listingMake) return false;
       // Model exact
       if ((s.model || "").toUpperCase() !== listingModel) return false;
-      // Trim class exact (strict — no upgrades in this mode)
-      if (s._trim !== listingTrim) return false;
+      // Trim class: exact or one-step upgrade only (never downgrade)
+      const trimResult = trimAllowed(listingMake, listingModel, listingTrim, s._trim);
+      if (!trimResult) return false;
       // Year within ±1 (STRICT)
       if (Math.abs(s.year - listingYear) > 1) return false;
       // KM within ±15,000
@@ -469,6 +504,9 @@ async function runFingerprintReplication(sb: any): Promise<{
 
     matched++;
 
+    // SANITY: never flag a listing priced ABOVE what we sold it for
+    if (listingPrice >= historicalSale) continue;
+
     // Only insert if margin >= $1,500
     if (expectedMargin < 1500) continue;
 
@@ -494,7 +532,7 @@ async function runFingerprintReplication(sb: any): Promise<{
     });
 
     const oppData = {
-      source_type: "fingerprint_replication",
+      source_type: "replication",
       listing_url: listing.listing_url || "",
       stock_id: stockId,
       year: listingYear,
@@ -521,7 +559,7 @@ async function runFingerprintReplication(sb: any): Promise<{
       .from("opportunities")
       .select("id")
       .eq("stock_id", stockId)
-      .eq("source_type", "fingerprint_replication")
+      .eq("source_type", "replication")
       .maybeSingle();
 
     let error;
