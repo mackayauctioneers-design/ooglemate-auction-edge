@@ -153,6 +153,36 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
 
       if (SALVAGE_RE.test(`${item.title || ""} ${make} ${model} ${variant}`)) continue;
 
+      // ── TITLE-BASED TRIM HINT (extracts grade from Pickles title) ──
+      const titleUpper = (item.title || "").toUpperCase();
+      let trimHint: string | null = null;
+      // Outlander grades
+      if (titleUpper.includes("EXCEED TOURER")) trimHint = "Exceed Tourer";
+      else if (titleUpper.includes("EXCEED")) trimHint = "Exceed";
+      else if (titleUpper.includes("ASPIRE")) trimHint = "Aspire";
+      // Common Toyota/Ford/Isuzu grades from title
+      else if (titleUpper.includes("SR5")) trimHint = "SR5";
+      else if (titleUpper.includes("ROGUE")) trimHint = "Rogue";
+      else if (titleUpper.includes("RUGGED")) trimHint = "Rugged";
+      else if (titleUpper.includes("RAPTOR")) trimHint = "Raptor";
+      else if (titleUpper.includes("WILDTRAK")) trimHint = "Wildtrak";
+      else if (titleUpper.includes("KAKADU")) trimHint = "Kakadu";
+      else if (titleUpper.includes("SAHARA")) trimHint = "Sahara";
+      else if (titleUpper.includes("X-TERRAIN")) trimHint = "X-Terrain";
+      else if (titleUpper.includes("WORKMATE")) trimHint = "Workmate";
+      else if (titleUpper.includes("GXL")) trimHint = "GXL";
+      else if (titleUpper.includes("GX") && !titleUpper.includes("GXL")) trimHint = "GX";
+      else if (titleUpper.includes("VX")) trimHint = "VX";
+      else if (titleUpper.includes("XLT")) trimHint = "XLT";
+      else if (titleUpper.includes("XLS")) trimHint = "XLS";
+      else if (titleUpper.match(/\bXL\b/)) trimHint = "XL";
+      else if (titleUpper.match(/\bSR\b/) && !titleUpper.includes("SR5")) trimHint = "SR";
+      else if (titleUpper.match(/\bLS\b/) && !titleUpper.includes("LS-")) trimHint = "LS";
+      else if (titleUpper.match(/\bES\b/)) trimHint = "ES";
+
+      // Use trimHint over URL-parsed variant if available
+      const finalVariant = trimHint || variant;
+
       // Use extracted price (structured), fall back to 0
       let price = 0;
       if (item.price && item.price >= 2000 && item.price <= 300000) {
@@ -174,7 +204,7 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
 
       allListings.push({
         lot_id: lotId,
-        year, make, model, variant,
+        year, make, model, variant: finalVariant,
         listing_url: item.url,
         price, kms, location,
       });
@@ -265,6 +295,24 @@ async function markStaleInactive(sb: any): Promise<number> {
   return data?.length || 0;
 }
 
+// ─── DERIVE PLATFORM (mirrors DB function) ──────────────────────────────────
+
+function derivePlatform(make: string, model: string, year: number): string {
+  const m = (make || "").toUpperCase().trim();
+  const mo = (model || "").toUpperCase().trim();
+
+  if (m === "TOYOTA") {
+    if (mo.includes("PRADO")) return "PRADO";
+    if (mo.includes("LANDCRUISER")) {
+      if (year >= 2022) return "LC300";
+      if (year >= 2008) return "LC200";
+      return "LC_OTHER";
+    }
+  }
+  if (m === "MITSUBISHI" && mo === "OUTLANDER") return "OUTLANDER";
+  return `${m}:${mo}`;
+}
+
 // ─── DERIVE TRIM CLASS (mirrors DB function) ────────────────────────────────
 
 function deriveTrimClass(make: string, model: string, variant: string): string {
@@ -279,24 +327,28 @@ function deriveTrimClass(make: string, model: string, variant: string): string {
     if (v.includes("VX")) return "LC70_VX";
     if (v.includes("SAHARA")) return "LC70_SAHARA";
     if (v.includes("70TH")) return "LC70_SPECIAL";
+    return "UNKNOWN";
   }
   if (m === "TOYOTA" && mo === "LANDCRUISER 200") {
     if (v.includes("GXL")) return "LC200_GXL";
     if (v.includes("GX")) return "LC200_GX";
     if (v.includes("VX")) return "LC200_VX";
     if (v.includes("SAHARA")) return "LC200_SAHARA";
+    return "UNKNOWN";
   }
   if (m === "TOYOTA" && mo === "LANDCRUISER 300") {
     if (v.includes("GXL")) return "LC300_GXL";
     if (v.includes("GX")) return "LC300_GX";
     if (v.includes("VX")) return "LC300_VX";
     if (v.includes("SAHARA")) return "LC300_SAHARA";
+    return "UNKNOWN";
   }
   if (m === "TOYOTA" && mo.includes("PRADO")) {
     if (v.includes("GXL")) return "PRADO_GXL";
     if (v.includes("GX")) return "PRADO_GX";
     if (v.includes("VX")) return "PRADO_VX";
     if (v.includes("KAKADU")) return "PRADO_KAKADU";
+    return "UNKNOWN";
   }
   if (m === "TOYOTA" && mo === "HILUX") {
     if (v.includes("SR5")) return "HILUX_SR5";
@@ -304,11 +356,13 @@ function deriveTrimClass(make: string, model: string, variant: string): string {
     if (v.includes("ROGUE")) return "HILUX_ROGUE";
     if (v.includes("RUGGED")) return "HILUX_RUGGED";
     if (v.includes("WORKMATE")) return "HILUX_BASE";
+    return "UNKNOWN";
   }
   if (m === "TOYOTA" && mo === "HIACE") {
     if (v.includes("COMMUTER")) return "HIACE_COMMUTER";
     if (v.includes("SLWB")) return "HIACE_SLWB";
     if (v.includes("LWB")) return "HIACE_LWB";
+    return "UNKNOWN";
   }
   if (m === "FORD" && mo === "RANGER") {
     if (v.includes("RAPTOR")) return "RANGER_RAPTOR";
@@ -316,27 +370,40 @@ function deriveTrimClass(make: string, model: string, variant: string): string {
     if (v.includes("XLT")) return "RANGER_XLT";
     if (v.includes("XLS")) return "RANGER_XLS";
     if (v.includes("XL")) return "RANGER_XL";
+    return "UNKNOWN";
   }
   if (m === "FORD" && mo === "EVEREST") {
     if (v.includes("TITANIUM")) return "EVEREST_TITANIUM";
     if (v.includes("TREND")) return "EVEREST_TREND";
     if (v.includes("AMBIENTE")) return "EVEREST_AMBIENTE";
+    return "UNKNOWN";
   }
   if (m === "ISUZU" && (mo === "D-MAX" || mo === "DMAX")) {
     if (v.includes("X-TERRAIN") || v.includes("XTERRAIN")) return "DMAX_XTERRAIN";
     if (v.includes("LS-U") || v.includes("LSU")) return "DMAX_LSU";
     if (v.includes("LS-M") || v.includes("LSM")) return "DMAX_LSM";
     if (v.includes("SX")) return "DMAX_SX";
+    return "UNKNOWN";
   }
   if (m === "ISUZU" && (mo === "MU-X" || mo === "MUX")) {
     if (v.includes("LS-T") || v.includes("LST")) return "MUX_LST";
     if (v.includes("LS-U") || v.includes("LSU")) return "MUX_LSU";
     if (v.includes("LS-M") || v.includes("LSM")) return "MUX_LSM";
+    return "UNKNOWN";
   }
   if (m === "MITSUBISHI" && mo === "TRITON") {
     if (v.includes("GLS")) return "TRITON_GLS";
     if (v.includes("GLX+") || v.includes("GLX PLUS")) return "TRITON_GLXPLUS";
     if (v.includes("GLX")) return "TRITON_GLX";
+    return "UNKNOWN";
+  }
+  if (m === "MITSUBISHI" && mo === "OUTLANDER") {
+    if (v.includes("EXCEED TOURER")) return "OUTLANDER_EXCEED_TOURER";
+    if (v.includes("EXCEED")) return "OUTLANDER_EXCEED";
+    if (v.includes("ASPIRE")) return "OUTLANDER_ASPIRE";
+    if (v.includes("LS")) return "OUTLANDER_LS";
+    if (v.includes("ES")) return "OUTLANDER_ES";
+    return "UNKNOWN";
   }
   if (m === "NISSAN" && mo === "NAVARA") {
     if (v.includes("PRO-4X") || v.includes("PRO4X")) return "NAVARA_PRO4X";
@@ -344,12 +411,15 @@ function deriveTrimClass(make: string, model: string, variant: string): string {
     if (v.includes("ST-L") || v.includes("STL")) return "NAVARA_STL";
     if (v.includes("ST")) return "NAVARA_ST";
     if (v.includes("SL")) return "NAVARA_SL";
+    return "UNKNOWN";
   }
   if (m === "NISSAN" && mo === "PATROL") {
     if (v.includes("TI-L") || v.includes("TIL")) return "PATROL_TIL";
     if (v.includes("TI")) return "PATROL_TI";
+    return "UNKNOWN";
   }
-  return mo + "_STANDARD";
+  // Models not in our known list → UNKNOWN (strict mode)
+  return "UNKNOWN";
 }
 
 // ─── DRIVETRAIN BUCKET ───────────────────────────────────────────────────────
@@ -378,6 +448,7 @@ const TRIM_LADDER: Record<string, Record<string, number>> = {
   "ISUZU:MU-X": { MUX_LSM: 1, MUX_LSU: 2, MUX_LST: 3 },
   "ISUZU:MUX": { MUX_LSM: 1, MUX_LSU: 2, MUX_LST: 3 },
   "MITSUBISHI:TRITON": { TRITON_GLX: 1, TRITON_GLXPLUS: 2, TRITON_GLS: 3 },
+  "MITSUBISHI:OUTLANDER": { OUTLANDER_ES: 1, OUTLANDER_LS: 2, OUTLANDER_ASPIRE: 3, OUTLANDER_EXCEED: 4, OUTLANDER_EXCEED_TOURER: 5 },
   "NISSAN:NAVARA": { NAVARA_SL: 1, NAVARA_ST: 2, NAVARA_STL: 3, NAVARA_STX: 4, NAVARA_PRO4X: 5 },
   "NISSAN:PATROL": { PATROL_TI: 1, PATROL_TIL: 2 },
 };
@@ -443,11 +514,12 @@ async function runFingerprintReplication(sb: any): Promise<{
   const profitableSales = allSales.filter((s: any) => (s.sale_price - Number(s.buy_price)) > 0);
   console.log(`[REPLICATION] ${profitableSales.length} profitable sales loaded`);
 
-  // Pre-compute trim classes for all sales
+  // Pre-compute trim classes + platform for all sales
   const salesWithTrim = profitableSales.map((s: any) => ({
     ...s,
     _trim: deriveTrimClass(s.make, s.model, s.variant || s.badge || ""),
     _drive: drivetrainBucket(s.drive_type),
+    _platform: derivePlatform(s.make, s.model, s.year),
   }));
 
   const slackWebhook = Deno.env.get("SLACK_WEBHOOK_URL");
@@ -460,15 +532,19 @@ async function runFingerprintReplication(sb: any): Promise<{
     const listingPrice = listing.asking_price;
     const listingTrim = deriveTrimClass(listing.make, listing.model, listing.variant_raw || "");
     const listingDrive = drivetrainBucket(listing.drivetrain);
+    const listingPlatform = derivePlatform(listing.make, listing.model, listingYear);
 
     if (!listingYear || !listingKm || !listingPrice) continue;
 
-    // STRICT FILTERS (with trim ladder: exact or one-step upgrade only)
+    // BLOCK: Unknown trims never enter replication
+    if (listingTrim === "UNKNOWN") continue;
+
+    // STRICT FILTERS (platform + trim + year + km + drivetrain)
     const candidates = salesWithTrim.filter((s: any) => {
-      // Make exact
-      if ((s.make || "").toUpperCase() !== listingMake) return false;
-      // Model exact
-      if ((s.model || "").toUpperCase() !== listingModel) return false;
+      // Platform must match (Prado ≠ LandCruiser, etc.)
+      if (s._platform !== listingPlatform) return false;
+      // Block unknown sale trims
+      if (s._trim === "UNKNOWN") return false;
       // Trim class: exact or one-step upgrade only (never downgrade)
       const trimResult = trimAllowed(listingMake, listingModel, listingTrim, s._trim);
       if (!trimResult) return false;

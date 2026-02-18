@@ -4,18 +4,34 @@ Updated: now
 ## Architecture
 Pickles Ingest Cron v5 → Structured Extract (Firecrawl JSON schema) → vehicle_listings upsert → Fingerprint Replication → opportunities upsert → Slack alert
 
+## Platform Integrity (NEW)
+- derive_platform() function enforces platform identity
+- Prado NEVER matches LandCruiser (separate platforms)
+- LandCruiser split: LC300 (2022+), LC200 (2008-2021), LC_OTHER
+- Outlander has its own platform key
+- Platform check is the FIRST gate in candidate filtering
+
 ## Strict Match Filters
+- Platform: must match (derive_platform)
 - Make: exact (case-insensitive)
 - Model: exact (case-insensitive)
 - Trim class: exact OR one-step upgrade via trim_ladder (never downgrade)
+- UNKNOWN trims: blocked entirely (both listing and sale sides)
 - Year: ±1
 - KM: ±15,000
 - Drivetrain: 4x4 never matches 2WD (UNKNOWN passes)
 
 ## Trim Ladder
 - Embedded in pickles-ingest-cron as TRIM_LADDER constant
-- Covers: LC70/200/300, Prado, Hilux, HiAce, Ranger, Everest, D-Max, MU-X, Triton, Navara, Patrol
+- Covers: LC70/200/300, Prado, Hilux, HiAce, Ranger, Everest, D-Max, MU-X, Triton, Outlander, Navara, Patrol
+- Outlander: ES=1, LS=2, ASPIRE=3, EXCEED=4, EXCEED_TOURER=5
 - trimAllowed() returns "EXACT" | "UPGRADE" | false
+- deriveTrimClass() returns "UNKNOWN" (not _STANDARD) for unrecognised variants
+
+## Title-Based Trim Parsing (NEW)
+- Pickles titles parsed for grade keywords before URL-based variant
+- Covers: Exceed Tourer, Exceed, Aspire, SR5, Rogue, Raptor, Wildtrak, Kakadu, Sahara, X-Terrain, Workmate, GXL, GX, VX, XLT, XLS, XL, SR, LS, ES
+- trimHint overrides URL-parsed variant when available
 
 ## Selection (deterministic, no medians)
 - Sort candidates: ABS(year diff) ASC → ABS(km diff) ASC → sold_at DESC
@@ -42,12 +58,8 @@ Pickles Ingest Cron v5 → Structured Extract (Firecrawl JSON schema) → vehicl
 - Sent for expected_margin >= $4,000
 - Format: 🔴 PICKLES FINGERPRINT MATCH with ask/sold/buy/margin
 
-## Known Issues
-- Models not in deriveTrimClass fall to _STANDARD suffix → can match loosely
-- Prado sometimes stored as model=LANDCRUISER variant=Prado (not hitting PRADO branch)
+## Known Issues (FIXED)
+- ✅ Prado/LandCruiser bleed → fixed by derive_platform()
+- ✅ Base Outlander matching Exceed Tourer → fixed by UNKNOWN fallback + Outlander trim ladder
+- ✅ Models not in deriveTrimClass fall to _STANDARD → now returns UNKNOWN, blocked from replication
 - Credit guardrail: 150 calls/day, ~5 calls per run, sustainable
-
-## Results (first live run)
-- 7 strict matches from 64 priced listings
-- 3 opportunities created (3 passed margin + sanity gates)
-- 3 Slack alerts sent
