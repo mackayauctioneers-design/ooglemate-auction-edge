@@ -1,15 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * PICKLES INGEST CRON v5 — Structured Extract + Fingerprint Replication
+ * PICKLES INGEST CRON v6 — Ingest Only (no replication)
  * 
  * 1. Scrape Buy Now search pages using Firecrawl EXTRACT mode (JSON schema)
  * 2. Upsert every listing into vehicle_listings
  * 3. Mark listings not seen for 48h as inactive
- * 4. Run fingerprint replication: match each priced listing to nearest historical sale
- * 5. Insert/update opportunities for under-market signals
- * 6. Log to cron_audit_log + cron_heartbeat
+ * 4. Log to cron_audit_log + cron_heartbeat
  * 
+ * Replication is handled separately by pickles-replication-cron.
  * Schedule: Every 30 minutes
  */
 
@@ -20,7 +19,7 @@ const corsHeaders = {
 
 const SOURCE = "pickles";
 const SEARCH_URL = "https://www.pickles.com.au/used/search/cars?filter=and%255B0%255D%255Bor%255D%255B0%255D%255BbuyMethod%255D%3DBuy%2520Now&contentkey=cars-to-buy-now";
-const MAX_PAGES = 5;
+const MAX_PAGES = 10;
 const STALE_HOURS = 48;
 const DAILY_CREDIT_LIMIT = 150;
 
@@ -139,7 +138,6 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
       if (!item.url || seen.has(item.url)) continue;
       seen.add(item.url);
 
-      // Extract lot_id and vehicle info from URL slug
       const slugMatch = item.url.match(/\/(\d{4})-([a-z]+)-([a-z0-9-]+)\/(\d+)/i);
       if (!slugMatch) continue;
 
@@ -154,14 +152,12 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
 
       if (SALVAGE_RE.test(`${item.title || ""} ${make} ${model} ${variant}`)) continue;
 
-      // ── TITLE-BASED TRIM HINT (extracts grade from Pickles title) ──
+      // ── TITLE-BASED TRIM HINT ──
       const titleUpper = (item.title || "").toUpperCase();
       let trimHint: string | null = null;
-      // Outlander grades
       if (titleUpper.includes("EXCEED TOURER")) trimHint = "Exceed Tourer";
       else if (titleUpper.includes("EXCEED")) trimHint = "Exceed";
       else if (titleUpper.includes("ASPIRE")) trimHint = "Aspire";
-      // Common Toyota/Ford/Isuzu grades from title
       else if (titleUpper.includes("SR5")) trimHint = "SR5";
       else if (titleUpper.includes("ROGUE")) trimHint = "Rogue";
       else if (titleUpper.includes("RUGGED")) trimHint = "Rugged";
@@ -181,22 +177,18 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
       else if (titleUpper.match(/\bLS\b/) && !titleUpper.includes("LS-")) trimHint = "LS";
       else if (titleUpper.match(/\bES\b/)) trimHint = "ES";
 
-      // Use trimHint over URL-parsed variant if available
       const finalVariant = trimHint || variant;
 
-      // Use extracted price (structured), fall back to 0
       let price = 0;
       if (item.price && item.price >= 2000 && item.price <= 300000) {
         price = item.price;
       }
 
-      // Use extracted KMs
       let kms: number | null = null;
       if (item.kms && item.kms > 0 && item.kms < 999999) {
         kms = item.kms;
       }
 
-      // Location from extraction or URL
       let location = "";
       if (item.location) {
         const locMatch = item.location.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
@@ -220,6 +212,33 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
   return { listings: allListings, pages_scraped: Math.min(MAX_PAGES, allListings.length > 0 ? MAX_PAGES : 1), firecrawl_calls: firecrawlCalls };
 }
 
+// ─── EXTRACT HELPERS ─────────────────────────────────────────────────────────
+
+function extractBadgeFromDescription(descRaw: string | null): string {
+  if (!descRaw) return "";
+  const d = descRaw.toUpperCase();
+  const badges = [
+    "EXCEED TOURER", "EXCEED", "X-TERRAIN", "XTERRAIN", "PRO-4X", "PRO4X",
+    "GLX-R", "GLX+", "GLX PLUS", "SR5", "ROGUE", "RUGGED X", "RUGGED-X", "RUGGED",
+    "RAPTOR", "WILDTRAK", "KAKADU", "SAHARA", "ASPIRE", "TITANIUM", "PLATINUM",
+    "GXL", "VX", "GX", "XLT", "XLS", "LS-U", "LSU", "LS-M", "LSM", "LS-T", "LST",
+    "ST-X", "STX", "ST-L", "STL", "GLS", "GR", "N-TREK", "COMMUTER", "SLWB", "LWB",
+    "WORKMATE", "AMBIENTE", "TREND",
+  ];
+  const shortBadges = ["SR", "XL", "LS", "ES", "SL", "ST", "TI", "LT", "LTZ", "Z71", "SS", "SSV", "SV6"];
+  for (const b of badges) { if (d.includes(b)) return b; }
+  for (const b of shortBadges) { if (new RegExp(`\\b${b}\\b`).test(d)) return b; }
+  return "";
+}
+
+function extractDriveFromDescription(descRaw: string | null): string {
+  if (!descRaw) return "UNKNOWN";
+  const d = descRaw.toUpperCase();
+  if (/\b4X4\b|\b4WD\b|\bAWD\b/.test(d)) return "4WD";
+  if (/\b2WD\b|\b4X2\b|\bFWD\b|\bRWD\b/.test(d)) return "2WD";
+  return "UNKNOWN";
+}
+
 // ─── UPSERT LISTINGS ─────────────────────────────────────────────────────────
 
 async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ newListings: number; updatedListings: number; errors: string[] }> {
@@ -239,7 +258,6 @@ async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ ne
       .maybeSingle();
 
     if (existing) {
-      // Backfill badge from title if variant_raw is missing
       const badgeFromTitle = l.variant || extractBadgeFromDescription(l.title_raw) || null;
       const driveFromTitle = extractDriveFromDescription(l.title_raw);
 
@@ -252,7 +270,6 @@ async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ ne
       if (l.price > 0 && l.price !== existing.asking_price) updates.asking_price = l.price;
       if (l.kms) updates.km = l.kms;
       if (l.location) updates.location = l.location;
-      // Backfill variant if currently null
       if (badgeFromTitle) {
         updates.variant_raw = badgeFromTitle;
         updates.variant_family = badgeFromTitle.toUpperCase();
@@ -265,7 +282,6 @@ async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ ne
       if (error) errors.push(`Update ${listingId}: ${error.message}`);
       else updatedListings++;
     } else {
-      // Extract badge from title if variant is empty
       const badgeFromTitle = l.variant || extractBadgeFromDescription(l.title_raw) || null;
       const driveFromTitle = extractDriveFromDescription(l.title_raw);
 
@@ -313,427 +329,6 @@ async function markStaleInactive(sb: any): Promise<number> {
     .lt("last_seen_at", staleThreshold)
     .select("id");
   return data?.length || 0;
-}
-
-// ─── DERIVE PLATFORM (mirrors DB function) ──────────────────────────────────
-
-function derivePlatform(make: string, model: string, _year: number): string {
-  const m = (make || "").toUpperCase().trim();
-  const mo = (model || "").toUpperCase().trim();
-
-  if (m === "TOYOTA") {
-    if (mo.includes("PRADO")) return "PRADO";
-    if (mo.includes("LANDCRUISER")) return "LANDCRUISER";
-  }
-  if (m === "MITSUBISHI" && mo === "OUTLANDER") return "OUTLANDER";
-  return `${m}:${mo}`;
-}
-
-// ─── DERIVE TRIM CLASS (mirrors DB function) ────────────────────────────────
-
-function deriveTrimClass(make: string, model: string, variant: string): string {
-  const m = (make || "").toUpperCase().trim();
-  const mo = (model || "").toUpperCase().trim();
-  const v = (variant || "").toUpperCase();
-
-  if (m === "TOYOTA" && mo === "LANDCRUISER") {
-    if (v.includes("WORKMATE")) return "LC70_BASE";
-    if (v.includes("GXL")) return "LC70_GXL";
-    if (v.includes("GX")) return "LC70_GX";
-    if (v.includes("VX")) return "LC70_VX";
-    if (v.includes("SAHARA")) return "LC70_SAHARA";
-    if (v.includes("70TH")) return "LC70_SPECIAL";
-    return "UNKNOWN";
-  }
-  if (m === "TOYOTA" && mo === "LANDCRUISER 200") {
-    if (v.includes("GXL")) return "LC200_GXL";
-    if (v.includes("GX")) return "LC200_GX";
-    if (v.includes("VX")) return "LC200_VX";
-    if (v.includes("SAHARA")) return "LC200_SAHARA";
-    return "UNKNOWN";
-  }
-  if (m === "TOYOTA" && mo === "LANDCRUISER 300") {
-    if (v.includes("GXL")) return "LC300_GXL";
-    if (v.includes("GX")) return "LC300_GX";
-    if (v.includes("VX")) return "LC300_VX";
-    if (v.includes("SAHARA")) return "LC300_SAHARA";
-    return "UNKNOWN";
-  }
-  if (m === "TOYOTA" && mo.includes("PRADO")) {
-    if (v.includes("GXL")) return "PRADO_GXL";
-    if (v.includes("GX")) return "PRADO_GX";
-    if (v.includes("VX")) return "PRADO_VX";
-    if (v.includes("KAKADU")) return "PRADO_KAKADU";
-    return "UNKNOWN";
-  }
-  if (m === "TOYOTA" && mo === "HILUX") {
-    if (v.includes("SR5")) return "HILUX_SR5";
-    if (v.includes("SR")) return "HILUX_SR";
-    if (v.includes("ROGUE")) return "HILUX_ROGUE";
-    if (v.includes("RUGGED")) return "HILUX_RUGGED";
-    if (v.includes("WORKMATE")) return "HILUX_BASE";
-    return "UNKNOWN";
-  }
-  if (m === "TOYOTA" && mo === "HIACE") {
-    if (v.includes("COMMUTER")) return "HIACE_COMMUTER";
-    if (v.includes("SLWB")) return "HIACE_SLWB";
-    if (v.includes("LWB")) return "HIACE_LWB";
-    return "UNKNOWN";
-  }
-  if (m === "FORD" && mo === "RANGER") {
-    if (v.includes("RAPTOR")) return "RANGER_RAPTOR";
-    if (v.includes("WILDTRAK")) return "RANGER_WILDTRAK";
-    if (v.includes("XLT")) return "RANGER_XLT";
-    if (v.includes("XLS")) return "RANGER_XLS";
-    if (v.includes("XL")) return "RANGER_XL";
-    return "UNKNOWN";
-  }
-  if (m === "FORD" && mo === "EVEREST") {
-    if (v.includes("TITANIUM")) return "EVEREST_TITANIUM";
-    if (v.includes("TREND")) return "EVEREST_TREND";
-    if (v.includes("AMBIENTE")) return "EVEREST_AMBIENTE";
-    return "UNKNOWN";
-  }
-  if (m === "ISUZU" && (mo === "D-MAX" || mo === "DMAX")) {
-    if (v.includes("X-TERRAIN") || v.includes("XTERRAIN")) return "DMAX_XTERRAIN";
-    if (v.includes("LS-U") || v.includes("LSU")) return "DMAX_LSU";
-    if (v.includes("LS-M") || v.includes("LSM")) return "DMAX_LSM";
-    if (v.includes("SX")) return "DMAX_SX";
-    return "UNKNOWN";
-  }
-  if (m === "ISUZU" && (mo === "MU-X" || mo === "MUX")) {
-    if (v.includes("LS-T") || v.includes("LST")) return "MUX_LST";
-    if (v.includes("LS-U") || v.includes("LSU")) return "MUX_LSU";
-    if (v.includes("LS-M") || v.includes("LSM")) return "MUX_LSM";
-    return "UNKNOWN";
-  }
-  if (m === "MITSUBISHI" && mo === "TRITON") {
-    if (v.includes("GLS")) return "TRITON_GLS";
-    if (v.includes("GLX+") || v.includes("GLX PLUS")) return "TRITON_GLXPLUS";
-    if (v.includes("GLX")) return "TRITON_GLX";
-    return "UNKNOWN";
-  }
-  if (m === "MITSUBISHI" && mo === "OUTLANDER") {
-    if (v.includes("EXCEED TOURER")) return "OUTLANDER_EXCEED_TOURER";
-    if (v.includes("EXCEED")) return "OUTLANDER_EXCEED";
-    if (v.includes("ASPIRE")) return "OUTLANDER_ASPIRE";
-    if (v.includes("LS")) return "OUTLANDER_LS";
-    if (v.includes("ES")) return "OUTLANDER_ES";
-    return "UNKNOWN";
-  }
-  if (m === "NISSAN" && mo === "NAVARA") {
-    if (v.includes("PRO-4X") || v.includes("PRO4X")) return "NAVARA_PRO4X";
-    if (v.includes("ST-X") || v.includes("STX")) return "NAVARA_STX";
-    if (v.includes("ST-L") || v.includes("STL")) return "NAVARA_STL";
-    if (v.includes("ST")) return "NAVARA_ST";
-    if (v.includes("SL")) return "NAVARA_SL";
-    return "UNKNOWN";
-  }
-  if (m === "NISSAN" && mo === "PATROL") {
-    if (v.includes("TI-L") || v.includes("TIL")) return "PATROL_TIL";
-    if (v.includes("TI")) return "PATROL_TI";
-    return "UNKNOWN";
-  }
-  // Models not in our known list → UNKNOWN (strict mode)
-  return "UNKNOWN";
-}
-
-// ─── DRIVETRAIN BUCKET ───────────────────────────────────────────────────────
-
-function drivetrainBucket(val: string | null): string {
-  if (!val) return "UNKNOWN";
-  const v = val.toUpperCase();
-  if (/4X4|4WD|AWD/.test(v)) return "4WD";
-  if (/2WD|2X4|FWD|RWD|4X2/.test(v)) return "2WD";
-  return "UNKNOWN";
-}
-
-// ─── EXTRACT BADGE FROM description_raw ──────────────────────────────────────
-// Sales data often has variant/badge NULL but description_raw contains the full
-// spec string e.g. "Toyota Landcruiser 2021 VDJ200R VX Wagon 7st 5dr Spts Auto 6sp 4x4 4.5DTT"
-// We extract the badge keyword from that string.
-
-function extractBadgeFromDescription(descRaw: string | null): string {
-  if (!descRaw) return "";
-  const d = descRaw.toUpperCase();
-  // Order matters: longest/most specific first
-  const badges = [
-    "EXCEED TOURER", "EXCEED",
-    "X-TERRAIN", "XTERRAIN",
-    "PRO-4X", "PRO4X",
-    "GLX-R", "GLX+", "GLX PLUS",
-    "SR5", "ROGUE", "RUGGED X", "RUGGED-X", "RUGGED",
-    "RAPTOR", "WILDTRAK",
-    "KAKADU", "SAHARA",
-    "ASPIRE",
-    "TITANIUM", "PLATINUM",
-    "GXL", "VX", "GX",
-    "XLT", "XLS",
-    "LS-U", "LSU", "LS-M", "LSM", "LS-T", "LST",
-    "ST-X", "STX", "ST-L", "STL",
-    "GLS", "GR", "N-TREK",
-    "COMMUTER", "SLWB", "LWB",
-    "WORKMATE", "AMBIENTE", "TREND",
-  ];
-  // Also check with word boundaries for short ones
-  const shortBadges = ["SR", "XL", "LS", "ES", "SL", "ST", "TI", "LT", "LTZ", "Z71", "SS", "SSV", "SV6"];
-  
-  for (const b of badges) {
-    if (d.includes(b)) return b;
-  }
-  for (const b of shortBadges) {
-    const re = new RegExp(`\\b${b}\\b`);
-    if (re.test(d)) return b;
-  }
-  return "";
-}
-
-// Extract drivetrain from description_raw when drive_type column is null
-function extractDriveFromDescription(descRaw: string | null): string {
-  if (!descRaw) return "UNKNOWN";
-  const d = descRaw.toUpperCase();
-  if (/\b4X4\b|\b4WD\b|\bAWD\b/.test(d)) return "4WD";
-  if (/\b2WD\b|\b4X2\b|\bFWD\b|\bRWD\b/.test(d)) return "2WD";
-  return "UNKNOWN";
-}
-
-// ─── TRIM LADDER (clean badge names, matching DB derive_trim_from_text) ───────
-
-const TRIM_LADDER: Record<string, Record<string, number>> = {
-  "LANDCRUISER": { WORKMATE: 1, GX: 2, GXL: 3, VX: 4, SAHARA: 5 },
-  "PRADO": { GX: 1, GXL: 2, VX: 3, KAKADU: 4 },
-  "TOYOTA:HILUX": { WORKMATE: 1, SR: 2, SR5: 3, ROGUE: 4, RUGGED: 5 },
-  "TOYOTA:HIACE": { LWB: 1, SLWB: 2, COMMUTER: 3 },
-  "FORD:RANGER": { XL: 1, XLS: 2, XLT: 3, WILDTRAK: 4, RAPTOR: 5 },
-  "FORD:EVEREST": { AMBIENTE: 1, TREND: 2, TITANIUM: 3 },
-  "ISUZU:D-MAX": { SX: 1, "LS-M": 2, "LS-U": 3, "X-TERRAIN": 4 },
-  "ISUZU:DMAX": { SX: 1, "LS-M": 2, "LS-U": 3, "X-TERRAIN": 4 },
-  "ISUZU:MU-X": { "LS-M": 1, "LS-U": 2, "LS-T": 3 },
-  "ISUZU:MUX": { "LS-M": 1, "LS-U": 2, "LS-T": 3 },
-  "MITSUBISHI:TRITON": { GLX: 1, "GLX+": 2, "GLX-R": 3, GLS: 4 },
-  "OUTLANDER": { ES: 1, LS: 2, ASPIRE: 3, EXCEED: 4, EXCEED_TOURER: 5 },
-  "NISSAN:NAVARA": { SL: 1, ST: 2, "ST-L": 3, "ST-X": 4, "PRO-4X": 5 },
-  "NISSAN:PATROL": { TI: 1, "TI-L": 2 },
-  "HOLDEN:COLORADO": { LS: 1, LT: 2, LTZ: 3, Z71: 4 },
-};
-
-function trimAllowed(platformClass: string, listingTrim: string, saleTrim: string): "EXACT" | "UPGRADE" | false {
-  if (saleTrim === listingTrim) return "EXACT";
-  // Try platform_class as ladder key first, then make:model
-  const ladder = TRIM_LADDER[platformClass];
-  if (!ladder) return false; // trim not in ladder → exact only, already failed
-  const listingRank = ladder[listingTrim];
-  const saleRank = ladder[saleTrim];
-  if (listingRank == null || saleRank == null) return false;
-  // Allow listing to be exactly one step ABOVE the sale (upgrade)
-  if (listingRank === saleRank + 1) return "UPGRADE";
-  return false; // downgrade or multi-step → rejected
-}
-
-// ─── FINGERPRINT REPLICATION ENGINE (STRICT MODE) ────────────────────────────
-// For each priced Pickles listing, find the SINGLE nearest historical sale
-// using strict filters + deterministic sort (year → km → recency).
-// No medians. No clusters. No fuzzy scoring.
-// Trim class: exact or one-step upgrade only (never downgrade).
-
-async function runFingerprintReplication(sb: any): Promise<{
-  matched: number;
-  opportunities_created: number;
-  slack_alerts: number;
-  errors: string[];
-}> {
-  let matched = 0;
-  let opportunitiesCreated = 0;
-  let slackAlerts = 0;
-  const errors: string[] = [];
-
-  // Get active Pickles listings WITH a price
-  const { data: listings } = await sb
-    .from("vehicle_listings")
-    .select("id, listing_id, make, model, variant_raw, variant_family, drivetrain, year, km, asking_price, listing_url, location")
-    .eq("source", SOURCE)
-    .in("status", ["listed", "catalogue"])
-    .not("asking_price", "is", null)
-    .gt("asking_price", 0);
-
-  if (!listings || listings.length === 0) {
-    console.log("[REPLICATION] No priced Pickles listings to replicate against");
-    return { matched: 0, opportunities_created: 0, slack_alerts: 0, errors: [] };
-  }
-
-  console.log(`[REPLICATION] Running STRICT fingerprint match for ${listings.length} priced listings`);
-
-  // Load all profitable sales — use pre-computed trim_class, platform_class, drivetrain_bucket
-  const { data: allSales } = await sb
-    .from("vehicle_sales_truth")
-    .select("id, make, model, year, km, buy_price, sale_price, sold_at, trim_class, platform_class, drivetrain_bucket")
-    .not("buy_price", "is", null)
-    .not("sale_price", "is", null);
-
-  if (!allSales || allSales.length === 0) {
-    console.log("[REPLICATION] No sales in vehicle_sales_truth");
-    return { matched: 0, opportunities_created: 0, slack_alerts: 0, errors: [] };
-  }
-
-  const profitableSales = allSales.filter((s: any) => (s.sale_price - Number(s.buy_price)) > 0);
-  console.log(`[REPLICATION] ${profitableSales.length} profitable sales loaded`);
-
-  // Stats: how many have known trim
-  const knownTrim = profitableSales.filter((s: any) => s.trim_class && s.trim_class !== "UNKNOWN").length;
-  console.log(`[REPLICATION] Trim coverage: ${knownTrim}/${profitableSales.length} known`);
-
-  const slackWebhook = Deno.env.get("SLACK_WEBHOOK_URL");
-
-  for (const listing of listings) {
-    const listingMake = (listing.make || "").toUpperCase();
-    const listingModel = (listing.model || "").toUpperCase();
-    const listingYear = listing.year;
-    const listingKm = listing.km;
-    const listingPrice = listing.asking_price;
-    // Use extractBadgeFromDescription for clean badge name (matching DB derive_trim_from_text output)
-    const listingBadgeText = listing.variant_raw || listing.variant_family || "";
-    const listingTrim = extractBadgeFromDescription(listingBadgeText) || "UNKNOWN";
-    const listingDrive = drivetrainBucket(listing.drivetrain);
-    // Platform: use derive_platform_class style (no year needed)
-    const listingPlatform = derivePlatform(listing.make, listing.model, listingYear);
-
-    if (!listingYear || !listingKm || !listingPrice) continue;
-
-    // BLOCK: Unknown trims never enter replication
-    if (listingTrim === "UNKNOWN") continue;
-
-    // STRICT FILTERS using pre-computed columns from vehicle_sales_truth
-    const candidates = profitableSales.filter((s: any) => {
-      // Platform must match (Prado ≠ LandCruiser, etc.)
-      if (s.platform_class !== listingPlatform) return false;
-      // Block unknown sale trims
-      if (!s.trim_class || s.trim_class === "UNKNOWN") return false;
-      // Trim class: exact or one-step upgrade only (never downgrade)
-      const trimResult = trimAllowed(s.platform_class, listingTrim, s.trim_class);
-      if (!trimResult) return false;
-      // Year within ±1 (STRICT)
-      if (Math.abs(s.year - listingYear) > 1) return false;
-      // KM within ±15,000
-      if (s.km && Math.abs(s.km - listingKm) > 15000) return false;
-      // Drivetrain: 4WD never matches 2WD
-      if (listingDrive !== "UNKNOWN" && s.drivetrain_bucket && s.drivetrain_bucket !== "UNKNOWN" && listingDrive !== s.drivetrain_bucket) return false;
-      return true;
-    });
-
-    if (candidates.length === 0) continue;
-
-    // Sort: year diff ASC → km diff ASC → sold_at DESC (most recent)
-    candidates.sort((a: any, b: any) => {
-      const yearDiffA = Math.abs(a.year - listingYear);
-      const yearDiffB = Math.abs(b.year - listingYear);
-      if (yearDiffA !== yearDiffB) return yearDiffA - yearDiffB;
-      const kmDiffA = a.km ? Math.abs(a.km - listingKm) : 99999;
-      const kmDiffB = b.km ? Math.abs(b.km - listingKm) : 99999;
-      if (kmDiffA !== kmDiffB) return kmDiffA - kmDiffB;
-      // Most recent sold_at first
-      const dateA = a.sold_at ? new Date(a.sold_at).getTime() : 0;
-      const dateB = b.sold_at ? new Date(b.sold_at).getTime() : 0;
-      return dateB - dateA;
-    });
-
-    const best = candidates[0];
-    const historicalBuy = Number(best.buy_price);
-    const historicalSale = best.sale_price;
-    const expectedMargin = historicalSale - listingPrice;
-
-    matched++;
-
-    // SANITY: never flag a listing priced ABOVE what we sold it for
-    if (listingPrice >= historicalSale) continue;
-
-    // Only insert if margin >= $1,500
-    if (expectedMargin < 1500) continue;
-
-    let confidenceTier: string;
-    let priorityLevel: number;
-    // DB constraint allows only HIGH/MEDIUM/LOW — map our tiers accordingly
-    if (expectedMargin >= 6000) { confidenceTier = "HIGH"; priorityLevel = 1; }
-    else if (expectedMargin >= 4000) { confidenceTier = "HIGH"; priorityLevel = 2; }
-    else { confidenceTier = "MEDIUM"; priorityLevel = 3; }
-
-    const kmDiff = best.km ? Math.abs(best.km - listingKm) : null;
-    const stockId = listing.listing_id;
-    const notes = JSON.stringify({
-      matched_sale_id: best.id,
-      historical_buy_price: historicalBuy,
-      historical_sell_price: historicalSale,
-      historical_profit: historicalSale - historicalBuy,
-      km_difference: kmDiff,
-      expected_margin: expectedMargin,
-      trim_class: listingTrim,
-      drivetrain: listingDrive,
-      sold_at: best.sold_at,
-    });
-
-    const oppData = {
-      source_type: "replication",
-      listing_url: listing.listing_url || "",
-      stock_id: stockId,
-      year: listingYear,
-      make: listingMake,
-      model: listingModel,
-      variant: listing.variant_raw,
-      kms: listingKm,
-      location: listing.location,
-      buy_price: listingPrice,
-      dealer_median_price: historicalBuy,
-      retail_median_price: historicalSale,
-      median_profit: expectedMargin,
-      deviation: expectedMargin,
-      confidence_score: expectedMargin,
-      confidence_tier: confidenceTier,
-      priority_level: priorityLevel,
-      status: "new",
-      notes,
-      updated_at: new Date().toISOString(),
-    };
-
-    // Idempotent: check then insert/update
-    const { data: existingOpp } = await sb
-      .from("opportunities")
-      .select("id")
-      .eq("stock_id", stockId)
-      .eq("source_type", "replication")
-      .maybeSingle();
-
-    let error;
-    if (existingOpp) {
-      ({ error } = await sb.from("opportunities").update(oppData).eq("id", existingOpp.id));
-    } else {
-      ({ error } = await sb.from("opportunities").insert(oppData));
-    }
-
-    if (error) {
-      errors.push(`Opportunity ${stockId}: ${error.message}`);
-    } else {
-      opportunitiesCreated++;
-      console.log(`[REPLICATION] ${confidenceTier}: ${listingYear} ${listingMake} ${listingModel} ${listingTrim} — Ask $${listingPrice} vs Sold $${historicalSale} — Margin +$${expectedMargin}`);
-    }
-
-    // Slack alert for HIGH+ signals
-    if (!error && expectedMargin >= 4000 && slackWebhook) {
-      try {
-        await fetch(slackWebhook, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: `🔴 PICKLES FINGERPRINT MATCH\n${listingYear} ${listingMake} ${listingModel} ${listingTrim}\nAsk: $${listingPrice.toLocaleString()}\nLast Sold: $${historicalSale.toLocaleString()}\nLast Buy: $${historicalBuy.toLocaleString()}\nExpected Margin: +$${expectedMargin.toLocaleString()}\n${listing.listing_url || ""}`,
-          }),
-        });
-        slackAlerts++;
-      } catch (e) {
-        console.error("[REPLICATION] Slack alert failed:", e);
-      }
-    }
-  }
-
-  console.log(`[REPLICATION] Matched: ${matched}, Opportunities: ${opportunitiesCreated}, Slack: ${slackAlerts}, Errors: ${errors.length}`);
-  return { matched, opportunities_created: opportunitiesCreated, slack_alerts: slackAlerts, errors };
 }
 
 // ─── SLACK ALARM ─────────────────────────────────────────────────────────────
@@ -800,22 +395,19 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ── STEP 1: Scrape with structured extract ──
+    // ── STEP 1: Scrape ──
     const { listings, pages_scraped, firecrawl_calls } = await scrapeSearchPages(firecrawlKey);
     console.log(`[PICKLES] Scraped ${listings.length} listings from ${pages_scraped} pages`);
 
-    // ── STEP 2: Upsert listings ──
+    // ── STEP 2: Upsert ──
     const { newListings, updatedListings, errors } = await upsertListings(sb, listings);
     console.log(`[PICKLES] Upserted: ${newListings} new, ${updatedListings} updated, ${errors.length} errors`);
 
-    // ── STEP 3: Mark stale inactive ──
+    // ── STEP 3: Mark stale ──
     const markedInactive = await markStaleInactive(sb);
     console.log(`[PICKLES] Marked ${markedInactive} stale listings inactive`);
 
-    // ── STEP 4: Fingerprint replication ──
-    const replication = await runFingerprintReplication(sb);
-
-    // ── STEP 5: Audit logging ──
+    // ── STEP 4: Audit logging ──
     const runtimeMs = Date.now() - startTime;
     const result = {
       listings_found: listings.length,
@@ -824,11 +416,8 @@ Deno.serve(async (req) => {
       marked_inactive: markedInactive,
       pages_scraped,
       firecrawl_calls,
-      replication_matched: replication.matched,
-      opportunities_created: replication.opportunities_created,
-      slack_alerts: replication.slack_alerts,
       runtime_ms: runtimeMs,
-      errors: [...errors, ...replication.errors].slice(0, 10),
+      errors: errors.slice(0, 10),
     };
 
     await sb.from("cron_audit_log").insert({
@@ -842,13 +431,13 @@ Deno.serve(async (req) => {
       cron_name: "pickles-ingest-cron",
       last_seen_at: new Date().toISOString(),
       last_ok: errors.length < listings.length / 2,
-      note: `found=${listings.length} new=${newListings} updated=${updatedListings} inactive=${markedInactive} replicated=${replication.opportunities_created}`,
+      note: `found=${listings.length} new=${newListings} updated=${updatedListings} inactive=${markedInactive}`,
     }, { onConflict: "cron_name" });
 
-    // ── STEP 6: Slack alarm ──
+    // ── STEP 5: Slack alarm ──
     await sendSlackAlarmIfNeeded(sb, listings.length);
 
-    console.log(`[PICKLES] Run complete in ${runtimeMs}ms:`, result);
+    console.log(`[PICKLES] Ingest complete in ${runtimeMs}ms:`, result);
 
     return new Response(JSON.stringify({ success: true, ...result }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -874,9 +463,9 @@ Deno.serve(async (req) => {
         cron_name: "pickles-ingest-cron",
         last_seen_at: new Date().toISOString(),
         last_ok: false,
-        note: `ERROR: ${errorMsg.substring(0, 100)}`,
+        note: `FATAL: ${errorMsg.slice(0, 100)}`,
       }, { onConflict: "cron_name" });
-    } catch (_) { /* best-effort */ }
+    } catch (_) {}
 
     return new Response(JSON.stringify({ success: false, error: errorMsg }), {
       status: 500,
