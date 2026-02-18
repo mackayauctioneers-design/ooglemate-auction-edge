@@ -8930,6 +8930,7 @@ export type Database = {
           lot_id: string | null
           make: string | null
           model: string | null
+          promoted_at: string | null
           raw_payload: Json | null
           shadow_source: string
           source: string | null
@@ -8954,6 +8955,7 @@ export type Database = {
           lot_id?: string | null
           make?: string | null
           model?: string | null
+          promoted_at?: string | null
           raw_payload?: Json | null
           shadow_source?: string
           source?: string | null
@@ -8978,6 +8980,7 @@ export type Database = {
           lot_id?: string | null
           make?: string | null
           model?: string | null
+          promoted_at?: string | null
           raw_payload?: Json | null
           shadow_source?: string
           source?: string | null
