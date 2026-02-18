@@ -42,6 +42,7 @@ interface ScrapedListing {
   make: string;
   model: string;
   variant: string;
+  title_raw: string;
   listing_url: string;
   price: number;
   kms: number | null;
@@ -205,6 +206,7 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
       allListings.push({
         lot_id: lotId,
         year, make, model, variant: finalVariant,
+        title_raw: item.title || "",
         listing_url: item.url,
         price, kms, location,
       });
@@ -231,12 +233,16 @@ async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ ne
 
     const { data: existing } = await sb
       .from("vehicle_listings")
-      .select("id, asking_price, status")
+      .select("id, asking_price, status, drivetrain, variant_raw")
       .eq("listing_id", listingId)
       .eq("source", SOURCE)
       .maybeSingle();
 
     if (existing) {
+      // Backfill badge from title if variant_raw is missing
+      const badgeFromTitle = l.variant || extractBadgeFromDescription(l.title_raw) || null;
+      const driveFromTitle = extractDriveFromDescription(l.title_raw);
+
       const updates: Record<string, any> = {
         last_seen_at: now,
         updated_at: now,
@@ -246,11 +252,23 @@ async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ ne
       if (l.price > 0 && l.price !== existing.asking_price) updates.asking_price = l.price;
       if (l.kms) updates.km = l.kms;
       if (l.location) updates.location = l.location;
+      // Backfill variant if currently null
+      if (badgeFromTitle) {
+        updates.variant_raw = badgeFromTitle;
+        updates.variant_family = badgeFromTitle.toUpperCase();
+      }
+      if (driveFromTitle !== "UNKNOWN" && !existing.drivetrain) {
+        updates.drivetrain = driveFromTitle === "4X4" ? "4x4" : "2WD";
+      }
 
       const { error } = await sb.from("vehicle_listings").update(updates).eq("id", existing.id);
       if (error) errors.push(`Update ${listingId}: ${error.message}`);
       else updatedListings++;
     } else {
+      // Extract badge from title if variant is empty
+      const badgeFromTitle = l.variant || extractBadgeFromDescription(l.title_raw) || null;
+      const driveFromTitle = extractDriveFromDescription(l.title_raw);
+
       const { error } = await sb.from("vehicle_listings").insert({
         listing_id: listingId,
         lot_id: l.lot_id,
@@ -258,7 +276,9 @@ async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ ne
         auction_house: "pickles",
         make: l.make.toUpperCase(),
         model: l.model.toUpperCase(),
-        variant_raw: l.variant || null,
+        variant_raw: badgeFromTitle,
+        variant_family: badgeFromTitle ? badgeFromTitle.toUpperCase() : null,
+        drivetrain: driveFromTitle !== "UNKNOWN" ? (driveFromTitle === "4X4" ? "4x4" : "2WD") : null,
         year: l.year,
         km: l.kms,
         asking_price: l.price > 0 ? l.price : null,
@@ -432,6 +452,55 @@ function drivetrainBucket(val: string | null): string {
   return "UNKNOWN";
 }
 
+// ─── EXTRACT BADGE FROM description_raw ──────────────────────────────────────
+// Sales data often has variant/badge NULL but description_raw contains the full
+// spec string e.g. "Toyota Landcruiser 2021 VDJ200R VX Wagon 7st 5dr Spts Auto 6sp 4x4 4.5DTT"
+// We extract the badge keyword from that string.
+
+function extractBadgeFromDescription(descRaw: string | null): string {
+  if (!descRaw) return "";
+  const d = descRaw.toUpperCase();
+  // Order matters: longest/most specific first
+  const badges = [
+    "EXCEED TOURER", "EXCEED",
+    "X-TERRAIN", "XTERRAIN",
+    "PRO-4X", "PRO4X",
+    "GLX-R", "GLX+", "GLX PLUS",
+    "SR5", "ROGUE", "RUGGED X", "RUGGED-X", "RUGGED",
+    "RAPTOR", "WILDTRAK",
+    "KAKADU", "SAHARA",
+    "ASPIRE",
+    "TITANIUM", "PLATINUM",
+    "GXL", "VX", "GX",
+    "XLT", "XLS",
+    "LS-U", "LSU", "LS-M", "LSM", "LS-T", "LST",
+    "ST-X", "STX", "ST-L", "STL",
+    "GLS", "GR", "N-TREK",
+    "COMMUTER", "SLWB", "LWB",
+    "WORKMATE", "AMBIENTE", "TREND",
+  ];
+  // Also check with word boundaries for short ones
+  const shortBadges = ["SR", "XL", "LS", "ES", "SL", "ST", "TI", "LT", "LTZ", "Z71", "SS", "SSV", "SV6"];
+  
+  for (const b of badges) {
+    if (d.includes(b)) return b;
+  }
+  for (const b of shortBadges) {
+    const re = new RegExp(`\\b${b}\\b`);
+    if (re.test(d)) return b;
+  }
+  return "";
+}
+
+// Extract drivetrain from description_raw when drive_type column is null
+function extractDriveFromDescription(descRaw: string | null): string {
+  if (!descRaw) return "UNKNOWN";
+  const d = descRaw.toUpperCase();
+  if (/\b4X4\b|\b4WD\b|\bAWD\b/.test(d)) return "4X4";
+  if (/\b2WD\b|\b4X2\b|\bFWD\b|\bRWD\b/.test(d)) return "2WD";
+  return "UNKNOWN";
+}
+
 // ─── TRIM LADDER (one-step upgrade matching) ─────────────────────────────────
 
 const TRIM_LADDER: Record<string, Record<string, number>> = {
@@ -486,7 +555,7 @@ async function runFingerprintReplication(sb: any): Promise<{
   // Get active Pickles listings WITH a price
   const { data: listings } = await sb
     .from("vehicle_listings")
-    .select("id, listing_id, make, model, variant_raw, drivetrain, year, km, asking_price, listing_url, location")
+    .select("id, listing_id, make, model, variant_raw, variant_family, drivetrain, year, km, asking_price, listing_url, location")
     .eq("source", SOURCE)
     .in("status", ["listed", "catalogue"])
     .not("asking_price", "is", null)
@@ -499,10 +568,10 @@ async function runFingerprintReplication(sb: any): Promise<{
 
   console.log(`[REPLICATION] Running STRICT fingerprint match for ${listings.length} priced listings`);
 
-  // Load all profitable sales (one query)
+  // Load all profitable sales (one query) — include description_raw for badge extraction
   const { data: allSales } = await sb
     .from("vehicle_sales_truth")
-    .select("id, make, model, variant, badge, year, km, buy_price, sale_price, sold_at, drive_type")
+    .select("id, make, model, variant, badge, year, km, buy_price, sale_price, sold_at, drive_type, description_raw")
     .not("buy_price", "is", null)
     .not("sale_price", "is", null);
 
@@ -515,12 +584,27 @@ async function runFingerprintReplication(sb: any): Promise<{
   console.log(`[REPLICATION] ${profitableSales.length} profitable sales loaded`);
 
   // Pre-compute trim classes + platform for all sales
-  const salesWithTrim = profitableSales.map((s: any) => ({
-    ...s,
-    _trim: deriveTrimClass(s.make, s.model, s.variant || s.badge || ""),
-    _drive: drivetrainBucket(s.drive_type),
-    _platform: derivePlatform(s.make, s.model, s.year),
-  }));
+  // CRITICAL: variant/badge are often NULL — extract from description_raw
+  const salesWithTrim = profitableSales.map((s: any) => {
+    const variantText = s.variant || s.badge || extractBadgeFromDescription(s.description_raw) || "";
+    const driveText = s.drive_type || "";
+    const driveFromDesc = driveText ? drivetrainBucket(driveText) : extractDriveFromDescription(s.description_raw);
+    return {
+      ...s,
+      _trim: deriveTrimClass(s.make, s.model, variantText),
+      _drive: driveFromDesc,
+      _platform: derivePlatform(s.make, s.model, s.year),
+      _badge_source: s.variant ? "variant" : s.badge ? "badge" : s.description_raw ? "description_raw" : "none",
+    };
+  });
+
+  // Log trim extraction stats
+  const trimStats = { known: 0, unknown: 0, fromDesc: 0 };
+  for (const s of salesWithTrim) {
+    if (s._trim === "UNKNOWN") trimStats.unknown++;
+    else { trimStats.known++; if (s._badge_source === "description_raw") trimStats.fromDesc++; }
+  }
+  console.log(`[REPLICATION] Trim extraction: ${trimStats.known} known (${trimStats.fromDesc} from description_raw), ${trimStats.unknown} unknown`);
 
   const slackWebhook = Deno.env.get("SLACK_WEBHOOK_URL");
 
@@ -530,7 +614,7 @@ async function runFingerprintReplication(sb: any): Promise<{
     const listingYear = listing.year;
     const listingKm = listing.km;
     const listingPrice = listing.asking_price;
-    const listingTrim = deriveTrimClass(listing.make, listing.model, listing.variant_raw || "");
+    const listingTrim = deriveTrimClass(listing.make, listing.model, listing.variant_raw || listing.variant_family || "");
     const listingDrive = drivetrainBucket(listing.drivetrain);
     const listingPlatform = derivePlatform(listing.make, listing.model, listingYear);
 
