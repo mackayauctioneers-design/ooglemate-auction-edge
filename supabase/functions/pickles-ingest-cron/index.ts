@@ -20,7 +20,7 @@ const corsHeaders = {
 
 const SOURCE = "pickles";
 const SEARCH_URL = "https://www.pickles.com.au/used/search/cars?filter=and%255B0%255D%255Bor%255D%255B0%255D%255BbuyMethod%255D%3DBuy%2520Now&contentkey=cars-to-buy-now";
-const MAX_PAGES = 10;
+const MAX_PAGES = 5;
 const STALE_HOURS = 48;
 const DAILY_CREDIT_LIMIT = 150;
 
@@ -265,18 +265,117 @@ async function markStaleInactive(sb: any): Promise<number> {
   return data?.length || 0;
 }
 
-// ─── FINGERPRINT REPLICATION ENGINE ──────────────────────────────────────────
-// For each priced Pickles listing, find the nearest historical sale
-// using weighted score (KM proximity + profit strength).
-// Insert opportunity if under_buy meets threshold.
+// ─── DERIVE TRIM CLASS (mirrors DB function) ────────────────────────────────
+
+function deriveTrimClass(make: string, model: string, variant: string): string {
+  const m = (make || "").toUpperCase().trim();
+  const mo = (model || "").toUpperCase().trim();
+  const v = (variant || "").toUpperCase();
+
+  if (m === "TOYOTA" && mo === "LANDCRUISER") {
+    if (v.includes("WORKMATE")) return "LC70_BASE";
+    if (v.includes("GXL")) return "LC70_GXL";
+    if (v.includes("GX")) return "LC70_GX";
+    if (v.includes("VX")) return "LC70_VX";
+    if (v.includes("SAHARA")) return "LC70_SAHARA";
+    if (v.includes("70TH")) return "LC70_SPECIAL";
+  }
+  if (m === "TOYOTA" && mo === "LANDCRUISER 200") {
+    if (v.includes("GXL")) return "LC200_GXL";
+    if (v.includes("GX")) return "LC200_GX";
+    if (v.includes("VX")) return "LC200_VX";
+    if (v.includes("SAHARA")) return "LC200_SAHARA";
+  }
+  if (m === "TOYOTA" && mo === "LANDCRUISER 300") {
+    if (v.includes("GXL")) return "LC300_GXL";
+    if (v.includes("GX")) return "LC300_GX";
+    if (v.includes("VX")) return "LC300_VX";
+    if (v.includes("SAHARA")) return "LC300_SAHARA";
+  }
+  if (m === "TOYOTA" && mo.includes("PRADO")) {
+    if (v.includes("GXL")) return "PRADO_GXL";
+    if (v.includes("GX")) return "PRADO_GX";
+    if (v.includes("VX")) return "PRADO_VX";
+    if (v.includes("KAKADU")) return "PRADO_KAKADU";
+  }
+  if (m === "TOYOTA" && mo === "HILUX") {
+    if (v.includes("SR5")) return "HILUX_SR5";
+    if (v.includes("SR")) return "HILUX_SR";
+    if (v.includes("ROGUE")) return "HILUX_ROGUE";
+    if (v.includes("RUGGED")) return "HILUX_RUGGED";
+    if (v.includes("WORKMATE")) return "HILUX_BASE";
+  }
+  if (m === "TOYOTA" && mo === "HIACE") {
+    if (v.includes("COMMUTER")) return "HIACE_COMMUTER";
+    if (v.includes("SLWB")) return "HIACE_SLWB";
+    if (v.includes("LWB")) return "HIACE_LWB";
+  }
+  if (m === "FORD" && mo === "RANGER") {
+    if (v.includes("RAPTOR")) return "RANGER_RAPTOR";
+    if (v.includes("WILDTRAK")) return "RANGER_WILDTRAK";
+    if (v.includes("XLT")) return "RANGER_XLT";
+    if (v.includes("XLS")) return "RANGER_XLS";
+    if (v.includes("XL")) return "RANGER_XL";
+  }
+  if (m === "FORD" && mo === "EVEREST") {
+    if (v.includes("TITANIUM")) return "EVEREST_TITANIUM";
+    if (v.includes("TREND")) return "EVEREST_TREND";
+    if (v.includes("AMBIENTE")) return "EVEREST_AMBIENTE";
+  }
+  if (m === "ISUZU" && (mo === "D-MAX" || mo === "DMAX")) {
+    if (v.includes("X-TERRAIN") || v.includes("XTERRAIN")) return "DMAX_XTERRAIN";
+    if (v.includes("LS-U") || v.includes("LSU")) return "DMAX_LSU";
+    if (v.includes("LS-M") || v.includes("LSM")) return "DMAX_LSM";
+    if (v.includes("SX")) return "DMAX_SX";
+  }
+  if (m === "ISUZU" && (mo === "MU-X" || mo === "MUX")) {
+    if (v.includes("LS-T") || v.includes("LST")) return "MUX_LST";
+    if (v.includes("LS-U") || v.includes("LSU")) return "MUX_LSU";
+    if (v.includes("LS-M") || v.includes("LSM")) return "MUX_LSM";
+  }
+  if (m === "MITSUBISHI" && mo === "TRITON") {
+    if (v.includes("GLS")) return "TRITON_GLS";
+    if (v.includes("GLX+") || v.includes("GLX PLUS")) return "TRITON_GLXPLUS";
+    if (v.includes("GLX")) return "TRITON_GLX";
+  }
+  if (m === "NISSAN" && mo === "NAVARA") {
+    if (v.includes("PRO-4X") || v.includes("PRO4X")) return "NAVARA_PRO4X";
+    if (v.includes("ST-X") || v.includes("STX")) return "NAVARA_STX";
+    if (v.includes("ST-L") || v.includes("STL")) return "NAVARA_STL";
+    if (v.includes("ST")) return "NAVARA_ST";
+    if (v.includes("SL")) return "NAVARA_SL";
+  }
+  if (m === "NISSAN" && mo === "PATROL") {
+    if (v.includes("TI-L") || v.includes("TIL")) return "PATROL_TIL";
+    if (v.includes("TI")) return "PATROL_TI";
+  }
+  return mo + "_STANDARD";
+}
+
+// ─── DRIVETRAIN BUCKET ───────────────────────────────────────────────────────
+
+function drivetrainBucket(val: string | null): string {
+  if (!val) return "UNKNOWN";
+  const v = val.toUpperCase();
+  if (/4X4|4WD|AWD/.test(v)) return "4X4";
+  if (/2WD|2X4|FWD|RWD|4X2/.test(v)) return "2WD";
+  return "UNKNOWN";
+}
+
+// ─── FINGERPRINT REPLICATION ENGINE (STRICT MODE) ────────────────────────────
+// For each priced Pickles listing, find the SINGLE nearest historical sale
+// using strict filters + deterministic sort (year → km → recency).
+// No medians. No clusters. No fuzzy scoring.
 
 async function runFingerprintReplication(sb: any): Promise<{
   matched: number;
   opportunities_created: number;
+  slack_alerts: number;
   errors: string[];
 }> {
   let matched = 0;
   let opportunitiesCreated = 0;
+  let slackAlerts = 0;
   const errors: string[] = [];
 
   // Get active Pickles listings WITH a price
@@ -290,12 +389,12 @@ async function runFingerprintReplication(sb: any): Promise<{
 
   if (!listings || listings.length === 0) {
     console.log("[REPLICATION] No priced Pickles listings to replicate against");
-    return { matched: 0, opportunities_created: 0, errors: [] };
+    return { matched: 0, opportunities_created: 0, slack_alerts: 0, errors: [] };
   }
 
-  console.log(`[REPLICATION] Running fingerprint match for ${listings.length} priced listings`);
+  console.log(`[REPLICATION] Running STRICT fingerprint match for ${listings.length} priced listings`);
 
-  // Get all profitable sales (one query, filter in memory)
+  // Load all profitable sales (one query)
   const { data: allSales } = await sb
     .from("vehicle_sales_truth")
     .select("id, make, model, variant, badge, year, km, buy_price, sale_price, sold_at, drive_type")
@@ -303,28 +402,21 @@ async function runFingerprintReplication(sb: any): Promise<{
     .not("sale_price", "is", null);
 
   if (!allSales || allSales.length === 0) {
-    console.log("[REPLICATION] No profitable sales in vehicle_sales_truth");
-    return { matched: 0, opportunities_created: 0, errors: [] };
+    console.log("[REPLICATION] No sales in vehicle_sales_truth");
+    return { matched: 0, opportunities_created: 0, slack_alerts: 0, errors: [] };
   }
 
-  // Pre-filter to profitable sales
   const profitableSales = allSales.filter((s: any) => (s.sale_price - Number(s.buy_price)) > 0);
   console.log(`[REPLICATION] ${profitableSales.length} profitable sales loaded`);
 
-  // Load trim ladder for upgrade matching
-  const { data: trimLadder } = await sb
-    .from("trim_ladder")
-    .select("make, model, trim_class, trim_rank");
+  // Pre-compute trim classes for all sales
+  const salesWithTrim = profitableSales.map((s: any) => ({
+    ...s,
+    _trim: deriveTrimClass(s.make, s.model, s.variant || s.badge || ""),
+    _drive: drivetrainBucket(s.drive_type),
+  }));
 
-  const trimMap = new Map<string, Map<string, number>>();
-  for (const t of (trimLadder || [])) {
-    const key = `${t.make}:${t.model}`;
-    if (!trimMap.has(key)) trimMap.set(key, new Map());
-    trimMap.get(key)!.set(t.trim_class, t.trim_rank);
-  }
-
-  // Load derive_trim_class function results for listings and sales won't work directly
-  // Instead, do simple variant-based trim matching
+  const slackWebhook = Deno.env.get("SLACK_WEBHOOK_URL");
 
   for (const listing of listings) {
     const listingMake = (listing.make || "").toUpperCase();
@@ -332,77 +424,77 @@ async function runFingerprintReplication(sb: any): Promise<{
     const listingYear = listing.year;
     const listingKm = listing.km;
     const listingPrice = listing.asking_price;
+    const listingTrim = deriveTrimClass(listing.make, listing.model, listing.variant_raw || "");
+    const listingDrive = drivetrainBucket(listing.drivetrain);
 
     if (!listingYear || !listingKm || !listingPrice) continue;
 
-    // Find matching sales: make exact, model exact, year ±2, km ±15k
-    const candidates = profitableSales.filter((s: any) => {
-      const saleMake = (s.make || "").toUpperCase();
-      const saleModel = (s.model || "").toUpperCase();
-      if (saleMake !== listingMake) return false;
-      if (saleModel !== listingModel) return false;
-      if (Math.abs(s.year - listingYear) > 2) return false;
-      if (s.km && listingKm && Math.abs(s.km - listingKm) > 15000) return false;
-      // Drivetrain check: if both have values, must match
-      if (listing.drivetrain && s.drive_type) {
-        const ld = listing.drivetrain.toUpperCase();
-        const sd = s.drive_type.toUpperCase();
-        if (ld !== sd) return false;
-      }
+    // STRICT FILTERS
+    const candidates = salesWithTrim.filter((s: any) => {
+      // Make exact
+      if ((s.make || "").toUpperCase() !== listingMake) return false;
+      // Model exact
+      if ((s.model || "").toUpperCase() !== listingModel) return false;
+      // Trim class exact (strict — no upgrades in this mode)
+      if (s._trim !== listingTrim) return false;
+      // Year within ±1 (STRICT)
+      if (Math.abs(s.year - listingYear) > 1) return false;
+      // KM within ±15,000
+      if (s.km && Math.abs(s.km - listingKm) > 15000) return false;
+      // Drivetrain: 4x4 never matches 2wd
+      if (listingDrive !== "UNKNOWN" && s._drive !== "UNKNOWN" && listingDrive !== s._drive) return false;
       return true;
     });
 
     if (candidates.length === 0) continue;
 
-    // Weighted score: lower is better
-    // Normalize KM diff (0-1 where 0 = identical) and profit (higher = better)
-    const scored = candidates.map((s: any) => {
-      const kmDiff = (s.km && listingKm) ? Math.abs(s.km - listingKm) : 7500;
-      const profit = s.sale_price - Number(s.buy_price);
-      // KM proximity score: 0 = perfect, 1 = 15k away
-      const kmScore = kmDiff / 15000;
-      // Profit score: higher profit = better (normalized roughly)
-      const profitScore = Math.min(profit / 20000, 1);
-      // Combined: lower kmScore + higher profitScore = better
-      // Weighted: 40% KM proximity, 60% profit strength
-      const weightedScore = (kmScore * 0.4) - (profitScore * 0.6);
-      return { sale: s, kmDiff, profit, weightedScore };
+    // Sort: year diff ASC → km diff ASC → sold_at DESC (most recent)
+    candidates.sort((a: any, b: any) => {
+      const yearDiffA = Math.abs(a.year - listingYear);
+      const yearDiffB = Math.abs(b.year - listingYear);
+      if (yearDiffA !== yearDiffB) return yearDiffA - yearDiffB;
+      const kmDiffA = a.km ? Math.abs(a.km - listingKm) : 99999;
+      const kmDiffB = b.km ? Math.abs(b.km - listingKm) : 99999;
+      if (kmDiffA !== kmDiffB) return kmDiffA - kmDiffB;
+      // Most recent sold_at first
+      const dateA = a.sold_at ? new Date(a.sold_at).getTime() : 0;
+      const dateB = b.sold_at ? new Date(b.sold_at).getTime() : 0;
+      return dateB - dateA;
     });
 
-    // Sort by weighted score ascending (best first)
-    scored.sort((a, b) => a.weightedScore - b.weightedScore);
-    const best = scored[0];
-
-    const historicalBuy = Number(best.sale.buy_price);
-    const historicalSale = best.sale.sale_price;
-    const historicalProfit = best.profit;
-    const underBuy = historicalBuy - listingPrice;
+    const best = candidates[0];
+    const historicalBuy = Number(best.buy_price);
+    const historicalSale = best.sale_price;
+    const expectedMargin = historicalSale - listingPrice;
 
     matched++;
 
-    // Determine priority level
-    let priorityLevel: number | null = null;
-    let confidenceTier = "IGNORE";
+    // Only insert if margin >= $1,500
+    if (expectedMargin < 1500) continue;
 
-    if (underBuy >= 6000) {
-      priorityLevel = 1;
-      confidenceTier = "CODE_RED";
-    } else if (underBuy >= 3000) {
-      priorityLevel = 2;
-      confidenceTier = "HIGH";
-    } else if (underBuy >= 1500) {
-      priorityLevel = 3;
-      confidenceTier = "WATCH";
-    }
+    let confidenceTier: string;
+    let priorityLevel: number;
+    // DB constraint allows only HIGH/MEDIUM/LOW — map our tiers accordingly
+    if (expectedMargin >= 6000) { confidenceTier = "HIGH"; priorityLevel = 1; }
+    else if (expectedMargin >= 4000) { confidenceTier = "HIGH"; priorityLevel = 2; }
+    else { confidenceTier = "MEDIUM"; priorityLevel = 3; }
 
-    if (!priorityLevel) continue; // Below threshold, skip
-
-    // Insert or update opportunity (manual check for idempotency)
+    const kmDiff = best.km ? Math.abs(best.km - listingKm) : null;
     const stockId = listing.listing_id;
-    const notes = `Matched sale: ${best.sale.year} ${best.sale.make} ${best.sale.model} | Bought: $${historicalBuy.toLocaleString()} | Sold: $${historicalSale.toLocaleString()} | Profit: $${historicalProfit.toLocaleString()} | KM diff: ${best.kmDiff.toLocaleString()} | Under buy: $${underBuy.toLocaleString()}`;
+    const notes = JSON.stringify({
+      matched_sale_id: best.id,
+      historical_buy_price: historicalBuy,
+      historical_sell_price: historicalSale,
+      historical_profit: historicalSale - historicalBuy,
+      km_difference: kmDiff,
+      expected_margin: expectedMargin,
+      trim_class: listingTrim,
+      drivetrain: listingDrive,
+      sold_at: best.sold_at,
+    });
 
     const oppData = {
-      source_type: "auction_replication",
+      source_type: "fingerprint_replication",
       listing_url: listing.listing_url || "",
       stock_id: stockId,
       year: listingYear,
@@ -414,9 +506,9 @@ async function runFingerprintReplication(sb: any): Promise<{
       buy_price: listingPrice,
       dealer_median_price: historicalBuy,
       retail_median_price: historicalSale,
-      median_profit: historicalProfit,
-      deviation: underBuy,
-      confidence_score: Math.abs(best.weightedScore),
+      median_profit: expectedMargin,
+      deviation: expectedMargin,
+      confidence_score: expectedMargin,
       confidence_tier: confidenceTier,
       priority_level: priorityLevel,
       status: "new",
@@ -424,12 +516,12 @@ async function runFingerprintReplication(sb: any): Promise<{
       updated_at: new Date().toISOString(),
     };
 
-    // Check if exists
+    // Idempotent: check then insert/update
     const { data: existingOpp } = await sb
       .from("opportunities")
       .select("id")
       .eq("stock_id", stockId)
-      .eq("source_type", "auction_replication")
+      .eq("source_type", "fingerprint_replication")
       .maybeSingle();
 
     let error;
@@ -443,11 +535,28 @@ async function runFingerprintReplication(sb: any): Promise<{
       errors.push(`Opportunity ${stockId}: ${error.message}`);
     } else {
       opportunitiesCreated++;
+      console.log(`[REPLICATION] ${confidenceTier}: ${listingYear} ${listingMake} ${listingModel} ${listingTrim} — Ask $${listingPrice} vs Sold $${historicalSale} — Margin +$${expectedMargin}`);
+    }
+
+    // Slack alert for HIGH+ signals
+    if (!error && expectedMargin >= 4000 && slackWebhook) {
+      try {
+        await fetch(slackWebhook, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: `🔴 PICKLES FINGERPRINT MATCH\n${listingYear} ${listingMake} ${listingModel} ${listingTrim}\nAsk: $${listingPrice.toLocaleString()}\nLast Sold: $${historicalSale.toLocaleString()}\nLast Buy: $${historicalBuy.toLocaleString()}\nExpected Margin: +$${expectedMargin.toLocaleString()}\n${listing.listing_url || ""}`,
+          }),
+        });
+        slackAlerts++;
+      } catch (e) {
+        console.error("[REPLICATION] Slack alert failed:", e);
+      }
     }
   }
 
-  console.log(`[REPLICATION] Matched: ${matched}, Opportunities: ${opportunitiesCreated}, Errors: ${errors.length}`);
-  return { matched, opportunities_created: opportunitiesCreated, errors };
+  console.log(`[REPLICATION] Matched: ${matched}, Opportunities: ${opportunitiesCreated}, Slack: ${slackAlerts}, Errors: ${errors.length}`);
+  return { matched, opportunities_created: opportunitiesCreated, slack_alerts: slackAlerts, errors };
 }
 
 // ─── SLACK ALARM ─────────────────────────────────────────────────────────────
@@ -540,6 +649,7 @@ Deno.serve(async (req) => {
       firecrawl_calls,
       replication_matched: replication.matched,
       opportunities_created: replication.opportunities_created,
+      slack_alerts: replication.slack_alerts,
       runtime_ms: runtimeMs,
       errors: [...errors, ...replication.errors].slice(0, 10),
     };
