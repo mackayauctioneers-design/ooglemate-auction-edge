@@ -1,0 +1,1 @@
+ALTER TABLE vehicle_listings ADD COLUMN IF NOT EXISTS replicated_at TIMESTAMPTZ;

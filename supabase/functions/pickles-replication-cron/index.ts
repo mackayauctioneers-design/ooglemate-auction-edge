@@ -110,15 +110,16 @@ Deno.serve(async (req) => {
 
     const lookbackThreshold = new Date(Date.now() - LOOKBACK_HOURS * 3600000).toISOString();
 
-    // Get recent priced Pickles listings
+    // Get recent priced Pickles listings (incremental: only unprocessed or updated)
     const { data: listings } = await sb
       .from("vehicle_listings")
-      .select("id, listing_id, make, model, variant_raw, variant_family, drivetrain, year, km, asking_price, listing_url, location")
+      .select("id, listing_id, make, model, variant_raw, variant_family, drivetrain, year, km, asking_price, listing_url, location, last_seen_at, replicated_at")
       .eq("source", SOURCE)
       .in("status", ["listed", "catalogue"])
       .not("asking_price", "is", null)
       .gt("asking_price", 0)
-      .gte("last_seen_at", lookbackThreshold);
+      .gte("last_seen_at", lookbackThreshold)
+      .or("replicated_at.is.null,replicated_at.lt.last_seen_at");
 
     if (!listings || listings.length === 0) {
       console.log("[REPLICATION] No recent priced Pickles listings");
@@ -167,7 +168,12 @@ Deno.serve(async (req) => {
     let slackAlerts = 0;
     const errors: string[] = [];
 
+    // Collect all listing IDs for batch replicated_at stamp
+    const processedIds: string[] = [];
+
     for (const listing of listings) {
+      processedIds.push(listing.id);
+
       const listingMake = (listing.make || "").toUpperCase();
       const listingModel = (listing.model || "").toUpperCase();
       const listingYear = listing.year;
@@ -295,6 +301,16 @@ Deno.serve(async (req) => {
         } catch (e) {
           console.error("[REPLICATION] Slack alert failed:", e);
         }
+      }
+    }
+
+    // Batch-stamp all processed listings as replicated
+    if (processedIds.length > 0) {
+      const now = new Date().toISOString();
+      // Process in chunks of 100 to avoid query size limits
+      for (let i = 0; i < processedIds.length; i += 100) {
+        const chunk = processedIds.slice(i, i + 100);
+        await sb.from("vehicle_listings").update({ replicated_at: now }).in("id", chunk);
       }
     }
 
