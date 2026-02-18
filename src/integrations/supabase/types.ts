@@ -8920,18 +8920,21 @@ export type Database = {
           days_to_clear: number | null
           description_raw: string | null
           drive_type: string | null
+          drivetrain_bucket: string | null
           fuel_type: string | null
           id: string
           km: number | null
           make: string
           model: string
           notes: string | null
+          platform_class: string | null
           profit_pct: number | null
           sale_price: number | null
           series: string | null
           sold_at: string
           source: string
           transmission: string | null
+          trim_class: string | null
           variant: string | null
           year: number | null
         }
@@ -8946,18 +8949,21 @@ export type Database = {
           days_to_clear?: number | null
           description_raw?: string | null
           drive_type?: string | null
+          drivetrain_bucket?: string | null
           fuel_type?: string | null
           id?: string
           km?: number | null
           make: string
           model: string
           notes?: string | null
+          platform_class?: string | null
           profit_pct?: number | null
           sale_price?: number | null
           series?: string | null
           sold_at: string
           source?: string
           transmission?: string | null
+          trim_class?: string | null
           variant?: string | null
           year?: number | null
         }
@@ -8972,18 +8978,21 @@ export type Database = {
           days_to_clear?: number | null
           description_raw?: string | null
           drive_type?: string | null
+          drivetrain_bucket?: string | null
           fuel_type?: string | null
           id?: string
           km?: number | null
           make?: string
           model?: string
           notes?: string | null
+          platform_class?: string | null
           profit_pct?: number | null
           sale_price?: number | null
           series?: string | null
           sold_at?: string
           source?: string
           transmission?: string | null
+          trim_class?: string | null
           variant?: string | null
           year?: number | null
         }
@@ -10434,12 +10443,17 @@ export type Database = {
           listings_processed: number
         }[]
       }
+      derive_drive_bucket: { Args: { p_text: string }; Returns: string }
       derive_generation: {
         Args: { p_make: string; p_model: string; p_year: number }
         Returns: string
       }
       derive_platform: {
         Args: { p_make: string; p_model: string; p_year: number }
+        Returns: string
+      }
+      derive_platform_class: {
+        Args: { p_make: string; p_model: string }
         Returns: string
       }
       derive_presence_events: {
@@ -10465,6 +10479,10 @@ export type Database = {
       }
       derive_trim_class: {
         Args: { p_make: string; p_model: string; p_variant: string }
+        Returns: string
+      }
+      derive_trim_from_text: {
+        Args: { p_make: string; p_model: string; p_text: string }
         Returns: string
       }
       detect_geo_heat_alerts: {
