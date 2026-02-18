@@ -4,21 +4,19 @@ import { useState, useCallback } from "react";
 
 /* ── Types ── */
 
-export interface ProfitPattern {
+export interface ProfitableSale {
   id: string;
-  account_id: string;
   make: string;
   model: string;
+  variant: string | null;
+  year: number;
+  km: number | null;
+  buy_price: number;
+  sale_price: number;
+  profit: number;
+  drive_type: string | null;
+  sold_at: string | null;
   trim_class: string;
-  year_min: number;
-  year_max: number;
-  km_min: number;
-  km_max: number;
-  total_flips: number;
-  median_buy_price: number;
-  median_sell_price: number;
-  median_profit: number;
-  median_km: number | null;
 }
 
 export interface LiveMatch {
@@ -34,13 +32,12 @@ export interface LiveMatch {
   status: string | null;
   first_seen_at: string | null;
   drivetrain: string | null;
-  est_profit: number | null;
-  under_median_buy: number | null;
+  est_profit: number;
   match_type: "exact" | "upgrade";
 }
 
-export interface PatternWithMatches {
-  pattern: ProfitPattern;
+export interface SaleWithMatches {
+  sale: ProfitableSale;
   matches: LiveMatch[];
 }
 
@@ -152,27 +149,6 @@ function extractDrivetrain(raw: string | null): string | null {
   return null;
 }
 
-function median(arr: number[]): number {
-  if (!arr.length) return 0;
-  const sorted = [...arr].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-function yearBand(year: number): [number, number] {
-  const base = Math.floor((year - 1) / 3) * 3 + 1; // e.g. 2022 → 2022, 2024 → 2022
-  // Simpler: 3-year windows aligned to decades
-  const lo = year - ((year - 2000) % 3);
-  return [lo, lo + 2];
-}
-
-function kmBand(km: number): [number, number] {
-  if (km < 50000) return [0, 50000];
-  if (km < 100000) return [50000, 100000];
-  if (km < 150000) return [100000, 150000];
-  return [150000, 999999];
-}
-
 /* ── Dismiss helpers ── */
 
 function getDismissedKey(accountId: string) {
@@ -193,10 +169,10 @@ function persistDismissedIds(accountId: string, ids: Set<string>) {
 export function useBuyAgainTargets(accountId: string) {
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => getDismissedIds(accountId));
 
-  const dismissPattern = useCallback((patternKey: string) => {
+  const dismissSale = useCallback((saleId: string) => {
     setDismissedIds((prev) => {
       const next = new Set(prev);
-      next.add(patternKey);
+      next.add(saleId);
       persistDismissedIds(accountId, next);
       return next;
     });
@@ -208,91 +184,54 @@ export function useBuyAgainTargets(accountId: string) {
   }, [accountId]);
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["buy-again-patterns", accountId],
-    queryFn: async (): Promise<PatternWithMatches[]> => {
-      // ─── STEP 1: Build profit patterns from sales ───
+    queryKey: ["buy-again-sales", accountId],
+    queryFn: async (): Promise<SaleWithMatches[]> => {
+      // ─── STEP 1: Top 20 profitable individual sales ───
       const { data: sales, error: sErr } = await supabase
         .from("vehicle_sales_truth")
         .select("id, account_id, make, model, badge, variant, description_raw, year, km, sale_price, buy_price, sold_at, drive_type")
         .eq("account_id", accountId)
         .not("buy_price", "is", null)
         .not("sale_price", "is", null)
-        .limit(1000);
+        .order("sale_price", { ascending: false })
+        .limit(500);
       if (sErr) throw sErr;
       if (!sales?.length) return [];
 
-      // Group sales into pattern bands
-      const patternMap = new Map<string, {
-        make: string; model: string; trim_class: string;
-        year_min: number; year_max: number;
-        km_min: number; km_max: number;
-        buy_prices: number[]; sell_prices: number[]; profits: number[]; kms: number[];
-        drivetrains: Set<string>;
-      }>();
-
+      // Compute profit and filter >= $4000, take top 20
+      const profitableSales: ProfitableSale[] = [];
       for (const s of sales) {
-        if (!s.make || !s.model) continue;
+        if (!s.make || !s.model || !s.year) continue;
         const buyPrice = Number(s.buy_price || 0);
-        const sellPrice = s.sale_price || 0;
-        const profit = sellPrice - buyPrice;
-        if (profit <= 0) continue; // only profitable sales
+        const salePrice = Number(s.sale_price || 0);
+        const profit = salePrice - buyPrice;
+        if (profit < 4000) continue;
 
-        const trim = deriveTrimClass(s.make, s.model, s.variant || s.badge || s.description_raw);
-        const [yMin, yMax] = s.year ? yearBand(s.year) : [0, 0];
-        const [kMin, kMax] = s.km != null ? kmBand(s.km) : [0, 999999];
+        const variant = s.variant || s.badge || s.description_raw || null;
+        const driveType = s.drive_type || extractDrivetrain(s.description_raw);
 
-        if (!s.year) continue;
-
-        const key = `${s.make}|${s.model}|${trim}|${yMin}-${yMax}|${kMin}-${kMax}`;
-
-        if (!patternMap.has(key)) {
-          patternMap.set(key, {
-            make: s.make, model: s.model, trim_class: trim,
-            year_min: yMin, year_max: yMax,
-            km_min: kMin, km_max: kMax,
-            buy_prices: [], sell_prices: [], profits: [], kms: [],
-            drivetrains: new Set(),
-          });
-        }
-        const p = patternMap.get(key)!;
-        p.buy_prices.push(buyPrice);
-        p.sell_prices.push(sellPrice);
-        p.profits.push(profit);
-        if (s.km != null) p.kms.push(s.km);
-
-        const dt = s.drive_type || extractDrivetrain(s.description_raw);
-        if (dt) p.drivetrains.add(dt.toUpperCase());
-      }
-
-      // Filter: need ≥ 2 flips and ≥ $2000 median profit (relaxed slightly for more patterns)
-      const patterns: (ProfitPattern & { drivetrains: Set<string> })[] = [];
-      for (const [, p] of patternMap) {
-        if (p.profits.length < 2) continue;
-        const medProfit = median(p.profits);
-        if (medProfit < 2000) continue;
-
-        patterns.push({
-          id: `${p.make}|${p.model}|${p.trim_class}|${p.year_min}-${p.year_max}|${p.km_min}-${p.km_max}`,
-          account_id: accountId,
-          make: p.make,
-          model: p.model,
-          trim_class: p.trim_class,
-          year_min: p.year_min,
-          year_max: p.year_max,
-          km_min: p.km_min,
-          km_max: p.km_max,
-          total_flips: p.profits.length,
-          median_buy_price: Math.round(median(p.buy_prices)),
-          median_sell_price: Math.round(median(p.sell_prices)),
-          median_profit: Math.round(medProfit),
-          median_km: p.kms.length ? Math.round(median(p.kms)) : null,
-          drivetrains: p.drivetrains,
+        profitableSales.push({
+          id: s.id,
+          make: s.make,
+          model: s.model,
+          variant,
+          year: s.year,
+          km: s.km,
+          buy_price: buyPrice,
+          sale_price: salePrice,
+          profit,
+          drive_type: driveType,
+          sold_at: s.sold_at,
+          trim_class: deriveTrimClass(s.make, s.model, variant),
         });
       }
 
-      if (!patterns.length) return [];
+      // Sort by profit DESC, take top 20
+      profitableSales.sort((a, b) => b.profit - a.profit);
+      const topSales = profitableSales.slice(0, 20);
+      if (!topSales.length) return [];
 
-      // ─── STEP 2: Load trim ladder for upgrade matching ───
+      // ─── STEP 2: Load trim ladder ───
       const { data: trimLadder } = await supabase
         .from("trim_ladder")
         .select("make, model, trim_class, trim_rank");
@@ -301,7 +240,7 @@ export function useBuyAgainTargets(accountId: string) {
         trimRankMap.set(`${row.make}|${row.model}|${row.trim_class}`, row.trim_rank);
       }
 
-      // ─── STEP 3: Pull active listings (fresh only — last 7 days) ───
+      // ─── STEP 3: Pull fresh listings ───
       const freshCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
       const { data: listings, error: lErr } = await supabase
         .from("vehicle_listings")
@@ -312,55 +251,51 @@ export function useBuyAgainTargets(accountId: string) {
         .limit(1000);
       if (lErr) throw lErr;
 
-      // ─── STEP 3: Match listings against patterns ───
-      const results: PatternWithMatches[] = [];
+      // ─── STEP 4: Match each sale against listings ───
+      const results: SaleWithMatches[] = [];
 
-      for (const pattern of patterns) {
+      for (const sale of topSales) {
         const matched: LiveMatch[] = [];
 
         for (const l of listings || []) {
           if (!l.make || !l.model) continue;
 
           // Make exact
-          if (l.make.toUpperCase() !== pattern.make.toUpperCase()) continue;
+          if (l.make.toUpperCase() !== sale.make.toUpperCase()) continue;
           // Model exact
-          if (l.model.toUpperCase() !== pattern.model.toUpperCase()) continue;
-          // Trim class: exact or one-step upgrade (never downgrade)
+          if (l.model.toUpperCase() !== sale.model.toUpperCase()) continue;
+          // Year within ±2
+          if (l.year && Math.abs(l.year - sale.year) > 2) continue;
+          // KM within ±10,000 (if both known)
+          if (l.km != null && sale.km != null && Math.abs(l.km - sale.km) > 10000) continue;
+          // Price must be below sale price
+          if (!l.asking_price || l.asking_price >= sale.sale_price) continue;
+
+          // Drivetrain hard filter
+          if (sale.drive_type && l.drivetrain) {
+            const sd = sale.drive_type.toUpperCase();
+            const ld = l.drivetrain.toUpperCase();
+            const saleIs4x4 = ["4X4", "4WD", "AWD"].includes(sd);
+            const listingIs4x4 = ["4X4", "4WD", "AWD"].includes(ld);
+            if (saleIs4x4 !== listingIs4x4) continue;
+          }
+
+          // Trim class: exact or one-step upgrade
           const listingTrim = deriveTrimClass(l.make, l.model, l.variant_raw || l.variant_family);
           let matchType: "exact" | "upgrade" | null = null;
 
-          if (listingTrim === pattern.trim_class) {
+          if (listingTrim === sale.trim_class) {
             matchType = "exact";
           } else {
-            // Check trim ladder for one-step upgrade
             const makeUp = l.make.toUpperCase();
             const modelUp = l.model.toUpperCase();
-            const patternRank = trimRankMap.get(`${makeUp}|${modelUp}|${pattern.trim_class}`);
+            const saleRank = trimRankMap.get(`${makeUp}|${modelUp}|${sale.trim_class}`);
             const listingRank = trimRankMap.get(`${makeUp}|${modelUp}|${listingTrim}`);
-            if (patternRank != null && listingRank != null && listingRank === patternRank + 1) {
+            if (saleRank != null && listingRank != null && listingRank === saleRank + 1) {
               matchType = "upgrade";
             }
           }
           if (!matchType) continue;
-
-          // Year within band
-          if (l.year && (l.year < pattern.year_min || l.year > pattern.year_max)) continue;
-          // KM within band
-          if (l.km != null && (l.km < pattern.km_min || l.km > pattern.km_max)) continue;
-
-          // Drivetrain hard filter
-          if (pattern.drivetrains.size > 0 && l.drivetrain) {
-            const ld = l.drivetrain.toUpperCase();
-            const patternIs4x4 = [...pattern.drivetrains].some(d => ["4X4", "4WD", "AWD"].includes(d));
-            const listingIs4x4 = ["4X4", "4WD", "AWD"].includes(ld);
-            if (patternIs4x4 !== listingIs4x4) continue;
-          }
-
-          const price = l.asking_price || 0;
-          const estProfit = pattern.median_sell_price > 0 && price > 0
-            ? pattern.median_sell_price - price : null;
-          const underMedianBuy = pattern.median_buy_price > 0 && price > 0
-            ? pattern.median_buy_price - price : null;
 
           matched.push({
             id: l.id,
@@ -375,39 +310,32 @@ export function useBuyAgainTargets(accountId: string) {
             status: l.status,
             first_seen_at: l.first_seen_at,
             drivetrain: l.drivetrain,
-            est_profit: estProfit,
-            under_median_buy: underMedianBuy,
+            est_profit: sale.sale_price - l.asking_price,
             match_type: matchType,
           });
         }
 
-        // Sort by asking price ASC (cheapest first)
+        // Sort by price ASC, take top 3
         matched.sort((a, b) => (a.price || Infinity) - (b.price || Infinity));
 
-        if (matched.length > 0) {
-          results.push({ pattern, matches: matched.slice(0, 5) });
-        }
+        results.push({
+          sale,
+          matches: matched.slice(0, 3),
+        });
       }
-
-      // Sort: highest median_profit DESC, then most flips DESC
-      results.sort((a, b) => {
-        if (b.pattern.median_profit !== a.pattern.median_profit)
-          return b.pattern.median_profit - a.pattern.median_profit;
-        return b.pattern.total_flips - a.pattern.total_flips;
-      });
 
       return results;
     },
     enabled: !!accountId,
   });
 
-  const filtered = (data || []).filter((g) => !dismissedIds.has(g.pattern.id)).slice(0, 30);
+  const filtered = (data || []).filter((g) => !dismissedIds.has(g.sale.id));
 
   return {
     groups: filtered,
     isLoading,
     refetch,
-    dismissPattern,
+    dismissSale,
     clearDismissed,
     dismissedCount: dismissedIds.size,
   };
