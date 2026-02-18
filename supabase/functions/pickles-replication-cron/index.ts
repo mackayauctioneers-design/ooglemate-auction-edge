@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * PICKLES REPLICATION CRON v1 — Standalone Fingerprint Replication
+ * PICKLES REPLICATION CRON v2 — Standalone Fingerprint Replication
  * 
  * Reads priced Pickles listings updated in the last 2 hours,
  * matches each against vehicle_sales_truth using strict filters,
@@ -17,7 +17,7 @@ const corsHeaders = {
 };
 
 const SOURCE = "pickles";
-const LOOKBACK_HOURS = 2;
+const LOOKBACK_HOURS = 24;
 
 // ─── DERIVE PLATFORM (mirrors DB function derive_platform_class) ─────────────
 
@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
 
     const lookbackThreshold = new Date(Date.now() - LOOKBACK_HOURS * 3600000).toISOString();
 
-    // Get recent priced Pickles listings (incremental: only unprocessed or updated)
+    // Get recent priced Pickles listings (incremental: only unprocessed)
     const { data: listings } = await sb
       .from("vehicle_listings")
       .select("id, listing_id, make, model, variant_raw, variant_family, drivetrain, year, km, asking_price, listing_url, location, last_seen_at, replicated_at")
@@ -118,8 +118,7 @@ Deno.serve(async (req) => {
       .in("status", ["listed", "catalogue"])
       .not("asking_price", "is", null)
       .gt("asking_price", 0)
-      .gte("last_seen_at", lookbackThreshold)
-      .or("replicated_at.is.null,replicated_at.lt.last_seen_at");
+      .is("replicated_at", null);
 
     if (!listings || listings.length === 0) {
       console.log("[REPLICATION] No recent priced Pickles listings");
