@@ -290,6 +290,10 @@ schedule = "0 * * * *"
 verify_jwt = false
 schedule = "*/15 * * * *"
 
+[functions.pickles-replication-cron]
+verify_jwt = false
+schedule = "*/30 * * * *"
+
 [functions.pickles-deep-fetch]
 verify_jwt = false
 schedule = "*/10 * * * *"
