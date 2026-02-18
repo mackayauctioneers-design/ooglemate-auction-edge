@@ -8914,6 +8914,81 @@ export type Database = {
           },
         ]
       }
+      vehicle_listings_shadow: {
+        Row: {
+          asking_price: number | null
+          auction_date: string | null
+          created_at: string
+          drivetrain: string | null
+          first_seen_at: string | null
+          id: string
+          ingested_at: string
+          km: number | null
+          last_seen_at: string | null
+          listing_id: string
+          location: string | null
+          lot_id: string | null
+          make: string | null
+          model: string | null
+          raw_payload: Json | null
+          shadow_source: string
+          source: string | null
+          state: string | null
+          status: string | null
+          updated_at: string
+          vin: string | null
+          year: number | null
+        }
+        Insert: {
+          asking_price?: number | null
+          auction_date?: string | null
+          created_at?: string
+          drivetrain?: string | null
+          first_seen_at?: string | null
+          id?: string
+          ingested_at?: string
+          km?: number | null
+          last_seen_at?: string | null
+          listing_id: string
+          location?: string | null
+          lot_id?: string | null
+          make?: string | null
+          model?: string | null
+          raw_payload?: Json | null
+          shadow_source?: string
+          source?: string | null
+          state?: string | null
+          status?: string | null
+          updated_at?: string
+          vin?: string | null
+          year?: number | null
+        }
+        Update: {
+          asking_price?: number | null
+          auction_date?: string | null
+          created_at?: string
+          drivetrain?: string | null
+          first_seen_at?: string | null
+          id?: string
+          ingested_at?: string
+          km?: number | null
+          last_seen_at?: string | null
+          listing_id?: string
+          location?: string | null
+          lot_id?: string | null
+          make?: string | null
+          model?: string | null
+          raw_payload?: Json | null
+          shadow_source?: string
+          source?: string | null
+          state?: string | null
+          status?: string | null
+          updated_at?: string
+          vin?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       vehicle_sales_truth: {
         Row: {
           account_id: string
@@ -9923,6 +9998,18 @@ export type Database = {
           model: string | null
           month: string | null
           sales_count: number | null
+        }
+        Relationships: []
+      }
+      shadow_vs_production_stats: {
+        Row: {
+          production_active: number | null
+          production_last_seen_max: string | null
+          production_total: number | null
+          shadow_last_seen_max: string | null
+          shadow_total: number | null
+          shadow_with_price: number | null
+          shadow_zero_price: number | null
         }
         Relationships: []
       }
