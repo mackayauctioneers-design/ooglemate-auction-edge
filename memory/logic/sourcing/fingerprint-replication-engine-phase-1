@@ -2,29 +2,52 @@
 Updated: now
 
 ## Architecture
-Sales Target Candidates → generate-search-urls (edge fn) → fingerprint_search_urls → run-firecrawl-fingerprint (edge fn) → firecrawl_candidates (scored) → fingerprint_opportunities (view, score ≥ 6)
+Pickles Ingest Cron v5 → Structured Extract (Firecrawl JSON schema) → vehicle_listings upsert → Fingerprint Replication → opportunities upsert → Slack alert
 
-## Tables
-- fingerprint_search_urls: generated Carsales/Autotrader/Pickles URLs per fingerprint
-- firecrawl_candidates: scraped listings with match_score (0-10), upgrade_flag, downgrade_flag
-- fingerprint_opportunities: view joining candidates ≥ 6 with fingerprint details, sorted by upgrade + score
+## Strict Match Filters
+- Make: exact (case-insensitive)
+- Model: exact (case-insensitive)
+- Trim class: exact OR one-step upgrade via trim_ladder (never downgrade)
+- Year: ±1
+- KM: ±15,000
+- Drivetrain: 4x4 never matches 2WD (UNKNOWN passes)
 
-## Scoring (0-10)
-- +3 exact make/model
-- +2 exact variant / +1 upgrade trim / -2 downgrade trim
-- +2 KMs within adaptive band (±15k for ≤80k, ±20% for 80-150k, ±25% for 150k+)
-- +2 price below target buy (sold - profit)
-- +1 price below sold median
+## Trim Ladder
+- Embedded in pickles-ingest-cron as TRIM_LADDER constant
+- Covers: LC70/200/300, Prado, Hilux, HiAce, Ranger, Everest, D-Max, MU-X, Triton, Navara, Patrol
+- trimAllowed() returns "EXACT" | "UPGRADE" | false
 
-## Edge Functions
-- generate-search-urls: POST { account_id, fingerprint_id? } → generates URLs
-- run-firecrawl-fingerprint: POST { account_id, fingerprint_id? } → scrapes + scores + stores
+## Selection (deterministic, no medians)
+- Sort candidates: ABS(year diff) ASC → ABS(km diff) ASC → sold_at DESC
+- LIMIT 1 (single nearest trade)
 
-## UI
-- /replication → ReplicationEnginePage
-- AccountSelector + per-fingerprint "Run Search" + "Run All" button
-- Candidates table with score badge, upgrade/downgrade indicators, external links
+## Sanity Guards
+- listingPrice >= historicalSale → skip (never flag above-sale listings)
+- expectedMargin < $1,500 → skip
 
-## Trigger Mode
-- Currently manual (button per fingerprint or Run All)
-- User wants 3x daily — cron not yet implemented (Phase 2)
+## Tiers
+- HIGH (priority 1): margin >= $6,000
+- HIGH (priority 2): margin >= $4,000
+- MEDIUM (priority 3): margin >= $1,500
+
+## Opportunity Fields
+- source_type = "replication"
+- buy_price = listing asking price
+- dealer_median_price = historical buy price
+- retail_median_price = historical sale price
+- median_profit = expected margin
+- notes = JSON with matched_sale_id, km_difference, trim_class, drivetrain, sold_at
+
+## Slack Alerts
+- Sent for expected_margin >= $4,000
+- Format: 🔴 PICKLES FINGERPRINT MATCH with ask/sold/buy/margin
+
+## Known Issues
+- Models not in deriveTrimClass fall to _STANDARD suffix → can match loosely
+- Prado sometimes stored as model=LANDCRUISER variant=Prado (not hitting PRADO branch)
+- Credit guardrail: 150 calls/day, ~5 calls per run, sustainable
+
+## Results (first live run)
+- 7 strict matches from 64 priced listings
+- 3 opportunities created (3 passed margin + sanity gates)
+- 3 Slack alerts sent
