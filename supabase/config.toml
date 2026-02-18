@@ -415,3 +415,11 @@ schedule = "0 * * * *"
 [functions.toyota-used-scrape]
 verify_jwt = false
 schedule = "0 * * * *"
+
+[functions.caroogle-shadow-cron]
+verify_jwt = false
+schedule = "0 */2 * * *"
+
+[functions.caroogle-shadow-promotion]
+verify_jwt = false
+schedule = "*/30 * * * *"

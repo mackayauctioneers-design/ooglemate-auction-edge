@@ -1,0 +1,30 @@
+# Memory: features/operator/shadow-mode-validation-v1
+Updated: now
+
+## Shadow Mode Pipeline
+Caroogle API ingests into `vehicle_listings_shadow` via `caroogle-shadow-cron` (every 2h). Volume: 2,500+ listings per run, but ~91% lack asking prices.
+
+## Fingerprint-Gated Promotion Engine
+`caroogle-shadow-promotion` runs every 30 minutes. It ONLY promotes shadow listings to `vehicle_listings` (production) if:
+
+1. `asking_price > 0`
+2. `platform_class` is valid (derived via `derivePlatform()`)
+3. Listing matches a historical sale in `vehicle_sales_truth` under STRICT rules:
+   - Platform exact match
+   - Trim exact OR one-step upgrade (trim_ladder)
+   - Year ±2, KM ±15,000
+   - Drivetrain match when known
+   - UNKNOWN trims blocked
+4. `under_buy >= $1,500` (historical_buy_price - asking_price)
+
+Promoted listings get `source = 'caroogle_promoted'`, `lifecycle_state = 'NEW'`, and an opportunity is created with `source_type = 'auction_replication'`. Slack alerts fire for margins >= $4,000.
+
+## First Run Results
+- 152 priced shadow listings checked
+- 0 promoted (no fingerprint matches yet)
+- This is expected: shadow listings need overlap with vehicle_sales_truth fingerprints
+
+## Monitoring
+- `shadow_vs_production_stats` view tracks coverage and price completeness
+- `cron_audit_log` tracks each promotion run
+- Shadow rows stamped with `promoted_at` to prevent re-processing
