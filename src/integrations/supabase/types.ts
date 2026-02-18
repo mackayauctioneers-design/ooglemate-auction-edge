@@ -8693,6 +8693,7 @@ export type Database = {
           postcode: string | null
           reappeared: boolean
           relist_count: number
+          replicated_at: string | null
           reserve: number | null
           risk_flags: string[] | null
           sa2_code: string | null
@@ -8777,6 +8778,7 @@ export type Database = {
           postcode?: string | null
           reappeared?: boolean
           relist_count?: number
+          replicated_at?: string | null
           reserve?: number | null
           risk_flags?: string[] | null
           sa2_code?: string | null
@@ -8861,6 +8863,7 @@ export type Database = {
           postcode?: string | null
           reappeared?: boolean
           relist_count?: number
+          replicated_at?: string | null
           reserve?: number | null
           risk_flags?: string[] | null
           sa2_code?: string | null
