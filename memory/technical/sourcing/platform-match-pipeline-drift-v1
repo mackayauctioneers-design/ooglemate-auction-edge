@@ -1,9 +1,9 @@
 # Memory: technical/sourcing/platform-match-pipeline-drift-v1
 Updated: now
 
-## Status: RESOLVED
+## Status: RESOLVED + HARDENED
 
-The 'Platform Match Drift' between the Pickles replication engine and the fingerprinting pipeline has been fixed.
+The 'Platform Match Drift' between the Pickles replication engine and the fingerprinting pipeline has been fixed and hardened at the database boundary.
 
 ## Root Cause
 The `sales_fingerprints_v1` materialized view grouped by `make + model` only — no `platform_class` column. This meant a Prado could match against a LandCruiser 200 fingerprint in the `fingerprint-match-run` pipeline. The `pickles-replication-cron` was already correct (uses `platform_class` as first gate).
@@ -13,7 +13,16 @@ The `sales_fingerprints_v1` materialized view grouped by `make + model` only —
 2. **fingerprint-match-run**: Added `derivePlatform()` function (mirrors pickles-replication-cron and DB function). Fingerprint lookup key changed from `make|model` to `make|model|platform_class`
 3. **Verified**: LandCruiser (61 sales) and Prado (18 sales) now have separate fingerprints with distinct platform_class values
 
+## Database Hardening (Layer 2)
+4. **`platform_class` column added to `vehicle_listings`** — persistent, indexed, auto-derived via trigger
+5. **`derive_platform_class(make, model)` SQL function** — single source of truth, IMMUTABLE, handles Toyota segmentation (Prado vs LandCruiser)
+6. **Auto-derive trigger on `vehicle_listings`** — `trg_vehicle_listings_platform_class` fires BEFORE INSERT OR UPDATE, ensures platform_class is never NULL
+7. **NOT NULL constraint on `vehicle_sales_truth.platform_class`** — fails loudly if sales data lacks platform
+8. **Data repair**: Fixed legacy Isuzu D-MAX (58 records) and MU-X (8 records) that were stored with truncated model names
+
 ## Both Pipelines Now Enforce Platform
 - `pickles-replication-cron` — `platform_class` gate at line 191
 - `fingerprint-match-run` — `platform_class` in fingerprint key lookup
 - `sales_fingerprints_v1` — `platform_class` in GROUP BY
+- `vehicle_listings` — `platform_class` column with auto-derive trigger
+- `vehicle_sales_truth` — `platform_class` NOT NULL constraint

@@ -8690,6 +8690,7 @@ export type Database = {
           missing_streak: number
           model: string
           pass_count: number
+          platform_class: string | null
           postcode: string | null
           reappeared: boolean
           relist_count: number
@@ -8775,6 +8776,7 @@ export type Database = {
           missing_streak?: number
           model: string
           pass_count?: number
+          platform_class?: string | null
           postcode?: string | null
           reappeared?: boolean
           relist_count?: number
@@ -8860,6 +8862,7 @@ export type Database = {
           missing_streak?: number
           model?: string
           pass_count?: number
+          platform_class?: string | null
           postcode?: string | null
           reappeared?: boolean
           relist_count?: number
@@ -8930,7 +8933,7 @@ export type Database = {
           make: string
           model: string
           notes: string | null
-          platform_class: string | null
+          platform_class: string
           profit_pct: number | null
           sale_price: number | null
           series: string | null
@@ -8959,7 +8962,7 @@ export type Database = {
           make: string
           model: string
           notes?: string | null
-          platform_class?: string | null
+          platform_class: string
           profit_pct?: number | null
           sale_price?: number | null
           series?: string | null
@@ -8988,7 +8991,7 @@ export type Database = {
           make?: string
           model?: string
           notes?: string | null
-          platform_class?: string | null
+          platform_class?: string
           profit_pct?: number | null
           sale_price?: number | null
           series?: string | null
