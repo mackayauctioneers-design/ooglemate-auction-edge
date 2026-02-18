@@ -32,6 +32,7 @@ interface Fingerprint {
   account_id: string;
   make: string;
   model: string;
+  platform_class: string;
   sales_count: number;
   km_median: number | null;
   km_p25: number | null;
@@ -46,6 +47,18 @@ interface Fingerprint {
   body_type_count: number;
   fuel_type_count: number;
   drive_type_count: number;
+}
+
+// ── Derive Platform (mirrors DB + pickles-replication-cron) ──
+function derivePlatform(make: string, model: string): string {
+  const m = (make || "").toUpperCase().trim();
+  const mo = (model || "").toUpperCase().trim();
+  if (m === "TOYOTA") {
+    if (mo.includes("PRADO")) return "PRADO";
+    if (mo.includes("LANDCRUISER")) return "LANDCRUISER";
+  }
+  if (m === "MITSUBISHI" && mo === "OUTLANDER") return "OUTLANDER";
+  return `${m}:${mo}`;
 }
 
 interface NormListing {
@@ -276,10 +289,10 @@ Deno.serve(async (req) => {
 
     console.log(`[fingerprint-match-run] ${fingerprints.length} fingerprints loaded`);
 
-    // Build lookup map
+    // Build lookup map keyed by make|model|platform
     const fpMap = new Map<string, Fingerprint>();
     for (const fp of fingerprints as Fingerprint[]) {
-      const key = `${(fp.make || "").toUpperCase()}|${(fp.model || "").toUpperCase()}`;
+      const key = `${(fp.make || "").toUpperCase()}|${(fp.model || "").toUpperCase()}|${(fp.platform_class || "UNKNOWN")}`;
       fpMap.set(key, fp);
     }
 
@@ -332,7 +345,8 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const key = `${listingMake}|${listingModel}`;
+      const listingPlatform = derivePlatform(listing.make, listing.model);
+      const key = `${listingMake}|${listingModel}|${listingPlatform}`;
       const fp = fpMap.get(key);
 
       if (!fp) {

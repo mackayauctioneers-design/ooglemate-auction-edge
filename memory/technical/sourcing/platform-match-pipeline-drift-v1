@@ -1,0 +1,19 @@
+# Memory: technical/sourcing/platform-match-pipeline-drift-v1
+Updated: now
+
+## Status: RESOLVED
+
+The 'Platform Match Drift' between the Pickles replication engine and the fingerprinting pipeline has been fixed.
+
+## Root Cause
+The `sales_fingerprints_v1` materialized view grouped by `make + model` only — no `platform_class` column. This meant a Prado could match against a LandCruiser 200 fingerprint in the `fingerprint-match-run` pipeline. The `pickles-replication-cron` was already correct (uses `platform_class` as first gate).
+
+## Fix Applied
+1. **Materialized View**: Recreated `sales_fingerprints_v1` with `platform_class` in the GROUP BY and unique index
+2. **fingerprint-match-run**: Added `derivePlatform()` function (mirrors pickles-replication-cron and DB function). Fingerprint lookup key changed from `make|model` to `make|model|platform_class`
+3. **Verified**: LandCruiser (61 sales) and Prado (18 sales) now have separate fingerprints with distinct platform_class values
+
+## Both Pipelines Now Enforce Platform
+- `pickles-replication-cron` — `platform_class` gate at line 191
+- `fingerprint-match-run` — `platform_class` in fingerprint key lookup
+- `sales_fingerprints_v1` — `platform_class` in GROUP BY
