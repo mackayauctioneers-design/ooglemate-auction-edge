@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAccounts } from "@/hooks/useAccounts";
-import { useBuyAgainTargets, ProfitPattern, LiveMatch } from "@/hooks/useBuyAgainTargets";
+import { useBuyAgainTargets, ProfitableSale, LiveMatch } from "@/hooks/useBuyAgainTargets";
 import { AccountSelector } from "@/components/carbitrage/AccountSelector";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Loader2, Crosshair, ExternalLink, TrendingUp,
-  MapPin, RefreshCw, Eye, XCircle, RotateCcw, DollarSign, BarChart3,
+  MapPin, RefreshCw, Eye, XCircle, RotateCcw, DollarSign,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -16,45 +16,47 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-/* ── Pattern Header ── */
-function PatternHeader({ pattern }: { pattern: ProfitPattern }) {
-  const yearLabel = pattern.year_min === pattern.year_max
-    ? `${pattern.year_min}`
-    : `${pattern.year_min}–${pattern.year_max}`;
-  const kmLabel = pattern.km_max >= 999999
-    ? `${Math.round(pattern.km_min / 1000)}k+`
-    : `${Math.round(pattern.km_min / 1000)}–${Math.round(pattern.km_max / 1000)}k`;
-  const trimLabel = pattern.trim_class.replace(/_/g, " ");
+/* ── Sale Header — the specific winning trade ── */
+function SaleHeader({ sale }: { sale: ProfitableSale }) {
+  const trimLabel = sale.trim_class.replace(/_/g, " ");
+  const driveLabel = sale.drive_type?.toUpperCase();
+  const soldDate = sale.sold_at
+    ? new Date(sale.sold_at).toLocaleDateString("en-AU", { month: "short", year: "numeric" })
+    : null;
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="font-semibold text-base">
-          {yearLabel} {pattern.make} {pattern.model} {trimLabel}
-        </h3>
-      </div>
+    <div className="space-y-2">
+      <h3 className="font-semibold text-base">
+        {sale.year} {sale.make} {sale.model} {trimLabel}
+      </h3>
       <div className="flex items-center gap-3 text-xs flex-wrap">
-        <span className="flex items-center gap-0.5 text-muted-foreground">
-          <BarChart3 className="h-3 w-3" />
-          Flips: <strong className="text-foreground">{pattern.total_flips}</strong>
+        <span className="text-muted-foreground">
+          Bought: <strong className="text-foreground">${sale.buy_price.toLocaleString()}</strong>
+        </span>
+        <span className="text-muted-foreground">
+          Sold: <strong className="text-foreground">${sale.sale_price.toLocaleString()}</strong>
         </span>
         <span className="flex items-center gap-0.5 text-green-700 bg-green-500/10 rounded px-1.5 py-0.5">
-          <TrendingUp className="h-3 w-3" />
-          Med Profit: <strong>${pattern.median_profit.toLocaleString()}</strong>
+          <DollarSign className="h-3 w-3" />
+          Profit: <strong>${sale.profit.toLocaleString()}</strong>
         </span>
-        <span className="text-muted-foreground">
-          Med Buy: <strong className="text-foreground">${pattern.median_buy_price.toLocaleString()}</strong>
-        </span>
-        <span className="text-muted-foreground">
-          Med Sell: <strong className="text-foreground">${pattern.median_sell_price.toLocaleString()}</strong>
-        </span>
-        <Badge variant="outline" className="text-[10px]">KM: {kmLabel}</Badge>
+        {sale.km != null && (
+          <span className="text-muted-foreground">
+            KM: <strong className="text-foreground">{Math.round(sale.km / 1000)}k</strong>
+          </span>
+        )}
+        {driveLabel && (
+          <Badge variant="outline" className="text-[10px] px-1 py-0">{driveLabel}</Badge>
+        )}
+        {soldDate && (
+          <span className="text-muted-foreground text-[10px]">Sold {soldDate}</span>
+        )}
       </div>
     </div>
   );
 }
 
-/* ── Match Card ── */
+/* ── Match Card — a live listing replicating that sale ── */
 function MatchCard({ match }: { match: LiveMatch }) {
   const label = [match.year, match.make, match.model, match.variant].filter(Boolean).join(" ");
   const daysListed = match.first_seen_at
@@ -85,18 +87,13 @@ function MatchCard({ match }: { match: LiveMatch }) {
           <span className="flex items-center gap-0.5"><MapPin className="h-3 w-3" />{source}</span>
           {daysListed != null && <span>{daysListed}d listed</span>}
         </div>
-        {match.under_median_buy != null && match.under_median_buy > 0 && (
-          <p className="text-[10px] text-green-600 mt-0.5">
-            ${match.under_median_buy.toLocaleString()} under median buy
-          </p>
-        )}
       </div>
       <div className="flex items-center gap-3 shrink-0">
         <div className="text-right">
           <p className="text-sm font-bold">
             {match.price ? `$${match.price.toLocaleString()}` : "N/A"}
           </p>
-          {match.est_profit != null && match.est_profit > 0 && (
+          {match.est_profit > 0 && (
             <p className="text-xs text-green-600 flex items-center gap-0.5 justify-end">
               <TrendingUp className="h-3 w-3" />
               ~${match.est_profit.toLocaleString()} est.
@@ -130,7 +127,10 @@ export default function BuyAgainTargetsPage() {
     setAccountId(mackay?.id || accounts[0].id);
   }
 
-  const { groups, isLoading, refetch, dismissPattern, clearDismissed, dismissedCount } = useBuyAgainTargets(accountId);
+  const { groups, isLoading, refetch, dismissSale, clearDismissed, dismissedCount } = useBuyAgainTargets(accountId);
+
+  const withMatches = groups.filter((g) => g.matches.length > 0);
+  const noMatches = groups.filter((g) => g.matches.length === 0);
 
   return (
     <AppLayout>
@@ -143,7 +143,7 @@ export default function BuyAgainTargetsPage() {
               Buy Again Targets
             </h1>
             <p className="text-sm text-muted-foreground">
-              Pattern-based replication — profitable trading bands matched to live supply.
+              Individual sale replication — find another one just like the one you profited on.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -169,19 +169,21 @@ export default function BuyAgainTargetsPage() {
         ) : groups.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Crosshair className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="font-medium">No tradable patterns found</p>
-            <p className="text-sm mt-1">Need profitable sales data with enough volume to form patterns.</p>
+            <p className="font-medium">No profitable sales found</p>
+            <p className="text-sm mt-1">Need sales with ≥ $4,000 profit (buy + sell price required).</p>
           </div>
         ) : (
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground">
-              {groups.length} tradable patterns · {groups.reduce((t, g) => t + g.matches.length, 0)} live matches
+              {groups.length} winning trades · {withMatches.length} with live matches · {groups.reduce((t, g) => t + g.matches.length, 0)} total matches
             </p>
-            {groups.map((g) => (
-              <Card key={g.pattern.id} className="border-primary/20">
+
+            {/* Sales WITH matches first */}
+            {withMatches.map((g) => (
+              <Card key={g.sale.id} className="border-primary/20">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
-                    <PatternHeader pattern={g.pattern} />
+                    <SaleHeader sale={g.sale} />
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive" title="Dismiss">
@@ -190,14 +192,14 @@ export default function BuyAgainTargetsPage() {
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Dismiss this pattern?</AlertDialogTitle>
+                          <AlertDialogTitle>Dismiss this sale?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This will hide {g.pattern.make} {g.pattern.model} {g.pattern.trim_class.replace(/_/g, " ")}. You can restore later.
+                            Hide {g.sale.year} {g.sale.make} {g.sale.model} from targets. You can restore later.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => dismissPattern(g.pattern.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                          <AlertDialogAction onClick={() => dismissSale(g.sale.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                             Dismiss
                           </AlertDialogAction>
                         </AlertDialogFooter>
@@ -212,6 +214,30 @@ export default function BuyAgainTargetsPage() {
                 </CardContent>
               </Card>
             ))}
+
+            {/* Sales WITHOUT matches */}
+            {noMatches.length > 0 && (
+              <div className="space-y-2 pt-4">
+                <p className="text-xs text-muted-foreground font-medium">
+                  No close matches within spec ({noMatches.length})
+                </p>
+                {noMatches.map((g) => (
+                  <div key={g.sale.id} className="flex items-center justify-between p-3 rounded-lg border border-dashed bg-muted/30">
+                    <div>
+                      <p className="text-sm font-medium">
+                        {g.sale.year} {g.sale.make} {g.sale.model} {g.sale.trim_class.replace(/_/g, " ")}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Profit: ${g.sale.profit.toLocaleString()} · No matching supply right now
+                      </p>
+                    </div>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground" onClick={() => dismissSale(g.sale.id)}>
+                      <XCircle className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -1,26 +1,33 @@
 # Memory: features/buy-again/replication-engine-logic-v1
 Updated: now
 
-The 'Buy Again Targets' engine operates as a PATTERN-BASED replication system (not sale-by-sale). It groups profitable sales from 'vehicle_sales_truth' into trading pattern bands defined by: Make, Model, Trim Class (via derive_trim_class), 3-year windows, and KM bands (0-50k, 50-100k, 100-150k, 150k+).
+The 'Buy Again Targets' engine is an INDIVIDUAL SALE REPLICATION system (not pattern/cluster-based). It pulls the top 20 most profitable individual sales from vehicle_sales_truth and matches each one against live listings.
 
-## Pattern Requirements
-- Minimum 2 flips per pattern
-- Minimum $2,000 median profit
-- Patterns sorted by median_profit DESC, then total_flips DESC
+## Sale Selection
+- WHERE buy_price IS NOT NULL AND sale_price IS NOT NULL AND profit >= $4,000
+- ORDER BY profit DESC, LIMIT 20
+- Each sale is its own replication target block
 
-## Matching Rules
+## Matching Rules (HARD FILTERS, no fuzzy scoring)
 - Make: exact match
 - Model: exact match
-- Trim class: HARD boundary (derive_trim_class) — GX never sees GXL, Workmate never sees VX
-- Year: must fall within pattern's year_min–year_max band
-- KM: must fall within pattern's km_min–km_max band
-- Drivetrain: hard filter (2WD never matches 4X4/AWD patterns)
+- Year: within ±2 of sale year
+- KM: within ±10,000 of sale KM
+- Price: listing.asking_price < sale.sale_price
+- Drivetrain: hard filter (2WD never matches 4WD/AWD)
+- Trim class: exact match OR one-step upgrade via trim_ladder (never downgrade)
+
+## Ranking
+- Sort valid matches by asking_price ASC
+- Take top 3 cheapest per sale
+
+## Profit Calculation
+- est_profit = sale.sale_price - listing.asking_price
 
 ## UI
-Pattern cards show: year range, make model trim, flips count, median profit, median buy/sell, KM band.
-Under each card: top 5 cheapest matching live listings sorted by asking_price ASC.
-Each listing shows: est profit (median_sell - asking), under median buy delta.
+- Each sale shows: year/make/model/trim, bought price, sold price, profit, KM, drivetrain, sold date
+- Under each: top 3 matching live listings with EXACT or UPGRADE badge
+- Sales with no matches shown separately: "No close matches within spec"
+- Dismiss/Restore per sale via localStorage
 
-## Database
-- dealer_profit_patterns table stores materialized patterns (for future cron use)
-- Currently patterns are computed client-side from vehicle_sales_truth on each query
+## NOT statistical, NOT grouped by model, NOT using medians or clusters
