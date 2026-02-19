@@ -207,7 +207,7 @@ export default function IngestionAuditPage() {
           <SummaryCard icon={CheckCircle} label="Active" value={totals.active} loading={loading} color="text-green-500" />
           <SummaryCard icon={Zap} label="Added 24h" value={totals.added_24h} loading={loading} color="text-blue-500" />
           <SummaryCard icon={RefreshCw} label="Updated 24h" value={totals.updated_24h} loading={loading} color="text-blue-500" />
-          <SummaryCard icon={AlertTriangle} label="Zombies (30d+)" value={totals.older_30d} loading={loading} color="text-red-500" />
+          <SummaryCard icon={AlertTriangle} label="Stale (14d+)" value={totals.older_30d} loading={loading} color="text-red-500" />
           <SummaryCard icon={Zap} label="Credits 7d" value={totals.credits_7d} loading={loading} color="text-amber-500" />
         </div>
 
@@ -229,8 +229,8 @@ export default function IngestionAuditPage() {
                     <TableHead className="text-right">Active</TableHead>
                     <TableHead className="text-right">+24h</TableHead>
                     <TableHead className="text-right">Updated 24h</TableHead>
-                    <TableHead className="text-right">30d+ Zombie</TableHead>
-                    <TableHead className="text-right">Zombie %</TableHead>
+                    <TableHead className="text-right">14d+ Stale</TableHead>
+                    <TableHead className="text-right">Stale %</TableHead>
                     <TableHead>Last Scrape</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
