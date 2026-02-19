@@ -8782,6 +8782,7 @@ export type Database = {
           auction_house: string | null
           avoid_reason: string | null
           buy_window_at: string | null
+          created_at: string
           dealer_name: string | null
           dealer_url: string | null
           delisted_at: string | null
@@ -8868,6 +8869,7 @@ export type Database = {
           auction_house?: string | null
           avoid_reason?: string | null
           buy_window_at?: string | null
+          created_at?: string
           dealer_name?: string | null
           dealer_url?: string | null
           delisted_at?: string | null
@@ -8954,6 +8956,7 @@ export type Database = {
           auction_house?: string | null
           avoid_reason?: string | null
           buy_window_at?: string | null
+          created_at?: string
           dealer_name?: string | null
           dealer_url?: string | null
           delisted_at?: string | null

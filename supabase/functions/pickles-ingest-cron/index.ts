@@ -261,11 +261,45 @@ function extractDriveFromDescription(descRaw: string | null): string {
   return "UNKNOWN";
 }
 
+// ─── LEMON-CHECK GATE ────────────────────────────────────────────────────────
+
+async function lemonCheck(url: string): Promise<{ ok: boolean; reason: string }> {
+  if (!url) return { ok: false, reason: "no_url" };
+  try {
+    const resp = await fetch(url, {
+      method: "HEAD",
+      redirect: "follow",
+      headers: {
+        "user-agent": "Mozilla/5.0 (compatible; CarOogleVerifier/1.0)",
+        "accept": "text/html",
+      },
+    });
+    if (resp.status === 404 || resp.status === 410) {
+      return { ok: false, reason: `http_${resp.status}` };
+    }
+    // Check for redirect away from detail page
+    const finalUrl = resp.url || url;
+    if (!finalUrl.includes("/used/details/") && !finalUrl.includes("/used/item/")) {
+      return { ok: false, reason: "redirect_away" };
+    }
+    if (resp.status >= 500) {
+      // Server error — allow through, might be temporary
+      return { ok: true, reason: "5xx_passthrough" };
+    }
+    return { ok: true, reason: "live" };
+  } catch (_e) {
+    // Network error — allow through to avoid false rejections
+    return { ok: true, reason: "fetch_error_passthrough" };
+  }
+}
+
 // ─── UPSERT LISTINGS ─────────────────────────────────────────────────────────
 
-async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ newListings: number; updatedListings: number; errors: string[] }> {
+async function upsertListings(sb: any, listings: ScrapedListing[], runId: string): Promise<{ newListings: number; updatedListings: number; skippedNoPrice: number; skippedLemon: number; errors: string[] }> {
   let newListings = 0;
   let updatedListings = 0;
+  let skippedNoPrice = 0;
+  let skippedLemon = 0;
   const errors: string[] = [];
   const now = new Date().toISOString();
 
@@ -288,6 +322,7 @@ async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ ne
         updated_at: now,
         status: "listed",
         missing_streak: 0,
+        last_ingest_run_id: runId,
       };
       if (l.price > 0 && l.price !== existing.asking_price) updates.asking_price = l.price;
       if (l.kms) updates.km = l.kms;
@@ -304,6 +339,21 @@ async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ ne
       if (error) errors.push(`Update ${listingId}: ${error.message}`);
       else updatedListings++;
     } else {
+      // ── PRICE GATE: reject zero-price new inserts ──
+      if (!l.price || l.price <= 0) {
+        console.log(`[PICKLES] PRICE GATE: Skipping ${listingId} — no price`);
+        skippedNoPrice++;
+        continue;
+      }
+
+      // ── LEMON-CHECK GATE: validate URL is live before insert ──
+      const lemon = await lemonCheck(l.listing_url);
+      if (!lemon.ok) {
+        console.log(`[PICKLES] LEMON GATE: Skipping ${listingId} — ${lemon.reason}`);
+        skippedLemon++;
+        continue;
+      }
+
       const badgeFromTitle = l.variant || extractBadgeFromDescription(l.title_raw) || null;
       const driveFromTitle = extractDriveFromDescription(l.title_raw);
 
@@ -319,7 +369,7 @@ async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ ne
         drivetrain: driveFromTitle !== "UNKNOWN" ? (driveFromTitle === "4WD" ? "4x4" : "2WD") : null,
         year: l.year,
         km: l.kms,
-        asking_price: l.price > 0 ? l.price : null,
+        asking_price: l.price,
         listing_url: l.listing_url,
         location: l.location || null,
         status: "listed",
@@ -329,13 +379,14 @@ async function upsertListings(sb: any, listings: ScrapedListing[]): Promise<{ ne
         seller_type: "auction",
         source_class: "auction",
         lifecycle_state: "NEW",
+        last_ingest_run_id: runId,
       });
       if (error) errors.push(`Insert ${listingId}: ${error.message}`);
       else newListings++;
     }
   }
 
-  return { newListings, updatedListings, errors };
+  return { newListings, updatedListings, skippedNoPrice, skippedLemon, errors };
 }
 
 // ─── MARK STALE ──────────────────────────────────────────────────────────────
@@ -417,13 +468,17 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // ── GENERATE RUN ID FOR PROVENANCE ──
+    const runId = crypto.randomUUID();
+    console.log(`[PICKLES] Run ID: ${runId}`);
+
     // ── STEP 1: Scrape ──
     const { listings, pages_scraped, firecrawl_calls } = await scrapeSearchPages(firecrawlKey);
     console.log(`[PICKLES] Scraped ${listings.length} listings from ${pages_scraped} pages`);
 
-    // ── STEP 2: Upsert ──
-    const { newListings, updatedListings, errors } = await upsertListings(sb, listings);
-    console.log(`[PICKLES] Upserted: ${newListings} new, ${updatedListings} updated, ${errors.length} errors`);
+    // ── STEP 2: Upsert (with price gate + lemon check + provenance) ──
+    const { newListings, updatedListings, skippedNoPrice, skippedLemon, errors } = await upsertListings(sb, listings, runId);
+    console.log(`[PICKLES] Upserted: ${newListings} new, ${updatedListings} updated, ${skippedNoPrice} skipped (no price), ${skippedLemon} skipped (lemon), ${errors.length} errors`);
 
     // ── STEP 3: Mark stale ──
     const markedInactive = await markStaleInactive(sb);
@@ -432,9 +487,12 @@ Deno.serve(async (req) => {
     // ── STEP 4: Audit logging ──
     const runtimeMs = Date.now() - startTime;
     const result = {
+      run_id: runId,
       listings_found: listings.length,
       new_listings: newListings,
       updated_listings: updatedListings,
+      skipped_no_price: skippedNoPrice,
+      skipped_lemon: skippedLemon,
       marked_inactive: markedInactive,
       pages_scraped,
       firecrawl_calls,
