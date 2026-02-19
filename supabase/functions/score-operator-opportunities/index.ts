@@ -53,6 +53,21 @@ function extractBadge(text: string | null): string {
   return "";
 }
 
+// ─── PRODUCTION SOURCE FILTER ────────────────────────────────────────────────
+
+const PRODUCTION_SOURCES = [
+  "pickles", "grays", "manheim", "caroogle_shadow",
+  "autotrader", "carsales", "easyauto", "slattery",
+  "toyota_used", "nsw_regional", "vma", "bidsonline",
+];
+
+function isProductionSource(src: string): boolean {
+  if (!src) return false;
+  const s = src.toLowerCase();
+  if (s.includes("test") || s.includes("sandbox") || s.includes("fixture")) return false;
+  return PRODUCTION_SOURCES.includes(s) || s.startsWith("dealer_site:");
+}
+
 // ─── DRIVETRAIN ──────────────────────────────────────────────────────────────
 
 function drivetrainBucket(val: string | null): string {
@@ -187,6 +202,7 @@ Deno.serve(async (req) => {
       const make = (l.make || "").toUpperCase().trim();
       const model = (l.model || "").toUpperCase().trim();
       if (!make || !model || !l.year) continue;
+      if (!isProductionSource(l.source || "")) continue;
       seenIds.add(lid);
       candidates.push({
         listing_id: lid,
