@@ -7,11 +7,11 @@ const corsHeaders = {
 };
 
 /**
- * fingerprint-match-run v1.5
+ * fingerprint-match-run v2.0
  *
- * Loads normalized listings, joins to sales_fingerprints_v1,
- * scores each match (including identity alignment), and upserts
- * into matched_opportunities_v1.
+ * Rewired to score directly against vehicle_listings (active only)
+ * instead of listing_details_norm. This eliminates the broken
+ * raw→norm pipeline bottleneck.
  *
  * Scoring (0-100):
  *   +40  make+model match (required baseline)
@@ -20,10 +20,8 @@ const corsHeaders = {
  *   +15  asking price ≤ price_median
  *   +5   asking price within 10% above median
  *   +10  transmission matches dominant
- *   +10  body_type matches dominant
- *   +10  fuel_type matches dominant
+ *   +10  body_type/fuel_type matches dominant
  *   +10  drive_type matches dominant
- *   +10  extraction confidence high/medium
  *
  * Only creates opportunities with score ≥ 60.
  */
@@ -49,69 +47,24 @@ interface Fingerprint {
   drive_type_count: number;
 }
 
-// ── Derive Platform (mirrors DB + pickles-replication-cron) ──
-function derivePlatform(make: string, model: string): string {
-  const m = (make || "").toUpperCase().trim();
-  const mo = (model || "").toUpperCase().trim();
-  if (m === "TOYOTA") {
-    if (mo.includes("PRADO")) return "PRADO";
-    if (mo.includes("LANDCRUISER")) return "LANDCRUISER";
-  }
-  if (m === "MITSUBISHI" && mo === "OUTLANDER") return "OUTLANDER";
-  return `${m}:${mo}`;
-}
-
-interface NormListing {
+interface VehicleListing {
   id: string;
-  account_id: string;
-  raw_id: string | null;
-  url_canonical: string;
+  listing_id: string;
   make: string | null;
   model: string | null;
   year: number | null;
   km: number | null;
-  price: number | null;
-  extraction_confidence: string | null;
+  asking_price: number | null;
+  variant_raw: string | null;
   transmission: string | null;
-  body_type: string | null;
-  fuel_type: string | null;
-  domain: string | null;
-  variant: string | null;
+  fuel: string | null;
+  drivetrain: string | null;
+  listing_url: string | null;
+  source: string | null;
+  platform_class: string | null;
 }
 
-// ── Badge/Variant helpers ──
-function normalizeVariant(v: string | null | undefined): string {
-  if (!v) return "";
-  return v.toUpperCase()
-    .replace(/\b(4X[24]|AWD|2WD|RWD|4WD|AUTO|MANUAL|CVT|DCT|DSG)\b/g, "")
-    .replace(/\b\d+\.\d+[A-Z]*\b/g, "")
-    .replace(/\b(DIESEL|PETROL|TURBO|HYBRID)\b/g, "")
-    .replace(/\b(DUAL\s*CAB|SINGLE\s*CAB|DOUBLE\s*CAB|CREW\s*CAB|CAB\s*CHASSIS|UTE|WAGON|SEDAN|HATCH)\b/g, "")
-    .replace(/\b(MY\d{2,4})\b/g, "")
-    .replace(/\b[A-Z]{2}\d{2,4}[A-Z]{0,3}\b/g, "")
-    .replace(/[-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function scoreVariantMatch(listingVariant: string | null, fpVariant: string | null): { score: number; label: string; reason: string } {
-  const lv = normalizeVariant(listingVariant);
-  const fv = normalizeVariant(fpVariant);
-  if (!lv && !fv) return { score: 5, label: "no_badge_data", reason: "No badge data on either side (+5)" };
-  if (!fv) return { score: 5, label: "no_fp_badge", reason: "No fingerprint badge to compare (+5)" };
-  if (!lv) return { score: 0, label: "missing_listing_badge", reason: `Listing missing badge, fingerprint has "${fv}" (+0)` };
-  if (lv === fv) return { score: 15, label: "exact_badge", reason: `Badge "${lv}" exact match (+15)` };
-  if (lv.includes(fv) || fv.includes(lv)) return { score: 10, label: "close_badge", reason: `Badge "${lv}" close to "${fv}" (+10)` };
-  return { score: -20, label: "badge_mismatch", reason: `Badge "${lv}" ≠ "${fv}" (-20 penalty)` };
-}
-
-// ── KM extraction helper ──
-function extractKmFromText(text: string): number | null {
-  const m = text.match(/(\d{1,3}(?:,\d{3})*|\d+)\s*(?:km|kms|kilometers|odometer|ODO|km's)/i);
-  if (!m) return null;
-  const val = parseInt(m[1].replace(/,/g, ""), 10);
-  return val > 0 && val < 1000000 ? val : null;
-}
+// ── Scoring helpers ──
 
 function scoreKm(
   km: number | null,
@@ -127,20 +80,20 @@ function scoreKm(
     return {
       score: 25,
       band: "inside",
-      reason: `km ${km.toLocaleString()} inside proven range [${Math.round(lo).toLocaleString()}–${Math.round(hi).toLocaleString()}] (+25)`,
+      reason: `km ${km.toLocaleString()} inside [${Math.round(lo).toLocaleString()}–${Math.round(hi).toLocaleString()}] (+25)`,
     };
   }
   if (km >= lo - 20000 && km <= hi + 20000) {
     return {
       score: 10,
       band: "near",
-      reason: `km ${km.toLocaleString()} near proven range ±20k (+10)`,
+      reason: `km ${km.toLocaleString()} near range ±20k (+10)`,
     };
   }
   return {
     score: 0,
     band: "outside",
-    reason: `km ${km.toLocaleString()} outside proven range [${Math.round(lo).toLocaleString()}–${Math.round(hi).toLocaleString()}] (+0)`,
+    reason: `km ${km.toLocaleString()} outside range (+0)`,
   };
 }
 
@@ -163,13 +116,13 @@ function scorePrice(
     return {
       score: 5,
       band: "near",
-      reason: `$${price.toLocaleString()} near median $${Math.round(med).toLocaleString()} (+5)`,
+      reason: `$${price.toLocaleString()} near median (+5)`,
     };
   }
   return {
     score: 0,
     band: "above",
-    reason: `$${price.toLocaleString()} above median $${Math.round(med).toLocaleString()} (+0)`,
+    reason: `$${price.toLocaleString()} above median (+0)`,
   };
 }
 
@@ -190,7 +143,7 @@ function scoreIdentity(
   }
   return {
     score: 0,
-    reason: `${label} "${listingVal}" differs from dominant "${fpDominant}" (+0)`,
+    reason: `${label} "${listingVal}" differs from "${fpDominant}" (+0)`,
   };
 }
 
@@ -206,56 +159,25 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const accountId: string | undefined = body.account_id;
-    const batchSize: number = body.batch_size ?? 200;
+    const batchSize: number = body.batch_size ?? 500;
     const refreshFingerprints: boolean = body.refresh_fingerprints ?? true;
 
     if (!accountId) {
       return new Response(
         JSON.stringify({ error: "account_id is required" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(
-      `[fingerprint-match-run] v1.5 starting for account=${accountId}, batch=${batchSize}`
-    );
+    console.log(`[fingerprint-match-run] v2.0 starting for account=${accountId}, batch=${batchSize}`);
     const startTime = Date.now();
 
-    // ── Step 1: Check dirty flag and refresh fingerprints ──
-    const { data: dirtyFlag } = await supabase
-      .from("fingerprint_refresh_pending")
-      .select("dirty_since, refreshed_at")
-      .eq("account_id", accountId)
-      .maybeSingle();
-
-    const needsRefresh =
-      refreshFingerprints ||
-      (dirtyFlag &&
-        (!dirtyFlag.refreshed_at ||
-          new Date(dirtyFlag.dirty_since) > new Date(dirtyFlag.refreshed_at)));
-
-    if (needsRefresh) {
+    // ── Step 1: Optionally refresh fingerprints ──
+    if (refreshFingerprints) {
       console.log("[fingerprint-match-run] Refreshing fingerprints...");
-      const { error: refreshErr } = await supabase.rpc(
-        "refresh_sales_fingerprints"
-      );
+      const { error: refreshErr } = await supabase.rpc("refresh_sales_fingerprints");
       if (refreshErr) {
         console.warn("[fingerprint-match-run] Refresh warning:", refreshErr.message);
-      } else {
-        await supabase
-          .from("fingerprint_refresh_pending")
-          .upsert(
-            {
-              account_id: accountId,
-              dirty_since: dirtyFlag?.dirty_since || new Date().toISOString(),
-              refreshed_at: new Date().toISOString(),
-            },
-            { onConflict: "account_id" }
-          );
-        console.log("[fingerprint-match-run] Dirty flag cleared.");
       }
     }
 
@@ -281,7 +203,7 @@ Deno.serve(async (req) => {
           listings_checked: 0,
           matched: 0,
           skipped: 0,
-          message: "No fingerprints found. Log sales into vehicle_sales_truth first.",
+          message: "No fingerprints found.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -289,21 +211,19 @@ Deno.serve(async (req) => {
 
     console.log(`[fingerprint-match-run] ${fingerprints.length} fingerprints loaded`);
 
-    // Build lookup map keyed by make|model|platform
+    // Build lookup map keyed by platform_class (e.g. "TOYOTA:PRADO")
     const fpMap = new Map<string, Fingerprint>();
     for (const fp of fingerprints as Fingerprint[]) {
-      const key = `${(fp.make || "").toUpperCase()}|${(fp.model || "").toUpperCase()}|${(fp.platform_class || "UNKNOWN")}`;
+      const key = (fp.platform_class || `${(fp.make || "").toUpperCase()}:${(fp.model || "").toUpperCase()}`);
       fpMap.set(key, fp);
     }
 
-    // ── Step 3: Load normalized listings ──
+    // ── Step 3: Load active vehicle_listings directly ──
     const { data: listings, error: listErr } = await supabase
-      .from("listing_details_norm")
-      .select(
-        "id, account_id, raw_id, url_canonical, make, model, year, km, price, extraction_confidence, transmission, body_type, fuel_type, domain, variant"
-      )
-      .eq("account_id", accountId)
-      .order("created_at", { ascending: false })
+      .from("vehicle_listings")
+      .select("id, listing_id, make, model, year, km, asking_price, variant_raw, transmission, fuel, drivetrain, listing_url, source, platform_class")
+      .in("status", ["listed", "catalogue"])
+      .order("last_seen_at", { ascending: false })
       .limit(batchSize);
 
     if (listErr) {
@@ -322,21 +242,19 @@ Deno.serve(async (req) => {
           listings_checked: 0,
           matched: 0,
           skipped: 0,
-          message: "No normalized listings to match against.",
+          message: "No active listings to match against.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(
-      `[fingerprint-match-run] Scoring ${listings.length} listings against ${fingerprints.length} fingerprints`
-    );
+    console.log(`[fingerprint-match-run] Scoring ${listings.length} active listings against ${fingerprints.length} fingerprints`);
 
     // ── Step 4: Score each listing ──
     const opportunities: Array<Record<string, unknown>> = [];
     let skipped = 0;
 
-    for (const listing of listings as NormListing[]) {
+    for (const listing of listings as VehicleListing[]) {
       const listingMake = (listing.make || "").toUpperCase().trim();
       const listingModel = (listing.model || "").toUpperCase().trim();
 
@@ -345,9 +263,9 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const listingPlatform = derivePlatform(listing.make, listing.model);
-      const key = `${listingMake}|${listingModel}|${listingPlatform}`;
-      const fp = fpMap.get(key);
+      // Use platform_class for lookup (strict platform gate)
+      const platformKey = listing.platform_class || `${listingMake}:${listingModel}`;
+      const fp = fpMap.get(platformKey);
 
       if (!fp) {
         skipped++;
@@ -355,74 +273,41 @@ Deno.serve(async (req) => {
       }
 
       // ── Scoring ──
-      let score = 40; // Base: make+model match
+      let score = 40; // Base: make+model+platform match
       const reasons: Record<string, string> = {
-        make_model: `${listingMake} ${listingModel} matches sales history (+40)`,
+        make_model: `${listingMake} ${listingModel} matches fingerprint (+40)`,
       };
-
-      // Badge/Variant scoring (NEW in v1.6)
-      const variantResult = scoreVariantMatch(listing.variant, null); // TODO: fp needs dominant_variant
-      score += variantResult.score;
-      reasons.variant = variantResult.reason;
-      console.log(`[VARIANT MATCH] ${listingMake} ${listingModel} variant="${listing.variant || ""}" → ${variantResult.label} (${variantResult.score > 0 ? "+" : ""}${variantResult.score})`);
 
       // KM scoring
       const kmResult = scoreKm(listing.km, fp.km_p25, fp.km_p75);
       score += kmResult.score;
       reasons.km = kmResult.reason;
-      if (listing.km) {
-        console.log(`[KM MATCH] ${listingMake} ${listingModel} km=${listing.km} → ${kmResult.band} (${kmResult.score > 0 ? "+" : ""}${kmResult.score})`);
-      }
 
       // Price scoring
-      const priceResult = scorePrice(listing.price, fp.price_median);
+      const priceResult = scorePrice(listing.asking_price, fp.price_median);
       score += priceResult.score;
       reasons.price = priceResult.reason;
 
-      // Identity alignment scoring
+      // Identity alignment: transmission
       const transResult = scoreIdentity(
-        listing.transmission,
-        fp.dominant_transmission,
-        fp.transmission_count,
-        "Transmission"
+        listing.transmission, fp.dominant_transmission, fp.transmission_count, "Transmission"
       );
       score += transResult.score;
       if (transResult.score > 0) reasons.transmission = transResult.reason;
 
-      const bodyResult = scoreIdentity(
-        listing.body_type,
-        fp.dominant_body_type,
-        fp.body_type_count,
-        "Body type"
-      );
-      score += bodyResult.score;
-      if (bodyResult.score > 0) reasons.body_type = bodyResult.reason;
-
+      // Identity alignment: fuel
       const fuelResult = scoreIdentity(
-        listing.fuel_type,
-        fp.dominant_fuel_type,
-        fp.fuel_type_count,
-        "Fuel type"
+        listing.fuel, fp.dominant_fuel_type, fp.fuel_type_count, "Fuel"
       );
       score += fuelResult.score;
-      if (fuelResult.score > 0) reasons.fuel_type = fuelResult.reason;
+      if (fuelResult.score > 0) reasons.fuel = fuelResult.reason;
 
-      // drive_type: listing_details_norm may not have it yet, score if present
+      // Identity alignment: drivetrain
       const driveResult = scoreIdentity(
-        null, // drive_type not yet in listing_details_norm
-        fp.dominant_drive_type,
-        fp.drive_type_count,
-        "Drive type"
+        listing.drivetrain, fp.dominant_drive_type, fp.drive_type_count, "Drivetrain"
       );
       score += driveResult.score;
-      if (driveResult.score > 0) reasons.drive_type = driveResult.reason;
-
-      // Extraction confidence
-      const conf = (listing.extraction_confidence || "").toLowerCase();
-      if (conf === "high" || conf === "medium") {
-        score += 10;
-        reasons.confidence = `Extraction confidence ${conf} (+10)`;
-      }
+      if (driveResult.score > 0) reasons.drivetrain = driveResult.reason;
 
       // ── Threshold ──
       if (score < 60) {
@@ -432,14 +317,15 @@ Deno.serve(async (req) => {
 
       opportunities.push({
         account_id: accountId,
-        listing_norm_id: listing.id,
-        raw_id: listing.raw_id || null,
-        url_canonical: listing.url_canonical,
+        listing_id: listing.id,
+        listing_norm_id: null, // legacy column, no longer used
+        raw_id: null, // listing_id is not UUID format
+        url_canonical: listing.listing_url,
         make: listing.make,
         model: listing.model,
         year: listing.year,
         km: listing.km,
-        asking_price: listing.price,
+        asking_price: listing.asking_price,
         fingerprint_make: fp.make,
         fingerprint_model: fp.model,
         sales_count: Number(fp.sales_count),
@@ -448,20 +334,16 @@ Deno.serve(async (req) => {
         match_score: score,
         reasons,
         status: "open",
-        // Identity fields
         transmission: listing.transmission,
-        body_type: listing.body_type,
-        fuel_type: listing.fuel_type,
-        // Recall metadata
-        source_searched: listing.domain || null,
+        fuel_type: listing.fuel,
+        drive_type: listing.drivetrain,
+        source_searched: listing.source || null,
         source_match_count: 1,
         last_search_at: new Date().toISOString(),
       });
     }
 
-    console.log(
-      `[fingerprint-match-run] Scored: ${opportunities.length} matched, ${skipped} skipped`
-    );
+    console.log(`[fingerprint-match-run] Scored: ${opportunities.length} matched, ${skipped} skipped`);
 
     // ── Step 5: Upsert opportunities ──
     let upserted = 0;
@@ -472,15 +354,12 @@ Deno.serve(async (req) => {
         const { error: upsertErr } = await supabase
           .from("matched_opportunities_v1")
           .upsert(chunk as any, {
-            onConflict: "account_id,listing_norm_id",
+            onConflict: "account_id,listing_id",
             ignoreDuplicates: false,
           });
 
         if (upsertErr) {
-          console.error(
-            `[fingerprint-match-run] Upsert error (chunk ${i}):`,
-            upsertErr
-          );
+          console.error(`[fingerprint-match-run] Upsert error (chunk ${i}):`, upsertErr);
         } else {
           upserted += chunk.length;
         }
@@ -488,9 +367,7 @@ Deno.serve(async (req) => {
     }
 
     const durationMs = Date.now() - startTime;
-    console.log(
-      `[fingerprint-match-run] Complete: ${upserted} upserted, ${skipped} skipped, ${durationMs}ms`
-    );
+    console.log(`[fingerprint-match-run] Complete: ${upserted} upserted, ${skipped} skipped, ${durationMs}ms`);
 
     return new Response(
       JSON.stringify({
