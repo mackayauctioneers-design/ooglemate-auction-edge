@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor } from 'lucide-react';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 
 interface OperatorOpportunity {
   id: string;
@@ -33,6 +35,13 @@ interface OperatorOpportunity {
   freshness: string | null;
   created_at: string;
   updated_at: string;
+  anchor_sale_id: string | null;
+  anchor_sale_buy_price: number | null;
+  anchor_sale_sell_price: number | null;
+  anchor_sale_profit: number | null;
+  anchor_sale_sold_at: string | null;
+  anchor_sale_km: number | null;
+  anchor_sale_trim_class: string | null;
 }
 
 type SortField = 'best_expected_margin' | 'best_under_buy' | 'asking_price' | 'year' | 'created_at' | 'tier';
@@ -45,18 +54,22 @@ const tierColors: Record<string, string> = {
   WATCH: 'bg-muted text-muted-foreground',
 };
 
+const fmt = (n: number | null) => n != null ? `$${n.toLocaleString()}` : '-';
+const fmtKm = (n: number | null) => n != null ? `${(n / 1000).toFixed(0)}k` : '-';
+
 export default function TradingDeskPage() {
   const [opportunities, setOpportunities] = useState<OperatorOpportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [scoring, setScoring] = useState(false);
   const [accounts, setAccounts] = useState<{ id: string; display_name: string }[]>([]);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   // Filters
   const [filterAccount, setFilterAccount] = useState<string>('all');
   const [filterTier, setFilterTier] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
   const [filterMinMargin, setFilterMinMargin] = useState<string>('');
-  const [filterStatus, setFilterStatus] = useState<string>('active'); // active = new+reviewed
+  const [filterStatus, setFilterStatus] = useState<string>('active');
 
   // Sort
   const [sortField, setSortField] = useState<SortField>('best_expected_margin');
@@ -75,7 +88,6 @@ export default function TradingDeskPage() {
           .limit(500),
         supabase.from('accounts').select('id, display_name'),
       ]);
-
       if (oppsRes.error) throw oppsRes.error;
       setOpportunities((oppsRes.data as OperatorOpportunity[]) || []);
       setAccounts((acctsRes.data || []) as { id: string; display_name: string }[]);
@@ -117,8 +129,15 @@ export default function TradingDeskPage() {
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, ...update } : o));
   };
 
-  // ─── Filter + Sort ──────────────────────────────────────────────────────────
+  const toggleRow = (id: string) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
+  // ─── Filter + Sort ──────────────────────────────────────────────────────────
   const filtered = opportunities.filter(o => {
     if (filterStatus === 'active' && !['new', 'reviewed'].includes(o.status)) return false;
     if (filterStatus !== 'all' && filterStatus !== 'active' && o.status !== filterStatus) return false;
@@ -134,16 +153,9 @@ export default function TradingDeskPage() {
 
   const sorted = [...filtered].sort((a, b) => {
     let aVal: number, bVal: number;
-    if (sortField === 'tier') {
-      aVal = tierOrder[a.tier] ?? 99;
-      bVal = tierOrder[b.tier] ?? 99;
-    } else if (sortField === 'created_at') {
-      aVal = new Date(a.created_at).getTime();
-      bVal = new Date(b.created_at).getTime();
-    } else {
-      aVal = (a[sortField] as number) ?? 0;
-      bVal = (b[sortField] as number) ?? 0;
-    }
+    if (sortField === 'tier') { aVal = tierOrder[a.tier] ?? 99; bVal = tierOrder[b.tier] ?? 99; }
+    else if (sortField === 'created_at') { aVal = new Date(a.created_at).getTime(); bVal = new Date(b.created_at).getTime(); }
+    else { aVal = (a[sortField] as number) ?? 0; bVal = (b[sortField] as number) ?? 0; }
     return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
   });
 
@@ -160,14 +172,10 @@ export default function TradingDeskPage() {
   const uniqueSources = [...new Set(opportunities.map(o => o.listing_source).filter(Boolean))] as string[];
 
   // ─── KPI Cards ──────────────────────────────────────────────────────────────
-
   const codeRedCount = opportunities.filter(o => o.tier === 'CODE_RED' && ['new', 'reviewed'].includes(o.status)).length;
   const highCount = opportunities.filter(o => o.tier === 'HIGH' && ['new', 'reviewed'].includes(o.status)).length;
   const buyCount = opportunities.filter(o => o.tier === 'BUY' && ['new', 'reviewed'].includes(o.status)).length;
   const watchCount = opportunities.filter(o => o.tier === 'WATCH' && ['new', 'reviewed'].includes(o.status)).length;
-
-  const fmt = (n: number | null) => n != null ? `$${n.toLocaleString()}` : '-';
-  const fmtKm = (n: number | null) => n != null ? `${(n / 1000).toFixed(0)}k` : '-';
 
   return (
     <OperatorLayout>
@@ -287,6 +295,7 @@ export default function TradingDeskPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-8"></TableHead>
                     <TableHead className="cursor-pointer" onClick={() => handleSort('tier')}>Tier <SortIcon field="tier" /></TableHead>
                     <TableHead>Vehicle</TableHead>
                     <TableHead className="text-right cursor-pointer" onClick={() => handleSort('asking_price')}>Ask <SortIcon field="asking_price" /></TableHead>
@@ -303,78 +312,133 @@ export default function TradingDeskPage() {
                 </TableHeader>
                 <TableBody>
                   {sorted.map(opp => (
-                    <TableRow key={opp.id} className="border-b border-border">
-                      <TableCell>
-                        <span className={`px-2 py-1 rounded text-xs font-bold ${tierColors[opp.tier] || 'bg-muted text-muted-foreground'}`}>
-                          {opp.tier.replace('_', ' ')}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium text-foreground">{opp.make} {opp.model}</p>
-                          <p className="text-xs text-muted-foreground">{opp.variant}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">{fmt(opp.asking_price)}</TableCell>
-                      <TableCell>
-                        <span className="text-sm font-medium text-primary">{opp.best_account_name || '-'}</span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className="font-mono font-semibold text-primary">{fmt(opp.best_expected_margin)}</span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className={`font-mono text-sm ${(opp.best_under_buy || 0) >= 1500 ? 'text-primary' : 'text-muted-foreground'}`}>
-                          {fmt(opp.best_under_buy)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {(opp.alt_matches || []).length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {(opp.alt_matches as any[]).slice(0, 2).map((m: any, i: number) => (
-                              <Badge key={i} variant="outline" className="text-xs">
-                                {m.account_name}: {fmt(m.expected_margin)}
-                              </Badge>
-                            ))}
-                            {(opp.alt_matches as any[]).length > 2 && (
-                              <Badge variant="outline" className="text-xs">+{(opp.alt_matches as any[]).length - 2}</Badge>
+                    <Collapsible key={opp.id} asChild open={expandedRows.has(opp.id)} onOpenChange={() => toggleRow(opp.id)}>
+                      <>
+                        <TableRow className="border-b border-border">
+                          <TableCell className="w-8 px-2">
+                            {opp.anchor_sale_id && (
+                              <CollapsibleTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                  <Anchor className={`h-3.5 w-3.5 transition-colors ${expandedRows.has(opp.id) ? 'text-primary' : 'text-muted-foreground'}`} />
+                                </Button>
+                              </CollapsibleTrigger>
                             )}
-                          </div>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{opp.listing_source}</TableCell>
-                      <TableCell className="text-right font-mono text-sm">{opp.year}</TableCell>
-                      <TableCell className="text-right font-mono text-sm text-muted-foreground">{fmtKm(opp.km)}</TableCell>
-                      <TableCell>
-                        <Badge variant={opp.status === 'new' ? 'default' : 'outline'} className="text-xs">
-                          {opp.assigned_to_name ? `→ ${opp.assigned_to_name}` : opp.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {/* Assign to accounts */}
-                          {accounts.map(a => (
-                            <Button
-                              key={a.id}
-                              variant="ghost"
-                              size="sm"
-                              className="text-xs h-7 px-2"
-                              title={`Assign to ${a.display_name}`}
-                              onClick={() => updateStatus(opp.id, 'assigned', a.id)}
-                            >
-                              {a.display_name.split(' ')[0]}
-                            </Button>
-                          ))}
-                          <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => updateStatus(opp.id, 'ignored')}>✕</Button>
-                          {opp.source_url && (
-                            <Button variant="ghost" size="iconSm" asChild>
-                              <a href={opp.source_url} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink className="h-3.5 w-3.5" />
-                              </a>
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                          </TableCell>
+                          <TableCell>
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${tierColors[opp.tier] || 'bg-muted text-muted-foreground'}`}>
+                              {opp.tier.replace('_', ' ')}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-foreground">{opp.make} {opp.model}</p>
+                              <p className="text-xs text-muted-foreground">{opp.variant}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">{fmt(opp.asking_price)}</TableCell>
+                          <TableCell>
+                            <span className="text-sm font-medium text-primary">{opp.best_account_name || '-'}</span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className="font-mono font-semibold text-primary">{fmt(opp.best_expected_margin)}</span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className={`font-mono text-sm ${(opp.best_under_buy || 0) >= 1500 ? 'text-primary' : 'text-muted-foreground'}`}>
+                              {fmt(opp.best_under_buy)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {(opp.alt_matches || []).length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {(opp.alt_matches as any[]).slice(0, 2).map((m: any, i: number) => (
+                                  <Badge key={i} variant="outline" className="text-xs">
+                                    {m.account_name}: {fmt(m.expected_margin)}
+                                  </Badge>
+                                ))}
+                                {(opp.alt_matches as any[]).length > 2 && (
+                                  <Badge variant="outline" className="text-xs">+{(opp.alt_matches as any[]).length - 2}</Badge>
+                                )}
+                              </div>
+                            ) : <span className="text-xs text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{opp.listing_source}</TableCell>
+                          <TableCell className="text-right font-mono text-sm">{opp.year}</TableCell>
+                          <TableCell className="text-right font-mono text-sm text-muted-foreground">{fmtKm(opp.km)}</TableCell>
+                          <TableCell>
+                            <Badge variant={opp.status === 'new' ? 'default' : 'outline'} className="text-xs">
+                              {opp.assigned_to_name ? `→ ${opp.assigned_to_name}` : opp.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {accounts.map(a => (
+                                <Button key={a.id} variant="ghost" size="sm" className="text-xs h-7 px-2" title={`Assign to ${a.display_name}`} onClick={() => updateStatus(opp.id, 'assigned', a.id)}>
+                                  {a.display_name.split(' ')[0]}
+                                </Button>
+                              ))}
+                              <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => updateStatus(opp.id, 'ignored')}>✕</Button>
+                              {opp.source_url && (
+                                <Button variant="ghost" size="iconSm" asChild>
+                                  <a href={opp.source_url} target="_blank" rel="noopener noreferrer">
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </a>
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Anchor Sale Collapsible Row */}
+                        <CollapsibleContent asChild>
+                          <TableRow className={`border-b border-border ${opp.tier === 'CODE_RED' || opp.tier === 'HIGH' ? 'bg-primary/5' : 'bg-muted/30'}`}>
+                            <TableCell colSpan={13} className="py-3 px-6">
+                              <div className="flex items-start gap-6">
+                                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                  <Anchor className="h-3.5 w-3.5" />
+                                  Matched Historical Sale
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4 text-sm flex-1">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Bought</p>
+                                    <p className="font-mono font-semibold text-foreground">{fmt(opp.anchor_sale_buy_price)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Sold</p>
+                                    <p className="font-mono font-semibold text-foreground">{fmt(opp.anchor_sale_sell_price)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Profit</p>
+                                    <p className="font-mono font-semibold text-primary">{fmt(opp.anchor_sale_profit)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Sold Date</p>
+                                    <p className="font-medium text-foreground">
+                                      {opp.anchor_sale_sold_at ? format(new Date(opp.anchor_sale_sold_at), 'd MMM yyyy') : '-'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">KM at Sale</p>
+                                    <p className="font-mono text-foreground">{fmtKm(opp.anchor_sale_km)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">KM Diff</p>
+                                    <p className="font-mono text-foreground">
+                                      {opp.anchor_sale_km != null && opp.km != null
+                                        ? `${opp.km - opp.anchor_sale_km >= 0 ? '+' : ''}${fmtKm(Math.abs(opp.km - opp.anchor_sale_km))}`
+                                        : '-'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Trim</p>
+                                    <p className="font-medium text-foreground">{opp.anchor_sale_trim_class || '-'}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        </CollapsibleContent>
+                      </>
+                    </Collapsible>
                   ))}
                 </TableBody>
               </Table>

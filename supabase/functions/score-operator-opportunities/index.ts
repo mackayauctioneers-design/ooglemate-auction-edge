@@ -260,6 +260,12 @@ Deno.serve(async (req) => {
         expected_margin: number;
         under_buy: number;
         anchor_sale_id: string;
+        anchor_sale_buy_price: number;
+        anchor_sale_sell_price: number;
+        anchor_sale_profit: number;
+        anchor_sale_sold_at: string | null;
+        anchor_sale_km: number | null;
+        anchor_sale_trim_class: string;
       }
 
       const accountMatches: AccountMatch[] = [];
@@ -302,6 +308,12 @@ Deno.serve(async (req) => {
           expected_margin: expectedMargin,
           under_buy: underBuy,
           anchor_sale_id: best.id,
+          anchor_sale_buy_price: Number(best.buy_price),
+          anchor_sale_sell_price: best.sale_price,
+          anchor_sale_profit: best.sale_price - Number(best.buy_price),
+          anchor_sale_sold_at: best.sold_at || null,
+          anchor_sale_km: best.km || null,
+          anchor_sale_trim_class: best.trim_class || "UNKNOWN",
         });
       }
 
@@ -341,6 +353,13 @@ Deno.serve(async (req) => {
         best_account_name: best.account_name,
         best_expected_margin: best.expected_margin,
         best_under_buy: best.under_buy,
+        anchor_sale_id: best.anchor_sale_id,
+        anchor_sale_buy_price: best.anchor_sale_buy_price,
+        anchor_sale_sell_price: best.anchor_sale_sell_price,
+        anchor_sale_profit: best.anchor_sale_profit,
+        anchor_sale_sold_at: best.anchor_sale_sold_at,
+        anchor_sale_km: best.anchor_sale_km,
+        anchor_sale_trim_class: best.anchor_sale_trim_class,
         alt_matches: altMatches,
         tier,
         days_listed: daysSinceFirst,
