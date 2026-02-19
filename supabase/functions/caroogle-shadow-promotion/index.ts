@@ -40,8 +40,10 @@ function extractBadge(text: string | null): string {
     "GXL", "VX", "GX", "XLT", "XLS", "LS-U", "LSU", "LS-M", "LSM", "LS-T", "LST",
     "ST-X", "STX", "ST-L", "STL", "GLS", "GR", "N-TREK", "COMMUTER", "SLWB", "LWB",
     "WORKMATE", "AMBIENTE", "TREND",
+    "ASCENT SPORT", "ASCENT", "MAXX SPORT", "MAXX",
+    "AKARI", "GT-LINE", "SPORT", "TOURING",
   ];
-  const shortBadges = ["SR", "XL", "LS", "ES", "SL", "ST", "TI", "LT", "LTZ", "Z71", "SS", "SSV", "SV6"];
+  const shortBadges = ["SR", "XL", "LS", "ES", "SL", "ST", "TI", "LT", "LTZ", "Z71", "SS", "SSV", "SV6", "SX", "XT", "RX"];
   for (const b of badges) { if (d.includes(b)) return b; }
   for (const b of shortBadges) { if (new RegExp(`\\b${b}\\b`).test(d)) return b; }
   return "";
@@ -72,7 +74,7 @@ const TRIM_LADDER: Record<string, Record<string, number>> = {
   "ISUZU:MUX": { "LS-M": 1, "LS-U": 2, "LS-T": 3 },
   "MITSUBISHI:TRITON": { GLX: 1, "GLX+": 2, "GLX-R": 3, GLS: 4 },
   "OUTLANDER": { ES: 1, LS: 2, ASPIRE: 3, EXCEED: 4, EXCEED_TOURER: 5 },
-  "NISSAN:NAVARA": { SL: 1, ST: 2, "ST-L": 3, "ST-X": 4, "PRO-4X": 5 },
+  "NISSAN:NAVARA": { RX: 1, SL: 2, ST: 3, "ST-L": 4, "ST-X": 5, "PRO-4X": 6 },
   "NISSAN:PATROL": { TI: 1, "TI-L": 2 },
   "HOLDEN:COLORADO": { LS: 1, LT: 2, LTZ: 3, Z71: 4 },
 };
