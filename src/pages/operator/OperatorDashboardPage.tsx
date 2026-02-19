@@ -22,6 +22,12 @@ export default function OperatorDashboardPage() {
 
   const sections = [
     {
+      title: 'Trading',
+      items: [
+        { label: 'Trading Desk', path: '/operator/trading-desk', icon: TrendingUp, desc: 'Multi-dealer opportunity blotter' },
+      ]
+    },
+    {
       title: 'Monitoring',
       items: [
         { label: 'Ingestion Health', path: '/operator/ingestion-health', icon: Activity, desc: 'Pipeline metrics & crawl status' },

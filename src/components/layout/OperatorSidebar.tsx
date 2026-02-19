@@ -51,6 +51,12 @@ interface NavItem {
 
 const operatorSections: NavSection[] = [
   {
+    title: 'Trading',
+    items: [
+      { path: '/operator/trading-desk', label: 'Trading Desk', icon: DollarSign },
+    ],
+  },
+  {
     title: 'Monitoring',
     items: [
       { path: '/operator/ingestion-health', label: 'Ingestion Health', icon: Activity },

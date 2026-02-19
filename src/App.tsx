@@ -49,6 +49,7 @@ import VASalesDataPage from "./pages/operator/VASalesDataPage";
 import TriggerQAPage from "./pages/operator/TriggerQAPage";
 import DealerUrlIntakePage from "./pages/operator/DealerUrlIntakePage";
 import TargetsPoolPage from "./pages/operator/TargetsPoolPage";
+import TradingDeskPage from "./pages/operator/TradingDeskPage";
 
 // Carbitrage pages (Josh workflow)
 import JoshInboxPage from "./pages/carbitrage/JoshInboxPage";
@@ -207,6 +208,9 @@ const App = () => (
               } />
               <Route path="/operator/targets" element={
                 <OperatorGuard><TargetsPoolPage /></OperatorGuard>
+              } />
+              <Route path="/operator/trading-desk" element={
+                <OperatorGuard><TradingDeskPage /></OperatorGuard>
               } />
               {/* === ADMIN TOOLS: Protected by RequireAdmin === */}
               <Route path="/admin-tools" element={

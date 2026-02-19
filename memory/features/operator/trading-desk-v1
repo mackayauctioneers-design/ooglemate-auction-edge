@@ -1,0 +1,24 @@
+# Memory: features/operator/trading-desk-v1
+Updated: now
+
+The 'Trading Desk' (/operator/trading-desk) is the centralised multi-dealer opportunity blotter. It scores ALL candidate listings (vehicle_listings + shadow) against ALL accounts' fingerprints in vehicle_sales_truth, producing a ranked global view.
+
+## Schema
+- Table: `operator_opportunities` with multi-account scoring columns (best_account, alt_matches JSONB, tier, status)
+- Unique on `listing_id` for idempotent upserts
+
+## Scoring Engine
+- Edge function: `score-operator-opportunities` (runs every 30 min)
+- Intake thresholds (loosened): under_buy >= -$500 for WATCH, >= $1,500 for BUY/HIGH/CODE_RED
+- Tiering: CODE_RED (margin >= $6k + under_buy >= $1.5k), HIGH (>= $4k), BUY (>= $1.5k under_buy), WATCH (rest)
+- Each listing scored against ALL accounts; best margin determines best_account; others stored in alt_matches
+
+## UI
+- Filters: Account, Tier, Source, Status, Min Margin
+- Actions: Assign to specific dealer, Buy, Ignore, external link
+- KPI cards: CODE_RED, HIGH, BUY, WATCH counts
+- Defaults to 'New + Reviewed' status view, sorted by margin DESC
+
+## Operator-Only
+- Protected by OperatorGuard
+- RLS: admin role only via has_role()

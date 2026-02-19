@@ -423,3 +423,7 @@ schedule = "0 */2 * * *"
 [functions.caroogle-shadow-promotion]
 verify_jwt = false
 schedule = "*/30 * * * *"
+
+[functions.score-operator-opportunities]
+verify_jwt = false
+schedule = "*/30 * * * *"

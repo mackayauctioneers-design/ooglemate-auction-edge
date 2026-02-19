@@ -4345,6 +4345,114 @@ export type Database = {
         }
         Relationships: []
       }
+      operator_opportunities: {
+        Row: {
+          alt_matches: Json | null
+          asking_price: number | null
+          assigned_at: string | null
+          assigned_by: string | null
+          assigned_to_account: string | null
+          assigned_to_name: string | null
+          best_account_id: string | null
+          best_account_name: string | null
+          best_expected_margin: number | null
+          best_under_buy: number | null
+          created_at: string
+          days_listed: number | null
+          drivetrain_bucket: string | null
+          freshness: string | null
+          id: string
+          km: number | null
+          listing_id: string
+          listing_source: string | null
+          make: string | null
+          model: string | null
+          platform_class: string | null
+          source_url: string | null
+          status: string
+          tier: string
+          trim_class: string | null
+          updated_at: string
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          alt_matches?: Json | null
+          asking_price?: number | null
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_to_account?: string | null
+          assigned_to_name?: string | null
+          best_account_id?: string | null
+          best_account_name?: string | null
+          best_expected_margin?: number | null
+          best_under_buy?: number | null
+          created_at?: string
+          days_listed?: number | null
+          drivetrain_bucket?: string | null
+          freshness?: string | null
+          id?: string
+          km?: number | null
+          listing_id: string
+          listing_source?: string | null
+          make?: string | null
+          model?: string | null
+          platform_class?: string | null
+          source_url?: string | null
+          status?: string
+          tier?: string
+          trim_class?: string | null
+          updated_at?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          alt_matches?: Json | null
+          asking_price?: number | null
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_to_account?: string | null
+          assigned_to_name?: string | null
+          best_account_id?: string | null
+          best_account_name?: string | null
+          best_expected_margin?: number | null
+          best_under_buy?: number | null
+          created_at?: string
+          days_listed?: number | null
+          drivetrain_bucket?: string | null
+          freshness?: string | null
+          id?: string
+          km?: number | null
+          listing_id?: string
+          listing_source?: string | null
+          make?: string | null
+          model?: string | null
+          platform_class?: string | null
+          source_url?: string | null
+          status?: string
+          tier?: string
+          trim_class?: string | null
+          updated_at?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operator_opportunities_assigned_to_account_fkey"
+            columns: ["assigned_to_account"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operator_opportunities_best_account_id_fkey"
+            columns: ["best_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       opportunities: {
         Row: {
           account_id: string | null
