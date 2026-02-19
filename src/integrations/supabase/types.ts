@@ -11817,6 +11817,19 @@ export type Database = {
         }[]
       }
       rpc_get_watchlist: { Args: { p_dealer_id: string }; Returns: Json }
+      rpc_ingestion_audit_sources: {
+        Args: never
+        Returns: {
+          active: number
+          added_24h: number
+          last_scrape: string
+          older_30d: number
+          source: string
+          total: number
+          updated_24h: number
+          zombie_pct: number
+        }[]
+      }
       rpc_reset_hunt_results: { Args: { p_hunt_id: string }; Returns: Json }
       run_spec_matching_batch: {
         Args: { p_since_hours?: number }
