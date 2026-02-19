@@ -40,16 +40,57 @@ export default function IngestionAuditPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Per-source breakdown
-      const { data: raw } = await supabase.rpc("rpc_ingestion_audit_sources" as any);
+      // Server-side aggregation — no row limit issues
+      const { data: raw, error } = await supabase.rpc("rpc_ingestion_audit_sources" as any);
       
-      // If RPC doesn't exist, fall back to client-side query
-      if (!raw) {
+      if (error || !raw) {
+        console.error("RPC failed, falling back:", error);
         await fetchFallback();
         return;
       }
 
-      setSources(raw as any[]);
+      const rows = raw as SourceRow[];
+      setSources(rows);
+      setTotals({
+        total: rows.reduce((s, r) => s + r.total, 0),
+        active: rows.reduce((s, r) => s + r.active, 0),
+        added_24h: rows.reduce((s, r) => s + r.added_24h, 0),
+        updated_24h: rows.reduce((s, r) => s + r.updated_24h, 0),
+        older_30d: rows.reduce((s, r) => s + r.older_30d, 0),
+        credits_7d: 0,
+      });
+
+      // Firecrawl credit log
+      const now = Date.now();
+      const day = 86400000;
+      const { data: creditData } = await supabase
+        .from("firecrawl_credit_log")
+        .select("function_name, estimated_credits, created_at")
+        .gte("created_at", new Date(now - 7 * day).toISOString());
+
+      if (creditData) {
+        const byFn: Record<string, { total: number; calls: number }> = {};
+        let total7d = 0;
+        for (const c of creditData) {
+          const fn = c.function_name || "unknown";
+          if (!byFn[fn]) byFn[fn] = { total: 0, calls: 0 };
+          const est = (c.estimated_credits as number) || 1;
+          byFn[fn].total += est;
+          byFn[fn].calls++;
+          total7d += est;
+        }
+        setCredits(
+          Object.entries(byFn)
+            .map(([function_name, v]) => ({
+              function_name,
+              total_credits: v.total,
+              total_calls: v.calls,
+              avg_per_call: Math.round((v.total / v.calls) * 10) / 10,
+            }))
+            .sort((a, b) => b.total_credits - a.total_credits)
+        );
+        setTotals(prev => ({ ...prev, credits_7d: total7d }));
+      }
     } catch {
       await fetchFallback();
     } finally {
