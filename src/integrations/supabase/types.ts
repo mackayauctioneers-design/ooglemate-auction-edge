@@ -4348,6 +4348,13 @@ export type Database = {
       operator_opportunities: {
         Row: {
           alt_matches: Json | null
+          anchor_sale_buy_price: number | null
+          anchor_sale_id: string | null
+          anchor_sale_km: number | null
+          anchor_sale_profit: number | null
+          anchor_sale_sell_price: number | null
+          anchor_sale_sold_at: string | null
+          anchor_sale_trim_class: string | null
           asking_price: number | null
           assigned_at: string | null
           assigned_by: string | null
@@ -4378,6 +4385,13 @@ export type Database = {
         }
         Insert: {
           alt_matches?: Json | null
+          anchor_sale_buy_price?: number | null
+          anchor_sale_id?: string | null
+          anchor_sale_km?: number | null
+          anchor_sale_profit?: number | null
+          anchor_sale_sell_price?: number | null
+          anchor_sale_sold_at?: string | null
+          anchor_sale_trim_class?: string | null
           asking_price?: number | null
           assigned_at?: string | null
           assigned_by?: string | null
@@ -4408,6 +4422,13 @@ export type Database = {
         }
         Update: {
           alt_matches?: Json | null
+          anchor_sale_buy_price?: number | null
+          anchor_sale_id?: string | null
+          anchor_sale_km?: number | null
+          anchor_sale_profit?: number | null
+          anchor_sale_sell_price?: number | null
+          anchor_sale_sold_at?: string | null
+          anchor_sale_trim_class?: string | null
           asking_price?: number | null
           assigned_at?: string | null
           assigned_by?: string | null
