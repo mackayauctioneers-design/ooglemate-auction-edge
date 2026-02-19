@@ -4233,7 +4233,8 @@ export type Database = {
           km: number | null
           km_band: string
           last_search_at: string | null
-          listing_norm_id: string
+          listing_id: string | null
+          listing_norm_id: string | null
           make: string | null
           match_score: number
           model: string | null
@@ -4261,7 +4262,8 @@ export type Database = {
           km?: number | null
           km_band: string
           last_search_at?: string | null
-          listing_norm_id: string
+          listing_id?: string | null
+          listing_norm_id?: string | null
           make?: string | null
           match_score: number
           model?: string | null
@@ -4289,7 +4291,8 @@ export type Database = {
           km?: number | null
           km_band?: string
           last_search_at?: string | null
-          listing_norm_id?: string
+          listing_id?: string | null
+          listing_norm_id?: string | null
           make?: string | null
           match_score?: number
           model?: string | null
