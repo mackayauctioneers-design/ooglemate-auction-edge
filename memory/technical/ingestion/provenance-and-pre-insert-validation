@@ -1,0 +1,12 @@
+# Memory: technical/ingestion/provenance-and-pre-insert-validation
+Updated: now
+
+To ensure ingestion observability and data trust, all listings must be traceable to a specific job via the 'last_ingest_run_id' column. The pickles-ingest-cron now generates a UUID run ID per execution and stamps it on every upsert (both new inserts and updates). Three permanent guards are enforced at the point of insertion:
+
+1. **Provenance Gate**: Every upsert sets `last_ingest_run_id = runId`, enabling full traceability from any listing back to the exact cron run that touched it.
+
+2. **Price Gate**: New listings where `asking_price` is missing or zero are rejected at insert time. Updates to existing listings still proceed (to maintain `last_seen_at` freshness) but won't overwrite a valid price with zero.
+
+3. **Lemon-Check Gate**: Before inserting a new listing, an HTTP HEAD request validates the detail URL. Listings returning 404/410 or redirecting away from detail pages are rejected. Server errors (5xx) and network failures are allowed through to avoid false rejections.
+
+The `vehicle_listings` table now includes a `created_at` column (timestamptz, default now()) for full lifecycle traceability. Audit logs include `skipped_no_price` and `skipped_lemon` counts for monitoring guard effectiveness.
