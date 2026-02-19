@@ -91,13 +91,23 @@ Deno.serve(async (req) => {
       if (price && price > 0) withPriceCount++;
       else zeroPriceCount++;
 
+      // Model is NULL in API — parse from title by stripping make prefix
+      const rawMake = ad.make ? String(ad.make).toUpperCase().trim() : null;
+      let rawModel: string | null = ad.model ? String(ad.model).toUpperCase().trim() : null;
+      if (!rawModel && ad.title && rawMake) {
+        const titleUpper = String(ad.title).toUpperCase().trim();
+        if (titleUpper.startsWith(rawMake)) {
+          rawModel = titleUpper.slice(rawMake.length).trim() || null;
+        }
+      }
+
       rows.push({
         listing_id: listingId,
         lot_id: lotId,
         source: "auction",
         shadow_source: "caroogle",
-        make: ad.make ? String(ad.make).toUpperCase() : null,
-        model: ad.model ? String(ad.model).toUpperCase() : null,
+        make: rawMake,
+        model: rawModel,
         year: ad.year ? parseInt(String(ad.year)) : null,
         asking_price: price,
         km,
