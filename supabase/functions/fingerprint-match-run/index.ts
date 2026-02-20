@@ -253,6 +253,26 @@ Deno.serve(async (req) => {
     // ── Step 4: Score each listing ──
     const opportunities: Array<Record<string, unknown>> = [];
     let skipped = 0;
+    let skippedBadUrl = 0;
+    let skippedDedupe = 0;
+
+    // Composite dedupe: collapse dealer-group mirrors (same physical car across syndicated sites)
+    const seenVehicles = new Set<string>();
+
+    // URL sanity patterns — reject generic category/homepage URLs with no vehicle identifier
+    const BAD_URL_PATTERNS = [
+      /\/used-cars\/?$/i,
+      /\/stock\/?$/i,
+      /\/inventory\/?$/i,
+      /\/vehicles\/?$/i,
+      /\/new-cars\/?$/i,
+      /\/pre-owned\/?$/i,
+    ];
+
+    function isGenericUrl(url: string | null): boolean {
+      if (!url) return true;
+      return BAD_URL_PATTERNS.some(p => p.test(url));
+    }
 
     for (const listing of listings as VehicleListing[]) {
       const listingMake = (listing.make || "").toUpperCase().trim();
@@ -262,6 +282,20 @@ Deno.serve(async (req) => {
         skipped++;
         continue;
       }
+
+      // ── URL sanity gate ──
+      if (isGenericUrl(listing.listing_url)) {
+        skippedBadUrl++;
+        continue;
+      }
+
+      // ── Composite dedupe gate (collapse dealer-group mirrors) ──
+      const vehicleKey = `${listingMake}:${listingModel}:${listing.year ?? 0}:${listing.km ?? 0}:${listing.asking_price ?? 0}`;
+      if (seenVehicles.has(vehicleKey)) {
+        skippedDedupe++;
+        continue;
+      }
+      seenVehicles.add(vehicleKey);
 
       // Use platform_class for lookup (strict platform gate)
       const platformKey = listing.platform_class || `${listingMake}:${listingModel}`;
@@ -343,7 +377,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log(`[fingerprint-match-run] Scored: ${opportunities.length} matched, ${skipped} skipped`);
+    console.log(`[fingerprint-match-run] Scored: ${opportunities.length} matched, ${skipped} skipped, ${skippedBadUrl} bad-url, ${skippedDedupe} deduped`);
 
     // ── Step 5: Upsert opportunities ──
     let upserted = 0;
@@ -367,7 +401,7 @@ Deno.serve(async (req) => {
     }
 
     const durationMs = Date.now() - startTime;
-    console.log(`[fingerprint-match-run] Complete: ${upserted} upserted, ${skipped} skipped, ${durationMs}ms`);
+    console.log(`[fingerprint-match-run] Complete: ${upserted} upserted, ${skipped} skipped, ${skippedBadUrl} bad-url, ${skippedDedupe} deduped, ${durationMs}ms`);
 
     return new Response(
       JSON.stringify({
@@ -376,6 +410,8 @@ Deno.serve(async (req) => {
         listings_checked: listings.length,
         matched: upserted,
         skipped,
+        skipped_bad_url: skippedBadUrl,
+        skipped_dedupe: skippedDedupe,
         duration_ms: durationMs,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
