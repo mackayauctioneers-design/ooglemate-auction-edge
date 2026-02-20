@@ -4222,6 +4222,10 @@ export type Database = {
       matched_opportunities_v1: {
         Row: {
           account_id: string
+          anchor_buy_price: number | null
+          anchor_days_to_sell: number | null
+          anchor_profit: number | null
+          anchor_sell_price: number | null
           asking_price: number | null
           body_type: string | null
           created_at: string
@@ -4237,6 +4241,7 @@ export type Database = {
           listing_norm_id: string | null
           make: string | null
           match_score: number
+          median_sell_price: number | null
           model: string | null
           price_band: string
           raw_id: string | null
@@ -4251,6 +4256,10 @@ export type Database = {
         }
         Insert: {
           account_id: string
+          anchor_buy_price?: number | null
+          anchor_days_to_sell?: number | null
+          anchor_profit?: number | null
+          anchor_sell_price?: number | null
           asking_price?: number | null
           body_type?: string | null
           created_at?: string
@@ -4266,6 +4275,7 @@ export type Database = {
           listing_norm_id?: string | null
           make?: string | null
           match_score: number
+          median_sell_price?: number | null
           model?: string | null
           price_band: string
           raw_id?: string | null
@@ -4280,6 +4290,10 @@ export type Database = {
         }
         Update: {
           account_id?: string
+          anchor_buy_price?: number | null
+          anchor_days_to_sell?: number | null
+          anchor_profit?: number | null
+          anchor_sell_price?: number | null
           asking_price?: number | null
           body_type?: string | null
           created_at?: string
@@ -4295,6 +4309,7 @@ export type Database = {
           listing_norm_id?: string | null
           make?: string | null
           match_score?: number
+          median_sell_price?: number | null
           model?: string | null
           price_band?: string
           raw_id?: string | null
