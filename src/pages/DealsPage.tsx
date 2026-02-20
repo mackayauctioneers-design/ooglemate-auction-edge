@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { DealerLayout } from "@/components/layout/DealerLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useDeals } from "@/hooks/useDeals";
-import { AccountSelector } from "@/components/carbitrage/AccountSelector";
 import { DealStatusBadge } from "@/components/deals/DealStatusActions";
 import {
   Table,
@@ -47,21 +46,20 @@ export default function DealsPage() {
   }, {});
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="p-4 sm:p-6 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2">
               <FileText className="h-6 w-6 text-primary" />
-              Deal Truth Ledger
+              Closed Deals
             </h1>
             <p className="text-sm text-muted-foreground">
-              Auditable deal records from identification through to delivery
+              Deal records from identification through delivery
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <AccountSelector value={selectedAccountId} onChange={setSelectedAccountId} />
+          <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={refetch} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
@@ -177,6 +175,6 @@ export default function DealsPage() {
           This deal record is an audit trail. Events and documents are append-only and timestamped.
         </p>
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }

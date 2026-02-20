@@ -1,5 +1,5 @@
 import { useParams, Link } from "react-router-dom";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { DealerLayout } from "@/components/layout/DealerLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useDealDetail, DealStatus } from "@/hooks/useDeals";
 import { useAuth } from "@/contexts/AuthContext";
@@ -58,17 +58,17 @@ export default function DealDetailPage() {
 
   if (loading) {
     return (
-      <AppLayout>
+      <DealerLayout>
         <div className="flex items-center justify-center py-32">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
-      </AppLayout>
+      </DealerLayout>
     );
   }
 
   if (!deal) {
     return (
-      <AppLayout>
+      <DealerLayout>
         <div className="p-6 text-center">
           <h2 className="text-lg font-medium">Deal not found</h2>
           <Link to="/deals">
@@ -77,12 +77,12 @@ export default function DealDetailPage() {
             </Button>
           </Link>
         </div>
-      </AppLayout>
+      </DealerLayout>
     );
   }
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
         {/* Back link */}
         <Link to="/deals" className="text-sm text-primary hover:underline flex items-center gap-1">
@@ -245,6 +245,6 @@ export default function DealDetailPage() {
           This deal record is an audit trail. Events and documents are append-only and timestamped.
         </p>
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }

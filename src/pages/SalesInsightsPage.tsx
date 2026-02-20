@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { DealerLayout } from "@/components/layout/DealerLayout";
 import { useAccounts } from "@/hooks/useAccounts";
 import { AccountSelector } from "@/components/carbitrage/AccountSelector";
 import { useClearanceVelocity, useVariationPerformance } from "@/hooks/useSalesInsights";
@@ -37,7 +37,7 @@ export default function SalesInsightsPage() {
   );
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -166,6 +166,6 @@ export default function SalesInsightsPage() {
           range="all"
         />
       )}
-    </AppLayout>
+    </DealerLayout>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { DealerLayout } from '@/components/layout/DealerLayout';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Info, CheckCircle, DollarSign, TrendingUp, BarChart3, Clock, Volume2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -464,7 +464,7 @@ export default function ValoPage() {
   const needsPhotos = result ? result.confidence !== 'HIGH' : false;
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <MeetBobModal />
       
       <BobResponseLogger 
@@ -762,6 +762,6 @@ export default function ValoPage() {
 
       {/* Bob Avatar - self-contained AI voice agent */}
       <BobAvatar dealerName={currentUser?.dealer_name} />
-    </AppLayout>
+    </DealerLayout>
   );
 }

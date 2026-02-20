@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { DealerLayout } from "@/components/layout/DealerLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { supabase } from "@/integrations/supabase/client";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/contexts/AuthContext";
-import { AccountSelector } from "@/components/carbitrage/AccountSelector";
 import { createDealFromOpportunity } from "@/hooks/useDeals";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -191,7 +190,7 @@ export default function TradingDeskPage() {
   };
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="p-4 sm:p-6 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -201,11 +200,10 @@ export default function TradingDeskPage() {
               Trading Desk
             </h1>
             <p className="text-sm text-muted-foreground">
-              Fingerprint-backed buy opportunities — score ≥ 70
+              Ranked buy opportunities backed by your sales DNA
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <AccountSelector value={accountId} onChange={setAccountId} />
+          <div className="flex items-center gap-2">
             <Button onClick={runEngine} disabled={running || !accountId} size="sm">
               {running ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Zap className="h-4 w-4 mr-1" />}
               Scan
@@ -311,6 +309,6 @@ export default function TradingDeskPage() {
           </div>
         )}
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }
