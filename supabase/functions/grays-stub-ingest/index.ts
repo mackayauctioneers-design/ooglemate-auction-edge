@@ -114,10 +114,36 @@ function parseStubFromUrl(hrefUrl: string, rawText: string = ""): StubAnchor {
   if (slugMatch) {
     year = parseInt(slugMatch[1]);
     make = slugMatch[2].charAt(0).toUpperCase() + slugMatch[2].slice(1).toLowerCase();
-    // Model is the next word(s) from slug, convert hyphen to space
+
+    // Multi-word model detection — longest-match-first to prevent platform bleed
+    // e.g. "landcruiser-prado" → "Landcruiser Prado", not "Landcruiser"
     const modelParts = slugMatch[3].split('-');
-    // Take first word as model (rest is variant info)
-    model = modelParts[0].charAt(0).toUpperCase() + modelParts[0].slice(1).toLowerCase();
+    const MULTI_WORD_MODELS: Record<string, string[]> = {
+      "landcruiser": ["prado"],
+      "pajero": ["sport"],
+      "bt": ["50"],
+      "d": ["max"],
+      "mu": ["x"],
+      "cx": ["3", "5", "8", "9", "30", "50", "60"],
+      "x": ["trail"],
+      "rav": ["4"],
+      "eclipse": ["cross"],
+      "santa": ["fe"],
+      "range": ["rover"],
+    };
+
+    let modelWordCount = 1;
+    const firstPart = modelParts[0].toLowerCase();
+    if (MULTI_WORD_MODELS[firstPart] && modelParts.length > 1) {
+      const nextPart = modelParts[1].toLowerCase();
+      if (MULTI_WORD_MODELS[firstPart].includes(nextPart)) {
+        modelWordCount = 2;
+      }
+    }
+
+    model = modelParts.slice(0, modelWordCount)
+      .map((p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+      .join(' ');
   }
   
   // Try to extract location from raw text (NSW, VIC, QLD, etc.)
