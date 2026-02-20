@@ -57,59 +57,37 @@ const operatorSections: NavSection[] = [
     ],
   },
   {
-    title: 'Monitoring',
+    title: 'Ingestion',
     items: [
       { path: '/operator/ingestion-health', label: 'Ingestion Health', icon: Activity },
       { path: '/operator/ingestion-audit', label: 'Ingestion Audit', icon: Database },
       { path: '/operator/cron-audit', label: 'Cron Audit Log', icon: Clock },
-      { path: '/operator/trap-health', label: 'Trap Health Alerts', icon: AlertTriangle },
       { path: '/operator/job-queue', label: 'Job Queue', icon: ListOrdered },
     ],
   },
   {
-    title: 'Data Ops',
+    title: 'Matching Engine',
     items: [
-      { path: '/admin-tools/va-intake', label: 'VA Intake', icon: Upload },
-      { path: '/operator/dealer-urls', label: 'Dealer URL Intake', icon: FileStack },
+      { path: '/operator/fingerprints', label: 'Fingerprints Explorer', icon: Fingerprint },
+      { path: '/operator/targets', label: 'Targets Pool', icon: Crosshair },
+      { path: '/operator/benchmark-gaps', label: 'Benchmark Gaps', icon: Target },
+      { path: '/operator/trigger-qa', label: 'Trigger QA', icon: FlaskConical },
+    ],
+  },
+  {
+    title: 'Sources',
+    items: [
       { path: '/operator/traps', label: 'Traps Registry', icon: Database },
       { path: '/operator/preflight', label: 'Preflight Queue', icon: Radar },
-      { path: '/va/tasks', label: 'VA Task Queue', icon: ClipboardList },
-    ],
-  },
-  {
-    title: 'Sourcing & Discovery',
-    items: [
-      { path: '/alerts', label: 'Alerts Inbox', icon: Bell },
-      { path: '/hunts', label: 'Kiting Mode', icon: Target },
-      { path: '/josh', label: 'Josh Inbox', icon: ClipboardList },
-      { path: '/dave', label: 'Dave Inbox', icon: Bell },
-      { path: '/grok-missions', label: 'Grok Missions', icon: Crosshair },
-      { path: '/dealer-urls', label: 'URL Bank', icon: Store },
-      { path: '/upcoming-auctions', label: 'Upcoming Auctions', icon: Calendar },
-      { path: '/search-lots', label: 'Search Lots', icon: Search },
-      { path: '/trap-inventory', label: 'Trap Inventory', icon: Store },
-      { path: '/matches', label: 'Matches (Legacy)', icon: Crosshair },
-      { path: '/valuation', label: 'Valuation', icon: DollarSign },
-      { path: '/scan-guide', label: 'Scan Screenshot', icon: Search },
-    ],
-  },
-  {
-    title: 'Analytics',
-    items: [
-      { path: '/operator/feeding-mode', label: 'Feeding Mode Report', icon: TrendingUp },
-      { path: '/operator/fingerprints', label: 'Fingerprints Explorer', icon: Fingerprint },
-      { path: '/operator/benchmark-gaps', label: 'Benchmark Gaps', icon: Target },
-      { path: '/operator/benchmark-watchlist', label: 'Benchmark Watchlist', icon: Target },
-      { path: '/operator/trigger-qa', label: 'Trigger QA', icon: FlaskConical },
-      { path: '/operator/targets', label: 'Targets Pool', icon: Crosshair },
+      { path: '/operator/dealer-urls', label: 'Dealer URL Intake', icon: FileStack },
+      { path: '/operator/va-sales', label: 'VA Sales Data', icon: Upload },
+      { path: '/admin-tools/va-intake', label: 'VA Intake', icon: Upload },
     ],
   },
   {
     title: 'Admin',
     items: [
       { path: '/operator/dealer-specs', label: 'Dealer Buy Specs', icon: Target },
-      { path: '/operator/dealer-onboarding', label: 'Dealer Onboarding', icon: UserPlus },
-      { path: '/operator/settings', label: 'Settings', icon: Settings },
     ],
   },
 ];

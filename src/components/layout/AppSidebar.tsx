@@ -40,20 +40,9 @@ import { useIsMobile } from '@/hooks/use-mobile';
 // Max 7 items. Dealers see what they can act on — nothing else.
 // ============================================================================
 const dealerNavItems = [
-  { path: '/valo', label: 'Ask Bob', icon: Sparkles, highlight: true },
-  { path: '/', label: "Today's Opportunities", icon: BarChart3 },
-  { path: '/opportunities', label: 'Opportunities', icon: Target, authOnly: true },
-  { path: '/live-alerts', label: 'Live Alerts', icon: Flame, authOnly: true },
-  { path: '/scan-guide', label: 'Scan Screenshot', icon: ScanLine, authOnly: true },
-  { path: '/matches-inbox', label: 'Matches Inbox', icon: Target, authOnly: true },
-  { path: '/deals', label: 'Deal Ledger', icon: FileText, authOnly: true },
-  { path: '/watchlist', label: 'Watchlist', icon: Search, authOnly: true },
-  { path: '/sales-upload', label: 'Sales Upload', icon: DollarSign, authOnly: true },
-  { path: '/sales-insights', label: 'Sales Insights', icon: TrendingUp, authOnly: true },
-  { path: '/buy-again', label: 'Buy Again Targets', icon: Crosshair, authOnly: true },
-  { path: '/retail-signals', label: 'Retail Signals', icon: TrendingUp, authOnly: true },
-  { path: '/intelligence', label: 'Dealer Intelligence', icon: Brain, authOnly: true },
-  { path: '/dealer-dashboard', label: 'My Dashboard', icon: MapPin, authOnly: true },
+  { path: '/trading-desk', label: 'Trading Desk', icon: DollarSign, authOnly: true },
+  { path: '/sales-upload', label: 'My Sales', icon: BarChart3, authOnly: true },
+  { path: '/deals', label: 'Closed Deals', icon: FileText, authOnly: true },
 ];
 
 export function AppSidebar() {
