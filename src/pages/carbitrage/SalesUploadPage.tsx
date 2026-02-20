@@ -2,12 +2,11 @@ import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { DealerLayout } from "@/components/layout/DealerLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FileSpreadsheet, Download, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { AccountSelector } from "@/components/carbitrage/AccountSelector";
 import { useAccounts } from "@/hooks/useAccounts";
 import { FileDropZone } from "@/components/sales-upload/FileDropZone";
 import { HeaderMappingEditor } from "@/components/sales-upload/HeaderMappingEditor";
@@ -528,29 +527,23 @@ export default function SalesUploadPage() {
   const isProcessingFile = step === "parsing" || aiMapping.isPending;
 
   return (
-    <AppLayout>
-      <div className="space-y-6">
+    <DealerLayout>
+      <div className="p-4 sm:p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <FileSpreadsheet className="h-6 w-6" />
-              Sales Upload
+            <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+              <FileSpreadsheet className="h-6 w-6 text-primary" />
+              My Sales
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Upload your sales file — we handle the rest
             </p>
           </div>
-          <div className="flex gap-2">
-            <AccountSelector
-              value={selectedAccountId}
-              onChange={setSelectedAccountId}
-            />
-            <Button variant="outline" onClick={downloadTemplate}>
-              <Download className="h-4 w-4 mr-1" />
-              Template
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" onClick={downloadTemplate}>
+            <Download className="h-4 w-4 mr-1" />
+            Template
+          </Button>
         </div>
 
         {/* Guard — no account selected */}
@@ -607,6 +600,6 @@ export default function SalesUploadPage() {
         {/* Recent uploads */}
         <UploadBatchHistory batches={batches} isLoading={batchesLoading} />
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }

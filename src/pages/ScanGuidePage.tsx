@@ -1,4 +1,4 @@
-import { AppLayout } from "@/components/layout/AppLayout";
+import { DealerLayout } from "@/components/layout/DealerLayout";
 import { ScanGuideFlow } from "@/components/scan-guide/ScanGuideFlow";
 import { ScanLine } from "lucide-react";
 
@@ -7,7 +7,7 @@ export default function ScanGuidePage() {
   document.title = "Scan Screenshot — Carbitrage";
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="p-4 md:p-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -20,6 +20,6 @@ export default function ScanGuidePage() {
         </div>
         <ScanGuideFlow />
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }
