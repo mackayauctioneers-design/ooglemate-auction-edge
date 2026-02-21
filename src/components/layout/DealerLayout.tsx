@@ -1,6 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { DollarSign, BarChart3, FileText, LogOut, LogIn, ChevronLeft, ChevronRight } from 'lucide-react';
+import { DollarSign, BarChart3, FileText, LogOut, LogIn, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -19,7 +19,7 @@ interface DealerLayoutProps {
 
 export function DealerLayout({ children }: DealerLayoutProps) {
   const location = useLocation();
-  const { currentUser, user, isLoading, logout } = useAuth();
+  const { currentUser, user, isLoading, isAdmin, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
@@ -69,6 +69,26 @@ export function DealerLayout({ children }: DealerLayoutProps) {
                 </Link>
               );
             })}
+
+            {/* Operator Mode link for admins */}
+            {isAdmin && (
+              <div className="pt-4 mt-4 border-t border-sidebar-border">
+                <Link to="/operator/ingestion-health">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      "w-full",
+                      collapsed ? "justify-center px-2" : "justify-start",
+                      "bg-amber-500/20 text-amber-600 dark:text-amber-400 hover:bg-amber-500/30 font-medium"
+                    )}
+                  >
+                    <Settings className="h-4 w-4" />
+                    {!collapsed && <span>⚙️ Operator Mode</span>}
+                  </Button>
+                </Link>
+              </div>
+            )}
           </nav>
 
           {/* Footer */}
