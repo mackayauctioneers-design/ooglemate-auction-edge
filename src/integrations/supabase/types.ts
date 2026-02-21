@@ -1698,6 +1698,51 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_sales_fingerprints: {
+        Row: {
+          count_sold: number
+          created_at: string
+          dealer_id: string
+          id: number
+          km_from: number | null
+          km_to: number | null
+          make: string
+          model: string
+          updated_at: string
+          variant: string | null
+          year_from: number | null
+          year_to: number | null
+        }
+        Insert: {
+          count_sold?: number
+          created_at?: string
+          dealer_id: string
+          id?: number
+          km_from?: number | null
+          km_to?: number | null
+          make: string
+          model: string
+          updated_at?: string
+          variant?: string | null
+          year_from?: number | null
+          year_to?: number | null
+        }
+        Update: {
+          count_sold?: number
+          created_at?: string
+          dealer_id?: string
+          id?: number
+          km_from?: number | null
+          km_to?: number | null
+          make?: string
+          model?: string
+          updated_at?: string
+          variant?: string | null
+          year_from?: number | null
+          year_to?: number | null
+        }
+        Relationships: []
+      }
       dealer_site_postcode_xref: {
         Row: {
           dealer_slug: string
@@ -7318,6 +7363,69 @@ export type Database = {
           stubs_created?: number | null
           stubs_found?: number | null
           stubs_updated?: number | null
+        }
+        Relationships: []
+      }
+      taxonomy_models: {
+        Row: {
+          aliases: string[]
+          canonical_model: string
+          created_at: string
+          family_key: string
+          id: number
+          make: string
+          updated_at: string
+        }
+        Insert: {
+          aliases?: string[]
+          canonical_model: string
+          created_at?: string
+          family_key: string
+          id?: number
+          make: string
+          updated_at?: string
+        }
+        Update: {
+          aliases?: string[]
+          canonical_model?: string
+          created_at?: string
+          family_key?: string
+          id?: number
+          make?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      taxonomy_variant_rank: {
+        Row: {
+          aliases: string[]
+          canonical_variant: string
+          created_at: string
+          id: number
+          make: string
+          model: string | null
+          rank: number
+          updated_at: string
+        }
+        Insert: {
+          aliases?: string[]
+          canonical_variant: string
+          created_at?: string
+          id?: number
+          make: string
+          model?: string | null
+          rank: number
+          updated_at?: string
+        }
+        Update: {
+          aliases?: string[]
+          canonical_variant?: string
+          created_at?: string
+          id?: number
+          make?: string
+          model?: string | null
+          rank?: number
+          updated_at?: string
         }
         Relationships: []
       }

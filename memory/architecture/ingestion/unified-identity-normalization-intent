@@ -1,0 +1,18 @@
+# Memory: architecture/ingestion/unified-identity-normalization-intent
+Updated: now
+
+The vehicle ingestion infrastructure now uses a SINGLE canonical normalizer module (`supabase/functions/_shared/taxonomy/normalizeVehicleIdentity.ts`) backed by database-driven taxonomy tables. ALL duplicate MULTI_WORD_MODELS maps have been removed from individual edge functions (pickles-ingest-cron, grays-stub-ingest, pickles-buynow-radar) and replaced with a shared import from `_shared/taxonomy/parseSlug.ts`.
+
+**Architecture:**
+- `taxonomy_models` table: Canonical make/model entries with aliases and family_key (58 models seeded)
+- `taxonomy_variant_rank` table: Hierarchical variant/trim ranking per make/model (40+ variants seeded)
+- `dealer_sales_fingerprints` table: Aggregated dealer sales truth for assist-based override
+- `normalizeVehicleIdentity()`: Hybrid normalizer using rule-based scoring + DB taxonomy + optional dealer truth assist
+- `createTaxonomyDeps()`: Repository layer with 10-minute TTL cache for taxonomy lookups
+
+**Single source of truth enforced:**
+- All slug-based model parsing uses `MULTI_WORD_MODELS` from `_shared/taxonomy/parseSlug.ts`
+- Firecrawl URL ingest uses the full `normalizeVehicleIdentity()` pipeline via crosssafe-worker
+- No inline model/variant maps exist anywhere in the codebase
+
+**Confidence scoring:** 0-100 scale with explain[] reason codes (RULE_MODEL_CANON_HIT, RULE_MODEL_ALIAS_HIT, VARIANT_DETECTED, ASSIST_OVERRIDE_DEALER_TRUTH, etc.)

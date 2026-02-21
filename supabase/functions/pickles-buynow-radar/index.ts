@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { MULTI_WORD_MODELS } from "../_shared/taxonomy/parseSlug.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -70,21 +71,7 @@ async function collectListings(firecrawlKey: string): Promise<Listing[]> {
       const make = slugMatch[2].charAt(0).toUpperCase() + slugMatch[2].slice(1);
       const modelParts = slugMatch[3].split("-");
 
-      // Multi-word model detection — longest-match-first to prevent platform bleed
-      // e.g. landcruiser-prado → "Landcruiser Prado", not "Landcruiser"
-      const MULTI_WORD_MODELS: Record<string, string[]> = {
-        "landcruiser": ["prado"],
-        "pajero": ["sport"],
-        "bt": ["50"],
-        "d": ["max"],
-        "mu": ["x"],
-        "cx": ["3", "5", "8", "9", "30", "50", "60"],
-        "x": ["trail"],
-        "rav": ["4"],
-        "eclipse": ["cross"],
-        "santa": ["fe"],
-        "range": ["rover"],
-      };
+      // Uses shared canonical MULTI_WORD_MODELS from _shared/taxonomy/parseSlug.ts
 
       let modelWordCount = 1;
       const firstPart = modelParts[0].toLowerCase();
