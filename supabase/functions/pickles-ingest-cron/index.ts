@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { MULTI_WORD_MODELS } from "../_shared/taxonomy/parseSlug.ts";
 
 /**
  * PICKLES INGEST CRON v6 — Ingest Only (no replication)
@@ -147,17 +148,7 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
       const make = slugMatch[2].charAt(0).toUpperCase() + slugMatch[2].slice(1);
       const modelParts = slugMatch[3].split("-");
 
-      // ── Multi-word model detection (e.g. landcruiser-prado, pajero-sport, bt-50, d-max, mu-x) ──
-      const MULTI_WORD_MODELS: Record<string, string[]> = {
-        "landcruiser": ["prado"],
-        "pajero": ["sport"],
-        "bt": ["50"],
-        "d": ["max"],
-        "mu": ["x"],
-        "cx": ["3", "5", "8", "9", "30", "50", "60"],
-        "x": ["trail"],
-        "rav": ["4"],
-      };
+      // ── Multi-word model detection — uses shared canonical map ──
 
       let modelWordCount = 1;
       const firstPart = modelParts[0].toLowerCase();

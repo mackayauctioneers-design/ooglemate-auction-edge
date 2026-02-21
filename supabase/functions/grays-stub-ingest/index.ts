@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { MULTI_WORD_MODELS } from "../_shared/taxonomy/parseSlug.ts";
 
 /**
  * GRAYS STUB INGEST - Lane 1: High-volume stub anchor creation
@@ -118,19 +119,7 @@ function parseStubFromUrl(hrefUrl: string, rawText: string = ""): StubAnchor {
     // Multi-word model detection — longest-match-first to prevent platform bleed
     // e.g. "landcruiser-prado" → "Landcruiser Prado", not "Landcruiser"
     const modelParts = slugMatch[3].split('-');
-    const MULTI_WORD_MODELS: Record<string, string[]> = {
-      "landcruiser": ["prado"],
-      "pajero": ["sport"],
-      "bt": ["50"],
-      "d": ["max"],
-      "mu": ["x"],
-      "cx": ["3", "5", "8", "9", "30", "50", "60"],
-      "x": ["trail"],
-      "rav": ["4"],
-      "eclipse": ["cross"],
-      "santa": ["fe"],
-      "range": ["rover"],
-    };
+    // Uses shared canonical MULTI_WORD_MODELS from _shared/taxonomy/parseSlug.ts
 
     let modelWordCount = 1;
     const firstPart = modelParts[0].toLowerCase();
