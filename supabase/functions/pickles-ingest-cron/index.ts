@@ -89,12 +89,65 @@ const LISTING_EXTRACT_SCHEMA = {
   required: ["listings"],
 };
 
-// ─── SEARCH PAGE SCRAPER (EXTRACT MODE) ──────────────────────────────────────
+// ─── MARKDOWN FALLBACK PARSER ────────────────────────────────────────────────
 
-async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: ScrapedListing[]; pages_scraped: number; firecrawl_calls: number }> {
+function parseListingsFromMarkdown(markdown: string): ExtractedListing[] {
+  const listings: ExtractedListing[] = [];
+  
+  // Pattern: look for Pickles listing URLs with vehicle info nearby
+  // Common patterns in Pickles search pages:
+  // - Links like /used/details/YYYY-make-model-variant/LOTID
+  // - Price patterns like $XX,XXX or $XX XXX
+  // - KM patterns like XX,XXX km or XXXkm
+  
+  const urlPattern = /https?:\/\/(?:www\.)?pickles\.com\.au\/used\/(?:details|item)\/(\d{4})-([a-z]+)-([a-z0-9-]+)\/(\d+)/gi;
+  let match: RegExpExecArray | null;
+  
+  while ((match = urlPattern.exec(markdown)) !== null) {
+    const url = match[0];
+    const year = parseInt(match[1]);
+    const make = match[2];
+    const modelSlug = match[3];
+    
+    // Look for price near this URL (within ~200 chars before/after)
+    const contextStart = Math.max(0, match.index - 300);
+    const contextEnd = Math.min(markdown.length, match.index + url.length + 300);
+    const context = markdown.substring(contextStart, contextEnd);
+    
+    let price: number | null = null;
+    const priceMatch = context.match(/\$\s*([\d,]+(?:\.\d{2})?)/);
+    if (priceMatch) {
+      price = parseInt(priceMatch[1].replace(/[,\.]/g, ''));
+      if (price < 100) price = null; // likely cents
+    }
+    
+    let kms: number | null = null;
+    const kmMatch = context.match(/([\d,]+)\s*(?:km|kms|kilometres)/i);
+    if (kmMatch) {
+      kms = parseInt(kmMatch[1].replace(/,/g, ''));
+      if (kms > 999999) kms = null;
+    }
+    
+    let location: string | null = null;
+    const locMatch = context.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
+    if (locMatch) location = locMatch[1].toUpperCase();
+    
+    // Build title from URL slug
+    const title = `${year} ${make.charAt(0).toUpperCase() + make.slice(1)} ${modelSlug.replace(/-/g, ' ')}`;
+    
+    listings.push({ title, price, kms, location, url });
+  }
+  
+  return listings;
+}
+
+// ─── SEARCH PAGE SCRAPER (EXTRACT MODE + MARKDOWN FALLBACK) ──────────────────
+
+async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: ScrapedListing[]; pages_scraped: number; firecrawl_calls: number; fallback_used: boolean }> {
   const allListings: ScrapedListing[] = [];
   const seen = new Set<string>();
   let firecrawlCalls = 0;
+  let fallbackUsed = false;
 
   for (let page = 1; page <= MAX_PAGES; page++) {
     const pageUrl = SEARCH_URL + "&page=" + page;
@@ -118,7 +171,8 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
 
     if (!resp.ok) {
       const status = resp.status;
-      console.error(`[PICKLES] Firecrawl error page ${page}: ${status}`);
+      const body = await resp.text();
+      console.error(`[PICKLES] Firecrawl error page ${page}: ${status} — ${body.slice(0, 500)}`);
       if (status === 402) {
         console.error("[PICKLES] CREDIT EXHAUSTED — aborting");
         break;
@@ -127,7 +181,51 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
     }
 
     const data = await resp.json();
-    const extracted: ExtractedListing[] = data?.data?.json?.listings || data?.json?.listings || [];
+    let extracted: ExtractedListing[] = data?.data?.json?.listings || data?.json?.listings || [];
+
+    // ── DIAGNOSTIC: log raw response shape on page 1 ──
+    if (page === 1) {
+      const keys = Object.keys(data?.data || data || {});
+      console.log(`[PICKLES] Page 1 response keys: ${keys.join(', ')}`);
+      console.log(`[PICKLES] Page 1 extract count: ${extracted.length}`);
+      if (extracted.length === 0) {
+        const md = data?.data?.markdown || data?.markdown || '';
+        console.log(`[PICKLES] Page 1 markdown length: ${md.length}`);
+        console.log(`[PICKLES] Page 1 markdown preview: ${md.slice(0, 500)}`);
+      }
+    }
+
+    // ── MARKDOWN FALLBACK: if extract returned 0 on page 1, retry with markdown ──
+    if (extracted.length === 0 && page === 1) {
+      console.log(`[PICKLES] Extract mode returned 0 on page 1 — trying markdown fallback`);
+      const mdResp = await fetch("https://api.firecrawl.dev/v1/scrape", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + firecrawlKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: pageUrl,
+          formats: ["markdown"],
+          waitFor: 8000,
+          onlyMainContent: false,
+        }),
+      });
+      firecrawlCalls++;
+
+      if (mdResp.ok) {
+        const mdData = await mdResp.json();
+        const markdown = mdData?.data?.markdown || mdData?.markdown || '';
+        console.log(`[PICKLES] Markdown fallback length: ${markdown.length}`);
+        console.log(`[PICKLES] Markdown fallback preview: ${markdown.slice(0, 800)}`);
+        
+        extracted = parseListingsFromMarkdown(markdown);
+        console.log(`[PICKLES] Markdown fallback parsed ${extracted.length} listings`);
+        if (extracted.length > 0) fallbackUsed = true;
+      } else {
+        console.error(`[PICKLES] Markdown fallback also failed: ${mdResp.status}`);
+      }
+    }
 
     if (extracted.length === 0) {
       console.log(`[PICKLES] No listings on page ${page}, stopping`);
@@ -222,7 +320,7 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
     await new Promise(r => setTimeout(r, 1000));
   }
 
-  return { listings: allListings, pages_scraped: Math.min(MAX_PAGES, allListings.length > 0 ? MAX_PAGES : 1), firecrawl_calls: firecrawlCalls };
+  return { listings: allListings, pages_scraped: Math.min(MAX_PAGES, allListings.length > 0 ? MAX_PAGES : 1), firecrawl_calls: firecrawlCalls, fallback_used: fallbackUsed };
 }
 
 // ─── EXTRACT HELPERS ─────────────────────────────────────────────────────────
@@ -464,8 +562,8 @@ Deno.serve(async (req) => {
     console.log(`[PICKLES] Run ID: ${runId}`);
 
     // ── STEP 1: Scrape ──
-    const { listings, pages_scraped, firecrawl_calls } = await scrapeSearchPages(firecrawlKey);
-    console.log(`[PICKLES] Scraped ${listings.length} listings from ${pages_scraped} pages`);
+    const { listings, pages_scraped, firecrawl_calls, fallback_used } = await scrapeSearchPages(firecrawlKey);
+    console.log(`[PICKLES] Scraped ${listings.length} listings from ${pages_scraped} pages (fallback=${fallback_used})`);
 
     // ── STEP 2: Upsert (with price gate + lemon check + provenance) ──
     const { newListings, updatedListings, skippedNoPrice, skippedLemon, errors } = await upsertListings(sb, listings, runId);
@@ -487,6 +585,7 @@ Deno.serve(async (req) => {
       marked_inactive: markedInactive,
       pages_scraped,
       firecrawl_calls,
+      fallback_used,
       runtime_ms: runtimeMs,
       errors: errors.slice(0, 10),
     };
