@@ -1,0 +1,20 @@
+# Memory: architecture/crosssafe/crosssafe-engine-v1
+Updated: now
+
+CrossSafe is the unified ingestion engine replacing fragmented cron-based scraping. Architecture:
+
+**Tables:**
+- `crosssafe_jobs`: Unified job queue (type: source_refresh, url_ingest, lifecycle_sweep, score_batch). Uses FOR UPDATE SKIP LOCKED via `crosssafe_claim_job` RPC.
+- `crosssafe_audit_log`: Step-level audit per job (claimed, succeeded, retryable_error, parked).
+
+**Edge Functions:**
+- `crosssafe-scheduler`: Dumb cron (nightly 1:30am AEST). Only ENQUEUES jobs — never crawls directly. Deduplicates against existing queued jobs.
+- `crosssafe-worker`: Runs every 5 minutes. Claims up to 5 jobs per run. Delegates to existing ingest functions (pickles-ingest-cron, grays-stub-ingest, etc.) via HTTP. Writes audit logs. 3 retries then parks.
+
+**Lifecycle Sweep:** Marks listings STALE after 7 days unseen, DEAD after 14 days. Revives if seen again.
+
+**Scoring:** After source_refresh completes, worker auto-enqueues a score_batch job that triggers pickles-replication-cron.
+
+**Monitor:** `/operator/crosssafe` — shows job queue summary (24h), lifecycle breakdown, heartbeats, recent jobs table, manual run buttons, and URL ingest test box.
+
+**Known Limitation:** Edge functions have ~60s timeout. Long-running source_refresh jobs (Pickles with 10 Firecrawl pages) can timeout. The worker marks these as failed/retry. Consider breaking into smaller page-batch jobs.

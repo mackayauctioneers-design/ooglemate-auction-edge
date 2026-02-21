@@ -59,6 +59,7 @@ const operatorSections: NavSection[] = [
   {
     title: 'Ingestion',
     items: [
+      { path: '/operator/crosssafe', label: 'CrossSafe Monitor', icon: Activity },
       { path: '/operator/ingestion-health', label: 'Ingestion Health', icon: Activity },
       { path: '/operator/ingestion-audit', label: 'Ingestion Audit', icon: Database },
       { path: '/operator/cron-audit', label: 'Cron Audit Log', icon: Clock },

@@ -600,6 +600,92 @@ export type Database = {
         }
         Relationships: []
       }
+      crosssafe_audit_log: {
+        Row: {
+          created_at: string
+          id: string
+          job_id: string
+          meta: Json
+          step: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          job_id: string
+          meta?: Json
+          step: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          job_id?: string
+          meta?: Json
+          step?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crosssafe_audit_log_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "crosssafe_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crosssafe_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          payload: Json
+          priority: number
+          result: Json | null
+          source: string
+          started_at: string | null
+          status: string
+          type: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          payload?: Json
+          priority?: number
+          result?: Json | null
+          source: string
+          started_at?: string | null
+          status?: string
+          type: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          payload?: Json
+          priority?: number
+          result?: Json | null
+          source?: string
+          started_at?: string | null
+          status?: string
+          type?: string
+        }
+        Relationships: []
+      }
       deal_truth_artefacts: {
         Row: {
           artefact_type: string
@@ -8800,6 +8886,7 @@ export type Database = {
           auction_house: string | null
           avoid_reason: string | null
           buy_window_at: string | null
+          content_hash: string | null
           created_at: string
           dealer_name: string | null
           dealer_url: string | null
@@ -8887,6 +8974,7 @@ export type Database = {
           auction_house?: string | null
           avoid_reason?: string | null
           buy_window_at?: string | null
+          content_hash?: string | null
           created_at?: string
           dealer_name?: string | null
           dealer_url?: string | null
@@ -8974,6 +9062,7 @@ export type Database = {
           auction_house?: string | null
           avoid_reason?: string | null
           buy_window_at?: string | null
+          content_hash?: string | null
           created_at?: string
           dealer_name?: string | null
           dealer_url?: string | null
@@ -10683,6 +10772,32 @@ export type Database = {
         Returns: undefined
       }
       create_hunt_from_sale: { Args: { p_sale_id: string }; Returns: string }
+      crosssafe_claim_job: {
+        Args: { p_worker_id: string }
+        Returns: {
+          attempts: number
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          payload: Json
+          priority: number
+          result: Json | null
+          source: string
+          started_at: string | null
+          status: string
+          type: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "crosssafe_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       derive_clearance_events: {
         Args: { p_stale_hours?: number }
         Returns: {

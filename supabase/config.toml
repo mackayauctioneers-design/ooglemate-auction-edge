@@ -427,3 +427,11 @@ schedule = "*/30 * * * *"
 [functions.score-operator-opportunities]
 verify_jwt = false
 schedule = "*/30 * * * *"
+
+[functions.crosssafe-worker]
+verify_jwt = false
+schedule = "*/5 * * * *"
+
+[functions.crosssafe-scheduler]
+verify_jwt = false
+schedule = "30 15 * * *"
