@@ -16,8 +16,15 @@ const BROWSER_HEADERS = {
   "Referer": "https://www.manheim.com.au/home/publicsearch",
 };
 
-const MAX_PAGES = 3;
+const MAX_PAGES = 5;
 const RECORDS_PER_PAGE = 120;
+
+// Multiple search categories to expand coverage
+const SEARCH_TYPES = [
+  { code: "P", label: "Passenger" },
+  { code: "L", label: "LCV" },
+  { code: "4", label: "4WD/SUV" },
+];
 
 // Mackay Traders account ID for fingerprint matching
 const MACKAY_TRADERS_ACCOUNT_ID = "d24da4ea-f500-47fd-9b66-d2c9aa2d3f51";
@@ -36,12 +43,12 @@ interface RawParsedListing {
 
 // ─── URL / HTML helpers ────────────────────────────────────────────────────
 
-function buildSearchUrl(page: number): string {
+function buildSearchUrl(page: number, searchType = "P"): string {
   const params = new URLSearchParams({
     PageNumber: String(page),
     RecordsPerPage: String(RECORDS_PER_PAGE),
     SelectedOrderBy: "BuildYearDescending",
-    searchType: "P",
+    searchType,
   });
   return `https://www.manheim.com.au/home/publicsearch/resultpartial?${params.toString()}`;
 }
@@ -148,7 +155,6 @@ function extractRawFields(
   if (slugMatch) {
     year = parseInt(slugMatch[1]);
     makeRaw = slugMatch[2];
-    // Keep the full slug model+variant together for the normalizer
     modelRaw = slugMatch[3].replace(/-/g, " ");
   }
 
@@ -253,6 +259,94 @@ function extractRawFromContext(
   };
 }
 
+// ─── BATCH NORMALIZATION ───────────────────────────────────────────────────
+
+interface NormalizedRow {
+  listing_id: string;
+  source: string;
+  make: string;
+  model: string;
+  year: number;
+  variant_raw: string | null;
+  km: number | null;
+  location: string | null;
+  listing_url: string;
+  source_class: string;
+  auction_house: string;
+  status: string;
+  last_seen_at: string;
+  fingerprint_confidence: number;
+  variant_source: string;
+}
+
+async function normalizeBatch(
+  taxonomyDeps: ReturnType<typeof createTaxonomyDeps>,
+  rawListings: RawParsedListing[],
+  metrics: { normalized: number; norm_low_confidence: number; errors: string[] }
+): Promise<NormalizedRow[]> {
+  const now = new Date().toISOString();
+  const rows: NormalizedRow[] = [];
+
+  // Process normalization in parallel batches of 20
+  const BATCH_SIZE = 20;
+  for (let i = 0; i < rawListings.length; i += BATCH_SIZE) {
+    const chunk = rawListings.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      chunk.map(async (raw) => {
+        const normResult = await normalizeVehicleIdentity(taxonomyDeps, {
+          source: "manheim",
+          url: raw.listingUrl,
+          title: raw.title,
+          makeRaw: raw.makeRaw,
+          modelRaw: raw.modelRaw,
+          variantRaw: raw.variantRaw,
+          year: raw.year,
+          km: raw.km,
+        });
+
+        const make = normResult.make || raw.makeRaw;
+        const model = normResult.model || raw.modelRaw;
+        const variant = normResult.variant || raw.variantRaw;
+
+        if (normResult.confidence < 20) {
+          metrics.norm_low_confidence++;
+        }
+        metrics.normalized++;
+
+        return {
+          listing_id: `manheim:${raw.externalId}`,
+          source: "manheim",
+          make,
+          model,
+          year: raw.year,
+          variant_raw: variant,
+          km: raw.km,
+          location: raw.location,
+          listing_url: raw.listingUrl,
+          source_class: "auction",
+          auction_house: "Manheim",
+          status: "catalogue",
+          last_seen_at: now,
+          fingerprint_confidence: normResult.confidence,
+          variant_source: `normalizer:${normResult.normalizerVersion}`,
+        };
+      })
+    );
+
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        rows.push(r.value);
+      } else {
+        if (metrics.errors.length < 5) {
+          metrics.errors.push(`Norm error: ${r.reason}`);
+        }
+      }
+    }
+  }
+
+  return rows;
+}
+
 // ─── MAIN ──────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -265,7 +359,6 @@ Deno.serve(async (req) => {
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // Create taxonomy deps for the normalizer
   const taxonomyDeps = createTaxonomyDeps(supabase);
 
   const metrics = {
@@ -276,112 +369,94 @@ Deno.serve(async (req) => {
     total_skipped: 0,
     normalized: 0,
     norm_low_confidence: 0,
+    categories_searched: 0,
     errors: [] as string[],
   };
 
   try {
     const body = await req.json().catch(() => ({}));
     const maxPages = body.max_pages || MAX_PAGES;
+    const searchTypes = body.search_types || SEARCH_TYPES;
 
-    console.log(`[MANHEIM] Starting HTML ingest with normalizer, pages 1-${maxPages}`);
+    // Deduplicate across all categories
+    const globalSeen = new Set<string>();
 
-    for (let page = 1; page <= maxPages; page++) {
-      const url = buildSearchUrl(page);
-      console.log(`[MANHEIM] Fetching page ${page}`);
+    console.log(`[MANHEIM] Starting HTML ingest: ${searchTypes.length} categories × ${maxPages} pages max`);
 
-      const html = await fetchPage(url);
-      if (!html) {
-        metrics.errors.push(`Page ${page}: fetch failed`);
-        continue;
-      }
+    for (const searchType of searchTypes) {
+      metrics.categories_searched++;
+      console.log(`[MANHEIM] Category: ${searchType.label} (${searchType.code})`);
 
-      metrics.pages_fetched++;
-      const rawListings = parseListings(html);
-      metrics.total_found += rawListings.length;
+      for (let page = 1; page <= maxPages; page++) {
+        // Check time budget — leave 15s for upserts + post-ingest
+        if (Date.now() - startTime > 40_000) {
+          console.log(`[MANHEIM] Time budget exceeded at ${searchType.label} page ${page}, stopping`);
+          break;
+        }
 
-      console.log(`[MANHEIM] Page ${page}: ${rawListings.length} listings parsed`);
+        const url = buildSearchUrl(page, searchType.code);
+        console.log(`[MANHEIM] Fetching ${searchType.label} page ${page}`);
 
-      if (rawListings.length === 0) {
-        console.log(`[MANHEIM] Page ${page}: empty, stopping`);
-        break;
-      }
+        const html = await fetchPage(url);
+        if (!html) {
+          metrics.errors.push(`${searchType.label} page ${page}: fetch failed`);
+          continue;
+        }
 
-      // Normalize and upsert each listing
-      for (const raw of rawListings) {
-        try {
-          // ── CANONICAL NORMALIZATION ──
-          const normResult = await normalizeVehicleIdentity(taxonomyDeps, {
-            source: "manheim",
-            url: raw.listingUrl,
-            title: raw.title,
-            makeRaw: raw.makeRaw,
-            modelRaw: raw.modelRaw,
-            variantRaw: raw.variantRaw,
-            year: raw.year,
-            km: raw.km,
-          });
+        metrics.pages_fetched++;
+        const rawListings = parseListings(html);
 
-          const make = normResult.make || raw.makeRaw;
-          const model = normResult.model || raw.modelRaw;
-          const variant = normResult.variant || raw.variantRaw;
+        // Deduplicate against global seen set
+        const newListings = rawListings.filter((l) => {
+          if (globalSeen.has(l.externalId)) return false;
+          globalSeen.add(l.externalId);
+          return true;
+        });
 
-          if (normResult.confidence < 20) {
-            metrics.norm_low_confidence++;
-            console.warn(`[MANHEIM] Low confidence (${normResult.confidence}) for ${raw.listingUrl}: ${normResult.explain.join(",")}`);
-          }
+        metrics.total_found += newListings.length;
+        console.log(`[MANHEIM] ${searchType.label} page ${page}: ${rawListings.length} parsed, ${newListings.length} new`);
 
-          metrics.normalized++;
+        if (rawListings.length === 0) {
+          console.log(`[MANHEIM] ${searchType.label} page ${page}: empty, moving to next category`);
+          break;
+        }
 
+        if (newListings.length === 0) {
+          console.log(`[MANHEIM] ${searchType.label} page ${page}: all duplicates, moving to next category`);
+          break;
+        }
+
+        // Normalize batch (parallel)
+        const normalizedRows = await normalizeBatch(taxonomyDeps, newListings, metrics);
+
+        // Batch upsert (chunks of 50)
+        for (let i = 0; i < normalizedRows.length; i += 50) {
+          const batch = normalizedRows.slice(i, i + 50);
           const { data, error } = await supabase
             .from("vehicle_listings")
-            .upsert(
-              {
-                listing_id: `manheim:${raw.externalId}`,
-                source: "manheim",
-                make,
-                model,
-                year: raw.year,
-                variant_raw: variant,
-                km: raw.km,
-                location: raw.location,
-                listing_url: raw.listingUrl,
-                source_class: "auction",
-                auction_house: "Manheim",
-                status: "catalogue",
-                last_seen_at: new Date().toISOString(),
-                fingerprint_confidence: normResult.confidence,
-                variant_source: `normalizer:${normResult.normalizerVersion}`,
-              },
-              { onConflict: "listing_id,source" }
-            )
+            .upsert(batch, { onConflict: "listing_id,source" })
             .select("id, first_seen_at, last_seen_at");
 
           if (error) {
-            metrics.total_skipped++;
+            metrics.total_skipped += batch.length;
             if (metrics.errors.length < 5) {
-              metrics.errors.push(`Upsert manheim:${raw.externalId}: ${error.message}`);
+              metrics.errors.push(`Batch upsert: ${error.message}`);
             }
-          } else if (data && data.length > 0) {
-            const row = data[0];
-            const firstSeen = new Date(row.first_seen_at).getTime();
-            const lastSeen = new Date(row.last_seen_at).getTime();
-            if (Math.abs(lastSeen - firstSeen) < 2000) {
-              metrics.total_new++;
-            } else {
-              metrics.total_updated++;
+          } else if (data) {
+            for (const row of data) {
+              const firstSeen = new Date(row.first_seen_at).getTime();
+              const lastSeen = new Date(row.last_seen_at).getTime();
+              if (Math.abs(lastSeen - firstSeen) < 2000) {
+                metrics.total_new++;
+              } else {
+                metrics.total_updated++;
+              }
             }
-          }
-        } catch (normErr) {
-          metrics.total_skipped++;
-          if (metrics.errors.length < 5) {
-            metrics.errors.push(`Norm error ${raw.externalId}: ${normErr instanceof Error ? normErr.message : String(normErr)}`);
           }
         }
-      }
 
-      // Rate limit between pages
-      if (page < maxPages) {
-        await new Promise((r) => setTimeout(r, 1000));
+        // Rate limit between pages
+        await new Promise((r) => setTimeout(r, 500));
       }
     }
 
@@ -402,7 +477,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               account_id: MACKAY_TRADERS_ACCOUNT_ID,
               batch_size: 500,
-              refresh_fingerprints: false, // fingerprints already fresh
+              refresh_fingerprints: false,
             }),
           }
         );
@@ -410,7 +485,6 @@ Deno.serve(async (req) => {
         console.log(`[MANHEIM] fingerprint-match-run result:`, JSON.stringify(matchResult));
       } catch (matchErr) {
         console.error(`[MANHEIM] fingerprint-match-run trigger failed:`, matchErr);
-        // Non-fatal — ingestion still succeeded
       }
     }
 
@@ -420,7 +494,7 @@ Deno.serve(async (req) => {
         cron_name: "manheim-html-ingest",
         last_seen_at: new Date().toISOString(),
         last_ok: metrics.errors.length === 0,
-        note: `found=${metrics.total_found} new=${metrics.total_new} updated=${metrics.total_updated} normalized=${metrics.normalized} lowConf=${metrics.norm_low_confidence} ms=${elapsed}`,
+        note: `found=${metrics.total_found} new=${metrics.total_new} upd=${metrics.total_updated} cats=${metrics.categories_searched} pages=${metrics.pages_fetched} ms=${elapsed}`,
       },
       { onConflict: "cron_name" }
     );
