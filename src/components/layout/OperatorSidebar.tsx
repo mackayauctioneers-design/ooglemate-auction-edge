@@ -78,6 +78,7 @@ const operatorSections: NavSection[] = [
   {
     title: 'Sources',
     items: [
+      { path: '/operator/dealer-upload', label: 'Dealer Upload', icon: Upload },
       { path: '/operator/traps', label: 'Traps Registry', icon: Database },
       { path: '/operator/preflight', label: 'Preflight Queue', icon: Radar },
       { path: '/operator/dealer-urls', label: 'Dealer URL Intake', icon: FileStack },

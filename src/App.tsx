@@ -42,6 +42,7 @@ import DealerUrlIntakePage from "./pages/operator/DealerUrlIntakePage";
 import TargetsPoolPage from "./pages/operator/TargetsPoolPage";
 import OperatorTradingDeskPage from "./pages/operator/TradingDeskPage";
 import CrossSafeMonitorPage from "./pages/operator/CrossSafeMonitorPage";
+import OperatorDealerUploadPage from "./pages/operator/OperatorDealerUploadPage";
 import VAIntakePage from "./pages/VAIntakePage";
 import VATasksPage from "./pages/VATasksPage";
 
@@ -143,6 +144,7 @@ const App = () => (
               <Route path="/operator/targets" element={<OperatorGuard><TargetsPoolPage /></OperatorGuard>} />
               <Route path="/operator/trading-desk" element={<OperatorGuard><OperatorTradingDeskPage /></OperatorGuard>} />
               <Route path="/operator/crosssafe" element={<OperatorGuard><CrossSafeMonitorPage /></OperatorGuard>} />
+              <Route path="/operator/dealer-upload" element={<OperatorGuard><OperatorDealerUploadPage /></OperatorGuard>} />
 
               {/* Admin Tools */}
               <Route path="/admin-tools" element={<RequireAdmin><NotFound /></RequireAdmin>} />

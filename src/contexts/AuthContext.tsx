@@ -17,6 +17,7 @@ interface DealerProfile {
   dealer_name: string;
   org_id: string | null;
   region_id: string;
+  account_id: string | null;
 }
 
 // Backward-compatible currentUser type (maps to dealerProfile + user)
