@@ -68,17 +68,12 @@ export function isTier1Match(lot: Listing, fp: SaleFingerprint): boolean {
   // Year must be within ±1
   if (Math.abs(lot.year - fp.year) > 1) return false;
   
-  // KM constraint - only apply if fingerprint has km data (not spec-only)
+  // KM constraint - within ±20,000 of fingerprint km (spec-only bypasses)
   if (fp.fingerprint_type !== 'spec_only' && fp.sale_km && fp.sale_km > 0) {
-    const minKm = fp.min_km ?? Math.max(0, fp.sale_km - 15000);
-    const maxKm = fp.max_km ?? fp.sale_km + 15000;
-    
-    // Only check if lot has km data
     if (lot.km && lot.km > 0) {
-      if (lot.km < minKm || lot.km > maxKm) return false;
+      if (Math.abs(lot.km - fp.sale_km) > 20000) return false;
     }
   }
-  // Spec-only fingerprints bypass km check entirely
   
   return true;
 }
