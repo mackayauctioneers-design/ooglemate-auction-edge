@@ -10396,16 +10396,26 @@ export type Database = {
           dominant_fuel_type: string | null
           dominant_transmission: string | null
           drive_type_count: number | null
+          fingerprint_status: string | null
           fuel_type_count: number | null
+          historical_buy_median: number | null
+          historical_margin_pct: number | null
+          historical_sell_median: number | null
           km_median: number | null
           km_p25: number | null
           km_p75: number | null
           last_sold_at: string | null
           make: string | null
+          market_drift_pct: number | null
+          market_sample_size: number | null
           model: string | null
+          newest_sale_months_ago: number | null
           platform_class: string | null
           price_median: number | null
           raw_profit_avg: number | null
+          rebased_buy_anchor: number | null
+          rebased_sell_price: number | null
+          recent_sales_count: number | null
           sales_count: number | null
           transmission_count: number | null
           weighted_profit_avg: number | null
