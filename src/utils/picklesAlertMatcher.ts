@@ -65,8 +65,8 @@ export function isTier1Match(lot: Listing, fp: SaleFingerprint): boolean {
     return false;
   }
   
-  // Year must be within ±2
-  if (Math.abs(lot.year - fp.year) > 2) return false;
+  // Year must be within ±1
+  if (Math.abs(lot.year - fp.year) > 1) return false;
   
   // KM constraint - only apply if fingerprint has km data (not spec-only)
   if (fp.fingerprint_type !== 'spec_only' && fp.sale_km && fp.sale_km > 0) {
