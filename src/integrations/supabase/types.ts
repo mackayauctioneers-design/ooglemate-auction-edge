@@ -4572,6 +4572,8 @@ export type Database = {
           listing_source: string | null
           make: string | null
           model: string | null
+          motivation_signal: string | null
+          pass_count: number | null
           platform_class: string | null
           source_url: string | null
           status: string
@@ -4613,6 +4615,8 @@ export type Database = {
           listing_source?: string | null
           make?: string | null
           model?: string | null
+          motivation_signal?: string | null
+          pass_count?: number | null
           platform_class?: string | null
           source_url?: string | null
           status?: string
@@ -4654,6 +4658,8 @@ export type Database = {
           listing_source?: string | null
           make?: string | null
           model?: string | null
+          motivation_signal?: string | null
+          pass_count?: number | null
           platform_class?: string | null
           source_url?: string | null
           status?: string
