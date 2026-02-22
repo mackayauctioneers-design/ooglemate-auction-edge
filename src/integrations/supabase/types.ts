@@ -10388,6 +10388,8 @@ export type Database = {
       sales_fingerprints_v1: {
         Row: {
           account_id: string | null
+          avg_decay_factor: number | null
+          avg_months_ago: number | null
           body_type_count: number | null
           dominant_body_type: string | null
           dominant_drive_type: string | null
@@ -10403,8 +10405,11 @@ export type Database = {
           model: string | null
           platform_class: string | null
           price_median: number | null
+          raw_profit_avg: number | null
           sales_count: number | null
           transmission_count: number | null
+          weighted_profit_avg: number | null
+          weighted_profit_sum: number | null
         }
         Relationships: []
       }

@@ -7,13 +7,15 @@ const corsHeaders = {
 };
 
 /**
- * fingerprint-match-run v2.0
+ * fingerprint-match-run v3.0
  *
- * Rewired to score directly against vehicle_listings (active only)
- * instead of listing_details_norm. This eliminates the broken
- * raw→norm pipeline bottleneck.
+ * Scores directly against vehicle_listings (active only).
+ * Now incorporates TIME-DECAYED PROFIT weighting from sales_fingerprints_v1.
  *
- * Scoring (0-100):
+ * Decay: 3% per month on profit. Fresh profitable patterns dominate;
+ * old thin deals slowly fall out of the signal.
+ *
+ * Scoring (0-100 base, then scaled by decay multiplier):
  *   +40  make+model match (required baseline)
  *   +25  km inside IQR (p25–p75)
  *   +10  km near band (±20k outside IQR)
@@ -23,7 +25,10 @@ const corsHeaders = {
  *   +10  body_type/fuel_type matches dominant
  *   +10  drive_type matches dominant
  *
- * Only creates opportunities with score ≥ 60.
+ * Final score = base_score * decay_multiplier
+ * decay_multiplier = 0.6 + 0.4 * avg_decay_factor (range: 0.6 – 1.0)
+ *
+ * Only creates opportunities with final score ≥ 60.
  */
 
 interface Fingerprint {
@@ -45,6 +50,12 @@ interface Fingerprint {
   body_type_count: number;
   fuel_type_count: number;
   drive_type_count: number;
+  // Time-decay columns
+  weighted_profit_sum: number | null;
+  weighted_profit_avg: number | null;
+  avg_decay_factor: number | null;
+  raw_profit_avg: number | null;
+  avg_months_ago: number | null;
 }
 
 interface VehicleListing {
@@ -147,6 +158,21 @@ function scoreIdentity(
   };
 }
 
+/**
+ * Compute decay multiplier from avg_decay_factor.
+ * Range: 0.6 (very old sales) to 1.0 (very recent sales).
+ * Formula: 0.6 + 0.4 * decay_factor
+ * 
+ * A fingerprint with all sales from last month (decay ~0.97) → multiplier ~0.99
+ * A fingerprint with avg 12 months old (decay ~0.69) → multiplier ~0.88
+ * A fingerprint with avg 24 months old (decay ~0.48) → multiplier ~0.79
+ */
+function computeDecayMultiplier(avgDecayFactor: number | null): number {
+  if (avgDecayFactor == null) return 0.8; // Default for missing data
+  const clamped = Math.max(0, Math.min(1, Number(avgDecayFactor)));
+  return 0.6 + 0.4 * clamped;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -169,7 +195,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[fingerprint-match-run] v2.0 starting for account=${accountId}, batch=${batchSize}`);
+    console.log(`[fingerprint-match-run] v3.0 (time-decay) starting for account=${accountId}, batch=${batchSize}`);
     const startTime = Date.now();
 
     // ── Step 1: Optionally refresh fingerprints ──
@@ -181,7 +207,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Step 2: Load fingerprints ──
+    // ── Step 2: Load fingerprints (now includes decay columns) ──
     const { data: fingerprints, error: fpErr } = await supabase
       .from("sales_fingerprints_v1")
       .select("*")
@@ -203,15 +229,20 @@ Deno.serve(async (req) => {
           listings_checked: 0,
           matched: 0,
           skipped: 0,
-          message: "No fingerprints found.",
+          message: "No fingerprints found (all may have decayed below threshold).",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[fingerprint-match-run] ${fingerprints.length} fingerprints loaded`);
+    // Log decay stats
+    for (const fp of fingerprints as Fingerprint[]) {
+      console.log(`[fingerprint] ${fp.make} ${fp.model} | sales=${fp.sales_count} | decay_avg=${fp.avg_decay_factor} | profit_avg_raw=$${fp.raw_profit_avg} | profit_avg_decayed=$${fp.weighted_profit_avg} | months_avg=${fp.avg_months_ago}`);
+    }
 
-    // Build lookup map keyed by platform_class (e.g. "TOYOTA:PRADO")
+    console.log(`[fingerprint-match-run] ${fingerprints.length} fingerprints loaded (post-decay filter)`);
+
+    // Build lookup map keyed by platform_class
     const fpMap = new Map<string, Fingerprint>();
     for (const fp of fingerprints as Fingerprint[]) {
       const key = (fp.platform_class || `${(fp.make || "").toUpperCase()}:${(fp.model || "").toUpperCase()}`);
@@ -255,11 +286,10 @@ Deno.serve(async (req) => {
     let skipped = 0;
     let skippedBadUrl = 0;
     let skippedDedupe = 0;
+    let skippedDecay = 0;
 
-    // Composite dedupe: collapse dealer-group mirrors (same physical car across syndicated sites)
     const seenVehicles = new Set<string>();
 
-    // URL sanity patterns — reject generic category/homepage URLs with no vehicle identifier
     const BAD_URL_PATTERNS = [
       /\/used-cars\/?$/i,
       /\/stock\/?$/i,
@@ -283,13 +313,11 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // ── URL sanity gate ──
       if (isGenericUrl(listing.listing_url)) {
         skippedBadUrl++;
         continue;
       }
 
-      // ── Composite dedupe gate (collapse dealer-group mirrors) ──
       const vehicleKey = `${listingMake}:${listingModel}:${listing.year ?? 0}:${listing.km ?? 0}:${listing.asking_price ?? 0}`;
       if (seenVehicles.has(vehicleKey)) {
         skippedDedupe++;
@@ -297,7 +325,6 @@ Deno.serve(async (req) => {
       }
       seenVehicles.add(vehicleKey);
 
-      // Use platform_class for lookup (strict platform gate)
       const platformKey = listing.platform_class || `${listingMake}:${listingModel}`;
       const fp = fpMap.get(platformKey);
 
@@ -306,54 +333,50 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // ── Scoring ──
-      let score = 40; // Base: make+model+platform match
+      // ── Base Scoring ──
+      let baseScore = 40;
       const reasons: Record<string, string> = {
         make_model: `${listingMake} ${listingModel} matches fingerprint (+40)`,
       };
 
-      // KM scoring
       const kmResult = scoreKm(listing.km, fp.km_p25, fp.km_p75);
-      score += kmResult.score;
+      baseScore += kmResult.score;
       reasons.km = kmResult.reason;
 
-      // Price scoring
       const priceResult = scorePrice(listing.asking_price, fp.price_median);
-      score += priceResult.score;
+      baseScore += priceResult.score;
       reasons.price = priceResult.reason;
 
-      // Identity alignment: transmission
-      const transResult = scoreIdentity(
-        listing.transmission, fp.dominant_transmission, fp.transmission_count, "Transmission"
-      );
-      score += transResult.score;
+      const transResult = scoreIdentity(listing.transmission, fp.dominant_transmission, fp.transmission_count, "Transmission");
+      baseScore += transResult.score;
       if (transResult.score > 0) reasons.transmission = transResult.reason;
 
-      // Identity alignment: fuel
-      const fuelResult = scoreIdentity(
-        listing.fuel, fp.dominant_fuel_type, fp.fuel_type_count, "Fuel"
-      );
-      score += fuelResult.score;
+      const fuelResult = scoreIdentity(listing.fuel, fp.dominant_fuel_type, fp.fuel_type_count, "Fuel");
+      baseScore += fuelResult.score;
       if (fuelResult.score > 0) reasons.fuel = fuelResult.reason;
 
-      // Identity alignment: drivetrain
-      const driveResult = scoreIdentity(
-        listing.drivetrain, fp.dominant_drive_type, fp.drive_type_count, "Drivetrain"
-      );
-      score += driveResult.score;
+      const driveResult = scoreIdentity(listing.drivetrain, fp.dominant_drive_type, fp.drive_type_count, "Drivetrain");
+      baseScore += driveResult.score;
       if (driveResult.score > 0) reasons.drivetrain = driveResult.reason;
 
+      // ── Apply time-decay multiplier ──
+      const decayMultiplier = computeDecayMultiplier(fp.avg_decay_factor);
+      const finalScore = Math.round(baseScore * decayMultiplier);
+
+      reasons.decay = `decay_mult=${decayMultiplier.toFixed(2)} (avg_decay=${fp.avg_decay_factor}, avg_months=${fp.avg_months_ago}, profit_decayed=$${fp.weighted_profit_avg})`;
+
       // ── Threshold ──
-      if (score < 60) {
-        skipped++;
+      if (finalScore < 60) {
+        if (baseScore >= 60) skippedDecay++; // Would have passed without decay
+        else skipped++;
         continue;
       }
 
       opportunities.push({
         account_id: accountId,
         listing_id: listing.id,
-        listing_norm_id: null, // legacy column, no longer used
-        raw_id: null, // listing_id is not UUID format
+        listing_norm_id: null,
+        raw_id: null,
         url_canonical: listing.listing_url,
         make: listing.make,
         model: listing.model,
@@ -365,7 +388,7 @@ Deno.serve(async (req) => {
         sales_count: Number(fp.sales_count),
         km_band: kmResult.band,
         price_band: priceResult.band,
-        match_score: score,
+        match_score: finalScore,
         reasons,
         status: "open",
         transmission: listing.transmission,
@@ -377,7 +400,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log(`[fingerprint-match-run] Scored: ${opportunities.length} matched, ${skipped} skipped, ${skippedBadUrl} bad-url, ${skippedDedupe} deduped`);
+    console.log(`[fingerprint-match-run] Scored: ${opportunities.length} matched, ${skipped} skipped, ${skippedBadUrl} bad-url, ${skippedDedupe} deduped, ${skippedDecay} killed-by-decay`);
 
     // ── Step 5: Upsert opportunities ──
     let upserted = 0;
@@ -401,7 +424,7 @@ Deno.serve(async (req) => {
     }
 
     const durationMs = Date.now() - startTime;
-    console.log(`[fingerprint-match-run] Complete: ${upserted} upserted, ${skipped} skipped, ${skippedBadUrl} bad-url, ${skippedDedupe} deduped, ${durationMs}ms`);
+    console.log(`[fingerprint-match-run] Complete: ${upserted} upserted, ${skipped} skipped, ${skippedBadUrl} bad-url, ${skippedDedupe} deduped, ${skippedDecay} decay-killed, ${durationMs}ms`);
 
     return new Response(
       JSON.stringify({
@@ -412,6 +435,7 @@ Deno.serve(async (req) => {
         skipped,
         skipped_bad_url: skippedBadUrl,
         skipped_dedupe: skippedDedupe,
+        skipped_decay: skippedDecay,
         duration_ms: durationMs,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
