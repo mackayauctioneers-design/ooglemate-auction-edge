@@ -147,6 +147,7 @@ interface CandidateListing {
   first_seen_at: string;
   days_listed: number;
   price_drops: number;
+  pass_count: number;
 }
 
 // ─── MAIN ────────────────────────────────────────────────────────────────────
@@ -200,7 +201,7 @@ Deno.serve(async (req) => {
     // 3a. vehicle_listings (auction/wholesale)
     const { data: listings } = await sb
       .from("vehicle_listings")
-      .select("id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state")
+      .select("id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count")
       .in("lifecycle_state", ["NEW", "ACTIVE", "WATCHING"])
       .not("asking_price", "is", null)
       .gt("asking_price", 0)
@@ -253,6 +254,7 @@ Deno.serve(async (req) => {
         first_seen_at: l.first_seen_at || new Date().toISOString(),
         days_listed: daysSince,
         price_drops: 0,
+        pass_count: l.pass_count || 0,
       });
     }
 
@@ -282,6 +284,7 @@ Deno.serve(async (req) => {
         first_seen_at: s.first_seen_at || new Date().toISOString(),
         days_listed: daysSince,
         price_drops: 0,
+        pass_count: 0,
       });
     }
 
@@ -309,6 +312,7 @@ Deno.serve(async (req) => {
         first_seen_at: r.first_seen_at || new Date().toISOString(),
         days_listed: daysSince,
         price_drops: r.price_change_count || 0,
+        pass_count: 0,
       });
     }
 
@@ -423,6 +427,23 @@ Deno.serve(async (req) => {
         else tier = "WATCH";
       }
 
+      // ── Motivation signal: 3rd run or week+ in stock = strong buy ──
+      let motivationSignal: string | null = null;
+      if (!isRetail) {
+        if (listing.pass_count >= 2) {
+          // 3rd run (passed in twice before = now on 3rd attempt)
+          motivationSignal = "3RD_RUN";
+        } else if (listing.days_listed >= 7) {
+          // Week+ in stock — motivated seller
+          motivationSignal = "WEEK_PLUS_STOCK";
+        }
+
+        // Boost tier if motivation signal present and currently WATCH
+        if (motivationSignal && tier === "WATCH" && best.under_buy >= -500) {
+          tier = "BUY";
+        }
+      }
+
       // Freshness
       const freshness = listing.days_listed <= 1 ? "today" : listing.days_listed <= 7 ? "this_week" : "older";
 
@@ -454,6 +475,8 @@ Deno.serve(async (req) => {
         tier,
         days_listed: listing.days_listed,
         freshness,
+        pass_count: listing.pass_count,
+        motivation_signal: motivationSignal,
         updated_at: new Date().toISOString(),
       });
       scored++;
