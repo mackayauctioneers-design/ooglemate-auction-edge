@@ -2,12 +2,13 @@ import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { DealerLayout } from "@/components/layout/DealerLayout";
+import { OperatorLayout } from "@/components/layout/OperatorLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FileSpreadsheet, Download, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAccounts } from "@/hooks/useAccounts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileDropZone } from "@/components/sales-upload/FileDropZone";
 import { HeaderMappingEditor } from "@/components/sales-upload/HeaderMappingEditor";
 import { UploadBatchHistory } from "@/components/sales-upload/UploadBatchHistory";
@@ -19,100 +20,12 @@ import {
   useSaveProfile,
   findMatchingProfile,
 } from "@/hooks/useHeaderMapping";
+import { normaliseDateValue } from "@/utils/salesUploadUtils";
 
 type UploadStep = "idle" | "parsing" | "mapping" | "importing";
 
-/** Extract make/model/year/variant from a combined description string */
-function parseDescription(desc: string): {
-  year?: number;
-  make?: string;
-  model?: string;
-  variant?: string;
-} {
-  if (!desc) return {};
-  const cleaned = desc.trim();
-
-  // Try pattern: "YEAR MAKE MODEL VARIANT..." (e.g. "2023 Ford Ranger Wildtrak")
-  const yearFirst = cleaned.match(
-    /^(\d{4})\s+([A-Za-z-]+)\s+([A-Za-z0-9-]+)\s*(.*)?$/
-  );
-  if (yearFirst) {
-    return {
-      year: parseInt(yearFirst[1]),
-      make: yearFirst[2],
-      model: yearFirst[3],
-      variant: yearFirst[4]?.trim() || undefined,
-    };
-  }
-
-  // Try pattern: "MAKE MODEL YEAR VARIANT..." (e.g. "Ford Ranger 2023 Wildtrak")
-  const makeFirst = cleaned.match(
-    /^([A-Za-z-]+)\s+([A-Za-z0-9-]+)\s+(\d{4})\s*(.*)?$/
-  );
-  if (makeFirst) {
-    return {
-      make: makeFirst[1],
-      model: makeFirst[2],
-      year: parseInt(makeFirst[3]),
-      variant: makeFirst[4]?.trim() || undefined,
-    };
-  }
-
-  // Try pattern: "MAKE MODEL VARIANT YEAR" (e.g. "Toyota Hilux SR5 2021")
-  const yearLast = cleaned.match(
-    /^([A-Za-z-]+)\s+([A-Za-z0-9-]+)\s+(.*?)\s+(\d{4})$/
-  );
-  if (yearLast) {
-    return {
-      make: yearLast[1],
-      model: yearLast[2],
-      variant: yearLast[3]?.trim() || undefined,
-      year: parseInt(yearLast[4]),
-    };
-  }
-
-  // Try minimal: "MAKE MODEL" with no year (e.g. "Ford Ranger")
-  const makeModelOnly = cleaned.match(/^([A-Za-z-]+)\s+([A-Za-z0-9-]+)$/);
-  if (makeModelOnly) {
-    return {
-      make: makeModelOnly[1],
-      model: makeModelOnly[2],
-    };
-  }
-
-  // Try DMS-style: "Make Model Year Variant Extra..." with long suffixes
-  // e.g. "Toyota Landcruiser 2024 FJA300R GX Wagon 5dr ..."
-  const dmsStyle = cleaned.match(
-    /^([A-Za-z-]+)\s+([A-Za-z0-9-]+)\s+(\d{4})\s+(.+)$/
-  );
-  if (dmsStyle) {
-    return {
-      make: dmsStyle[1],
-      model: dmsStyle[2],
-      year: parseInt(dmsStyle[3]),
-      variant: dmsStyle[4]?.trim() || undefined,
-    };
-  }
-
-  // Fallback: extract year if present, and try first two words as make/model
-  const yearMatch = cleaned.match(/\b((?:19|20)\d{2})\b/);
-  const withoutYear = cleaned.replace(/\b(?:19|20)\d{2}\b/, "").trim();
-  const words = withoutYear.split(/\s+/);
-  if (words.length >= 2) {
-    return {
-      year: yearMatch ? parseInt(yearMatch[1]) : undefined,
-      make: words[0],
-      model: words[1],
-      variant: words.slice(2).join(" ") || undefined,
-    };
-  }
-
-  return { year: yearMatch ? parseInt(yearMatch[1]) : undefined };
-}
-import { normaliseDateValue } from "@/utils/salesUploadUtils";
-
-export default function SalesUploadPage() {
-  const { dealerProfile } = useAuth();
+export default function OperatorDealerUploadPage() {
+  const { data: accounts } = useAccounts();
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [step, setStep] = useState<UploadStep>("idle");
   const [parsedHeaders, setParsedHeaders] = useState<string[]>([]);
@@ -128,12 +41,6 @@ export default function SalesUploadPage() {
   const saveProfile = useSaveProfile();
   const { parseFile } = useFileParser();
 
-  // Auto-scope to the dealer's linked account
-  useEffect(() => {
-    if (dealerProfile?.account_id && !selectedAccountId) {
-      setSelectedAccountId(dealerProfile.account_id);
-    }
-  }, [dealerProfile, selectedAccountId]);
   const { data: profiles } = useMappingProfiles(selectedAccountId);
 
   const { data: batches, isLoading: batchesLoading } = useQuery({
@@ -152,26 +59,23 @@ export default function SalesUploadPage() {
     enabled: !!selectedAccountId,
   });
 
-  // Handle file selection — parse then map
   const handleFileSelected = useCallback(
     async (file: File) => {
       try {
         setCurrentFile(file);
         setStep("parsing");
 
-        // Parse file (CSV, XLSX, or PDF via AI)
         const parsed = await parseFile(file);
         setParsedHeaders(parsed.headers);
         setParsedRows(parsed.rows);
         setDetectedFormat(parsed.detectedFormat || "");
 
         if (!parsed.rows.length) {
-          toast.error("No data rows found in file. Try a different format.");
+          toast.error("No data rows found in file.");
           setStep("idle");
           return;
         }
 
-        // Check for saved profile match
         const matchedProfile = findMatchingProfile(profiles || [], parsed.headers);
         if (matchedProfile) {
           setCurrentMapping(matchedProfile.header_map as HeaderMapping);
@@ -181,7 +85,6 @@ export default function SalesUploadPage() {
           return;
         }
 
-        // Call AI mapper
         setStep("mapping");
         const sampleRows = parsed.rows.slice(0, 3);
         const result = await aiMapping.mutateAsync({
@@ -198,21 +101,20 @@ export default function SalesUploadPage() {
     [profiles, parseFile, aiMapping]
   );
 
-  // Import mutation: normalize rows into vehicle_sales_truth
+  // Import mutation — same logic as SalesUploadPage (shared util could be extracted later)
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!parsedRows.length || !selectedAccountId) {
         throw new Error("No data to import");
       }
 
-      // Create upload batch record
       const { data: batch, error: batchError } = await supabase
         .from("upload_batches")
         .insert({
           account_id: selectedAccountId,
           upload_type: "sales_universal",
           filename: currentFile?.name || "unknown",
-          uploaded_by: "josh",
+          uploaded_by: "operator",
           row_count: parsedRows.length,
           raw_headers: parsedHeaders,
           status: "pending",
@@ -222,7 +124,6 @@ export default function SalesUploadPage() {
 
       if (batchError) throw batchError;
 
-      // Map rows using confirmed mapping
       const truthRows: any[] = [];
       const skippedRows: { row: number; reason: string }[] = [];
 
@@ -230,42 +131,24 @@ export default function SalesUploadPage() {
         const raw = parsedRows[i];
         const mapped: Record<string, any> = {};
 
-        // Debug first 3 rows
-        if (i < 3) {
-          console.log(`[SalesUpload] Row ${i} raw keys:`, Object.keys(raw));
-          console.log(`[SalesUpload] Row ${i} raw values:`, JSON.stringify(raw).slice(0, 300));
-          console.log(`[SalesUpload] Mapping:`, JSON.stringify(currentMapping));
-        }
-
-        // Apply mapping
         for (const [sourceHeader, canonicalField] of Object.entries(currentMapping)) {
           if (canonicalField && raw[sourceHeader] !== undefined) {
             mapped[canonicalField] = raw[sourceHeader];
           }
         }
 
-        if (i < 3) {
-          console.log(`[SalesUpload] Row ${i} mapped:`, JSON.stringify(mapped).slice(0, 300));
-        }
-
-        // Normalise date fields (DD/MM/YYYY → YYYY-MM-DD for Postgres)
         for (const dateField of ["sold_at", "acquired_at"]) {
           if (mapped[dateField]) {
             mapped[dateField] = normaliseDateValue(String(mapped[dateField]));
           }
         }
 
-        // Standardise case formatting for structured fields
         if (mapped.make) mapped.make = String(mapped.make).trim().replace(/\b\w/g, c => c.toUpperCase()).replace(/\s+/g, ' ');
         if (mapped.model) mapped.model = String(mapped.model).trim().replace(/\b\w/g, c => c.toUpperCase()).replace(/\s+/g, ' ');
         if (mapped.series) mapped.series = String(mapped.series).trim();
         if (mapped.badge) mapped.badge = String(mapped.badge).trim();
         if (mapped.variant) mapped.variant = String(mapped.variant).trim();
 
-        // Store raw description for reference only — NOT used for matching
-        // Description-based parsing removed: structured fields drive replication engine
-
-        // Require make + model + sold_at (DB NOT NULL constraints)
         if (!mapped.make || !mapped.model) {
           skippedRows.push({
             row: i + 1,
@@ -281,7 +164,6 @@ export default function SalesUploadPage() {
           continue;
         }
 
-        // Compute days_to_clear from mapped field OR from date difference
         let daysToCleer: number | null = null;
         if (mapped.days_to_clear) {
           const parsed = parseInt(String(mapped.days_to_clear).replace(/[^0-9]/g, ""));
@@ -291,18 +173,14 @@ export default function SalesUploadPage() {
           try {
             const acq = new Date(mapped.acquired_at);
             const sold = new Date(mapped.sold_at);
-            const diff = Math.round(
-              (sold.getTime() - acq.getTime()) / (1000 * 60 * 60 * 24)
-            );
+            const diff = Math.round((sold.getTime() - acq.getTime()) / (1000 * 60 * 60 * 24));
             if (diff >= 0) daysToCleer = diff;
           } catch {}
         }
 
-        // Parse currency values robustly: strip $, commas, handle (negatives)
         const parseCurrency = (val: any): number | null => {
           if (val == null || val === "") return null;
           let s = String(val).trim();
-          // Handle parenthetical negatives: (3,200) → -3200
           const isNeg = s.startsWith("(") && s.endsWith(")");
           s = s.replace(/[($,)]/g, "");
           const num = parseFloat(s);
@@ -314,7 +192,6 @@ export default function SalesUploadPage() {
         let buyPriceVal = parseCurrency(mapped.buy_price);
         const grossProfitVal = parseCurrency(mapped.gross_profit);
 
-        // Derive buy_price from sale_price - gross_profit when buy_price is missing
         if (buyPriceVal == null && salePriceVal != null && grossProfitVal != null) {
           buyPriceVal = salePriceVal - grossProfitVal;
         }
@@ -334,9 +211,7 @@ export default function SalesUploadPage() {
           badge: mapped.badge || null,
           variant: mapped.variant || null,
           year: mapped.year ? parseInt(String(mapped.year)) : null,
-          km: mapped.km
-            ? parseInt(String(mapped.km).replace(/[^0-9]/g, ""))
-            : null,
+          km: mapped.km ? parseInt(String(mapped.km).replace(/[^0-9]/g, "")) : null,
           sale_price: salePriceVal,
           buy_price: buyPriceVal,
           profit_pct: profitPct,
@@ -345,19 +220,16 @@ export default function SalesUploadPage() {
           body_type: mapped.body_type || null,
           description_raw: mapped.description || null,
           notes: mapped.notes || null,
-          source: "dealer",
+          source: "operator",
           confidence: mapped.make && mapped.model ? "high" : "medium",
           days_to_clear: daysToCleer,
         });
       }
 
       if (!truthRows.length) {
-        throw new Error(
-          `No usable rows found (${skippedRows.length} rows had no identifiable data)`
-        );
+        throw new Error(`No usable rows (${skippedRows.length} skipped)`);
       }
 
-      // Deduplicate: build a signature for each row and remove duplicates within the batch
       const seen = new Set<string>();
       const uniqueRows = truthRows.filter((r: any) => {
         const sig = [r.make, r.model, r.year, r.badge, r.sold_at, r.sale_price, r.km]
@@ -368,12 +240,6 @@ export default function SalesUploadPage() {
         return true;
       });
 
-      const dupsInBatch = truthRows.length - uniqueRows.length;
-      if (dupsInBatch > 0) {
-        console.log(`[SalesUpload] Removed ${dupsInBatch} duplicate rows within batch`);
-      }
-
-      // Insert in chunks of 200 to avoid payload limits
       const CHUNK = 200;
       let insertedCount = 0;
       for (let c = 0; c < uniqueRows.length; c += CHUNK) {
@@ -385,7 +251,6 @@ export default function SalesUploadPage() {
         insertedCount += slice.length;
       }
 
-      // Update batch status
       await supabase
         .from("upload_batches")
         .update({
@@ -393,77 +258,30 @@ export default function SalesUploadPage() {
           error_count: skippedRows.length,
           error_report: skippedRows.length ? skippedRows : null,
           promoted_at: new Date().toISOString(),
-          promoted_by: "josh",
+          promoted_by: "operator",
         } as any)
         .eq("id", batch.id);
 
-      // Save the mapping profile for future use
-      const profileName = currentFile?.name
-        ? `Auto: ${currentFile.name.replace(/\.[^.]+$/, "")}`
-        : `Auto: ${new Date().toISOString().slice(0, 10)}`;
-
       await saveProfile.mutateAsync({
         accountId: selectedAccountId,
-        profileName,
+        profileName: currentFile?.name
+          ? `Auto: ${currentFile.name.replace(/\.[^.]+$/, "")}`
+          : `Auto: ${new Date().toISOString().slice(0, 10)}`,
         headerMap: currentMapping,
         sourceHeaders: parsedHeaders,
       });
 
-      // Count outcome coverage for audit summary
-      const withBuyPrice = uniqueRows.filter(
-        (r: any) => r.buy_price != null && r.sale_price != null
-      ).length;
-      const withClearance = uniqueRows.filter(
-        (r: any) => r.days_to_clear != null
-      ).length;
-
+      const dupsInBatch = truthRows.length - uniqueRows.length;
       return {
         imported: insertedCount,
         skipped: skippedRows.length + dupsInBatch,
-        withBuyPrice,
-        withClearance,
       };
     },
-    onSuccess: async ({ imported, skipped, withBuyPrice, withClearance }) => {
+    onSuccess: ({ imported, skipped }) => {
       queryClient.invalidateQueries({ queryKey: ["upload-batches"] });
       resetState();
-
-      // Show detailed audit summary
-      const parts = [`${imported} records imported`];
-      if (withBuyPrice != null) parts.push(`${withBuyPrice} with buy + sale price`);
-      if (withClearance != null) parts.push(`${withClearance} with clearance data`);
-      if (skipped > 0) parts.push(`${skipped} rows skipped`);
-      toast.success(parts.join(" · "));
-
-      // Auto-run Winners Watchlist + Target Conduit
-      try {
-        toast.info("Updating winners watchlist…");
-        const { error: winnersErr } = await supabase.functions.invoke(
-          "update-winners-watchlist",
-          { body: { account_id: selectedAccountId } }
-        );
-        if (winnersErr) console.error("update-winners-watchlist error:", winnersErr);
-        else toast.success("Winners watchlist updated");
-
-        toast.info("Building target candidates…");
-        const { error: buildErr } = await supabase.functions.invoke(
-          "build-sales-targets",
-          { body: { account_id: selectedAccountId } }
-        );
-        if (buildErr) console.error("build-sales-targets error:", buildErr);
-
-        const { error: genErr } = await supabase.functions.invoke(
-          "generate-daily-targets",
-          { body: { account_id: selectedAccountId, n: 15 } }
-        );
-        if (genErr) console.error("generate-daily-targets error:", genErr);
-
-        toast.success("Targets generated — redirecting to insights.");
-      } catch (e) {
-        console.error("Post-upload pipeline error:", e);
-      }
-
-      setTimeout(() => navigate("/sales-insights"), 1500);
+      const msg = `${imported} records imported` + (skipped > 0 ? ` · ${skipped} skipped` : "");
+      toast.success(msg);
     },
     onError: (err: any) => {
       toast.error(err.message);
@@ -496,19 +314,20 @@ export default function SalesUploadPage() {
   };
 
   const isProcessingFile = step === "parsing" || aiMapping.isPending;
+  const selectedAccount = accounts?.find(a => a.id === selectedAccountId);
 
   return (
-    <DealerLayout>
+    <OperatorLayout>
       <div className="p-4 sm:p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
               <FileSpreadsheet className="h-6 w-6 text-primary" />
-              My Sales
+              Dealer Sales Upload
             </h1>
             <p className="text-sm text-muted-foreground">
-              Upload your sales file — we handle the rest
+              Upload sales data on behalf of a dealer
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={downloadTemplate}>
@@ -517,11 +336,29 @@ export default function SalesUploadPage() {
           </Button>
         </div>
 
-        {/* Guard — no linked account */}
+        {/* Account selector */}
+        <Select value={selectedAccountId} onValueChange={(v) => { setSelectedAccountId(v); resetState(); }}>
+          <SelectTrigger className="w-full sm:w-72">
+            <SelectValue placeholder="Select dealer account" />
+          </SelectTrigger>
+          <SelectContent>
+            {accounts?.map((a) => (
+              <SelectItem key={a.id} value={a.id}>{a.display_name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Context banner */}
+        {selectedAccount && (
+          <div className="text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-md">
+            Uploading for: <span className="font-medium text-foreground">{selectedAccount.display_name}</span>
+          </div>
+        )}
+
+        {/* Guard — no account selected */}
         {!selectedAccountId && step === "idle" && (
           <div className="rounded-lg border border-dashed border-border bg-muted/20 p-12 text-center">
-            <p className="text-lg font-medium text-muted-foreground">No dealer account linked</p>
-            <p className="text-sm text-muted-foreground/60 mt-1">Contact your admin to link your account</p>
+            <p className="text-lg font-medium text-muted-foreground">Select a dealer account above to begin</p>
           </div>
         )}
 
@@ -571,6 +408,6 @@ export default function SalesUploadPage() {
         {/* Recent uploads */}
         <UploadBatchHistory batches={batches} isLoading={batchesLoading} />
       </div>
-    </DealerLayout>
+    </OperatorLayout>
   );
 }

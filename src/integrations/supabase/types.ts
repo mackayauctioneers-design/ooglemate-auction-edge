@@ -11511,6 +11511,7 @@ export type Database = {
       get_dealer_profile_by_user: {
         Args: { _user_id: string }
         Returns: {
+          account_id: string
           dealer_name: string
           dealer_profile_id: string
           org_id: string
