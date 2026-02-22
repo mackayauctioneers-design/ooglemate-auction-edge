@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { DealerLayout } from "@/components/layout/DealerLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { supabase } from "@/integrations/supabase/client";
+import * as XLSX from "xlsx";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/contexts/AuthContext";
 import { createDealFromOpportunity } from "@/hooks/useDeals";
@@ -104,34 +105,28 @@ async function exportSalesCSV() {
     toast.error(error?.message || "No sales data found");
     return;
   }
-  const headers = ["Make","Model","Variant","Year","KM","Buy Price","Sale Price","Gross Profit","Profit %","Days to Clear","Sold","Trim","Trans","Fuel","Drive","Source"];
-  const rows = data.map((r: any) => [
-    r.make, r.model, r.variant ?? "", r.year, r.km,
-    r.buy_price, r.sale_price,
-    r.buy_price && r.sale_price ? (r.sale_price - r.buy_price).toFixed(2) : "",
-    r.profit_pct != null ? (r.profit_pct * 100).toFixed(1) : "",
-    r.days_to_clear, r.sold_at, r.trim_class ?? "",
-    r.transmission ?? "", r.fuel_type ?? "", r.drive_type ?? "", r.source,
-  ].map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
-  const csv = [headers.join(","), ...rows].join("\n");
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-  const filename = `sales-report-${new Date().toISOString().slice(0, 10)}.csv`;
-
-  // Try native share/save on mobile, fallback to open in new tab
-  if (navigator.share && /Mobi|Android/i.test(navigator.userAgent)) {
-    try {
-      const file = new File([blob], filename, { type: "text/csv" });
-      await navigator.share({ files: [file], title: "Sales Report" });
-    } catch {
-      // User cancelled share - fall through to download
-      window.open(URL.createObjectURL(blob), "_blank");
-    }
-  } else {
-    // Desktop or fallback: open in new tab so browser triggers Save As
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-  }
+  const rows = data.map((r: any) => ({
+    Make: r.make,
+    Model: r.model,
+    Variant: r.variant ?? "",
+    Year: r.year,
+    KM: r.km,
+    "Buy Price": r.buy_price,
+    "Sale Price": r.sale_price,
+    "Gross Profit": r.buy_price && r.sale_price ? +(r.sale_price - r.buy_price).toFixed(2) : "",
+    "Profit %": r.profit_pct != null ? +(r.profit_pct * 100).toFixed(1) : "",
+    "Days to Clear": r.days_to_clear,
+    "Sold Date": r.sold_at,
+    Trim: r.trim_class ?? "",
+    Transmission: r.transmission ?? "",
+    Fuel: r.fuel_type ?? "",
+    Drive: r.drive_type ?? "",
+    Source: r.source,
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Sales");
+  XLSX.writeFile(wb, `sales-report-${new Date().toISOString().slice(0, 10)}.xlsx`);
   toast.success(`Exported ${data.length} records`);
 }
 
