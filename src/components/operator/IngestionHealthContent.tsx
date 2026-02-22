@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefreshCw, CheckCircle2, AlertTriangle, Clock, XCircle, MapPin, Gavel } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IngestionSourceHealthGrid } from "./IngestionSourceHealthGrid";
 
 interface TrapStat {
   region_id: string;
@@ -256,6 +257,9 @@ export function IngestionHealthContent() {
         </div>
       ) : (
         <>
+          {/* Ingestion Source Health Grid */}
+          <IngestionSourceHealthGrid />
+
           {/* Job Queue Status */}
           <Card>
             <CardHeader className="pb-2">

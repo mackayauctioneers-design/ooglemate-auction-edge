@@ -3797,6 +3797,51 @@ export type Database = {
         }
         Relationships: []
       }
+      ingestion_sources: {
+        Row: {
+          alert_email: boolean
+          alert_slack: boolean
+          created_at: string
+          cron_schedule: string | null
+          display_name: string
+          enabled: boolean
+          expected_interval_minutes: number
+          id: string
+          min_listings_24h: number | null
+          notes: string | null
+          source_key: string
+          updated_at: string
+        }
+        Insert: {
+          alert_email?: boolean
+          alert_slack?: boolean
+          created_at?: string
+          cron_schedule?: string | null
+          display_name: string
+          enabled?: boolean
+          expected_interval_minutes?: number
+          id?: string
+          min_listings_24h?: number | null
+          notes?: string | null
+          source_key: string
+          updated_at?: string
+        }
+        Update: {
+          alert_email?: boolean
+          alert_slack?: boolean
+          created_at?: string
+          cron_schedule?: string | null
+          display_name?: string
+          enabled?: boolean
+          expected_interval_minutes?: number
+          id?: string
+          min_listings_24h?: number | null
+          notes?: string | null
+          source_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       josh_alerts: {
         Row: {
           account_id: string
@@ -10047,6 +10092,28 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ingestion_source_health: {
+        Row: {
+          cron_schedule: string | null
+          display_name: string | null
+          enabled: boolean | null
+          expected_interval_minutes: number | null
+          health_status: string | null
+          last_error_at: string | null
+          last_error_message: string | null
+          last_note: string | null
+          last_ok: boolean | null
+          last_run_at: string | null
+          last_success_at: string | null
+          min_listings_24h: number | null
+          new_24h: number | null
+          runs_24h: number | null
+          source_key: string | null
+          successes_24h: number | null
+          updated_24h: number | null
+        }
+        Relationships: []
       }
       listing_presence_by_run: {
         Row: {
