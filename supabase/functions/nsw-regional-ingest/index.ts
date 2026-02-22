@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizeVehicleIdentity } from "../_shared/taxonomy/normalizeVehicleIdentity.ts";
+import { createTaxonomyDeps } from "../_shared/taxonomy/taxonomyRepo.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -303,6 +305,35 @@ Deno.serve(async (req) => {
     // Parse lots
     const parsedLots = parseLots(lots, source);
     console.log(`[nsw-regional-ingest] Parsed ${parsedLots.length} NSW lots from ${lots.length} input`);
+
+    // ── CANONICAL NORMALIZATION ──
+    // Run all parsed lots through the shared normalizer to fix multi-word model
+    // truncation (e.g. "Landcruiser" → "LandCruiser Prado") and ensure taxonomy consistency
+    const taxonomyDeps = createTaxonomyDeps(supabase);
+    let normCount = 0;
+    for (const lot of parsedLots) {
+      try {
+        const normResult = await normalizeVehicleIdentity(taxonomyDeps, {
+          source,
+          title: `${lot.year} ${lot.make} ${lot.model} ${lot.variant_raw || ''}`.trim(),
+          makeRaw: lot.make,
+          modelRaw: lot.model,
+          variantRaw: lot.variant_raw,
+          year: lot.year,
+          km: lot.km,
+          url: lot.listing_url || '',
+        });
+        if (normResult.make) lot.make = normResult.make;
+        if (normResult.model) lot.model = normResult.model;
+        if (normResult.variant) lot.variant_raw = normResult.variant;
+        if (normResult.familyKey) lot.variant_family = normResult.familyKey;
+        normCount++;
+      } catch (e) {
+        // Non-fatal: keep raw values if normalizer fails
+        console.warn(`[nsw-regional-ingest] Normalizer failed for ${lot.make} ${lot.model}:`, e);
+      }
+    }
+    console.log(`[nsw-regional-ingest] Normalized ${normCount}/${parsedLots.length} lots via taxonomy`);
 
     let created = 0;
     let updated = 0;

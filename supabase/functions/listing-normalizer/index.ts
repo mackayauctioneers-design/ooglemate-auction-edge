@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizeVehicleIdentity } from "../_shared/taxonomy/normalizeVehicleIdentity.ts";
+import { createTaxonomyDeps } from "../_shared/taxonomy/taxonomyRepo.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -257,20 +259,38 @@ serve(async (req) => {
     errors: [] as string[],
   };
 
+  const taxonomyDeps = createTaxonomyDeps(supabase);
+
   for (const raw of rawListings) {
     try {
       const text = raw.raw_text || '';
       const domainType = detectDomain(raw.domain, raw.url_canonical);
       
-      // Extract all fields
-      const make = extractMake(text);
-      const model = extractModel(text, make);
+      // Extract supplementary fields
       const year = extractYear(text);
       const km = extractKm(text);
       const price = extractPrice(text);
       const transmission = extractTransmission(text);
       const fuelType = extractFuelType(text);
       const bodyType = extractBodyType(text);
+
+      // ── Canonical make/model/variant via shared normalizer ──
+      let make: string | null = extractMake(text);
+      let model: string | null = extractModel(text, make);
+      try {
+        const normResult = await normalizeVehicleIdentity(taxonomyDeps, {
+          source: domainType,
+          url: raw.url_canonical,
+          title: raw.title || '',
+          makeRaw: make,
+          modelRaw: model,
+          bodyText: text.slice(0, 4000),
+          year,
+          km,
+        });
+        if (normResult.make) make = normResult.make;
+        if (normResult.model) model = normResult.model;
+      } catch (_) { /* keep inline extraction as fallback */ }
 
       const extractedFields = {
         make,

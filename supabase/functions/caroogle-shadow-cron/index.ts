@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizeVehicleIdentity } from "../_shared/taxonomy/normalizeVehicleIdentity.ts";
+import { createTaxonomyDeps } from "../_shared/taxonomy/taxonomyRepo.ts";
 
 /**
  * CAROOGLE → PICKLES PRODUCTION FEED
@@ -101,21 +103,41 @@ Deno.serve(async (req) => {
     }
 
     // ── Build rows for vehicle_listings ──
+    const taxonomyDeps = createTaxonomyDeps(sb);
     let withPriceCount = 0;
     let zeroPriceCount = 0;
     let skipped = 0;
+    let normCount = 0;
     const rows: any[] = [];
 
     for (const ad of ads) {
       const lotId = String(ad.lotId || ad.lot_id || ad.id || "");
       if (!lotId) { skipped++; continue; }
 
-      const make = ad.make ? String(ad.make).toUpperCase().trim() : null;
-      if (!make) { skipped++; continue; }
+      const rawMake = ad.make ? String(ad.make).toUpperCase().trim() : null;
+      if (!rawMake) { skipped++; continue; }
 
-      const model = extractModel(ad);
+      const rawModel = extractModel(ad);
       const year = parseYear(ad.year);
       if (!year) { skipped++; continue; }
+
+      // ── Canonical normalization ──
+      const title = ad.title ? String(ad.title) : `${year} ${rawMake} ${rawModel}`;
+      let make = rawMake;
+      let model = rawModel;
+      try {
+        const normResult = await normalizeVehicleIdentity(taxonomyDeps, {
+          source: SOURCE,
+          title,
+          makeRaw: rawMake,
+          modelRaw: rawModel,
+          year,
+          km: parseKm(ad.odometer || ad.km || ad.kms || ad.mileage),
+        });
+        if (normResult.make) make = normResult.make.toUpperCase();
+        if (normResult.model) model = normResult.model.toUpperCase();
+        normCount++;
+      } catch (_) { /* keep raw */ }
 
       const listingId = `pickles:${lotId}`;
       const price = parsePrice(ad.price || ad.askingPrice || ad.asking_price);
@@ -149,7 +171,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log(`[${CRON_NAME}] Built ${rows.length} valid rows (skipped ${skipped})`);
+    console.log(`[${CRON_NAME}] Built ${rows.length} valid rows (skipped ${skipped}, normalized ${normCount})`);
 
     // ── Batch upsert into vehicle_listings ──
     let totalNew = 0;

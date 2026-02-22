@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizeVehicleIdentity } from "../_shared/taxonomy/normalizeVehicleIdentity.ts";
+import { createTaxonomyDeps } from "../_shared/taxonomy/taxonomyRepo.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -306,10 +308,26 @@ serve(async (req) => {
         const price = extractPrice(markdown);
         const km = extractKm(markdown);
         const year = extractYear(markdown);
-        const { make, model } = extractMakeModel(markdown);
+        let { make, model } = extractMakeModel(markdown);
         const { location, state } = extractLocation(markdown);
         const engineMarkers = extractEngineMarkers(markdown);
         const { body, cab } = extractBodyCab(markdown);
+
+        // ── Canonical normalization ──
+        const taxonomyDeps = createTaxonomyDeps(supabase);
+        try {
+          const normResult = await normalizeVehicleIdentity(taxonomyDeps, {
+            source: 'outward_scrape',
+            url: item.candidate_url,
+            makeRaw: make,
+            modelRaw: model,
+            bodyText: markdown.slice(0, 4000),
+            year,
+            km,
+          });
+          if (normResult.make) make = normResult.make;
+          if (normResult.model) model = normResult.model;
+        } catch (_) { /* keep inline extraction */ }
         
         const verifiedFields = {
           asking_price: price,
