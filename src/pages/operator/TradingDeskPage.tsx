@@ -10,9 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users } from 'lucide-react';
+import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow, isPast, isToday, isTomorrow, differenceInHours } from 'date-fns';
 
 interface OperatorOpportunity {
   id: string;
@@ -44,20 +44,103 @@ interface OperatorOpportunity {
   anchor_sale_sold_at: string | null;
   anchor_sale_km: number | null;
   anchor_sale_trim_class: string | null;
+  auction_datetime: string | null;
+  auction_status: string | null;
+  auction_target_price: number | null;
+  auction_house: string | null;
 }
 
-type SortField = 'best_expected_margin' | 'best_under_buy' | 'asking_price' | 'year' | 'created_at' | 'tier';
+type SortField = 'best_expected_margin' | 'best_under_buy' | 'asking_price' | 'year' | 'created_at' | 'tier' | 'auction_datetime';
 
-const tierOrder: Record<string, number> = { CODE_RED: 0, HIGH: 1, BUY: 2, WATCH: 3 };
+const tierOrder: Record<string, number> = { CODE_RED: 0, HIGH: 1, BUY: 2, AUCTION_WATCH: 3, WATCH: 4 };
 const tierColors: Record<string, string> = {
   CODE_RED: 'bg-destructive text-destructive-foreground',
   HIGH: 'bg-primary text-primary-foreground',
   BUY: 'bg-accent text-accent-foreground',
+  AUCTION_WATCH: 'bg-violet-500/15 text-violet-700 border border-violet-500/30',
   WATCH: 'bg-muted text-muted-foreground',
+};
+
+const auctionStatusColors: Record<string, string> = {
+  upcoming: 'bg-violet-500/15 text-violet-700 border-violet-500/30',
+  watch: 'bg-blue-500/15 text-blue-700 border-blue-500/30',
+  bid_target: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30',
+  live_buy: 'bg-destructive/15 text-destructive border-destructive/30',
 };
 
 const fmt = (n: number | null) => n != null ? `$${n.toLocaleString()}` : '-';
 const fmtKm = (n: number | null) => n != null ? `${(n / 1000).toFixed(0)}k` : '-';
+
+// ─── Auction Calendar Badge ──────────────────────────────────────────────────
+function AuctionCalendarBadge({ datetime, status, house, targetPrice }: {
+  datetime: string | null;
+  status: string | null;
+  house: string | null;
+  targetPrice: number | null;
+}) {
+  if (!datetime && (!status || status === 'none')) return null;
+
+  const dt = datetime ? new Date(datetime) : null;
+  const past = dt ? isPast(dt) : false;
+  const today = dt ? isToday(dt) : false;
+  const tomorrow = dt ? isTomorrow(dt) : false;
+  const hoursUntil = dt ? differenceInHours(dt, new Date()) : null;
+  const isUrgent = hoursUntil != null && hoursUntil >= 0 && hoursUntil <= 24;
+  const isLive = hoursUntil != null && hoursUntil >= -2 && hoursUntil <= 2;
+
+  // Calendar mini-card
+  const monthStr = dt ? format(dt, 'MMM').toUpperCase() : '';
+  const dayStr = dt ? format(dt, 'd') : '';
+  const timeStr = dt ? format(dt, 'h:mm a') : '';
+  const dayOfWeek = dt ? format(dt, 'EEE') : '';
+
+  const urgencyClass = isLive
+    ? 'border-destructive bg-destructive/10 ring-2 ring-destructive/20'
+    : isUrgent
+      ? 'border-amber-500 bg-amber-500/10 ring-1 ring-amber-500/20'
+      : today
+        ? 'border-primary bg-primary/5'
+        : tomorrow
+          ? 'border-blue-400 bg-blue-400/5'
+          : 'border-border bg-muted/30';
+
+  return (
+    <div className="flex items-start gap-2">
+      {/* Calendar tile */}
+      {dt && (
+        <div className={`flex flex-col items-center rounded-lg border px-2 py-1 min-w-[3rem] ${urgencyClass}`}>
+          <span className="text-[9px] font-bold tracking-wider text-muted-foreground">{monthStr}</span>
+          <span className="text-lg font-bold leading-tight text-foreground">{dayStr}</span>
+          <span className="text-[9px] text-muted-foreground">{dayOfWeek}</span>
+        </div>
+      )}
+      {/* Details */}
+      <div className="space-y-0.5">
+        {dt && (
+          <div className="flex items-center gap-1">
+            <Clock className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs font-medium text-foreground">{timeStr}</span>
+          </div>
+        )}
+        {dt && !past && (
+          <span className={`text-[10px] ${isUrgent ? 'text-amber-600 font-semibold' : 'text-muted-foreground'}`}>
+            {isLive ? '🔴 LIVE NOW' : formatDistanceToNow(dt, { addSuffix: true })}
+          </span>
+        )}
+        {past && dt && <span className="text-[10px] text-muted-foreground">Ended</span>}
+        {house && <p className="text-[10px] text-muted-foreground">{house}</p>}
+        {targetPrice != null && (
+          <p className="text-[10px] font-mono text-emerald-600">Target: ${targetPrice.toLocaleString()}</p>
+        )}
+        {status && status !== 'none' && (
+          <Badge variant="outline" className={`text-[9px] px-1 py-0 ${auctionStatusColors[status] || ''}`}>
+            {status.replace('_', ' ').toUpperCase()}
+          </Badge>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── Override Dealer Popover ──────────────────────────────────────────────────
 
@@ -194,6 +277,10 @@ export default function TradingDeskPage() {
     let aVal: number, bVal: number;
     if (sortField === 'tier') { aVal = tierOrder[a.tier] ?? 99; bVal = tierOrder[b.tier] ?? 99; }
     else if (sortField === 'created_at') { aVal = new Date(a.created_at).getTime(); bVal = new Date(b.created_at).getTime(); }
+    else if (sortField === 'auction_datetime') {
+      aVal = a.auction_datetime ? new Date(a.auction_datetime).getTime() : 0;
+      bVal = b.auction_datetime ? new Date(b.auction_datetime).getTime() : 0;
+    }
     else { aVal = (a[sortField] as number) ?? 0; bVal = (b[sortField] as number) ?? 0; }
     return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
   });
@@ -214,6 +301,7 @@ export default function TradingDeskPage() {
   const highCount = opportunities.filter(o => o.tier === 'HIGH' && ['new', 'reviewed'].includes(o.status)).length;
   const buyCount = opportunities.filter(o => o.tier === 'BUY' && ['new', 'reviewed'].includes(o.status)).length;
   const watchCount = opportunities.filter(o => o.tier === 'WATCH' && ['new', 'reviewed'].includes(o.status)).length;
+  const auctionCount = opportunities.filter(o => o.auction_status && o.auction_status !== 'none' && ['new', 'reviewed'].includes(o.status)).length;
 
   return (
     <OperatorLayout>
@@ -231,7 +319,7 @@ export default function TradingDeskPage() {
         </div>
 
         {/* KPI Strip */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <Card className="border-destructive/30 bg-destructive/5">
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-destructive">{codeRedCount}</p>
@@ -248,6 +336,15 @@ export default function TradingDeskPage() {
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-accent-foreground">{buyCount}</p>
               <p className="text-xs text-muted-foreground">BUY</p>
+            </CardContent>
+          </Card>
+          <Card className="border-violet-500/30 bg-violet-500/5">
+            <CardContent className="p-4 text-center">
+              <div className="flex items-center justify-center gap-1.5">
+                <CalendarDays className="h-4 w-4 text-violet-600" />
+                <p className="text-2xl font-bold text-violet-600">{auctionCount}</p>
+              </div>
+              <p className="text-xs text-muted-foreground">AUCTION PIPELINE</p>
             </CardContent>
           </Card>
           <Card>
@@ -279,6 +376,7 @@ export default function TradingDeskPage() {
                 <SelectItem value="CODE_RED">CODE RED</SelectItem>
                 <SelectItem value="HIGH">HIGH</SelectItem>
                 <SelectItem value="BUY">BUY</SelectItem>
+                <SelectItem value="AUCTION_WATCH">AUCTION WATCH</SelectItem>
                 <SelectItem value="WATCH">WATCH</SelectItem>
               </SelectContent>
             </Select>
@@ -333,6 +431,7 @@ export default function TradingDeskPage() {
                     <TableHead>Best Fit</TableHead>
                     <TableHead className="text-right cursor-pointer" onClick={() => handleSort('best_expected_margin')}>Margin <SortIcon field="best_expected_margin" /></TableHead>
                     <TableHead className="text-right cursor-pointer" onClick={() => handleSort('best_under_buy')}>Under-Buy <SortIcon field="best_under_buy" /></TableHead>
+                    <TableHead className="cursor-pointer" onClick={() => handleSort('auction_datetime')}>Auction <SortIcon field="auction_datetime" /></TableHead>
                     <TableHead>Source</TableHead>
                     <TableHead className="text-right cursor-pointer" onClick={() => handleSort('year')}>Year <SortIcon field="year" /></TableHead>
                     <TableHead className="text-right">KM</TableHead>
@@ -412,6 +511,15 @@ export default function TradingDeskPage() {
                                 {fmt(opp.best_under_buy)}
                               </span>
                             </TableCell>
+                            {/* Auction */}
+                            <TableCell>
+                              <AuctionCalendarBadge
+                                datetime={opp.auction_datetime}
+                                status={opp.auction_status}
+                                house={opp.auction_house}
+                                targetPrice={opp.auction_target_price}
+                              />
+                            </TableCell>
                             {/* Source */}
                             <TableCell className="text-xs text-muted-foreground">{opp.listing_source}</TableCell>
                             {/* Year */}
@@ -457,7 +565,7 @@ export default function TradingDeskPage() {
                           {/* Anchor Sale Collapsible Row */}
                           <CollapsibleContent asChild>
                             <TableRow className={`border-b border-border ${opp.tier === 'CODE_RED' || opp.tier === 'HIGH' ? 'bg-primary/5' : 'bg-muted/30'}`}>
-                              <TableCell colSpan={12} className="py-3 px-6">
+                              <TableCell colSpan={13} className="py-3 px-6">
                                 <div className="flex items-start gap-6">
                                   <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
                                     <Anchor className="h-3.5 w-3.5" />

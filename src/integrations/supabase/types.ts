@@ -4554,6 +4554,10 @@ export type Database = {
           assigned_by: string | null
           assigned_to_account: string | null
           assigned_to_name: string | null
+          auction_datetime: string | null
+          auction_house: string | null
+          auction_status: string | null
+          auction_target_price: number | null
           best_account_id: string | null
           best_account_name: string | null
           best_expected_margin: number | null
@@ -4591,6 +4595,10 @@ export type Database = {
           assigned_by?: string | null
           assigned_to_account?: string | null
           assigned_to_name?: string | null
+          auction_datetime?: string | null
+          auction_house?: string | null
+          auction_status?: string | null
+          auction_target_price?: number | null
           best_account_id?: string | null
           best_account_name?: string | null
           best_expected_margin?: number | null
@@ -4628,6 +4636,10 @@ export type Database = {
           assigned_by?: string | null
           assigned_to_account?: string | null
           assigned_to_name?: string | null
+          auction_datetime?: string | null
+          auction_house?: string | null
+          auction_status?: string | null
+          auction_target_price?: number | null
           best_account_id?: string | null
           best_account_name?: string | null
           best_expected_margin?: number | null
