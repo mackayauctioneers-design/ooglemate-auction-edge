@@ -37,8 +37,7 @@ async function invokeCrawler(supabase: any, src: AuctionSource) {
 
 // deno-lint-ignore no-explicit-any
 function yearGateStats(items: any[]): { kept: number; dropped: number; minYear: number } {
-  const currentYear = new Date().getFullYear();
-  const minYear = currentYear - 10;
+  const minYear = 2016;
 
   let kept = 0;
   let dropped = 0;

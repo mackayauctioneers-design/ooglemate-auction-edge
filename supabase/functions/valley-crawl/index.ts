@@ -228,9 +228,8 @@ Deno.serve(async (req) => {
     const { vehicles: allVehicles, mtaIds } = parseListPage(html);
     console.log(`[valley-crawl] Parsed ${allVehicles.length} vehicles, ${mtaIds.length} MTA IDs`);
 
-    // Apply 10-year window filter before ingesting
-    const currentYear = new Date().getFullYear();
-    const minYear = currentYear - 10;
+    // Apply year floor filter (2016+)
+    const minYear = 2016;
     const validVehicles = allVehicles.filter(v => v.year >= minYear);
     console.log(`[valley-crawl] After year filter (>=${minYear}): ${validVehicles.length} vehicles`);
 
