@@ -114,13 +114,24 @@ async function exportSalesCSV() {
     r.transmission ?? "", r.fuel_type ?? "", r.drive_type ?? "", r.source,
   ].map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
   const csv = [headers.join(","), ...rows].join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `sales-report-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+  const filename = `sales-report-${new Date().toISOString().slice(0, 10)}.csv`;
+
+  // Try native share/save on mobile, fallback to open in new tab
+  if (navigator.share && /Mobi|Android/i.test(navigator.userAgent)) {
+    try {
+      const file = new File([blob], filename, { type: "text/csv" });
+      await navigator.share({ files: [file], title: "Sales Report" });
+    } catch {
+      // User cancelled share - fall through to download
+      window.open(URL.createObjectURL(blob), "_blank");
+    }
+  } else {
+    // Desktop or fallback: open in new tab so browser triggers Save As
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
   toast.success(`Exported ${data.length} records`);
 }
 
