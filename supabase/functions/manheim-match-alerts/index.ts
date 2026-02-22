@@ -6,8 +6,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const MIN_SCORE = 55;
+const MIN_SCORE = 75;
 const MAX_ALERTS = 20;
+const MIN_UNDERVALUE_PCT = 5; // lot must be at least 5% below anchor sell price
 const MACKAY_TRADERS_ACCOUNT_ID = "d24da4ea-f500-47fd-9b66-d2c9aa2d3f51";
 
 interface MatchedOpp {
@@ -81,11 +82,12 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const minScore = body.min_score ?? MIN_SCORE;
     const lookbackHours = body.lookback_hours ?? 24;
+    const minUndervaluePct = body.min_undervalue_pct ?? MIN_UNDERVALUE_PCT;
 
     // Query matched opportunities from Manheim
     const cutoff = new Date(Date.now() - lookbackHours * 60 * 60 * 1000).toISOString();
 
-    const { data: matches, error: qErr } = await supabase
+    const { data: rawMatches, error: qErr } = await supabase
       .from("matched_opportunities_v1")
       .select(
         "id, make, model, year, km, asking_price, match_score, fingerprint_make, fingerprint_model, sales_count, km_band, url_canonical, anchor_profit, anchor_sell_price, anchor_days_to_sell, transmission, body_type, created_at"
@@ -95,9 +97,16 @@ Deno.serve(async (req) => {
       .gte("match_score", minScore)
       .gte("created_at", cutoff)
       .order("match_score", { ascending: false })
-      .limit(MAX_ALERTS);
+      .limit(50); // fetch extra, then filter for undervalue
 
     if (qErr) throw qErr;
+
+    // Filter: only keep lots priced at least X% below anchor sell price
+    const matches = (rawMatches || []).filter((m: any) => {
+      if (!m.anchor_sell_price || !m.asking_price) return false;
+      const underPct = ((m.anchor_sell_price - m.asking_price) / m.anchor_sell_price) * 100;
+      return underPct >= minUndervaluePct;
+    }).slice(0, MAX_ALERTS);
 
     const today = new Date().toISOString().split("T")[0];
 
@@ -142,7 +151,7 @@ Deno.serve(async (req) => {
         elements: [
           {
             type: "mrkdwn",
-            text: `*${today}* | Score ≥${minScore} | Last ${lookbackHours}h | Mackay Traders`,
+            text: `*${today}* | Score ≥${minScore} | ≥${minUndervaluePct}% under anchor | Last ${lookbackHours}h | Mackay Traders`,
           },
         ],
       },
