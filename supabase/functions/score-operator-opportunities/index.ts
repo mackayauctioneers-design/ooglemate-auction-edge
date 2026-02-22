@@ -1,17 +1,29 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * SCORE OPERATOR OPPORTUNITIES — Unified Multi-Account Scoring Engine
+ * SCORE OPERATOR OPPORTUNITIES — Unified Multi-Account Scoring Engine v2.1
  * 
- * Scans ALL eligible listings (vehicle_listings + shadow promoted) and scores
- * each against ALL accounts' sales history in vehicle_sales_truth.
+ * Scans ALL eligible listings from 3 sources:
+ *   1. vehicle_listings (auction/wholesale)
+ *   2. vehicle_listings_shadow (caroogle promoted)
+ *   3. retail_listings (autotrader + drive)
  * 
- * Outputs: operator_opportunities with best_account, alt_matches, tier.
+ * Scores each against ALL accounts' sales history in vehicle_sales_truth.
  * 
- * Intake rules (loosened):
- *   under_buy >= $1,500  → BUY candidate (tier = CODE_RED if margin >= $6k, HIGH if >= $4k)
- *   under_buy >= -$500   → WATCH candidate
- *   under_buy < -$500    → discard
+ * Tiering:
+ *   AUCTION/WHOLESALE:
+ *     CODE_RED: under_buy >= $1,500 AND expected_margin >= $6k
+ *     HIGH:     under_buy >= $1,500 AND expected_margin >= $4k
+ *     BUY:      under_buy >= $1,500
+ *     WATCH:    under_buy >= -$500
+ *
+ *   RETAIL (autotrader, drive):
+ *     RETAIL_BUY:    ask <= historical_buy - $1,500 (unicorn)
+ *     RETAIL_TARGET: ask <= historical_buy + $3,000 (negotiable band)
+ *     WATCH:         ask > historical_buy + $3,000 but margin still positive
+ *
+ *   Negotiation signals boost retail score:
+ *     +days_listed > 21, +price_drops >= 1
  */
 
 const corsHeaders = {
@@ -68,6 +80,15 @@ function isProductionSource(src: string): boolean {
   return PRODUCTION_SOURCES.includes(s) || s.startsWith("dealer_site:");
 }
 
+// ─── RETAIL SOURCE CHECK ─────────────────────────────────────────────────────
+
+const RETAIL_SOURCES = ["autotrader", "drive", "easyauto", "toyota_used", "carsales"];
+
+function isRetailSource(src: string): boolean {
+  if (!src) return false;
+  return RETAIL_SOURCES.includes(src.toLowerCase());
+}
+
 // ─── DRIVETRAIN ──────────────────────────────────────────────────────────────
 
 function drivetrainBucket(val: string | null): string {
@@ -105,8 +126,27 @@ function trimAllowed(platformClass: string, listingTrim: string, saleTrim: strin
   const listingRank = ladder[listingTrim];
   const saleRank = ladder[saleTrim];
   if (listingRank == null || saleRank == null) return false;
-  // Allow exact or one-step upgrade only
   return listingRank === saleRank + 1;
+}
+
+// ─── CANDIDATE INTERFACE ─────────────────────────────────────────────────────
+
+interface CandidateListing {
+  listing_id: string;
+  source: string;
+  source_type: "auction" | "retail" | "shadow";
+  make: string;
+  model: string;
+  year: number;
+  km: number | null;
+  asking_price: number;
+  platform_class: string;
+  trim_class: string;
+  drivetrain_bucket: string;
+  source_url: string;
+  first_seen_at: string;
+  days_listed: number;
+  price_drops: number;
 }
 
 // ─── MAIN ────────────────────────────────────────────────────────────────────
@@ -141,7 +181,6 @@ Deno.serve(async (req) => {
       return respond({ success: true, scored: 0, reason: "no_sales_data" });
     }
 
-    // Group sales by account_id
     const salesByAccount: Record<string, any[]> = {};
     for (const s of allSales) {
       const profit = s.sale_price - Number(s.buy_price);
@@ -153,12 +192,12 @@ Deno.serve(async (req) => {
     }
     console.log(`[SCORE] Sales loaded for ${Object.keys(salesByAccount).length} accounts`);
 
-    // Account name lookup
     const accountNames: Record<string, string> = {};
     for (const a of accounts) accountNames[a.id] = a.display_name;
 
-    // ── 3. Load candidate listings ──
-    // From vehicle_listings (production) + promoted shadow
+    // ── 3. Load candidate listings from ALL 3 sources ──
+
+    // 3a. vehicle_listings (auction/wholesale)
     const { data: listings } = await sb
       .from("vehicle_listings")
       .select("id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state")
@@ -167,7 +206,7 @@ Deno.serve(async (req) => {
       .gt("asking_price", 0)
       .limit(1000);
 
-    // Also check shadow with price
+    // 3b. Shadow (caroogle)
     const { data: shadowListings } = await sb
       .from("vehicle_listings_shadow")
       .select("id, listing_id, lot_id, make, model, year, km, asking_price, drivetrain, raw_payload, first_seen_at, location, state, status")
@@ -176,22 +215,16 @@ Deno.serve(async (req) => {
       .is("promoted_at", null)
       .limit(1000);
 
-    // Normalize both into a common shape
-    interface CandidateListing {
-      listing_id: string;
-      source: string;
-      make: string;
-      model: string;
-      year: number;
-      km: number | null;
-      asking_price: number;
-      platform_class: string;
-      trim_class: string;
-      drivetrain_bucket: string;
-      source_url: string;
-      first_seen_at: string;
-    }
+    // 3c. Retail listings (autotrader + drive)
+    const { data: retailListings } = await sb
+      .from("retail_listings")
+      .select("id, source, source_listing_id, listing_url, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, first_seen_at, last_seen_at, price_change_count, delisted_at")
+      .is("delisted_at", null)
+      .not("asking_price", "is", null)
+      .gt("asking_price", 0)
+      .limit(2000);
 
+    // ── Build unified candidate list ──
     const candidates: CandidateListing[] = [];
     const seenIds = new Set<string>();
 
@@ -204,9 +237,11 @@ Deno.serve(async (req) => {
       if (!make || !model || !l.year) continue;
       if (!isProductionSource(l.source || "")) continue;
       seenIds.add(lid);
+      const daysSince = Math.floor((Date.now() - new Date(l.first_seen_at || Date.now()).getTime()) / 86400000);
       candidates.push({
         listing_id: lid,
         source: l.source || "unknown",
+        source_type: "auction",
         make, model,
         year: l.year,
         km: l.km,
@@ -216,6 +251,8 @@ Deno.serve(async (req) => {
         drivetrain_bucket: drivetrainBucket(l.drivetrain),
         source_url: l.listing_url || "",
         first_seen_at: l.first_seen_at || new Date().toISOString(),
+        days_listed: daysSince,
+        price_drops: 0,
       });
     }
 
@@ -229,9 +266,11 @@ Deno.serve(async (req) => {
       seenIds.add(lid);
       const raw = s.raw_payload || {};
       const trimSource = [raw.title, raw.variant, raw.grade, raw.sellerNotes, raw.description, raw.model, raw.badgeDescription].filter(Boolean).join(" ");
+      const daysSince = Math.floor((Date.now() - new Date(s.first_seen_at || Date.now()).getTime()) / 86400000);
       candidates.push({
         listing_id: lid,
         source: "caroogle_shadow",
+        source_type: "shadow",
         make, model,
         year: s.year,
         km: s.km,
@@ -241,14 +280,45 @@ Deno.serve(async (req) => {
         drivetrain_bucket: drivetrainBucket(s.drivetrain || raw.driveType),
         source_url: `https://www.pickles.com.au/lot/${s.lot_id}`,
         first_seen_at: s.first_seen_at || new Date().toISOString(),
+        days_listed: daysSince,
+        price_drops: 0,
       });
     }
 
-    console.log(`[SCORE] ${candidates.length} candidate listings to score`);
+    // Retail listings (autotrader + drive)
+    for (const r of (retailListings || [])) {
+      const lid = `retail:${r.source}:${r.source_listing_id}`;
+      if (seenIds.has(lid)) continue;
+      const make = (r.make || "").toUpperCase().trim();
+      const model = (r.model || "").toUpperCase().trim();
+      if (!make || !model || !r.year) continue;
+      seenIds.add(lid);
+      const daysSince = Math.floor((Date.now() - new Date(r.first_seen_at || Date.now()).getTime()) / 86400000);
+      candidates.push({
+        listing_id: lid,
+        source: r.source || "retail",
+        source_type: "retail",
+        make, model,
+        year: r.year,
+        km: r.km,
+        asking_price: Number(r.asking_price),
+        platform_class: derivePlatform(make, model),
+        trim_class: r.variant_family || extractBadge(r.variant_raw) || "UNKNOWN",
+        drivetrain_bucket: drivetrainBucket(r.drivetrain),
+        source_url: r.listing_url || "",
+        first_seen_at: r.first_seen_at || new Date().toISOString(),
+        days_listed: daysSince,
+        price_drops: r.price_change_count || 0,
+      });
+    }
+
+    const retailCount = candidates.filter(c => c.source_type === "retail").length;
+    console.log(`[SCORE] ${candidates.length} total candidates (${retailCount} retail) to score`);
 
     // ── 4. Score each listing against ALL accounts ──
     let scored = 0;
     let discarded = 0;
+    let retailScored = 0;
     const upsertBatch: any[] = [];
 
     for (const listing of candidates) {
@@ -269,10 +339,10 @@ Deno.serve(async (req) => {
       }
 
       const accountMatches: AccountMatch[] = [];
+      const isRetail = listing.source_type === "retail";
 
       // Score against each account
       for (const [acctId, acctSales] of Object.entries(salesByAccount)) {
-        // Find best matching sale for this account
         const matches = acctSales.filter((s: any) => {
           if (s.platform_class !== listing.platform_class) return false;
           if (!s.trim_class || s.trim_class === "UNKNOWN") return false;
@@ -285,7 +355,6 @@ Deno.serve(async (req) => {
 
         if (matches.length === 0) continue;
 
-        // Best match by weighted score (KM proximity 40%, profit 60%)
         const maxProfit = Math.max(...matches.map((c: any) => c.sale_price - Number(c.buy_price)));
         matches.sort((a: any, b: any) => {
           const kmA = a.km && listing.km ? 1 - Math.abs(a.km - listing.km) / 15000 : 0.5;
@@ -299,8 +368,15 @@ Deno.serve(async (req) => {
         const underBuy = Number(best.buy_price) - listing.asking_price;
         const expectedMargin = best.sale_price - listing.asking_price;
 
-        // Loosened intake: discard only if under_buy < -$500
-        if (underBuy < -500) continue;
+        // Intake thresholds differ by source type
+        if (isRetail) {
+          // Retail: allow up to $3k above historical buy (negotiable band)
+          // under_buy of -$3000 means ask = hist_buy + $3000
+          if (underBuy < -3000) continue;
+        } else {
+          // Auction: existing rule — discard if under_buy < -$500
+          if (underBuy < -500) continue;
+        }
 
         accountMatches.push({
           account_id: acctId,
@@ -319,22 +395,36 @@ Deno.serve(async (req) => {
 
       if (accountMatches.length === 0) { discarded++; continue; }
 
-      // Sort by expected_margin DESC → best account first
+      // Sort by expected_margin DESC
       accountMatches.sort((a, b) => b.expected_margin - a.expected_margin);
 
       const best = accountMatches[0];
       const altMatches = accountMatches.slice(1);
 
-      // Determine tier
+      // ── Determine tier ──
       let tier: string;
-      if (best.under_buy >= 1500 && best.expected_margin >= 6000) tier = "CODE_RED";
-      else if (best.under_buy >= 1500 && best.expected_margin >= 4000) tier = "HIGH";
-      else if (best.under_buy >= 1500) tier = "BUY";
-      else tier = "WATCH";
+
+      if (isRetail) {
+        // Retail tiering: based on $3k negotiable band
+        if (best.under_buy >= 1500) {
+          // Ask is $1.5k+ BELOW historical buy — unicorn retail buy
+          tier = "RETAIL_BUY";
+        } else if (best.under_buy >= -3000) {
+          // Ask is within $3k above historical buy — negotiable target
+          tier = "RETAIL_TARGET";
+        } else {
+          tier = "WATCH";
+        }
+      } else {
+        // Auction/wholesale tiering (unchanged)
+        if (best.under_buy >= 1500 && best.expected_margin >= 6000) tier = "CODE_RED";
+        else if (best.under_buy >= 1500 && best.expected_margin >= 4000) tier = "HIGH";
+        else if (best.under_buy >= 1500) tier = "BUY";
+        else tier = "WATCH";
+      }
 
       // Freshness
-      const daysSinceFirst = Math.floor((Date.now() - new Date(listing.first_seen_at).getTime()) / 86400000);
-      const freshness = daysSinceFirst <= 1 ? "today" : daysSinceFirst <= 7 ? "this_week" : "older";
+      const freshness = listing.days_listed <= 1 ? "today" : listing.days_listed <= 7 ? "this_week" : "older";
 
       upsertBatch.push({
         listing_id: listing.listing_id,
@@ -362,18 +452,18 @@ Deno.serve(async (req) => {
         anchor_sale_trim_class: best.anchor_sale_trim_class,
         alt_matches: altMatches,
         tier,
-        days_listed: daysSinceFirst,
+        days_listed: listing.days_listed,
         freshness,
         updated_at: new Date().toISOString(),
       });
       scored++;
+      if (isRetail) retailScored++;
     }
 
-    console.log(`[SCORE] Scored: ${scored}, Discarded: ${discarded}`);
+    console.log(`[SCORE] Scored: ${scored} (${retailScored} retail), Discarded: ${discarded}`);
 
     // ── 5. Batch upsert ──
     if (upsertBatch.length > 0) {
-      // Upsert in chunks of 50
       for (let i = 0; i < upsertBatch.length; i += 50) {
         const chunk = upsertBatch.slice(i, i + 50);
         const { error } = await sb.from("operator_opportunities").upsert(chunk, { onConflict: "listing_id" });
@@ -381,8 +471,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── 6. Expire old entries that are no longer in candidates ──
-    // Mark stale opportunities as expired (older than 7 days without update)
+    // ── 6. Expire stale ──
     await sb.from("operator_opportunities")
       .update({ status: "expired", updated_at: new Date().toISOString() })
       .lt("updated_at", new Date(Date.now() - 7 * 86400000).toISOString())
@@ -394,16 +483,16 @@ Deno.serve(async (req) => {
       cron_name: "score-operator-opportunities",
       run_date: new Date().toISOString().split("T")[0],
       success: true,
-      result: { candidates: candidates.length, scored, discarded, upserted: upsertBatch.length, runtime_ms: runtimeMs },
+      result: { candidates: candidates.length, scored, retail_scored: retailScored, discarded, upserted: upsertBatch.length, runtime_ms: runtimeMs },
     });
     await sb.from("cron_heartbeat").upsert({
       cron_name: "score-operator-opportunities",
       last_seen_at: new Date().toISOString(),
       last_ok: true,
-      note: `candidates=${candidates.length} scored=${scored} discarded=${discarded}`,
+      note: `candidates=${candidates.length} scored=${scored} retail=${retailScored} discarded=${discarded}`,
     }, { onConflict: "cron_name" });
 
-    return respond({ success: true, candidates: candidates.length, scored, discarded, runtime_ms: runtimeMs });
+    return respond({ success: true, candidates: candidates.length, scored, retail_scored: retailScored, discarded, runtime_ms: runtimeMs });
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
