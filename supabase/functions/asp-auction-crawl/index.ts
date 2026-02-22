@@ -54,7 +54,12 @@ const SITE_CONFIGS: Record<string, SiteConfig> = {
   'valley_motor_auctions': {
     defaultLocation: 'Rutherford',
     urlPrefix: 'https://www.valleymotorauctions.com.au/',
-    parserType: 'f3_result_item',  // Uses same F3 result-item structure
+    parserType: 'f3_result_item',
+  },
+  'uaa_nsw': {
+    defaultLocation: 'Gosford',
+    urlPrefix: 'https://www.uaansw.com.au/',
+    parserType: 'f3_result_item',
   },
 };
 
