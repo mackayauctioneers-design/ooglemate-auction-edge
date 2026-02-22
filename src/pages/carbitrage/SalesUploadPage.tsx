@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { FileSpreadsheet, Download, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useAccounts } from "@/hooks/useAccounts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileDropZone } from "@/components/sales-upload/FileDropZone";
 import { HeaderMappingEditor } from "@/components/sales-upload/HeaderMappingEditor";
 import { UploadBatchHistory } from "@/components/sales-upload/UploadBatchHistory";
@@ -161,8 +162,12 @@ export default function SalesUploadPage() {
   const saveProfile = useSaveProfile();
   const { parseFile } = useFileParser();
 
-  // No default — user must explicitly select a dealer account
-
+  // Auto-select if only one account
+  useEffect(() => {
+    if (accounts && accounts.length === 1 && !selectedAccountId) {
+      setSelectedAccountId(accounts[0].id);
+    }
+  }, [accounts, selectedAccountId]);
   const { data: profiles } = useMappingProfiles(selectedAccountId);
 
   const { data: batches, isLoading: batchesLoading } = useQuery({
@@ -545,6 +550,20 @@ export default function SalesUploadPage() {
             Template
           </Button>
         </div>
+
+        {/* Account selector */}
+        {accounts && accounts.length > 1 && (
+          <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+            <SelectTrigger className="w-full sm:w-64">
+              <SelectValue placeholder="Select dealer account" />
+            </SelectTrigger>
+            <SelectContent>
+              {accounts.map((a) => (
+                <SelectItem key={a.id} value={a.id}>{a.display_name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {/* Guard — no account selected */}
         {!selectedAccountId && step === "idle" && (
