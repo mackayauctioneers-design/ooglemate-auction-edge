@@ -157,8 +157,7 @@ function parseListings(html: string): RawParsedListing[] {
       }
     });
 
-    // Skip zero-km placeholder listings
-    if (km === 0 && !transmission && !bodyType) return;
+    // Keep all listings including zero-km placeholders — they're real inventory
 
     listings.push({
       externalId,
