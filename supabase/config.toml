@@ -443,3 +443,8 @@ schedule = "*/10 * * * *"
 [functions.ingestion-daily-digest]
 verify_jwt = false
 schedule = "0 20 * * *"
+
+[functions.manheim-html-ingest]
+verify_jwt = false
+schedule = "0 */3 * * *"
+schedule = "0 20 * * *"
