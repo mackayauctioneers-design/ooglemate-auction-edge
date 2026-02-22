@@ -19,13 +19,14 @@ interface MatchedOpp {
   km: number | null;
   asking_price: number | null;
   match_score: number;
-  fingerprint_make: string | null;
-  fingerprint_model: string | null;
-  sales_count: number | null;
-  km_band: string | null;
-  url_canonical: string | null;
+  fingerprint_make: string;
+  fingerprint_model: string;
+  sales_count: number;
+  km_band: string;
+  url_canonical: string;
   anchor_profit: number | null;
   anchor_sell_price: number | null;
+  anchor_buy_price: number | null;
   anchor_days_to_sell: number | null;
   transmission: string | null;
   body_type: string | null;
@@ -90,23 +91,36 @@ Deno.serve(async (req) => {
     const { data: rawMatches, error: qErr } = await supabase
       .from("matched_opportunities_v1")
       .select(
-        "id, make, model, year, km, asking_price, match_score, fingerprint_make, fingerprint_model, sales_count, km_band, url_canonical, anchor_profit, anchor_sell_price, anchor_days_to_sell, transmission, body_type, created_at"
+        "id, make, model, year, km, asking_price, match_score, fingerprint_make, fingerprint_model, sales_count, km_band, url_canonical, anchor_profit, anchor_sell_price, anchor_buy_price, anchor_days_to_sell, transmission, body_type, created_at"
       )
       .eq("account_id", MACKAY_TRADERS_ACCOUNT_ID)
       .eq("source_searched", "manheim")
       .gte("match_score", minScore)
       .gte("created_at", cutoff)
       .order("match_score", { ascending: false })
-      .limit(50); // fetch extra, then filter for undervalue
+      .limit(100); // fetch extra for dedup + undervalue filtering
 
     if (qErr) throw qErr;
 
     // Filter: only keep lots priced at least X% below anchor sell price
-    const matches = (rawMatches || []).filter((m: any) => {
+    const undervalued = (rawMatches || []).filter((m: any) => {
       if (!m.anchor_sell_price || !m.asking_price) return false;
       const underPct = ((m.anchor_sell_price - m.asking_price) / m.anchor_sell_price) * 100;
       return underPct >= minUndervaluePct;
-    }).slice(0, MAX_ALERTS);
+    }) as MatchedOpp[];
+
+    // Deduplicate: keep only the BEST fingerprint per lot (by url_canonical)
+    const bestPerLot = new Map<string, MatchedOpp>();
+    for (const m of undervalued) {
+      const key = m.url_canonical;
+      const existing = bestPerLot.get(key);
+      if (!existing || m.match_score > existing.match_score) {
+        bestPerLot.set(key, m);
+      }
+    }
+    const matches = [...bestPerLot.values()]
+      .sort((a, b) => b.match_score - a.match_score)
+      .slice(0, MAX_ALERTS);
 
     const today = new Date().toISOString().split("T")[0];
 
@@ -165,14 +179,14 @@ Deno.serve(async (req) => {
       const priceStr = fmtPrice(m.asking_price);
 
       let profitLine = "";
-      if (m.anchor_profit) {
-        profitLine = `\nAnchor profit: *${fmtPrice(m.anchor_profit)}* • Sell: ${fmtPrice(m.anchor_sell_price)}`;
+      if (m.anchor_sell_price && m.asking_price) {
+        const underPct = ((m.anchor_sell_price - m.asking_price) / m.anchor_sell_price * 100).toFixed(0);
+        profitLine = `\n💰 *${underPct}% under anchor* • Profit: ${fmtPrice(m.anchor_profit)} • Sell: ${fmtPrice(m.anchor_sell_price)}`;
         if (m.anchor_days_to_sell) profitLine += ` • ${m.anchor_days_to_sell}d turn`;
       }
 
-      const fpLine = m.fingerprint_make
-        ? `Matched: ${m.fingerprint_make} ${m.fingerprint_model} (${m.sales_count ?? 0} sales)`
-        : "";
+      // Show the specific fingerprint this lot matched
+      const fpLine = `📋 Matched: ${m.fingerprint_make} ${m.fingerprint_model} ${m.km_band} • bought ${fmtPrice(m.anchor_buy_price)}, sold ${fmtPrice(m.anchor_sell_price)}`;
 
       const section: any = {
         type: "section",
@@ -183,7 +197,7 @@ Deno.serve(async (req) => {
             `${priceStr} • ${kmStr} km` +
             (m.transmission ? ` • ${m.transmission}` : "") +
             profitLine +
-            (fpLine ? `\n_${fpLine}_` : ""),
+            `\n_${fpLine}_`,
         },
       };
 
