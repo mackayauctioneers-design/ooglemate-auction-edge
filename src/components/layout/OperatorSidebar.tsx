@@ -25,6 +25,14 @@ import {
   Search,
   Store,
   DollarSign,
+  BarChart3,
+  Eye,
+  Repeat,
+  Trophy,
+  Zap,
+  Map,
+  Bookmark,
+  ShoppingCart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -54,6 +62,30 @@ const operatorSections: NavSection[] = [
     title: 'Trading',
     items: [
       { path: '/operator/trading-desk', label: 'Trading Desk', icon: DollarSign },
+      { path: '/today', label: 'Today', icon: Calendar },
+      { path: '/dealer-dashboard', label: 'Dealer Dashboard', icon: BarChart3 },
+    ],
+  },
+  {
+    title: 'Intelligence',
+    items: [
+      { path: '/intelligence', label: 'Dealer Intelligence', icon: TrendingUp },
+      { path: '/winners', label: 'Winners Watchlist', icon: Trophy },
+      { path: '/replication', label: 'Replication Engine', icon: Repeat },
+      { path: '/buy-again', label: 'Buy Again Targets', icon: ShoppingCart },
+      { path: '/retail-signals', label: 'Retail Signals', icon: Zap },
+      { path: '/regional', label: 'Regional Dashboard', icon: Map },
+    ],
+  },
+  {
+    title: 'Matching & Alerts',
+    items: [
+      { path: '/matches', label: 'Matches', icon: Target },
+      { path: '/matches-inbox', label: 'Matches Inbox', icon: ClipboardList },
+      { path: '/opportunities', label: 'Opportunities', icon: Eye },
+      { path: '/live-alerts', label: 'Live Alerts', icon: Bell },
+      { path: '/hunt-alerts', label: 'Hunt Alerts', icon: Bell },
+      { path: '/alerts-legacy', label: 'Alerts (Legacy)', icon: Bell },
     ],
   },
   {
@@ -64,13 +96,16 @@ const operatorSections: NavSection[] = [
       { path: '/operator/ingestion-audit', label: 'Ingestion Audit', icon: Database },
       { path: '/operator/cron-audit', label: 'Cron Audit Log', icon: Clock },
       { path: '/operator/job-queue', label: 'Job Queue', icon: ListOrdered },
+      { path: '/pickles-ingestion', label: 'Pickles Ingestion', icon: Database },
     ],
   },
   {
     title: 'Matching Engine',
     items: [
       { path: '/operator/fingerprints', label: 'Fingerprints Explorer', icon: Fingerprint },
+      { path: '/fingerprints-legacy', label: 'Fingerprints (Legacy)', icon: Fingerprint },
       { path: '/operator/targets', label: 'Targets Pool', icon: Crosshair },
+      { path: '/josh-targets', label: 'Josh Daily Targets', icon: Target },
       { path: '/operator/benchmark-gaps', label: 'Benchmark Gaps', icon: Target },
       { path: '/operator/trigger-qa', label: 'Trigger QA', icon: FlaskConical },
     ],
@@ -84,6 +119,16 @@ const operatorSections: NavSection[] = [
       { path: '/operator/dealer-urls', label: 'Dealer URL Intake', icon: FileStack },
       { path: '/operator/va-sales', label: 'VA Sales Data', icon: Upload },
       { path: '/admin-tools/va-intake', label: 'VA Intake', icon: Upload },
+    ],
+  },
+  {
+    title: 'Reviews & Tools',
+    items: [
+      { path: '/buyer-review', label: 'Buyer Review Queue', icon: ClipboardList },
+      { path: '/sales-review', label: 'Sales Review', icon: ClipboardList },
+      { path: '/log-sale', label: 'Log Sale', icon: DollarSign },
+      { path: '/saved-searches', label: 'Saved Searches', icon: Bookmark },
+      { path: '/admin-tools-legacy', label: 'Admin Tools', icon: Settings },
     ],
   },
   {

@@ -60,6 +60,30 @@ import ValuationPage from "./pages/ValuationPage";
 import HuntsPage from "./pages/HuntsPage";
 import HuntDetailPage from "./pages/HuntDetailPage";
 
+// Restored orphaned pages (previously redirected)
+import DealerIntelligencePage from "./pages/DealerIntelligencePage";
+import BuyAgainTargetsPage from "./pages/BuyAgainTargetsPage";
+import WinnersWatchlistPage from "./pages/WinnersWatchlistPage";
+import ReplicationEnginePage from "./pages/ReplicationEnginePage";
+import MatchesInboxPage from "./pages/MatchesInboxPage";
+import MatchesPage from "./pages/MatchesPage";
+import LiveAlertsPage from "./pages/LiveAlertsPage";
+import RetailSignalsPage from "./pages/RetailSignalsPage";
+import OpportunitiesPage from "./pages/OpportunitiesPage";
+import TodayPage from "./pages/TodayPage";
+import DealerDashboardPage from "./pages/DealerDashboardPage";
+import FingerprintsPage from "./pages/FingerprintsPage";
+import BuyerReviewQueuePage from "./pages/BuyerReviewQueuePage";
+import SalesReviewPage from "./pages/SalesReviewPage";
+import JoshDailyTargetsPage from "./pages/JoshDailyTargetsPage";
+import LogSalePage from "./pages/LogSalePage";
+import RegionalDashboardPage from "./pages/RegionalDashboardPage";
+import SavedSearchesPage from "./pages/SavedSearchesPage";
+import AdminToolsPage from "./pages/AdminToolsPage";
+import AlertsPage from "./pages/AlertsPage";
+import PicklesIngestionPage from "./pages/PicklesIngestionPage";
+import HuntAlertsPage from "./pages/HuntAlertsPage";
+
 const queryClient = new QueryClient();
 
 // ============================================================================
@@ -93,22 +117,33 @@ const App = () => (
               <Route path="/scan-guide" element={<RequireAuth><ScanGuidePage /></RequireAuth>} />
               <Route path="/auth" element={<AuthPage />} />
 
-              {/* === LEGACY REDIRECTS → Trading Desk === */}
-              <Route path="/today" element={<Navigate to="/trading-desk" replace />} />
-              <Route path="/matches" element={<Navigate to="/trading-desk" replace />} />
-              <Route path="/matches-inbox" element={<Navigate to="/trading-desk" replace />} />
-              <Route path="/buy-again" element={<Navigate to="/trading-desk" replace />} />
-              <Route path="/opportunities" element={<Navigate to="/trading-desk" replace />} />
-              <Route path="/opportunities-legacy" element={<Navigate to="/trading-desk" replace />} />
-              <Route path="/live-alerts" element={<Navigate to="/trading-desk" replace />} />
-              <Route path="/replication" element={<Navigate to="/trading-desk" replace />} />
-              <Route path="/retail-signals" element={<Navigate to="/trading-desk" replace />} />
-              <Route path="/winners" element={<Navigate to="/trading-desk" replace />} />
-              <Route path="/intelligence" element={<Navigate to="/trading-desk" replace />} />
-              <Route path="/targets" element={<Navigate to="/trading-desk" replace />} />
-              <Route path="/dealer-dashboard" element={<Navigate to="/trading-desk" replace />} />
+              {/* === LEGACY REDIRECTS — dealer nav still points to trading desk === */}
 
-              {/* === OPERATOR-ONLY ROUTES (kept for admin workflow) === */}
+              {/* === OPERATOR-ONLY ROUTES (restored intelligence systems) === */}
+              <Route path="/intelligence" element={<OperatorGuard><DealerIntelligencePage /></OperatorGuard>} />
+              <Route path="/buy-again" element={<OperatorGuard><BuyAgainTargetsPage /></OperatorGuard>} />
+              <Route path="/winners" element={<OperatorGuard><WinnersWatchlistPage /></OperatorGuard>} />
+              <Route path="/replication" element={<OperatorGuard><ReplicationEnginePage /></OperatorGuard>} />
+              <Route path="/matches" element={<OperatorGuard><MatchesPage /></OperatorGuard>} />
+              <Route path="/matches-inbox" element={<OperatorGuard><MatchesInboxPage /></OperatorGuard>} />
+              <Route path="/live-alerts" element={<OperatorGuard><LiveAlertsPage /></OperatorGuard>} />
+              <Route path="/retail-signals" element={<OperatorGuard><RetailSignalsPage /></OperatorGuard>} />
+              <Route path="/opportunities" element={<OperatorGuard><OpportunitiesPage /></OperatorGuard>} />
+              <Route path="/today" element={<OperatorGuard><TodayPage /></OperatorGuard>} />
+              <Route path="/dealer-dashboard" element={<OperatorGuard><DealerDashboardPage /></OperatorGuard>} />
+              <Route path="/fingerprints-legacy" element={<OperatorGuard><FingerprintsPage /></OperatorGuard>} />
+              <Route path="/buyer-review" element={<OperatorGuard><BuyerReviewQueuePage /></OperatorGuard>} />
+              <Route path="/sales-review" element={<OperatorGuard><SalesReviewPage /></OperatorGuard>} />
+              <Route path="/josh-targets" element={<OperatorGuard><JoshDailyTargetsPage /></OperatorGuard>} />
+              <Route path="/log-sale" element={<OperatorGuard><LogSalePage /></OperatorGuard>} />
+              <Route path="/regional" element={<OperatorGuard><RegionalDashboardPage /></OperatorGuard>} />
+              <Route path="/saved-searches" element={<OperatorGuard><SavedSearchesPage /></OperatorGuard>} />
+              <Route path="/admin-tools-legacy" element={<OperatorGuard><AdminToolsPage /></OperatorGuard>} />
+              <Route path="/alerts-legacy" element={<OperatorGuard><AlertsPage /></OperatorGuard>} />
+              <Route path="/pickles-ingestion" element={<OperatorGuard><PicklesIngestionPage /></OperatorGuard>} />
+              <Route path="/hunt-alerts" element={<OperatorGuard><HuntAlertsPage /></OperatorGuard>} />
+
+              {/* === OPERATOR-ONLY ROUTES (original) === */}
               <Route path="/josh" element={<OperatorGuard><JoshInboxPage /></OperatorGuard>} />
               <Route path="/watchlist" element={<OperatorGuard><WatchlistPage /></OperatorGuard>} />
               <Route path="/dave" element={<OperatorGuard><DaveInboxPage /></OperatorGuard>} />
