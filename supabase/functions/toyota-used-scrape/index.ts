@@ -150,7 +150,7 @@ async function scrapePage(firecrawlKey: string, pageNum: number): Promise<string
     method: "POST",
     headers: { "Authorization": `Bearer ${firecrawlKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      url, formats: ["markdown"], waitFor: 8000, onlyMainContent: false,
+      url, formats: ["markdown"], waitFor: 8000, onlyMainContent: true, timeout: 15000,
       actions: [
         { type: "wait", milliseconds: 3000 },
         { type: "scroll", direction: "down", amount: 3 },
@@ -222,7 +222,7 @@ serve(async (req) => {
     const sb = createClient(supabaseUrl, serviceKey);
 
     const body = await req.json().catch(() => ({}));
-    const maxPages = body.max_pages || 10;
+    const maxPages = Math.min(body.max_pages || 2, 3); // LOCKED: max 3 pages
     const maxAiCalls = body.max_ai_calls || 30;
 
     const stats = { pages_scraped: 0, parsed: 0, structural_passed: 0, cheap_filter_passed: 0, ai_called: 0, opportunities: 0, slack_sent: 0, winner_hits: 0 };

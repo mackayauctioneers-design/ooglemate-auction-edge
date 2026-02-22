@@ -7,8 +7,8 @@ const cors = {
 };
 
 const SEARCH_URL = "https://www.pickles.com.au/used/search/cars?filter=and%255B0%255D%255Bor%255D%255B0%255D%255BbuyMethod%255D%3DBuy%2520Now&contentkey=cars-to-buy-now";
-const MAX_PAGES = 10;
-const MAX_DETAIL_FETCHES = 50;
+const MAX_PAGES = 2;            // LOCKED: max 2 search pages per run
+const MAX_DETAIL_FETCHES = 10;  // LOCKED: was 50, now hard-capped
 
 const SALVAGE_RE = /salvage|write.?off|wovr|repairable|hail|insurance|damaged|statutory/i;
 
@@ -48,7 +48,7 @@ async function collectListings(firecrawlKey: string): Promise<Listing[]> {
     const resp = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: { "Authorization": "Bearer " + firecrawlKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ url: pageUrl, formats: ["markdown"], waitFor: 5000, onlyMainContent: false }),
+      body: JSON.stringify({ url: pageUrl, formats: ["markdown"], waitFor: 5000, onlyMainContent: true, timeout: 10000 }),
     });
 
     if (!resp.ok) { console.error(`[SEARCH] Firecrawl error page ${page}`); break; }
@@ -155,7 +155,7 @@ async function fetchDetailPrice(url: string, firecrawlKey: string, make: string,
     const resp = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: { "Authorization": "Bearer " + firecrawlKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ url, formats: ["markdown"], waitFor: 3000, onlyMainContent: false }),
+      body: JSON.stringify({ url, formats: ["markdown"], waitFor: 3000, onlyMainContent: true, timeout: 10000 }),
     });
 
     if (!resp.ok) return { price: 0, kms: null, location: "", variant: "" };
