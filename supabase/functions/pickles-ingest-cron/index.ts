@@ -20,9 +20,10 @@ const corsHeaders = {
 
 const SOURCE = "pickles";
 const SEARCH_URL = "https://www.pickles.com.au/used/search/cars?filter=and%255B0%255D%255Bor%255D%255B0%255D%255BbuyMethod%255D%3DBuy%2520Now&contentkey=cars-to-buy-now";
-const MAX_PAGES = 10;
+const MAX_PAGES = 2;          // LOCKED: max 2 search pages per run
 const STALE_HOURS = 48;
-const DAILY_CREDIT_LIMIT = 150;
+const DAILY_CREDIT_LIMIT = 30; // LOCKED: was 150, now hard-capped
+const RUN_CREDIT_CAP = 5;      // LOCKED: max Firecrawl calls per single run
 
 const SALVAGE_RE = /salvage|write.?off|wovr|repairable|hail|insurance|damaged|statutory/i;
 
@@ -150,8 +151,14 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
   let fallbackUsed = false;
 
   for (let page = 1; page <= MAX_PAGES; page++) {
+    // ── RUN CREDIT CAP ──
+    if (firecrawlCalls >= RUN_CREDIT_CAP) {
+      console.log(`[PICKLES] Run credit cap reached (${firecrawlCalls}/${RUN_CREDIT_CAP}). Stopping.`);
+      break;
+    }
+
     const pageUrl = SEARCH_URL + "&page=" + page;
-    console.log(`[PICKLES] Extracting page ${page}`);
+    console.log(`[PICKLES] Extracting page ${page} (call ${firecrawlCalls + 1}/${RUN_CREDIT_CAP})`);
 
     const resp = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
@@ -164,7 +171,8 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
         formats: ["json"],
         jsonOptions: { schema: LISTING_EXTRACT_SCHEMA },
         waitFor: 8000,
-        onlyMainContent: false,
+        onlyMainContent: true,    // LOCKED: no nav/footer
+        timeout: 10000,           // LOCKED: 10s max
       }),
     });
     firecrawlCalls++;

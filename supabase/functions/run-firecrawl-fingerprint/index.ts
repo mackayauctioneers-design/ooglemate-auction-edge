@@ -5,11 +5,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ─── FIRECRAWL GUARDRAILS ────────────────────────────────────────────────────
+const MAX_URLS_PER_RUN = 10;      // LOCKED: hard cap on total Firecrawl calls
+const REQUEST_TIMEOUT = 10000;     // LOCKED: 10s max per scrape
+const ALLOWED_DOMAINS = [
+  "pickles.com.au", "manheim.com.au", "grays.com", "graysonline.com",
+  "carsales.com.au", "autotrader.com.au", "gumtree.com.au",
+  "easyauto123.com.au", "toyota.com.au",
+];
+
+function isAllowedUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, "");
+    return ALLOWED_DOMAINS.some(d => hostname === d || hostname.endsWith("." + d));
+  } catch { return false; }
+}
+
 /**
- * run-firecrawl-fingerprint v1.0
+ * run-firecrawl-fingerprint v2.0 — LOCKED DOWN
  *
- * Pulls search URLs for a fingerprint (or all), sends to Firecrawl,
- * extracts structured listing data, scores, and stores candidates.
+ * Only fetches explicitly provided search URLs (no crawling).
+ * Hard-capped at MAX_URLS_PER_RUN Firecrawl calls.
+ * Domain allowlist enforced.
  */
 
 interface ScrapedListing {
@@ -170,15 +187,25 @@ Deno.serve(async (req) => {
       fpMap.set(fp.id, fp);
     }
 
-    console.log(`[run-firecrawl] Scraping ${searchUrls.length} URLs for ${fpIds.length} fingerprints`);
+    // Apply URL cap
+    const cappedUrls = searchUrls.slice(0, MAX_URLS_PER_RUN);
+    console.log(`[run-firecrawl] Processing ${cappedUrls.length}/${searchUrls.length} URLs (cap: ${MAX_URLS_PER_RUN}) for ${fpIds.length} fingerprints`);
 
     let totalCandidates = 0;
     let totalScraped = 0;
+    let totalSkippedDomain = 0;
 
-    // Process each URL (limit concurrency)
-    for (const su of searchUrls) {
+    // Process each URL — single fetch only, no crawling
+    for (const su of cappedUrls) {
+      // ── DOMAIN ALLOWLIST ──
+      if (!isAllowedUrl(su.search_url)) {
+        console.log(`[run-firecrawl] BLOCKED: ${su.search_url} — not in domain allowlist`);
+        totalSkippedDomain++;
+        continue;
+      }
+
       try {
-        console.log(`[run-firecrawl] Scraping ${su.source}: ${su.search_url.substring(0, 80)}...`);
+        console.log(`[run-firecrawl] Fetching ${su.source}: ${su.search_url.substring(0, 80)}...`);
 
         const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
           method: "POST",
@@ -188,35 +215,34 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify({
             url: su.search_url,
-            formats: [
-              {
-                type: "json",
-                schema: {
-                  type: "object",
-                  properties: {
-                    listings: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          year: { type: "number" },
-                          make: { type: "string" },
-                          model: { type: "string" },
-                          variant: { type: "string" },
-                          kilometres: { type: "number" },
-                          price: { type: "number" },
-                          location: { type: "string" },
-                          seller: { type: "string" },
-                          url: { type: "string" },
-                        },
+            formats: ["json"],
+            jsonOptions: {
+              schema: {
+                type: "object",
+                properties: {
+                  listings: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        year: { type: "number" },
+                        make: { type: "string" },
+                        model: { type: "string" },
+                        variant: { type: "string" },
+                        kilometres: { type: "number" },
+                        price: { type: "number" },
+                        location: { type: "string" },
+                        seller: { type: "string" },
+                        url: { type: "string" },
                       },
                     },
                   },
                 },
-                prompt: "Extract all vehicle listings from this page. For each listing, get the year, make, model, variant/trim, kilometres, price (as number without currency symbol), location, seller name, and the listing URL.",
               },
-            ],
-            waitFor: 3000,
+              prompt: "Extract all vehicle listings from this search results page. For each listing, get year, make, model, variant/trim, kilometres, price (number only), location, seller name, and listing URL.",
+            },
+            onlyMainContent: true,
+            timeout: REQUEST_TIMEOUT,
           }),
         });
 
@@ -287,14 +313,17 @@ Deno.serve(async (req) => {
       await new Promise((r) => setTimeout(r, 1000));
     }
 
-    console.log(`[run-firecrawl] Done: ${totalScraped} URLs scraped, ${totalCandidates} candidates stored`);
+    console.log(`[run-firecrawl] Done: ${totalScraped} URLs scraped, ${totalSkippedDomain} blocked, ${totalCandidates} candidates stored`);
 
     return new Response(
       JSON.stringify({
         success: true,
         urls_scraped: totalScraped,
+        urls_skipped_domain: totalSkippedDomain,
+        urls_capped: searchUrls.length > MAX_URLS_PER_RUN ? searchUrls.length - MAX_URLS_PER_RUN : 0,
         candidates_stored: totalCandidates,
         fingerprints_processed: fpIds.length,
+        guardrails: { max_urls_per_run: MAX_URLS_PER_RUN, request_timeout: REQUEST_TIMEOUT, allowed_domains: ALLOWED_DOMAINS },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
