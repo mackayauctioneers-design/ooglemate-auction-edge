@@ -1207,12 +1207,14 @@ function applyHardGates(
     allowWatch = false;
   }
   
-  // Body type mismatch - Hard reject
-  if (hunt.body_type && classification.body_type &&
-      hunt.body_type !== classification.body_type) {
-    rejectReasons.push(`BODY_MISMATCH:${classification.body_type}`);
-    allowWatch = false;
-  }
+  // Body type mismatch - DISABLED: body type is noise for fingerprint matching.
+  // Prados, LandCruisers, Everests etc all classify as WAGON but are valid targets.
+  // Match by make/model/variant/km/price only.
+  // if (hunt.body_type && classification.body_type &&
+  //     hunt.body_type !== classification.body_type) {
+  //   rejectReasons.push(`BODY_MISMATCH:${classification.body_type}`);
+  //   allowWatch = false;
+  // }
   
   // Must-have tokens (strict mode)
   if (hunt.must_have_mode === 'strict' && hunt.must_have_tokens && hunt.must_have_tokens.length > 0) {
