@@ -439,3 +439,7 @@ schedule = "30 15 * * *"
 [functions.ingestion-health-check]
 verify_jwt = false
 schedule = "*/10 * * * *"
+
+[functions.ingestion-daily-digest]
+verify_jwt = false
+schedule = "0 20 * * *"
