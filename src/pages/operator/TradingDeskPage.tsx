@@ -52,11 +52,13 @@ interface OperatorOpportunity {
 
 type SortField = 'best_expected_margin' | 'best_under_buy' | 'asking_price' | 'year' | 'created_at' | 'tier' | 'auction_datetime';
 
-const tierOrder: Record<string, number> = { CODE_RED: 0, HIGH: 1, BUY: 2, AUCTION_WATCH: 3, WATCH: 4 };
+const tierOrder: Record<string, number> = { CODE_RED: 0, HIGH: 1, BUY: 2, RETAIL_BUY: 3, RETAIL_TARGET: 4, AUCTION_WATCH: 5, WATCH: 6 };
 const tierColors: Record<string, string> = {
   CODE_RED: 'bg-destructive text-destructive-foreground',
   HIGH: 'bg-primary text-primary-foreground',
   BUY: 'bg-accent text-accent-foreground',
+  RETAIL_BUY: 'bg-emerald-500/15 text-emerald-700 border border-emerald-500/30',
+  RETAIL_TARGET: 'bg-amber-500/15 text-amber-700 border border-amber-500/30',
   AUCTION_WATCH: 'bg-violet-500/15 text-violet-700 border border-violet-500/30',
   WATCH: 'bg-muted text-muted-foreground',
 };
@@ -297,10 +299,13 @@ export default function TradingDeskPage() {
 
   const uniqueSources = [...new Set(opportunities.map(o => o.listing_source).filter(Boolean))] as string[];
 
-  const codeRedCount = opportunities.filter(o => o.tier === 'CODE_RED' && ['new', 'reviewed'].includes(o.status)).length;
-  const highCount = opportunities.filter(o => o.tier === 'HIGH' && ['new', 'reviewed'].includes(o.status)).length;
-  const buyCount = opportunities.filter(o => o.tier === 'BUY' && ['new', 'reviewed'].includes(o.status)).length;
-  const watchCount = opportunities.filter(o => o.tier === 'WATCH' && ['new', 'reviewed'].includes(o.status)).length;
+  const active = (tier: string) => opportunities.filter(o => o.tier === tier && ['new', 'reviewed'].includes(o.status)).length;
+  const codeRedCount = active('CODE_RED');
+  const highCount = active('HIGH');
+  const buyCount = active('BUY');
+  const retailBuyCount = active('RETAIL_BUY');
+  const retailTargetCount = active('RETAIL_TARGET');
+  const watchCount = active('WATCH');
   const auctionCount = opportunities.filter(o => o.auction_status && o.auction_status !== 'none' && ['new', 'reviewed'].includes(o.status)).length;
 
   return (
@@ -319,7 +324,7 @@ export default function TradingDeskPage() {
         </div>
 
         {/* KPI Strip */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
           <Card className="border-destructive/30 bg-destructive/5">
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-destructive">{codeRedCount}</p>
@@ -338,13 +343,25 @@ export default function TradingDeskPage() {
               <p className="text-xs text-muted-foreground">BUY</p>
             </CardContent>
           </Card>
+          <Card className="border-emerald-500/30 bg-emerald-500/5">
+            <CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-emerald-600">{retailBuyCount}</p>
+              <p className="text-xs text-muted-foreground">RETAIL BUY</p>
+            </CardContent>
+          </Card>
+          <Card className="border-amber-500/30 bg-amber-500/5">
+            <CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-amber-600">{retailTargetCount}</p>
+              <p className="text-xs text-muted-foreground">RETAIL TARGET</p>
+            </CardContent>
+          </Card>
           <Card className="border-violet-500/30 bg-violet-500/5">
             <CardContent className="p-4 text-center">
               <div className="flex items-center justify-center gap-1.5">
                 <CalendarDays className="h-4 w-4 text-violet-600" />
                 <p className="text-2xl font-bold text-violet-600">{auctionCount}</p>
               </div>
-              <p className="text-xs text-muted-foreground">AUCTION PIPELINE</p>
+              <p className="text-xs text-muted-foreground">AUCTION</p>
             </CardContent>
           </Card>
           <Card>
@@ -376,6 +393,8 @@ export default function TradingDeskPage() {
                 <SelectItem value="CODE_RED">CODE RED</SelectItem>
                 <SelectItem value="HIGH">HIGH</SelectItem>
                 <SelectItem value="BUY">BUY</SelectItem>
+                <SelectItem value="RETAIL_BUY">RETAIL BUY</SelectItem>
+                <SelectItem value="RETAIL_TARGET">RETAIL TARGET</SelectItem>
                 <SelectItem value="AUCTION_WATCH">AUCTION WATCH</SelectItem>
                 <SelectItem value="WATCH">WATCH</SelectItem>
               </SelectContent>
