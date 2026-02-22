@@ -272,11 +272,27 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Pick only the BEST fingerprint per lot (no duplicates)
+      let bestFp: Fingerprint | null = null;
+      let bestScore = -Infinity;
       for (const fp of fingerprints || []) {
-        // Only Tier-1 matches
         if (!matchesTier1(listing, fp)) continue;
+        // Score: tighter year = better, variant specificity bonus, tighter km = better
+        let score = 100;
+        const yearDiff = Math.abs(listing.year - ((fp.year_min + fp.year_max) / 2));
+        score -= yearDiff * 10;
+        if (listing.km && fp.min_km !== null && fp.max_km !== null) {
+          const kmMid = (fp.min_km + fp.max_km) / 2;
+          score -= Math.min(Math.abs(listing.km - kmMid) / 1000, 30);
+        }
+        if (fp.variant_family) score += 10;
+        if (score > bestScore) { bestScore = score; bestFp = fp; }
+      }
 
-        // Create alert - using DB unique index for deduplication
+      if (!bestFp) continue;
+      const fp = bestFp;
+
+      {
         const alertId = `alert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const variant = listing.variant_family || listing.variant_raw || '';
         const timeDisplay = formatAuctionTimeAEST(listing.auction_datetime);
