@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   ExternalLink, Loader2, RefreshCw, Zap, FileText,
-  AlertTriangle, ChevronDown, ChevronUp, DollarSign,
+  AlertTriangle, ChevronDown, ChevronUp, DollarSign, Download,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -93,6 +93,35 @@ function AnchorSale({ opp }: { opp: Opportunity }) {
       )}
     </div>
   );
+}
+
+async function exportSalesCSV() {
+  const { data, error } = await supabase
+    .from("vehicle_sales_truth")
+    .select("make,model,variant,year,km,buy_price,sale_price,profit_pct,days_to_clear,sold_at,trim_class,transmission,fuel_type,drive_type,source")
+    .order("sold_at", { ascending: false });
+  if (error || !data?.length) {
+    toast.error(error?.message || "No sales data found");
+    return;
+  }
+  const headers = ["Make","Model","Variant","Year","KM","Buy Price","Sale Price","Gross Profit","Profit %","Days to Clear","Sold","Trim","Trans","Fuel","Drive","Source"];
+  const rows = data.map((r: any) => [
+    r.make, r.model, r.variant ?? "", r.year, r.km,
+    r.buy_price, r.sale_price,
+    r.buy_price && r.sale_price ? (r.sale_price - r.buy_price).toFixed(2) : "",
+    r.profit_pct != null ? (r.profit_pct * 100).toFixed(1) : "",
+    r.days_to_clear, r.sold_at, r.trim_class ?? "",
+    r.transmission ?? "", r.fuel_type ?? "", r.drive_type ?? "", r.source,
+  ].map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
+  const csv = [headers.join(","), ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `sales-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast.success(`Exported ${data.length} records`);
 }
 
 export default function TradingDeskPage() {
@@ -207,6 +236,9 @@ export default function TradingDeskPage() {
             <Button onClick={runEngine} disabled={running || !accountId} size="sm">
               {running ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Zap className="h-4 w-4 mr-1" />}
               Scan
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportSalesCSV}>
+              <Download className="h-4 w-4 mr-1" /> Export Sales
             </Button>
             <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
