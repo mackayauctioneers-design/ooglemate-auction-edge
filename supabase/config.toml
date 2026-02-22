@@ -435,3 +435,7 @@ schedule = "*/5 * * * *"
 [functions.crosssafe-scheduler]
 verify_jwt = false
 schedule = "30 15 * * *"
+
+[functions.ingestion-health-check]
+verify_jwt = false
+schedule = "*/10 * * * *"
