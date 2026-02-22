@@ -34,7 +34,7 @@ interface PortalListing {
 const PORTAL_BASE_URL = 'https://www.toyota.com.au/used-vehicles/search/';
 
 // Quality gates
-const MIN_YEAR = new Date().getFullYear() - 10;
+const MIN_YEAR = 2016;
 const MAX_KM = 400000;
 const MIN_PRICE = 3000;
 const MAX_PRICE = 200000;

@@ -392,9 +392,8 @@ Deno.serve(async (req) => {
     const { vehicles: allVehicles, mtaIds } = parseListPage(html, sourceKey, config);
     console.log(`[asp-auction-crawl] Parsed ${allVehicles.length} vehicles, ${mtaIds.length} MTA IDs`);
 
-    // Apply 10-year window filter
-    const currentYear = new Date().getFullYear();
-    const minYear = currentYear - 10;
+    // Apply year floor filter (2016+)
+    const minYear = 2016;
     const validVehicles = allVehicles.filter(v => v.year >= minYear);
     console.log(`[asp-auction-crawl] After year filter (>=${minYear}): ${validVehicles.length} vehicles`);
 

@@ -332,9 +332,8 @@ Deno.serve(async (req) => {
       auctionHouse = registrySource?.display_name || source;
     }
 
-    // 10-year window policy: only ingest vehicles from current_year - 10
-    const currentYear = new Date().getFullYear();
-    const minYear = currentYear - 10; // 2016 for 2026
+    // Year floor policy: only ingest vehicles from 2016+
+    const minYear = 2016;
     
     // Price band for dealer-grade ($3k - $150k)
     const PRICE_MIN = 3000;
@@ -532,7 +531,7 @@ Deno.serve(async (req) => {
           regionCounts, 
           snapshotsAdded,
           qualityGates: {
-            minYear: currentYear - 10,
+            minYear: 2016,
             priceMin: 3000,
             priceMax: 150000,
           },

@@ -495,14 +495,13 @@ Deno.serve(async (req) => {
 
     const parsedLots: ParsedLot[] = [];
     const errors: string[] = [];
-    const currentYear = new Date().getFullYear();
-    const minYear = currentYear - 10;
+    const minYear = 2016;
 
     for (const block of lotBlocks) {
       try {
         const lot = parseLotItem(block, listUrl, profile);
         if (lot) {
-          // Apply 10-year window filter
+          // Apply year floor filter (2016+)
           if (lot.year >= minYear) {
             parsedLots.push(lot);
           }
@@ -512,7 +511,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`[bidsonline-crawl] Parsed ${parsedLots.length} valid lots (10-year window: ${minYear}+)`);
+    console.log(`[bidsonline-crawl] Parsed ${parsedLots.length} valid lots (year floor: ${minYear}+)`);
 
     // Debug mode - return parsed data without ingesting
     if (debug) {
