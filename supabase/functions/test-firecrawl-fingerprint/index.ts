@@ -104,12 +104,14 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const fp = body.fingerprint || TEST_FINGERPRINT;
   const urls = body.search_urls || TEST_SEARCH_URLS;
-  const dryRun = body.dry_run === true; // skip Firecrawl, use mock data
+  const dryRun = body.dry_run === true;
+  const debug = body.debug === true;
 
   const results: Array<{
     source: string;
     search_url: string;
     raw_listings_count: number;
+    raw_listings?: Listing[];
     matches: Listing[];
     error?: string;
   }> = [];
@@ -124,8 +126,7 @@ Deno.serve(async (req) => {
         { make: "Toyota", model: "Landcruiser 300", variant: "Sahara", year: 2022, km: 92000, fuel: "Diesel", price: 88000, url: "https://mock.example.com/lot/4", site: su.source },
         { make: "Nissan", model: "Patrol", variant: "Ti", year: 2022, km: 60000, fuel: "Diesel", price: 75000, url: "https://mock.example.com/lot/5", site: su.source },
       ];
-      const matches = mockListings.filter(l => matchesFingerprint(l, fp));
-      results.push({ source: su.source, search_url: su.url, raw_listings_count: mockListings.length, matches });
+      results.push({ source: su.source, search_url: su.url, raw_listings_count: mockListings.length, ...(debug ? { raw_listings: mockListings } : {}), matches });
       continue;
     }
 
@@ -151,7 +152,7 @@ Deno.serve(async (req) => {
       console.log(`[test-fc] ${su.source}: ${listings.length} raw listings`);
 
       const matches = listings.filter(l => matchesFingerprint(l, fp));
-      results.push({ source: su.source, search_url: su.url, raw_listings_count: listings.length, matches });
+      results.push({ source: su.source, search_url: su.url, raw_listings_count: listings.length, ...(debug ? { raw_listings: listings } : {}), matches });
     } catch (err: any) {
       console.error(`[test-fc] Error: ${err.message}`);
       results.push({ source: su.source, search_url: su.url, raw_listings_count: 0, matches: [], error: err.message });
