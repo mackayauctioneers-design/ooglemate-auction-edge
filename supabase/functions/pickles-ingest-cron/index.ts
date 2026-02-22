@@ -168,11 +168,10 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
       },
       body: JSON.stringify({
         url: pageUrl,
-        formats: ["json"],
-        jsonOptions: { schema: LISTING_EXTRACT_SCHEMA },
-        waitFor: 8000,
-        onlyMainContent: true,    // LOCKED: no nav/footer
-        timeout: 10000,           // LOCKED: 10s max
+        formats: ["markdown"],
+        waitFor: 10000,
+        onlyMainContent: false,
+        timeout: 30000,
       }),
     });
     firecrawlCalls++;
@@ -189,50 +188,23 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
     }
 
     const data = await resp.json();
-    let extracted: ExtractedListing[] = data?.data?.json?.listings || data?.json?.listings || [];
+    
+    // Go straight to markdown parsing — JSON extract is unreliable on Pickles SPA
+    const markdown = data?.data?.markdown || data?.markdown || '';
+    let extracted: ExtractedListing[] = [];
 
-    // ── DIAGNOSTIC: log raw response shape on page 1 ──
     if (page === 1) {
-      const keys = Object.keys(data?.data || data || {});
-      console.log(`[PICKLES] Page 1 response keys: ${keys.join(', ')}`);
-      console.log(`[PICKLES] Page 1 extract count: ${extracted.length}`);
-      if (extracted.length === 0) {
-        const md = data?.data?.markdown || data?.markdown || '';
-        console.log(`[PICKLES] Page 1 markdown length: ${md.length}`);
-        console.log(`[PICKLES] Page 1 markdown preview: ${md.slice(0, 500)}`);
-      }
+      console.log(`[PICKLES] Page 1 markdown length: ${markdown.length}`);
+      console.log(`[PICKLES] Page 1 markdown preview: ${markdown.slice(0, 800)}`);
     }
 
-    // ── MARKDOWN FALLBACK: if extract returned 0 on page 1, retry with markdown ──
-    if (extracted.length === 0 && page === 1) {
-      console.log(`[PICKLES] Extract mode returned 0 on page 1 — trying markdown fallback`);
-      const mdResp = await fetch("https://api.firecrawl.dev/v1/scrape", {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer " + firecrawlKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          url: pageUrl,
-          formats: ["markdown"],
-          waitFor: 8000,
-          onlyMainContent: false,
-        }),
-      });
-      firecrawlCalls++;
+    if (markdown.length > 0) {
+      extracted = parseListingsFromMarkdown(markdown);
+      console.log(`[PICKLES] Page ${page}: markdown parsed ${extracted.length} listings`);
+    }
 
-      if (mdResp.ok) {
-        const mdData = await mdResp.json();
-        const markdown = mdData?.data?.markdown || mdData?.markdown || '';
-        console.log(`[PICKLES] Markdown fallback length: ${markdown.length}`);
-        console.log(`[PICKLES] Markdown fallback preview: ${markdown.slice(0, 800)}`);
-        
-        extracted = parseListingsFromMarkdown(markdown);
-        console.log(`[PICKLES] Markdown fallback parsed ${extracted.length} listings`);
-        if (extracted.length > 0) fallbackUsed = true;
-      } else {
-        console.error(`[PICKLES] Markdown fallback also failed: ${mdResp.status}`);
-      }
+    if (extracted.length === 0 && page === 1) {
+      console.log(`[PICKLES] Zero listings from markdown on page 1`);
     }
 
     if (extracted.length === 0) {
@@ -419,7 +391,6 @@ async function upsertListings(sb: any, listings: ScrapedListing[], runId: string
         updated_at: now,
         status: "listed",
         missing_streak: 0,
-        last_ingest_run_id: runId,
       };
       if (l.price > 0 && l.price !== existing.asking_price) updates.asking_price = l.price;
       if (l.kms) updates.km = l.kms;
@@ -476,7 +447,6 @@ async function upsertListings(sb: any, listings: ScrapedListing[], runId: string
         seller_type: "auction",
         source_class: "auction",
         lifecycle_state: "NEW",
-        last_ingest_run_id: runId,
       });
       if (error) errors.push(`Insert ${listingId}: ${error.message}`);
       else newListings++;

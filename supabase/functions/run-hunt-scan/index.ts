@@ -335,16 +335,16 @@ function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
     }
   }
   
-  // Gate: Required body type mismatch - REJECT immediately
-  if (hunt.required_body_type && listing.body_type) {
-    if (listing.body_type.toUpperCase() !== hunt.required_body_type.toUpperCase()) {
-      return { passed: false, rejection_reason: 'BODY_MISMATCH' };
-    }
-  }
-  // If required body but listing unknown - downgrade to WATCH, needs enrichment
-  if (hunt.required_body_type && !listing.body_type) {
-    return { passed: true, downgrade_to_watch: true, downgrade_reason: 'BODY_UNKNOWN_NEEDS_VERIFY' };
-  }
+  // Gate: Body type - DISABLED. Body type is noise for fingerprint matching.
+  // Prados, LandCruisers, Everests etc classify as WAGON but are valid targets.
+  // if (hunt.required_body_type && listing.body_type) {
+  //   if (listing.body_type.toUpperCase() !== hunt.required_body_type.toUpperCase()) {
+  //     return { passed: false, rejection_reason: 'BODY_MISMATCH' };
+  //   }
+  // }
+  // if (hunt.required_body_type && !listing.body_type) {
+  //   return { passed: true, downgrade_to_watch: true, downgrade_reason: 'BODY_UNKNOWN_NEEDS_VERIFY' };
+  // }
   
   // Gate: Required engine family mismatch - REJECT immediately
   if (hunt.required_engine_family && listing.engine_family) {
@@ -377,11 +377,11 @@ function applyHardGates(hunt: Hunt, listing: Listing): GateResult {
     // If series matches, continue to other gates
   }
   
-  // Gate B: Body type mismatch (legacy) - IGNORE immediately
-  if (!hunt.required_body_type && hunt.body_type && listing.body_type && 
-      hunt.body_type !== listing.body_type) {
-    return { passed: false, rejection_reason: 'BODY_MISMATCH' };
-  }
+  // Gate B: Body type mismatch (legacy) - DISABLED (same reason as above)
+  // if (!hunt.required_body_type && hunt.body_type && listing.body_type && 
+  //     hunt.body_type !== listing.body_type) {
+  //   return { passed: false, rejection_reason: 'BODY_MISMATCH' };
+  // }
   
   // Gate C: Engine mismatch (legacy) - IGNORE immediately (or downgrade if listing unknown)
   if (!hunt.required_engine_family && hunt.engine_family && listing.engine_family && 
