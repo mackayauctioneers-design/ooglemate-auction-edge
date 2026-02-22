@@ -7,28 +7,33 @@ const corsHeaders = {
 };
 
 /**
- * fingerprint-match-run v3.0
+ * fingerprint-match-run v4.0
  *
  * Scores directly against vehicle_listings (active only).
- * Now incorporates TIME-DECAYED PROFIT weighting from sales_fingerprints_v1.
+ * Now uses MARKET-REBASED prices and fingerprint expiry.
  *
- * Decay: 3% per month on profit. Fresh profitable patterns dominate;
- * old thin deals slowly fall out of the signal.
+ * Rebasing: Historical margin % is preserved, but price anchors
+ * are recomputed from current market medians for that spec.
+ * rebased_buy_anchor = current market median
+ * rebased_sell_price = market median * (1 + historical_margin_pct)
+ *
+ * Expiry:
+ *   - 'expired' (>24mo, no recent sale) → skipped entirely
+ *   - 'watch' (>12mo + >10% market drift) → match_score capped, status='watch'
+ *   - 'active' → full scoring
  *
  * Scoring (0-100 base, then scaled by decay multiplier):
  *   +40  make+model match (required baseline)
  *   +25  km inside IQR (p25–p75)
  *   +10  km near band (±20k outside IQR)
- *   +15  asking price ≤ price_median
- *   +5   asking price within 10% above median
+ *   +15  asking price ≤ rebased_buy_anchor
+ *   +5   asking price within 10% above rebased anchor
  *   +10  transmission matches dominant
  *   +10  body_type/fuel_type matches dominant
  *   +10  drive_type matches dominant
  *
  * Final score = base_score * decay_multiplier
- * decay_multiplier = 0.6 + 0.4 * avg_decay_factor (range: 0.6 – 1.0)
- *
- * Only creates opportunities with final score ≥ 60.
+ * Only creates opportunities with final score ≥ 60 (or watch-only if fingerprint is 'watch').
  */
 
 interface Fingerprint {
@@ -56,6 +61,17 @@ interface Fingerprint {
   avg_decay_factor: number | null;
   raw_profit_avg: number | null;
   avg_months_ago: number | null;
+  // Rebased columns
+  historical_margin_pct: number | null;
+  historical_buy_median: number | null;
+  historical_sell_median: number | null;
+  rebased_buy_anchor: number | null;
+  rebased_sell_price: number | null;
+  market_sample_size: number;
+  market_drift_pct: number | null;
+  fingerprint_status: string;
+  newest_sale_months_ago: number | null;
+  recent_sales_count: number;
 }
 
 interface VehicleListing {
@@ -110,30 +126,30 @@ function scoreKm(
 
 function scorePrice(
   price: number | null,
-  median: number | null
+  rebasedAnchor: number | null
 ): { score: number; band: string; reason: string } {
-  if (price == null || median == null) {
+  if (price == null || rebasedAnchor == null) {
     return { score: 0, band: "unknown", reason: "price data missing (+0)" };
   }
-  const med = Number(median);
-  if (price <= med) {
+  const anchor = Number(rebasedAnchor);
+  if (price <= anchor) {
     return {
       score: 15,
       band: "below",
-      reason: `$${price.toLocaleString()} ≤ median $${Math.round(med).toLocaleString()} (+15)`,
+      reason: `$${price.toLocaleString()} ≤ rebased anchor $${Math.round(anchor).toLocaleString()} (+15)`,
     };
   }
-  if (price <= med * 1.1) {
+  if (price <= anchor * 1.1) {
     return {
       score: 5,
       band: "near",
-      reason: `$${price.toLocaleString()} near median (+5)`,
+      reason: `$${price.toLocaleString()} near rebased anchor (+5)`,
     };
   }
   return {
     score: 0,
     band: "above",
-    reason: `$${price.toLocaleString()} above median (+0)`,
+    reason: `$${price.toLocaleString()} above rebased anchor (+0)`,
   };
 }
 
@@ -158,17 +174,8 @@ function scoreIdentity(
   };
 }
 
-/**
- * Compute decay multiplier from avg_decay_factor.
- * Range: 0.6 (very old sales) to 1.0 (very recent sales).
- * Formula: 0.6 + 0.4 * decay_factor
- * 
- * A fingerprint with all sales from last month (decay ~0.97) → multiplier ~0.99
- * A fingerprint with avg 12 months old (decay ~0.69) → multiplier ~0.88
- * A fingerprint with avg 24 months old (decay ~0.48) → multiplier ~0.79
- */
 function computeDecayMultiplier(avgDecayFactor: number | null): number {
-  if (avgDecayFactor == null) return 0.8; // Default for missing data
+  if (avgDecayFactor == null) return 0.8;
   const clamped = Math.max(0, Math.min(1, Number(avgDecayFactor)));
   return 0.6 + 0.4 * clamped;
 }
@@ -195,7 +202,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[fingerprint-match-run] v3.0 (time-decay) starting for account=${accountId}, batch=${batchSize}`);
+    console.log(`[fingerprint-match-run] v4.0 (market-rebased) starting for account=${accountId}, batch=${batchSize}`);
     const startTime = Date.now();
 
     // ── Step 1: Optionally refresh fingerprints ──
@@ -207,7 +214,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Step 2: Load fingerprints (now includes decay columns) ──
+    // ── Step 2: Load fingerprints (now includes rebased + status columns) ──
     const { data: fingerprints, error: fpErr } = await supabase
       .from("sales_fingerprints_v1")
       .select("*")
@@ -229,27 +236,31 @@ Deno.serve(async (req) => {
           listings_checked: 0,
           matched: 0,
           skipped: 0,
-          message: "No fingerprints found (all may have decayed below threshold).",
+          message: "No fingerprints found.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Log decay stats
+    // Log fingerprint status breakdown
+    let activeCount = 0, watchCount = 0, expiredCount = 0;
     for (const fp of fingerprints as Fingerprint[]) {
-      console.log(`[fingerprint] ${fp.make} ${fp.model} | sales=${fp.sales_count} | decay_avg=${fp.avg_decay_factor} | profit_avg_raw=$${fp.raw_profit_avg} | profit_avg_decayed=$${fp.weighted_profit_avg} | months_avg=${fp.avg_months_ago}`);
+      if (fp.fingerprint_status === 'expired') expiredCount++;
+      else if (fp.fingerprint_status === 'watch') watchCount++;
+      else activeCount++;
+      console.log(`[fingerprint] ${fp.make} ${fp.model} | status=${fp.fingerprint_status} | sales=${fp.sales_count} | margin=${((fp.historical_margin_pct ?? 0) * 100).toFixed(1)}% | rebased_buy=$${fp.rebased_buy_anchor} | rebased_sell=$${fp.rebased_sell_price} | drift=${fp.market_drift_pct}% | market_n=${fp.market_sample_size} | decay=${fp.avg_decay_factor}`);
     }
+    console.log(`[fingerprint-match-run] ${fingerprints.length} fingerprints: ${activeCount} active, ${watchCount} watch, ${expiredCount} expired`);
 
-    console.log(`[fingerprint-match-run] ${fingerprints.length} fingerprints loaded (post-decay filter)`);
-
-    // Build lookup map keyed by platform_class
+    // Build lookup map keyed by platform_class (skip expired)
     const fpMap = new Map<string, Fingerprint>();
     for (const fp of fingerprints as Fingerprint[]) {
-      const key = (fp.platform_class || `${(fp.make || "").toUpperCase()}:${(fp.model || "").toUpperCase()}`);
+      if (fp.fingerprint_status === 'expired') continue; // Stop using expired
+      const key = fp.platform_class || `${(fp.make || "").toUpperCase()}:${(fp.model || "").toUpperCase()}`;
       fpMap.set(key, fp);
     }
 
-    // ── Step 3: Load active vehicle_listings directly ──
+    // ── Step 3: Load active vehicle_listings ──
     const { data: listings, error: listErr } = await supabase
       .from("vehicle_listings")
       .select("id, listing_id, make, model, year, km, asking_price, variant_raw, transmission, fuel, drivetrain, listing_url, source, platform_class")
@@ -279,7 +290,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[fingerprint-match-run] Scoring ${listings.length} active listings against ${fingerprints.length} fingerprints`);
+    console.log(`[fingerprint-match-run] Scoring ${listings.length} active listings against ${fpMap.size} usable fingerprints`);
 
     // ── Step 4: Score each listing ──
     const opportunities: Array<Record<string, unknown>> = [];
@@ -287,6 +298,8 @@ Deno.serve(async (req) => {
     let skippedBadUrl = 0;
     let skippedDedupe = 0;
     let skippedDecay = 0;
+    let skippedExpired = 0;
+    let watchOnly = 0;
 
     const seenVehicles = new Set<string>();
 
@@ -333,7 +346,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // ── Base Scoring ──
+      // ── Base Scoring (using rebased prices) ──
       let baseScore = 40;
       const reasons: Record<string, string> = {
         make_model: `${listingMake} ${listingModel} matches fingerprint (+40)`,
@@ -343,7 +356,8 @@ Deno.serve(async (req) => {
       baseScore += kmResult.score;
       reasons.km = kmResult.reason;
 
-      const priceResult = scorePrice(listing.asking_price, fp.price_median);
+      // Score price against REBASED buy anchor (not historical median)
+      const priceResult = scorePrice(listing.asking_price, fp.rebased_buy_anchor);
       baseScore += priceResult.score;
       reasons.price = priceResult.reason;
 
@@ -361,16 +375,31 @@ Deno.serve(async (req) => {
 
       // ── Apply time-decay multiplier ──
       const decayMultiplier = computeDecayMultiplier(fp.avg_decay_factor);
-      const finalScore = Math.round(baseScore * decayMultiplier);
+      let finalScore = Math.round(baseScore * decayMultiplier);
 
-      reasons.decay = `decay_mult=${decayMultiplier.toFixed(2)} (avg_decay=${fp.avg_decay_factor}, avg_months=${fp.avg_months_ago}, profit_decayed=$${fp.weighted_profit_avg})`;
+      // ── Watch-only fingerprints: cap score and flag ──
+      const isWatch = fp.fingerprint_status === 'watch';
+      if (isWatch) {
+        finalScore = Math.min(finalScore, 69); // Cap below "high confidence"
+      }
+
+      reasons.rebase = `rebased_buy=$${fp.rebased_buy_anchor} rebased_sell=$${fp.rebased_sell_price} margin=${((fp.historical_margin_pct ?? 0) * 100).toFixed(1)}% drift=${fp.market_drift_pct}%`;
+      reasons.decay = `decay_mult=${decayMultiplier.toFixed(2)} (avg_decay=${fp.avg_decay_factor}, months=${fp.avg_months_ago})`;
+      if (isWatch) reasons.status = `WATCH-only: fingerprint >12mo + market drifted ${fp.market_drift_pct}%`;
 
       // ── Threshold ──
       if (finalScore < 60) {
-        if (baseScore >= 60) skippedDecay++; // Would have passed without decay
+        if (baseScore >= 60) skippedDecay++;
         else skipped++;
         continue;
       }
+
+      if (isWatch) watchOnly++;
+
+      // Compute expected margin using rebased prices
+      const expectedMargin = (fp.rebased_sell_price && listing.asking_price)
+        ? Math.round(Number(fp.rebased_sell_price) - listing.asking_price)
+        : null;
 
       opportunities.push({
         account_id: accountId,
@@ -390,17 +419,22 @@ Deno.serve(async (req) => {
         price_band: priceResult.band,
         match_score: finalScore,
         reasons,
-        status: "open",
+        status: isWatch ? "watch" : "open",
         transmission: listing.transmission,
         fuel_type: listing.fuel,
         drive_type: listing.drivetrain,
         source_searched: listing.source || null,
         source_match_count: 1,
         last_search_at: new Date().toISOString(),
+        // Rebased anchor prices
+        anchor_buy_price: fp.rebased_buy_anchor ? Math.round(Number(fp.rebased_buy_anchor)) : null,
+        anchor_sell_price: fp.rebased_sell_price ? Math.round(Number(fp.rebased_sell_price)) : null,
+        anchor_profit: expectedMargin,
+        median_sell_price: fp.historical_sell_median ? Math.round(Number(fp.historical_sell_median)) : null,
       });
     }
 
-    console.log(`[fingerprint-match-run] Scored: ${opportunities.length} matched, ${skipped} skipped, ${skippedBadUrl} bad-url, ${skippedDedupe} deduped, ${skippedDecay} killed-by-decay`);
+    console.log(`[fingerprint-match-run] Scored: ${opportunities.length} matched (${watchOnly} watch-only), ${skipped} skipped, ${skippedBadUrl} bad-url, ${skippedDedupe} deduped, ${skippedDecay} killed-by-decay, ${expiredCount} expired-fingerprints`);
 
     // ── Step 5: Upsert opportunities ──
     let upserted = 0;
@@ -424,14 +458,18 @@ Deno.serve(async (req) => {
     }
 
     const durationMs = Date.now() - startTime;
-    console.log(`[fingerprint-match-run] Complete: ${upserted} upserted, ${skipped} skipped, ${skippedBadUrl} bad-url, ${skippedDedupe} deduped, ${skippedDecay} decay-killed, ${durationMs}ms`);
+    console.log(`[fingerprint-match-run] Complete: ${upserted} upserted, ${durationMs}ms`);
 
     return new Response(
       JSON.stringify({
         success: true,
         fingerprints_loaded: fingerprints.length,
+        fingerprints_active: activeCount,
+        fingerprints_watch: watchCount,
+        fingerprints_expired: expiredCount,
         listings_checked: listings.length,
         matched: upserted,
+        watch_only: watchOnly,
         skipped,
         skipped_bad_url: skippedBadUrl,
         skipped_dedupe: skippedDedupe,
