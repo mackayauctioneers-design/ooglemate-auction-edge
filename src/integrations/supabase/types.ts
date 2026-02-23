@@ -12219,6 +12219,7 @@ export type Database = {
           zombie_pct: number
         }[]
       }
+      rpc_purge_stale_pickles: { Args: never; Returns: Json }
       rpc_reset_hunt_results: { Args: { p_hunt_id: string }; Returns: Json }
       run_spec_matching_batch: {
         Args: { p_since_hours?: number }
