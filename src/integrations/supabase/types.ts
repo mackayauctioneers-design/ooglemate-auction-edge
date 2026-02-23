@@ -11099,7 +11099,7 @@ export type Database = {
         Returns: string
       }
       derive_trim_from_text: {
-        Args: { p_description: string; p_make: string; p_model: string }
+        Args: { p_description?: string; p_make: string; p_model: string }
         Returns: string
       }
       detect_geo_heat_alerts: {
