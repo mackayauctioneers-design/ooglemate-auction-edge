@@ -121,6 +121,10 @@ const TRIM_LADDER: Record<string, Record<string, number>> = {
 
 function trimAllowed(platformClass: string, listingTrim: string, saleTrim: string): boolean {
   if (saleTrim === listingTrim) return true;
+  // BASE is a fallback — if the sale trim is BASE (unknown), allow any listing trim
+  if (saleTrim === "BASE") return true;
+  // If listing trim is BASE but sale has a real trim, allow (we just don't know listing badge)
+  if (listingTrim === "BASE") return true;
   const ladder = TRIM_LADDER[platformClass];
   if (!ladder) return false;
   const listingRank = ladder[listingTrim];
