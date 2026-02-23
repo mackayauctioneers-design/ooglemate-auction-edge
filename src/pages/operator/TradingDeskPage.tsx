@@ -466,7 +466,7 @@ export default function TradingDeskPage() {
                     return (
                       <Collapsible key={opp.id} asChild open={expandedRows.has(opp.id)} onOpenChange={() => toggleRow(opp.id)}>
                         <>
-                          <TableRow className="border-b border-border">
+                          <TableRow className={`border-b border-border ${opp.tier === 'CODE_RED' ? 'animate-flash-red' : ''}`}>
                             {/* Anchor toggle */}
                             <TableCell className="w-8 px-2">
                               {opp.anchor_sale_id && (
