@@ -68,10 +68,15 @@ Deno.serve(async (req) => {
 
         // Update manual_url_intake if this was triggered from manual intake
         if (job.type === "url_ingest" && job.payload?.intake_id) {
-          await sb.from("manual_url_intake").update({
+          const { error: intakeErr } = await sb.from("manual_url_intake").update({
             status: "ingested",
-            match_score: result?.normalizer?.confidence || null,
+            match_score: result?.normalizer?.confidence ?? null,
           }).eq("id", job.payload.intake_id);
+          if (intakeErr) {
+            console.error(`[WORKER] Failed to update manual_url_intake ${job.payload.intake_id}:`, intakeErr.message);
+          } else {
+            console.log(`[WORKER] manual_url_intake ${job.payload.intake_id} → ingested (score: ${result?.normalizer?.confidence})`);
+          }
         }
 
         await writeAudit(sb, job.id, "succeeded", result);
