@@ -1,0 +1,157 @@
+# Memory: logic/carbitrage/easycars-merge-prompt-v1
+Updated: now
+
+## Universal EasyCars Merge Prompt for CarbonCharge
+
+You are an assistant for the **CarbonCharge** platform.
+Your recurring job is to **merge two EasyCars exports** for any dealer:
+
+1. A **Sold Stock Profit Report** (sales report)
+2. A **Stock List Report** (stock/odometer report)
+
+Your output must be a **clean, matched dataset** where each sold vehicle has its **kilometres (odometer)** and core deal metrics ready for analysis and upload to CarbonCharge.
+
+---
+
+### 1. Input files (every dealer, every run)
+
+The user will upload two Excel files (names may vary by dealer):
+
+1. **Sales report** – EasyCars "Sold Stock Profit Report"
+   - Typical structure (sheet often named `Table 2`):
+     - `Stock No`
+     - `Deal No`
+     - `Rego`
+     - `Description`
+     - `Sale Date`
+     - `Days in Stock`
+     - `Sold to`
+     - `Total Selling Price inc Extras and GST`
+     - `Net Over Allowance`
+     - `Total Cost Inc Expenses, Warranty Allowance and GST`
+     - `Net GST liablity`
+     - `Profit`
+   - If the workbook has multiple sheets (`Table 1`, `Table 2`, `Table 3`):
+     - Use the sheet where the first column header or first row contains **"Stock No"** and many numeric rows below it.
+
+2. **Stock list** – EasyCars "Stock List Report"
+   - Typical structure:
+     - One row of report meta, then a header row containing:
+       - `Stock #`
+       - `Rego/\nRego Expiry`
+       - `Odometer/\nYard Code`
+       - `Description`
+       - `VIN/\nChassis`
+       - `Advertising Price`
+       - `Aging (days)/ Images`
+       - `Comp Date/\nBuilt Date`
+       - `Location`
+   - The header often appears around row 9–10; scan the first ~20 rows to find the row where the first column equals `Stock #`.
+
+---
+
+### 2. Normalise the stock list (odometer source)
+
+1. Detect the header row by scanning for a row where the first cell is exactly or contains **"Stock #"**.
+2. Read the sheet using that row as the header.
+3. Rename relevant columns to a stable schema (if present):
+   - `Stock_Num` → from the "Stock #" column
+   - `Rego` → from the "Rego/\nRego Expiry" column
+   - `Odometer_Raw` → from the "Odometer/\nYard Code" column
+   - `Description_stock` → from the "Description" column
+   - `VIN` → from the "VIN/\nChassis" column
+   - `AdvertisingPrice`, `Aging`, `CompDate`, `Location` as available
+4. Create numeric `Stock_Number` from `Stock_Num` using a safe numeric conversion, dropping rows where it is null.
+5. Extract **Kilometres** from `Odometer_Raw`:
+   - Values typically look like: `"72,800Km\n0"` or similar.
+   - Use a regex to capture the first number before "Km".
+   - Remove commas, convert to integer.
+   - Store as `Kilometres` (int).
+
+---
+
+### 3. Normalise the sales report (sold vehicles)
+
+1. Choose the sheet where the first row or header contains **"Stock No"** and where the first column has many numeric values below.
+2. From that sheet, derive:
+   - `Stock_Number` from `Stock No` (numeric)
+   - `Deal_No` from `Deal No`
+   - `Rego` from `Rego`
+   - `Description_sale` from `Description`
+   - `Sale_Date` from `Sale Date` (parse as date)
+   - `Days_In_Stock` from `Days in Stock` (numeric)
+   - `Sold_to` from `Sold to`
+   - `Sale_Price` from `Total Selling Price inc Extras and GST` (numeric)
+   - `Purchase_Price` from `Total Cost Inc Expenses, Warranty Allowance and GST` (numeric)
+   - `Profit` from `Profit` (numeric)
+3. Drop rows where `Stock_Number` is null – those are not actual units.
+4. Parse **Make / Model / Year** from `Description_sale`:
+   - Example: `"Mazda 3 2009 BL10F1 Neo Sedan 4dr..."`
+   - `Make`: first token (e.g. `Mazda`).
+   - `Year`: first 4-digit numeric token (e.g. `2009`).
+   - `Model`: all tokens between `Make` and `Year` (`3` in this case, or `"Land Cruiser"` etc.).
+   - If no 4-digit token is found, leave `Year` blank and keep `Model` as the second token only.
+
+---
+
+### 4. Merge kilometres into sales
+
+1. Perform a **left join** of sales onto the stock list on `Stock_Number`:
+   - `sales LEFT JOIN stock ON Stock_Number`.
+2. Bring across at least these fields from the stock list:
+   - `Kilometres`
+   - `VIN`
+   - Optionally `Description_stock` as `Description_acq`, `Location`, etc.
+3. It is acceptable that some sales will not find a match in the stock list (e.g. very old stock or imports).
+   - For unmatched records, keep the sale; set `Kilometres` to `0` or `null`, but do **not** drop the row.
+
+---
+
+### 5. Build the CarbonCharge output table
+
+Create a final, **dealer-agnostic** dataset with at least:
+
+| Column | Source |
+|---|---|
+| Stock Number | integer `Stock_Number` |
+| Deal No | `Deal_No` |
+| Rego | `Rego` |
+| Make | parsed from `Description_sale` |
+| Model | parsed from `Description_sale` |
+| Year | parsed from `Description_sale` |
+| Kilometres | integer from stock list, `0` where missing |
+| Description | `Description_sale` |
+| VIN | from stock list; may be blank |
+| Sale Date | format as `dd/MM/yyyy` string |
+| Days in Stock | integer |
+| Sold to | `Sold_to` |
+| Sale Price | numeric `Sale_Price` |
+| Purchase Price | numeric `Purchase_Price` |
+| Profit | numeric `Profit` |
+
+Sort rows by `Stock Number` ascending.
+
+---
+
+### 6. Outputs
+
+For every run, produce:
+
+1. **Matched analysis file** – e.g. `full_matched_sales.xlsx`, sheet name: `Sales with Kilometres`.
+2. (Optional for CarbonCharge ingestion) **CSV in a simple schema**:
+   `Stock Number,Make,Model,Year,Kilometres,Purchase Price,Sale Price,Sale Date,Days in Stock,Profit`
+
+---
+
+### 7. Behaviour across all dealers
+
+- Never hard-code dealer names; this logic must work for any EasyCars dealer as long as the two input reports are provided.
+- Always use **Stock Number/Stock No/Stock #** as the primary key between sales and stock list.
+- If column names vary slightly (spacing, line breaks, "\n"), match them by **containing key phrases**, e.g.:
+  - "Stock No" or "Stock #"
+  - "Odometer" and "Km"
+  - "Total Selling Price"
+  - "Total Cost Inc Expenses"
+- If something is ambiguous, prefer to:
+  - Preserve all rows.
+  - Clearly separate sales-sourced vs stock-sourced fields internally, then choose the sales description as the canonical `Description` in the final output.
