@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { DealerLayout } from "@/components/layout/DealerLayout";
 import { useAccounts } from "@/hooks/useAccounts";
 import { AccountSelector } from "@/components/carbitrage/AccountSelector";
@@ -18,7 +19,8 @@ import { TrendingUp, Target, Sparkles } from "lucide-react";
 
 export default function SalesInsightsPage() {
   const { data: accounts } = useAccounts();
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [searchParams] = useSearchParams();
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(searchParams.get("account") || "");
 
   const [winnersRange, setWinnersRange] = useState<number | null>(12);
   const [drillDown, setDrillDown] = useState<{ make: string; model: string } | null>(null);
