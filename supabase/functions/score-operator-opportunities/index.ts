@@ -154,6 +154,22 @@ interface CandidateListing {
   pass_count: number;
 }
 
+interface PricelessCandidate {
+  listing_id: string;
+  source: string;
+  make: string;
+  model: string;
+  year: number;
+  km: number | null;
+  platform_class: string;
+  trim_class: string;
+  drivetrain_bucket: string;
+  source_url: string;
+  first_seen_at: string;
+  auction_house: string | null;
+  auction_datetime: string | null;
+}
+
 // ─── MAIN ────────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -202,13 +218,23 @@ Deno.serve(async (req) => {
 
     // ── 3. Load candidate listings from ALL 3 sources ──
 
-    // 3a. vehicle_listings (auction/wholesale)
+    // 3a. vehicle_listings (auction/wholesale) — WITH price
     const { data: listings } = await sb
       .from("vehicle_listings")
-      .select("id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count")
+      .select("id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house")
       .in("lifecycle_state", ["NEW", "ACTIVE", "WATCHING"])
       .not("asking_price", "is", null)
       .gt("asking_price", 0)
+      .limit(1000);
+
+    // 3a2. vehicle_listings — WITHOUT price (auction watch candidates)
+    const AUCTION_SOURCES = ["pickles", "grays", "manheim", "slattery", "f3", "auto_auctions", "vma", "bidsonline"];
+    const { data: pricelessListings } = await sb
+      .from("vehicle_listings")
+      .select("id, listing_id, source, make, model, year, km, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, auction_datetime")
+      .in("lifecycle_state", ["NEW", "ACTIVE", "WATCHING"])
+      .in("source", AUCTION_SOURCES)
+      .or("asking_price.is.null,asking_price.eq.0")
       .limit(1000);
 
     // 3b. Shadow (caroogle)
@@ -229,11 +255,13 @@ Deno.serve(async (req) => {
       .gt("asking_price", 0)
       .limit(2000);
 
+    console.log(`[SCORE] Priceless auction candidates: ${pricelessListings?.length ?? 0}`);
+
     // ── Build unified candidate list ──
     const candidates: CandidateListing[] = [];
     const seenIds = new Set<string>();
 
-    // Production listings
+    // Production listings (priced)
     for (const l of (listings || [])) {
       const lid = l.listing_id;
       if (!lid || seenIds.has(lid)) continue;
@@ -487,6 +515,124 @@ Deno.serve(async (req) => {
       if (isRetail) retailScored++;
     }
 
+    // ── 4b. AUCTION WATCH — score priceless auction listings ──
+    const pricelessCandidates: PricelessCandidate[] = [];
+    for (const l of (pricelessListings || [])) {
+      const lid = l.listing_id;
+      if (!lid || seenIds.has(lid)) continue;
+      const make = (l.make || "").toUpperCase().trim();
+      const model = (l.model || "").toUpperCase().trim();
+      if (!make || !model || !l.year) continue;
+      seenIds.add(lid);
+      pricelessCandidates.push({
+        listing_id: lid,
+        source: l.source || "unknown",
+        make, model,
+        year: l.year,
+        km: l.km,
+        platform_class: l.platform_class || derivePlatform(make, model),
+        trim_class: l.variant_family || extractBadge(l.variant_raw) || "UNKNOWN",
+        drivetrain_bucket: drivetrainBucket(l.drivetrain),
+        source_url: l.listing_url || "",
+        first_seen_at: l.first_seen_at || new Date().toISOString(),
+        auction_house: l.auction_house || l.source || null,
+        auction_datetime: l.auction_datetime || null,
+      });
+    }
+
+    let auctionWatchCount = 0;
+    const AUCTION_RISK_BUFFER_PCT = 0.10; // 10% below historical buy
+
+    for (const listing of pricelessCandidates) {
+      if (listing.trim_class === "UNKNOWN") continue;
+
+      // Find best matching sale across all accounts
+      let bestMatch: { account_id: string; account_name: string; anchor: any; target_price: number } | null = null;
+      let bestMargin = -Infinity;
+
+      for (const [acctId, acctSales] of Object.entries(salesByAccount)) {
+        const matches = acctSales.filter((s: any) => {
+          if (s.platform_class !== listing.platform_class) return false;
+          if (!s.trim_class || s.trim_class === "UNKNOWN") return false;
+          if (!trimAllowed(listing.platform_class, listing.trim_class, s.trim_class)) return false;
+          if (Math.abs(s.year - listing.year) > 2) return false;
+          if (s.km && listing.km && Math.abs(s.km - listing.km) > 40000) return false;
+          if (listing.drivetrain_bucket !== "UNKNOWN" && s.drivetrain_bucket && s.drivetrain_bucket !== "UNKNOWN" && listing.drivetrain_bucket !== s.drivetrain_bucket) return false;
+          return true;
+        });
+
+        if (matches.length === 0) continue;
+
+        // Pick the best anchor sale (highest margin, closest km)
+        const maxProfit = Math.max(...matches.map((c: any) => c.sale_price - Number(c.buy_price)));
+        matches.sort((a: any, b: any) => {
+          const kmA = a.km && listing.km ? 1 - Math.abs(a.km - listing.km) / 15000 : 0.5;
+          const kmB = b.km && listing.km ? 1 - Math.abs(b.km - listing.km) / 15000 : 0.5;
+          const pA = (a.sale_price - Number(a.buy_price)) / (maxProfit || 1);
+          const pB = (b.sale_price - Number(b.buy_price)) / (maxProfit || 1);
+          return (kmB * 0.4 + pB * 0.6) - (kmA * 0.4 + pA * 0.6);
+        });
+
+        const best = matches[0];
+        const targetPrice = Math.round(Number(best.buy_price) * (1 - AUCTION_RISK_BUFFER_PCT));
+        const expectedMargin = best.sale_price - targetPrice;
+
+        if (expectedMargin > bestMargin) {
+          bestMargin = expectedMargin;
+          bestMatch = {
+            account_id: acctId,
+            account_name: accountNames[acctId] || "Unknown",
+            anchor: best,
+            target_price: targetPrice,
+          };
+        }
+      }
+
+      if (!bestMatch) continue;
+
+      const daysSince = Math.floor((Date.now() - new Date(listing.first_seen_at).getTime()) / 86400000);
+      const freshness = daysSince <= 1 ? "today" : daysSince <= 7 ? "this_week" : "older";
+
+      upsertBatch.push({
+        listing_id: listing.listing_id,
+        listing_source: listing.source,
+        source_url: listing.source_url,
+        make: listing.make,
+        model: listing.model,
+        variant: listing.trim_class,
+        platform_class: listing.platform_class,
+        trim_class: listing.trim_class,
+        drivetrain_bucket: listing.drivetrain_bucket,
+        year: listing.year,
+        km: listing.km,
+        asking_price: null, // no price yet
+        best_account_id: bestMatch.account_id,
+        best_account_name: bestMatch.account_name,
+        best_expected_margin: bestMargin,
+        best_under_buy: 0, // unknown until price revealed
+        anchor_sale_id: bestMatch.anchor.id,
+        anchor_sale_buy_price: Number(bestMatch.anchor.buy_price),
+        anchor_sale_sell_price: bestMatch.anchor.sale_price,
+        anchor_sale_profit: bestMatch.anchor.sale_price - Number(bestMatch.anchor.buy_price),
+        anchor_sale_sold_at: bestMatch.anchor.sold_at || null,
+        anchor_sale_km: bestMatch.anchor.km || null,
+        anchor_sale_trim_class: bestMatch.anchor.trim_class || "UNKNOWN",
+        alt_matches: [],
+        tier: "AUCTION WATCH",
+        days_listed: daysSince,
+        freshness,
+        pass_count: 0,
+        motivation_signal: null,
+        auction_house: listing.auction_house,
+        auction_datetime: listing.auction_datetime,
+        auction_status: "UPCOMING",
+        auction_target_price: bestMatch.target_price,
+        updated_at: new Date().toISOString(),
+      });
+      auctionWatchCount++;
+    }
+
+    console.log(`[SCORE] Auction Watch: ${auctionWatchCount} from ${pricelessCandidates.length} priceless candidates`);
     console.log(`[SCORE] Scored: ${scored} (${retailScored} retail), Discarded: ${discarded}`);
 
     // ── 5. Batch upsert ──
@@ -510,7 +656,7 @@ Deno.serve(async (req) => {
       cron_name: "score-operator-opportunities",
       run_date: new Date().toISOString().split("T")[0],
       success: true,
-      result: { candidates: candidates.length, scored, retail_scored: retailScored, discarded, upserted: upsertBatch.length, runtime_ms: runtimeMs },
+      result: { candidates: candidates.length, scored, retail_scored: retailScored, auction_watch: auctionWatchCount, discarded, upserted: upsertBatch.length, runtime_ms: runtimeMs },
     });
     await sb.from("cron_heartbeat").upsert({
       cron_name: "score-operator-opportunities",
