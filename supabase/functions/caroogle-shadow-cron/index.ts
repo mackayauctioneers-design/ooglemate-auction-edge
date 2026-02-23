@@ -228,7 +228,7 @@ Deno.serve(async (req) => {
         location: ad.location || ad.suburb || null,
         status: ad.status || "listed",
         seller_type: "auction",
-        listing_url: `https://www.pickles.com.au/cars/item/-/details/${lotId}`,
+        listing_url: `https://www.pickles.com.au/lot/${lotId}`,
         first_seen_at: ad.scrapedAt || ad.scraped_at || now,
         last_seen_at: now,
         updated_at: now,
