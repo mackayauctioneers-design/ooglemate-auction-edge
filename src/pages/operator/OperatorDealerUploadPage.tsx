@@ -211,7 +211,7 @@ export default function OperatorDealerUploadPage() {
           badge: mapped.badge || null,
           variant: mapped.variant || null,
           year: mapped.year ? parseInt(String(mapped.year)) : null,
-          km: mapped.km ? parseInt(String(mapped.km).replace(/[^0-9]/g, "")) : null,
+          km: mapped.km ? Math.floor(parseFloat(String(mapped.km).replace(/[^0-9.]/g, ""))) || null : null,
           sale_price: salePriceVal,
           buy_price: buyPriceVal,
           profit_pct: profitPct,
