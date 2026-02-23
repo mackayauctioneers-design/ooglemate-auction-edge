@@ -310,7 +310,7 @@ export default function TradingDeskPage() {
 
   return (
     <OperatorLayout>
-      <div className="p-4 md:p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-5 max-w-[1600px] mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
@@ -324,56 +324,56 @@ export default function TradingDeskPage() {
         </div>
 
         {/* KPI Strip */}
-        <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
-          <Card className="border-red-500/30 bg-red-500/10">
-            <CardContent className="p-4 text-center">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-2">
+          <Card className="border-red-500/40 bg-red-600/15">
+            <CardContent className="p-3 text-center">
               <p className="text-2xl font-bold text-red-600">{codeRedCount}</p>
-              <p className="text-xs text-muted-foreground">CODE RED</p>
+              <p className="text-[11px] font-semibold text-red-500/80 uppercase tracking-wide">CODE RED</p>
             </CardContent>
           </Card>
           <Card className="border-primary/30 bg-primary/5">
-            <CardContent className="p-4 text-center">
+            <CardContent className="p-3 text-center">
               <p className="text-2xl font-bold text-primary">{highCount}</p>
-              <p className="text-xs text-muted-foreground">HIGH</p>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">HIGH</p>
             </CardContent>
           </Card>
           <Card className="border-accent/30 bg-accent/5">
-            <CardContent className="p-4 text-center">
+            <CardContent className="p-3 text-center">
               <p className="text-2xl font-bold text-accent-foreground">{buyCount}</p>
-              <p className="text-xs text-muted-foreground">BUY</p>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">BUY</p>
             </CardContent>
           </Card>
           <Card className="border-emerald-500/30 bg-emerald-500/5">
-            <CardContent className="p-4 text-center">
+            <CardContent className="p-3 text-center">
               <p className="text-2xl font-bold text-emerald-600">{retailBuyCount}</p>
-              <p className="text-xs text-muted-foreground">RETAIL BUY</p>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">RETAIL BUY</p>
             </CardContent>
           </Card>
           <Card className="border-amber-500/30 bg-amber-500/5">
-            <CardContent className="p-4 text-center">
+            <CardContent className="p-3 text-center">
               <p className="text-2xl font-bold text-amber-600">{retailTargetCount}</p>
-              <p className="text-xs text-muted-foreground">RETAIL TARGET</p>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">RETAIL TARGET</p>
             </CardContent>
           </Card>
           <Card className="border-violet-500/30 bg-violet-500/5">
-            <CardContent className="p-4 text-center">
+            <CardContent className="p-3 text-center">
               <div className="flex items-center justify-center gap-1.5">
                 <CalendarDays className="h-4 w-4 text-violet-600" />
                 <p className="text-2xl font-bold text-violet-600">{auctionCount}</p>
               </div>
-              <p className="text-xs text-muted-foreground">AUCTION</p>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">AUCTION</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 text-center">
+            <CardContent className="p-3 text-center">
               <p className="text-2xl font-bold text-muted-foreground">{watchCount}</p>
-              <p className="text-xs text-muted-foreground">WATCH</p>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">WATCH</p>
             </CardContent>
           </Card>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-3 items-end">
+        <div className="flex flex-wrap gap-2 items-end">
           <div className="w-40">
             <label className="text-xs text-muted-foreground mb-1 block">Account</label>
             <Select value={filterAccount} onValueChange={setFilterAccount}>
@@ -439,23 +439,23 @@ export default function TradingDeskPage() {
           <Card><CardContent className="p-12 text-center"><p className="text-muted-foreground">No opportunities yet. Hit "Run Scoring" to populate.</p></CardContent></Card>
         ) : (
           <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <div className="overflow-x-auto max-w-full">
-              <Table className="table-fixed w-full min-w-[1100px]">
+            <div className="overflow-x-auto">
+              <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-7"></TableHead>
-                    <TableHead className="w-20 cursor-pointer" onClick={() => handleSort('tier')}>Tier <SortIcon field="tier" /></TableHead>
-                    <TableHead className="w-auto">Vehicle</TableHead>
-                    <TableHead className="w-20 text-right cursor-pointer" onClick={() => handleSort('asking_price')}>Ask <SortIcon field="asking_price" /></TableHead>
-                    <TableHead className="w-28">Best Fit</TableHead>
-                    <TableHead className="w-20 text-right cursor-pointer" onClick={() => handleSort('best_expected_margin')}>Margin <SortIcon field="best_expected_margin" /></TableHead>
-                    <TableHead className="w-24 text-right cursor-pointer" onClick={() => handleSort('best_under_buy')}>Under-Buy <SortIcon field="best_under_buy" /></TableHead>
-                    <TableHead className="w-24 cursor-pointer" onClick={() => handleSort('auction_datetime')}>Auction <SortIcon field="auction_datetime" /></TableHead>
-                    <TableHead className="w-20">Source</TableHead>
-                    <TableHead className="w-12 text-right cursor-pointer" onClick={() => handleSort('year')}>Year <SortIcon field="year" /></TableHead>
-                    <TableHead className="w-12 text-right">KM</TableHead>
-                    <TableHead className="w-20">Status</TableHead>
-                    <TableHead className="w-32 text-right">Actions</TableHead>
+                    <TableHead className="w-7 px-1"></TableHead>
+                    <TableHead className="w-[72px] cursor-pointer px-2" onClick={() => handleSort('tier')}>Tier <SortIcon field="tier" /></TableHead>
+                    <TableHead className="px-2">Vehicle</TableHead>
+                    <TableHead className="w-[76px] text-right cursor-pointer px-2" onClick={() => handleSort('asking_price')}>Ask <SortIcon field="asking_price" /></TableHead>
+                    <TableHead className="w-[110px] px-2">Best Fit</TableHead>
+                    <TableHead className="w-[80px] text-right cursor-pointer px-2" onClick={() => handleSort('best_expected_margin')}>Margin <SortIcon field="best_expected_margin" /></TableHead>
+                    <TableHead className="w-[85px] text-right cursor-pointer px-2" onClick={() => handleSort('best_under_buy')}>Under-Buy <SortIcon field="best_under_buy" /></TableHead>
+                    <TableHead className="w-[90px] cursor-pointer px-2" onClick={() => handleSort('auction_datetime')}>Auction <SortIcon field="auction_datetime" /></TableHead>
+                    <TableHead className="w-[80px] px-2">Source</TableHead>
+                    <TableHead className="w-[46px] text-right cursor-pointer px-1" onClick={() => handleSort('year')}>Year <SortIcon field="year" /></TableHead>
+                    <TableHead className="w-[42px] text-right px-1">KM</TableHead>
+                    <TableHead className="w-[70px] px-2">Status</TableHead>
+                    <TableHead className="w-[120px] text-right px-2">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -468,7 +468,7 @@ export default function TradingDeskPage() {
                         <>
                           <TableRow className={`border-b border-border ${opp.tier === 'CODE_RED' ? 'animate-flash-red' : ''}`}>
                             {/* Anchor toggle */}
-                            <TableCell className="w-8 px-2">
+                            <TableCell className="px-1">
                               {opp.anchor_sale_id && (
                                 <CollapsibleTrigger asChild>
                                   <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
@@ -478,20 +478,20 @@ export default function TradingDeskPage() {
                               )}
                             </TableCell>
                             {/* Tier */}
-                            <TableCell>
-                              <span className={`px-2 py-1 rounded text-xs font-bold ${tierColors[opp.tier] || 'bg-muted text-muted-foreground'}`}>
+                            <TableCell className="px-2">
+                              <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-bold leading-tight ${tierColors[opp.tier] || 'bg-muted text-muted-foreground'}`}>
                                 {opp.tier.replace('_', ' ')}
                               </span>
                             </TableCell>
                             {/* Vehicle */}
-                            <TableCell>
-                              <p className="font-medium text-foreground">{opp.make} {opp.model}</p>
-                              <p className="text-xs text-muted-foreground">{opp.variant}</p>
+                            <TableCell className="px-2">
+                              <p className="font-medium text-foreground text-sm truncate">{opp.make} {opp.model}</p>
+                              <p className="text-[11px] text-muted-foreground truncate">{opp.variant}</p>
                             </TableCell>
                             {/* Ask */}
-                            <TableCell className="text-right font-mono text-sm">{fmt(opp.asking_price)}</TableCell>
+                            <TableCell className="text-right font-mono text-sm px-2">{fmt(opp.asking_price)}</TableCell>
                             {/* Best Fit — primary dealer block */}
-                            <TableCell>
+                            <TableCell className="px-2">
                               <div className="space-y-1">
                                 <div className="flex items-center gap-1.5">
                                   <span className="text-sm font-semibold text-primary">{opp.best_account_name || '-'}</span>
@@ -521,17 +521,17 @@ export default function TradingDeskPage() {
                               </div>
                             </TableCell>
                             {/* Margin */}
-                            <TableCell className="text-right">
-                              <span className="font-mono font-semibold text-primary">{fmt(opp.best_expected_margin)}</span>
+                            <TableCell className="text-right px-2">
+                              <span className="font-mono font-semibold text-sm text-primary">{fmt(opp.best_expected_margin)}</span>
                             </TableCell>
                             {/* Under-Buy */}
-                            <TableCell className="text-right">
+                            <TableCell className="text-right px-2">
                               <span className={`font-mono text-sm ${(opp.best_under_buy || 0) >= 1500 ? 'text-primary' : 'text-muted-foreground'}`}>
                                 {fmt(opp.best_under_buy)}
                               </span>
                             </TableCell>
                             {/* Auction */}
-                            <TableCell>
+                            <TableCell className="px-2">
                               <AuctionCalendarBadge
                                 datetime={opp.auction_datetime}
                                 status={opp.auction_status}
@@ -540,19 +540,17 @@ export default function TradingDeskPage() {
                               />
                             </TableCell>
                             {/* Source */}
-                            <TableCell className="text-xs text-muted-foreground">{opp.listing_source}</TableCell>
-                            {/* Year */}
-                            <TableCell className="text-right font-mono text-sm">{opp.year}</TableCell>
-                            {/* KM */}
-                            <TableCell className="text-right font-mono text-sm text-muted-foreground">{fmtKm(opp.km)}</TableCell>
+                            <TableCell className="text-[11px] text-muted-foreground px-2 truncate">{opp.listing_source}</TableCell>
+                            <TableCell className="text-right font-mono text-sm px-1">{opp.year}</TableCell>
+                            <TableCell className="text-right font-mono text-sm text-muted-foreground px-1">{fmtKm(opp.km)}</TableCell>
                             {/* Status */}
-                            <TableCell>
+                            <TableCell className="px-2">
                               <Badge variant={opp.status === 'new' ? 'default' : 'outline'} className="text-xs">
                                 {opp.assigned_to_name ? `→ ${opp.assigned_to_name}` : opp.status}
                               </Badge>
                             </TableCell>
                             {/* Actions — Assign Best + Override + Ignore + Link */}
-                            <TableCell className="text-right">
+                            <TableCell className="text-right px-2">
                               <div className="flex items-center justify-end gap-1">
                                 {opp.best_account_id && opp.status !== 'assigned' && (
                                   <Button
