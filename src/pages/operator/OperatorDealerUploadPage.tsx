@@ -284,6 +284,7 @@ export default function OperatorDealerUploadPage() {
       resetState();
       const msg = `${imported} records imported` + (skipped > 0 ? ` · ${skipped} skipped` : "");
       toast.success(msg);
+      navigate(`/sales-insights?account=${selectedAccountId}`);
     },
     onError: (err: any) => {
       toast.error(err.message);
