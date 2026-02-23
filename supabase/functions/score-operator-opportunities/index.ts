@@ -352,7 +352,7 @@ Deno.serve(async (req) => {
           if (!s.trim_class || s.trim_class === "UNKNOWN") return false;
           if (!trimAllowed(listing.platform_class, listing.trim_class, s.trim_class)) return false;
           if (Math.abs(s.year - listing.year) > 2) return false;
-          if (s.km && listing.km && Math.abs(s.km - listing.km) > 15000) return false;
+          if (s.km && listing.km && Math.abs(s.km - listing.km) > 40000) return false;
           if (listing.drivetrain_bucket !== "UNKNOWN" && s.drivetrain_bucket && s.drivetrain_bucket !== "UNKNOWN" && listing.drivetrain_bucket !== s.drivetrain_bucket) return false;
           return true;
         });

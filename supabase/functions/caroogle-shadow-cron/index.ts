@@ -72,6 +72,66 @@ function extractModel(ad: any): string {
   return rawModel || "UNKNOWN";
 }
 
+// ─── BADGE EXTRACTION ────────────────────────────────────────────────────────
+
+function extractBadge(text: string | null): string {
+  if (!text) return "";
+  const d = text.toUpperCase();
+  const badges = [
+    "EXCEED TOURER", "EXCEED", "X-TERRAIN", "XTERRAIN", "PRO-4X", "PRO4X",
+    "GLX-R", "GLX+", "GLX PLUS", "SR5", "ROGUE", "RUGGED X", "RUGGED-X", "RUGGED",
+    "RAPTOR", "WILDTRAK", "KAKADU", "SAHARA", "ASPIRE", "TITANIUM", "PLATINUM",
+    "GXL", "VX", "GX", "XLT", "XLS", "LS-U", "LSU", "LS-M", "LSM", "LS-T", "LST",
+    "ST-X", "STX", "ST-L", "STL", "GLS", "N-TREK", "COMMUTER", "SLWB", "LWB",
+    "WORKMATE", "AMBIENTE", "TREND",
+    "ASCENT SPORT", "ASCENT", "MAXX SPORT", "MAXX",
+    "AKARI", "GT-LINE", "TOURING",
+  ];
+  const shortBadges = ["SR", "XL", "LS", "ES", "SL", "ST", "TI", "LT", "LTZ", "Z71", "SS", "SSV", "SV6", "SX", "XT", "RX"];
+  for (const b of badges) { if (d.includes(b)) return b; }
+  for (const b of shortBadges) { if (new RegExp(`\\b${b}\\b`).test(d)) return b; }
+  return "";
+}
+
+/**
+ * Extract the model/variant portion from Pickles sellerNotes.
+ * Format: "CP: date,Built: date,Make,Model,SeriesCode Badge,BodyType,..."
+ * We want fields [3] and [4] which contain model code + badge.
+ */
+function extractBadgeFromSellerNotes(notes: string | null): string {
+  if (!notes) return "";
+  const parts = notes.split(",");
+  // Fields 3-4 typically contain: "Ranger", "PX MkIII MY21.75 XL"
+  // or "Hilux", "GUN126R SR5"
+  const modelFields = parts.slice(3, 6).join(" ");
+  return extractBadge(modelFields);
+}
+
+/**
+ * Build a variant_raw string from all available badge sources in the Caroogle API record.
+ * Priority: sellerNotes model fields (most accurate) > grade/variant > title
+ */
+function extractVariantRaw(ad: any): string | null {
+  // 1. Try sellerNotes first — most reliable, extract only model/variant portion
+  const fromNotes = extractBadgeFromSellerNotes(ad.sellerNotes || ad.seller_notes);
+  if (fromNotes) return fromNotes;
+
+  // 2. Try explicit badge/variant/grade fields
+  const explicitSources = [
+    ad.badgeDescription,
+    ad.badge_description,
+    ad.grade,
+    ad.variant,
+  ].filter(Boolean).join(" ");
+  const fromExplicit = extractBadge(explicitSources);
+  if (fromExplicit) return fromExplicit;
+
+  // 3. Fallback: try title + vehicleModel
+  const titleSources = [ad.title, ad.vehicleModel, ad.vehicle_model].filter(Boolean).join(" ");
+  const fromTitle = extractBadge(titleSources);
+  return fromTitle || null;
+}
+
 // ─── MAIN ────────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -146,6 +206,9 @@ Deno.serve(async (req) => {
       if (price && price > 0) withPriceCount++;
       else zeroPriceCount++;
 
+      // ── Extract badge/variant from all available text fields ──
+      const variantRaw = extractVariantRaw(ad);
+
       const now = new Date().toISOString();
 
       rows.push({
@@ -159,6 +222,8 @@ Deno.serve(async (req) => {
         year,
         km,
         asking_price: price,
+        variant_raw: variantRaw,
+        variant_family: variantRaw,  // badge IS the family for auction
         drivetrain: normalizeDrivetrain(ad.driveType || ad.drivetrain || ad.drive_type),
         location: ad.location || ad.suburb || null,
         status: ad.status || "listed",
