@@ -185,7 +185,7 @@ export default function OperatorDealerUploadPage() {
           s = s.replace(/[($,)]/g, "");
           const num = parseFloat(s);
           if (isNaN(num)) return null;
-          return isNeg ? -num : num;
+          return Math.round(isNeg ? -num : num);
         };
 
         const salePriceVal = parseCurrency(mapped.sale_price);
