@@ -66,6 +66,14 @@ Deno.serve(async (req) => {
           })
           .eq("id", job.id);
 
+        // Update manual_url_intake if this was triggered from manual intake
+        if (job.type === "url_ingest" && job.payload?.intake_id) {
+          await sb.from("manual_url_intake").update({
+            status: "ingested",
+            match_score: result?.normalizer?.confidence || null,
+          }).eq("id", job.payload.intake_id);
+        }
+
         await writeAudit(sb, job.id, "succeeded", result);
         results.push({ job_id: job.id, type: job.type, status: "succeeded", result });
         jobsProcessed++;
@@ -90,6 +98,11 @@ Deno.serve(async (req) => {
           error: errorMsg,
           attempt: newAttempts,
         });
+
+        // Update manual_url_intake on permanent failure
+        if (shouldPark && job.type === "url_ingest" && job.payload?.intake_id) {
+          await sb.from("manual_url_intake").update({ status: "failed" }).eq("id", job.payload.intake_id);
+        }
 
         results.push({ job_id: job.id, type: job.type, status: shouldPark ? "parked" : "retry", error: errorMsg });
         jobsProcessed++;
