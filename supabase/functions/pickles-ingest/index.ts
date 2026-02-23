@@ -118,7 +118,7 @@ function parsePicklesCatalogue(rawText: string, eventId: string, auctionDate: st
         fuel,
         location,
         auction_datetime: auctionDate,
-        listing_url: `https://www.pickles.com.au/cars/item/-/details/${eventId}/${lotNumber}`,
+        listing_url: `https://www.pickles.com.au/lot/${eventId}/${lotNumber}`,
       });
     }
   }
