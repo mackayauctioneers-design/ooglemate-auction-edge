@@ -21,6 +21,7 @@ import {
   findMatchingProfile,
 } from "@/hooks/useHeaderMapping";
 import { normaliseDateValue } from "@/utils/salesUploadUtils";
+import { derivePlatform } from "@/utils/derivePlatform";
 
 type UploadStep = "idle" | "parsing" | "mapping" | "importing";
 
@@ -223,6 +224,7 @@ export default function OperatorDealerUploadPage() {
           source: "operator",
           confidence: mapped.make && mapped.model ? "high" : "medium",
           days_to_clear: daysToCleer,
+          platform_class: derivePlatform(mapped.make, mapped.model),
         });
       }
 
