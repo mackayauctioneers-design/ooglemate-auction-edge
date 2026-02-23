@@ -54,7 +54,7 @@ type SortField = 'best_expected_margin' | 'best_under_buy' | 'asking_price' | 'y
 
 const tierOrder: Record<string, number> = { CODE_RED: 0, HIGH: 1, BUY: 2, RETAIL_BUY: 3, RETAIL_TARGET: 4, AUCTION_WATCH: 5, WATCH: 6 };
 const tierColors: Record<string, string> = {
-  CODE_RED: 'bg-destructive text-destructive-foreground',
+  CODE_RED: 'bg-red-600 text-white',
   HIGH: 'bg-primary text-primary-foreground',
   BUY: 'bg-accent text-accent-foreground',
   RETAIL_BUY: 'bg-emerald-500/15 text-emerald-700 border border-emerald-500/30',
@@ -325,9 +325,9 @@ export default function TradingDeskPage() {
 
         {/* KPI Strip */}
         <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
-          <Card className="border-destructive/30 bg-destructive/5">
+          <Card className="border-red-500/30 bg-red-500/10">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-destructive">{codeRedCount}</p>
+              <p className="text-2xl font-bold text-red-600">{codeRedCount}</p>
               <p className="text-xs text-muted-foreground">CODE RED</p>
             </CardContent>
           </Card>
@@ -439,23 +439,23 @@ export default function TradingDeskPage() {
           <Card><CardContent className="p-12 text-center"><p className="text-muted-foreground">No opportunities yet. Hit "Run Scoring" to populate.</p></CardContent></Card>
         ) : (
           <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <Table>
+            <div className="overflow-x-auto max-w-full">
+              <Table className="table-fixed w-full min-w-[1100px]">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-8"></TableHead>
-                    <TableHead className="cursor-pointer" onClick={() => handleSort('tier')}>Tier <SortIcon field="tier" /></TableHead>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead className="text-right cursor-pointer" onClick={() => handleSort('asking_price')}>Ask <SortIcon field="asking_price" /></TableHead>
-                    <TableHead>Best Fit</TableHead>
-                    <TableHead className="text-right cursor-pointer" onClick={() => handleSort('best_expected_margin')}>Margin <SortIcon field="best_expected_margin" /></TableHead>
-                    <TableHead className="text-right cursor-pointer" onClick={() => handleSort('best_under_buy')}>Under-Buy <SortIcon field="best_under_buy" /></TableHead>
-                    <TableHead className="cursor-pointer" onClick={() => handleSort('auction_datetime')}>Auction <SortIcon field="auction_datetime" /></TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead className="text-right cursor-pointer" onClick={() => handleSort('year')}>Year <SortIcon field="year" /></TableHead>
-                    <TableHead className="text-right">KM</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="w-7"></TableHead>
+                    <TableHead className="w-20 cursor-pointer" onClick={() => handleSort('tier')}>Tier <SortIcon field="tier" /></TableHead>
+                    <TableHead className="w-auto">Vehicle</TableHead>
+                    <TableHead className="w-20 text-right cursor-pointer" onClick={() => handleSort('asking_price')}>Ask <SortIcon field="asking_price" /></TableHead>
+                    <TableHead className="w-28">Best Fit</TableHead>
+                    <TableHead className="w-20 text-right cursor-pointer" onClick={() => handleSort('best_expected_margin')}>Margin <SortIcon field="best_expected_margin" /></TableHead>
+                    <TableHead className="w-24 text-right cursor-pointer" onClick={() => handleSort('best_under_buy')}>Under-Buy <SortIcon field="best_under_buy" /></TableHead>
+                    <TableHead className="w-24 cursor-pointer" onClick={() => handleSort('auction_datetime')}>Auction <SortIcon field="auction_datetime" /></TableHead>
+                    <TableHead className="w-20">Source</TableHead>
+                    <TableHead className="w-12 text-right cursor-pointer" onClick={() => handleSort('year')}>Year <SortIcon field="year" /></TableHead>
+                    <TableHead className="w-12 text-right">KM</TableHead>
+                    <TableHead className="w-20">Status</TableHead>
+                    <TableHead className="w-32 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
