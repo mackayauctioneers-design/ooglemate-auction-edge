@@ -4395,6 +4395,53 @@ export type Database = {
           },
         ]
       }
+      manual_url_intake: {
+        Row: {
+          crosssafe_job_id: string | null
+          id: string
+          match_score: number | null
+          notes: string | null
+          opportunity_id: string | null
+          source: string
+          status: string
+          submitted_at: string
+          submitted_by: string
+          url: string
+        }
+        Insert: {
+          crosssafe_job_id?: string | null
+          id?: string
+          match_score?: number | null
+          notes?: string | null
+          opportunity_id?: string | null
+          source?: string
+          status?: string
+          submitted_at?: string
+          submitted_by: string
+          url: string
+        }
+        Update: {
+          crosssafe_job_id?: string | null
+          id?: string
+          match_score?: number | null
+          notes?: string | null
+          opportunity_id?: string | null
+          source?: string
+          status?: string
+          submitted_at?: string
+          submitted_by?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_url_intake_crosssafe_job_id_fkey"
+            columns: ["crosssafe_job_id"]
+            isOneToOne: false
+            referencedRelation: "crosssafe_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       matched_opportunities_v1: {
         Row: {
           account_id: string

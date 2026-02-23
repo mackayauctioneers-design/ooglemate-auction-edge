@@ -33,6 +33,7 @@ import {
   Map,
   Bookmark,
   ShoppingCart,
+  Link2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -114,6 +115,7 @@ const operatorSections: NavSection[] = [
     title: 'Sources',
     items: [
       { path: '/operator/dealer-upload', label: 'Dealer Upload', icon: Upload },
+      { path: '/operator/manual-intake', label: 'Manual Intake', icon: Link2 },
       { path: '/operator/traps', label: 'Traps Registry', icon: Database },
       { path: '/operator/preflight', label: 'Preflight Queue', icon: Radar },
       { path: '/operator/dealer-urls', label: 'Dealer URL Intake', icon: FileStack },
