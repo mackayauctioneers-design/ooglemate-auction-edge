@@ -19,6 +19,7 @@ import {
   useSaveProfile,
   findMatchingProfile,
 } from "@/hooks/useHeaderMapping";
+import { derivePlatform } from "@/utils/derivePlatform";
 
 type UploadStep = "idle" | "parsing" | "mapping" | "importing";
 
@@ -346,6 +347,7 @@ export default function SalesUploadPage() {
           source: "dealer",
           confidence: mapped.make && mapped.model ? "high" : "medium",
           days_to_clear: daysToCleer,
+          platform_class: derivePlatform(mapped.make, mapped.model),
         });
       }
 
