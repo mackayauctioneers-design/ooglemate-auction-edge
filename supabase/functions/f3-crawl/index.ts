@@ -314,6 +314,15 @@ Deno.serve(async (req) => {
       },
     });
 
+    // Write heartbeat
+    const noteStr = `found=${allVehicles.length} valid=${validVehicles.length} new=${ingestResponse.data?.created ?? 0} upd=${ingestResponse.data?.updated ?? 0}`;
+    await supabase.from("cron_heartbeat").upsert({
+      cron_name: "f3-crawl",
+      last_seen_at: new Date().toISOString(),
+      last_ok: true,
+      note: noteStr,
+    }, { onConflict: "cron_name" });
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -342,6 +351,12 @@ Deno.serve(async (req) => {
         success: false,
         error: errorMsg,
       });
+      await supabase.from("cron_heartbeat").upsert({
+        cron_name: "f3-crawl",
+        last_seen_at: new Date().toISOString(),
+        last_ok: false,
+        note: errorMsg.slice(0, 200),
+      }, { onConflict: "cron_name" });
     } catch (logErr) {
       console.error('[f3-crawl] Failed to log to audit:', logErr);
     }

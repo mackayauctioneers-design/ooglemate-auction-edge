@@ -359,6 +359,15 @@ Deno.serve(async (req) => {
       result: metrics,
     });
 
+    // ── Write heartbeat ──
+    const noteStr = `found=${metrics.raw_listings} valid=${metrics.valid_listings} upserted=${metrics.upserted} stubs=${metrics.stubs_created}`;
+    await supabase.from("cron_heartbeat").upsert({
+      cron_name: "slattery-crawl",
+      last_seen_at: new Date().toISOString(),
+      last_ok: metrics.errors.length === 0,
+      note: noteStr,
+    }, { onConflict: "cron_name" });
+
     return new Response(
       JSON.stringify({ success: true, metrics }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -377,6 +386,14 @@ Deno.serve(async (req) => {
       error: errMsg.slice(0, 500),
       result: metrics,
     }).catch(() => {});
+
+    // Heartbeat on failure
+    await supabase.from("cron_heartbeat").upsert({
+      cron_name: "slattery-crawl",
+      last_seen_at: new Date().toISOString(),
+      last_ok: false,
+      note: errMsg.slice(0, 200),
+    }, { onConflict: "cron_name" }).catch(() => {});
 
     return new Response(
       JSON.stringify({ success: false, error: errMsg, metrics }),
