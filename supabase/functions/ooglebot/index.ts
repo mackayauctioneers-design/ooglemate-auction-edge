@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
       headers["x-openclaw-agent-id"] = String(agent).trim();
     }
 
-    const response = await fetch("https://seminars-somerset-scale-missile.trycloudflare.com/v1/chat/completions", {
+    const response = await fetch("https://consistency-commitments-handed-moms.trycloudflare.com/v1/chat/completions", {
       method: "POST",
       headers,
       body: JSON.stringify({
