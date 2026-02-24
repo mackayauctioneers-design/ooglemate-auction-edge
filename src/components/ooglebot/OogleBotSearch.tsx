@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { searchOpenClaw } from "@/lib/api/openclaw";
+import { searchOogleBot } from "@/lib/api/ooglebot";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,7 +12,7 @@ import { Loader2, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
 
-export function VehicleSearch() {
+export function OogleBotSearch() {
   const { toast } = useToast();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<string>("");
@@ -25,10 +25,10 @@ export function VehicleSearch() {
     setResults("");
 
     try {
-      const reply = await searchOpenClaw(query);
+      const reply = await searchOogleBot(query);
       setResults(reply);
     } catch (err) {
-      console.error("OpenClaw search error:", err);
+      console.error("OogleBot search error:", err);
       toast({
         title: "Search failed",
         description:
@@ -46,7 +46,7 @@ export function VehicleSearch() {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Search className="h-5 w-5 text-primary" />
-            CarboCharge — Active Hunt Search
+            OogleBot — Active Hunt
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
