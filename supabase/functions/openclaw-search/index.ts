@@ -1,0 +1,66 @@
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const apiKey = Deno.env.get("OPENCLAW_API_KEY");
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ success: false, error: "OPENCLAW_API_KEY not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { message, agent = "main" } = await req.json();
+
+    if (!message) {
+      return new Response(
+        JSON.stringify({ success: false, error: "message is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("OpenClaw search:", message);
+
+    const response = await fetch("http://40.160.63.64:18789/api/v1/chat", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ message, agent }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("OpenClaw API error:", response.status, errText);
+      return new Response(
+        JSON.stringify({ success: false, error: `API error: ${response.status}` }),
+        { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const data = await response.json();
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        reply: data.reply || data.message || data.response || JSON.stringify(data),
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("OpenClaw proxy error:", error);
+    return new Response(
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : String(error) }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
