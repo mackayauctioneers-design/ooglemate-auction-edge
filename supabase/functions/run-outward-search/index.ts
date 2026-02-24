@@ -6,7 +6,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ── Whitelisted domains ──
+// ══════════════════════════════════════════
+// WHITELISTED DOMAINS — no free browsing
+// ══════════════════════════════════════════
 const WHITELISTED_DOMAINS = [
   "pickles.com.au",
   "grays.com",
@@ -20,137 +22,197 @@ const WHITELISTED_DOMAINS = [
   "easyauto123.com.au",
 ];
 
-// ── Intent parse schema for OpenClaw ──
-const INTENT_SCHEMA = `You are a vehicle search query parser. Return ONLY a JSON object, nothing else.
+// ══════════════════════════════════════════
+// KNOWN MAKES — dictionary match
+// ══════════════════════════════════════════
+const KNOWN_MAKES = [
+  "TOYOTA", "FORD", "HOLDEN", "MAZDA", "NISSAN", "MITSUBISHI",
+  "HYUNDAI", "KIA", "SUBARU", "HONDA", "VOLKSWAGEN", "VW",
+  "BMW", "MERCEDES", "MERCEDES-BENZ", "AUDI", "LEXUS",
+  "ISUZU", "SUZUKI", "JEEP", "LAND ROVER", "LANDROVER",
+  "VOLVO", "PEUGEOT", "RENAULT", "SKODA", "FIAT", "TESLA",
+  "RAM", "DODGE", "CHEVROLET", "GMC", "HINO", "FUSO",
+  "IVECO", "MAN", "SCANIA", "KENWORTH", "MACK",
+  "LDV", "GWM", "HAVAL", "MG", "BYD", "GREAT WALL",
+  "CHRYSLER", "CITROEN", "MINI", "PORSCHE", "JAGUAR",
+  "BENTLEY", "ROLLS ROYCE", "FERRARI", "LAMBORGHINI",
+  "MASERATI", "ALFA ROMEO", "GENESIS", "CUPRA", "SEAT",
+];
 
-Schema:
-{"make":string|null,"model_keywords":string[],"year_min":number|null,"year_max":number|null,"max_km":number|null,"price_max":number|null}
-
-Rules:
-- Uppercase make
-- model_keywords is an array of uppercase keywords for the model/variant. E.g. "Toyota HiAce Commuter" → ["HIACE","COMMUTER"]. "Ford Ranger Wildtrak" → ["RANGER","WILDTRAK"].
-- A single year like "2024" means year_min=2024, year_max=2024
-- A range "2022-2024" means year_min=2022, year_max=2024
-- "under 50k" means price_max=50000
-- "low km" means max_km=60000
-- Use null for anything not specified
-- Output raw JSON only. No markdown. No backticks.`;
-
-// ── Listing extraction schema for OpenClaw ──
-const EXTRACT_SCHEMA = `You are a vehicle listing data extractor. Given the markdown content of a vehicle listing page, extract structured data. Return ONLY a JSON object.
-
-Schema:
-{"title":string|null,"year":number|null,"km":number|null,"price":number|null,"location":string|null}
-
-Rules:
-- year: 4-digit year of the vehicle
-- km: odometer reading as integer (no commas). If listed as "xxx,xxx km" extract digits only.
-- price: asking price as integer (no commas, no $). For auction lots with no price, use null.
-- location: city/state if mentioned, otherwise null
-- title: the vehicle title/description
-- If a field is not found on the page, return null
-- Output raw JSON only. No markdown. No backticks.`;
-
+// ══════════════════════════════════════════
+// STEP 1: Deterministic intent parser (NO AI)
+// ══════════════════════════════════════════
 interface ParsedIntent {
   make: string | null;
   model_keywords: string[];
-  year_min: number | null;
-  year_max: number | null;
+  year: number | null;
   max_km: number | null;
   price_max: number | null;
 }
 
-interface OutwardResult {
+function parseInstruction(raw: string): ParsedIntent {
+  const input = raw.trim().toUpperCase();
+  const tokens = input.split(/\s+/);
+
+  // Year: first 4-digit number 2000–2030
+  let year: number | null = null;
+  const yearMatch = input.match(/\b(20[0-3]\d)\b/);
+  if (yearMatch) year = parseInt(yearMatch[1], 10);
+
+  // Max KM: number before "km" or "kms"
+  let max_km: number | null = null;
+  const kmMatch = input.match(/([\d,]+)\s*(?:km|kms)\b/i);
+  if (kmMatch) {
+    max_km = parseInt(kmMatch[1].replace(/,/g, ""), 10);
+  } else if (/\bLOW\s*KM\b/i.test(input)) {
+    max_km = 60000;
+  }
+
+  // Price max: "under $XX,XXX" or "under XXk" or "under XXXXX" or "budget $XX,XXX"
+  let price_max: number | null = null;
+  const priceMatch = input.match(/(?:UNDER|BELOW|MAX|BUDGET)\s*\$?\s*([\d,]+)\s*K?\b/i);
+  if (priceMatch) {
+    let p = parseInt(priceMatch[1].replace(/,/g, ""), 10);
+    if (p < 1000) p *= 1000; // "50k" → 50000
+    price_max = p;
+  }
+
+  // Make: dictionary match against tokens
+  let make: string | null = null;
+  let makeTokenCount = 0;
+  for (const known of KNOWN_MAKES) {
+    const knownParts = known.split(/\s+/);
+    // Check if consecutive tokens match
+    for (let i = 0; i <= tokens.length - knownParts.length; i++) {
+      const slice = tokens.slice(i, i + knownParts.length).join(" ");
+      if (slice === known) {
+        make = known === "VW" ? "VOLKSWAGEN" : known === "LANDROVER" ? "LAND ROVER" : known;
+        makeTokenCount = knownParts.length;
+        break;
+      }
+    }
+    if (make) break;
+  }
+
+  // Model keywords: everything that's NOT year, km phrase, price phrase, or make
+  const stripPatterns = [
+    /\b20[0-3]\d\b/g,                            // year
+    /[\d,]+\s*(?:km|kms)\b/gi,                    // km
+    /(?:UNDER|BELOW|MAX|BUDGET)\s*\$?\s*[\d,]+\s*K?\b/gi, // price
+    /\bLOW\s*KM\b/gi,                              // "low km"
+  ];
+
+  let remaining = input;
+  for (const pat of stripPatterns) {
+    remaining = remaining.replace(pat, " ");
+  }
+  // Remove make tokens
+  if (make) {
+    remaining = remaining.replace(new RegExp(`\\b${make.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, "g"), " ");
+  }
+
+  const model_keywords = remaining
+    .split(/\s+/)
+    .map((t) => t.replace(/[^A-Z0-9-]/g, ""))
+    .filter((t) => t.length >= 2);
+
+  return { make, model_keywords, year, max_km, price_max };
+}
+
+// ══════════════════════════════════════════
+// STEP 3: Deterministic field extraction (NO AI)
+// ══════════════════════════════════════════
+interface ExtractedListing {
+  url: string;
   source: string;
   title: string | null;
   year: number | null;
   km: number | null;
   price: number | null;
   location: string | null;
-  url: string;
-  score: number;
 }
 
-// ── Call OpenClaw for JSON extraction ──
-async function callOpenClaw(
-  apiKey: string,
-  systemPrompt: string,
-  userContent: string,
-  timeoutMs = 25000
-): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(
-      "https://consistency-commitments-handed-moms.trycloudflare.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "openclaw",
-          temperature: 0,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userContent },
-          ],
-        }),
-        signal: controller.signal,
-      }
-    );
-    if (!res.ok) throw new Error(`OpenClaw ${res.status}`);
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content || "";
-  } finally {
-    clearTimeout(timer);
-  }
-}
+function extractFromMarkdown(markdown: string, url: string, domain: string, titleHint: string): ExtractedListing {
+  const text = markdown || "";
 
-// ── Extract JSON from LLM response ──
-function extractJson(raw: string): any {
-  let cleaned = raw;
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced) cleaned = fenced[1].trim();
-  else {
-    const braced = raw.match(/\{[\s\S]*\}/);
-    if (braced) cleaned = braced[0].trim();
-  }
-  return JSON.parse(cleaned);
-}
-
-// ── Score a result deterministically ──
-function scoreResult(
-  r: { year: number | null; km: number | null; price: number | null },
-  intent: ParsedIntent
-): number {
-  let score = 50;
-
-  // KM: required if max_km set
-  if (intent.max_km && r.km != null) {
-    if (r.km > intent.max_km) return 0; // disqualified
-    score += 20 * (1 - r.km / intent.max_km); // lower km = higher score
+  // Title: use metadata title or first heading
+  let title = titleHint || null;
+  if (!title) {
+    const h1 = text.match(/^#\s+(.+)$/m);
+    if (h1) title = h1[1].trim();
   }
 
-  // Year proximity
-  if (intent.year_min && r.year != null) {
-    if (r.year >= intent.year_min) score += 15;
-    else score -= 10 * (intent.year_min - r.year);
-  }
+  // Year: first 4-digit 2000-2030
+  let year: number | null = null;
+  const yearM = text.match(/\b(20[0-3]\d)\b/);
+  if (yearM) year = parseInt(yearM[1], 10);
 
-  // Price: lower is better
-  if (r.price != null && intent.price_max) {
-    if (r.price <= intent.price_max) {
-      score += 15 * (1 - r.price / intent.price_max);
-    } else {
-      score -= 10;
+  // Price: $XX,XXX pattern — take the first reasonable one
+  let price: number | null = null;
+  const priceMatches = [...text.matchAll(/\$\s*([\d,]+(?:\.\d{2})?)/g)];
+  for (const pm of priceMatches) {
+    const p = parseInt(pm[1].replace(/[,\.]/g, "").slice(0, -2) || pm[1].replace(/,/g, ""), 10);
+    const clean = parseInt(pm[1].replace(/,/g, "").replace(/\.\d+$/, ""), 10);
+    if (clean >= 1000 && clean <= 500000) {
+      price = clean;
+      break;
     }
   }
 
-  return Math.max(0, Math.round(score));
+  // KM: XX,XXX km
+  let km: number | null = null;
+  const kmM = text.match(/([\d,]+)\s*(?:km|kms|kilometres|kilometers)/i);
+  if (kmM) {
+    const k = parseInt(kmM[1].replace(/,/g, ""), 10);
+    if (k >= 0 && k <= 999999) km = k;
+  }
+
+  // Location: AU state codes
+  let location: string | null = null;
+  const stateM = text.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
+  if (stateM) location = stateM[1].toUpperCase();
+
+  return { url, source: domain, title, year, km, price, location };
 }
 
+// ══════════════════════════════════════════
+// STEP 5: Deterministic scoring (NO AI)
+// ══════════════════════════════════════════
+function scoreListing(listing: ExtractedListing, intent: ParsedIntent): number {
+  let score = 50;
+
+  // KM filter: disqualify if over max + 10k tolerance
+  if (intent.max_km && listing.km != null) {
+    if (listing.km > intent.max_km + 10000) return 0;
+    // Reward lower km
+    score += Math.round(20 * (1 - listing.km / (intent.max_km + 10000)));
+  }
+
+  // Year proximity: ±1 year tolerance
+  if (intent.year && listing.year != null) {
+    const diff = Math.abs(listing.year - intent.year);
+    if (diff === 0) score += 15;
+    else if (diff === 1) score += 8;
+    else if (diff > 2) return 0; // too far
+  }
+
+  // Price: lower is better
+  if (listing.price != null && intent.price_max) {
+    if (listing.price > intent.price_max) score -= 15;
+    else score += Math.round(15 * (1 - listing.price / intent.price_max));
+  }
+
+  // Bonus: has all key fields
+  if (listing.price != null && listing.km != null && listing.year != null) {
+    score += 5;
+  }
+
+  return Math.max(0, Math.min(100, score));
+}
+
+// ══════════════════════════════════════════
+// MAIN HANDLER
+// ══════════════════════════════════════════
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -159,15 +221,7 @@ Deno.serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const openclawKey = (Deno.env.get("OPENCLAW_API_KEY") || "").replace(/[^\x20-\x7E]/g, "").trim();
     const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
-
-    if (!openclawKey) {
-      return new Response(
-        JSON.stringify({ status: "error", error: "OPENCLAW_API_KEY not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
     if (!firecrawlKey) {
       return new Response(
         JSON.stringify({ status: "error", error: "FIRECRAWL_API_KEY not configured" }),
@@ -183,55 +237,30 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[OUTWARD] Instruction: "${instruction}"`);
+    console.log(`[OUTWARD-V1] Instruction: "${instruction}"`);
 
-    // ════════════════════════════════════════
-    // STEP A: Parse intent via OpenClaw
-    // ════════════════════════════════════════
-    const intentRaw = await callOpenClaw(openclawKey, INTENT_SCHEMA, instruction.trim());
-    console.log(`[OUTWARD] Intent raw: ${intentRaw}`);
-
-    let intent: ParsedIntent;
-    try {
-      const parsed = extractJson(intentRaw);
-      intent = {
-        make: typeof parsed.make === "string" ? parsed.make.trim().toUpperCase() : null,
-        model_keywords: Array.isArray(parsed.model_keywords)
-          ? parsed.model_keywords.map((k: any) => String(k).trim().toUpperCase()).filter(Boolean)
-          : [],
-        year_min: typeof parsed.year_min === "number" ? parsed.year_min : null,
-        year_max: typeof parsed.year_max === "number" ? parsed.year_max : null,
-        max_km: typeof parsed.max_km === "number" ? parsed.max_km : null,
-        price_max: typeof parsed.price_max === "number" ? parsed.price_max : null,
-      };
-    } catch (e) {
-      console.error("[OUTWARD] Intent parse failed:", e);
-      return new Response(
-        JSON.stringify({ status: "error", error: "Failed to parse search intent" }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // ── STEP 1: Parse intent mechanically ──
+    const intent = parseInstruction(instruction);
+    console.log(`[OUTWARD-V1] Parsed:`, JSON.stringify(intent));
 
     if (!intent.make) {
       return new Response(
-        JSON.stringify({ status: "error", error: "Could not extract vehicle make from query" }),
+        JSON.stringify({ status: "error", error: "Could not identify vehicle make. Try: '2024 Toyota HiAce Commuter under 40000 km'" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[OUTWARD] Parsed intent:`, JSON.stringify(intent));
+    // ── STEP 2: Build search queries per domain ──
+    const searchTerms = [
+      intent.year ? String(intent.year) : "",
+      intent.make,
+      ...intent.model_keywords,
+      intent.max_km ? `${intent.max_km} km` : "",
+    ].filter(Boolean).join(" ");
 
-    // ════════════════════════════════════════
-    // STEP B: Search whitelisted domains via Firecrawl
-    // ════════════════════════════════════════
-    const modelStr = intent.model_keywords.join(" ");
-    const yearStr = intent.year_min ? String(intent.year_min) : "";
-    const kmStr = intent.max_km ? `${intent.max_km} km` : "";
-    const searchTerms = [intent.make, modelStr, yearStr, kmStr].filter(Boolean).join(" ");
+    console.log(`[OUTWARD-V1] Search terms: "${searchTerms}"`);
 
-    console.log(`[OUTWARD] Search terms: "${searchTerms}"`);
-
-    // Run searches in parallel across all domains
+    // Run all domain searches in parallel
     const searchPromises = WHITELISTED_DOMAINS.map(async (domain) => {
       const query = `site:${domain} ${searchTerms}`;
       try {
@@ -249,13 +278,14 @@ Deno.serve(async (req) => {
         });
 
         if (!res.ok) {
-          console.log(`[OUTWARD] Search ${domain} failed: ${res.status}`);
+          const body = await res.text();
+          console.log(`[OUTWARD-V1] ${domain} search failed: ${res.status} ${body.slice(0, 100)}`);
           return [];
         }
 
         const data = await res.json();
         const results = data.data || [];
-        console.log(`[OUTWARD] ${domain}: ${results.length} results`);
+        console.log(`[OUTWARD-V1] ${domain}: ${results.length} results`);
 
         return results.map((r: any) => ({
           domain,
@@ -264,130 +294,84 @@ Deno.serve(async (req) => {
           title: r.title || r.metadata?.title || "",
         }));
       } catch (err) {
-        console.error(`[OUTWARD] ${domain} error:`, err);
+        console.error(`[OUTWARD-V1] ${domain} error:`, err);
         return [];
       }
     });
 
-    const allSearchResults = (await Promise.all(searchPromises)).flat();
-    console.log(`[OUTWARD] Total search results: ${allSearchResults.length}`);
+    const rawResults = (await Promise.all(searchPromises)).flat();
+    console.log(`[OUTWARD-V1] Total raw results: ${rawResults.length}`);
 
-    if (allSearchResults.length === 0) {
+    if (rawResults.length === 0) {
+      logAudit(intent, instruction, 0, 0, 0, Date.now() - startTime);
       return new Response(
         JSON.stringify({
           status: "ok",
           intent,
           results: [],
           message: "No qualifying vehicles found within current filters.",
+          total_searched: 0,
           duration_ms: Date.now() - startTime,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // ════════════════════════════════════════
-    // STEP D: Extract structured fields from each result via OpenClaw
-    // ════════════════════════════════════════
-    // Use the markdown already returned by Firecrawl search (scrapeOptions included)
-    // to avoid extra Firecrawl calls. Parse with OpenClaw.
-    const extractPromises = allSearchResults.map(async (sr: any) => {
-      // If markdown is too short, skip extraction
-      if (!sr.markdown || sr.markdown.length < 50) {
-        return null;
-      }
+    // ── STEP 3: Extract fields mechanically ──
+    const listings: ExtractedListing[] = rawResults
+      .filter((r: any) => r.markdown && r.markdown.length >= 30)
+      .map((r: any) => extractFromMarkdown(r.markdown, r.url, r.domain, r.title));
 
-      try {
-        // Truncate markdown to avoid token limits
-        const truncated = sr.markdown.slice(0, 3000);
-        const extractRaw = await callOpenClaw(openclawKey, EXTRACT_SCHEMA, truncated, 15000);
-        const extracted = extractJson(extractRaw);
+    console.log(`[OUTWARD-V1] Extracted ${listings.length} listings`);
 
-        return {
-          source: sr.domain,
-          title: extracted.title || sr.title || null,
-          year: typeof extracted.year === "number" ? extracted.year : null,
-          km: typeof extracted.km === "number" ? extracted.km : null,
-          price: typeof extracted.price === "number" ? extracted.price : null,
-          location: extracted.location || null,
-          url: sr.url,
-        } as Omit<OutwardResult, "score">;
-      } catch (err) {
-        console.error(`[OUTWARD] Extract failed for ${sr.url}:`, err);
-        // Fallback: use basic regex parsing
-        return {
-          source: sr.domain,
-          title: sr.title || null,
-          year: parseYear(sr.markdown),
-          km: parseKm(sr.markdown),
-          price: parsePrice(sr.markdown),
-          location: null,
-          url: sr.url,
-        } as Omit<OutwardResult, "score">;
-      }
+    // ── STEP 4: Filter ──
+    const filtered = listings.filter((l) => {
+      // Must have price (discard if missing)
+      if (l.price == null) return false;
+      // Year tolerance ±1
+      if (intent.year && l.year != null && Math.abs(l.year - intent.year) > 2) return false;
+      // KM tolerance +10k
+      if (intent.max_km && l.km != null && l.km > intent.max_km + 10000) return false;
+      return true;
     });
 
-    const extracted = (await Promise.all(extractPromises)).filter(Boolean) as Omit<OutwardResult, "score">[];
-    console.log(`[OUTWARD] Extracted ${extracted.length} listings`);
+    console.log(`[OUTWARD-V1] After filter: ${filtered.length} listings`);
 
-    // ════════════════════════════════════════
-    // STEP E: Deterministic ranking → top 3
-    // ════════════════════════════════════════
-    const scored: OutwardResult[] = extracted.map((r) => ({
-      ...r,
-      score: scoreResult(r, intent),
-    }));
-
-    // Filter out disqualified (score 0) and sort
-    const ranked = scored
-      .filter((r) => r.score > 0)
+    // ── STEP 5: Score & rank ──
+    const scored = filtered
+      .map((l) => ({ ...l, score: scoreListing(l, intent) }))
+      .filter((l) => l.score > 0)
       .sort((a, b) => b.score - a.score || (a.price ?? Infinity) - (b.price ?? Infinity));
 
     // Deduplicate by URL
     const seen = new Set<string>();
-    const deduped: OutwardResult[] = [];
-    for (const r of ranked) {
+    const top3: (ExtractedListing & { score: number })[] = [];
+    for (const r of scored) {
       if (!seen.has(r.url)) {
         seen.add(r.url);
-        deduped.push(r);
+        top3.push(r);
       }
-      if (deduped.length >= 3) break;
+      if (top3.length >= 3) break;
     }
 
-    console.log(`[OUTWARD] Returning ${deduped.length} results in ${Date.now() - startTime}ms`);
+    console.log(`[OUTWARD-V1] Returning ${top3.length} results in ${Date.now() - startTime}ms`);
 
-    // ── Log to cron_audit_log ──
-    try {
-      const sb = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-      );
-      await sb.from("cron_audit_log").insert({
-        cron_name: "run-outward-search",
-        run_date: new Date().toISOString().slice(0, 10),
-        success: true,
-        result: {
-          instruction: instruction.trim(),
-          intent,
-          total_search_results: allSearchResults.length,
-          extracted_count: extracted.length,
-          returned_count: deduped.length,
-          duration_ms: Date.now() - startTime,
-        },
-      });
-    } catch (_) { /* swallow */ }
+    // ── Audit log ──
+    logAudit(intent, instruction, rawResults.length, filtered.length, top3.length, Date.now() - startTime);
 
     return new Response(
       JSON.stringify({
         status: "ok",
         intent,
-        results: deduped,
-        total_searched: allSearchResults.length,
+        results: top3,
+        total_searched: rawResults.length,
+        total_filtered: filtered.length,
         duration_ms: Date.now() - startTime,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("[OUTWARD] Error:", error);
+    console.error("[OUTWARD-V1] Error:", error);
     return new Response(
       JSON.stringify({
         status: "error",
@@ -398,26 +382,25 @@ Deno.serve(async (req) => {
   }
 });
 
-// ── Fallback regex parsers ──
-function parseYear(text: string): number | null {
-  const m = text.match(/\b(20[0-2]\d)\b/);
-  return m ? parseInt(m[1], 10) : null;
-}
-
-function parsePrice(text: string): number | null {
-  const m = text.match(/\$\s*([\d,]+)/);
-  if (m) {
-    const p = parseInt(m[1].replace(/,/g, ""), 10);
-    return p >= 1000 && p <= 500000 ? p : null;
-  }
-  return null;
-}
-
-function parseKm(text: string): number | null {
-  const m = text.match(/([\d,]+)\s*(?:km|kms|kilometres)/i);
-  if (m) {
-    const k = parseInt(m[1].replace(/,/g, ""), 10);
-    return k >= 0 && k <= 999999 ? k : null;
-  }
-  return null;
+// ── Audit logger (fire-and-forget) ──
+function logAudit(
+  intent: ParsedIntent,
+  instruction: string,
+  searched: number,
+  filtered: number,
+  returned: number,
+  durationMs: number,
+) {
+  try {
+    const sb = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    sb.from("cron_audit_log").insert({
+      cron_name: "run-outward-search",
+      run_date: new Date().toISOString().slice(0, 10),
+      success: true,
+      result: { instruction: instruction.trim(), intent, searched, filtered, returned, duration_ms: durationMs },
+    }).then(() => {});
+  } catch (_) { /* swallow */ }
 }

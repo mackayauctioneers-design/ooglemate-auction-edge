@@ -459,13 +459,8 @@ export function OogleBotSearch() {
                 {outwardResponse.intent.model_keywords?.map((k, i) => (
                   <Badge key={i} variant="secondary">{k}</Badge>
                 ))}
-                {outwardResponse.intent.year_min && (
-                  <Badge variant="outline">
-                    {outwardResponse.intent.year_min}
-                    {outwardResponse.intent.year_max && outwardResponse.intent.year_max !== outwardResponse.intent.year_min
-                      ? `–${outwardResponse.intent.year_max}`
-                      : ""}
-                  </Badge>
+                {outwardResponse.intent.year && (
+                  <Badge variant="outline">{outwardResponse.intent.year}</Badge>
                 )}
                 {outwardResponse.intent.max_km && <Badge variant="outline">≤{outwardResponse.intent.max_km.toLocaleString()} km</Badge>}
                 {outwardResponse.intent.price_max && <Badge variant="outline">≤${outwardResponse.intent.price_max.toLocaleString()}</Badge>}
