@@ -38,14 +38,30 @@ Deno.serve(async (req) => {
       headers["x-openclaw-agent-id"] = String(agent).trim();
     }
 
-    const response = await fetch("https://consistency-commitments-handed-moms.trycloudflare.com/v1/chat/completions", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: "openclaw",
-        messages: [{ role: "user", content: message }],
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 55000);
+
+    let response: Response;
+    try {
+      response = await fetch("https://consistency-commitments-handed-moms.trycloudflare.com/v1/chat/completions", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: "openclaw",
+          messages: [{ role: "user", content: message }],
+        }),
+        signal: controller.signal,
+      });
+    } catch (fetchErr) {
+      clearTimeout(timeout);
+      const isTimeout = fetchErr instanceof DOMException && fetchErr.name === "AbortError";
+      console.error("OogleBot fetch error:", isTimeout ? "Request timed out after 120s" : fetchErr);
+      return new Response(
+        JSON.stringify({ success: false, error: isTimeout ? "Search timed out — tunnel may be slow" : String(fetchErr) }),
+        { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const errText = await response.text();
