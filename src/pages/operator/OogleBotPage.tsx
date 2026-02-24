@@ -3,6 +3,7 @@ import { OperatorLayout } from "@/components/layout/OperatorLayout";
 import { OogleBotJobForm } from "@/components/ooglebot/OogleBotJobForm";
 import { OogleBotJobList } from "@/components/ooglebot/OogleBotJobList";
 import { OogleBotJobDetail } from "@/components/ooglebot/OogleBotJobDetail";
+import { VehicleSearch } from "@/components/openclaw/VehicleSearch";
 import { Bot } from "lucide-react";
 
 export default function OogleBotPage() {
@@ -31,9 +32,10 @@ export default function OogleBotPage() {
             />
           </div>
 
-          {/* Right: Detail */}
-          <div>
+          {/* Right: Detail + Active Hunt */}
+          <div className="space-y-6">
             <OogleBotJobDetail jobId={selectedJobId} />
+            <VehicleSearch />
           </div>
         </div>
       </div>
