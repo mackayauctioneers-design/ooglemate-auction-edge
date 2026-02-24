@@ -29,13 +29,16 @@ Deno.serve(async (req) => {
 
     console.log("OpenClaw search:", message);
 
-    const response = await fetch("https://opinions-moments-batteries-humanity.trycloudflare.com/api/v1/chat", {
+    const response = await fetch("https://opinions-moments-batteries-humanity.trycloudflare.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ message, agent }),
+      body: JSON.stringify({
+        model: "openclaw",
+        messages: [{ role: "user", content: message }],
+      }),
     });
 
     if (!response.ok) {
@@ -48,11 +51,12 @@ Deno.serve(async (req) => {
     }
 
     const data = await response.json();
+    const reply = data.choices?.[0]?.message?.content || data.reply || data.message || JSON.stringify(data);
 
     return new Response(
       JSON.stringify({
         success: true,
-        reply: data.reply || data.message || data.response || JSON.stringify(data),
+        reply,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
