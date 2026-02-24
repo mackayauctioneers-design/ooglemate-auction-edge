@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 export interface OogleBotFilters {
   make: string | null;
   model: string | null;
+  badge: string | null;
   year_min: number | null;
   year_max: number | null;
   max_km: number | null;
@@ -65,6 +66,7 @@ export async function searchOogleBot(message: string): Promise<OogleBotResponse>
 export async function searchOogleBotDirect(filters: {
   make: string;
   model: string;
+  badge?: string | null;
   year_min?: number | null;
   year_max?: number | null;
   max_km?: number | null;
@@ -88,6 +90,7 @@ export async function searchOogleBotDirect(filters: {
     filters: {
       make: filters.make,
       model: filters.model,
+      badge: filters.badge ?? null,
       year_min: filters.year_min ?? null,
       year_max: filters.year_max ?? null,
       max_km: filters.max_km ?? null,

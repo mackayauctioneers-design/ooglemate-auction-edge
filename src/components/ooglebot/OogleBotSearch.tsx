@@ -207,7 +207,7 @@ export function OogleBotSearch() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              placeholder="e.g. Isuzu D-MAX 2024 under 55000"
+              placeholder="e.g. Isuzu D-MAX SX 2022 under 50000 low km"
               disabled={internalLoading}
             />
             <Button
@@ -234,12 +234,13 @@ export function OogleBotSearch() {
 
           {!hasSearched && (
             <div className="text-xs text-muted-foreground space-y-1">
-              <p className="font-medium">Example searches:</p>
+              <p className="font-medium">Be specific — include badge/variant for better results:</p>
               <ul className="list-disc pl-4 space-y-0.5">
-                <li>Isuzu D-MAX 2024 under 55000</li>
-                <li>Toyota HiAce Commuter 2024 under 80k</li>
-                <li>Prado GX 2024 under 20000km</li>
-                <li>Ford Ranger Wildtrak 2022 low km</li>
+                <li>Isuzu D-MAX <strong>SX</strong> 2022 under 50000</li>
+                <li>Toyota Landcruiser <strong>GXL</strong> 2024 low km</li>
+                <li>Ford Ranger <strong>Wildtrak</strong> 2022-2024 under 65000</li>
+                <li>Toyota HiLux <strong>SR5</strong> 2023 under 40000km</li>
+                <li>Toyota Prado <strong>GX</strong> 2024 under 80k</li>
               </ul>
             </div>
           )}
@@ -323,6 +324,7 @@ export function OogleBotSearch() {
               <div className="flex flex-wrap gap-1.5 text-xs mt-1">
                 {externalResponse.filters.make && <Badge variant="secondary">{externalResponse.filters.make}</Badge>}
                 {externalResponse.filters.model && <Badge variant="secondary">{externalResponse.filters.model}</Badge>}
+                {externalResponse.filters.badge && <Badge variant="default" className="text-[10px]">{externalResponse.filters.badge}</Badge>}
                 {externalResponse.filters.year_min && <Badge variant="outline">{externalResponse.filters.year_min}+</Badge>}
                 {externalResponse.filters.max_km && <Badge variant="outline">≤{externalResponse.filters.max_km.toLocaleString()} km</Badge>}
                 {externalResponse.filters.price_max && <Badge variant="outline">≤${externalResponse.filters.price_max.toLocaleString()}</Badge>}
