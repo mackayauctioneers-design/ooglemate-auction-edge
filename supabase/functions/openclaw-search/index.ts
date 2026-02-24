@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get("OPENCLAW_API_KEY");
+    const apiKey = (Deno.env.get("OPENCLAW_API_KEY") || "").trim();
     if (!apiKey) {
       return new Response(
         JSON.stringify({ success: false, error: "OPENCLAW_API_KEY not configured" }),
@@ -34,6 +34,7 @@ Deno.serve(async (req) => {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        "x-openclaw-agent-id": agent,
       },
       body: JSON.stringify({
         model: "openclaw",
