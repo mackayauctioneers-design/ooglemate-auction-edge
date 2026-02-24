@@ -17,8 +17,8 @@ export interface OogleBotResult {
   variant: string | null;
   year: number;
   km: number | null;
-  price: number;
-  effective_cost: number;
+  price: number | null;
+  effective_cost: number | null;
   score: number;
   match_reason: string[];
   source: string;
