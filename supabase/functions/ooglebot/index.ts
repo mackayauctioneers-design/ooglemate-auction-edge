@@ -11,7 +11,6 @@ Deno.serve(async (req) => {
 
   try {
     const rawKey = Deno.env.get("OPENCLAW_API_KEY") || "";
-    // Strip any non-ASCII characters and trim
     const apiKey = rawKey.replace(/[^\x20-\x7E]/g, "").trim();
     if (!apiKey) {
       return new Response(
@@ -29,7 +28,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log("OpenClaw search:", message, "agent:", agent, "apiKey length:", apiKey.length);
+    console.log("OogleBot search:", message, "agent:", agent);
 
     const headers: Record<string, string> = {
       "Authorization": "Bearer " + apiKey,
@@ -50,7 +49,7 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("OpenClaw API error:", response.status, errText);
+      console.error("OogleBot API error:", response.status, errText);
       return new Response(
         JSON.stringify({ success: false, error: `API error: ${response.status}` }),
         { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -61,14 +60,11 @@ Deno.serve(async (req) => {
     const reply = data.choices?.[0]?.message?.content || data.reply || data.message || JSON.stringify(data);
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        reply,
-      }),
+      JSON.stringify({ success: true, reply }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("OpenClaw proxy error:", error);
+    console.error("OogleBot proxy error:", error);
     return new Response(
       JSON.stringify({ success: false, error: error instanceof Error ? error.message : String(error) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
