@@ -100,3 +100,49 @@ export async function searchOogleBotDirect(filters: {
     results: data.results,
   };
 }
+
+// ── Outward Search types ──
+export interface OutwardSearchResult {
+  source: string;
+  title: string | null;
+  year: number | null;
+  km: number | null;
+  price: number | null;
+  location: string | null;
+  url: string;
+  score: number;
+}
+
+export interface OutwardSearchResponse {
+  status: "ok" | "error";
+  intent?: {
+    make: string | null;
+    model_keywords: string[];
+    year_min: number | null;
+    year_max: number | null;
+    max_km: number | null;
+    price_max: number | null;
+  };
+  results?: OutwardSearchResult[];
+  total_searched?: number;
+  duration_ms?: number;
+  error?: string;
+  message?: string;
+}
+
+/** Call run-outward-search: searches whitelisted external domains */
+export async function runOutwardSearch(instruction: string): Promise<OutwardSearchResponse> {
+  const { data, error } = await supabase.functions.invoke("run-outward-search", {
+    body: { instruction },
+  });
+
+  if (error) {
+    throw new Error(error.message || "Failed to call outward search");
+  }
+
+  if (data?.status === "error") {
+    throw new Error(data.error || "Outward search failed");
+  }
+
+  return data as OutwardSearchResponse;
+}
