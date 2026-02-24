@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { searchOogleBot } from "@/lib/api/ooglebot";
+import { searchOogleBot, searchOogleBotDirect, type OogleBotResponse, type OogleBotResult } from "@/lib/api/ooglebot";
 import { searchInternalInventory, searchDealerSpecs, parseSearchQuery, type InternalMatch } from "@/lib/api/ooglebot-internal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,9 +10,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, Database, Globe, MapPin, Calendar, Gauge, DollarSign, ExternalLink } from "lucide-react";
+import { Loader2, Search, Database, Globe, MapPin, Gauge, DollarSign, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import ReactMarkdown from "react-markdown";
 import { useAuth } from "@/contexts/AuthContext";
 
 function formatPrice(price: number | null) {
@@ -75,13 +74,77 @@ function InternalResultCard({ match, showUrl }: { match: InternalMatch; showUrl:
   );
 }
 
+function ScoredResultCard({ result, showUrl }: { result: OogleBotResult; showUrl: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-4 p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors">
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-sm text-foreground">
+            {result.year} {result.make} {result.model}
+          </span>
+          {result.variant && (
+            <span className="text-xs text-muted-foreground">{result.variant}</span>
+          )}
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+            {result.source_class || result.source}
+          </Badge>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+            Score: {result.score}
+          </Badge>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1 font-medium text-foreground">
+            <DollarSign className="h-3 w-3" />
+            {formatPrice(result.price)}
+          </span>
+          <span className="text-muted-foreground">
+            eff: {formatPrice(result.effective_cost)}
+          </span>
+          {result.km && (
+            <span className="flex items-center gap-1">
+              <Gauge className="h-3 w-3" />
+              {formatKm(result.km)}
+            </span>
+          )}
+          {(result.location || result.state) && (
+            <span className="flex items-center gap-1">
+              <MapPin className="h-3 w-3" />
+              {result.location || result.state}
+            </span>
+          )}
+          {result.auction_house && <span>{result.auction_house}</span>}
+          {result.days_listed !== null && (
+            <span>{result.days_listed}d listed</span>
+          )}
+        </div>
+        {result.match_reason.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {result.match_reason.map((r, i) => (
+              <Badge key={i} variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground">
+                {r}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+      {showUrl && result.listing_url && (
+        <a href={result.listing_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+          <Button variant="ghost" size="iconSm" className="text-muted-foreground hover:text-primary">
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+        </a>
+      )}
+    </div>
+  );
+}
+
 export function OogleBotSearch() {
   const { toast } = useToast();
   const { isAdmin } = useAuth();
   const [query, setQuery] = useState("");
   const [internalResults, setInternalResults] = useState<InternalMatch[]>([]);
   const [dealerSpecs, setDealerSpecs] = useState<{ id: string; name: string; make: string; model: string; dealer_name: string }[]>([]);
-  const [externalResults, setExternalResults] = useState<string>("");
+  const [externalResponse, setExternalResponse] = useState<OogleBotResponse | null>(null);
   const [internalLoading, setInternalLoading] = useState(false);
   const [externalLoading, setExternalLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -93,7 +156,7 @@ export function OogleBotSearch() {
     setInternalLoading(true);
     setInternalResults([]);
     setDealerSpecs([]);
-    setExternalResults("");
+    setExternalResponse(null);
 
     try {
       const [listings, specs] = await Promise.all([
@@ -112,8 +175,8 @@ export function OogleBotSearch() {
   const handleExternalSearch = async () => {
     setExternalLoading(true);
     try {
-      const reply = await searchOogleBot(query);
-      setExternalResults(reply);
+      const response = await searchOogleBot(query);
+      setExternalResponse(response);
     } catch (err) {
       console.error("External search error:", err);
       toast({
@@ -159,7 +222,6 @@ export function OogleBotSearch() {
             </Button>
           </div>
 
-          {/* Parsed query feedback */}
           {parsed?.make && (
             <div className="flex flex-wrap gap-1.5 text-xs">
               <Badge variant="secondary">{parsed.make}</Badge>
@@ -229,7 +291,7 @@ export function OogleBotSearch() {
       )}
 
       {/* External Search Button */}
-      {hasSearched && !internalLoading && !externalResults && (
+      {hasSearched && !internalLoading && !externalResponse && (
         <Card>
           <CardContent className="py-4">
             <Button
@@ -243,23 +305,38 @@ export function OogleBotSearch() {
               ) : (
                 <Globe className="h-4 w-4 mr-2" />
               )}
-              Search External Marketplaces
+              AI-Powered Search (NLP → Structured)
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* External Results */}
-      {externalResults && (
+      {/* External Structured Results */}
+      {externalResponse && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <Globe className="h-4 w-4 text-primary" />
-              External Results
+              Scored Results ({externalResponse.count || 0})
             </CardTitle>
+            {externalResponse.filters && (
+              <div className="flex flex-wrap gap-1.5 text-xs mt-1">
+                {externalResponse.filters.make && <Badge variant="secondary">{externalResponse.filters.make}</Badge>}
+                {externalResponse.filters.model && <Badge variant="secondary">{externalResponse.filters.model}</Badge>}
+                {externalResponse.filters.year_min && <Badge variant="outline">{externalResponse.filters.year_min}+</Badge>}
+                {externalResponse.filters.max_km && <Badge variant="outline">≤{externalResponse.filters.max_km.toLocaleString()} km</Badge>}
+                {externalResponse.filters.price_max && <Badge variant="outline">≤${externalResponse.filters.price_max.toLocaleString()}</Badge>}
+              </div>
+            )}
           </CardHeader>
-          <CardContent className="prose prose-sm dark:prose-invert max-w-none">
-            <ReactMarkdown>{externalResults}</ReactMarkdown>
+          <CardContent className="space-y-1.5">
+            {(externalResponse.results?.length || 0) === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">No scored results found.</p>
+            ) : (
+              externalResponse.results!.map((result, i) => (
+                <ScoredResultCard key={result.listing_id || i} result={result} showUrl={isAdmin} />
+              ))
+            )}
           </CardContent>
         </Card>
       )}
