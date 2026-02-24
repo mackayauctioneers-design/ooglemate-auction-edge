@@ -9,10 +9,11 @@ const corsHeaders = {
 const INTENT_SCHEMA = `You are a vehicle search query parser. Return ONLY a JSON object, nothing else.
 
 Schema:
-{"make":string|null,"model":string|null,"year_min":number|null,"year_max":number|null,"max_km":number|null,"price_max":number|null}
+{"make":string|null,"model":string|null,"badge":string|null,"year_min":number|null,"year_max":number|null,"max_km":number|null,"price_max":number|null}
 
 Rules:
 - Uppercase make and model
+- badge is the variant/trim/series e.g. "SX", "GXL", "Workmate", "Wildtrak", "SR5", "Hi-Rider". Uppercase it. Use null if not specified.
 - A single year like "2022" means year_min=2022, year_max=null (2022 or newer)
 - Only set year_max if the user specifies an upper year bound like "2020-2022" or "up to 2022"
 - "under 50k" or "under 50000" means price_max=50000
@@ -23,6 +24,7 @@ Rules:
 interface ParsedIntent {
   make: string | null;
   model: string | null;
+  badge: string | null;
   year_min: number | null;
   year_max: number | null;
   max_km: number | null;
@@ -41,6 +43,7 @@ function validateIntent(raw: unknown): ParsedIntent {
   return {
     make: str(o.make),
     model: str(o.model),
+    badge: str(o.badge),
     year_min: num(o.year_min, 1990, 2030),
     year_max: num(o.year_max, 1990, 2030),
     max_km: num(o.max_km, 1, 999999),
@@ -134,7 +137,6 @@ Deno.serve(async (req) => {
     if (jsonMatch) {
       cleaned = jsonMatch[1].trim();
     } else {
-      // Try to find raw JSON object
       const braceMatch = content.match(/\{[\s\S]*\}/);
       if (braceMatch) {
         cleaned = braceMatch[0].trim();
@@ -172,6 +174,7 @@ Deno.serve(async (req) => {
     const searchBody = {
       make: parsed.make,
       model: parsed.model || "",
+      badge: parsed.badge,
       year_min: parsed.year_min,
       year_max: parsed.year_max,
       max_km: parsed.max_km,

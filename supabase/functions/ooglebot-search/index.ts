@@ -18,6 +18,7 @@ const EXCLUDED_LIFECYCLE = ["STALE", "DEAD", "stale", "dead"];
 interface SearchInput {
   make: string;
   model: string;
+  badge: string | null;
   year_min?: number | null;
   year_max?: number | null;
   max_km?: number | null;
@@ -34,13 +35,14 @@ function validate(body: unknown): { ok: true; input: SearchInput } | { ok: false
 
   const make = b.make.trim().substring(0, 50);
   const model = b.model.trim().substring(0, 50);
+  const badge = typeof b.badge === "string" && b.badge.trim() ? b.badge.trim().substring(0, 50) : null;
   const year_min = typeof b.year_min === "number" && b.year_min >= 1990 && b.year_min <= 2030 ? b.year_min : null;
   const year_max = typeof b.year_max === "number" && b.year_max >= 1990 && b.year_max <= 2030 ? b.year_max : null;
   const max_km = typeof b.max_km === "number" && b.max_km > 0 && b.max_km <= 999999 ? b.max_km : null;
   const price_max = typeof b.price_max === "number" && b.price_max > 0 ? b.price_max : null;
   let limit = typeof b.limit === "number" ? Math.min(Math.max(1, Math.floor(b.limit)), MAX_LIMIT) : 20;
 
-  return { ok: true, input: { make, model, year_min, year_max, max_km, price_max, limit } };
+  return { ok: true, input: { make, model, badge, year_min, year_max, max_km, price_max, limit } };
 }
 
 Deno.serve(async (req) => {
@@ -96,6 +98,17 @@ Deno.serve(async (req) => {
     const { data: listings, error: listErr } = await query;
     if (listErr) throw listErr;
 
+    // --- 1b. Badge/variant filtering (post-query, case-insensitive partial match) ---
+    let filtered = listings || [];
+    if (input.badge) {
+      const badgeUpper = input.badge.toUpperCase();
+      filtered = filtered.filter((l: any) => {
+        const variants = [l.variant_raw, l.variant_family, l.variant_used].filter(Boolean);
+        return variants.some((v: string) => v.toUpperCase().includes(badgeUpper));
+      });
+      console.log(`Badge filter "${input.badge}": ${(listings || []).length} → ${filtered.length}`);
+    }
+
     // --- 2. Load fingerprint data for scoring ---
     const { data: fingerprints } = await sb
       .from("dealer_sales_fingerprints")
@@ -135,7 +148,7 @@ Deno.serve(async (req) => {
 
     const results: ScoredResult[] = [];
 
-    for (const l of listings || []) {
+    for (const l of filtered) {
       const askPrice = Number(l.asking_price);
       const isAuction = AUCTION_SOURCES.has((l.source || "").toLowerCase());
       const premium = isAuction ? AUCTION_PREMIUM : 0;
@@ -149,6 +162,20 @@ Deno.serve(async (req) => {
       if ((l.make || "").toUpperCase() === input.make.toUpperCase()) {
         score += 5;
         reasons.push("EXACT_MAKE");
+      }
+
+      // Badge/variant match bonus
+      if (input.badge) {
+        const badgeUpper = input.badge.toUpperCase();
+        const variants = [l.variant_raw, l.variant_family, l.variant_used].filter(Boolean);
+        const exactBadge = variants.some((v: string) => v.toUpperCase() === badgeUpper);
+        if (exactBadge) {
+          score += 10;
+          reasons.push("EXACT_BADGE");
+        } else {
+          score += 5;
+          reasons.push("BADGE_PARTIAL");
+        }
       }
 
       // Year proximity bonus
@@ -189,7 +216,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Price attractiveness (lower effective cost = higher score)
+      // Price attractiveness
       if (input.price_max && effectiveCost < input.price_max * 0.85) {
         score += 10;
         reasons.push("PRICE_WELL_UNDER_BUDGET");
@@ -244,8 +271,9 @@ Deno.serve(async (req) => {
       run_date: new Date().toISOString().slice(0, 10),
       success: true,
       result: {
-        input: { make: input.make, model: input.model, year_min: input.year_min, max_km: input.max_km },
+        input: { make: input.make, model: input.model, badge: input.badge, year_min: input.year_min, max_km: input.max_km },
         listings_scanned: (listings || []).length,
+        badge_filtered: input.badge ? filtered.length : null,
         results_returned: topResults.length,
       },
     });
@@ -261,7 +289,6 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("ooglebot-search error:", err);
 
-    // Log failure
     try {
       await sb.from("cron_audit_log").insert({
         cron_name: "ooglebot-search",
