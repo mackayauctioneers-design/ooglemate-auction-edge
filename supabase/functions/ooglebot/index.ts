@@ -6,29 +6,19 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const INTENT_SCHEMA = `You are a vehicle search query parser.
+const INTENT_SCHEMA = `You are a vehicle search query parser. Return ONLY a JSON object, nothing else.
 
-Extract search filters from the user message and return ONLY valid JSON.
-
-Return this exact schema:
-{
-  "make": string | null,
-  "model": string | null,
-  "year_min": number | null,
-  "year_max": number | null,
-  "max_km": number | null,
-  "price_max": number | null
-}
+Schema:
+{"make":string|null,"model":string|null,"year_min":number|null,"year_max":number|null,"max_km":number|null,"price_max":number|null}
 
 Rules:
 - Uppercase make and model
-- Use null for unspecified fields
-- "under 50k" or "under 50000" means price_max = 50000
-- "low km" means max_km = 60000
-- No commentary
-- No markdown
-- No explanation
-- JSON only`;
+- A single year like "2022" means year_min=2022, year_max=null (2022 or newer)
+- Only set year_max if the user specifies an upper year bound like "2020-2022" or "up to 2022"
+- "under 50k" or "under 50000" means price_max=50000
+- "low km" means max_km=60000
+- Use null for anything not specified
+- Output raw JSON only. No markdown. No backticks. No explanation.`;
 
 interface ParsedIntent {
   make: string | null;
