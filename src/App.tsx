@@ -85,6 +85,7 @@ import AdminToolsPage from "./pages/AdminToolsPage";
 import AlertsPage from "./pages/AlertsPage";
 import PicklesIngestionPage from "./pages/PicklesIngestionPage";
 import HuntAlertsPage from "./pages/HuntAlertsPage";
+import DealerOogleBotPage from "./pages/DealerOogleBotPage";
 
 const queryClient = new QueryClient();
 
@@ -117,6 +118,7 @@ const App = () => (
               <Route path="/deals/:dealId" element={<RequireAuth><DealDetailPage /></RequireAuth>} />
               <Route path="/valo" element={<RequireAuth><ValoPage /></RequireAuth>} />
               <Route path="/scan-guide" element={<RequireAuth><ScanGuidePage /></RequireAuth>} />
+              <Route path="/ooglebot" element={<RequireAuth><DealerOogleBotPage /></RequireAuth>} />
               <Route path="/auth" element={<AuthPage />} />
 
               {/* === LEGACY REDIRECTS — dealer nav still points to trading desk === */}
