@@ -34,6 +34,7 @@ import {
   Bookmark,
   ShoppingCart,
   Link2,
+  Bot,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -131,6 +132,12 @@ const operatorSections: NavSection[] = [
       { path: '/log-sale', label: 'Log Sale', icon: DollarSign },
       { path: '/saved-searches', label: 'Saved Searches', icon: Bookmark },
       { path: '/admin-tools-legacy', label: 'Admin Tools', icon: Settings },
+    ],
+  },
+  {
+    title: 'OogleBot',
+    items: [
+      { path: '/operator/ooglebot', label: 'OogleBot', icon: Bot },
     ],
   },
   {

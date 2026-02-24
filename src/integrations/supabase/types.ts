@@ -4586,6 +4586,131 @@ export type Database = {
         }
         Relationships: []
       }
+      ooglebot_jobs: {
+        Row: {
+          budget_ceiling: number
+          created_at: string
+          created_by: string
+          dealer_contact: string | null
+          dealer_name: string
+          expiry_date: string
+          id: string
+          km_max: number
+          last_match_at: string | null
+          make: string
+          model: string
+          notes: string | null
+          status: Database["public"]["Enums"]["ooglebot_status"]
+          urgency: Database["public"]["Enums"]["ooglebot_urgency"]
+          variant: string | null
+          year_max: number
+          year_min: number
+        }
+        Insert: {
+          budget_ceiling: number
+          created_at?: string
+          created_by: string
+          dealer_contact?: string | null
+          dealer_name: string
+          expiry_date?: string
+          id?: string
+          km_max: number
+          last_match_at?: string | null
+          make: string
+          model: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["ooglebot_status"]
+          urgency?: Database["public"]["Enums"]["ooglebot_urgency"]
+          variant?: string | null
+          year_max: number
+          year_min: number
+        }
+        Update: {
+          budget_ceiling?: number
+          created_at?: string
+          created_by?: string
+          dealer_contact?: string | null
+          dealer_name?: string
+          expiry_date?: string
+          id?: string
+          km_max?: number
+          last_match_at?: string | null
+          make?: string
+          model?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["ooglebot_status"]
+          urgency?: Database["public"]["Enums"]["ooglebot_urgency"]
+          variant?: string | null
+          year_max?: number
+          year_min?: number
+        }
+        Relationships: []
+      }
+      ooglebot_matches: {
+        Row: {
+          ask_price: number | null
+          created_at: string
+          days_listed: number | null
+          effective_cost: number
+          id: string
+          km: number | null
+          listing_id: string
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          model: string | null
+          ooglebot_job_id: string
+          rank_position: number
+          source: string
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          ask_price?: number | null
+          created_at?: string
+          days_listed?: number | null
+          effective_cost: number
+          id?: string
+          km?: number | null
+          listing_id: string
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          model?: string | null
+          ooglebot_job_id: string
+          rank_position: number
+          source?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          ask_price?: number | null
+          created_at?: string
+          days_listed?: number | null
+          effective_cost?: number
+          id?: string
+          km?: number | null
+          listing_id?: string
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          model?: string | null
+          ooglebot_job_id?: string
+          rank_position?: number
+          source?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ooglebot_matches_ooglebot_job_id_fkey"
+            columns: ["ooglebot_job_id"]
+            isOneToOne: false
+            referencedRelation: "ooglebot_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       operator_opportunities: {
         Row: {
           alt_matches: Json | null
@@ -12321,6 +12446,8 @@ export type Database = {
         | "NSW_CENTRAL_COAST"
         | "NSW_HUNTER_NEWCASTLE"
         | "NSW_REGIONAL"
+      ooglebot_status: "active" | "fulfilled" | "expired" | "paused"
+      ooglebot_urgency: "normal" | "high" | "urgent"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -12455,6 +12582,8 @@ export const Constants = {
         "NSW_HUNTER_NEWCASTLE",
         "NSW_REGIONAL",
       ],
+      ooglebot_status: ["active", "fulfilled", "expired", "paused"],
+      ooglebot_urgency: ["normal", "high", "urgent"],
     },
   },
 } as const
