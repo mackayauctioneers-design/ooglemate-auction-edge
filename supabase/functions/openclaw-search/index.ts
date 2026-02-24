@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
 
     console.log("OpenClaw search:", message);
 
-    const response = await fetch("https://opinions-moments-batteries-humanity.trycloudflare.com/v1/chat/completions", {
+    const response = await fetch("https://seminars-somerset-scale-missile.trycloudflare.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
