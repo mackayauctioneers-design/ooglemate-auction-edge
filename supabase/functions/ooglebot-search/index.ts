@@ -83,17 +83,31 @@ Deno.serve(async (req) => {
         is_dealer_grade, watch_status
       `)
       .ilike("make", input.make)
-      .ilike("model", `%${input.model}%`)
-      .not("asking_price", "is", null)
-      .gt("asking_price", 0)
       .not("lifecycle_state", "in", `(${EXCLUDED_LIFECYCLE.join(",")})`)
-      .order("asking_price", { ascending: true })
+      .order("asking_price", { ascending: true, nullsFirst: false })
       .limit(input.limit! * 3); // over-fetch for scoring/filtering
+
+    // Model matching: check model field OR variant fields for multi-word models like "LANDCRUISER PRADO"
+    const modelParts = input.model.split(/\s+/);
+    if (modelParts.length > 1) {
+      const modelFilter = [
+        `model.ilike.%${input.model}%`,
+        `variant_raw.ilike.%${modelParts.slice(1).join(" ")}%`,
+        `variant_family.ilike.%${modelParts.slice(1).join(" ")}%`,
+        `variant_used.ilike.%${modelParts.slice(1).join(" ")}%`,
+      ].join(",");
+      query = query.or(modelFilter);
+    } else {
+      query = query.ilike("model", `%${input.model}%`);
+    }
 
     if (input.year_min) query = query.gte("year", input.year_min);
     if (input.year_max) query = query.lte("year", input.year_max);
     if (input.max_km) query = query.lte("km", input.max_km);
-    if (input.price_max) query = query.lte("asking_price", input.price_max);
+    if (input.price_max) {
+      // Include listings with price <= max OR no price (auction TBA)
+      query = query.or(`asking_price.lte.${input.price_max},asking_price.is.null`);
+    }
 
     const { data: listings, error: listErr } = await query;
     if (listErr) throw listErr;
@@ -126,8 +140,8 @@ Deno.serve(async (req) => {
       variant: string | null;
       year: number;
       km: number | null;
-      price: number;
-      effective_cost: number;
+      price: number | null;
+      effective_cost: number | null;
       score: number;
       match_reason: string[];
       source: string;
@@ -149,10 +163,10 @@ Deno.serve(async (req) => {
     const results: ScoredResult[] = [];
 
     for (const l of filtered) {
-      const askPrice = Number(l.asking_price);
+      const askPrice = l.asking_price != null ? Number(l.asking_price) : null;
       const isAuction = AUCTION_SOURCES.has((l.source || "").toLowerCase());
       const premium = isAuction ? AUCTION_PREMIUM : 0;
-      const effectiveCost = askPrice + premium + FREIGHT_FLAT;
+      const effectiveCost = askPrice != null ? askPrice + premium + FREIGHT_FLAT : null;
 
       // --- Scoring logic ---
       let score = 50; // base
@@ -217,7 +231,7 @@ Deno.serve(async (req) => {
       }
 
       // Price attractiveness
-      if (input.price_max && effectiveCost < input.price_max * 0.85) {
+      if (input.price_max && effectiveCost != null && effectiveCost < input.price_max * 0.85) {
         score += 10;
         reasons.push("PRICE_WELL_UNDER_BUDGET");
       }
@@ -262,7 +276,7 @@ Deno.serve(async (req) => {
     }
 
     // Sort by score descending, then effective_cost ascending
-    results.sort((a, b) => b.score - a.score || a.effective_cost - b.effective_cost);
+    results.sort((a, b) => b.score - a.score || (a.effective_cost ?? Infinity) - (b.effective_cost ?? Infinity));
     const topResults = results.slice(0, input.limit!);
 
     // --- 4. Log the request ---
