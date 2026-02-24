@@ -118,13 +118,13 @@ export interface OutwardSearchResponse {
   intent?: {
     make: string | null;
     model_keywords: string[];
-    year_min: number | null;
-    year_max: number | null;
+    year: number | null;
     max_km: number | null;
     price_max: number | null;
   };
   results?: OutwardSearchResult[];
   total_searched?: number;
+  total_filtered?: number;
   duration_ms?: number;
   error?: string;
   message?: string;
