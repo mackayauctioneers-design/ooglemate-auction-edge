@@ -61,6 +61,12 @@ interface NavItem {
 
 const operatorSections: NavSection[] = [
   {
+    title: 'OogleBot',
+    items: [
+      { path: '/operator/ooglebot', label: 'OogleBot', icon: Bot },
+    ],
+  },
+  {
     title: 'Trading',
     items: [
       { path: '/operator/trading-desk', label: 'Trading Desk', icon: DollarSign },
@@ -132,12 +138,6 @@ const operatorSections: NavSection[] = [
       { path: '/log-sale', label: 'Log Sale', icon: DollarSign },
       { path: '/saved-searches', label: 'Saved Searches', icon: Bookmark },
       { path: '/admin-tools-legacy', label: 'Admin Tools', icon: Settings },
-    ],
-  },
-  {
-    title: 'OogleBot',
-    items: [
-      { path: '/operator/ooglebot', label: 'OogleBot', icon: Bot },
     ],
   },
   {

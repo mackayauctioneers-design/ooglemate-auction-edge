@@ -41,10 +41,10 @@ import { useIsMobile } from '@/hooks/use-mobile';
 // Max 7 items. Dealers see what they can act on — nothing else.
 // ============================================================================
 const dealerNavItems = [
+  { path: '/ooglebot', label: 'OogleBot', icon: Bot, authOnly: true },
   { path: '/trading-desk', label: 'Trading Desk', icon: DollarSign, authOnly: true },
   { path: '/sales-upload', label: 'My Sales', icon: BarChart3, authOnly: true },
   { path: '/deals', label: 'Closed Deals', icon: FileText, authOnly: true },
-  { path: '/ooglebot', label: 'OogleBot', icon: Bot, authOnly: true },
 ];
 
 export function AppSidebar() {
