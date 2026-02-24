@@ -10,7 +10,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = (Deno.env.get("OPENCLAW_API_KEY") || "").trim();
+    const rawKey = Deno.env.get("OPENCLAW_API_KEY") || "";
+    // Strip any non-ASCII characters and trim
+    const apiKey = rawKey.replace(/[^\x20-\x7E]/g, "").trim();
     if (!apiKey) {
       return new Response(
         JSON.stringify({ success: false, error: "OPENCLAW_API_KEY not configured" }),
@@ -27,15 +29,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log("OpenClaw search:", message);
+    console.log("OpenClaw search:", message, "agent:", agent, "apiKey length:", apiKey.length);
+
+    const headers: Record<string, string> = {
+      "Authorization": "Bearer " + apiKey,
+      "Content-Type": "application/json",
+    };
+    if (agent) {
+      headers["x-openclaw-agent-id"] = String(agent).trim();
+    }
 
     const response = await fetch("https://seminars-somerset-scale-missile.trycloudflare.com/v1/chat/completions", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "x-openclaw-agent-id": agent,
-      },
+      headers,
       body: JSON.stringify({
         model: "openclaw",
         messages: [{ role: "user", content: message }],
