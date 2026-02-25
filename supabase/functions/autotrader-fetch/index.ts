@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { extractBadge } from "../_shared/taxonomy/extractBadge.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -316,6 +317,13 @@ serve(async (req) => {
 
           for (const listing of listings) {
             try {
+              // Extract badge/fuel/drivetrain before upsert
+              const extracted = extractBadge(
+                listing.make || '',
+                listing.model || '',
+                listing.variant_raw,
+              );
+
               const { data, error } = await supabase.rpc("upsert_retail_listing", {
                 p_source: "autotrader",
                 p_source_listing_id: listing.source_listing_id,
@@ -324,7 +332,7 @@ serve(async (req) => {
                 p_make: listing.make,
                 p_model: listing.model,
                 p_variant_raw: listing.variant_raw || null,
-                p_variant_family: null,
+                p_variant_family: extracted.badge,
                 p_km: listing.km || null,
                 p_asking_price: listing.asking_price,
                 p_state: listing.state || null,
@@ -337,9 +345,21 @@ serve(async (req) => {
                 continue;
               }
 
+              // Update structured fields
+              const resultRow = data?.[0] || data;
+              if (resultRow?.id && (extracted.badge || extracted.fuel_type || extracted.drivetrain || extracted.body_type)) {
+                const updateFields: Record<string, unknown> = {};
+                if (extracted.badge) updateFields.badge = extracted.badge;
+                if (extracted.fuel_type) updateFields.fuel_type = extracted.fuel_type;
+                if (extracted.drivetrain) updateFields.drivetrain = extracted.drivetrain;
+                if (extracted.body_type) updateFields.body_type = extracted.body_type;
+                updateFields.classified_at = new Date().toISOString();
+                updateFields.variant_source = 'extractBadge_v1';
+                await supabase.from("retail_listings").update(updateFields).eq("id", resultRow.id);
+              }
+
               itemsUpsertedThisRun++;
-              const result = data?.[0] || data;
-              if (result?.is_new) {
+              if (resultRow?.is_new) {
                 runNew++;
               } else {
                 runUpdated++;
