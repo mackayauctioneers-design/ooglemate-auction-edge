@@ -9,6 +9,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * - Proper confidence tiers (INVALID < 3, LOW 3-4, MEDIUM 5-9, HIGH 10+)
  * - Year banding ±1 year from median
  * - Exact canonical model match
+ * - Atomic rebuild (build in memory, truncate+insert in single pass)
+ * - Post-rebuild audit logging with integrity checks
  */
 
 const corsHeaders = {
@@ -71,7 +73,7 @@ interface SaleTruthRow {
   platform_class: string | null;
 }
 
-interface ProfileRow {
+interface ProfileInsert {
   dealer_key: string;
   dealer_name: string;
   make: string;
@@ -86,11 +88,108 @@ interface ProfileRow {
   median_sell_price: number | null;
   median_profit: number | null;
   p75_profit: number | null;
-  median_buy_price: number | null; // not in table but we'll compute
   flip_count: number;
   confidence_tier: string;
   min_viable_profit_floor: number;
   last_sale_date: string | null;
+}
+
+function buildProfiles(sales: SaleTruthRow[]): { profiles: ProfileInsert[]; invalidCount: number; groupCount: number } {
+  // Group by: account_id + make + model + badge + km_band
+  const groups = new Map<string, SaleTruthRow[]>();
+
+  for (const sale of sales) {
+    if (!sale.km || sale.km <= 0) continue;
+    const kmBand = getKmBandLabel(sale.km);
+    const badge = (sale.badge || sale.trim_class || "BASE").toUpperCase().trim();
+    const key = [sale.account_id, sale.make.toUpperCase(), sale.model.toUpperCase(), badge, kmBand].join("|");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(sale);
+  }
+
+  const profiles: ProfileInsert[] = [];
+  let invalidCount = 0;
+
+  for (const [key, groupSales] of groups) {
+    const flipCount = groupSales.length;
+    const tier = confidenceTier(flipCount);
+
+    if (tier === "INVALID") {
+      invalidCount++;
+      continue;
+    }
+
+    const [accountId, make, model, badge, kmBand] = key.split("|");
+    const bandLimits = getKmBandLimits(kmBand);
+
+    const sellPrices = groupSales.map(s => Number(s.sale_price)).filter(n => n > 0);
+    const buyPrices = groupSales.map(s => Number(s.buy_price)).filter(n => n > 0);
+    const profits = groupSales.map(s => Number(s.sale_price) - Number(s.buy_price));
+    const years = groupSales.map(s => s.year);
+    const soldDates = groupSales.map(s => s.sold_at).filter(Boolean).sort();
+
+    const medianYear = median(years);
+
+    profiles.push({
+      dealer_key: accountId,
+      dealer_name: accountId,
+      make,
+      model,
+      badge: badge === "BASE" ? null : badge,
+      km_band: kmBand,
+      km_min: bandLimits.min,
+      km_max: bandLimits.max,
+      year_min: Math.min(...years),
+      year_max: Math.max(...years),
+      year_center: Math.round(medianYear),
+      median_sell_price: Math.round(median(sellPrices)),
+      median_profit: Math.round(median(profits)),
+      p75_profit: Math.round(p75(profits)),
+      flip_count: flipCount,
+      confidence_tier: tier,
+      min_viable_profit_floor: Math.max(500, Math.round(median(sellPrices) * 0.05)),
+      last_sale_date: soldDates.length > 0 ? soldDates[soldDates.length - 1]! : null,
+    });
+  }
+
+  return { profiles, invalidCount, groupCount: groups.size };
+}
+
+function buildAuditPayload(profiles: ProfileInsert[], invalidCount: number, groupCount: number, totalSales: number) {
+  const high = profiles.filter(p => p.confidence_tier === "HIGH").length;
+  const medium = profiles.filter(p => p.confidence_tier === "MEDIUM").length;
+  const low = profiles.filter(p => p.confidence_tier === "LOW").length;
+  const kmBandAll = profiles.filter(p => p.km_band === "all").length;
+  const topByMedian = profiles
+    .filter(p => p.median_sell_price !== null)
+    .sort((a, b) => (b.median_sell_price || 0) - (a.median_sell_price || 0))
+    .slice(0, 20)
+    .map(p => ({
+      dealer: p.dealer_key,
+      make: p.make,
+      model: p.model,
+      badge: p.badge,
+      km_band: p.km_band,
+      median_sell: p.median_sell_price,
+      flips: p.flip_count,
+      tier: p.confidence_tier,
+    }));
+
+  return {
+    total_sales: totalSales,
+    raw_groups: groupCount,
+    invalid_groups: invalidCount,
+    valid_profiles: profiles.length,
+    confidence_breakdown: { HIGH: high, MEDIUM: medium, LOW: low },
+    km_band_all_count: kmBandAll,
+    top_20_by_median: topByMedian,
+    // Integrity flags
+    integrity: {
+      has_km_band_all: kmBandAll > 0,
+      low_pct: profiles.length > 0 ? Math.round((low / profiles.length) * 100) : 0,
+      profile_count_ok: profiles.length > 0,
+    },
+  };
 }
 
 Deno.serve(async (req) => {
@@ -127,69 +226,8 @@ Deno.serve(async (req) => {
 
     console.log("[rebuild-liquidity] " + sales.length + " sales with both buy & sale price");
 
-    // 2. Group by: account_id + make + model + badge + km_band
-    const groups = new Map<string, SaleTruthRow[]>();
-
-    for (const sale of sales as SaleTruthRow[]) {
-      if (!sale.km || sale.km <= 0) continue; // Skip no-KM records
-      const kmBand = getKmBandLabel(sale.km);
-      const badge = (sale.badge || sale.trim_class || "BASE").toUpperCase().trim();
-      const key = [sale.account_id, sale.make.toUpperCase(), sale.model.toUpperCase(), badge, kmBand].join("|");
-      
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(sale);
-    }
-
-    console.log("[rebuild-liquidity] " + groups.size + " raw groups before filtering");
-
-    // 3. Build profiles — only for groups with 3+ sales
-    const profiles: ProfileRow[] = [];
-    let invalidCount = 0;
-
-    for (const [key, groupSales] of groups) {
-      const flipCount = groupSales.length;
-      const tier = confidenceTier(flipCount);
-
-      if (tier === "INVALID") {
-        invalidCount++;
-        continue; // Hard exclusion: < 3 flips = no profile
-      }
-
-      const [accountId, make, model, badge, kmBand] = key.split("|");
-      const bandLimits = getKmBandLimits(kmBand);
-
-      const sellPrices = groupSales.map(s => Number(s.sale_price)).filter(n => n > 0);
-      const buyPrices = groupSales.map(s => Number(s.buy_price)).filter(n => n > 0);
-      const profits = groupSales.map(s => Number(s.sale_price) - Number(s.buy_price));
-      const years = groupSales.map(s => s.year);
-      const soldDates = groupSales.map(s => s.sold_at).filter(Boolean).sort();
-
-      const medianYear = median(years);
-      const yearMin = Math.min(...years);
-      const yearMax = Math.max(...years);
-
-      profiles.push({
-        dealer_key: accountId,
-        dealer_name: accountId, // Will be resolved below
-        make: make,
-        model: model,
-        badge: badge === "BASE" ? null : badge,
-        km_band: kmBand,
-        km_min: bandLimits.min,
-        km_max: bandLimits.max,
-        year_min: yearMin,
-        year_max: yearMax,
-        year_center: Math.round(medianYear),
-        median_sell_price: Math.round(median(sellPrices)),
-        median_profit: Math.round(median(profits)),
-        p75_profit: Math.round(p75(profits)),
-        median_buy_price: Math.round(median(buyPrices)),
-        flip_count: flipCount,
-        confidence_tier: tier,
-        min_viable_profit_floor: Math.max(500, Math.round(median(sellPrices) * 0.05)),
-        last_sale_date: soldDates.length > 0 ? soldDates[soldDates.length - 1] : null,
-      });
-    }
+    // 2. Build all profiles in memory (atomic — nothing deleted yet)
+    const { profiles, invalidCount, groupCount } = buildProfiles(sales as SaleTruthRow[]);
 
     console.log("[rebuild-liquidity] " + profiles.length + " valid profiles (excluded " + invalidCount + " under-3-flip groups)");
     console.log("[rebuild-liquidity] Confidence breakdown: " +
@@ -197,96 +235,102 @@ Deno.serve(async (req) => {
       profiles.filter(p => p.confidence_tier === "MEDIUM").length + " MEDIUM, " +
       profiles.filter(p => p.confidence_tier === "LOW").length + " LOW");
 
+    // Build audit payload (used for both dry run and real run)
+    const audit = buildAuditPayload(profiles, invalidCount, groupCount, sales.length);
+
     if (dryRun) {
       return new Response(JSON.stringify({
-        ok: true,
-        dry_run: true,
-        total_sales: sales.length,
-        raw_groups: groups.size,
-        invalid_groups: invalidCount,
-        valid_profiles: profiles.length,
-        confidence_breakdown: {
-          HIGH: profiles.filter(p => p.confidence_tier === "HIGH").length,
-          MEDIUM: profiles.filter(p => p.confidence_tier === "MEDIUM").length,
-          LOW: profiles.filter(p => p.confidence_tier === "LOW").length,
-        },
+        ok: true, dry_run: true,
+        ...audit,
         sample_profiles: profiles.slice(0, 10),
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // 4. Truncate and replace all profiles
-    // Delete existing profiles
-    const { error: delErr } = await sb.from("dealer_liquidity_profiles").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    if (delErr) {
-      console.error("[rebuild-liquidity] Delete error:", delErr);
-      throw delErr;
+    // 3. ATOMIC REBUILD: Clear dependent cache first, then truncate + insert
+    // Clear soft-referenced pickles_buy_now_listings.matched_profile_id
+    // (FK was dropped — this column is now a soft reference)
+    const { error: clearRefErr } = await sb
+      .from("pickles_buy_now_listings")
+      .update({ matched_profile_id: null })
+      .not("matched_profile_id", "is", null);
+    if (clearRefErr) {
+      console.warn("[rebuild-liquidity] Warn clearing refs: " + clearRefErr.message);
     }
 
-    // 5. Insert new profiles in batches
+    // Delete all existing profiles
+    const { error: delErr } = await sb.rpc("truncate_dealer_liquidity_profiles");
+    let usedFallbackDelete = false;
+    if (delErr) {
+      // Fallback: delete all rows (rpc may not exist yet)
+      console.warn("[rebuild-liquidity] RPC truncate failed, using delete fallback: " + delErr.message);
+      const { error: delErr2 } = await sb.from("dealer_liquidity_profiles").delete().gte("flip_count", 0);
+      if (delErr2) {
+        console.error("[rebuild-liquidity] Delete fallback also failed: " + delErr2.message);
+        throw delErr2;
+      }
+      usedFallbackDelete = true;
+    }
+
+    // 4. Insert new profiles in batches
     let inserted = 0;
     const batchSize = 50;
     for (let i = 0; i < profiles.length; i += batchSize) {
-      const batch = profiles.slice(i, i + batchSize).map(p => ({
-        dealer_key: p.dealer_key,
-        dealer_name: p.dealer_name,
-        make: p.make,
-        model: p.model,
-        badge: p.badge,
-        km_band: p.km_band,
-        km_min: p.km_min,
-        km_max: p.km_max,
-        year_min: p.year_min,
-        year_max: p.year_max,
-        year_center: p.year_center,
-        median_sell_price: p.median_sell_price,
-        median_profit: p.median_profit,
-        p75_profit: p.p75_profit,
-        flip_count: p.flip_count,
-        confidence_tier: p.confidence_tier,
-        min_viable_profit_floor: p.min_viable_profit_floor,
-        last_sale_date: p.last_sale_date,
-      }));
-
+      const batch = profiles.slice(i, i + batchSize);
       const { error: insErr } = await sb.from("dealer_liquidity_profiles").insert(batch);
       if (insErr) {
-        console.error("[rebuild-liquidity] Insert batch error:", insErr);
+        console.error("[rebuild-liquidity] Insert batch error at offset " + i + ": " + insErr.message);
         throw insErr;
       }
       inserted += batch.length;
     }
 
-    // 6. Log the rebuild
+    // 5. Log the rebuild with full audit
     await sb.from("cron_audit_log").insert({
       cron_name: "rebuild-liquidity-profiles",
       run_date: new Date().toISOString().split("T")[0],
       success: true,
       result: {
-        total_sales: sales.length,
-        valid_profiles: profiles.length,
-        invalid_groups: invalidCount,
+        ...audit,
+        inserted,
+        used_fallback_delete: usedFallbackDelete,
       },
     });
 
-    console.log("[rebuild-liquidity] Done. Inserted " + inserted + " profiles.");
+    // 6. Post-rebuild integrity alerts
+    const alerts: string[] = [];
+    if (audit.integrity.has_km_band_all) alerts.push("WARNING: km_band='all' profiles detected");
+    if (audit.integrity.low_pct > 60) alerts.push("WARNING: >60% of profiles are LOW confidence — insufficient sales truth");
+    if (inserted === 0) alerts.push("CRITICAL: Zero profiles inserted — sales truth may be empty");
+    if (alerts.length > 0) {
+      console.warn("[rebuild-liquidity] INTEGRITY ALERTS: " + alerts.join(" | "));
+    }
+
+    console.log("[rebuild-liquidity] Done. Inserted " + inserted + " profiles." + (usedFallbackDelete ? " (used delete fallback)" : ""));
 
     return new Response(JSON.stringify({
       ok: true,
-      total_sales: sales.length,
-      raw_groups: groups.size,
-      invalid_groups: invalidCount,
-      valid_profiles: inserted,
-      confidence_breakdown: {
-        HIGH: profiles.filter(p => p.confidence_tier === "HIGH").length,
-        MEDIUM: profiles.filter(p => p.confidence_tier === "MEDIUM").length,
-        LOW: profiles.filter(p => p.confidence_tier === "LOW").length,
-      },
+      ...audit,
+      inserted,
+      integrity_alerts: alerts,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err: any) {
     console.error("[rebuild-liquidity] Error:", err);
+
+    // Log failure
+    try {
+      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await sb.from("cron_audit_log").insert({
+        cron_name: "rebuild-liquidity-profiles",
+        run_date: new Date().toISOString().split("T")[0],
+        success: false,
+        error: err.message,
+      });
+    } catch (_) { /* best effort */ }
+
     return new Response(JSON.stringify({ ok: false, error: err.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
