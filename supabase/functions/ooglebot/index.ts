@@ -62,11 +62,10 @@ Deno.serve(async (req) => {
   );
 
   try {
-    const rawKey = Deno.env.get("OPENCLAW_API_KEY") || "";
-    const apiKey = rawKey.replace(/[^\x20-\x7E]/g, "").trim();
+    const apiKey = Deno.env.get("LOVABLE_API_KEY") || "";
     if (!apiKey) {
       return new Response(
-        JSON.stringify({ status: "error", error: "OPENCLAW_API_KEY not configured" }),
+        JSON.stringify({ status: "error", error: "LOVABLE_API_KEY not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -81,14 +80,14 @@ Deno.serve(async (req) => {
 
     console.log("ooglebot intent parse request:", message);
 
-    // --- 1. Call OpenClaw as strict JSON intent parser ---
+    // --- 1. Call Lovable AI as strict JSON intent parser ---
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
 
     let llmResponse: Response;
     try {
       llmResponse = await fetch(
-        "https://consistency-commitments-handed-moms.trycloudflare.com/v1/chat/completions",
+        "https://ai.gateway.lovable.dev/v1/chat/completions",
         {
           method: "POST",
           headers: {
@@ -96,7 +95,7 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "openclaw",
+            model: "google/gemini-2.5-flash-lite",
             temperature: 0,
             messages: [
               { role: "system", content: INTENT_SCHEMA },
@@ -109,7 +108,7 @@ Deno.serve(async (req) => {
     } catch (fetchErr) {
       clearTimeout(timeout);
       const isTimeout = fetchErr instanceof DOMException && fetchErr.name === "AbortError";
-      console.error("OpenClaw fetch error:", isTimeout ? "Timed out" : fetchErr);
+      console.error("Lovable AI fetch error:", isTimeout ? "Timed out" : fetchErr);
       return new Response(
         JSON.stringify({ status: "error", error: isTimeout ? "Intent parser timed out" : String(fetchErr) }),
         { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -119,7 +118,19 @@ Deno.serve(async (req) => {
 
     if (!llmResponse.ok) {
       const errText = await llmResponse.text();
-      console.error("OpenClaw API error:", llmResponse.status, errText);
+      console.error("Lovable AI error:", llmResponse.status, errText);
+      if (llmResponse.status === 429) {
+        return new Response(
+          JSON.stringify({ status: "error", error: "Rate limit exceeded, please try again shortly" }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (llmResponse.status === 402) {
+        return new Response(
+          JSON.stringify({ status: "error", error: "AI credits exhausted, please add funds" }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       return new Response(
         JSON.stringify({ status: "error", error: `Intent parser error: ${llmResponse.status}` }),
         { status: llmResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -129,7 +140,7 @@ Deno.serve(async (req) => {
     // --- 2. Hard parse the response ---
     const llmData = await llmResponse.json();
     const content = llmData.choices?.[0]?.message?.content || "";
-    console.log("OpenClaw raw response:", content);
+    console.log("Lovable AI raw response:", content);
 
     // Extract JSON from response - model may wrap in prose + markdown fences
     let cleaned = content;
