@@ -17,6 +17,56 @@ var BN_MAX_DETAIL = 15;
 var BN_DEVIATION_FLOOR = 4000;
 var BN_DAILY_CAP = 5;
 
+// --- STRUCTURAL INTEGRITY GATES ---
+var MIN_FLIP_COUNT = 3;           // No profile below 3 flips
+var MIN_CONFIDENCE_FOR_ALERT = "MEDIUM"; // LOW cannot generate buy alerts
+var KM_PROXIMITY_PCT = 0.40;      // ±40% of profile median KM (or band limits)
+
+// KM band definitions
+var KM_BANDS = [
+  { label: "0-40k", min: 0, max: 40000 },
+  { label: "40-80k", min: 40000, max: 80000 },
+  { label: "80-120k", min: 80000, max: 120000 },
+  { label: "120-160k", min: 120000, max: 160000 },
+  { label: "160k+", min: 160000, max: 999999 },
+];
+
+function getKmBand(km: number | null): { label: string; min: number; max: number } | null {
+  if (km === null || km === undefined) return null;
+  for (var b of KM_BANDS) {
+    if (km >= b.min && km < b.max) return b;
+  }
+  return KM_BANDS[KM_BANDS.length - 1]; // 160k+
+}
+
+function isProfileValid(profile: any): boolean {
+  // Hard gate: minimum flip count
+  if ((profile.flip_count || 0) < MIN_FLIP_COUNT) return false;
+  return true;
+}
+
+function isProfileAlertWorthy(profile: any): boolean {
+  if (!isProfileValid(profile)) return false;
+  // Confidence gate: LOW cannot generate alerts
+  var tier = (profile.confidence_tier || "LOW").toUpperCase();
+  if (tier === "LOW" || tier === "INVALID") return false;
+  // Must have a real median sell price
+  if (!profile.median_sell_price || profile.median_sell_price <= 0) return false;
+  return true;
+}
+
+function isKmProximityMatch(listingKm: number | null, profileKmMin: number, profileKmMax: number, profileMedianKm: number | null): boolean {
+  if (listingKm === null) return false; // No KM = no match (strict)
+  // Use KM band logic: listing must fall within the profile's KM band
+  var listingBand = getKmBand(listingKm);
+  var profileBand = getKmBand(profileMedianKm ?? ((profileKmMin + profileKmMax) / 2));
+  if (!listingBand || !profileBand) return false;
+  // Must be same band or adjacent band
+  var listingIdx = KM_BANDS.indexOf(listingBand);
+  var profileIdx = KM_BANDS.indexOf(profileBand);
+  return Math.abs(listingIdx - profileIdx) <= 1;
+}
+
 function normalizeVariantSH(v: string | null | undefined): string {
   if (!v) return "";
   return v.toUpperCase()
@@ -205,46 +255,66 @@ async function runBuyNowRadar(force: boolean) {
   var profiles = pr.data || [];
   console.log("[BN] " + profiles.length + " profiles");
 
-  // STEP 1: Match + compute deviation with hard $4k gate + badge awareness
+  // STEP 1: Match + compute deviation with STRUCTURAL INTEGRITY GATES
   var qualified: any[] = [];
+  var skippedLowFlip = 0;
+  var skippedLowConf = 0;
+  var skippedKmProx = 0;
   for (var li = 0; li < listings.length; li++) {
     var l = listings[li];
     for (var pi = 0; pi < profiles.length; pi++) {
       var p = profiles[pi];
+
+      // GATE 1: Minimum flip count (structural)
+      if (!isProfileValid(p)) {
+        skippedLowFlip++;
+        continue;
+      }
+
+      // GATE 2: Confidence tier (no alerts from LOW)
+      if (!isProfileAlertWorthy(p)) {
+        skippedLowConf++;
+        continue;
+      }
+
       var score = 0;
       if (l.make.toLowerCase() === (p.make || "").toLowerCase()) score += 30;
       if (l.model.toLowerCase() === (p.model || "").toLowerCase()) score += 30;
       if (l.year >= p.year_min && l.year <= p.year_max) score += 20;
-      if (l.kms !== null && l.kms >= (p.km_min || 0) && l.kms <= (p.km_max || 999999)) score += 20;
+
+      // GATE 3: KM proximity (strict band-based)
+      if (!isKmProximityMatch(l.kms, p.km_min || 0, p.km_max || 999999, null)) {
+        skippedKmProx++;
+        continue;
+      }
+      score += 20;
+
       if (score < 70) continue;
 
       // Badge/variant scoring
-      var badgeScore = 0.5; // default: no badge data
+      var badgeScore = 0.5;
       var listingVariant = normalizeVariantSH(l.variant);
       var profileBadge = normalizeVariantSH(p.badge);
       if (listingVariant && profileBadge) {
         if (listingVariant === profileBadge) badgeScore = 1.0;
         else if (listingVariant.includes(profileBadge) || profileBadge.includes(listingVariant)) badgeScore = 0.7;
-        else badgeScore = 0.0; // Badge mismatch — skip
+        else badgeScore = 0.0;
       } else if (profileBadge && !listingVariant) {
-        badgeScore = 0.3; // Profile has badge but listing doesn't — low confidence
+        badgeScore = 0.3;
       }
-      console.log("[PICKLES] " + l.make + " " + l.model + " " + (l.variant || "") + " → badgeScore " + badgeScore + " vs profile " + (p.badge || "none"));
-      if (badgeScore === 0.0) continue; // Hard badge mismatch
+      if (badgeScore === 0.0) continue;
 
       var liquidity_gap = (p.median_sell_price || 0) - l.price;
       var deviation = Math.max(0, liquidity_gap);
 
-      // HARD DEVIATION GATE
       if (deviation < BN_DEVIATION_FLOOR) continue;
 
       var strong = isPatternStrong(p);
-
-      // CLEAN TRIGGER RULE
       var passes_trigger = (deviation >= 6000) || (deviation >= 4500 && strong);
       if (!passes_trigger) continue;
 
       var badgeLabel = badgeScore >= 1.0 ? "EXACT BADGE" : badgeScore >= 0.7 ? "CLOSE BADGE" : "MAKE/MODEL ONLY";
+      var listingBand = getKmBand(l.kms);
 
       qualified.push({
         id: l.id, year: l.year, make: l.make, model: l.model,
@@ -255,30 +325,50 @@ async function runBuyNowRadar(force: boolean) {
         median_sell_price: p.median_sell_price || 0,
         median_profit: p.median_profit || 0,
         flip_count: p.flip_count || 0,
-        km_band: l.kms !== null ? (l.kms >= (p.km_min || 0) && l.kms <= (p.km_max || 999999) ? "inside" : "outside") : "unknown",
+        confidence_tier: p.confidence_tier || "LOW",
+        km_band: listingBand ? listingBand.label : "unknown",
         match_score: score * badgeScore
       });
       break;
     }
   }
+  console.log("[BN] Gate stats: skipped " + skippedLowFlip + " low-flip, " + skippedLowConf + " low-conf, " + skippedKmProx + " km-proximity");
   qualified.sort(function(a: any, b: any) { return b.deviation - a.deviation; });
   console.log("[BN] " + qualified.length + " qualified before Grok (passed deviation + trigger)");
 
-  // STEP 2: Grok confirmation layer
+  // STEP 2: GPT wholesale confirmation layer (GATED by profile validity)
+  // GPT wholesale is ONLY called when the profile backing the match is structurally sound.
+  // If flip_count < 5 or confidence < MEDIUM, GPT is skipped — deviation-only scoring.
   var grokPassed: any[] = [];
+  var grokSkipped = 0;
   var remainingSlots = BN_DAILY_CAP - alertsSentToday;
-  // Only send top candidates to Grok (cap at remaining slots + buffer)
   var toGrok = qualified.slice(0, Math.min(qualified.length, remainingSlots + 3));
   for (var gi = 0; gi < toGrok.length; gi++) {
     var q = toGrok[gi];
+    var confTierQ = (q.confidence_tier || "LOW").toUpperCase();
+    
+    // GPT GATE: Only call GPT if profile is strong enough
+    if ((q.flip_count || 0) < 5 || confTierQ !== "HIGH") {
+      // Skip GPT — use deviation-only scoring
+      // Still allow through if deviation is very strong (>$8k) as a safety net
+      if (q.deviation >= 8000) {
+        console.log("[BN] GPT skipped (weak profile) but deviation strong: " + q.year + " " + q.make + " " + q.model + " dev=" + q.deviation);
+        grokPassed.push({ ...q, grok_estimate: 0, grok_gap: 0, grok_status: "skipped_weak_profile" });
+      } else {
+        grokSkipped++;
+        console.log("[BN] GPT skipped (weak profile, insufficient deviation): " + q.year + " " + q.make + " " + q.model + " flips=" + q.flip_count + " conf=" + confTierQ);
+      }
+      continue;
+    }
+    
     var grokEstimate = await callGrokWholesale(q, q, openaiKey);
     var grok_gap = grokEstimate - q.price;
     console.log("[BN] Grok: " + q.year + " " + q.make + " " + q.model + " estimate=" + grokEstimate + " gap=" + grok_gap);
     if (grok_gap >= 3500) {
-      grokPassed.push({ ...q, grok_estimate: grokEstimate, grok_gap: grok_gap });
+      grokPassed.push({ ...q, grok_estimate: grokEstimate, grok_gap: grok_gap, grok_status: "confirmed" });
     }
   }
-  console.log("[BN] " + grokPassed.length + " passed Grok confirmation");
+  console.log("[BN] " + grokPassed.length + " passed (Grok confirmed or deviation-only), " + grokSkipped + " skipped (weak profile)");
 
   // STEP 3: Insert ALL grok-passed into opportunities table (no cap on DB)
   var dbInserted = 0;
