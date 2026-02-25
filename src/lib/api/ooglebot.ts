@@ -109,12 +109,15 @@ export interface OutwardSearchResult {
   km: number | null;
   price: number | null;
   location: string | null;
+  variant: string | null;
   url: string;
   score: number;
 }
 
 export interface OutwardSearchResponse {
   status: "ok" | "error";
+  gated?: boolean;
+  reason?: string;
   intent?: {
     make: string | null;
     model_keywords: string[];
@@ -130,10 +133,14 @@ export interface OutwardSearchResponse {
   message?: string;
 }
 
-/** Call run-outward-search: searches whitelisted external domains */
-export async function runOutwardSearch(instruction: string): Promise<OutwardSearchResponse> {
+/** Call run-outward-search: searches whitelisted external domains with demand gating */
+export async function runOutwardSearch(
+  instruction: string,
+  internalCount?: number,
+  urgency?: string,
+): Promise<OutwardSearchResponse> {
   const { data, error } = await supabase.functions.invoke("run-outward-search", {
-    body: { instruction },
+    body: { instruction, internal_count: internalCount ?? 0, urgency: urgency ?? "normal" },
   });
 
   if (error) {

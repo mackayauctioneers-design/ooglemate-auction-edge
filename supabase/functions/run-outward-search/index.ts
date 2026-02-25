@@ -73,21 +73,18 @@ function parseInstruction(raw: string): ParsedIntent {
   const priceMatch = input.match(/(?:UNDER|BELOW|MAX|BUDGET)\s*\$?\s*([\d,]+)\s*K?\b/i);
   if (priceMatch) {
     let p = parseInt(priceMatch[1].replace(/,/g, ""), 10);
-    if (p < 1000) p *= 1000; // "50k" → 50000
+    if (p < 1000) p *= 1000;
     price_max = p;
   }
 
   // Make: dictionary match against tokens
   let make: string | null = null;
-  let makeTokenCount = 0;
   for (const known of KNOWN_MAKES) {
     const knownParts = known.split(/\s+/);
-    // Check if consecutive tokens match
     for (let i = 0; i <= tokens.length - knownParts.length; i++) {
       const slice = tokens.slice(i, i + knownParts.length).join(" ");
       if (slice === known) {
         make = known === "VW" ? "VOLKSWAGEN" : known === "LANDROVER" ? "LAND ROVER" : known;
-        makeTokenCount = knownParts.length;
         break;
       }
     }
@@ -96,17 +93,16 @@ function parseInstruction(raw: string): ParsedIntent {
 
   // Model keywords: everything that's NOT year, km phrase, price phrase, or make
   const stripPatterns = [
-    /\b20[0-3]\d\b/g,                            // year
-    /[\d,]+\s*(?:km|kms)\b/gi,                    // km
-    /(?:UNDER|BELOW|MAX|BUDGET)\s*\$?\s*[\d,]+\s*K?\b/gi, // price
-    /\bLOW\s*KM\b/gi,                              // "low km"
+    /\b20[0-3]\d\b/g,
+    /[\d,]+\s*(?:km|kms)\b/gi,
+    /(?:UNDER|BELOW|MAX|BUDGET)\s*\$?\s*[\d,]+\s*K?\b/gi,
+    /\bLOW\s*KM\b/gi,
   ];
 
   let remaining = input;
   for (const pat of stripPatterns) {
     remaining = remaining.replace(pat, " ");
   }
-  // Remove make tokens
   if (make) {
     remaining = remaining.replace(new RegExp(`\\b${make.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, "g"), " ");
   }
@@ -120,7 +116,10 @@ function parseInstruction(raw: string): ParsedIntent {
 }
 
 // ══════════════════════════════════════════
-// STEP 3: Deterministic field extraction (NO AI)
+// Firecrawl JSON extraction schema for vehicle listings
+
+// ══════════════════════════════════════════
+// Extracted listing interface (same as before)
 // ══════════════════════════════════════════
 interface ExtractedListing {
   url: string;
@@ -130,79 +129,32 @@ interface ExtractedListing {
   km: number | null;
   price: number | null;
   location: string | null;
-}
-
-function extractFromMarkdown(markdown: string, url: string, domain: string, titleHint: string): ExtractedListing {
-  const text = markdown || "";
-
-  // Title: use metadata title or first heading
-  let title = titleHint || null;
-  if (!title) {
-    const h1 = text.match(/^#\s+(.+)$/m);
-    if (h1) title = h1[1].trim();
-  }
-
-  // Year: first 4-digit 2000-2030
-  let year: number | null = null;
-  const yearM = text.match(/\b(20[0-3]\d)\b/);
-  if (yearM) year = parseInt(yearM[1], 10);
-
-  // Price: $XX,XXX pattern — take the first reasonable one
-  let price: number | null = null;
-  const priceMatches = [...text.matchAll(/\$\s*([\d,]+(?:\.\d{2})?)/g)];
-  for (const pm of priceMatches) {
-    const p = parseInt(pm[1].replace(/[,\.]/g, "").slice(0, -2) || pm[1].replace(/,/g, ""), 10);
-    const clean = parseInt(pm[1].replace(/,/g, "").replace(/\.\d+$/, ""), 10);
-    if (clean >= 1000 && clean <= 500000) {
-      price = clean;
-      break;
-    }
-  }
-
-  // KM: XX,XXX km
-  let km: number | null = null;
-  const kmM = text.match(/([\d,]+)\s*(?:km|kms|kilometres|kilometers)/i);
-  if (kmM) {
-    const k = parseInt(kmM[1].replace(/,/g, ""), 10);
-    if (k >= 0 && k <= 999999) km = k;
-  }
-
-  // Location: AU state codes
-  let location: string | null = null;
-  const stateM = text.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
-  if (stateM) location = stateM[1].toUpperCase();
-
-  return { url, source: domain, title, year, km, price, location };
+  variant: string | null;
 }
 
 // ══════════════════════════════════════════
-// STEP 5: Deterministic scoring (NO AI)
+// Scoring (unchanged deterministic logic)
 // ══════════════════════════════════════════
 function scoreListing(listing: ExtractedListing, intent: ParsedIntent): number {
   let score = 50;
 
-  // KM filter: disqualify if over max + 10k tolerance
   if (intent.max_km && listing.km != null) {
     if (listing.km > intent.max_km + 10000) return 0;
-    // Reward lower km
     score += Math.round(20 * (1 - listing.km / (intent.max_km + 10000)));
   }
 
-  // Year proximity: ±1 year tolerance
   if (intent.year && listing.year != null) {
     const diff = Math.abs(listing.year - intent.year);
     if (diff === 0) score += 15;
     else if (diff === 1) score += 8;
-    else if (diff > 2) return 0; // too far
+    else if (diff > 2) return 0;
   }
 
-  // Price: lower is better
   if (listing.price != null && intent.price_max) {
     if (listing.price > intent.price_max) score -= 15;
     else score += Math.round(15 * (1 - listing.price / intent.price_max));
   }
 
-  // Bonus: has all key fields
   if (listing.price != null && listing.km != null && listing.year != null) {
     score += 5;
   }
@@ -229,7 +181,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { instruction } = await req.json();
+    const body = await req.json();
+    const { instruction, internal_count, urgency } = body;
+
     if (!instruction || typeof instruction !== "string" || !instruction.trim()) {
       return new Response(
         JSON.stringify({ status: "error", error: "instruction is required" }),
@@ -237,11 +191,29 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[OUTWARD-V1] Instruction: "${instruction}"`);
+    // ── DEMAND GATE: only fire if internal supply is low OR urgency is high ──
+    const internalCount = typeof internal_count === "number" ? internal_count : 0;
+    const jobUrgency = urgency || "normal";
+
+    if (internalCount >= 3 && jobUrgency === "normal") {
+      console.log(`[OUTWARD-V2] Skipped: ${internalCount} internal matches, urgency=${jobUrgency}`);
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          gated: true,
+          reason: `Skipped outward search: ${internalCount} internal matches available (threshold: <3 or urgency high/urgent)`,
+          results: [],
+          duration_ms: Date.now() - startTime,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`[OUTWARD-V2] Instruction: "${instruction}" | internal=${internalCount} urgency=${jobUrgency}`);
 
     // ── STEP 1: Parse intent mechanically ──
     const intent = parseInstruction(instruction);
-    console.log(`[OUTWARD-V1] Parsed:`, JSON.stringify(intent));
+    console.log(`[OUTWARD-V2] Parsed:`, JSON.stringify(intent));
 
     if (!intent.make) {
       return new Response(
@@ -250,17 +222,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── STEP 2: Build search queries per domain ──
+    // ── STEP 2: Build search queries & fire with JSON extraction ──
     const searchTerms = [
       intent.year ? String(intent.year) : "",
       intent.make,
       ...intent.model_keywords,
-      intent.max_km ? `${intent.max_km} km` : "",
+      intent.max_km ? `under ${intent.max_km} km` : "",
     ].filter(Boolean).join(" ");
 
-    console.log(`[OUTWARD-V1] Search terms: "${searchTerms}"`);
+    console.log(`[OUTWARD-V2] Search terms: "${searchTerms}"`);
 
-    // Run all domain searches in parallel
     const searchPromises = WHITELISTED_DOMAINS.map(async (domain) => {
       const query = `site:${domain} ${searchTerms}`;
       try {
@@ -273,37 +244,45 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             query,
             limit: 5,
-            scrapeOptions: { formats: ["markdown"], onlyMainContent: true },
+            scrapeOptions: {
+              formats: ["markdown"],
+              onlyMainContent: true,
+            },
           }),
         });
 
         if (!res.ok) {
-          const body = await res.text();
-          console.log(`[OUTWARD-V1] ${domain} search failed: ${res.status} ${body.slice(0, 100)}`);
+          const errBody = await res.text();
+          console.log(`[OUTWARD-V2] ${domain} search failed: ${res.status} ${errBody.slice(0, 100)}`);
           return [];
         }
 
         const data = await res.json();
         const results = data.data || [];
-        console.log(`[OUTWARD-V1] ${domain}: ${results.length} results`);
+        console.log(`[OUTWARD-V2] ${domain}: ${results.length} results`);
 
-        return results.map((r: any) => ({
-          domain,
-          url: r.url || "",
-          markdown: r.markdown || "",
-          title: r.title || r.metadata?.title || "",
-        }));
+        // Extract fields from markdown results
+        const extracted: ExtractedListing[] = [];
+        for (const r of results) {
+          const pageUrl = r.url || "";
+          const md = r.markdown || "";
+          if (md.length >= 30) {
+            extracted.push(extractFromMarkdownFallback(md, pageUrl, domain, r.title || r.metadata?.title || ""));
+          }
+        }
+
+        return extracted;
       } catch (err) {
-        console.error(`[OUTWARD-V1] ${domain} error:`, err);
+        console.error(`[OUTWARD-V2] ${domain} error:`, err);
         return [];
       }
     });
 
     const rawResults = (await Promise.all(searchPromises)).flat();
-    console.log(`[OUTWARD-V1] Total raw results: ${rawResults.length}`);
+    console.log(`[OUTWARD-V2] Total extracted: ${rawResults.length}`);
 
     if (rawResults.length === 0) {
-      logAudit(intent, instruction, 0, 0, 0, Date.now() - startTime);
+      logAudit(intent, instruction, 0, 0, 0, Date.now() - startTime, jobUrgency);
       return new Response(
         JSON.stringify({
           status: "ok",
@@ -317,27 +296,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── STEP 3: Extract fields mechanically ──
-    const listings: ExtractedListing[] = rawResults
-      .filter((r: any) => r.markdown && r.markdown.length >= 30)
-      .map((r: any) => extractFromMarkdown(r.markdown, r.url, r.domain, r.title));
-
-    console.log(`[OUTWARD-V1] Extracted ${listings.length} listings`);
-
-    // ── STEP 4: Filter ──
-    const filtered = listings.filter((l) => {
-      // Must have price (discard if missing)
+    // ── STEP 3: Filter ──
+    const filtered = rawResults.filter((l) => {
       if (l.price == null) return false;
-      // Year tolerance ±1
       if (intent.year && l.year != null && Math.abs(l.year - intent.year) > 2) return false;
-      // KM tolerance +10k
       if (intent.max_km && l.km != null && l.km > intent.max_km + 10000) return false;
       return true;
     });
 
-    console.log(`[OUTWARD-V1] After filter: ${filtered.length} listings`);
+    console.log(`[OUTWARD-V2] After filter: ${filtered.length} listings`);
 
-    // ── STEP 5: Score & rank ──
+    // ── STEP 4: Score & rank ──
     const scored = filtered
       .map((l) => ({ ...l, score: scoreListing(l, intent) }))
       .filter((l) => l.score > 0)
@@ -354,10 +323,9 @@ Deno.serve(async (req) => {
       if (top3.length >= 3) break;
     }
 
-    console.log(`[OUTWARD-V1] Returning ${top3.length} results in ${Date.now() - startTime}ms`);
+    console.log(`[OUTWARD-V2] Returning ${top3.length} results in ${Date.now() - startTime}ms`);
 
-    // ── Audit log ──
-    logAudit(intent, instruction, rawResults.length, filtered.length, top3.length, Date.now() - startTime);
+    logAudit(intent, instruction, rawResults.length, filtered.length, top3.length, Date.now() - startTime, jobUrgency);
 
     return new Response(
       JSON.stringify({
@@ -371,7 +339,7 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("[OUTWARD-V1] Error:", error);
+    console.error("[OUTWARD-V2] Error:", error);
     return new Response(
       JSON.stringify({
         status: "error",
@@ -382,6 +350,46 @@ Deno.serve(async (req) => {
   }
 });
 
+// ══════════════════════════════════════════
+// Markdown fallback extractor (last resort if JSON extraction fails)
+// ══════════════════════════════════════════
+function extractFromMarkdownFallback(markdown: string, url: string, domain: string, titleHint: string): ExtractedListing {
+  const text = markdown || "";
+
+  let title = titleHint || null;
+  if (!title) {
+    const h1 = text.match(/^#\s+(.+)$/m);
+    if (h1) title = h1[1].trim();
+  }
+
+  let year: number | null = null;
+  const yearM = text.match(/\b(20[0-3]\d)\b/);
+  if (yearM) year = parseInt(yearM[1], 10);
+
+  let price: number | null = null;
+  const priceMatches = [...text.matchAll(/\$\s*([\d,]+(?:\.\d{2})?)/g)];
+  for (const pm of priceMatches) {
+    const clean = parseInt(pm[1].replace(/,/g, "").replace(/\.\d+$/, ""), 10);
+    if (clean >= 1000 && clean <= 500000) {
+      price = clean;
+      break;
+    }
+  }
+
+  let km: number | null = null;
+  const kmM = text.match(/([\d,]+)\s*(?:km|kms|kilometres|kilometers)/i);
+  if (kmM) {
+    const k = parseInt(kmM[1].replace(/,/g, ""), 10);
+    if (k >= 0 && k <= 999999) km = k;
+  }
+
+  let location: string | null = null;
+  const stateM = text.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
+  if (stateM) location = stateM[1].toUpperCase();
+
+  return { url, source: domain, title, year, km, price, location, variant: null };
+}
+
 // ── Audit logger (fire-and-forget) ──
 function logAudit(
   intent: ParsedIntent,
@@ -390,6 +398,7 @@ function logAudit(
   filtered: number,
   returned: number,
   durationMs: number,
+  urgency: string,
 ) {
   try {
     const sb = createClient(
@@ -400,7 +409,7 @@ function logAudit(
       cron_name: "run-outward-search",
       run_date: new Date().toISOString().slice(0, 10),
       success: true,
-      result: { instruction: instruction.trim(), intent, searched, filtered, returned, duration_ms: durationMs },
+      result: { instruction: instruction.trim(), intent, searched, filtered, returned, duration_ms: durationMs, urgency },
     }).then(() => {});
   } catch (_) { /* swallow */ }
 }
