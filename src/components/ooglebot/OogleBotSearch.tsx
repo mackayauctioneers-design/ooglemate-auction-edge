@@ -10,7 +10,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, Database, Globe, MapPin, Gauge, DollarSign, ExternalLink, Radar } from "lucide-react";
+import { Loader2, Search, Database, Globe, MapPin, Gauge, DollarSign, ExternalLink, Radar, Mic, MicOff } from "lucide-react";
+import { useSpeechToText } from "@/hooks/useSpeechToText";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -189,6 +190,54 @@ function OutwardResultCard({ result }: { result: OutwardSearchResult }) {
   );
 }
 
+function VoiceSearchInput({ query, setQuery, onSearch, isLoading }: {
+  query: string;
+  setQuery: (v: string) => void;
+  onSearch: () => void;
+  isLoading: boolean;
+}) {
+  const { isListening, isSupported, toggle } = useSpeechToText({
+    onResult: (transcript) => setQuery(transcript),
+    lang: "en-AU",
+  });
+
+  return (
+    <div className="flex gap-2">
+      <div className="relative flex-1">
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && onSearch()}
+          placeholder="e.g. 2024 Toyota HiAce Commuter under 40000 km"
+          disabled={isLoading}
+          className={isListening ? "border-destructive ring-1 ring-destructive/50" : ""}
+        />
+        {isSupported && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="iconSm"
+            onClick={toggle}
+            className={`absolute right-1 top-1/2 -translate-y-1/2 ${isListening ? "text-destructive animate-pulse" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          </Button>
+        )}
+      </div>
+      <Button
+        onClick={onSearch}
+        disabled={isLoading || !query.trim()}
+      >
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          "Search"
+        )}
+      </Button>
+    </div>
+  );
+}
+
 export function OogleBotSearch() {
   const { toast } = useToast();
   const { isAdmin } = useAuth();
@@ -284,25 +333,12 @@ export function OogleBotSearch() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex gap-2">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              placeholder="e.g. 2024 Toyota HiAce Commuter under 40000 km"
-              disabled={internalLoading}
-            />
-            <Button
-              onClick={handleSearch}
-              disabled={internalLoading || !query.trim()}
-            >
-              {internalLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Search"
-              )}
-            </Button>
-          </div>
+          <VoiceSearchInput
+            query={query}
+            setQuery={setQuery}
+            onSearch={handleSearch}
+            isLoading={internalLoading}
+          />
 
           {parsed?.make && (
             <div className="flex flex-wrap gap-1.5 text-xs">
