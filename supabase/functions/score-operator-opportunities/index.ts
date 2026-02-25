@@ -635,20 +635,35 @@ Deno.serve(async (req) => {
     console.log(`[SCORE] Auction Watch: ${auctionWatchCount} from ${pricelessCandidates.length} priceless candidates`);
     console.log(`[SCORE] Scored: ${scored} (${retailScored} retail), Discarded: ${discarded}`);
 
-    // ── 5. Batch upsert ──
+    // ── 5. Batch upsert (skip ignored listings so they never reappear) ──
     if (upsertBatch.length > 0) {
-      for (let i = 0; i < upsertBatch.length; i += 50) {
-        const chunk = upsertBatch.slice(i, i + 50);
+      // Get listing_ids that are currently ignored — these must never be overwritten
+      const batchListingIds = upsertBatch.map((r: any) => r.listing_id).filter(Boolean);
+      const ignoredSet = new Set<string>();
+      for (let i = 0; i < batchListingIds.length; i += 200) {
+        const slice = batchListingIds.slice(i, i + 200);
+        const { data: ignored } = await sb.from("operator_opportunities")
+          .select("listing_id")
+          .in("listing_id", slice)
+          .eq("status", "ignored");
+        (ignored || []).forEach((r: any) => ignoredSet.add(r.listing_id));
+      }
+      const filteredBatch = upsertBatch.filter((r: any) => !ignoredSet.has(r.listing_id));
+      console.log(`[SCORE] Skipped ${upsertBatch.length - filteredBatch.length} ignored listings`);
+
+      for (let i = 0; i < filteredBatch.length; i += 50) {
+        const chunk = filteredBatch.slice(i, i + 50);
         const { error } = await sb.from("operator_opportunities").upsert(chunk, { onConflict: "listing_id" });
         if (error) console.error(`[SCORE] Upsert chunk error:`, error.message);
       }
     }
 
-    // ── 6. Expire stale ──
+    // ── 6. Expire stale (never touch ignored or starred) ──
     await sb.from("operator_opportunities")
       .update({ status: "expired", updated_at: new Date().toISOString() })
       .lt("updated_at", new Date(Date.now() - 7 * 86400000).toISOString())
-      .in("status", ["new", "reviewed"]);
+      .in("status", ["new", "reviewed"])
+      .eq("is_starred", false);
 
     // ── 7. Audit log ──
     const runtimeMs = Date.now() - startTime;
