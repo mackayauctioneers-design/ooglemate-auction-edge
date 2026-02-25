@@ -50,6 +50,10 @@ interface OperatorOpportunity {
   auction_house: string | null;
   is_starred: boolean;
   reminder_at: string | null;
+  retail_median: number | null;
+  retail_median_confidence: string | null;
+  retail_median_sample: number | null;
+  retail_vs_ask_pct: number | null;
 }
 
 type SortField = 'best_expected_margin' | 'best_under_buy' | 'asking_price' | 'year' | 'created_at' | 'tier' | 'auction_datetime';
@@ -510,6 +514,7 @@ export default function TradingDeskPage() {
                     <TableHead className="w-[110px] px-2">Best Fit</TableHead>
                     <TableHead className="w-[80px] text-right cursor-pointer px-2" onClick={() => handleSort('best_expected_margin')}>Margin <SortIcon field="best_expected_margin" /></TableHead>
                     <TableHead className="w-[85px] text-right cursor-pointer px-2" onClick={() => handleSort('best_under_buy')}>Under-Buy <SortIcon field="best_under_buy" /></TableHead>
+                    <TableHead className="w-[90px] text-right px-2">Mkt Median</TableHead>
                     <TableHead className="w-[90px] cursor-pointer px-2" onClick={() => handleSort('auction_datetime')}>Auction <SortIcon field="auction_datetime" /></TableHead>
                     <TableHead className="w-[80px] px-2">Source</TableHead>
                     <TableHead className="w-[46px] text-right cursor-pointer px-1" onClick={() => handleSort('year')}>Year <SortIcon field="year" /></TableHead>
@@ -600,6 +605,28 @@ export default function TradingDeskPage() {
                               <span className={`font-mono text-sm ${(opp.best_under_buy || 0) >= 1500 ? 'text-primary' : 'text-muted-foreground'}`}>
                                 {fmt(opp.best_under_buy)}
                               </span>
+                            </TableCell>
+                            {/* Retail Median */}
+                            <TableCell className="text-right px-2">
+                              {opp.retail_median ? (
+                                <div>
+                                  <span className="font-mono text-sm text-foreground">{fmt(opp.retail_median)}</span>
+                                  <div className="flex items-center justify-end gap-1">
+                                    <span className={`text-[10px] font-mono ${(opp.retail_vs_ask_pct || 0) < 0 ? 'text-emerald-600' : 'text-destructive'}`}>
+                                      {(opp.retail_vs_ask_pct || 0) > 0 ? '+' : ''}{opp.retail_vs_ask_pct}%
+                                    </span>
+                                    <span className={`text-[9px] px-1 rounded ${
+                                      opp.retail_median_confidence === 'HIGH' ? 'bg-emerald-500/15 text-emerald-700' :
+                                      opp.retail_median_confidence === 'MEDIUM' ? 'bg-amber-500/15 text-amber-700' :
+                                      'bg-muted text-muted-foreground'
+                                    }`}>
+                                      {opp.retail_median_confidence?.replace('_WIDE', '↔')} ({opp.retail_median_sample})
+                                    </span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-muted-foreground">—</span>
+                              )}
                             </TableCell>
                             {/* Auction + Reminder */}
                             <TableCell className="px-2">

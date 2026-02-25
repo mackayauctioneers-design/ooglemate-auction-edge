@@ -152,6 +152,10 @@ interface CandidateListing {
   days_listed: number;
   price_drops: number;
   pass_count: number;
+  // Retail-specific for median lookup
+  badge: string | null;
+  fuel_type: string | null;
+  body_type: string | null;
 }
 
 interface PricelessCandidate {
@@ -249,7 +253,7 @@ Deno.serve(async (req) => {
     // 3c. Retail listings (autotrader + drive)
     const { data: retailListings } = await sb
       .from("retail_listings")
-      .select("id, source, source_listing_id, listing_url, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, first_seen_at, last_seen_at, price_change_count, delisted_at")
+      .select("id, source, source_listing_id, listing_url, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, badge, fuel_type, body_type, first_seen_at, last_seen_at, price_change_count, delisted_at")
       .is("delisted_at", null)
       .not("asking_price", "is", null)
       .gt("asking_price", 0)
@@ -287,6 +291,9 @@ Deno.serve(async (req) => {
         days_listed: daysSince,
         price_drops: 0,
         pass_count: l.pass_count || 0,
+        badge: null,
+        fuel_type: null,
+        body_type: null,
       });
     }
 
@@ -317,6 +324,9 @@ Deno.serve(async (req) => {
         days_listed: daysSince,
         price_drops: 0,
         pass_count: 0,
+        badge: null,
+        fuel_type: null,
+        body_type: null,
       });
     }
 
@@ -338,13 +348,16 @@ Deno.serve(async (req) => {
         km: r.km,
         asking_price: Number(r.asking_price),
         platform_class: derivePlatform(make, model),
-        trim_class: r.variant_family || extractBadge(r.variant_raw) || "UNKNOWN",
+        trim_class: r.badge || r.variant_family || extractBadge(r.variant_raw) || "UNKNOWN",
         drivetrain_bucket: drivetrainBucket(r.drivetrain),
         source_url: r.listing_url || "",
         first_seen_at: r.first_seen_at || new Date().toISOString(),
         days_listed: daysSince,
         price_drops: r.price_change_count || 0,
         pass_count: 0,
+        badge: r.badge || r.variant_family || extractBadge(r.variant_raw) || null,
+        fuel_type: r.fuel_type || null,
+        body_type: r.body_type || null,
       });
     }
 
@@ -479,6 +492,59 @@ Deno.serve(async (req) => {
       // Freshness
       const freshness = listing.days_listed <= 1 ? "today" : listing.days_listed <= 7 ? "this_week" : "older";
 
+      // ── Compute retail median for retail listings ──
+      let retailMedian: number | null = null;
+      let retailMedianConfidence: string | null = null;
+      let retailMedianSample: number | null = null;
+      let retailMedianP25: number | null = null;
+      let retailMedianP75: number | null = null;
+      let retailVsAskPct: number | null = null;
+
+      if (isRetail && listing.badge && listing.km) {
+        try {
+          const { data: medianData } = await sb.rpc("compute_retail_median", {
+            p_make: listing.make,
+            p_model: listing.model,
+            p_badge: listing.badge,
+            p_year: listing.year,
+            p_km: listing.km,
+            p_fuel_type: listing.fuel_type || null,
+            p_drivetrain: listing.drivetrain_bucket === "UNKNOWN" ? null : listing.drivetrain_bucket,
+          });
+          const m = medianData?.[0] || medianData;
+          if (m && m.median_price && m.confidence !== "NONE" && m.confidence !== "INSUFFICIENT") {
+            retailMedian = m.median_price;
+            retailMedianConfidence = m.confidence;
+            retailMedianSample = m.sample_size;
+            retailMedianP25 = m.p25_price;
+            retailMedianP75 = m.p75_price;
+            retailVsAskPct = Math.round(((listing.asking_price - m.median_price) / m.median_price) * 100);
+          } else if (m && m.confidence === "INSUFFICIENT" && m.comps_before_trim >= 3) {
+            // Try wide fallback (±2yr, ±30% KM)
+            const { data: wideData } = await sb.rpc("compute_retail_median_wide", {
+              p_make: listing.make,
+              p_model: listing.model,
+              p_badge: listing.badge,
+              p_year: listing.year,
+              p_km: listing.km,
+              p_fuel_type: listing.fuel_type || null,
+              p_drivetrain: listing.drivetrain_bucket === "UNKNOWN" ? null : listing.drivetrain_bucket,
+            });
+            const w = wideData?.[0] || wideData;
+            if (w && w.median_price && w.confidence !== "NONE" && w.confidence !== "INSUFFICIENT") {
+              retailMedian = w.median_price;
+              retailMedianConfidence = `${w.confidence}_WIDE`;
+              retailMedianSample = w.sample_size;
+              retailMedianP25 = w.p25_price;
+              retailMedianP75 = w.p75_price;
+              retailVsAskPct = Math.round(((listing.asking_price - w.median_price) / w.median_price) * 100);
+            }
+          }
+        } catch (e) {
+          console.error(`[SCORE] Retail median error for ${listing.listing_id}:`, e);
+        }
+      }
+
       upsertBatch.push({
         listing_id: listing.listing_id,
         listing_source: listing.source,
@@ -509,6 +575,12 @@ Deno.serve(async (req) => {
         freshness,
         pass_count: listing.pass_count,
         motivation_signal: motivationSignal,
+        retail_median: retailMedian,
+        retail_median_confidence: retailMedianConfidence,
+        retail_median_sample: retailMedianSample,
+        retail_median_p25: retailMedianP25,
+        retail_median_p75: retailMedianP75,
+        retail_vs_ask_pct: retailVsAskPct,
         updated_at: new Date().toISOString(),
       });
       scored++;

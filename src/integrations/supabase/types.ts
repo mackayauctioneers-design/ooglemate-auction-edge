@@ -4749,6 +4749,12 @@ export type Database = {
           pass_count: number | null
           platform_class: string | null
           reminder_at: string | null
+          retail_median: number | null
+          retail_median_confidence: string | null
+          retail_median_p25: number | null
+          retail_median_p75: number | null
+          retail_median_sample: number | null
+          retail_vs_ask_pct: number | null
           source_url: string | null
           status: string
           tier: string
@@ -4794,6 +4800,12 @@ export type Database = {
           pass_count?: number | null
           platform_class?: string | null
           reminder_at?: string | null
+          retail_median?: number | null
+          retail_median_confidence?: string | null
+          retail_median_p25?: number | null
+          retail_median_p75?: number | null
+          retail_median_sample?: number | null
+          retail_vs_ask_pct?: number | null
           source_url?: string | null
           status?: string
           tier?: string
@@ -4839,6 +4851,12 @@ export type Database = {
           pass_count?: number | null
           platform_class?: string | null
           reminder_at?: string | null
+          retail_median?: number | null
+          retail_median_confidence?: string | null
+          retail_median_p25?: number | null
+          retail_median_p75?: number | null
+          retail_median_sample?: number | null
+          retail_vs_ask_pct?: number | null
           source_url?: string | null
           status?: string
           tier?: string
