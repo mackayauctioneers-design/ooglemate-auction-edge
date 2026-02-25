@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff } from 'lucide-react';
+import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow, isPast, isToday, isTomorrow, differenceInHours } from 'date-fns';
 
@@ -280,6 +280,25 @@ export default function TradingDeskPage() {
     if (error) { toast.error(error.message); return; }
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, reminder_at: null } : o));
     toast.success('Reminder cleared');
+  };
+
+  const deleteAnchor = async (oppId: string, anchorSaleId: string) => {
+    if (!confirm('Delete this anchor sale from sales truth? This cannot be undone.')) return;
+    // 1. Delete from vehicle_sales_truth
+    const { error: delErr } = await supabase.from('vehicle_sales_truth').delete().eq('id', anchorSaleId);
+    if (delErr) { toast.error(delErr.message); return; }
+    // 2. Clear anchor reference on the opportunity
+    const { error: updErr } = await supabase.from('operator_opportunities').update({
+      anchor_sale_id: null, anchor_sale_buy_price: null, anchor_sale_sell_price: null,
+      anchor_sale_profit: null, anchor_sale_sold_at: null, anchor_sale_km: null,
+      anchor_sale_trim_class: null, updated_at: new Date().toISOString(),
+    }).eq('id', oppId);
+    if (updErr) { toast.error(updErr.message); return; }
+    setOpportunities(prev => prev.map(o => o.id === oppId ? {
+      ...o, anchor_sale_id: null, anchor_sale_buy_price: null, anchor_sale_sell_price: null,
+      anchor_sale_profit: null, anchor_sale_sold_at: null, anchor_sale_km: null, anchor_sale_trim_class: null,
+    } : o));
+    toast.success('Anchor sale deleted');
   };
 
   const toggleRow = (id: string) => {
@@ -696,6 +715,16 @@ export default function TradingDeskPage() {
                                     <div>
                                       <p className="text-xs text-muted-foreground">Trim</p>
                                       <p className="font-medium text-foreground">{opp.anchor_sale_trim_class || '-'}</p>
+                                    </div>
+                                    <div className="flex items-end">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 text-xs gap-1"
+                                        onClick={() => opp.anchor_sale_id && deleteAnchor(opp.id, opp.anchor_sale_id)}
+                                      >
+                                        <Trash2 className="h-3 w-3" /> Delete Anchor
+                                      </Button>
                                     </div>
                                   </div>
                                 </div>
