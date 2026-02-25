@@ -157,6 +157,9 @@ function OutwardResultCard({ result }: { result: OutwardSearchResult }) {
           {result.year && (
             <span className="font-medium text-foreground">{result.year}</span>
           )}
+          {result.variant && (
+            <span className="text-xs text-muted-foreground">{result.variant}</span>
+          )}
           {result.price != null && (
             <span className="flex items-center gap-1 font-medium text-foreground">
               <DollarSign className="h-3 w-3" />
@@ -243,9 +246,14 @@ export function OogleBotSearch() {
   const handleOutwardSearch = async () => {
     setOutwardLoading(true);
     try {
-      const response = await runOutwardSearch(query);
+      const response = await runOutwardSearch(query, internalResults.length);
       setOutwardResponse(response);
-      if (response.results?.length === 0) {
+      if (response.gated) {
+        toast({
+          title: "Outward search skipped",
+          description: response.reason || "Sufficient internal matches available.",
+        });
+      } else if (response.results?.length === 0) {
         toast({
           title: "No external results",
           description: response.message || "No qualifying vehicles found across external sources.",
@@ -439,7 +447,10 @@ export function OogleBotSearch() {
               )}
             </Button>
             <p className="text-[10px] text-muted-foreground text-center mt-2">
-              Pickles · Grays · Manheim · Slattery · Lloyds · Carsales · Autotrader · Drive · Carsguide · EasyAuto
+              {internalResults.length >= 3
+                ? `⚠️ ${internalResults.length} internal matches — outward search will be gated unless urgency is high`
+                : `${internalResults.length} internal matches — outward search enabled`}
+              {" · "}Pickles · Grays · Manheim · Slattery · Lloyds · Carsales · Autotrader · Drive · Carsguide · EasyAuto
             </p>
           </CardContent>
         </Card>
