@@ -55,16 +55,21 @@ function isProfileAlertWorthy(profile: any): boolean {
   return true;
 }
 
-function isKmProximityMatch(listingKm: number | null, profileKmMin: number, profileKmMax: number, profileMedianKm: number | null): boolean {
-  if (listingKm === null) return false; // No KM = no match (strict)
-  // Use KM band logic: listing must fall within the profile's KM band
+function isKmProximityMatch(listingKm: number | null, profileKmMin: number, profileKmMax: number, _profileMedianKm: number | null): boolean {
+  if (listingKm === null || listingKm <= 0) return false; // No KM = no match (strict)
+  // Direct band check: listing KM must fall within the profile's KM band
+  // or ONE adjacent band (to handle boundary cases like 39k vs 40-80k)
   var listingBand = getKmBand(listingKm);
-  var profileBand = getKmBand(profileMedianKm ?? ((profileKmMin + profileKmMax) / 2));
-  if (!listingBand || !profileBand) return false;
-  // Must be same band or adjacent band
+  if (!listingBand) return false;
+  // Find the profile's band by its limits
+  var profileBandIdx = KM_BANDS.findIndex(function(b) { return b.min === profileKmMin && b.max === profileKmMax; });
+  if (profileBandIdx === -1) {
+    // Fallback: profile has non-standard band limits, use midpoint
+    profileBandIdx = KM_BANDS.findIndex(function(b) { return b.min <= profileKmMin && b.max >= profileKmMax; });
+    if (profileBandIdx === -1) return false;
+  }
   var listingIdx = KM_BANDS.indexOf(listingBand);
-  var profileIdx = KM_BANDS.indexOf(profileBand);
-  return Math.abs(listingIdx - profileIdx) <= 1;
+  return Math.abs(listingIdx - profileBandIdx) <= 1;
 }
 
 function normalizeVariantSH(v: string | null | undefined): string {

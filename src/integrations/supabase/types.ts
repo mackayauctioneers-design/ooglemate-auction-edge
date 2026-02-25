@@ -5276,13 +5276,6 @@ export type Database = {
             referencedRelation: "sales_target_candidates"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "pickles_buy_now_listings_matched_profile_id_fkey"
-            columns: ["matched_profile_id"]
-            isOneToOne: false
-            referencedRelation: "dealer_liquidity_profiles"
-            referencedColumns: ["id"]
-          },
         ]
       }
       pickles_detail_queue: {
