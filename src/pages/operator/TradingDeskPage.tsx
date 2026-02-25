@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock } from 'lucide-react';
+import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow, isPast, isToday, isTomorrow, differenceInHours } from 'date-fns';
 
@@ -48,6 +48,8 @@ interface OperatorOpportunity {
   auction_status: string | null;
   auction_target_price: number | null;
   auction_house: string | null;
+  is_starred: boolean;
+  reminder_at: string | null;
 }
 
 type SortField = 'best_expected_margin' | 'best_under_buy' | 'asking_price' | 'year' | 'created_at' | 'tier' | 'auction_datetime';
@@ -254,6 +256,32 @@ export default function TradingDeskPage() {
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, ...update } : o));
   };
 
+  const toggleStar = async (id: string, current: boolean) => {
+    const newVal = !current;
+    const { error } = await supabase.from('operator_opportunities').update({ is_starred: newVal, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) { toast.error(error.message); return; }
+    setOpportunities(prev => prev.map(o => o.id === id ? { ...o, is_starred: newVal } : o));
+    toast.success(newVal ? 'Added to watchlist ⭐' : 'Removed from watchlist');
+  };
+
+  const setReminder = async (id: string, auctionDatetime: string | null) => {
+    if (!auctionDatetime) { toast.error('No auction date set'); return; }
+    // Set reminder 1 hour before auction
+    const auctionDt = new Date(auctionDatetime);
+    const reminderDt = new Date(auctionDt.getTime() - 60 * 60 * 1000);
+    const { error } = await supabase.from('operator_opportunities').update({ reminder_at: reminderDt.toISOString(), is_starred: true, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) { toast.error(error.message); return; }
+    setOpportunities(prev => prev.map(o => o.id === id ? { ...o, reminder_at: reminderDt.toISOString(), is_starred: true } : o));
+    toast.success(`Reminder set for ${format(reminderDt, 'd MMM h:mm a')}`);
+  };
+
+  const clearReminder = async (id: string) => {
+    const { error } = await supabase.from('operator_opportunities').update({ reminder_at: null, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) { toast.error(error.message); return; }
+    setOpportunities(prev => prev.map(o => o.id === id ? { ...o, reminder_at: null } : o));
+    toast.success('Reminder cleared');
+  };
+
   const toggleRow = (id: string) => {
     setExpandedRows(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
@@ -263,8 +291,9 @@ export default function TradingDeskPage() {
 
   // ─── Filter + Sort ──────────────────────────────────────────────────────────
   const filtered = opportunities.filter(o => {
+    if (filterStatus === 'starred' && !o.is_starred) return false;
     if (filterStatus === 'active' && !['new', 'reviewed'].includes(o.status)) return false;
-    if (filterStatus !== 'all' && filterStatus !== 'active' && o.status !== filterStatus) return false;
+    if (filterStatus !== 'all' && filterStatus !== 'active' && filterStatus !== 'starred' && o.status !== filterStatus) return false;
     if (filterAccount !== 'all' && o.best_account_id !== filterAccount) return false;
     if (filterTier !== 'all' && o.tier !== filterTier) return false;
     if (filterSource !== 'all' && o.listing_source !== filterSource) return false;
@@ -307,6 +336,7 @@ export default function TradingDeskPage() {
   const retailTargetCount = active('RETAIL_TARGET');
   const watchCount = active('WATCH');
   const auctionCount = opportunities.filter(o => o.auction_status && o.auction_status !== 'none' && ['new', 'reviewed'].includes(o.status)).length;
+  const starredCount = opportunities.filter(o => o.is_starred).length;
 
   return (
     <OperatorLayout>
@@ -324,7 +354,7 @@ export default function TradingDeskPage() {
         </div>
 
         {/* KPI Strip */}
-        <div className="grid grid-cols-2 md:grid-cols-7 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-8 gap-2">
           <Card className="border-red-500/40 bg-red-600/15">
             <CardContent className="p-3 text-center">
               <p className="text-2xl font-bold text-red-600">{codeRedCount}</p>
@@ -362,6 +392,15 @@ export default function TradingDeskPage() {
                 <p className="text-2xl font-bold text-violet-600">{auctionCount}</p>
               </div>
               <p className="text-[11px] text-muted-foreground uppercase tracking-wide">AUCTION</p>
+            </CardContent>
+          </Card>
+          <Card className="border-amber-400/30 bg-amber-400/5 cursor-pointer hover:bg-amber-400/10 transition-colors" onClick={() => setFilterStatus('starred')}>
+            <CardContent className="p-3 text-center">
+              <div className="flex items-center justify-center gap-1.5">
+                <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                <p className="text-2xl font-bold text-amber-500">{starredCount}</p>
+              </div>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">STARRED</p>
             </CardContent>
           </Card>
           <Card>
@@ -417,6 +456,7 @@ export default function TradingDeskPage() {
               <SelectContent>
                 <SelectItem value="active">New + Reviewed</SelectItem>
                 <SelectItem value="new">New Only</SelectItem>
+                <SelectItem value="starred">⭐ Starred</SelectItem>
                 <SelectItem value="assigned">Assigned</SelectItem>
                 <SelectItem value="bought">Bought</SelectItem>
                 <SelectItem value="ignored">Ignored</SelectItem>
@@ -444,6 +484,7 @@ export default function TradingDeskPage() {
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="w-7 px-1"></TableHead>
+                    <TableHead className="w-7 px-1">★</TableHead>
                     <TableHead className="w-[72px] cursor-pointer px-2" onClick={() => handleSort('tier')}>Tier <SortIcon field="tier" /></TableHead>
                     <TableHead className="px-2">Vehicle</TableHead>
                     <TableHead className="w-[76px] text-right cursor-pointer px-2" onClick={() => handleSort('asking_price')}>Ask <SortIcon field="asking_price" /></TableHead>
@@ -476,6 +517,17 @@ export default function TradingDeskPage() {
                                   </Button>
                                 </CollapsibleTrigger>
                               )}
+                            </TableCell>
+                            {/* Star */}
+                            <TableCell className="px-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={() => toggleStar(opp.id, opp.is_starred)}
+                              >
+                                <Star className={`h-3.5 w-3.5 transition-colors ${opp.is_starred ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'}`} />
+                              </Button>
                             </TableCell>
                             {/* Tier */}
                             <TableCell className="px-2">
@@ -530,14 +582,36 @@ export default function TradingDeskPage() {
                                 {fmt(opp.best_under_buy)}
                               </span>
                             </TableCell>
-                            {/* Auction */}
+                            {/* Auction + Reminder */}
                             <TableCell className="px-2">
-                              <AuctionCalendarBadge
-                                datetime={opp.auction_datetime}
-                                status={opp.auction_status}
-                                house={opp.auction_house}
-                                targetPrice={opp.auction_target_price}
-                              />
+                              <div className="space-y-1">
+                                <AuctionCalendarBadge
+                                  datetime={opp.auction_datetime}
+                                  status={opp.auction_status}
+                                  house={opp.auction_house}
+                                  targetPrice={opp.auction_target_price}
+                                />
+                                {opp.auction_datetime && (
+                                  opp.reminder_at ? (
+                                    <button
+                                      onClick={() => clearReminder(opp.id)}
+                                      className="flex items-center gap-1 text-[10px] text-primary hover:text-destructive transition-colors"
+                                      title={`Reminder: ${format(new Date(opp.reminder_at), 'd MMM h:mm a')}`}
+                                    >
+                                      <Bell className="h-3 w-3 fill-current" />
+                                      <span>{format(new Date(opp.reminder_at), 'h:mm a')}</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => setReminder(opp.id, opp.auction_datetime)}
+                                      className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary transition-colors"
+                                    >
+                                      <BellOff className="h-3 w-3" />
+                                      <span>Set reminder</span>
+                                    </button>
+                                  )
+                                )}
+                              </div>
                             </TableCell>
                             {/* Source */}
                             <TableCell className="text-[11px] text-muted-foreground px-2 truncate">{opp.listing_source}</TableCell>
@@ -582,7 +656,7 @@ export default function TradingDeskPage() {
                           {/* Anchor Sale Collapsible Row */}
                           <CollapsibleContent asChild>
                             <TableRow className={`border-b border-border ${opp.tier === 'CODE_RED' || opp.tier === 'HIGH' ? 'bg-primary/5' : 'bg-muted/30'}`}>
-                              <TableCell colSpan={13} className="py-3 px-6">
+                              <TableCell colSpan={14} className="py-3 px-6">
                                 <div className="flex items-start gap-6">
                                   <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
                                     <Anchor className="h-3.5 w-3.5" />

@@ -4739,6 +4739,7 @@ export type Database = {
           drivetrain_bucket: string | null
           freshness: string | null
           id: string
+          is_starred: boolean
           km: number | null
           listing_id: string
           listing_source: string | null
@@ -4747,6 +4748,7 @@ export type Database = {
           motivation_signal: string | null
           pass_count: number | null
           platform_class: string | null
+          reminder_at: string | null
           source_url: string | null
           status: string
           tier: string
@@ -4782,6 +4784,7 @@ export type Database = {
           drivetrain_bucket?: string | null
           freshness?: string | null
           id?: string
+          is_starred?: boolean
           km?: number | null
           listing_id: string
           listing_source?: string | null
@@ -4790,6 +4793,7 @@ export type Database = {
           motivation_signal?: string | null
           pass_count?: number | null
           platform_class?: string | null
+          reminder_at?: string | null
           source_url?: string | null
           status?: string
           tier?: string
@@ -4825,6 +4829,7 @@ export type Database = {
           drivetrain_bucket?: string | null
           freshness?: string | null
           id?: string
+          is_starred?: boolean
           km?: number | null
           listing_id?: string
           listing_source?: string | null
@@ -4833,6 +4838,7 @@ export type Database = {
           motivation_signal?: string | null
           pass_count?: number | null
           platform_class?: string | null
+          reminder_at?: string | null
           source_url?: string | null
           status?: string
           tier?: string
