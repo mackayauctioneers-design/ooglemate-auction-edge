@@ -268,10 +268,43 @@ export function OogleBotSearch() {
       ]);
       setInternalResults(listings);
       setDealerSpecs(specs);
+
+      // Auto-trigger CaroogleAI when no internal matches found
+      if (listings.length === 0) {
+        triggerOutwardSearch(query, 0);
+      }
     } catch (err) {
       console.error("Internal search error:", err);
     } finally {
       setInternalLoading(false);
+    }
+  };
+
+  const triggerOutwardSearch = async (searchQuery: string, internalCount: number) => {
+    setOutwardLoading(true);
+    try {
+      const response = await runOutwardSearch(searchQuery, internalCount);
+      setOutwardResponse(response);
+      if (response.gated) {
+        toast({
+          title: "CaroogleAI skipped",
+          description: response.reason || "Sufficient internal matches available.",
+        });
+      } else if (response.results?.length === 0) {
+        toast({
+          title: "No external results",
+          description: response.message || "No qualifying vehicles found across external sources.",
+        });
+      }
+    } catch (err) {
+      console.error("CaroogleAI search error:", err);
+      toast({
+        title: "CaroogleAI search failed",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setOutwardLoading(false);
     }
   };
 
@@ -293,31 +326,7 @@ export function OogleBotSearch() {
   };
 
   const handleOutwardSearch = async () => {
-    setOutwardLoading(true);
-    try {
-      const response = await runOutwardSearch(query, internalResults.length);
-      setOutwardResponse(response);
-      if (response.gated) {
-        toast({
-          title: "Outward search skipped",
-          description: response.reason || "Sufficient internal matches available.",
-        });
-      } else if (response.results?.length === 0) {
-        toast({
-          title: "No external results",
-          description: response.message || "No qualifying vehicles found across external sources.",
-        });
-      }
-    } catch (err) {
-      console.error("Outward search error:", err);
-      toast({
-        title: "Outward search failed",
-        description: err instanceof Error ? err.message : "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setOutwardLoading(false);
-    }
+    triggerOutwardSearch(query, internalResults.length);
   };
 
   const parsed = query.trim() ? parseSearchQuery(query) : null;
@@ -478,27 +487,27 @@ export function OogleBotSearch() {
               ) : (
                 <>
                   <Radar className="h-4 w-4 mr-2" />
-                  🔍 Outward Search — Scan External Markets
+                  🔍 CaroogleAI — Scan External Markets
                 </>
               )}
             </Button>
             <p className="text-[10px] text-muted-foreground text-center mt-2">
               {internalResults.length >= 3
-                ? `⚠️ ${internalResults.length} internal matches — outward search will be gated unless urgency is high`
-                : `${internalResults.length} internal matches — outward search enabled`}
+                ? `⚠️ ${internalResults.length} internal matches — CaroogleAI will be gated unless urgency is high`
+                : `${internalResults.length} internal matches — CaroogleAI enabled`}
               {" · "}Pickles · Grays · Manheim · Slattery · Lloyds · Carsales · Autotrader · Drive · Carsguide · EasyAuto
             </p>
           </CardContent>
         </Card>
       )}
 
-      {/* Outward Search Results */}
+      {/* CaroogleAI Results */}
       {outwardResponse && (
         <Card className="border-primary/30">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <Radar className="h-4 w-4 text-primary" />
-              External Market Results — Top {outwardResponse.results?.length || 0}
+              CaroogleAI Results — Top {outwardResponse.results?.length || 0}
             </CardTitle>
             {outwardResponse.intent && (
               <div className="flex flex-wrap gap-1.5 text-xs mt-1">
