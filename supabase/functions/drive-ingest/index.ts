@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { extractBadge } from "../_shared/taxonomy/extractBadge.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -152,6 +153,10 @@ serve(async (req) => {
           const state = listing.Region?.state?.toUpperCase() || listing.Dealer?.state?.toUpperCase() || null;
           const suburb = listing.Dealer?.suburb || null;
 
+          // Extract badge/fuel/drivetrain from variant text
+          const variantText = listing.description || null;
+          const extracted = extractBadge(make, model, variantText);
+
           const { data: upsertResult, error: upsertError } = await supabase.rpc("upsert_retail_listing", {
             p_source: "drive",
             p_source_listing_id: String(listing.id),
@@ -159,14 +164,30 @@ serve(async (req) => {
             p_year: listing.year,
             p_make: make,
             p_model: model,
-            p_variant_raw: listing.description || null,
-            p_variant_family: null,
+            p_variant_raw: variantText,
+            p_variant_family: extracted.badge,
             p_km: listing.odometer || null,
             p_asking_price: Math.round(price),
             p_state: state,
             p_suburb: suburb,
             p_run_id: run_id,
           });
+
+          // Update structured fields not in upsert RPC
+          if (!upsertError && extracted.badge) {
+            const updateFields: Record<string, unknown> = {};
+            if (extracted.badge) updateFields.badge = extracted.badge;
+            if (extracted.fuel_type) updateFields.fuel_type = extracted.fuel_type;
+            if (extracted.drivetrain) updateFields.drivetrain = extracted.drivetrain;
+            if (extracted.body_type) updateFields.body_type = extracted.body_type;
+            updateFields.classified_at = new Date().toISOString();
+            updateFields.variant_source = 'extractBadge_v1';
+            
+            const resultRow = upsertResult?.[0] || upsertResult;
+            if (resultRow?.id) {
+              await supabase.from("retail_listings").update(updateFields).eq("id", resultRow.id);
+            }
+          }
 
           if (upsertError) {
             console.error(`Upsert error for ${listing.id}:`, upsertError.message);

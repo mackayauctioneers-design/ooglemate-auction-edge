@@ -11140,6 +11140,53 @@ export type Database = {
         Args: { p_identity_id: string }
         Returns: undefined
       }
+      compute_retail_median: {
+        Args: {
+          p_badge: string
+          p_body_type?: string
+          p_drivetrain?: string
+          p_fuel_type?: string
+          p_km: number
+          p_km_band_pct?: number
+          p_make: string
+          p_model: string
+          p_window_days?: number
+          p_year: number
+          p_year_band?: number
+        }
+        Returns: {
+          comps_before_trim: number
+          confidence: string
+          max_price: number
+          median_price: number
+          min_price: number
+          p25_price: number
+          p75_price: number
+          sample_size: number
+        }[]
+      }
+      compute_retail_median_wide: {
+        Args: {
+          p_badge: string
+          p_body_type?: string
+          p_drivetrain?: string
+          p_fuel_type?: string
+          p_km: number
+          p_make: string
+          p_model: string
+          p_year: number
+        }
+        Returns: {
+          comps_before_trim: number
+          confidence: string
+          max_price: number
+          median_price: number
+          min_price: number
+          p25_price: number
+          p75_price: number
+          sample_size: number
+        }[]
+      }
       create_auction_source: {
         Args: {
           p_display_name: string
