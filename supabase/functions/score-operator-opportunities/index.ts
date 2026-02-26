@@ -319,7 +319,7 @@ Deno.serve(async (req) => {
         platform_class: derivePlatform(make, model),
         trim_class: extractBadge(trimSource) || "UNKNOWN",
         drivetrain_bucket: drivetrainBucket(s.drivetrain || raw.driveType),
-        source_url: `https://www.pickles.com.au/used/details/cars/vehicle/${s.lot_id}`,
+        source_url: `https://www.pickles.com.au/used/search?q=${s.year}+${encodeURIComponent(make)}+${encodeURIComponent(model)}`,
         first_seen_at: s.first_seen_at || new Date().toISOString(),
         days_listed: daysSince,
         price_drops: 0,
