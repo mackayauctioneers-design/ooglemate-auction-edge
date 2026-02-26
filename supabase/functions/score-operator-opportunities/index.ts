@@ -707,21 +707,22 @@ Deno.serve(async (req) => {
     console.log(`[SCORE] Auction Watch: ${auctionWatchCount} from ${pricelessCandidates.length} priceless candidates`);
     console.log(`[SCORE] Scored: ${scored} (${retailScored} retail), Discarded: ${discarded}`);
 
-    // ── 5. Batch upsert (skip ignored listings so they never reappear) ──
+    // ── 5. Batch upsert (skip terminal-state listings to prevent churn) ──
+    // Terminal states: ignored, expired, lost, won, archived — NEVER re-create
     if (upsertBatch.length > 0) {
-      // Get listing_ids that are currently ignored — these must never be overwritten
       const batchListingIds = upsertBatch.map((r: any) => r.listing_id).filter(Boolean);
-      const ignoredSet = new Set<string>();
+      const terminalSet = new Set<string>();
+      const TERMINAL_STATES = ["ignored", "expired", "lost", "won", "archived"];
       for (let i = 0; i < batchListingIds.length; i += 200) {
         const slice = batchListingIds.slice(i, i + 200);
-        const { data: ignored } = await sb.from("operator_opportunities")
+        const { data: terminal } = await sb.from("operator_opportunities")
           .select("listing_id")
           .in("listing_id", slice)
-          .eq("status", "ignored");
-        (ignored || []).forEach((r: any) => ignoredSet.add(r.listing_id));
+          .in("status", TERMINAL_STATES);
+        (terminal || []).forEach((r: any) => terminalSet.add(r.listing_id));
       }
-      const filteredBatch = upsertBatch.filter((r: any) => !ignoredSet.has(r.listing_id));
-      console.log(`[SCORE] Skipped ${upsertBatch.length - filteredBatch.length} ignored listings`);
+      const filteredBatch = upsertBatch.filter((r: any) => !terminalSet.has(r.listing_id));
+      console.log(`[SCORE] Skipped ${upsertBatch.length - filteredBatch.length} terminal-state listings (churn prevention)`);
 
       for (let i = 0; i < filteredBatch.length; i += 50) {
         const chunk = filteredBatch.slice(i, i + 50);
