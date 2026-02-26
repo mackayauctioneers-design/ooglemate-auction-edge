@@ -12198,6 +12198,7 @@ export type Database = {
         Args: { p_account_id: string }
         Returns: number
       }
+      reconcile_dead_opportunities: { Args: never; Returns: number }
       reenable_auction_source: {
         Args: { p_reason?: string; p_source_key: string }
         Returns: undefined
