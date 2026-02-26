@@ -35,6 +35,66 @@ export type Database = {
         }
         Relationships: []
       }
+      active_mandates: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          km_max: number | null
+          last_run_at: string | null
+          make: string
+          model: string
+          name: string
+          next_run_at: string | null
+          price_max: number | null
+          priority: string
+          run_frequency_minutes: number
+          source_mask: string[]
+          updated_at: string
+          variant_family: string | null
+          year_max: number | null
+          year_min: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          km_max?: number | null
+          last_run_at?: string | null
+          make: string
+          model: string
+          name: string
+          next_run_at?: string | null
+          price_max?: number | null
+          priority?: string
+          run_frequency_minutes?: number
+          source_mask?: string[]
+          updated_at?: string
+          variant_family?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          km_max?: number | null
+          last_run_at?: string | null
+          make?: string
+          model?: string
+          name?: string
+          next_run_at?: string | null
+          price_max?: number | null
+          priority?: string
+          run_frequency_minutes?: number
+          source_mask?: string[]
+          updated_at?: string
+          variant_family?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Relationships: []
+      }
       alert_logs: {
         Row: {
           acknowledged_at: string | null
@@ -4394,6 +4454,128 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      mandate_feed_items: {
+        Row: {
+          anchor_context: Json | null
+          anchor_sale_id: string | null
+          asking_price: number | null
+          created_at: string
+          expected_margin: number | null
+          first_seen_at: string
+          id: string
+          km: number | null
+          last_price: number | null
+          last_seen_at: string
+          listing_id: string
+          location: string | null
+          make: string | null
+          mandate_id: string
+          model: string | null
+          price_changed_at: string | null
+          price_delta: number | null
+          raw: Json | null
+          score: number | null
+          source: string
+          source_url: string | null
+          under_buy: number | null
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          anchor_context?: Json | null
+          anchor_sale_id?: string | null
+          asking_price?: number | null
+          created_at?: string
+          expected_margin?: number | null
+          first_seen_at?: string
+          id?: string
+          km?: number | null
+          last_price?: number | null
+          last_seen_at?: string
+          listing_id: string
+          location?: string | null
+          make?: string | null
+          mandate_id: string
+          model?: string | null
+          price_changed_at?: string | null
+          price_delta?: number | null
+          raw?: Json | null
+          score?: number | null
+          source: string
+          source_url?: string | null
+          under_buy?: number | null
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          anchor_context?: Json | null
+          anchor_sale_id?: string | null
+          asking_price?: number | null
+          created_at?: string
+          expected_margin?: number | null
+          first_seen_at?: string
+          id?: string
+          km?: number | null
+          last_price?: number | null
+          last_seen_at?: string
+          listing_id?: string
+          location?: string | null
+          make?: string | null
+          mandate_id?: string
+          model?: string | null
+          price_changed_at?: string | null
+          price_delta?: number | null
+          raw?: Json | null
+          score?: number | null
+          source?: string
+          source_url?: string | null
+          under_buy?: number | null
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mandate_feed_items_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "active_mandates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mandate_runs: {
+        Row: {
+          errors: Json | null
+          finished_at: string | null
+          id: string
+          listings_fetched: number | null
+          listings_upserted: number | null
+          mandates_due: number | null
+          mandates_executed: number | null
+          started_at: string
+        }
+        Insert: {
+          errors?: Json | null
+          finished_at?: string | null
+          id?: string
+          listings_fetched?: number | null
+          listings_upserted?: number | null
+          mandates_due?: number | null
+          mandates_executed?: number | null
+          started_at?: string
+        }
+        Update: {
+          errors?: Json | null
+          finished_at?: string | null
+          id?: string
+          listings_fetched?: number | null
+          listings_upserted?: number | null
+          mandates_due?: number | null
+          mandates_executed?: number | null
+          started_at?: string
+        }
+        Relationships: []
       }
       manual_url_intake: {
         Row: {

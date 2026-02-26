@@ -47,6 +47,7 @@ import ManualIntakePage from "./pages/operator/ManualIntakePage";
 import OogleBotPage from "./pages/operator/OogleBotPage";
 import VAIntakePage from "./pages/VAIntakePage";
 import VATasksPage from "./pages/VATasksPage";
+import MandateFeedPage from "./pages/MandateFeedPage";
 
 // Carbitrage legacy pages kept for operator access
 import JoshInboxPage from "./pages/carbitrage/JoshInboxPage";
@@ -194,6 +195,9 @@ const App = () => (
 
               {/* VA */}
               <Route path="/va/tasks" element={<RequireAuth><VATasksPage /></RequireAuth>} />
+
+              {/* Mandate Feed */}
+              <Route path="/mandate-feed" element={<RequireAuth><MandateFeedPage /></RequireAuth>} />
 
               {/* Catch-all */}
               <Route path="*" element={<NotFound />} />

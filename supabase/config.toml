@@ -466,3 +466,7 @@ verify_jwt = false
 
 [functions.run-outward-search]
 verify_jwt = false
+
+[functions.run-mandates]
+verify_jwt = false
+schedule = "*/15 * * * *"

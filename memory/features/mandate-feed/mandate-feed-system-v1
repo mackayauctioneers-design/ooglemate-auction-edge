@@ -1,0 +1,31 @@
+# Memory: features/mandate-feed/mandate-feed-system-v1
+Updated: now
+
+## Mandate Feed System
+
+The Mandate Feed is a unified sourcing surface at `/mandate-feed` that replaces fragmented per-source hunting. It operates in **B-mode**: store everything that matches structural constraints, rank by score/margin — never filter on them.
+
+### Architecture:
+- **`active_mandates`** table: What you're chasing — make/model/year/km/price constraints + source_mask + scheduling
+- **`mandate_runs`** table: Execution logs for every dispatcher run (started_at, finished_at, counters, errors)
+- **`mandate_feed_items`** table: The unified feed surface with dedup on (mandate_id, source, listing_id), price tracking (last_price, price_delta, price_changed_at), and scoring columns
+
+### Edge Function: `run-mandates`
+- Scheduled every 15 min via config.toml
+- Dispatcher pattern: fetch due mandates → run per-source adapters → upsert feed items → advance schedule
+- Adapters: `fetchPickles()` and `fetchToyota()` via Caroogle API (same endpoints as existing crons)
+- Structural filtering only (make/model/year/km/price) — no margin/score gating
+
+### UI: `/mandate-feed`
+- Single page: create mandates, view unified feed ranked by margin → score → recency
+- Filters: source, mandate, new today, price drops
+- "Run Now" button triggers the dispatcher on demand
+
+### Day 1 → Day 7 progression:
+- Day 1: mandates run on schedule, feed fills, dedup works, "new + price drop" visible
+- Day 7: price history signals emerge (drops + stale listings = real deals)
+
+### Non-negotiables:
+- first_seen_at and last_seen_at for every item
+- Price change tracking (last_price, price_delta)
+- mandate_runs logging for 60-second debugging
