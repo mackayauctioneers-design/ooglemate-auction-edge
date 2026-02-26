@@ -1,10 +1,26 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+/**
+ * RECONCILE TRADING DESK — v2
+ * 
+ * Sweeps 3 buckets:
+ *   1. Auction expired (past auction + listing not ACTIVE)
+ *   2. Dead/Sold cross-check (listing lifecycle DEAD/SOLD/STALE/INVALID)
+ *   3. Aged out (>7d, status=new, not starred)
+ * 
+ * Rules:
+ *   - NEVER touch terminal states (ignored, expired, lost, won, archived)
+ *   - Only sweep status IN ('new', 'assigned', 'reviewed')
+ *   - Starred items are always protected
+ */
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+const ACTIONABLE_STATES = ["new", "assigned", "reviewed"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -26,19 +42,18 @@ Deno.serve(async (req) => {
 
   try {
     // ── 1. Expire auction opportunities whose auction has passed ──
-    // 2h grace period. Only expire if the source listing is also no longer ACTIVE.
-    const pastAuction = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(); // 2h grace
-    
-    // First get candidates, then cross-check lifecycle
+    // 2h grace period. Only expire if listing is no longer ACTIVE.
+    const pastAuction = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
+
     const { data: auctionCandidates } = await supabase
       .from("operator_opportunities")
       .select("id, listing_id")
-      .in("status", ["new", "assigned"])
+      .in("status", ACTIONABLE_STATES)
       .eq("is_starred", false)
       .not("auction_datetime", "is", null)
       .lt("auction_datetime", pastAuction);
 
-    let auctionExpireIds: string[] = [];
+    const auctionExpireIds: string[] = [];
     if (auctionCandidates && auctionCandidates.length > 0) {
       // Cross-check: only expire if vehicle_listings is NOT still ACTIVE
       for (const c of auctionCandidates) {
@@ -47,7 +62,6 @@ Deno.serve(async (req) => {
           .select("lifecycle_state")
           .eq("listing_id", c.listing_id)
           .maybeSingle();
-        // Expire if listing not found OR not active
         if (!vl || !["NEW", "ACTIVE", "WATCHING"].includes(vl.lifecycle_state)) {
           auctionExpireIds.push(c.id);
         }
@@ -59,18 +73,16 @@ Deno.serve(async (req) => {
           .in("id", auctionExpireIds);
       }
     }
-
     results.expired_auction = auctionExpireIds.length;
 
     // ── 2. Expire opportunities whose source listing is DEAD/SOLD/STALE ──
-    // Cross-check against vehicle_listings lifecycle_state
     const { data: deadListings, error: e2 } = await supabase.rpc(
       "reconcile_dead_opportunities",
     );
     if (e2) console.error("dead listing reconcile error:", e2.message);
     results.expired_stale = deadListings ?? 0;
 
-    // ── 3. Expire aged opportunities (>7 days old, still 'new', not starred) ──
+    // ── 3. Expire aged opportunities (>7d, still actionable, not starred) ──
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: agedOut, error: e3 } = await supabase
       .from("operator_opportunities")
@@ -114,12 +126,12 @@ Deno.serve(async (req) => {
           cron_name: "reconcile-trading-desk",
           last_seen_at: now.toISOString(),
           last_ok: false,
-          note: err.message,
+          note: (err as Error).message,
         },
         { onConflict: "cron_name" },
       );
 
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

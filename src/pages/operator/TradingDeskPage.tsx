@@ -217,7 +217,7 @@ export default function TradingDeskPage() {
     setLoading(true);
     try {
       const [oppsRes, acctsRes] = await Promise.all([
-        supabase.from('operator_opportunities').select('*').neq('status', 'ignored').order('best_expected_margin', { ascending: false }).limit(500),
+        supabase.from('operator_opportunities').select('*').in('status', ['new', 'assigned', 'reviewed']).order('best_expected_margin', { ascending: false }).limit(500),
         supabase.from('accounts').select('id, display_name'),
       ]);
       if (oppsRes.error) throw oppsRes.error;
