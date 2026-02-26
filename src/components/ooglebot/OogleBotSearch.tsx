@@ -533,9 +533,11 @@ export function OogleBotSearch() {
                 No qualifying vehicles found within current filters.
               </p>
             ) : (
-              outwardResponse.results!.map((result, i) => (
-                <OutwardResultCard key={result.url || i} result={result} />
-              ))
+              [...outwardResponse.results!]
+                .sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity))
+                .map((result, i) => (
+                  <OutwardResultCard key={result.url || i} result={result} />
+                ))
             )}
           </CardContent>
         </Card>
