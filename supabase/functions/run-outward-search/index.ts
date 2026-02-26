@@ -263,7 +263,7 @@ Deno.serve(async (req) => {
 
     // ── STEP 1: Parse intent mechanically ──
     const intent = parseInstruction(instruction);
-    console.log(`[OUTWARD-V2] Parsed:`, JSON.stringify(intent));
+    console.log(`[OUTWARD-V2] STRUCTURED_QUERY`, JSON.stringify(intent));
 
     if (!intent.make) {
       return new Response(
@@ -329,7 +329,7 @@ Deno.serve(async (req) => {
     });
 
     const rawResults = (await Promise.all(searchPromises)).flat();
-    console.log(`[OUTWARD-V2] Total extracted: ${rawResults.length}`);
+    console.log(`[OUTWARD-V2] STAGE_1_RAW_CANDIDATES: ${rawResults.length}`);
 
     if (rawResults.length === 0) {
       logAudit(intent, instruction, 0, 0, 0, Date.now() - startTime, jobUrgency);
@@ -346,17 +346,63 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── STEP 3: Filter ──
-    const filtered = rawResults.filter((l) => {
-      if (l.price == null) return false;
-      if (intent.year && l.year != null && Math.abs(l.year - intent.year) > 2) return false;
-      if (intent.max_km && l.km != null && l.km > intent.max_km + 10000) return false;
+    // ── STEP 3: URL pattern filter — block SEO/category/review pages ──
+    const SEO_REJECT_PATTERNS = [
+      /\/search\//i, /\/cars-for-sale\/search/i, /\/review/i, /\/news\//i,
+      /\/blog\//i, /\/guide/i, /\/spec/i, /\/compare/i, /\/pricing\//i,
+      /\/between-\d+-\d+/i, // carsales price range pages
+      /\/advice\//i, /\/editorial\//i, /\/best-/i,
+      /\/showroom/i, /\/car-of-the-year/i, /\/awards/i,
+      /\/calculator/i, /\/finance/i, /\/insurance/i,
+      /\/cars\/[^/]+\/[^/]+\/[^/]+\/between-/i, // carsales category
+    ];
+    // Positive listing patterns — URL should ideally contain a listing ID or detail slug
+    const LISTING_LIKE_PATTERNS = [
+      /\/details?\//i, /\/listing\//i, /\/item\//i, /\/lot\//i,
+      /\/\d{5,}/, // numeric ID in URL (5+ digits)
+      /\/used\//i, /\/buy\//i, 
+    ];
+    
+    const urlFiltered = rawResults.filter((l) => {
+      // Hard reject known SEO patterns
+      if (SEO_REJECT_PATTERNS.some(p => p.test(l.url))) return false;
       return true;
     });
+    console.log(`[OUTWARD-V2] STAGE_2_URL_FILTER: ${urlFiltered.length} (rejected ${rawResults.length - urlFiltered.length} SEO/category pages)`);
 
-    console.log(`[OUTWARD-V2] After filter: ${filtered.length} listings`);
+    // ── STEP 3b: Vehicle schema validator — reject pages missing core data ──
+    const schemaValid = urlFiltered.filter((l) => {
+      if (!l.year || !l.price) return false; // Must have year AND price
+      // Sanity: price < $3000 or km < 50 is almost certainly regex noise
+      if (l.price < 3000) return false;
+      if (l.km != null && l.km < 50) return false;
+      return true;
+    });
+    console.log(`[OUTWARD-V2] STAGE_3_SCHEMA_VALID: ${schemaValid.length} (rejected ${urlFiltered.length - schemaValid.length} missing/invalid data)`);
 
-    // ── STEP 4: Score & rank ──
+    // ── STEP 3c: Make/model structural enforcement ──
+    const makeUpper = intent.make?.toUpperCase() || "";
+    const modelKeywords = intent.model_keywords.map(k => k.toUpperCase());
+    const structuralValid = schemaValid.filter((l) => {
+      const haystack = `${l.title || ""} ${l.url} ${l.variant || ""}`.toUpperCase();
+      // Make MUST appear in title, URL, or variant
+      if (makeUpper && !haystack.includes(makeUpper)) return false;
+      // At least one model keyword must appear
+      if (modelKeywords.length > 0 && !modelKeywords.some(kw => haystack.includes(kw))) return false;
+      return true;
+    });
+    console.log(`[OUTWARD-V2] STAGE_4_MAKE_MODEL_MATCH: ${structuralValid.length} (rejected ${schemaValid.length - structuralValid.length} wrong make/model)`);
+
+    // ── STEP 3c: Numeric constraint filter ──
+    const filtered = structuralValid.filter((l) => {
+      if (intent.year && l.year != null && Math.abs(l.year - intent.year) > 2) return false;
+      if (intent.max_km && l.km != null && l.km > intent.max_km + 10000) return false;
+      if (intent.price_max && l.price != null && l.price > intent.price_max * 1.15) return false;
+      return true;
+    });
+    console.log(`[OUTWARD-V2] STAGE_4_CONSTRAINT_FILTER: ${filtered.length} (rejected ${structuralValid.length - filtered.length} out of range)`);
+
+    // ── STEP 5: Score & rank ──
     const scored = filtered
       .map((l) => ({ ...l, score: scoreListing(l, intent) }))
       .filter((l) => l.score > 0)
@@ -373,7 +419,11 @@ Deno.serve(async (req) => {
       if (top3.length >= 3) break;
     }
 
-    console.log(`[OUTWARD-V2] Returning ${top3.length} results in ${Date.now() - startTime}ms`);
+    // ── Diagnostic: Log top 3 with full detail ──
+    console.log(`[OUTWARD-V2] STAGE_5_TOP3:`, JSON.stringify(top3.map(r => ({
+      url: r.url, year: r.year, price: r.price, km: r.km, score: r.score, source: r.source,
+    }))));
+    console.log(`[OUTWARD-V2] Pipeline: ${rawResults.length} raw → ${schemaValid.length} schema → ${structuralValid.length} make/model → ${filtered.length} constraints → ${top3.length} returned (${Date.now() - startTime}ms)`);
 
     logAudit(intent, instruction, rawResults.length, filtered.length, top3.length, Date.now() - startTime, jobUrgency);
 
@@ -382,6 +432,13 @@ Deno.serve(async (req) => {
         status: "ok",
         intent,
         results: top3,
+        pipeline: {
+          raw_candidates: rawResults.length,
+          schema_valid: schemaValid.length,
+          make_model_match: structuralValid.length,
+          constraint_filtered: filtered.length,
+          returned: top3.length,
+        },
         total_searched: rawResults.length,
         total_filtered: filtered.length,
         duration_ms: Date.now() - startTime,
