@@ -39,6 +39,38 @@ const KNOWN_MAKES = [
   "MASERATI", "ALFA ROMEO", "GENESIS", "CUPRA", "SEAT",
 ];
 
+// Model-to-make inference for queries that omit the make
+const MODEL_TO_MAKE: Record<string, string> = {
+  "LANDCRUISER": "TOYOTA", "LAND CRUISER": "TOYOTA", "HILUX": "TOYOTA",
+  "CAMRY": "TOYOTA", "COROLLA": "TOYOTA", "RAV4": "TOYOTA", "PRADO": "TOYOTA",
+  "HIACE": "TOYOTA", "FORTUNER": "TOYOTA", "KLUGER": "TOYOTA", "YARIS": "TOYOTA",
+  "86": "TOYOTA", "SUPRA": "TOYOTA", "AURION": "TOYOTA", "TARAGO": "TOYOTA",
+  "RANGER": "FORD", "MUSTANG": "FORD", "EVEREST": "FORD", "FALCON": "FORD",
+  "TERRITORY": "FORD", "FOCUS": "FORD", "FIESTA": "FORD", "ESCAPE": "FORD",
+  "COMMODORE": "HOLDEN", "COLORADO": "HOLDEN", "CAPTIVA": "HOLDEN",
+  "CRUZE": "HOLDEN", "ASTRA": "HOLDEN", "TRAILBLAZER": "HOLDEN",
+  "CX-5": "MAZDA", "CX-9": "MAZDA", "CX-3": "MAZDA", "CX-30": "MAZDA",
+  "BT-50": "MAZDA", "MX-5": "MAZDA", "CX5": "MAZDA", "CX9": "MAZDA",
+  "NAVARA": "NISSAN", "PATROL": "NISSAN", "X-TRAIL": "NISSAN", "XTRAIL": "NISSAN",
+  "PATHFINDER": "NISSAN", "QASHQAI": "NISSAN", "JUKE": "NISSAN",
+  "TRITON": "MITSUBISHI", "OUTLANDER": "MITSUBISHI", "PAJERO": "MITSUBISHI",
+  "PAJERO SPORT": "MITSUBISHI", "ASX": "MITSUBISHI", "ECLIPSE CROSS": "MITSUBISHI",
+  "TUCSON": "HYUNDAI", "I30": "HYUNDAI", "SANTA FE": "HYUNDAI",
+  "KONA": "HYUNDAI", "IONIQ": "HYUNDAI", "STARIA": "HYUNDAI",
+  "SPORTAGE": "KIA", "CERATO": "KIA", "SELTOS": "KIA", "CARNIVAL": "KIA",
+  "SORENTO": "KIA", "STINGER": "KIA", "EV6": "KIA",
+  "FORESTER": "SUBARU", "OUTBACK": "SUBARU", "WRX": "SUBARU",
+  "IMPREZA": "SUBARU", "XV": "SUBARU", "BRZ": "SUBARU",
+  "CIVIC": "HONDA", "CR-V": "HONDA", "CRV": "HONDA", "HR-V": "HONDA",
+  "JAZZ": "HONDA", "ACCORD": "HONDA", "ODYSSEY": "HONDA",
+  "AMAROK": "VOLKSWAGEN", "GOLF": "VOLKSWAGEN", "TIGUAN": "VOLKSWAGEN",
+  "POLO": "VOLKSWAGEN", "PASSAT": "VOLKSWAGEN", "T-ROC": "VOLKSWAGEN",
+  "D-MAX": "ISUZU", "DMAX": "ISUZU", "MU-X": "ISUZU", "MUX": "ISUZU",
+  "JIMNY": "SUZUKI", "VITARA": "SUZUKI", "SWIFT": "SUZUKI", "BALENO": "SUZUKI",
+  "WRANGLER": "JEEP", "GRAND CHEROKEE": "JEEP", "GLADIATOR": "JEEP",
+  "DEFENDER": "LAND ROVER", "DISCOVERY": "LAND ROVER", "RANGE ROVER": "LAND ROVER",
+};
+
 // ══════════════════════════════════════════
 // STEP 1: Deterministic intent parser (NO AI)
 // ══════════════════════════════════════════
@@ -89,6 +121,18 @@ function parseInstruction(raw: string): ParsedIntent {
       }
     }
     if (make) break;
+  }
+
+  // Model-to-make inference: if no make found, check if any token is a known model
+  if (!make) {
+    // Try multi-word model matches first (longest first)
+    const sortedModels = Object.keys(MODEL_TO_MAKE).sort((a, b) => b.length - a.length);
+    for (const model of sortedModels) {
+      if (input.includes(model)) {
+        make = MODEL_TO_MAKE[model];
+        break;
+      }
+    }
   }
 
   // Model keywords: everything that's NOT year, km phrase, price phrase, or make
