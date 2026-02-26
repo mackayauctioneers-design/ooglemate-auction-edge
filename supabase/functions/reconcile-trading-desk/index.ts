@@ -1,0 +1,104 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+};
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  const now = new Date();
+  const results = {
+    expired_auction: 0,
+    expired_stale: 0,
+    expired_aged: 0,
+    total_swept: 0,
+  };
+
+  try {
+    // ── 1. Expire auction opportunities whose auction has passed ──
+    // If auction_datetime is in the past and status is still actionable → expired
+    const pastAuction = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(); // 2h grace
+    const { data: auctionExpired, error: e1 } = await supabase
+      .from("operator_opportunities")
+      .update({ status: "expired", updated_at: now.toISOString() })
+      .in("status", ["new", "assigned"])
+      .not("auction_datetime", "is", null)
+      .lt("auction_datetime", pastAuction)
+      .select("id");
+
+    if (e1) console.error("auction expire error:", e1.message);
+    results.expired_auction = auctionExpired?.length ?? 0;
+
+    // ── 2. Expire opportunities whose source listing is DEAD/SOLD/STALE ──
+    // Cross-check against vehicle_listings lifecycle_state
+    const { data: deadListings, error: e2 } = await supabase.rpc(
+      "reconcile_dead_opportunities",
+    );
+    if (e2) console.error("dead listing reconcile error:", e2.message);
+    results.expired_stale = deadListings ?? 0;
+
+    // ── 3. Expire aged opportunities (>7 days old, still 'new', not starred) ──
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: agedOut, error: e3 } = await supabase
+      .from("operator_opportunities")
+      .update({ status: "expired", updated_at: now.toISOString() })
+      .eq("status", "new")
+      .eq("is_starred", false)
+      .lt("created_at", sevenDaysAgo)
+      .select("id");
+
+    if (e3) console.error("aged expire error:", e3.message);
+    results.expired_aged = agedOut?.length ?? 0;
+
+    results.total_swept =
+      results.expired_auction + results.expired_stale + results.expired_aged;
+
+    // ── 4. Log to cron_heartbeat ──
+    await supabase
+      .from("cron_heartbeat")
+      .upsert(
+        {
+          cron_name: "reconcile-trading-desk",
+          last_seen_at: now.toISOString(),
+          last_ok: true,
+          note: JSON.stringify(results),
+        },
+        { onConflict: "cron_name" },
+      );
+
+    console.log("Reconciliation complete:", results);
+
+    return new Response(JSON.stringify(results), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("Reconciliation failed:", err);
+
+    await supabase
+      .from("cron_heartbeat")
+      .upsert(
+        {
+          cron_name: "reconcile-trading-desk",
+          last_seen_at: now.toISOString(),
+          last_ok: false,
+          note: err.message,
+        },
+        { onConflict: "cron_name" },
+      );
+
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
