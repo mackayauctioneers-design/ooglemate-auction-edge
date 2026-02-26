@@ -8,6 +8,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * 
  * B-mode: store EVERYTHING that matches structural constraints.
  * Score/margin are ranking signals only — never filter on them.
+ * 
+ * Code Red alerts: price drops + new tight listings → Slack.
  */
 
 const corsHeaders = {
@@ -45,6 +47,24 @@ type NormalizedListing = {
   asking_price: number | null;
   location: string | null;
   raw: Record<string, unknown>;
+};
+
+type FeedItemRow = {
+  id: string;
+  mandate_id: string;
+  source: string;
+  listing_id: string;
+  source_url: string | null;
+  make: string;
+  model: string;
+  variant: string | null;
+  year: number | null;
+  km: number | null;
+  asking_price: number | null;
+  last_price: number | null;
+  price_delta: number | null;
+  first_seen_at: string;
+  last_seen_at: string;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -88,6 +108,16 @@ function extractBadge(text: string | null): string {
   return "";
 }
 
+function formatPrice(price: number | null): string {
+  if (!price) return "N/A";
+  return "$" + price.toLocaleString("en-AU", { maximumFractionDigits: 0 });
+}
+
+function formatKm(km: number | null): string {
+  if (!km) return "N/A";
+  return Math.round(km / 1000) + "k km";
+}
+
 // ─── Source Adapters ─────────────────────────────────────────────────────────
 
 async function fetchPickles(mandate: Mandate): Promise<NormalizedListing[]> {
@@ -116,7 +146,6 @@ async function fetchPickles(mandate: Mandate): Promise<NormalizedListing[]> {
     const km = parseKm(ad.odometer || ad.km || ad.kms);
     const price = parsePrice(ad.price || ad.askingPrice || ad.asking_price);
 
-    // Structural filters (B-mode: no margin/score filtering)
     if (mandate.make && make !== mandate.make.toUpperCase()) continue;
     if (mandate.model && !model.includes(mandate.model.toUpperCase())) continue;
     if (mandate.year_min && year && year < mandate.year_min) continue;
@@ -161,7 +190,6 @@ async function fetchToyota(mandate: Mandate): Promise<NormalizedListing[]> {
     const km = parseKm(ad.odometer || ad.km);
     const price = parsePrice(ad.price);
 
-    // Structural filters
     if (mandate.make && make !== mandate.make.toUpperCase()) continue;
     if (mandate.model && !model.includes(mandate.model.toUpperCase())) continue;
     if (mandate.year_min && year && year < mandate.year_min) continue;
@@ -218,10 +246,8 @@ async function upsertFeedItems(
       location: l.location,
       last_seen_at: now,
       raw: l.raw,
-      // Price tracking: handled via ON CONFLICT update
     }));
 
-    // Use raw SQL-like upsert. On conflict, update last_seen + detect price change.
     const { error, data } = await sb
       .from("mandate_feed_items")
       .upsert(rows, {
@@ -238,13 +264,196 @@ async function upsertFeedItems(
     }
   }
 
-  // Price change detection pass — update last_price and price_delta for changed prices
-  // We do this as a second query to catch items where asking_price != last_price
-  await sb.rpc("mandate_feed_detect_price_changes", { p_mandate_id: mandateId }).catch(() => {
-    // RPC may not exist yet — that's OK, price tracking is a day-7 enhancement
-  });
+  await sb.rpc("mandate_feed_detect_price_changes", { p_mandate_id: mandateId }).catch(() => {});
 
   return { upserted, errors };
+}
+
+// ─── Code Red Alert Logic ────────────────────────────────────────────────────
+
+function isPriceDropCodeRed(priceDelta: number | null, lastPrice: number | null): boolean {
+  if (priceDelta == null || lastPrice == null || lastPrice <= 0) return false;
+  if (priceDelta <= -3000) return true;
+  if (priceDelta <= -2000 && Math.abs(priceDelta) / lastPrice >= 0.05) return true;
+  return false;
+}
+
+function isNewCleanCodeRed(item: FeedItemRow, mandate: Mandate, runStartedAt: string): boolean {
+  // first_seen_at must be within this run
+  if (item.first_seen_at < runStartedAt) return false;
+
+  // Year check: must be >= (year_max - 1) if year_max exists
+  if (mandate.year_max && item.year) {
+    if (item.year < mandate.year_max - 1) return false;
+  }
+
+  // KM check: must be <= 70% of km_max if km_max exists
+  if (mandate.km_max && item.km) {
+    if (item.km > 0.7 * mandate.km_max) return false;
+  }
+
+  // Price check: must be >= 97% of price_max (priced to move, near ceiling)
+  if (mandate.price_max && item.asking_price) {
+    if (item.asking_price < 0.97 * mandate.price_max) return false;
+  }
+
+  return true;
+}
+
+async function checkCooldown(
+  sb: ReturnType<typeof createClient>,
+  mandateId: string,
+  source: string,
+  listingId: string,
+  alertType: string,
+): Promise<boolean> {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await sb
+    .from("mandate_alerts")
+    .select("id")
+    .eq("mandate_id", mandateId)
+    .eq("source", source)
+    .eq("listing_id", listingId)
+    .eq("alert_type", alertType)
+    .gte("created_at", cutoff)
+    .limit(1);
+  return (data?.length || 0) > 0;
+}
+
+async function sendCodeRedToSlack(
+  webhook: string,
+  item: FeedItemRow,
+  reason: string,
+  alertType: string,
+): Promise<boolean> {
+  const vehicle = `${item.year || ""} ${item.make || ""} ${item.model || ""} ${item.variant || ""}`.trim();
+  const dropText = item.price_delta ? `Drop: ${formatPrice(Math.abs(item.price_delta))}` : "";
+
+  const fields = [
+    { type: "mrkdwn", text: `*Price:*\n${formatPrice(item.asking_price)}` },
+    { type: "mrkdwn", text: `*KM:*\n${formatKm(item.km)}` },
+    { type: "mrkdwn", text: `*Source:*\n${item.source}` },
+    { type: "mrkdwn", text: `*Reason:*\n${reason}` },
+  ];
+  if (dropText) {
+    fields.splice(1, 0, { type: "mrkdwn", text: `*${dropText}*` });
+  }
+
+  const blocks: any[] = [
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: `🚨 *CODE RED — ${vehicle}*` },
+    },
+    { type: "section", fields },
+  ];
+
+  if (item.source_url) {
+    blocks.push({
+      type: "actions",
+      elements: [{
+        type: "button",
+        text: { type: "plain_text", text: "View Listing" },
+        url: item.source_url,
+        style: "danger",
+      }],
+    });
+  }
+
+  blocks.push({ type: "divider" });
+
+  try {
+    const res = await fetch(webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        attachments: [{
+          color: "#EF4444",
+          blocks,
+        }],
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function evaluateCodeRedAlerts(
+  sb: ReturnType<typeof createClient>,
+  mandate: Mandate,
+  runStartedAt: string,
+  slackWebhook: string | undefined,
+): Promise<number> {
+  let codeRedCount = 0;
+
+  // Fetch all feed items for this mandate that were touched in this run
+  const { data: items, error } = await sb
+    .from("mandate_feed_items")
+    .select("id, mandate_id, source, listing_id, source_url, make, model, variant, year, km, asking_price, last_price, price_delta, first_seen_at, last_seen_at")
+    .eq("mandate_id", mandate.id)
+    .gte("last_seen_at", runStartedAt);
+
+  if (error || !items) return 0;
+
+  for (const item of items as FeedItemRow[]) {
+    let alertType: string | null = null;
+    let reason = "";
+
+    // Check price drop
+    if (isPriceDropCodeRed(item.price_delta, item.last_price)) {
+      alertType = "price_drop";
+      const pct = item.last_price ? Math.round(Math.abs(item.price_delta!) / item.last_price * 100) : 0;
+      reason = `Price dropped ${formatPrice(Math.abs(item.price_delta!))} (${pct}%) from ${formatPrice(item.last_price)}`;
+    }
+    // Check new + tight
+    else if (isNewCleanCodeRed(item, mandate, runStartedAt)) {
+      alertType = "new_clean";
+      reason = `New listing: tight spec — ${item.year} model, ${formatKm(item.km)}, priced ${formatPrice(item.asking_price)}`;
+    }
+
+    if (!alertType) continue;
+
+    // Cooldown check
+    const onCooldown = await checkCooldown(sb, mandate.id, item.source, item.listing_id, alertType);
+    if (onCooldown) continue;
+
+    console.log(`[run-mandates] CODE RED triggered for ${item.listing_id}`);
+
+    // Insert alert
+    const { error: insertErr } = await sb
+      .from("mandate_alerts")
+      .upsert({
+        mandate_id: mandate.id,
+        source: item.source,
+        listing_id: item.listing_id,
+        alert_type: alertType,
+        severity: "code_red",
+        reason,
+      }, { onConflict: "mandate_id,source,listing_id,alert_type" });
+
+    if (insertErr) {
+      console.error(`[run-mandates] Alert insert error: ${insertErr.message}`);
+      continue;
+    }
+
+    codeRedCount++;
+
+    // Send Slack
+    if (slackWebhook) {
+      const sent = await sendCodeRedToSlack(slackWebhook, item, reason, alertType);
+      if (sent) {
+        await sb
+          .from("mandate_alerts")
+          .update({ sent_at: new Date().toISOString() })
+          .eq("mandate_id", mandate.id)
+          .eq("source", item.source)
+          .eq("listing_id", item.listing_id)
+          .eq("alert_type", alertType);
+      }
+    }
+  }
+
+  return codeRedCount;
 }
 
 // ─── MAIN ────────────────────────────────────────────────────────────────────
@@ -255,6 +464,7 @@ Deno.serve(async (req) => {
   }
 
   const startTime = Date.now();
+  const runStartedAt = new Date().toISOString();
 
   try {
     const sb = createClient(
@@ -262,10 +472,12 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    const SLACK_WEBHOOK = Deno.env.get("SLACK_WEBHOOK_URL");
+
     // 1. Create mandate_runs row
     const { data: runRow } = await sb
       .from("mandate_runs")
-      .insert({ started_at: new Date().toISOString() })
+      .insert({ started_at: runStartedAt })
       .select("id")
       .single();
 
@@ -285,6 +497,7 @@ Deno.serve(async (req) => {
 
     let totalFetched = 0;
     let totalUpserted = 0;
+    let totalCodeRed = 0;
     const runErrors: any[] = [];
     let mandatesExecuted = 0;
 
@@ -325,7 +538,16 @@ Deno.serve(async (req) => {
       totalUpserted += mandateUpserted;
       mandatesExecuted++;
 
-      // 4. Update mandate schedule
+      // 4. Evaluate Code Red alerts for this mandate
+      try {
+        const codeReds = await evaluateCodeRedAlerts(sb, mandate, runStartedAt, SLACK_WEBHOOK);
+        totalCodeRed += codeReds;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[run-mandates] Code Red eval failed for "${mandate.name}": ${msg}`);
+      }
+
+      // 5. Update mandate schedule
       const nextRunAt = new Date(Date.now() + mandate.run_frequency_minutes * 60 * 1000).toISOString();
       await sb
         .from("active_mandates")
@@ -337,7 +559,7 @@ Deno.serve(async (req) => {
         .eq("id", mandate.id);
     }
 
-    // 5. Close out mandate_runs
+    // 6. Close out mandate_runs
     if (runId) {
       await sb
         .from("mandate_runs")
@@ -357,7 +579,7 @@ Deno.serve(async (req) => {
       cron_name: CRON_NAME,
       last_seen_at: new Date().toISOString(),
       last_ok: true,
-      note: `due=${mandates.length} exec=${mandatesExecuted} fetched=${totalFetched} upserted=${totalUpserted} errors=${runErrors.length}`,
+      note: `due=${mandates.length} exec=${mandatesExecuted} fetched=${totalFetched} upserted=${totalUpserted} code_red=${totalCodeRed} errors=${runErrors.length}`,
     }, { onConflict: "cron_name" });
 
     const result = {
@@ -365,6 +587,7 @@ Deno.serve(async (req) => {
       mandates_executed: mandatesExecuted,
       listings_fetched: totalFetched,
       listings_upserted: totalUpserted,
+      code_red_count: totalCodeRed,
       errors: runErrors,
       runtime_ms: Date.now() - startTime,
     };
