@@ -358,15 +358,25 @@ export default function TradingDeskPage() {
 
   const uniqueSources = [...new Set(opportunities.map(o => o.listing_source).filter(Boolean))] as string[];
 
-  const active = (tier: string) => opportunities.filter(o => o.tier === tier && ['new', 'reviewed'].includes(o.status)).length;
+  // Base set respects dealer search filter so KPI counts update when searching
+  const baseFiltered = opportunities.filter(o => {
+    if (filterDealerSearch) {
+      const q = filterDealerSearch.toLowerCase();
+      const nameMatch = o.best_account_name?.toLowerCase().includes(q);
+      const assignedMatch = o.assigned_to_name?.toLowerCase().includes(q);
+      if (!nameMatch && !assignedMatch) return false;
+    }
+    return true;
+  });
+  const active = (tier: string) => baseFiltered.filter(o => o.tier === tier && ['new', 'reviewed'].includes(o.status)).length;
   const codeRedCount = active('CODE_RED');
   const highCount = active('HIGH');
   const buyCount = active('BUY');
   const retailBuyCount = active('RETAIL_BUY');
   const retailTargetCount = active('RETAIL_TARGET');
   const watchCount = active('WATCH');
-  const auctionCount = opportunities.filter(o => o.auction_status && o.auction_status !== 'none' && ['new', 'reviewed'].includes(o.status)).length;
-  const starredCount = opportunities.filter(o => o.is_starred).length;
+  const auctionCount = baseFiltered.filter(o => o.auction_status && o.auction_status !== 'none' && ['new', 'reviewed'].includes(o.status)).length;
+  const starredCount = baseFiltered.filter(o => o.is_starred).length;
 
   return (
     <OperatorLayout>
