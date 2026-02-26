@@ -9288,15 +9288,18 @@ export type Database = {
           platform_class: string | null
           postcode: string | null
           reappeared: boolean
+          reappeared_at: string | null
           relist_count: number
           replicated_at: string | null
           reserve: number | null
+          risk_flag: boolean
           risk_flags: string[] | null
           sa2_code: string | null
           sa2_name: string | null
           seller_confidence: string | null
           seller_reasons: string[] | null
           seller_type: string
+          sold_detected_at: string | null
           sold_returned_at: string | null
           sold_returned_flagged_at: string | null
           sold_returned_reason: string | null
@@ -9376,15 +9379,18 @@ export type Database = {
           platform_class?: string | null
           postcode?: string | null
           reappeared?: boolean
+          reappeared_at?: string | null
           relist_count?: number
           replicated_at?: string | null
           reserve?: number | null
+          risk_flag?: boolean
           risk_flags?: string[] | null
           sa2_code?: string | null
           sa2_name?: string | null
           seller_confidence?: string | null
           seller_reasons?: string[] | null
           seller_type?: string
+          sold_detected_at?: string | null
           sold_returned_at?: string | null
           sold_returned_flagged_at?: string | null
           sold_returned_reason?: string | null
@@ -9464,15 +9470,18 @@ export type Database = {
           platform_class?: string | null
           postcode?: string | null
           reappeared?: boolean
+          reappeared_at?: string | null
           relist_count?: number
           replicated_at?: string | null
           reserve?: number | null
+          risk_flag?: boolean
           risk_flags?: string[] | null
           sa2_code?: string | null
           sa2_name?: string | null
           seller_confidence?: string | null
           seller_reasons?: string[] | null
           seller_type?: string
+          sold_detected_at?: string | null
           sold_returned_at?: string | null
           sold_returned_flagged_at?: string | null
           sold_returned_reason?: string | null

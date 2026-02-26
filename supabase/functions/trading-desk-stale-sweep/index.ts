@@ -182,8 +182,10 @@ serve(async (req) => {
 
     const results = await runPool(batch, concurrencyLimit, checkOne);
 
-    // Separate dead from alive
-    const deadIds = results.filter((r) => r.status === "sold" || r.status === "expired").map((r) => r.id);
+    // Separate sold from expired from alive
+    const soldResults = results.filter((r) => r.status === "sold");
+    const expiredResults = results.filter((r) => r.status === "expired");
+    const deadIds = [...soldResults, ...expiredResults].map((r) => r.id);
     let expired = 0;
 
     // Mark dead opportunities as expired
@@ -196,6 +198,30 @@ serve(async (req) => {
         .eq("is_starred", false); // never expire starred
       if (upErr) console.error("[STALE-SWEEP] expire error:", upErr.message);
       else expired += chunk.length;
+    }
+
+    // Also mark underlying vehicle_listings as SOLD with timestamp
+    const soldListingIds = soldResults.map((r) => r.listing_id);
+    if (soldListingIds.length > 0) {
+      for (let i = 0; i < soldListingIds.length; i += 50) {
+        const chunk = soldListingIds.slice(i, i + 50);
+        await sb
+          .from("vehicle_listings")
+          .update({ lifecycle_state: "SOLD", sold_detected_at: new Date().toISOString() })
+          .in("listing_id", chunk);
+      }
+    }
+
+    // Mark expired listings as DEAD
+    const expiredListingIds = expiredResults.map((r) => r.listing_id);
+    if (expiredListingIds.length > 0) {
+      for (let i = 0; i < expiredListingIds.length; i += 50) {
+        const chunk = expiredListingIds.slice(i, i + 50);
+        await sb
+          .from("vehicle_listings")
+          .update({ lifecycle_state: "DEAD" })
+          .in("listing_id", chunk);
+      }
     }
 
     const counts = results.reduce((acc, r) => {
