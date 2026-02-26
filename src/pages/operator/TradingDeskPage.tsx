@@ -693,13 +693,21 @@ export default function TradingDeskPage() {
                                   onSelect={(acctId) => updateStatus(opp.id, 'assigned', acctId)}
                                 />
                                 <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => updateStatus(opp.id, 'ignored')}>✕</Button>
-                                {opp.source_url && (
-                                  <Button variant="ghost" size="iconSm" asChild>
-                                    <a href={opp.source_url} target="_blank" rel="noopener noreferrer">
-                                      <ExternalLink className="h-3.5 w-3.5" />
-                                    </a>
-                                  </Button>
-                                )}
+                                {(() => {
+                                  let linkUrl = opp.source_url;
+                                  // Pickles direct lot URLs 404 — build a search URL instead
+                                  if (linkUrl && linkUrl.includes('pickles.com.au')) {
+                                    const q = [opp.year, opp.make, opp.model].filter(Boolean).join('+');
+                                    linkUrl = `https://www.pickles.com.au/used/search?q=${q}`;
+                                  }
+                                  return linkUrl ? (
+                                    <Button variant="ghost" size="iconSm" asChild>
+                                      <a href={linkUrl} target="_blank" rel="noopener noreferrer">
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                      </a>
+                                    </Button>
+                                  ) : null;
+                                })()}
                               </div>
                             </TableCell>
                           </TableRow>
