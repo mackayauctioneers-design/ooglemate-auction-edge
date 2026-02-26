@@ -26,18 +26,41 @@ Deno.serve(async (req) => {
 
   try {
     // ── 1. Expire auction opportunities whose auction has passed ──
-    // If auction_datetime is in the past and status is still actionable → expired
+    // 2h grace period. Only expire if the source listing is also no longer ACTIVE.
     const pastAuction = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(); // 2h grace
-    const { data: auctionExpired, error: e1 } = await supabase
+    
+    // First get candidates, then cross-check lifecycle
+    const { data: auctionCandidates } = await supabase
       .from("operator_opportunities")
-      .update({ status: "expired", updated_at: now.toISOString() })
+      .select("id, listing_id")
       .in("status", ["new", "assigned"])
+      .eq("is_starred", false)
       .not("auction_datetime", "is", null)
-      .lt("auction_datetime", pastAuction)
-      .select("id");
+      .lt("auction_datetime", pastAuction);
 
-    if (e1) console.error("auction expire error:", e1.message);
-    results.expired_auction = auctionExpired?.length ?? 0;
+    let auctionExpireIds: string[] = [];
+    if (auctionCandidates && auctionCandidates.length > 0) {
+      // Cross-check: only expire if vehicle_listings is NOT still ACTIVE
+      for (const c of auctionCandidates) {
+        const { data: vl } = await supabase
+          .from("vehicle_listings")
+          .select("lifecycle_state")
+          .eq("listing_id", c.listing_id)
+          .maybeSingle();
+        // Expire if listing not found OR not active
+        if (!vl || !["NEW", "ACTIVE", "WATCHING"].includes(vl.lifecycle_state)) {
+          auctionExpireIds.push(c.id);
+        }
+      }
+      if (auctionExpireIds.length > 0) {
+        await supabase
+          .from("operator_opportunities")
+          .update({ status: "expired", updated_at: now.toISOString() })
+          .in("id", auctionExpireIds);
+      }
+    }
+
+    results.expired_auction = auctionExpireIds.length;
 
     // ── 2. Expire opportunities whose source listing is DEAD/SOLD/STALE ──
     // Cross-check against vehicle_listings lifecycle_state
