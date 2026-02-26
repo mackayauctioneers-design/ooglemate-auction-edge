@@ -174,6 +174,30 @@ interface PricelessCandidate {
   auction_datetime: string | null;
 }
 
+// ─── PAGINATED FETCH (bypasses 1000-row Supabase limit) ──────────────────────
+
+async function fetchAll(
+  sb: any,
+  table: string,
+  queryBuilder: (q: any) => any,
+  pageSize = 1000,
+  maxRows = 10000,
+): Promise<any[]> {
+  const all: any[] = [];
+  let offset = 0;
+  while (offset < maxRows) {
+    const base = sb.from(table);
+    const q = queryBuilder(base).range(offset, offset + pageSize - 1);
+    const { data, error } = await q;
+    if (error) { console.error(`[FETCH] ${table} page error:`, error.message); break; }
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < pageSize) break;
+    offset += pageSize;
+  }
+  return all;
+}
+
 // ─── MAIN ────────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -223,43 +247,39 @@ Deno.serve(async (req) => {
     // ── 3. Load candidate listings from ALL 3 sources ──
 
     // 3a. vehicle_listings (auction/wholesale) — WITH price
-    const { data: listings } = await sb
-      .from("vehicle_listings")
-      .select("id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house")
-      .in("lifecycle_state", ["NEW", "ACTIVE", "WATCHING"])
-      .not("asking_price", "is", null)
-      .gt("asking_price", 0)
-      .limit(1000);
+    const listings = await fetchAll(sb, "vehicle_listings", (q: any) =>
+      q.select("id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house")
+       .in("lifecycle_state", ["NEW", "ACTIVE", "WATCHING"])
+       .not("asking_price", "is", null)
+       .gt("asking_price", 0)
+    );
 
     // 3a2. vehicle_listings — WITHOUT price (auction watch candidates)
     const AUCTION_SOURCES = ["pickles", "grays", "manheim", "slattery", "f3", "auto_auctions", "vma", "bidsonline"];
-    const { data: pricelessListings } = await sb
-      .from("vehicle_listings")
-      .select("id, listing_id, source, make, model, year, km, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, auction_datetime")
-      .in("lifecycle_state", ["NEW", "ACTIVE", "WATCHING"])
-      .in("source", AUCTION_SOURCES)
-      .or("asking_price.is.null,asking_price.eq.0")
-      .limit(1000);
+    const pricelessListings = await fetchAll(sb, "vehicle_listings", (q: any) =>
+      q.select("id, listing_id, source, make, model, year, km, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, auction_datetime")
+       .in("lifecycle_state", ["NEW", "ACTIVE", "WATCHING"])
+       .in("source", AUCTION_SOURCES)
+       .or("asking_price.is.null,asking_price.eq.0")
+    );
 
     // 3b. Shadow (caroogle)
-    const { data: shadowListings } = await sb
-      .from("vehicle_listings_shadow")
-      .select("id, listing_id, lot_id, make, model, year, km, asking_price, drivetrain, raw_payload, first_seen_at, location, state, status")
-      .not("asking_price", "is", null)
-      .gt("asking_price", 0)
-      .is("promoted_at", null)
-      .limit(1000);
+    const shadowListings = await fetchAll(sb, "vehicle_listings_shadow", (q: any) =>
+      q.select("id, listing_id, lot_id, make, model, year, km, asking_price, drivetrain, raw_payload, first_seen_at, location, state, status")
+       .not("asking_price", "is", null)
+       .gt("asking_price", 0)
+       .is("promoted_at", null)
+    );
 
     // 3c. Retail listings (autotrader + drive)
-    const { data: retailListings } = await sb
-      .from("retail_listings")
-      .select("id, source, source_listing_id, listing_url, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, badge, fuel_type, body_type, first_seen_at, last_seen_at, price_change_count, delisted_at")
-      .is("delisted_at", null)
-      .not("asking_price", "is", null)
-      .gt("asking_price", 0)
-      .limit(2000);
+    const retailListings = await fetchAll(sb, "retail_listings", (q: any) =>
+      q.select("id, source, source_listing_id, listing_url, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, badge, fuel_type, body_type, first_seen_at, last_seen_at, price_change_count, delisted_at")
+       .is("delisted_at", null)
+       .not("asking_price", "is", null)
+       .gt("asking_price", 0)
+    );
 
-    console.log(`[SCORE] Priceless auction candidates: ${pricelessListings?.length ?? 0}`);
+    console.log(`[SCORE] Priceless auction candidates: ${pricelessListings.length}`);
 
     // ── Build unified candidate list ──
     const candidates: CandidateListing[] = [];
