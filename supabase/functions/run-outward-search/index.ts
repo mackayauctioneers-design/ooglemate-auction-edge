@@ -50,6 +50,17 @@ interface ParsedIntent {
   price_max: number | null;
 }
 
+// Stop-words: conversational filler that should never become model keywords
+const STOP_WORDS = new Set([
+  "SEARCH", "FOR", "FIND", "SHOW", "ME", "GET", "WANT", "NEED", "LOOKING",
+  "UNDER", "BELOW", "ABOVE", "OVER", "AROUND", "ABOUT", "BETWEEN",
+  "MODEL", "MUST", "BE", "THE", "AND", "OR", "WITH", "WITHOUT",
+  "ANY", "ALL", "SOME", "NO", "NOT", "FROM", "THAT", "THIS",
+  "AUSTRALIA", "WIDE", "NATIONALLY", "NATIONAL", "CHEAP", "CHEAPEST", "BEST",
+  "WHOLESALE", "DEALER", "BUY", "SELL", "PRICE", "BUDGET", "MAX", "LOW",
+  "KM", "KMS", "KILOMETRES", "KILOMETERS",
+]);
+
 function parseInstruction(raw: string): ParsedIntent {
   const input = raw.trim().toUpperCase();
   const tokens = input.split(/\s+/);
@@ -59,7 +70,7 @@ function parseInstruction(raw: string): ParsedIntent {
   const yearMatch = input.match(/\b(20[0-3]\d)\b/);
   if (yearMatch) year = parseInt(yearMatch[1], 10);
 
-  // Max KM: number before "km" or "kms"
+  // Max KM: number before "km" or "kms" (checked FIRST to prevent price collision)
   let max_km: number | null = null;
   const kmMatch = input.match(/([\d,]+)\s*(?:km|kms)\b/i);
   if (kmMatch) {
@@ -68,13 +79,19 @@ function parseInstruction(raw: string): ParsedIntent {
     max_km = 60000;
   }
 
-  // Price max: "under $XX,XXX" or "under XXk" or "under XXXXX" or "budget $XX,XXX"
+  // Price max: "under $XX,XXX" or "under XXk" — but NOT if the number is followed by "km"
   let price_max: number | null = null;
   const priceMatch = input.match(/(?:UNDER|BELOW|MAX|BUDGET)\s*\$?\s*([\d,]+)\s*K?\b/i);
   if (priceMatch) {
-    let p = parseInt(priceMatch[1].replace(/,/g, ""), 10);
-    if (p < 1000) p *= 1000;
-    price_max = p;
+    // Check if this number is actually a km value (number followed by "km")
+    const priceNumStr = priceMatch[1];
+    const afterMatch = input.slice(input.indexOf(priceMatch[0]) + priceMatch[0].length).trimStart();
+    const isKmValue = /^(?:km|kms)\b/i.test(afterMatch);
+    if (!isKmValue) {
+      let p = parseInt(priceNumStr.replace(/,/g, ""), 10);
+      if (p < 1000) p *= 1000;
+      price_max = p;
+    }
   }
 
   // Make: dictionary match against tokens
@@ -91,11 +108,11 @@ function parseInstruction(raw: string): ParsedIntent {
     if (make) break;
   }
 
-  // Model keywords: everything that's NOT year, km phrase, price phrase, or make
+  // Model keywords: strip noise, then filter stop-words
   const stripPatterns = [
     /\b20[0-3]\d\b/g,
+    /(?:UNDER|BELOW|MAX|BUDGET)\s*\$?\s*[\d,]+\s*K?\s*(?:km|kms)?\b/gi,
     /[\d,]+\s*(?:km|kms)\b/gi,
-    /(?:UNDER|BELOW|MAX|BUDGET)\s*\$?\s*[\d,]+\s*K?\b/gi,
     /\bLOW\s*KM\b/gi,
   ];
 
@@ -110,7 +127,7 @@ function parseInstruction(raw: string): ParsedIntent {
   const model_keywords = remaining
     .split(/\s+/)
     .map((t) => t.replace(/[^A-Z0-9-]/g, ""))
-    .filter((t) => t.length >= 2);
+    .filter((t) => t.length >= 2 && !STOP_WORDS.has(t));
 
   return { make, model_keywords, year, max_km, price_max };
 }
