@@ -690,7 +690,7 @@ Deno.serve(async (req) => {
         anchor_sale_km: bestMatch.anchor.km || null,
         anchor_sale_trim_class: bestMatch.anchor.trim_class || "UNKNOWN",
         alt_matches: [],
-        tier: "AUCTION WATCH",
+        tier: "AUCTION_WATCH",
         days_listed: daysSince,
         freshness,
         pass_count: 0,
