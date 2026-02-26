@@ -17,7 +17,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const CAROOGLE_API = "https://backend.caroogle.codesorbit.net/api/ads?limit=5000";
+const CAROOGLE_API = "https://backend.caroogle.codesorbit.net/api/ads?source=pickles&limit=5000";
 const CRON_NAME = "caroogle-pickles-ingest";
 const SOURCE = "pickles";
 const SOURCE_CLASS = "auction";
@@ -48,7 +48,7 @@ function parseKm(raw: string | number | null | undefined): number | null {
 function parsePrice(raw: string | number | null | undefined): number | null {
   if (raw == null) return null;
   const val = typeof raw === "number" ? raw : parseFloat(String(raw).replace(/[,$\s]/g, ""));
-  return !isNaN(val) && val > 0 ? val : null;
+  return !isNaN(val) && val > 0 ? Math.round(val) : null;
 }
 
 function parseYear(raw: any): number | null {
