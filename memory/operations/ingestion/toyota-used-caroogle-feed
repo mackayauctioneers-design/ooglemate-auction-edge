@@ -1,0 +1,4 @@
+# Memory: operations/ingestion/toyota-used-caroogle-feed
+Updated: now
+
+Toyota Used Vehicles are ingested via the `caroogle-toyota-cron` edge function, which fetches from `https://backend.caroogle.codesorbit.net/api/ads?source=toyota&limit=5000`. It runs every 2 hours and writes to `vehicle_listings` with `source = "toyota"`, `source_class = "oem_used"`, `seller_type = "oem_dealer"`. The Toyota API provides structured data including explicit variant, price, odometer, driveType, fuel, transmission, bodyType, state, and direct listing URLs to `toyota.com.au/used-vehicles`. All 756 initial listings have prices. The scorer whitelist includes `toyota` as both a production source and a retail source for median comparisons.
