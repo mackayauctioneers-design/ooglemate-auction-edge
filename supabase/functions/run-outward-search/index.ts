@@ -59,9 +59,9 @@ function parseInstruction(raw: string): ParsedIntent {
   const yearMatch = input.match(/\b(20[0-3]\d)\b/);
   if (yearMatch) year = parseInt(yearMatch[1], 10);
 
-  // Max KM: number before "km" or "kms"
+  // Max KM: number before "km", "kms", "klm", "klms" (with or without space)
   let max_km: number | null = null;
-  const kmMatch = input.match(/([\d,]+)\s*(?:km|kms)\b/i);
+  const kmMatch = input.match(/([\d,]+)\s*(?:klms|klm|kms|km)\b/i);
   if (kmMatch) {
     max_km = parseInt(kmMatch[1].replace(/,/g, ""), 10);
   } else if (/\bLOW\s*KM\b/i.test(input)) {
@@ -94,8 +94,8 @@ function parseInstruction(raw: string): ParsedIntent {
   // Model keywords: everything that's NOT year, km phrase, price phrase, or make
   const stripPatterns = [
     /\b20[0-3]\d\b/g,
-    /[\d,]+\s*(?:km|kms)\b/gi,
-    /(?:UNDER|BELOW|MAX|BUDGET)\s*\$?\s*[\d,]+\s*K?\b/gi,
+    /(?:UNDER|BELOW|MAX|BUDGET)\s*\$?\s*[\d,]+\s*(?:klms|klm|kms|km|K)?\b/gi,
+    /[\d,]+\s*(?:klms|klm|kms|km)\b/gi,
     /\bLOW\s*KM\b/gi,
   ];
 
@@ -107,10 +107,16 @@ function parseInstruction(raw: string): ParsedIntent {
     remaining = remaining.replace(new RegExp(`\\b${make.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, "g"), " ");
   }
 
+  const STOP_WORDS = new Set([
+    "MODEL", "MODELS", "UNDER", "BELOW", "BUDGET", "MAX", "AUSTRALIA",
+    "WIDE", "NATIONALLY", "NATIONAL", "CHEAP", "CHEAPEST", "BEST",
+    "WHOLESALE", "FOR", "SALE", "THE", "AND", "WITH", "ANY",
+  ]);
+
   const model_keywords = remaining
     .split(/\s+/)
     .map((t) => t.replace(/[^A-Z0-9-]/g, ""))
-    .filter((t) => t.length >= 2);
+    .filter((t) => t.length >= 2 && !STOP_WORDS.has(t));
 
   return { make, model_keywords, year, max_km, price_max };
 }

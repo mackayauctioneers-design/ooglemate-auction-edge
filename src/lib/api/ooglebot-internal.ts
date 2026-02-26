@@ -43,7 +43,7 @@ export function parseSearchQuery(query: string): {
 
   // Extract KM: "under 40000km", "low km", "<20000km"
   let kmMax: number | null = null;
-  const kmMatch = q.match(/(?:under|below|<|less than)\s*([\d,]+)\s*km/i);
+  const kmMatch = q.match(/(?:under|below|<|less than)\s*([\d,]+)\s*(?:klms|klm|kms|km)/i);
   if (kmMatch) {
     kmMax = parseInt(kmMatch[1].replace(/,/g, ""), 10);
   }
