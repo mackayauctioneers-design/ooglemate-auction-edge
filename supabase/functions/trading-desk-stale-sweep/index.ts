@@ -93,12 +93,27 @@ async function checkOne(row: OpRow): Promise<CheckResult> {
       return { id: row.id, listing_id: row.listing_id, status: "active", http_status: status, reason: "http_not_ok_skip" };
     }
 
-    // Check for redirect away from detail page (Pickles specific)
+    // Check for redirect away from detail page (multi-source)
     const finalUrl = (resp.url ?? url).toLowerCase();
+    const originalUrl = url.toLowerCase();
     const source = (row.listing_source ?? "").toLowerCase();
+
+    // Pickles: redirects away from /lot/ or /used/details/
     if (source.includes("pickles") && !finalUrl.includes("/lot/") && !finalUrl.includes("/used/details/")) {
       await resp.text();
       return { id: row.id, listing_id: row.listing_id, status: "expired", http_status: 200, reason: "redirect_away" };
+    }
+
+    // Auto Auctions: JS-rendered pages, can't scrape — rely on 48h DB purge
+    if (originalUrl.includes("auto-auctions.com.au")) {
+      await resp.text();
+      return { id: row.id, listing_id: row.listing_id, status: "active", http_status: 200, reason: "js_rendered_skip" };
+    }
+
+    // Manheim: session-gated — skip (can't verify without login)
+    if (originalUrl.includes("manheim.com")) {
+      await resp.text();
+      return { id: row.id, listing_id: row.listing_id, status: "active", http_status: 200, reason: "session_gated_skip" };
     }
 
     const html = (await resp.text()).toLowerCase();
