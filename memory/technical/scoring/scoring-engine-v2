@@ -1,0 +1,35 @@
+# Memory: technical/scoring/scoring-engine-v2
+Updated: now
+
+## Scoring Engine v2 Architecture
+
+The scoring engine (`score-operator-opportunities`) was rewritten to eliminate floods, timeouts, and stale data.
+
+### Key Changes from v1:
+
+1. **Delta Fetch via Cursor** — `scorer_cursors` table tracks `last_seen_cutoff`. Each run only processes listings with `last_seen_at > cutoff`. After success, cursor advances to `now() - 10min` (safety buffer for late writes).
+
+2. **Hard Caps per Run**:
+   - MAX_LISTINGS_PER_RUN = 3,000
+   - MAX_OPPORTUNITIES_CREATED = 300 (priced)
+   - MAX_AUCTION_WATCH_CREATED = 150 (priceless)
+   - TOP_K_PER_FINGERPRINT = 3 (priced), 2 (auction watch)
+
+3. **Rank-Before-Insert** — All candidates scored in memory, sorted by composite score (tier weight + margin), then only the top-ranked candidates within caps are inserted. Prevents 900+ AUCTION_WATCH flood.
+
+4. **Median Cache** — Retail median RPC calls cached by key `(make|model|badge|year_band|km_band|fuel|drivetrain)`. Turns N×RPC into ~100-300 unique lookups.
+
+5. **Guarded Upsert** — DB function `upsert_operator_opportunity_guarded()` enforces terminal state protection at the database level. Terminal states (ignored, expired, lost, won, archived) are NEVER revived by the scorer.
+
+6. **Trading Desk Query Gates**:
+   - Operator page: `status IN ('new', 'assigned', 'reviewed')` (was `!= ignored`)
+   - Dealer page: added `created_at >= now() - 48h` freshness gate
+
+### Reconciliation v2:
+- Only sweeps actionable states: `['new', 'assigned', 'reviewed']`
+- Never touches terminal states
+- Three buckets unchanged: auction expired, dead/sold, aged-out (7d)
+
+### Tables:
+- `scorer_cursors`: job_name PK, last_seen_cutoff, last_run_at, last_ok, note
+- `operator_opportunities`: existing, with guarded upsert function

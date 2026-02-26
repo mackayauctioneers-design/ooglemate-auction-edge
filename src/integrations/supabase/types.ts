@@ -7171,6 +7171,30 @@ export type Database = {
           },
         ]
       }
+      scorer_cursors: {
+        Row: {
+          job_name: string
+          last_ok: boolean | null
+          last_run_at: string | null
+          last_seen_cutoff: string | null
+          note: Json | null
+        }
+        Insert: {
+          job_name: string
+          last_ok?: boolean | null
+          last_run_at?: string | null
+          last_seen_cutoff?: string | null
+          note?: Json | null
+        }
+        Update: {
+          job_name?: string
+          last_ok?: boolean | null
+          last_run_at?: string | null
+          last_seen_cutoff?: string | null
+          note?: Json | null
+        }
+        Relationships: []
+      }
       snap_id_sessions: {
         Row: {
           account_id: string | null
@@ -12474,6 +12498,10 @@ export type Database = {
       upsert_harvest_batch: {
         Args: { p_items: Json; p_run_id: string; p_source: string }
         Returns: Json
+      }
+      upsert_operator_opportunity_guarded: {
+        Args: { p_row: Json }
+        Returns: string
       }
       upsert_pickles_harvest_batch: {
         Args: { p_items: Json; p_run_id: string }
