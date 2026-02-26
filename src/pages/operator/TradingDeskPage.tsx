@@ -206,6 +206,7 @@ export default function TradingDeskPage() {
   const [filterSource, setFilterSource] = useState<string>('all');
   const [filterMinMargin, setFilterMinMargin] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('active');
+  const [filterDealerSearch, setFilterDealerSearch] = useState<string>('');
 
   const [sortField, setSortField] = useState<SortField>('best_expected_margin');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -324,6 +325,12 @@ export default function TradingDeskPage() {
       const min = Number(filterMinMargin);
       if (!isNaN(min) && (o.best_expected_margin || 0) < min) return false;
     }
+    if (filterDealerSearch) {
+      const q = filterDealerSearch.toLowerCase();
+      const nameMatch = o.best_account_name?.toLowerCase().includes(q);
+      const assignedMatch = o.assigned_to_name?.toLowerCase().includes(q);
+      if (!nameMatch && !assignedMatch) return false;
+    }
     return true;
   });
 
@@ -376,62 +383,45 @@ export default function TradingDeskPage() {
           </Button>
         </div>
 
-        {/* KPI Strip */}
-        <div className="grid grid-cols-2 md:grid-cols-8 gap-2">
-          <Card className="border-red-500/40 bg-red-600/15">
-            <CardContent className="p-3 text-center">
-              <p className="text-2xl font-bold text-red-600">{codeRedCount}</p>
-              <p className="text-[11px] font-semibold text-red-500/80 uppercase tracking-wide">CODE RED</p>
-            </CardContent>
-          </Card>
-          <Card className="border-primary/30 bg-primary/5">
-            <CardContent className="p-3 text-center">
-              <p className="text-2xl font-bold text-primary">{highCount}</p>
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">HIGH</p>
-            </CardContent>
-          </Card>
-          <Card className="border-accent/30 bg-accent/5">
-            <CardContent className="p-3 text-center">
-              <p className="text-2xl font-bold text-accent-foreground">{buyCount}</p>
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">BUY</p>
-            </CardContent>
-          </Card>
-          <Card className="border-emerald-500/30 bg-emerald-500/5">
-            <CardContent className="p-3 text-center">
-              <p className="text-2xl font-bold text-emerald-600">{retailBuyCount}</p>
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">RETAIL BUY</p>
-            </CardContent>
-          </Card>
-          <Card className="border-amber-500/30 bg-amber-500/5">
-            <CardContent className="p-3 text-center">
-              <p className="text-2xl font-bold text-amber-600">{retailTargetCount}</p>
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">RETAIL TARGET</p>
-            </CardContent>
-          </Card>
-          <Card className="border-violet-500/30 bg-violet-500/5">
-            <CardContent className="p-3 text-center">
-              <div className="flex items-center justify-center gap-1.5">
-                <CalendarDays className="h-4 w-4 text-violet-600" />
-                <p className="text-2xl font-bold text-violet-600">{auctionCount}</p>
-              </div>
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">AUCTION</p>
-            </CardContent>
-          </Card>
-          <Card className="border-amber-400/30 bg-amber-400/5 cursor-pointer hover:bg-amber-400/10 transition-colors" onClick={() => setFilterStatus('starred')}>
-            <CardContent className="p-3 text-center">
-              <div className="flex items-center justify-center gap-1.5">
-                <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                <p className="text-2xl font-bold text-amber-500">{starredCount}</p>
-              </div>
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">STARRED</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <p className="text-2xl font-bold text-muted-foreground">{watchCount}</p>
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">WATCH</p>
-            </CardContent>
-          </Card>
+        {/* KPI Strip - Clickable Tier Buttons */}
+        <div className="flex flex-wrap gap-2">
+          {[
+            { tier: 'CODE_RED', count: codeRedCount, label: 'CODE RED', className: 'border-red-500/40 bg-red-600/15 hover:bg-red-600/25 text-red-600' },
+            { tier: 'HIGH', count: highCount, label: 'HIGH', className: 'border-primary/30 bg-primary/5 hover:bg-primary/15 text-primary' },
+            { tier: 'BUY', count: buyCount, label: 'BUY', className: 'border-accent/30 bg-accent/5 hover:bg-accent/15 text-accent-foreground' },
+            { tier: 'RETAIL_BUY', count: retailBuyCount, label: 'RETAIL BUY', className: 'border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/15 text-emerald-600' },
+            { tier: 'RETAIL_TARGET', count: retailTargetCount, label: 'RETAIL TARGET', className: 'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/15 text-amber-600' },
+            { tier: 'AUCTION', count: auctionCount, label: 'AUCTION', className: 'border-violet-500/30 bg-violet-500/5 hover:bg-violet-500/15 text-violet-600', icon: <CalendarDays className="h-4 w-4" /> },
+            { tier: 'starred', count: starredCount, label: 'STARRED', className: 'border-amber-400/30 bg-amber-400/5 hover:bg-amber-400/15 text-amber-500', icon: <Star className="h-4 w-4 fill-amber-400 text-amber-400" /> },
+            { tier: 'WATCH', count: watchCount, label: 'WATCH', className: 'border-border bg-muted/30 hover:bg-muted/60 text-muted-foreground' },
+          ].map(({ tier, count, label, className, icon }) => {
+            const isActive = tier === 'starred' ? filterStatus === 'starred' :
+              tier === 'AUCTION' ? filterSource === 'auction' :
+              filterTier === tier;
+            return (
+              <button
+                key={tier}
+                onClick={() => {
+                  if (tier === 'starred') {
+                    setFilterStatus(filterStatus === 'starred' ? 'active' : 'starred');
+                    setFilterTier('all');
+                  } else if (tier === 'AUCTION') {
+                    // Toggle auction filter - not a real tier, just show auction items
+                    setFilterTier('AUCTION_WATCH');
+                    setFilterStatus('active');
+                  } else {
+                    setFilterTier(filterTier === tier ? 'all' : tier);
+                    setFilterStatus('active');
+                  }
+                }}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border font-medium transition-all ${className} ${isActive ? 'ring-2 ring-offset-1 ring-current shadow-md scale-105' : 'opacity-80 hover:opacity-100'}`}
+              >
+                {icon}
+                <span className="text-xl font-bold">{count}</span>
+                <span className="text-[11px] uppercase tracking-wide">{label}</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Filters */}
@@ -490,6 +480,10 @@ export default function TradingDeskPage() {
           <div className="w-28">
             <label className="text-xs text-muted-foreground mb-1 block">Min Margin $</label>
             <Input type="number" value={filterMinMargin} onChange={e => setFilterMinMargin(e.target.value)} placeholder="0" />
+          </div>
+          <div className="w-48">
+            <label className="text-xs text-muted-foreground mb-1 block">Search Dealer</label>
+            <Input value={filterDealerSearch} onChange={e => setFilterDealerSearch(e.target.value)} placeholder="Type dealer name…" />
           </div>
         </div>
 
