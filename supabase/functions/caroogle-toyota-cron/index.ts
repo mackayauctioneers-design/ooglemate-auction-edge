@@ -222,6 +222,8 @@ Deno.serve(async (req) => {
       valid_rows: rows.length,
       skipped,
       upserted: totalUpserted,
+      total_new: totalUpserted,
+      total_updated: 0,
       with_price: withPriceCount,
       zero_price: zeroPriceCount,
       errors,
