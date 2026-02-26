@@ -4455,6 +4455,48 @@ export type Database = {
           },
         ]
       }
+      mandate_alerts: {
+        Row: {
+          alert_type: string
+          created_at: string | null
+          id: string
+          is_dismissed: boolean | null
+          listing_id: string
+          mandate_id: string
+          reason: string
+          reason_json: Json | null
+          sent_at: string | null
+          severity: string
+          source: string
+        }
+        Insert: {
+          alert_type: string
+          created_at?: string | null
+          id?: string
+          is_dismissed?: boolean | null
+          listing_id: string
+          mandate_id: string
+          reason: string
+          reason_json?: Json | null
+          sent_at?: string | null
+          severity: string
+          source: string
+        }
+        Update: {
+          alert_type?: string
+          created_at?: string | null
+          id?: string
+          is_dismissed?: boolean | null
+          listing_id?: string
+          mandate_id?: string
+          reason?: string
+          reason_json?: Json | null
+          sent_at?: string | null
+          severity?: string
+          source?: string
+        }
+        Relationships: []
+      }
       mandate_feed_items: {
         Row: {
           anchor_context: Json | null
