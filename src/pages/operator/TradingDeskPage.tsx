@@ -358,8 +358,9 @@ export default function TradingDeskPage() {
 
   const uniqueSources = [...new Set(opportunities.map(o => o.listing_source).filter(Boolean))] as string[];
 
-  // Base set respects dealer search filter so KPI counts update when searching
+  // Base set respects dealer search + account filter so KPI counts update
   const baseFiltered = opportunities.filter(o => {
+    if (filterAccount !== 'all' && o.best_account_id !== filterAccount) return false;
     if (filterDealerSearch) {
       const q = filterDealerSearch.toLowerCase();
       const nameMatch = o.best_account_name?.toLowerCase().includes(q);
