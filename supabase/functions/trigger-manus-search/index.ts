@@ -20,27 +20,51 @@ Deno.serve(async (req) => {
     });
   }
 
-  const { hunt_id } = await req.json();
-  if (!hunt_id) {
-    return new Response(JSON.stringify({ error: "hunt_id required" }), {
+  const body = await req.json();
+
+  // Support two modes: hunt_id (from hunts) or filters (from OogleBot)
+  const huntId: string | null = body.hunt_id || null;
+  const filters: { make?: string; model?: string; badge?: string; year_min?: number; year_max?: number; max_km?: number; price_max?: number } | null = body.filters || null;
+
+  let make = "", model = "", badge = "", yearLine = "", kmLine = "", priceLine = "";
+
+  if (huntId) {
+    const { data: hunt, error: huntError } = await supabase
+      .from("sale_hunts")
+      .select("*")
+      .eq("id", huntId)
+      .single();
+    if (huntError || !hunt) {
+      return new Response(JSON.stringify({ error: "Hunt not found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    make = hunt.make || "";
+    model = hunt.model || "";
+    badge = hunt.required_badge || "";
+    yearLine = hunt.year ? `Year: ${hunt.year}` : "";
+    kmLine = hunt.km ? `Maximum kilometres: ${hunt.km}` : "";
+  } else if (filters?.make) {
+    make = filters.make;
+    model = filters.model || "";
+    badge = filters.badge || "";
+    if (filters.year_min && filters.year_max) {
+      yearLine = `Year range: ${filters.year_min}–${filters.year_max}`;
+    } else if (filters.year_min) {
+      yearLine = `Year from: ${filters.year_min}`;
+    }
+    kmLine = filters.max_km ? `Maximum kilometres: ${filters.max_km}` : "";
+    priceLine = filters.price_max ? `Maximum price: $${filters.price_max}` : "";
+  } else {
+    return new Response(JSON.stringify({ error: "hunt_id or filters.make required" }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
 
-  // Get hunt details
-  const { data: hunt, error: huntError } = await supabase
-    .from("sale_hunts")
-    .select("*")
-    .eq("id", hunt_id)
-    .single();
+  // Generate a session_id for grouping (used by OogleBot frontend to poll)
+  const sessionId = crypto.randomUUID();
 
-  if (huntError || !hunt) {
-    return new Response(JSON.stringify({ error: "Hunt not found" }), {
-      status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
-  }
-
-  // Get Manus-type sources from dealer_outbound_sources
+  // Get Manus-type sources
   const { data: sources } = await supabase
     .from("dealer_outbound_sources")
     .select("*")
@@ -48,7 +72,7 @@ Deno.serve(async (req) => {
     .eq("enabled", true);
 
   if (!sources || sources.length === 0) {
-    return new Response(JSON.stringify({ message: "No Manus sources configured", tasks_created: 0 }), {
+    return new Response(JSON.stringify({ session_id: sessionId, message: "No Manus sources configured", tasks_created: 0 }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
@@ -62,12 +86,13 @@ Deno.serve(async (req) => {
       : `https://${source.dealer_domain}`;
 
     const prompt = [
-      `Search the website ${inventoryUrl} for used cars matching this mandate:`,
-      `Make: ${hunt.make}`,
-      `Model: ${hunt.model}`,
-      hunt.required_badge ? `Badge/Variant: ${hunt.required_badge}` : "",
-      hunt.year ? `Year: ${hunt.year}` : "",
-      hunt.km ? `Maximum kilometres: ${hunt.km}` : "",
+      `Search the website ${inventoryUrl} for used cars matching:`,
+      `Make: ${make}`,
+      model ? `Model: ${model}` : "",
+      badge ? `Badge/Variant: ${badge}` : "",
+      yearLine,
+      kmLine,
+      priceLine,
       "",
       "For each matching vehicle found, extract and return a JSON array with these fields:",
       "- price (integer, AUD, exclude govt charges if possible)",
@@ -108,10 +133,12 @@ Deno.serve(async (req) => {
 
       if (taskId) {
         await supabase.from("manus_search_tasks").insert({
-          hunt_id,
+          hunt_id: huntId,
           manus_task_id: taskId,
           source_url: inventoryUrl,
           status: "pending",
+          search_session_id: sessionId,
+          search_filters: { make, model, badge, ...(filters || {}) },
         });
         tasksCreated.push(taskId);
         console.log(`[MANUS] Created task ${taskId} for ${source.dealer_domain}`);
@@ -122,7 +149,13 @@ Deno.serve(async (req) => {
   }
 
   return new Response(
-    JSON.stringify({ message: "Manus tasks triggered", tasks_created: tasksCreated.length, task_ids: tasksCreated }),
+    JSON.stringify({
+      session_id: sessionId,
+      message: "Manus tasks triggered",
+      tasks_created: tasksCreated.length,
+      task_ids: tasksCreated,
+      sources_count: sources.length,
+    }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 });

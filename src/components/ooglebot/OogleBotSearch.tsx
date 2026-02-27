@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { searchOogleBot, searchOogleBotDirect, runOutwardSearch, type OogleBotResponse, type OogleBotResult, type OutwardSearchResponse, type OutwardSearchResult } from "@/lib/api/ooglebot";
 import { searchInternalInventory, searchDealerSpecs, parseSearchQuery, type InternalMatch } from "@/lib/api/ooglebot-internal";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,7 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, Database, Globe, MapPin, Gauge, DollarSign, ExternalLink, Radar, Mic, MicOff } from "lucide-react";
+import { Loader2, Search, Database, Globe, MapPin, Gauge, DollarSign, ExternalLink, Radar, Mic, MicOff, Building2 } from "lucide-react";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -190,6 +191,64 @@ function OutwardResultCard({ result }: { result: OutwardSearchResult }) {
   );
 }
 
+interface ManusResult {
+  title: string;
+  price: number | null;
+  km: number | null;
+  year: number | null;
+  location: string | null;
+  dealer_name: string | null;
+  url: string;
+  badge: string | null;
+  source: string;
+}
+
+function ManusResultCard({ result }: { result: ManusResult }) {
+  return (
+    <div className="flex items-start justify-between gap-4 p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-colors">
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-sm text-foreground">
+            {result.title || "Untitled"}
+          </span>
+          <Badge className="text-[10px] px-1.5 py-0 bg-amber-500/20 text-amber-700 border-amber-500/30">
+            <Building2 className="h-2.5 w-2.5 mr-0.5" />
+            {result.source}
+          </Badge>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          {result.price != null && (
+            <span className="flex items-center gap-1 font-medium text-foreground">
+              <DollarSign className="h-3 w-3" />
+              {formatPrice(result.price)}
+            </span>
+          )}
+          {result.km != null && (
+            <span className="flex items-center gap-1">
+              <Gauge className="h-3 w-3" />
+              {formatKm(result.km)}
+            </span>
+          )}
+          {result.location && (
+            <span className="flex items-center gap-1">
+              <MapPin className="h-3 w-3" />
+              {result.location}
+            </span>
+          )}
+          {result.dealer_name && <span>{result.dealer_name}</span>}
+        </div>
+      </div>
+      {result.url && (
+        <a href={result.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+          <Button variant="ghost" size="iconSm" className="text-muted-foreground hover:text-primary">
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+        </a>
+      )}
+    </div>
+  );
+}
+
 function VoiceSearchInput({ query, setQuery, onSearch, isLoading }: {
   query: string;
   setQuery: (v: string) => void;
@@ -251,6 +310,103 @@ export function OogleBotSearch() {
   const [outwardLoading, setOutwardLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
+  // Manus state
+  const [manusSessionId, setManusSessionId] = useState<string | null>(null);
+  const [manusResults, setManusResults] = useState<ManusResult[]>([]);
+  const [manusPending, setManusPending] = useState(0);
+  const [manusTotal, setManusTotal] = useState(0);
+  const [manusPolling, setManusPolling] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Poll Manus tasks by session_id
+  const pollManusTasks = useCallback(async (sessionId: string) => {
+    const { data: tasks } = await supabase
+      .from("manus_search_tasks")
+      .select("status, results, source_url")
+      .eq("search_session_id", sessionId);
+
+    if (!tasks) return;
+
+    const pending = tasks.filter(t => t.status === "pending").length;
+    const completed = tasks.filter(t => t.status === "complete");
+    const allResults: ManusResult[] = [];
+
+    for (const t of completed) {
+      if (t.results && Array.isArray(t.results)) {
+        allResults.push(...(t.results as unknown as ManusResult[]));
+      }
+    }
+
+    setManusPending(pending);
+    setManusTotal(tasks.length);
+    setManusResults(allResults);
+
+    // Stop polling when all done
+    if (pending === 0) {
+      setManusPolling(false);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    }
+  }, []);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  // Start polling when session changes
+  useEffect(() => {
+    if (!manusSessionId) return;
+
+    setManusPolling(true);
+    // Initial poll after 5s (Manus needs time)
+    const initialTimeout = setTimeout(() => {
+      pollManusTasks(manusSessionId);
+      // Then poll every 15s
+      pollRef.current = setInterval(() => pollManusTasks(manusSessionId), 15000);
+    }, 5000);
+
+    return () => {
+      clearTimeout(initialTimeout);
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [manusSessionId, pollManusTasks]);
+
+  const triggerManusSearch = async (filters: {
+    make: string;
+    model?: string;
+    badge?: string | null;
+    year_min?: number | null;
+    year_max?: number | null;
+    max_km?: number | null;
+    price_max?: number | null;
+  }) => {
+    try {
+      const { data, error } = await supabase.functions.invoke("trigger-manus-search", {
+        body: { filters },
+      });
+      if (error) {
+        console.error("Manus trigger error:", error);
+        return;
+      }
+      if (data?.session_id && data?.tasks_created > 0) {
+        setManusSessionId(data.session_id);
+        setManusTotal(data.tasks_created);
+        setManusPending(data.tasks_created);
+        toast({
+          title: `Searching ${data.sources_count} dealer sites`,
+          description: "Results will arrive in 2–5 minutes via Manus AI agent.",
+        });
+      }
+    } catch (err) {
+      console.error("Manus trigger failed:", err);
+    }
+  };
+
   const handleSearch = async () => {
     if (!query.trim()) return;
 
@@ -260,21 +416,52 @@ export function OogleBotSearch() {
     setDealerSpecs([]);
     setExternalResponse(null);
     setOutwardResponse(null);
+    setManusSessionId(null);
+    setManusResults([]);
+    setManusPending(0);
+    setManusTotal(0);
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
 
     try {
-      const [listings, specs] = await Promise.all([
+      // Run internal search + AI intent parse in parallel
+      const [listingsResult, specsResult, oogleBotResult] = await Promise.allSettled([
         searchInternalInventory(query),
         searchDealerSpecs(query),
+        searchOogleBot(query),
       ]);
+
+      const listings = listingsResult.status === "fulfilled" ? listingsResult.value : [];
+      const specs = specsResult.status === "fulfilled" ? specsResult.value : [];
       setInternalResults(listings);
       setDealerSpecs(specs);
 
-      // Auto-trigger CaroogleAI when no internal matches found
+      if (oogleBotResult.status === "fulfilled") {
+        setExternalResponse(oogleBotResult.value);
+
+        // Use parsed filters from ooglebot to trigger Manus in parallel
+        const filters = oogleBotResult.value.filters;
+        if (filters?.make) {
+          triggerManusSearch({
+            make: filters.make,
+            model: filters.model || undefined,
+            badge: filters.badge,
+            year_min: filters.year_min,
+            year_max: filters.year_max,
+            max_km: filters.max_km,
+            price_max: filters.price_max,
+          });
+        }
+      }
+
+      // Auto-trigger CaroogleAI when no internal matches
       if (listings.length === 0) {
         triggerOutwardSearch(query, 0);
       }
     } catch (err) {
-      console.error("Internal search error:", err);
+      console.error("Search error:", err);
     } finally {
       setInternalLoading(false);
     }
@@ -418,28 +605,7 @@ export function OogleBotSearch() {
         </Card>
       )}
 
-      {/* External Search Button */}
-      {hasSearched && !internalLoading && !externalResponse && (
-        <Card>
-          <CardContent className="py-4">
-            <Button
-              onClick={handleExternalSearch}
-              disabled={externalLoading}
-              variant="outline"
-              className="w-full"
-            >
-              {externalLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Globe className="h-4 w-4 mr-2" />
-              )}
-              AI-Powered Search (NLP → Structured)
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* External Structured Results */}
+      {/* External Structured Results (auto-triggered) */}
       {externalResponse && (
         <Card>
           <CardHeader className="pb-2">
@@ -466,6 +632,46 @@ export function OogleBotSearch() {
                 <ScoredResultCard key={result.listing_id || i} result={result} showUrl={isAdmin} />
               ))
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ═══ MANUS DEALER SITE RESULTS ═══ */}
+      {(manusPolling || manusResults.length > 0) && (
+        <Card className="border-amber-500/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Building2 className="h-4 w-4 text-amber-600" />
+              Dealer Sites
+              {manusPending > 0 && (
+                <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {manusPending}/{manusTotal} searching...
+                </span>
+              )}
+              {manusPending === 0 && manusTotal > 0 && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  {manusResults.length} found from {manusTotal} sites
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1.5">
+            {manusResults.length === 0 && manusPending > 0 && (
+              <p className="text-sm text-muted-foreground py-2">
+                AI agent searching dealer websites — results arrive in 2–5 min...
+              </p>
+            )}
+            {manusResults.length === 0 && manusPending === 0 && (
+              <p className="text-sm text-muted-foreground py-2">
+                No matching vehicles found on dealer sites.
+              </p>
+            )}
+            {manusResults
+              .sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity))
+              .map((result, i) => (
+                <ManusResultCard key={result.url || i} result={result} />
+              ))}
           </CardContent>
         </Card>
       )}
