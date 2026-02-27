@@ -470,3 +470,9 @@ verify_jwt = false
 [functions.run-mandates]
 verify_jwt = false
 schedule = "*/15 * * * *"
+
+[functions.trigger-manus-search]
+verify_jwt = false
+
+[functions.manus-webhook]
+verify_jwt = false

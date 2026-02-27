@@ -1300,6 +1300,7 @@ export type Database = {
       }
       dealer_outbound_sources: {
         Row: {
+          adapter_type: string
           consecutive_failures: number
           created_at: string
           dealer_domain: string
@@ -1316,6 +1317,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          adapter_type?: string
           consecutive_failures?: number
           created_at?: string
           dealer_domain: string
@@ -1332,6 +1334,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          adapter_type?: string
           consecutive_failures?: number
           created_at?: string
           dealer_domain?: string
@@ -4666,6 +4669,44 @@ export type Database = {
           },
         ]
       }
+      manus_search_tasks: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          hunt_id: string
+          id: string
+          manus_task_id: string
+          source_url: string
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          hunt_id: string
+          id?: string
+          manus_task_id: string
+          source_url: string
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          hunt_id?: string
+          id?: string
+          manus_task_id?: string
+          source_url?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manus_search_tasks_hunt_id_fkey"
+            columns: ["hunt_id"]
+            isOneToOne: false
+            referencedRelation: "sale_hunts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       matched_opportunities_v1: {
         Row: {
           account_id: string
@@ -6175,6 +6216,7 @@ export type Database = {
           listing_url: string | null
           lng: number | null
           make: string
+          manus_task_id: string | null
           model: string
           model_root: string | null
           origin_entity: string | null
@@ -6190,6 +6232,7 @@ export type Database = {
           sa2: string | null
           sa3: string | null
           sa4: string | null
+          search_source: string | null
           seller_name_raw: string | null
           seller_phone_hash: string | null
           seller_type: string | null
@@ -6266,6 +6309,7 @@ export type Database = {
           listing_url?: string | null
           lng?: number | null
           make: string
+          manus_task_id?: string | null
           model: string
           model_root?: string | null
           origin_entity?: string | null
@@ -6281,6 +6325,7 @@ export type Database = {
           sa2?: string | null
           sa3?: string | null
           sa4?: string | null
+          search_source?: string | null
           seller_name_raw?: string | null
           seller_phone_hash?: string | null
           seller_type?: string | null
@@ -6357,6 +6402,7 @@ export type Database = {
           listing_url?: string | null
           lng?: number | null
           make?: string
+          manus_task_id?: string | null
           model?: string
           model_root?: string | null
           origin_entity?: string | null
@@ -6372,6 +6418,7 @@ export type Database = {
           sa2?: string | null
           sa3?: string | null
           sa4?: string | null
+          search_source?: string | null
           seller_name_raw?: string | null
           seller_phone_hash?: string | null
           seller_type?: string | null
