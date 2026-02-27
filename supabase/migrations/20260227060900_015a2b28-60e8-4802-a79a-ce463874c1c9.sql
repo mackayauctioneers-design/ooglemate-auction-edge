@@ -1,0 +1,1 @@
+ALTER TABLE public.operator_opportunities ADD COLUMN margin_flag text DEFAULT NULL;
