@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normaliseToOffroad } from "../_shared/price-normalisation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -70,6 +71,7 @@ interface Listing {
   drivetrain: string | null;
   km: number | null;
   asking_price: number | null;
+  price_type: string | null;
   state: string | null;
   sa2_code: string | null; // For heat lookup
   source: string | null;
@@ -618,8 +620,10 @@ function makeDecision(
   gateResult: GateResult,
   exitHeatScore: number = 0.5
 ): { decision: 'buy' | 'watch' | 'ignore' | 'no_evidence'; gap_dollars: number | null; gap_pct: number | null; score_adjusted: number } {
-  const gap_dollars = provenExitValue && listing.asking_price 
-    ? provenExitValue - listing.asking_price 
+  // Normalise asking price to off-road equivalent before gap calculation
+  const normalisedAskPrice = normaliseToOffroad(listing.asking_price, listing.price_type, listing.state);
+  const gap_dollars = provenExitValue && normalisedAskPrice 
+    ? provenExitValue - normalisedAskPrice 
     : null;
   const gap_pct = provenExitValue && gap_dollars !== null 
     ? (gap_dollars / provenExitValue) * 100 
@@ -647,7 +651,7 @@ function makeDecision(
   const effectiveMinGapAbs = hunt.min_gap_abs_buy * heatGapMultiplier;
   
   // If we have proven exit value and price, we can evaluate BUY
-  if (provenExitValue && listing.asking_price) {
+  if (provenExitValue && normalisedAskPrice) {
     const canBuy = 
       adjustedScore >= 7.5 &&
       listingAgeDays <= hunt.max_listing_age_days_buy &&

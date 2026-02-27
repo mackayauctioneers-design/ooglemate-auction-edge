@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normaliseToOffroad } from "../_shared/price-normalisation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -82,6 +83,8 @@ interface VehicleListing {
   year: number | null;
   km: number | null;
   asking_price: number | null;
+  price_type: string | null;
+  state: string | null;
   variant_raw: string | null;
   transmission: string | null;
   fuel: string | null;
@@ -263,7 +266,7 @@ Deno.serve(async (req) => {
     // ── Step 3: Load active vehicle_listings ──
     const { data: listings, error: listErr } = await supabase
       .from("vehicle_listings")
-      .select("id, listing_id, make, model, year, km, asking_price, variant_raw, transmission, fuel, drivetrain, listing_url, source, platform_class")
+      .select("id, listing_id, make, model, year, km, asking_price, price_type, state, variant_raw, transmission, fuel, drivetrain, listing_url, source, platform_class")
       .in("status", ["listed", "catalogue"])
       .order("last_seen_at", { ascending: false })
       .limit(batchSize);
@@ -357,7 +360,9 @@ Deno.serve(async (req) => {
       reasons.km = kmResult.reason;
 
       // Score price against REBASED buy anchor (not historical median)
-      const priceResult = scorePrice(listing.asking_price, fp.rebased_buy_anchor);
+      // Normalise asking price to off-road equivalent before scoring
+      const normalisedAskPrice = normaliseToOffroad(listing.asking_price, listing.price_type, listing.state);
+      const priceResult = scorePrice(normalisedAskPrice, fp.rebased_buy_anchor);
       baseScore += priceResult.score;
       reasons.price = priceResult.reason;
 
@@ -396,9 +401,9 @@ Deno.serve(async (req) => {
 
       if (isWatch) watchOnly++;
 
-      // Compute expected margin using rebased prices
-      const expectedMargin = (fp.rebased_sell_price && listing.asking_price)
-        ? Math.round(Number(fp.rebased_sell_price) - listing.asking_price)
+      // Compute expected margin using rebased prices and normalised asking price
+      const expectedMargin = (fp.rebased_sell_price && normalisedAskPrice)
+        ? Math.round(Number(fp.rebased_sell_price) - normalisedAskPrice)
         : null;
 
       opportunities.push({

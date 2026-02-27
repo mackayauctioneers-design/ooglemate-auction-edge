@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { detectPriceType } from "../_shared/price-normalisation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -68,6 +69,7 @@ interface DealerCandidate {
   year?: number | null;
   km?: number | null;
   price?: number | null;
+  price_type?: string;
 }
 
 function normalizeUrl(url: string): string {
@@ -371,6 +373,7 @@ Deno.serve(async (req) => {
               year: parseYear(title + ' ' + content),
               km: parseKm(content),
               price: parsePrice(content),
+              price_type: detectPriceType(content),
             });
 
           } catch (scrapeErr) {
