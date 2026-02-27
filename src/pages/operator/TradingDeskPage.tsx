@@ -380,6 +380,55 @@ export default function TradingDeskPage() {
   const auctionCount = baseFiltered.filter(o => o.auction_status && o.auction_status !== 'none' && ['new', 'reviewed'].includes(o.status)).length;
   const starredCount = baseFiltered.filter(o => o.is_starred).length;
 
+  // ─── Daily Signal Strip (deterministic, no AI) ──────────────────────────────
+  const signalStrip = (() => {
+    const now = new Date();
+    const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+    // Respect account filter for dealer-scoped view
+    const scoped = filterAccount !== 'all'
+      ? opportunities.filter(o => o.best_account_id === filterAccount)
+      : opportunities;
+
+    const strong = scoped.filter(o =>
+      (o.best_expected_margin || 0) >= 3000 &&
+      ['new', 'reviewed'].includes(o.status)
+    );
+
+    const urgent = strong.filter(o => {
+      if (!o.auction_datetime) return false;
+      const dt = new Date(o.auction_datetime);
+      return dt >= now && dt <= in48h;
+    });
+
+    const closestUrgentHours = urgent.length > 0
+      ? Math.max(0, Math.round((new Date(urgent[0].auction_datetime!).getTime() - now.getTime()) / (1000 * 60 * 60)))
+      : null;
+
+    const topOpp = strong[0]; // already sorted by margin desc
+
+    if (strong.length === 0) {
+      const bestMargin = Math.max(0, ...scoped.map(o => o.best_expected_margin || 0));
+      if (bestMargin > 0) {
+        return { type: 'thin' as const, text: `Light day. Highest expected margin: $${bestMargin.toLocaleString()}.` };
+      }
+      return { type: 'empty' as const, text: 'No aligned inventory today.' };
+    }
+
+    const vehicle = topOpp ? `${topOpp.year || ''} ${topOpp.make || ''} ${topOpp.model || ''}`.trim() : '';
+    const margin = topOpp?.best_expected_margin || 0;
+    const urgentText = urgent.length > 0
+      ? ` ${urgent.length} closing within ${closestUrgentHours != null && closestUrgentHours < 48 ? closestUrgentHours + 'h' : '48h'}.`
+      : '';
+
+    return {
+      type: 'strong' as const,
+      text: `${strong.length} strong opportunit${strong.length === 1 ? 'y' : 'ies'} today.${urgentText}`,
+      detail: `Top: ${vehicle} – $${margin.toLocaleString()} expected.`,
+      isUrgent: closestUrgentHours != null && closestUrgentHours < 24,
+    };
+  })();
+
   return (
     <OperatorLayout>
       <div className="p-4 md:p-6 space-y-5 max-w-[1600px] mx-auto">
@@ -394,6 +443,30 @@ export default function TradingDeskPage() {
             {scoring ? 'Scoring…' : 'Run Scoring'}
           </Button>
         </div>
+
+        {/* Daily Signal Strip */}
+        {!loading && (
+          <div className={`rounded-lg border px-4 py-2.5 text-sm font-medium flex items-center gap-2 ${
+            signalStrip.type === 'strong'
+              ? 'border-primary/30 bg-primary/5 text-foreground'
+              : signalStrip.type === 'thin'
+                ? 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400'
+                : 'border-border bg-muted/30 text-muted-foreground'
+          }`}>
+            <span>{signalStrip.type === 'strong' ? '🔥' : signalStrip.type === 'thin' ? '⚠️' : '—'}</span>
+            <span>
+              {signalStrip.text}
+              {signalStrip.type === 'strong' && signalStrip.detail && (
+                <>
+                  {' '}
+                  <span className={signalStrip.isUrgent ? 'text-red-600 dark:text-red-400 font-bold' : 'font-semibold'}>
+                    {signalStrip.detail}
+                  </span>
+                </>
+              )}
+            </span>
+          </div>
+        )}
 
         {/* KPI Strip - Clickable Tier Buttons */}
         <div className="flex flex-wrap gap-2">
