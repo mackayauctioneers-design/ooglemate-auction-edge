@@ -18,11 +18,9 @@ interface PresetButton {
 
 const PRESETS: PresetButton[] = [
   { key: "what_closes_48h", label: "What closes in the next 48 hours?", category: "wholesale" },
-  { key: "turn_fast_this_week", label: "What can I turn fast this week?", category: "wholesale" },
-  { key: "under_described_auction", label: "Any under-described auction stock worth a swing?", category: "wholesale" },
+  { key: "strongest_margin", label: "Where is strongest margin alignment?", category: "wholesale" },
   { key: "retail_yard_profile", label: "What fits my retail yard profile?", category: "retail" },
   { key: "east_coast_arbitrage", label: "Any east coast arbitrage worth freight?", category: "retail" },
-  { key: "strongest_margin", label: "Where is strongest margin alignment?", category: "retail" },
 ];
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes

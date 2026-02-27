@@ -16,10 +16,12 @@ const SYSTEM_PROMPT = `You are Bob, a vehicle sourcing engine.
 You summarise supplied structured data only.
 You do not invent vehicles.
 You do not speculate.
+If the top_opportunities array is provided, never mention opportunities outside it.
 Keep responses concise and trading-focused.
 No personality. No fluff. No greetings. No jokes.
 Respond in bullet format.
-Highlight: urgency, highest score, freight implications, alignment with dealer profile.
+Highlight: dollar margin, ROI %, urgency (hours to close), freight implications, alignment with dealer profile.
+Never use abstract scores. Always use dollar amounts and percentages.
 Maximum 120 words.
 If no results: say "No high-alignment opportunities today. Closest match scored below threshold." and nothing else.`;
 
@@ -93,7 +95,8 @@ serve(async (req) => {
     const { data: opportunities, error: oppErr } = await query;
     if (oppErr) throw oppErr;
 
-    const opps = opportunities || [];
+    // Confidence filter: exclude weak listings before any analysis
+    const opps = (opportunities || []).filter((o: any) => (o.best_expected_margin || 0) >= 2000);
 
     // ── 3. Build source counts ──
     const sourceCounts: Record<string, number> = {};
@@ -122,23 +125,32 @@ serve(async (req) => {
     } else if (preset === "retail_yard_profile") {
       topOpps = opps.filter((o: any) => ["RETAIL_BUY", "RETAIL_TARGET"].includes(o.tier));
     } else if (preset === "east_coast_arbitrage") {
-      // Show interstate opportunities
-      topOpps = opps.filter((o: any) => o.best_under_buy && o.best_under_buy > 1500);
+      // Interstate opportunities where margin justifies freight
+      topOpps = opps.filter((o: any) => (o.best_expected_margin || 0) >= 3000 && o.best_under_buy && o.best_under_buy > 1500);
     }
 
-    const top10 = topOpps.slice(0, 10).map((o: any) => ({
-      vehicle: `${o.year || ""} ${o.make || ""} ${o.model || ""} ${o.variant || ""}`.trim(),
-      score: o.best_expected_margin || 0,
-      source: o.listing_source || "unknown",
-      tier: o.tier,
-      closing: o.auction_datetime ? new Date(o.auction_datetime).toLocaleString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true, day: "numeric", month: "short" }) : null,
-      asking: o.asking_price,
-      margin: o.best_expected_margin,
-      under_buy: o.best_under_buy,
-      anchor_profit: o.anchor_sale_profit,
-      location: o.auction_house || null,
-      dealer: o.best_account_name,
-    }));
+    const top10 = topOpps.slice(0, 10).map((o: any) => {
+      const margin = o.best_expected_margin || 0;
+      const asking = o.asking_price || 0;
+      const hoursToClose = o.auction_datetime
+        ? Math.max(0, Math.round((new Date(o.auction_datetime).getTime() - now.getTime()) / (1000 * 60 * 60)))
+        : null;
+
+      return {
+        vehicle: `${o.year || ""} ${o.make || ""} ${o.model || ""} ${o.variant || ""}`.trim(),
+        source: o.listing_source || "unknown",
+        tier: o.tier,
+        closing: o.auction_datetime ? new Date(o.auction_datetime).toLocaleString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true, day: "numeric", month: "short" }) : null,
+        hours_to_close: hoursToClose,
+        asking,
+        expected_margin: margin,
+        roi_pct: asking > 0 ? Math.round((margin / asking) * 100) : null,
+        under_buy: o.best_under_buy,
+        anchor_profit: o.anchor_sale_profit,
+        location: o.auction_house || null,
+        dealer: o.best_account_name,
+      };
+    });
 
     // ── 6. Build structured payload ──
     const payload = {
