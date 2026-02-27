@@ -395,35 +395,45 @@ export default function TradingDeskPage() {
       ['new', 'reviewed'].includes(o.status)
     );
 
-    const urgent = strong.filter(o => {
+    // Explicit sort — never assume UI sort equals data truth
+    const strongSorted = [...strong].sort(
+      (a, b) => (b.best_expected_margin || 0) - (a.best_expected_margin || 0)
+    );
+
+    const urgent = strongSorted.filter(o => {
       if (!o.auction_datetime) return false;
       const dt = new Date(o.auction_datetime);
       return dt >= now && dt <= in48h;
     });
 
-    const closestUrgentHours = urgent.length > 0
-      ? Math.max(0, Math.round((new Date(urgent[0].auction_datetime!).getTime() - now.getTime()) / (1000 * 60 * 60)))
+    // Sort urgent by soonest closing first
+    const urgentSorted = [...urgent].sort(
+      (a, b) => new Date(a.auction_datetime!).getTime() - new Date(b.auction_datetime!).getTime()
+    );
+
+    const closestUrgentHours = urgentSorted.length > 0
+      ? Math.max(0, Math.round((new Date(urgentSorted[0].auction_datetime!).getTime() - now.getTime()) / (1000 * 60 * 60)))
       : null;
 
-    const topOpp = strong[0]; // already sorted by margin desc
+    const topOpp = strongSorted[0];
 
-    if (strong.length === 0) {
+    if (strongSorted.length === 0) {
       const bestMargin = Math.max(0, ...scoped.map(o => o.best_expected_margin || 0));
       if (bestMargin > 0) {
-        return { type: 'thin' as const, text: `Light day. Highest expected margin: $${bestMargin.toLocaleString()}.` };
+        return { type: 'thin' as const, text: `Light day. Best margin available: $${bestMargin.toLocaleString()}.` };
       }
       return { type: 'empty' as const, text: 'No aligned inventory today.' };
     }
 
     const vehicle = topOpp ? `${topOpp.year || ''} ${topOpp.make || ''} ${topOpp.model || ''}`.trim() : '';
     const margin = topOpp?.best_expected_margin || 0;
-    const urgentText = urgent.length > 0
-      ? ` ${urgent.length} closing within ${closestUrgentHours != null && closestUrgentHours < 48 ? closestUrgentHours + 'h' : '48h'}.`
+    const urgentText = urgentSorted.length > 0
+      ? ` ${urgentSorted.length} closing in ${closestUrgentHours != null && closestUrgentHours < 48 ? closestUrgentHours + 'h' : '48h'}.`
       : '';
 
     return {
       type: 'strong' as const,
-      text: `${strong.length} strong opportunit${strong.length === 1 ? 'y' : 'ies'} today.${urgentText}`,
+      text: `${strongSorted.length} strong opportunit${strongSorted.length === 1 ? 'y' : 'ies'} today.${urgentText}`,
       detail: `Top: ${vehicle} – $${margin.toLocaleString()} expected.`,
       isUrgent: closestUrgentHours != null && closestUrgentHours < 24,
     };
