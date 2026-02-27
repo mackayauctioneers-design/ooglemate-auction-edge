@@ -1,0 +1,156 @@
+# Memory: architecture/carbitrage/manus-consolidation-audit-v1
+Updated: 2026-02-27
+
+## Full Ingestion Architecture Audit — Manus Consolidation Opportunities
+
+---
+
+## Current State: 130+ Edge Functions, ~25 Active Crons
+
+### LAYER 1: Structured Auction Sources (KEEP AS-IS)
+These are high-volume, structured, reliable feeds. Manus would be slower and more expensive per-listing.
+
+| Source | Function | Cron | Volume | Status |
+|--------|----------|------|--------|--------|
+| Pickles | `caroogle-shadow-cron` | Every 2h | 4,269 listings | ✅ Healthy |
+| Manheim | `manheim-html-ingest` | Daily 21:00 | 1,233 listings | ✅ Healthy |
+| Auto Auctions (AAV) | `auto-auctions-ingest` | Daily 21:00 | 479 listings | ✅ Healthy |
+| Slattery | `slattery-crawl` | Daily 21:00 + 09:00 | TBD | ✅ Active |
+| F3 | `f3-crawl` | Daily 21:00 | 114 listings | ✅ Active |
+| UAA NSW | `asp-auction-crawl` | Daily 21:00 | 77 listings | ✅ Active |
+| VMA | `vma-search-harvest` | Daily 21:00 | Small | ✅ Active |
+
+**Verdict: Leave alone.** These are batch-parsed HTML/API feeds with deterministic output. Manus adds cost and latency for no gain.
+
+---
+
+### LAYER 2: Dealer Site Ingestion (STRONG MANUS CANDIDATE)
+Currently uses Firecrawl with structured extraction. Only 1 Firecrawl source remains, 8 already on Manus.
+
+| Current Setup | Details |
+|--------------|---------|
+| Function | `dealer-site-ingest` (Firecrawl) + `dealer-site-crawl` |
+| Crons | 3x daily (8AM, 12PM, 5PM AEST) + every 2h crawl |
+| Sources table | `dealer_outbound_sources` (1 firecrawl, 8 manus) |
+| Volume | ~500 listings across ~20 dealer_site:* sources |
+| Issues | Firecrawl credit burn, JS-rendering failures, adapter maintenance |
+
+**Consolidation opportunity:**
+- Migrate the 1 remaining Firecrawl source to `adapter_type: manus`
+- Replace `dealer-site-ingest` + `dealer-site-crawl` crons with a single `trigger-manus-search` cron that loops all manus sources
+- `manus-webhook` already handles ingestion to `retail_listings`
+- **Eliminates:** `dealer-site-ingest`, `dealer-site-crawl`, `enqueue-dealer-crawl`, `process-dealer-crawl-jobs`
+
+---
+
+### LAYER 3: Marketplace/Retail Ingestion (PARTIAL MANUS CANDIDATE)
+
+| Source | Function | Cron | Volume | Status |
+|--------|----------|------|--------|--------|
+| AutoTrader | `autotrader-api-cron` | Every 5min | 52,395 retail_listings | ✅ High volume |
+| Drive | `drive-ingest` | Daily | 676 retail_listings | ✅ Active |
+
+**AutoTrader verdict: Keep.** 52k listings via API — Manus can't match this volume/speed.
+**Drive verdict: MANUS CANDIDATE.** Only 676 listings, Firecrawl-based scraping. Could be a Manus task.
+
+---
+
+### LAYER 4: Outward Search / On-Demand (STRONG MANUS CANDIDATE)
+Currently uses Firecrawl with domain-specific adapters in CaroogleAI.
+
+| Current Setup | Details |
+|--------------|---------|
+| Functions | `run-outward-search`, `outward-hunt`, `outward-scrape-worker` |
+| Cron | `outward-hunt-cron` every 30min for active hunts |
+| Architecture | Domain-specific adapters (Carsales, Autotrader, etc.) with path-based URL construction |
+| Issues | Bot detection, adapter maintenance, Firecrawl credit caps, 28s execution budget |
+
+**Consolidation opportunity:**
+- Replace `run-outward-search` + `outward-scrape-worker` with Manus tasks
+- Each active hunt triggers Manus tasks against configured sources
+- Results flow back via `manus-webhook` → `retail_listings`
+- **Eliminates:** `run-outward-search`, `outward-scrape-worker`, `run-firecrawl-fingerprint`, `test-firecrawl-fingerprint`, `generate-search-urls`
+
+---
+
+### LAYER 5: Deep Fetch / Detail Enrichment (MANUS CANDIDATE)
+Individual listing detail pages scraped for additional data.
+
+| Function | Purpose | Status |
+|----------|---------|--------|
+| `pickles-detail-crawler` | Firecrawl scrape of Pickles detail pages | Active |
+| `grays-deep-fetch` | Grays listing enrichment | Active |
+| `manheim-deep-fetch` | Manheim detail scraping | Active |
+| `enrich-listing` | General enrichment cron (every 2min) | Active |
+| `verify-listings` | Staleness check (every 6h) | Active |
+
+**Partial candidate:** Detail enrichment for complex pages (Pickles, Grays) could use Manus with a structured extraction prompt. But `verify-listings` (simple HTTP HEAD checks) should stay lightweight.
+
+---
+
+### LAYER 6: Preflight / Validation (KEEP)
+| Function | Purpose |
+|----------|---------|
+| `auction-preflight` | Validates auction source health |
+| `trap-preflight` | Dealer site health check |
+| `dealer-url-preflight` | URL validation |
+
+**Verdict: Keep.** These are lightweight HTTP probes, not worth Manus overhead.
+
+---
+
+## DEAD/REDUNDANT FUNCTIONS (Cleanup Candidates)
+
+These appear to be superseded or unused:
+
+| Function | Reason |
+|----------|--------|
+| `pickles_crawl` source (2,204 listings) | Last seen Jan 7 — stale, replaced by `caroogle-shadow-cron` |
+| `auto_auctions_aav` source (362 listings) | Last seen Jan 11 — stale |
+| `easyauto-scrape` | Likely replaced by dealer-site-ingest |
+| `toyota-used-scrape`, `toyota-used-portal-crawl`, `toyota-portal-ingest` | Multiple Toyota functions — consolidation needed |
+| `caroogle-toyota-cron` | Possibly redundant with general ingestion |
+| `run-grok-mission` | Grok was sunset per strategy |
+| `bob-*` (7 functions) | Bob assistant — check if still used |
+| `classifieds-ingest` | Unknown status |
+| `bulk-seed-ingest` | One-time seed? |
+
+---
+
+## Recommended Migration Phases
+
+### Phase 1: Dealer Sites → Manus Only (Low risk, high cleanup)
+- Migrate last Firecrawl source to manus adapter_type
+- Create `manus-batch-crawl` cron that triggers Manus tasks for all enabled sources
+- Retire: `dealer-site-ingest`, `dealer-site-crawl`, `enqueue-dealer-crawl`, `process-dealer-crawl-jobs`
+- **Net reduction: ~4 functions, 3 crons**
+
+### Phase 2: Outward Search → Manus (Medium risk, big cleanup)
+- Replace `run-outward-search` adapter system with Manus tasks per hunt
+- `outward-hunt` becomes a thin orchestrator: internal scan + Manus trigger
+- Retire: `run-outward-search`, `outward-scrape-worker`, `generate-search-urls`, `run-firecrawl-fingerprint`
+- **Net reduction: ~4 functions**
+
+### Phase 3: Detail Enrichment → Manus (Medium risk)
+- Replace Firecrawl-based detail scrapers with Manus extraction tasks
+- Retire: `pickles-detail-crawler`, `grays-deep-fetch`, `manheim-deep-fetch` (partially)
+- **Net reduction: ~3 functions**
+
+### Phase 4: Dead Code Cleanup (Zero risk)
+- Remove stale/redundant functions identified above
+- Clean up unused crons
+- **Net reduction: ~10-15 functions**
+
+---
+
+## Summary
+
+| Category | Current Functions | Post-Consolidation | Savings |
+|----------|------------------|-------------------|---------|
+| Dealer Site Ingestion | ~5 | 1 (manus-batch-crawl) | -4 |
+| Outward Search | ~5 | 1 (trigger-manus-search) | -4 |
+| Detail Enrichment | ~4 | 1 (manus detail tasks) | -3 |
+| Dead/Redundant | ~12 | 0 | -12 |
+| **Total** | **~26** | **~3** | **~-23 functions** |
+
+Firecrawl dependency would drop from ~42 files to ~5 (auction preflight + verify-listings only).
