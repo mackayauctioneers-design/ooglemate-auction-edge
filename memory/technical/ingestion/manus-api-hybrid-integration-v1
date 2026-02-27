@@ -1,0 +1,32 @@
+# Memory: technical/ingestion/manus-api-hybrid-integration-v1
+Updated: 2026-02-27
+
+## Phase 2 Complete: Outward Search → Manus
+
+The outward search pipeline has been migrated from Firecrawl domain-specific adapters to Manus AI tasks.
+
+### What changed:
+1. **New function: `trigger-manus-hunt-search`** — Replaces `outward-hunt` (2685-line Firecrawl adapter monster). For each active hunt, fires Manus tasks against:
+   - All enabled `dealer_outbound_sources` (when `hunt.dealer_outbound_enabled = true`)
+   - Marketplace sources from `hunt.outward_sources` (defaults to carsales, autotrader, drive)
+
+2. **Updated: `manus-webhook` v2.0** — Now routes results to two destinations:
+   - Hunt flow (`hunt_id` present) → `hunt_external_candidates` with full verified fields, then triggers `rpc_build_unified_candidates`
+   - OogleBot flow (no `hunt_id`) → `retail_listings` (unchanged)
+
+3. **Cron migration:** `outward-hunt-cron` replaced by `manus-hunt-search-cron` (same */30 schedule, same hunt selection logic, calls `trigger-manus-hunt-search` instead of `outward-hunt`)
+
+### What's retired (code still exists but no longer called):
+- `outward-hunt` — 2685-line Firecrawl adapter system (Carsales, Autotrader, Drive, Carsguide, EasyAuto123 adapters)
+- `outward-scrape-worker` — Firecrawl verification scraper with lock/queue system
+- `run-outward-search` — v4 crawl-based domain adapter with Firecrawl HTML extraction
+- `generate-search-urls` — URL builder for fingerprint search targets
+
+### Architecture:
+- Manus handles site navigation, JS rendering, and bot detection automatically
+- Zero Firecrawl credits burned on outward search
+- Results flow: Manus task → webhook → hunt_external_candidates → unified candidate rebuild
+- Session tracking via `manus_search_tasks` table with `search_session_id`
+
+### OogleBot '3-Lane Parallel Search' still active:
+1) Internal DB search, 2) LLM intent parsing, 3) Manus dealer site searches (via `trigger-manus-search`)
