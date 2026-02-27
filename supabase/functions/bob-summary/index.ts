@@ -68,6 +68,31 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    // ── 0. Auth gate: derive role from JWT, block dealers from "all" ──
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.replace("Bearer ", "");
+
+    // If accountId is "all", verify the caller is an operator
+    if (accountId === "all") {
+      if (token) {
+        const { data: { user } } = await supabase.auth.getUser(token);
+        if (user) {
+          const { data: roleData } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", user.id)
+            .eq("role", "admin")
+            .maybeSingle();
+
+          if (!roleData) {
+            return new Response(JSON.stringify({ error: "Forbidden" }), {
+              status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
+      }
+    }
+
     // ── 1. Load dealer profile ──
     const { data: account } = await supabase
       .from("accounts")
@@ -88,7 +113,7 @@ serve(async (req) => {
       .order("best_expected_margin", { ascending: false })
       .limit(200);
 
-    // Filter by account if provided
+    // Filter by account — always filter unless operator explicitly requests "all"
     if (accountId !== "all") {
       query = query.eq("best_account_id", accountId);
     }
@@ -153,10 +178,11 @@ serve(async (req) => {
       };
     });
 
-    // Minimum count threshold: don't show thin results
+    // Minimum count threshold: don't show thin results, but show closest match
     if (top10.length > 0 && top10.length < 3) {
+      const bestMargin = Math.max(...topOpps.map((o: any) => o.best_expected_margin || 0));
       return new Response(JSON.stringify({
-        response: "Not enough aligned inventory today.",
+        response: `Not enough aligned inventory today.\nClosest match expected margin: $${bestMargin.toLocaleString()}.`,
         payload: { dealer: dealerName, preset, summary: { total_active: opps.length, by_source: sourceCounts, by_tier: tierCounts }, top_opportunities: [] },
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
