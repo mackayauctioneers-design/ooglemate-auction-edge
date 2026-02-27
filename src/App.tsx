@@ -17,6 +17,7 @@ import SalesUploadPage from "./pages/carbitrage/SalesUploadPage";
 import SalesInsightsPage from "./pages/SalesInsightsPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
+import ArchitectureOverviewPage from "./pages/ArchitectureOverviewPage";
 import ValoPage from "./pages/ValoPage";
 import ScanGuidePage from "./pages/ScanGuidePage";
 
@@ -121,6 +122,7 @@ const App = () => (
               <Route path="/scan-guide" element={<RequireAuth><ScanGuidePage /></RequireAuth>} />
               <Route path="/ooglebot" element={<RequireAuth><DealerOogleBotPage /></RequireAuth>} />
               <Route path="/auth" element={<AuthPage />} />
+              <Route path="/architecture" element={<ArchitectureOverviewPage />} />
 
               {/* === LEGACY REDIRECTS — dealer nav still points to trading desk === */}
 
