@@ -6182,6 +6182,7 @@ export type Database = {
           price_change_count: number | null
           price_changed_at: string | null
           price_history: Json | null
+          price_type: string | null
           region_id: string | null
           region_raw: string | null
           relisted_at: string | null
@@ -6272,6 +6273,7 @@ export type Database = {
           price_change_count?: number | null
           price_changed_at?: string | null
           price_history?: Json | null
+          price_type?: string | null
           region_id?: string | null
           region_raw?: string | null
           relisted_at?: string | null
@@ -6362,6 +6364,7 @@ export type Database = {
           price_change_count?: number | null
           price_changed_at?: string | null
           price_history?: Json | null
+          price_type?: string | null
           region_id?: string | null
           region_raw?: string | null
           relisted_at?: string | null
@@ -9538,6 +9541,7 @@ export type Database = {
           pass_count: number
           platform_class: string | null
           postcode: string | null
+          price_type: string | null
           reappeared: boolean
           reappeared_at: string | null
           relist_count: number
@@ -9629,6 +9633,7 @@ export type Database = {
           pass_count?: number
           platform_class?: string | null
           postcode?: string | null
+          price_type?: string | null
           reappeared?: boolean
           reappeared_at?: string | null
           relist_count?: number
@@ -9720,6 +9725,7 @@ export type Database = {
           pass_count?: number
           platform_class?: string | null
           postcode?: string | null
+          price_type?: string | null
           reappeared?: boolean
           reappeared_at?: string | null
           relist_count?: number
@@ -12734,24 +12740,44 @@ export type Database = {
         Args: { p_items: Json; p_run_id: string }
         Returns: Json
       }
-      upsert_retail_listing: {
-        Args: {
-          p_asking_price?: number
-          p_km?: number
-          p_listing_url: string
-          p_make: string
-          p_model: string
-          p_run_id?: string
-          p_source: string
-          p_source_listing_id: string
-          p_state?: string
-          p_suburb?: string
-          p_variant_family?: string
-          p_variant_raw?: string
-          p_year: number
-        }
-        Returns: Json
-      }
+      upsert_retail_listing:
+        | {
+            Args: {
+              p_asking_price?: number
+              p_km?: number
+              p_listing_url: string
+              p_make: string
+              p_model: string
+              p_run_id?: string
+              p_source: string
+              p_source_listing_id: string
+              p_state?: string
+              p_suburb?: string
+              p_variant_family?: string
+              p_variant_raw?: string
+              p_year: number
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_asking_price?: number
+              p_km?: number
+              p_listing_url: string
+              p_make: string
+              p_model: string
+              p_price_type?: string
+              p_run_id?: string
+              p_source: string
+              p_source_listing_id: string
+              p_state?: string
+              p_suburb?: string
+              p_variant_family?: string
+              p_variant_raw?: string
+              p_year: number
+            }
+            Returns: Json
+          }
       upsert_stub_anchor_batch: {
         Args: { p_source: string; p_stubs: Json }
         Returns: {

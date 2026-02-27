@@ -92,6 +92,7 @@ interface ParsedListing {
   variant_raw?: string;
   km?: number;
   asking_price: number;
+  price_type: 'drive_away' | 'excl_govt' | 'unknown';
   state?: string;
   suburb?: string;
   transmission?: string;
@@ -117,11 +118,21 @@ function parseHit(hit: AutotraderHit): ParsedListing | null {
     if (!make || !model) return null;
 
     // Price: nested in price object → advertised_price or driveaway_price
-    const price = source.price?.advertised_price 
-      || source.price?.driveaway_price 
-      || source.price?.egc_price
-      || source.price_display 
-      || 0;
+    // Detect price type from which field the price came from
+    let price_type: 'drive_away' | 'excl_govt' | 'unknown' = 'unknown';
+    let price = 0;
+    if (source.price?.egc_price) {
+      price = source.price.egc_price;
+      price_type = 'excl_govt';
+    } else if (source.price?.driveaway_price) {
+      price = source.price.driveaway_price;
+      price_type = 'drive_away';
+    } else if (source.price?.advertised_price) {
+      price = source.price.advertised_price;
+      // advertised_price could be either — leave as unknown
+    } else {
+      price = source.price_display || 0;
+    }
     if (price < 1000 || price > 500000) return null;
 
     // Variant from badge/variant/series
@@ -144,6 +155,7 @@ function parseHit(hit: AutotraderHit): ParsedListing | null {
       variant_raw: variant,
       km,
       asking_price: price,
+      price_type,
       state,
       suburb,
       transmission: source.transmission?.toString().toUpperCase() || undefined,
@@ -349,7 +361,8 @@ serve(async (req) => {
               p_asking_price: parsed.asking_price,
               p_state: parsed.state || null,
               p_suburb: parsed.suburb || null,
-              p_run_id: run_id, // Lifecycle tracking
+              p_run_id: run_id,
+              p_price_type: parsed.price_type || 'unknown',
             });
 
             if (upsertError) {
