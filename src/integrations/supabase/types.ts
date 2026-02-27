@@ -4968,6 +4968,7 @@ export type Database = {
           listing_id: string
           listing_source: string | null
           make: string | null
+          margin_flag: string | null
           model: string | null
           motivation_signal: string | null
           pass_count: number | null
@@ -5019,6 +5020,7 @@ export type Database = {
           listing_id: string
           listing_source?: string | null
           make?: string | null
+          margin_flag?: string | null
           model?: string | null
           motivation_signal?: string | null
           pass_count?: number | null
@@ -5070,6 +5072,7 @@ export type Database = {
           listing_id?: string
           listing_source?: string | null
           make?: string | null
+          margin_flag?: string | null
           model?: string | null
           motivation_signal?: string | null
           pass_count?: number | null

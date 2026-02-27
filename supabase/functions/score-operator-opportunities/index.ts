@@ -105,10 +105,9 @@ const TRIM_LADDER: Record<string, Record<string, number>> = {
 
 function trimAllowed(platformClass: string, listingTrim: string, saleTrim: string): boolean {
   if (saleTrim === listingTrim) return true;
-  if (saleTrim === "BASE") return true;
-  if (listingTrim === "BASE") return true;
+  // BASE no longer wildcards through — must be exact match or ladder-adjacent
   const ladder = TRIM_LADDER[platformClass];
-  if (!ladder) return false;
+  if (!ladder) return saleTrim === listingTrim;
   const listingRank = ladder[listingTrim];
   const saleRank = ladder[saleTrim];
   if (listingRank == null || saleRank == null) return false;
@@ -167,6 +166,7 @@ interface AccountMatch {
   anchor_sale_sold_at: string | null;
   anchor_sale_km: number | null;
   anchor_sale_trim_class: string;
+  margin_flag: string | null;
 }
 
 interface ScoredCandidate {
@@ -248,30 +248,44 @@ function scoreListingAgainstAccounts(
   const isRetail = listing.source_type === "retail";
 
   for (const [acctId, acctSales] of Object.entries(salesByAccount)) {
+    // ── HARD GATES: strict comparability before any sorting ──
     const matches = acctSales.filter((s: any) => {
       if (s.platform_class !== listing.platform_class) return false;
       if (!s.trim_class || s.trim_class === "UNKNOWN") return false;
+      // Hard gate 1: exact trim match or one-step ladder (no BASE wildcard)
       if (!trimAllowed(listing.platform_class, listing.trim_class, s.trim_class)) return false;
-      if (Math.abs(s.year - listing.year) > 2) return false;
-      if (s.km && listing.km && Math.abs(s.km - listing.km) > 40000) return false;
+      // Hard gate 2: year within ±1
+      if (Math.abs(s.year - listing.year) > 1) return false;
+      // Hard gate 3: KM within ±20%
+      if (s.km && listing.km) {
+        const kmDelta = Math.abs(s.km - listing.km);
+        const kmThreshold = Math.max(listing.km, s.km) * 0.2;
+        if (kmDelta > kmThreshold) return false;
+      }
+      // Hard gate 4: drivetrain must match
       if (listing.drivetrain_bucket !== "UNKNOWN" && s.drivetrain_bucket && s.drivetrain_bucket !== "UNKNOWN" && listing.drivetrain_bucket !== s.drivetrain_bucket) return false;
       return true;
     });
 
     if (matches.length === 0) continue;
 
+    // ── SORT: closest comparable wins (70% KM, 30% profit tiebreaker) ──
     const maxProfit = Math.max(...matches.map((c: any) => c.sale_price - Number(c.buy_price)));
     matches.sort((a: any, b: any) => {
-      const kmA = a.km && listing.km ? 1 - Math.abs(a.km - listing.km) / 15000 : 0.5;
-      const kmB = b.km && listing.km ? 1 - Math.abs(b.km - listing.km) / 15000 : 0.5;
+      const kmA = a.km && listing.km ? 1 - Math.abs(a.km - listing.km) / (listing.km * 0.2 || 15000) : 0.5;
+      const kmB = b.km && listing.km ? 1 - Math.abs(b.km - listing.km) / (listing.km * 0.2 || 15000) : 0.5;
       const pA = (a.sale_price - Number(a.buy_price)) / (maxProfit || 1);
       const pB = (b.sale_price - Number(b.buy_price)) / (maxProfit || 1);
-      return (kmB * 0.4 + pB * 0.6) - (kmA * 0.4 + pA * 0.6);
+      return (kmB * 0.7 + pB * 0.3) - (kmA * 0.7 + pA * 0.3);
     });
 
     const best = matches[0];
     const underBuy = Number(best.buy_price) - listing.asking_price;
-    const expectedMargin = best.sale_price - listing.asking_price;
+    // Margin = anchor's actual historical profit, NOT sell_price - asking
+    const anchorProfit = best.sale_price - Number(best.buy_price);
+    const expectedMargin = anchorProfit;
+    // Flag high-variance margins server-side
+    const marginFlag = expectedMargin > 15000 ? "high_variance" : null;
 
     if (isRetail) {
       if (underBuy < -3000) continue;
@@ -287,10 +301,11 @@ function scoreListingAgainstAccounts(
       anchor_sale_id: best.id,
       anchor_sale_buy_price: Number(best.buy_price),
       anchor_sale_sell_price: best.sale_price,
-      anchor_sale_profit: best.sale_price - Number(best.buy_price),
+      anchor_sale_profit: anchorProfit,
       anchor_sale_sold_at: best.sold_at || null,
       anchor_sale_km: best.km || null,
       anchor_sale_trim_class: best.trim_class || "UNKNOWN",
+      margin_flag: marginFlag,
     });
   }
 
@@ -641,6 +656,7 @@ Deno.serve(async (req) => {
         anchor_sale_km: best.anchor_sale_km,
         anchor_sale_trim_class: best.anchor_sale_trim_class,
         alt_matches: alts, tier, days_listed: listing.days_listed, freshness,
+        margin_flag: best.margin_flag,
         pass_count: listing.pass_count, motivation_signal: motivationSignal,
         retail_median: retailMedian, retail_median_confidence: retailMedianConfidence,
         retail_median_sample: retailMedianSample,
