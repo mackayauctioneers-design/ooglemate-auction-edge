@@ -416,6 +416,7 @@ function YearBandTable({ bands, onBandClick }: { bands: YearBandRow[]; onBandCli
           <TableHead>Year Band</TableHead>
           <TableHead className="text-right">Sales</TableHead>
           <TableHead className="text-right">Median Price</TableHead>
+          <TableHead className="text-right">Median KM</TableHead>
           <TableHead className="text-right">Median Margin</TableHead>
           <TableHead className="text-right">Clearance</TableHead>
           <TableHead className="w-8"></TableHead>
@@ -433,6 +434,7 @@ function YearBandTable({ bands, onBandClick }: { bands: YearBandRow[]; onBandCli
               <TableCell className="font-medium">{band.yearBand}</TableCell>
               <TableCell className="text-right font-mono">{band.salesCount}</TableCell>
               <TableCell className="text-right">{formatPrice(band.medianSalePrice)}</TableCell>
+              <TableCell className="text-right text-muted-foreground">{band.medianKm != null ? `${Math.round(band.medianKm / 1000)}k` : "—"}</TableCell>
               <TableCell className="text-right">{profitBadge(band.medianProfitDollars)}</TableCell>
               <TableCell className="text-right">{clearanceBadge(band.medianDaysToClear)}</TableCell>
               <TableCell>
@@ -468,6 +470,7 @@ function SpecBreakdownTable({ data }: { data: SpecRow[] }) {
           <TableHead>Drive</TableHead>
           <TableHead className="text-right">Sales</TableHead>
           <TableHead className="text-right">Median Price</TableHead>
+          <TableHead className="text-right">Median KM</TableHead>
           <TableHead className="text-right">Median Margin</TableHead>
           <TableHead className="text-right">Clearance</TableHead>
         </TableRow>
@@ -484,6 +487,7 @@ function SpecBreakdownTable({ data }: { data: SpecRow[] }) {
               <TableCell className="text-sm text-muted-foreground">{driveLabel}</TableCell>
               <TableCell className="text-right font-mono">{row.salesCount}</TableCell>
               <TableCell className="text-right">{formatPrice(row.medianSalePrice)}</TableCell>
+              <TableCell className="text-right text-muted-foreground">{row.medianKm != null ? `${Math.round(row.medianKm / 1000)}k` : "—"}</TableCell>
               <TableCell className="text-right">
                 {!isSufficientSample
                   ? <span className="text-muted-foreground text-[10px] italic">Limited data</span>
