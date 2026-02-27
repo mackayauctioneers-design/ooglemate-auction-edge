@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { DealerLayout } from "@/components/layout/DealerLayout";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -15,7 +15,10 @@ import { FingerprintSourcingCard } from "@/components/insights/FingerprintSourci
 import { SalesDrillDownDrawer } from "@/components/insights/SalesDrillDownDrawer";
 import { SalesInsightsSummary } from "@/components/insights/SalesInsightsSummary";
 import { CaroogleAiSalesPanel } from "@/components/insights/CaroogleAiSalesPanel";
-import { TrendingUp, Target, Sparkles } from "lucide-react";
+import { TrendingUp, Target, Sparkles, Download } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 export default function SalesInsightsPage() {
   const { data: accounts } = useAccounts();
@@ -38,6 +41,50 @@ export default function SalesInsightsPage() {
     unexpectedWinners.data || []
   );
 
+  const [exporting, setExporting] = useState(false);
+
+  const exportSoldStockCsv = useCallback(async () => {
+    if (!selectedAccountId) return;
+    setExporting(true);
+    try {
+      const { data, error } = await supabase
+        .from("vehicle_sales_truth" as any)
+        .select("make, model, variant, year, km, sale_price, buy_price, profit_pct, days_to_clear, sold_at, transmission, fuel_type, drive_type")
+        .eq("account_id", selectedAccountId)
+        .order("sold_at", { ascending: false })
+        .limit(5000);
+      if (error) throw error;
+      const rows = (data || []) as any[];
+      if (!rows.length) { toast.error("No sold stock data to export"); return; }
+
+      const headers = ["Sold Date","Make","Model","Variant","Year","KM","Sale Price","Buy Price","Profit $","Profit %","Days to Clear","Transmission","Fuel","Drive"];
+      const csvRows = rows.map((r: any) => {
+        const profit = r.sale_price != null && r.buy_price != null ? r.sale_price - r.buy_price : "";
+        return [
+          r.sold_at ?? "", r.make ?? "", r.model ?? "", r.variant ?? "", r.year ?? "",
+          r.km ?? "", r.sale_price ?? "", r.buy_price ?? "", profit,
+          r.profit_pct != null ? `${(r.profit_pct * 100).toFixed(1)}%` : "",
+          r.days_to_clear ?? "", r.transmission ?? "", r.fuel_type ?? "", r.drive_type ?? ""
+        ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(",");
+      });
+
+      const dealerName = selectedAccount?.display_name ?? "dealer";
+      const csv = [headers.join(","), ...csvRows].join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${dealerName.replace(/\s+/g, "_")}_Sold_Stock_Report.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${rows.length} records`);
+    } catch (e: any) {
+      toast.error("Export failed: " + (e?.message ?? "Unknown error"));
+    } finally {
+      setExporting(false);
+    }
+  }, [selectedAccountId, selectedAccount]);
+
   return (
     <DealerLayout>
       <div className="space-y-6">
@@ -52,10 +99,18 @@ export default function SalesInsightsPage() {
               What your sales history proves about your business
             </p>
           </div>
-          <AccountSelector
-            value={selectedAccountId}
-            onChange={setSelectedAccountId}
-          />
+          <div className="flex items-center gap-2">
+            {selectedAccountId && (
+              <Button variant="outline" size="sm" disabled={exporting} onClick={exportSoldStockCsv}>
+                <Download className="h-4 w-4 mr-1" />
+                {exporting ? "Exporting…" : "Export CSV"}
+              </Button>
+            )}
+            <AccountSelector
+              value={selectedAccountId}
+              onChange={setSelectedAccountId}
+            />
+          </div>
         </div>
 
         {/* Dealer context banner */}
