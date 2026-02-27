@@ -123,9 +123,13 @@ async function firecrawlExtractVehicle(
     }
 
     const json = await res.json();
-    const extracted =
-      json?.data?.extract ?? json?.extract ?? json?.data?.json ?? json?.json ?? null;
-    return extracted && typeof extracted === "object" ? extracted : null;
+    const extracted = json?.data?.extract ?? null;
+    if (!extracted || typeof extracted !== "object") {
+      const preview = JSON.stringify(json).slice(0, 300);
+      console.log(`[OUTWARD-V4] Unexpected extract payload from ${url}: ${preview}`);
+      return null;
+    }
+    return extracted;
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") {
       console.log(`[OUTWARD-V4] Detail scrape timeout (25s): ${url}`);
@@ -144,12 +148,14 @@ interface DomainAdapter {
   buildSearchUrl: (intent: ParsedIntent) => string;
   detailUrlPattern: RegExp;
   extractDetailUrls: (html: string, baseUrl: string) => string[];
+  searchPageMarker: string; // semantic marker to validate search page rendered
 }
 
 const ADAPTERS: DomainAdapter[] = [
   // ── Carsales ──
   {
     domain: "carsales.com.au",
+    searchPageMarker: "/cars/details/",
     buildSearchUrl: (intent) => {
       // Use path-based URL for known models (more reliable than q= text search)
       const makeLower = (intent.make || "").toLowerCase();
@@ -212,6 +218,7 @@ const ADAPTERS: DomainAdapter[] = [
   // ── Autotrader ──
   {
     domain: "autotrader.com.au",
+    searchPageMarker: "/car/",
     buildSearchUrl: (intent) => {
       const make = (intent.make || "").toLowerCase();
       const model = intent.model_keywords[0]?.toLowerCase() || "";
@@ -247,6 +254,7 @@ const ADAPTERS: DomainAdapter[] = [
   // ── Drive ──
   {
     domain: "drive.com.au",
+    searchPageMarker: "/cars-for-sale/",
     buildSearchUrl: (intent) => {
       const make = (intent.make || "").toLowerCase().replace(/\s+/g, "-");
       const model =
@@ -280,6 +288,7 @@ const ADAPTERS: DomainAdapter[] = [
   // ── Carsguide ──
   {
     domain: "carsguide.com.au",
+    searchPageMarker: "/listing/",
     buildSearchUrl: (intent) => {
       const make = (intent.make || "").toLowerCase().replace(/\s+/g, "-");
       const model =
@@ -691,6 +700,15 @@ Deno.serve(async (req) => {
           return;
         }
 
+        // Semantic marker check: verify the page actually contains listing links
+        if (!html.includes(adapter.searchPageMarker)) {
+          pipeline.search_pages_empty++;
+          console.log(
+            `[OUTWARD-V4] ${adapter.domain}: page missing semantic marker "${adapter.searchPageMarker}" — likely cookie/consent/JS shell`,
+          );
+          return;
+        }
+
         // Filter URLs to only those containing the make slug
         const makeSlug = (intent.make || "").toLowerCase().replace(/\s+/g, "-");
         const urls = adapter
@@ -736,7 +754,15 @@ Deno.serve(async (req) => {
     }
 
     // ── STEP 3: Fetch detail pages with concurrency limiter (max 3 parallel) ──
+    // Request-wide budget: return partial results if we're running long
+    const BUDGET_MS = 28000;
+
     const extracted = await mapLimit(deduped, 3, async (t) => {
+      // Budget check: skip remaining if we've used too much time
+      if (Date.now() - startTime > BUDGET_MS) {
+        console.log(`[OUTWARD-V4] Budget exceeded (${BUDGET_MS}ms), skipping ${t.url}`);
+        return null;
+      }
       pipeline.details_scraped++;
       const raw = await firecrawlExtractVehicle(t.url, firecrawlKey);
       if (!raw) return null;

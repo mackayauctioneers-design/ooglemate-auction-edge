@@ -12,19 +12,20 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `You are Bob, a vehicle sourcing engine.
+const SYSTEM_PROMPT = `You are Bob, a vehicle sourcing engine for Australian car dealers.
 You summarise supplied structured data only.
-You do not invent vehicles.
-You do not speculate.
+You do not invent vehicles. You do not speculate. You do not generalise.
 If the top_opportunities array is provided, never mention opportunities outside it.
 Keep responses concise and trading-focused.
-No personality. No fluff. No greetings. No jokes.
-Respond in bullet format.
-Highlight: dollar margin, ROI %, urgency (hours to close), freight implications, alignment with dealer profile.
-Never use abstract scores. Always use dollar amounts and percentages.
+No personality. No fluff. No greetings. No jokes. No encouragement.
+Respond in bullet format using this hierarchy:
+1. Count by source (e.g. "3 from Pickles, 2 from Manheim")
+2. Best 3 opportunities with: expected margin in AUD, value gap (under-buy), hours to close if auction, interstate + freight note if applicable
+3. One-line takeaway
+Never say "score". Use "expected margin $X" or "ROI X%".
+Never say "value gap" without a dollar figure.
 Maximum 120 words.
-If no results: say "No high-alignment opportunities today. Closest match scored below threshold." and nothing else.`;
-
+If no results: say "Not enough aligned inventory today." and nothing else.`;
 type PresetKey =
   | "what_closes_48h"
   | "turn_fast_this_week"
@@ -34,12 +35,12 @@ type PresetKey =
   | "strongest_margin";
 
 const PRESET_INSTRUCTIONS: Record<PresetKey, string> = {
-  what_closes_48h: "Focus on opportunities with auction dates within the next 48 hours. Prioritise by score and urgency. State closing times.",
+  what_closes_48h: "Focus on opportunities with auction dates within the next 48 hours. Lead with hours_to_close. Prioritise by expected_margin_aud and urgency.",
   turn_fast_this_week: "Focus on opportunities with historically fast days-to-sell for this dealer. Prioritise quick-turn wholesale stock.",
   under_described_auction: "Identify auction listings with thin descriptions but strong anchor-sale backing. These are hidden value.",
   retail_yard_profile: "Match opportunities against the dealer's retail profile — year range, km band, margin expectation. Only retail-grade stock.",
-  east_coast_arbitrage: "Compare interstate opportunities where freight cost still leaves margin advantage. Focus NSW/VIC/QLD triangle.",
-  strongest_margin: "Show the highest expected margin opportunities regardless of source. Pure profit ranking.",
+  east_coast_arbitrage: "Compare interstate opportunities where expected margin minus freight still delivers profit. State freight implications explicitly.",
+  strongest_margin: "Show the highest expected_margin_aud opportunities. Lead with dollar margin and ROI %. Pure profit ranking.",
 };
 
 serve(async (req) => {
@@ -142,15 +143,23 @@ serve(async (req) => {
         tier: o.tier,
         closing: o.auction_datetime ? new Date(o.auction_datetime).toLocaleString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true, day: "numeric", month: "short" }) : null,
         hours_to_close: hoursToClose,
-        asking,
-        expected_margin: margin,
+        asking_aud: asking,
+        expected_margin_aud: margin,
         roi_pct: asking > 0 ? Math.round((margin / asking) * 100) : null,
-        under_buy: o.best_under_buy,
-        anchor_profit: o.anchor_sale_profit,
+        value_gap_aud: o.best_under_buy,
+        anchor_profit_aud: o.anchor_sale_profit,
         location: o.auction_house || null,
         dealer: o.best_account_name,
       };
     });
+
+    // Minimum count threshold: don't show thin results
+    if (top10.length > 0 && top10.length < 3) {
+      return new Response(JSON.stringify({
+        response: "Not enough aligned inventory today.",
+        payload: { dealer: dealerName, preset, summary: { total_active: opps.length, by_source: sourceCounts, by_tier: tierCounts }, top_opportunities: [] },
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // ── 6. Build structured payload ──
     const payload = {
@@ -169,7 +178,7 @@ serve(async (req) => {
     // ── 7. If no results, return canned response ──
     if (top10.length === 0) {
       return new Response(JSON.stringify({
-        response: "No high-alignment opportunities today.\nClosest match scored below threshold.",
+        response: "Not enough aligned inventory today.",
         payload,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
