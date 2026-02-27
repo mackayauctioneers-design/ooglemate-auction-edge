@@ -23,19 +23,20 @@ async function mapLimit<T, R>(
   limit: number,
   fn: (item: T, idx: number) => Promise<R>,
 ): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let i = 0;
-  const workers = Array.from(
-    { length: Math.min(limit, items.length) },
-    async () => {
-      while (i < items.length) {
-        const idx = i++;
-        out[idx] = await fn(items[idx], idx);
-      }
-    },
-  );
+  const results: R[] = new Array(items.length);
+  let index = 0;
+
+  async function worker() {
+    while (true) {
+      const current = index++;
+      if (current >= items.length) break;
+      results[current] = await fn(items[current], current);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
   await Promise.all(workers);
-  return out;
+  return results;
 }
 
 // ── Normalizer helpers ──
@@ -89,37 +90,52 @@ async function firecrawlExtractVehicle(
   url: string,
   firecrawlKey: string,
 ): Promise<any | null> {
-  const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${firecrawlKey}`,
-    },
-    body: JSON.stringify({
-      url,
-      formats: ["extract"],
-      extract: {
-        schema: VEHICLE_EXTRACT_SCHEMA,
-        prompt:
-          "Extract the vehicle listing details from this page. Return year as a 4-digit number, price in AUD as integer, km as integer.",
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000);
+
+  try {
+    const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${firecrawlKey}`,
       },
-      onlyMainContent: true,
-      waitFor: 2000,
-    }),
-  });
+      signal: controller.signal,
+      body: JSON.stringify({
+        url,
+        formats: ["html"],
+        extract: {
+          schema: VEHICLE_EXTRACT_SCHEMA,
+          prompt:
+            "Extract the vehicle listing details from this page. Return year as a 4-digit number, price in AUD as integer, km as integer.",
+        },
+        onlyMainContent: true,
+        waitFor: 2000,
+      }),
+    });
 
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    console.log(
-      `[OUTWARD-V4] Firecrawl extract failed ${res.status} ${url} :: ${txt.slice(0, 200)}`,
-    );
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      console.log(
+        `[OUTWARD-V4] Firecrawl extract failed ${res.status} ${url} :: ${txt.slice(0, 200)}`,
+      );
+      return null;
+    }
+
+    const json = await res.json();
+    const extracted =
+      json?.data?.extract ?? json?.extract ?? json?.data?.json ?? json?.json ?? null;
+    return extracted && typeof extracted === "object" ? extracted : null;
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      console.log(`[OUTWARD-V4] Detail scrape timeout (25s): ${url}`);
+    } else {
+      console.log(`[OUTWARD-V4] Detail scrape error: ${url} :: ${e}`);
+    }
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const json = await res.json();
-  const extracted =
-    json?.data?.extract ?? json?.extract ?? json?.data?.json ?? json?.json ?? null;
-  return extracted && typeof extracted === "object" ? extracted : null;
 }
 
 // ── Domain Adapters ──
@@ -667,10 +683,10 @@ Deno.serve(async (req) => {
         const html = await firecrawlScrapeHtml(searchUrl, firecrawlKey);
         pipeline.search_pages_crawled++;
 
-        if (!html) {
+        if (!html || html.length < 5000) {
           pipeline.search_pages_empty++;
           console.log(
-            `[OUTWARD-V4] ${adapter.domain}: empty/failed HTML — degrading gracefully`,
+            `[OUTWARD-V4] ${adapter.domain}: thin/empty search page (${html?.length ?? 0} chars) — skipping`,
           );
           return;
         }
