@@ -18,6 +18,7 @@ You summarise ONLY the structured data provided.
 You never invent vehicles.
 You never reorder opportunities.
 You never refer to "score".
+You never use the phrase "value gap".
 
 Output structure:
 1. Lead with total count by source if relevant.
@@ -25,9 +26,10 @@ Output structure:
 3. State expected_margin_aud in dollars.
 4. State ROI% if provided.
 5. If hours_to_close is present and <24, mention urgency.
-6. Mention value_gap_aud only if meaningful.
+6. If anchor context is provided, say "Last comparable sold at $X. This unit asking $Y. Spread: $Z."
 7. Keep under 7 lines.
 8. No greetings. No personality. No filler language.
+9. Never present margin figures above $15,000 without qualifying them against anchor context.
 
 If fewer than 3 opportunities exist, reinforce that inventory is light but the engine is active.
 If no results: say "Not enough aligned inventory today." and nothing else.`;
@@ -176,8 +178,11 @@ serve(async (req) => {
         asking_aud: asking,
         expected_margin_aud: margin,
         roi_pct: asking > 0 ? Math.round((margin / asking) * 100) : null,
-        value_gap_aud: o.best_under_buy,
-        anchor_profit_aud: o.anchor_sale_profit,
+        anchor_sold_at_aud: o.anchor_sale_sell_price || null,
+        anchor_bought_at_aud: o.anchor_sale_buy_price || null,
+        anchor_profit_aud: o.anchor_sale_profit || null,
+        anchor_km: o.anchor_sale_km || null,
+        anchor_trim: o.anchor_sale_trim_class || null,
         location: o.auction_house || null,
         dealer: o.best_account_name,
       };
