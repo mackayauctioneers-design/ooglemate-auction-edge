@@ -7,22 +7,122 @@ const corsHeaders = {
 };
 
 // ══════════════════════════════════════════════════════════════
-// OUTWARD SEARCH v3 — Crawl-Based, Domain-Specific Extraction
+// OUTWARD SEARCH v4 — Crawl-Based, Domain-Specific Extraction
 //
-// Architecture:
-//   Structured Intent → Build Source URLs → Crawl Listing Pages
-//   → Extract Detail URLs → Fetch Details → JSON Schema Extract
-//   → Vehicle Gate → Score → Return
-//
-// NO search APIs. NO semantic search. NO SEO pages.
+// Fixes from v3:
+//   1. Search pages scraped as HTML (not markdown), onlyMainContent=false
+//   2. Firecrawl extract mode on detail pages with schema
+//   3. Concurrency limiter (mapLimit) — max 3 parallel detail scrapes
+//   4. Proper normalizeExtract + toInt/toStr helpers
+//   5. Graceful degradation when search pages return thin/empty HTML
 // ══════════════════════════════════════════════════════════════
 
-// ── Domain Adapters ──
-// Each adapter knows how to:
-//   1) Build a search URL from structured intent
-//   2) Extract detail page URLs from HTML
-//   3) Validate a detail URL pattern
+// ── Concurrency limiter ──
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, idx: number) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let i = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (i < items.length) {
+        const idx = i++;
+        out[idx] = await fn(items[idx], idx);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return out;
+}
 
+// ── Normalizer helpers ──
+function toInt(x: any): number | null {
+  if (x == null) return null;
+  if (typeof x === "number" && Number.isFinite(x)) return Math.round(x);
+  const n = parseInt(String(x).replace(/[^\d]/g, ""), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toStr(x: any): string | null {
+  if (x == null) return null;
+  const s = String(x).trim();
+  return s ? s : null;
+}
+
+// ── Firecrawl: scrape search page as HTML ──
+async function firecrawlScrapeHtml(
+  url: string,
+  firecrawlKey: string,
+): Promise<string | null> {
+  const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${firecrawlKey}`,
+    },
+    body: JSON.stringify({
+      url,
+      formats: ["html"],
+      onlyMainContent: false,
+      waitFor: 1500,
+    }),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    console.log(
+      `[OUTWARD-V4] Firecrawl scrape failed ${res.status} ${url} :: ${txt.slice(0, 200)}`,
+    );
+    return null;
+  }
+
+  const json = await res.json();
+  const html = json?.data?.html ?? json?.html ?? null;
+  return typeof html === "string" && html.length > 100 ? html : null;
+}
+
+// ── Firecrawl: extract vehicle JSON from detail page ──
+async function firecrawlExtractVehicle(
+  url: string,
+  firecrawlKey: string,
+): Promise<any | null> {
+  const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${firecrawlKey}`,
+    },
+    body: JSON.stringify({
+      url,
+      formats: ["extract"],
+      extract: {
+        schema: VEHICLE_EXTRACT_SCHEMA,
+        prompt:
+          "Extract the vehicle listing details from this page. Return year as a 4-digit number, price in AUD as integer, km as integer.",
+      },
+      onlyMainContent: true,
+      waitFor: 2000,
+    }),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    console.log(
+      `[OUTWARD-V4] Firecrawl extract failed ${res.status} ${url} :: ${txt.slice(0, 200)}`,
+    );
+    return null;
+  }
+
+  const json = await res.json();
+  const extracted =
+    json?.data?.extract ?? json?.extract ?? json?.data?.json ?? json?.json ?? null;
+  return extracted && typeof extracted === "object" ? extracted : null;
+}
+
+// ── Domain Adapters ──
 interface DomainAdapter {
   domain: string;
   buildSearchUrl: (intent: ParsedIntent) => string;
@@ -31,31 +131,42 @@ interface DomainAdapter {
 }
 
 const ADAPTERS: DomainAdapter[] = [
-    // ── Carsales ──
+  // ── Carsales ──
   {
     domain: "carsales.com.au",
     buildSearchUrl: (intent) => {
-      // Use Carsales browse URL: /cars/MAKE/MODEL/ with query params
+      // Use path-based URL for known models (more reliable than q= text search)
       const makeLower = (intent.make || "").toLowerCase();
-      // Map model keywords to Carsales URL slugs
       const slugMap: Record<string, string> = {
-        "LANDCRUISER": "landcruiser", "HILUX": "hilux", "PRADO": "prado",
-        "COROLLA": "corolla", "CAMRY": "camry", "RAV4": "rav4", "HIACE": "hiace",
+        "LANDCRUISER": "landcruiser", "LAND CRUISER": "landcruiser",
+        "HILUX": "hilux", "PRADO": "prado", "COROLLA": "corolla",
+        "CAMRY": "camry", "RAV4": "rav4", "HIACE": "hiace",
         "RANGER": "ranger", "EVEREST": "everest", "MUSTANG": "mustang",
         "NAVARA": "navara", "PATROL": "patrol", "XTRAIL": "x-trail",
-        "TRITON": "triton", "OUTLANDER": "outlander", "PAJERO": "pajero",
-        "CX5": "cx-5", "CX-5": "cx-5", "BT50": "bt-50", "BT-50": "bt-50",
-        "COLORADO": "colorado", "AMAROK": "amarok", "DMAX": "d-max", "D-MAX": "d-max",
+        "X-TRAIL": "x-trail", "TRITON": "triton", "OUTLANDER": "outlander",
+        "PAJERO": "pajero", "CX5": "cx-5", "CX-5": "cx-5",
+        "BT50": "bt-50", "BT-50": "bt-50", "COLORADO": "colorado",
+        "AMAROK": "amarok", "DMAX": "d-max", "D-MAX": "d-max",
         "FORTUNER": "fortuner", "KLUGER": "kluger", "SUPRA": "supra",
+        "TUCSON": "tucson", "SPORTAGE": "sportage", "FORESTER": "forester",
+        "CIVIC": "civic", "WRANGLER": "wrangler", "JIMNY": "jimny",
       };
+      // Find slug from model keywords
       let modelSlug = "";
       for (const kw of intent.model_keywords) {
         const mapped = slugMap[kw.toUpperCase()];
         if (mapped) { modelSlug = mapped; break; }
       }
-      let url = `https://www.carsales.com.au/cars/${makeLower}/${modelSlug || ""}`;
-      // Clean trailing slash
-      url = url.replace(/\/+$/, "") + "/";
+      // Fallback: use text query if no slug match
+      if (!modelSlug && intent.model_keywords.length > 0) {
+        const q = [makeLower, ...intent.model_keywords.map(k => k.toLowerCase())].join("+");
+        let url = `https://www.carsales.com.au/cars/?q=${q}`;
+        if (intent.year) url += `&year_min=${intent.year}&year_max=${intent.year + 1}`;
+        if (intent.max_km) url += `&odometer_max=${intent.max_km}`;
+        if (intent.price_max) url += `&price_max=${intent.price_max}`;
+        return url;
+      }
+      let url = `https://www.carsales.com.au/cars/${makeLower}/${modelSlug}/`;
       const params: string[] = [];
       if (intent.year) { params.push(`year_min=${intent.year}`); params.push(`year_max=${intent.year + 1}`); }
       if (intent.max_km) params.push(`odometer_max=${intent.max_km}`);
@@ -67,15 +178,17 @@ const ADAPTERS: DomainAdapter[] = [
     extractDetailUrls: (html, _base) => {
       const urls: string[] = [];
       const seen = new Set<string>();
-      // Carsales detail URLs: /cars/details/YEAR-MAKE-MODEL-.../SSE-AD-NNNNNNN
-      const re = /href=["']((?:https?:)?\/\/(?:www\.)?carsales\.com\.au\/cars\/details\/[^"'\s]+)/gi;
+      const re =
+        /href=["']((?:https?:)?\/\/(?:www\.)?carsales\.com\.au\/cars\/details\/[^"'\s]+)/gi;
       let m;
       while ((m = re.exec(html)) !== null) {
         let url = m[1];
         if (url.startsWith("//")) url = "https:" + url;
-        // Strip query params (sponsored tracking)
-        url = url.split("?")[0];
-        if (!seen.has(url)) { seen.add(url); urls.push(url); }
+        url = url.split("?")[0]; // strip tracking params
+        if (!seen.has(url)) {
+          seen.add(url);
+          urls.push(url);
+        }
       }
       return urls;
     },
@@ -88,7 +201,10 @@ const ADAPTERS: DomainAdapter[] = [
       const model = intent.model_keywords[0]?.toLowerCase() || "";
       let url = `https://www.autotrader.com.au/cars/${make}/${model || "all"}`;
       const params: string[] = [];
-      if (intent.year) { params.push(`year_from=${intent.year}`); params.push(`year_to=${intent.year}`); }
+      if (intent.year) {
+        params.push(`year_from=${intent.year}`);
+        params.push(`year_to=${intent.year}`);
+      }
       if (intent.max_km) params.push(`odometer_to=${intent.max_km}`);
       if (intent.price_max) params.push(`price_to=${intent.price_max}`);
       if (params.length) url += "?" + params.join("&");
@@ -98,12 +214,16 @@ const ADAPTERS: DomainAdapter[] = [
     extractDetailUrls: (html, _base) => {
       const urls: string[] = [];
       const seen = new Set<string>();
-      const re = /href=["']((?:https?:)?\/\/(?:www\.)?autotrader\.com\.au\/car\/[^"'\s]+)/gi;
+      const re =
+        /href=["']((?:https?:)?\/\/(?:www\.)?autotrader\.com\.au\/car\/[^"'\s]+)/gi;
       let m;
       while ((m = re.exec(html)) !== null) {
         let url = m[1];
         if (url.startsWith("//")) url = "https:" + url;
-        if (!seen.has(url)) { seen.add(url); urls.push(url); }
+        if (!seen.has(url)) {
+          seen.add(url);
+          urls.push(url);
+        }
       }
       return urls;
     },
@@ -113,7 +233,8 @@ const ADAPTERS: DomainAdapter[] = [
     domain: "drive.com.au",
     buildSearchUrl: (intent) => {
       const make = (intent.make || "").toLowerCase().replace(/\s+/g, "-");
-      const model = intent.model_keywords[0]?.toLowerCase().replace(/\s+/g, "-") || "";
+      const model =
+        intent.model_keywords[0]?.toLowerCase().replace(/\s+/g, "-") || "";
       let url = `https://www.drive.com.au/cars-for-sale/${make}/${model}/`;
       const params: string[] = [];
       if (intent.year) params.push(`year_min=${intent.year}`);
@@ -126,13 +247,16 @@ const ADAPTERS: DomainAdapter[] = [
     extractDetailUrls: (html, _base) => {
       const urls: string[] = [];
       const seen = new Set<string>();
-      // Drive detail: /cars-for-sale/vehicle/MAKE/MODEL/ID
-      const re = /href=["']((?:https?:)?\/\/(?:www\.)?drive\.com\.au\/cars-for-sale\/[^"'\s]*\d{4,}[^"'\s]*)/gi;
+      const re =
+        /href=["']((?:https?:)?\/\/(?:www\.)?drive\.com\.au\/cars-for-sale\/[^"'\s]*\d{4,}[^"'\s]*)/gi;
       let m;
       while ((m = re.exec(html)) !== null) {
         let url = m[1];
         if (url.startsWith("//")) url = "https:" + url;
-        if (!seen.has(url)) { seen.add(url); urls.push(url); }
+        if (!seen.has(url)) {
+          seen.add(url);
+          urls.push(url);
+        }
       }
       return urls;
     },
@@ -142,10 +266,14 @@ const ADAPTERS: DomainAdapter[] = [
     domain: "carsguide.com.au",
     buildSearchUrl: (intent) => {
       const make = (intent.make || "").toLowerCase().replace(/\s+/g, "-");
-      const model = intent.model_keywords[0]?.toLowerCase().replace(/\s+/g, "-") || "";
+      const model =
+        intent.model_keywords[0]?.toLowerCase().replace(/\s+/g, "-") || "";
       let url = `https://www.carsguide.com.au/buy-a-car/${make ? make + "/" : ""}${model ? model + "/" : ""}`;
       const params: string[] = [];
-      if (intent.year) { params.push(`year_from=${intent.year}`); params.push(`year_to=${intent.year}`); }
+      if (intent.year) {
+        params.push(`year_from=${intent.year}`);
+        params.push(`year_to=${intent.year}`);
+      }
       if (intent.max_km) params.push(`kms_max=${intent.max_km}`);
       if (intent.price_max) params.push(`price_max=${intent.price_max}`);
       if (params.length) url += "?" + params.join("&");
@@ -155,12 +283,16 @@ const ADAPTERS: DomainAdapter[] = [
     extractDetailUrls: (html, _base) => {
       const urls: string[] = [];
       const seen = new Set<string>();
-      const re = /href=["']((?:https?:)?\/\/(?:www\.)?carsguide\.com\.au\/listing\/\d+[^"'\s]*)/gi;
+      const re =
+        /href=["']((?:https?:)?\/\/(?:www\.)?carsguide\.com\.au\/listing\/\d+[^"'\s]*)/gi;
       let m;
       while ((m = re.exec(html)) !== null) {
         let url = m[1];
         if (url.startsWith("//")) url = "https:" + url;
-        if (!seen.has(url)) { seen.add(url); urls.push(url); }
+        if (!seen.has(url)) {
+          seen.add(url);
+          urls.push(url);
+        }
       }
       return urls;
     },
@@ -170,7 +302,8 @@ const ADAPTERS: DomainAdapter[] = [
     domain: "easyauto123.com.au",
     buildSearchUrl: (intent) => {
       const make = (intent.make || "").toLowerCase().replace(/\s+/g, "-");
-      const model = intent.model_keywords[0]?.toLowerCase().replace(/\s+/g, "-") || "";
+      const model =
+        intent.model_keywords[0]?.toLowerCase().replace(/\s+/g, "-") || "";
       let url = `https://www.easyauto123.com.au/cars/${make}/${model}`;
       const params: string[] = [];
       if (intent.year) params.push(`year_min=${intent.year}`);
@@ -183,12 +316,16 @@ const ADAPTERS: DomainAdapter[] = [
     extractDetailUrls: (html, _base) => {
       const urls: string[] = [];
       const seen = new Set<string>();
-      const re = /href=["']((?:https?:)?\/\/(?:www\.)?easyauto123\.com\.au\/car\/\d+[^"'\s]*)/gi;
+      const re =
+        /href=["']((?:https?:)?\/\/(?:www\.)?easyauto123\.com\.au\/car\/\d+[^"'\s]*)/gi;
       let m;
       while ((m = re.exec(html)) !== null) {
         let url = m[1];
         if (url.startsWith("//")) url = "https:" + url;
-        if (!seen.has(url)) { seen.add(url); urls.push(url); }
+        if (!seen.has(url)) {
+          seen.add(url);
+          urls.push(url);
+        }
       }
       return urls;
     },
@@ -255,7 +392,9 @@ function parseInstruction(raw: string): ParsedIntent {
   else if (/\bLOW\s*KM\b/i.test(input)) max_km = 60000;
 
   let price_max: number | null = null;
-  const priceMatch = input.match(/(?:UNDER|BELOW|MAX|BUDGET)\s*\$?\s*([\d,]+)\s*K?\b/i);
+  const priceMatch = input.match(
+    /(?:UNDER|BELOW|MAX|BUDGET)\s*\$?\s*([\d,]+)\s*K?\b/i,
+  );
   if (priceMatch) {
     let p = parseInt(priceMatch[1].replace(/,/g, ""), 10);
     if (p < 1000) p *= 1000;
@@ -268,7 +407,12 @@ function parseInstruction(raw: string): ParsedIntent {
     for (let i = 0; i <= tokens.length - knownParts.length; i++) {
       const slice = tokens.slice(i, i + knownParts.length).join(" ");
       if (slice === known) {
-        make = known === "VW" ? "VOLKSWAGEN" : known === "LANDROVER" ? "LAND ROVER" : known;
+        make =
+          known === "VW"
+            ? "VOLKSWAGEN"
+            : known === "LANDROVER"
+              ? "LAND ROVER"
+              : known;
         break;
       }
     }
@@ -276,9 +420,14 @@ function parseInstruction(raw: string): ParsedIntent {
   }
 
   if (!make) {
-    const sortedModels = Object.keys(MODEL_TO_MAKE).sort((a, b) => b.length - a.length);
+    const sortedModels = Object.keys(MODEL_TO_MAKE).sort(
+      (a, b) => b.length - a.length,
+    );
     for (const model of sortedModels) {
-      if (input.includes(model)) { make = MODEL_TO_MAKE[model]; break; }
+      if (input.includes(model)) {
+        make = MODEL_TO_MAKE[model];
+        break;
+      }
     }
   }
 
@@ -290,7 +439,14 @@ function parseInstruction(raw: string): ParsedIntent {
   ];
   let remaining = input;
   for (const pat of stripPatterns) remaining = remaining.replace(pat, " ");
-  if (make) remaining = remaining.replace(new RegExp(`\\b${make.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, "g"), " ");
+  if (make)
+    remaining = remaining.replace(
+      new RegExp(
+        `\\b${make.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+        "g",
+      ),
+      " ",
+    );
 
   const STOP_WORDS = new Set([
     "MODEL", "MODELS", "UNDER", "BELOW", "BUDGET", "MAX", "AUSTRALIA",
@@ -311,17 +467,32 @@ function parseInstruction(raw: string): ParsedIntent {
 const VEHICLE_EXTRACT_SCHEMA = {
   type: "object",
   properties: {
-    title: { type: "string", description: "Full listing title e.g. '2024 Toyota LandCruiser 79 Series GXL'" },
+    title: {
+      type: "string",
+      description: "Full listing title e.g. '2024 Toyota LandCruiser 79 Series GXL'",
+    },
     year: { type: "integer", description: "Model year (4-digit e.g. 2024)" },
     make: { type: "string", description: "Vehicle manufacturer e.g. Toyota, Ford" },
     model: { type: "string", description: "Vehicle model e.g. LandCruiser, Ranger" },
     variant: { type: "string", description: "Trim/variant e.g. GXL, Wildtrak, SR5" },
-    price: { type: "integer", description: "Listed price in AUD (no decimals, no cents)" },
+    price: {
+      type: "integer",
+      description: "Listed price in AUD (no decimals, no cents)",
+    },
     km: { type: "integer", description: "Odometer reading in kilometres" },
-    location: { type: "string", description: "City or state where the vehicle is located" },
-    body_type: { type: "string", description: "Body type e.g. Ute, Wagon, Sedan, SUV" },
+    location: {
+      type: "string",
+      description: "City or state where the vehicle is located",
+    },
+    body_type: {
+      type: "string",
+      description: "Body type e.g. Ute, Wagon, Sedan, SUV",
+    },
     transmission: { type: "string", description: "Auto or Manual" },
-    engine: { type: "string", description: "Engine description e.g. 4.5L V8 Diesel" },
+    engine: {
+      type: "string",
+      description: "Engine description e.g. 4.5L V8 Diesel",
+    },
   },
   required: ["year", "make", "price"],
 };
@@ -344,12 +515,37 @@ interface ExtractedListing {
   score: number;
 }
 
+function normalizeExtract(
+  url: string,
+  source: string,
+  raw: any,
+): ExtractedListing {
+  return {
+    url,
+    source,
+    title: toStr(raw?.title),
+    year: toInt(raw?.year),
+    make: toStr(raw?.make)?.toUpperCase() ?? null,
+    model: toStr(raw?.model),
+    variant: toStr(raw?.variant),
+    price: toInt(raw?.price),
+    km: toInt(raw?.km),
+    location: toStr(raw?.location),
+    body_type: toStr(raw?.body_type),
+    transmission: toStr(raw?.transmission),
+    engine: toStr(raw?.engine),
+    score: 0,
+  };
+}
+
 // ── Scoring ──
 function scoreListing(l: ExtractedListing, intent: ParsedIntent): number {
   let score = 50;
 
   // Completeness bonus
-  const fields = [l.year, l.price, l.km, l.model, l.variant].filter(Boolean).length;
+  const fields = [l.year, l.price, l.km, l.model, l.variant].filter(
+    Boolean,
+  ).length;
   score += fields * 3; // up to +15
 
   if (intent.max_km && l.km != null) {
@@ -386,8 +582,14 @@ Deno.serve(async (req) => {
     const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
     if (!firecrawlKey) {
       return new Response(
-        JSON.stringify({ status: "error", error: "FIRECRAWL_API_KEY not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({
+          status: "error",
+          error: "FIRECRAWL_API_KEY not configured",
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
@@ -397,41 +599,54 @@ Deno.serve(async (req) => {
     if (!instruction || typeof instruction !== "string" || !instruction.trim()) {
       return new Response(
         JSON.stringify({ status: "error", error: "instruction is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
     // ── DEMAND GATE ──
-    const internalCount = typeof internal_count === "number" ? internal_count : 0;
+    const internalCount =
+      typeof internal_count === "number" ? internal_count : 0;
     const jobUrgency = urgency || "normal";
     if (internalCount >= 3 && jobUrgency === "normal") {
-      console.log(`[OUTWARD-V3] Gated: ${internalCount} internal matches`);
+      console.log(`[OUTWARD-V4] Gated: ${internalCount} internal matches`);
       return new Response(
         JSON.stringify({
-          status: "ok", gated: true,
+          status: "ok",
+          gated: true,
           reason: `${internalCount} internal matches (threshold <3)`,
-          results: [], duration_ms: Date.now() - startTime,
+          results: [],
+          duration_ms: Date.now() - startTime,
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     // ── STEP 1: Parse intent ──
     const intent = parseInstruction(instruction);
-    console.log(`[OUTWARD-V3] STRUCTURED_QUERY`, JSON.stringify(intent));
+    console.log(`[OUTWARD-V4] STRUCTURED_QUERY`, JSON.stringify(intent));
 
     if (!intent.make) {
       return new Response(
-        JSON.stringify({ status: "error", error: "Could not identify vehicle make. Try: '2024 Toyota HiAce Commuter under 40000 km'" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({
+          status: "error",
+          error:
+            "Could not identify vehicle make. Try: '2024 Toyota HiAce Commuter under 40000 km'",
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
-    // ── STEP 2: Crawl search pages → extract detail URLs (parallel per adapter) ──
-    const MAX_DETAILS_PER_DOMAIN = 3; // credit-conscious
+    // ── Pipeline metrics ──
     const pipeline = {
       adapters_tried: 0,
       search_pages_crawled: 0,
+      search_pages_empty: 0,
       detail_urls_found: 0,
       details_scraped: 0,
       schema_valid: 0,
@@ -439,215 +654,201 @@ Deno.serve(async (req) => {
       returned: 0,
     };
 
-    const detailUrlsByDomain: { adapter: DomainAdapter; urls: string[] }[] = [];
+    // ── STEP 2: Crawl search pages → extract detail URLs (parallel per adapter) ──
+    const MAX_DETAILS_PER_DOMAIN = 3;
+    const detailTargets: { url: string; source: string }[] = [];
 
-    // Crawl search pages in parallel
-    const searchCrawls = ADAPTERS.map(async (adapter) => {
-      pipeline.adapters_tried++;
-      const searchUrl = adapter.buildSearchUrl(intent);
-      console.log(`[OUTWARD-V3] Crawling search: ${searchUrl}`);
+    await Promise.all(
+      ADAPTERS.map(async (adapter) => {
+        pipeline.adapters_tried++;
+        const searchUrl = adapter.buildSearchUrl(intent);
+        console.log(`[OUTWARD-V4] Crawling search: ${searchUrl}`);
 
-      try {
-        const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${firecrawlKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            url: searchUrl,
-            formats: ["html"],
-            onlyMainContent: false, // need full HTML to find hrefs
-            waitFor: 3000,
-          }),
-        });
-
-        if (!res.ok) {
-          console.log(`[OUTWARD-V3] ${adapter.domain}: search crawl HTTP ${res.status}`);
-          return { adapter, urls: [] };
-        }
-
-        const data = await res.json();
-        const html = data.data?.html || data.html || "";
+        const html = await firecrawlScrapeHtml(searchUrl, firecrawlKey);
         pipeline.search_pages_crawled++;
 
-        if (html.length < 200) {
-          console.log(`[OUTWARD-V3] ${adapter.domain}: empty HTML (${html.length} bytes)`);
-          return { adapter, urls: [] };
+        if (!html) {
+          pipeline.search_pages_empty++;
+          console.log(
+            `[OUTWARD-V4] ${adapter.domain}: empty/failed HTML — degrading gracefully`,
+          );
+          return;
         }
 
-        // Filter URLs to only those containing the make in the slug
+        // Filter URLs to only those containing the make slug
         const makeSlug = (intent.make || "").toLowerCase().replace(/\s+/g, "-");
-        const detailUrls = adapter.extractDetailUrls(html, searchUrl)
-          .map(u => u.replace(/&amp;/g, "&"))
-          .filter(u => !makeSlug || u.toLowerCase().includes(makeSlug))
+        const urls = adapter
+          .extractDetailUrls(html, searchUrl)
+          .map((u) => u.replace(/&amp;/g, "&"))
+          .filter((u) => !makeSlug || u.toLowerCase().includes(makeSlug))
           .slice(0, MAX_DETAILS_PER_DOMAIN);
 
-        console.log(`[OUTWARD-V3] ${adapter.domain}: ${detailUrls.length} detail URLs extracted`);
-        return { adapter, urls: detailUrls };
-      } catch (err) {
-        console.error(`[OUTWARD-V3] ${adapter.domain}: search crawl error:`, err);
-        return { adapter, urls: [] };
-      }
-    });
+        console.log(
+          `[OUTWARD-V4] ${adapter.domain}: ${urls.length} detail URLs extracted`,
+        );
+        pipeline.detail_urls_found += urls.length;
 
-    const crawlResults = await Promise.all(searchCrawls);
-    for (const r of crawlResults) {
-      if (r.urls.length > 0) {
-        detailUrlsByDomain.push(r);
-        pipeline.detail_urls_found += r.urls.length;
-      }
-    }
+        for (const u of urls) {
+          detailTargets.push({ url: u, source: adapter.domain });
+        }
+      }),
+    );
 
-    console.log(`[OUTWARD-V3] Total detail URLs: ${pipeline.detail_urls_found} from ${detailUrlsByDomain.length} domains`);
+    // Global dedupe + cap total detail scrapes
+    const MAX_TOTAL_DETAILS = 10;
+    const deduped = Array.from(
+      new Map(detailTargets.map((t) => [t.url, t])).values(),
+    ).slice(0, MAX_TOTAL_DETAILS);
 
-    if (pipeline.detail_urls_found === 0) {
+    console.log(
+      `[OUTWARD-V4] Total detail URLs: ${pipeline.detail_urls_found}, deduped to scrape: ${deduped.length}`,
+    );
+
+    if (deduped.length === 0) {
       logAudit(intent, instruction, pipeline, Date.now() - startTime, jobUrgency);
       return new Response(
         JSON.stringify({
-          status: "ok", intent, results: [],
+          status: "ok",
+          intent,
+          results: [],
           message: "No listing detail pages found on target domains.",
-          pipeline, duration_ms: Date.now() - startTime,
+          pipeline,
+          duration_ms: Date.now() - startTime,
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // ── STEP 3: Scrape detail pages with JSON extraction (parallel, all domains) ──
-    const allDetailUrls = detailUrlsByDomain.flatMap(d =>
-      d.urls.map(url => ({ url, domain: d.adapter.domain }))
-    );
+    // ── STEP 3: Fetch detail pages with concurrency limiter (max 3 parallel) ──
+    const extracted = await mapLimit(deduped, 3, async (t) => {
+      pipeline.details_scraped++;
+      const raw = await firecrawlExtractVehicle(t.url, firecrawlKey);
+      if (!raw) return null;
 
-    // Limit total scrapes to control credits
-    const MAX_TOTAL_SCRAPES = 8;
-    const toScrape = allDetailUrls.slice(0, MAX_TOTAL_SCRAPES);
+      const listing = normalizeExtract(t.url, t.source, raw);
+      console.log(
+        `[OUTWARD-V4] Extracted from ${t.url}:`,
+        JSON.stringify({
+          year: listing.year,
+          make: listing.make,
+          model: listing.model,
+          price: listing.price,
+          km: listing.km,
+        }),
+      );
 
-    const detailScrapes = toScrape.map(async ({ url, domain }) => {
-      try {
-        const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${firecrawlKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            url,
-            formats: ["extract"],
-            extract: {
-              schema: VEHICLE_EXTRACT_SCHEMA,
-              prompt: "Extract the vehicle listing details from this page. Return year as a 4-digit number, price in AUD as integer, km as integer.",
-            },
-            onlyMainContent: true,
-            waitFor: 2000,
-          }),
-        });
+      // Hard gate: must have year + make. Price=0 means "contact dealer" — allow through.
+      if (!listing.year || !listing.make) return null;
+      // Treat price=0 as unknown (many Carsales listings are "contact for price")
+      if (listing.price === 0) listing.price = null;
 
-        if (!res.ok) {
-          console.log(`[OUTWARD-V3] Detail scrape failed: ${url} (${res.status})`);
+      pipeline.schema_valid++;
+
+      // Make gate: prevent garbage
+      if (intent.make && listing.make) {
+        const a = listing.make.replace(/\s+/g, "");
+        const b = intent.make.replace(/\s+/g, "");
+        if (a !== b) {
+          console.log(
+            `[OUTWARD-V4] Make mismatch: "${listing.make}" vs "${intent.make}"`,
+          );
           return null;
         }
-
-        const data = await res.json();
-        const json = data.data?.extract || data.extract || data.data?.json || data.json || null;
-        pipeline.details_scraped++;
-
-        if (!json) {
-          console.log(`[OUTWARD-V3] No JSON extracted from: ${url}`);
-          return null;
-        }
-
-        console.log(`[OUTWARD-V3] Extracted from ${url}:`, JSON.stringify(json));
-
-        return {
-          url,
-          source: domain,
-          title: json.title || null,
-          year: typeof json.year === "number" ? json.year : null,
-          make: json.make || null,
-          model: json.model || null,
-          variant: json.variant || null,
-          price: typeof json.price === "number" ? json.price : null,
-          km: typeof json.km === "number" ? json.km : null,
-          location: json.location || null,
-          body_type: json.body_type || null,
-          transmission: json.transmission || null,
-          engine: json.engine || null,
-          score: 0,
-        } as ExtractedListing;
-      } catch (err) {
-        console.error(`[OUTWARD-V3] Detail scrape error (${url}):`, err);
-        return null;
       }
-    });
 
-    const detailResults = (await Promise.all(detailScrapes)).filter(Boolean) as ExtractedListing[];
-    console.log(`[OUTWARD-V3] Details scraped: ${detailResults.length}`);
-
-    // ── STEP 4: Vehicle schema gate ──
-    const schemaValid = detailResults.filter(l => {
-      if (!l.year) return false;
-      if (l.price != null && l.price > 0 && l.price < 3000) return false;
-      // Make must match intent
-      if (intent.make && l.make && !l.make.toUpperCase().includes(intent.make)) return false;
-      // Model must contain at least one model keyword from intent
-      if (intent.model_keywords.length > 0 && l.model) {
-        const modelUpper = (l.model + " " + (l.title || "")).toUpperCase();
-        const hasModelMatch = intent.model_keywords.some(kw => modelUpper.includes(kw));
+      // Model keyword gate
+      if (intent.model_keywords.length > 0 && listing.model) {
+        const modelUpper = (
+          (listing.model || "") +
+          " " +
+          (listing.title || "")
+        ).toUpperCase();
+        const hasModelMatch = intent.model_keywords.some((kw) =>
+          modelUpper.includes(kw),
+        );
         if (!hasModelMatch) {
-          console.log(`[OUTWARD-V3] Model mismatch: "${l.model}" vs keywords [${intent.model_keywords.join(",")}]`);
-          return false;
+          console.log(
+            `[OUTWARD-V4] Model mismatch: "${listing.model}" vs [${intent.model_keywords.join(",")}]`,
+          );
+          return null;
         }
       }
-      return true;
+
+      // Numeric constraint gate
+      if (intent.year && listing.year && Math.abs(listing.year - intent.year) > 2)
+        return null;
+      if (
+        intent.max_km &&
+        listing.km != null &&
+        listing.km > intent.max_km + 10000
+      )
+        return null;
+      if (
+        intent.price_max &&
+        listing.price != null &&
+        listing.price > intent.price_max * 1.15
+      )
+        return null;
+
+      pipeline.constraint_pass++;
+
+      // Score
+      listing.score = scoreListing(listing, intent);
+      if (listing.score <= 0) return null;
+
+      return listing;
     });
-    pipeline.schema_valid = schemaValid.length;
-    console.log(`[OUTWARD-V3] Schema valid: ${schemaValid.length}`);
 
-    // ── STEP 5: Constraint filter ──
-    const constrained = schemaValid.filter(l => {
-      if (intent.year && l.year != null && Math.abs(l.year - intent.year) > 2) return false;
-      if (intent.max_km && l.km != null && l.km > intent.max_km + 10000) return false;
-      if (intent.price_max && l.price != null && l.price > intent.price_max * 1.15) return false;
-      return true;
-    });
-    pipeline.constraint_pass = constrained.length;
-    console.log(`[OUTWARD-V3] Constraint pass: ${constrained.length}`);
+    const results = extracted
+      .filter((x): x is ExtractedListing => Boolean(x))
+      .sort(
+        (a, b) =>
+          b.score - a.score || (a.price ?? Infinity) - (b.price ?? Infinity),
+      )
+      .slice(0, 10);
 
-    // ── STEP 6: Score & rank ──
-    const scored = constrained
-      .map(l => ({ ...l, score: scoreListing(l, intent) }))
-      .filter(l => l.score > 0)
-      .sort((a, b) => b.score - a.score || (a.price ?? Infinity) - (b.price ?? Infinity));
+    pipeline.returned = results.length;
 
-    // Deduplicate
-    const seen = new Set<string>();
-    const top: ExtractedListing[] = [];
-    for (const r of scored) {
-      if (!seen.has(r.url)) { seen.add(r.url); top.push(r); }
-      if (top.length >= 5) break;
-    }
-    pipeline.returned = top.length;
-
-    console.log(`[OUTWARD-V3] FINAL: ${top.length} results`);
-    console.log(`[OUTWARD-V3] TOP_RESULTS:`, JSON.stringify(top.map(r => ({
-      url: r.url, year: r.year, make: r.make, model: r.model,
-      price: r.price, km: r.km, score: r.score, source: r.source,
-    }))));
+    console.log(`[OUTWARD-V4] FINAL: ${results.length} results`);
+    console.log(
+      `[OUTWARD-V4] TOP_RESULTS:`,
+      JSON.stringify(
+        results.map((r) => ({
+          url: r.url,
+          year: r.year,
+          make: r.make,
+          model: r.model,
+          price: r.price,
+          km: r.km,
+          score: r.score,
+          source: r.source,
+        })),
+      ),
+    );
 
     logAudit(intent, instruction, pipeline, Date.now() - startTime, jobUrgency);
 
     return new Response(
       JSON.stringify({
-        status: "ok", intent, results: top, pipeline,
+        status: "ok",
+        intent,
+        results,
+        pipeline,
         duration_ms: Date.now() - startTime,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
-    console.error("[OUTWARD-V3] Error:", error);
+    console.error("[OUTWARD-V4] Error:", error);
     return new Response(
-      JSON.stringify({ status: "error", error: error instanceof Error ? error.message : String(error) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({
+        status: "error",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });
@@ -661,12 +862,25 @@ function logAudit(
   urgency: string,
 ) {
   try {
-    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    sb.from("cron_audit_log").insert({
-      cron_name: "run-outward-search-v3",
-      run_date: new Date().toISOString().slice(0, 10),
-      success: true,
-      result: { instruction: instruction.trim(), intent, pipeline, duration_ms: durationMs, urgency },
-    }).then(() => {});
-  } catch (_) { /* swallow */ }
+    const sb = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    sb.from("cron_audit_log")
+      .insert({
+        cron_name: "run-outward-search-v4",
+        run_date: new Date().toISOString().slice(0, 10),
+        success: true,
+        result: {
+          instruction: instruction.trim(),
+          intent,
+          pipeline,
+          duration_ms: durationMs,
+          urgency,
+        },
+      })
+      .then(() => {});
+  } catch (_) {
+    /* swallow */
+  }
 }
