@@ -4673,27 +4673,36 @@ export type Database = {
         Row: {
           completed_at: string | null
           created_at: string
-          hunt_id: string
+          hunt_id: string | null
           id: string
           manus_task_id: string
+          results: Json | null
+          search_filters: Json | null
+          search_session_id: string | null
           source_url: string
           status: string
         }
         Insert: {
           completed_at?: string | null
           created_at?: string
-          hunt_id: string
+          hunt_id?: string | null
           id?: string
           manus_task_id: string
+          results?: Json | null
+          search_filters?: Json | null
+          search_session_id?: string | null
           source_url: string
           status?: string
         }
         Update: {
           completed_at?: string | null
           created_at?: string
-          hunt_id?: string
+          hunt_id?: string | null
           id?: string
           manus_task_id?: string
+          results?: Json | null
+          search_filters?: Json | null
+          search_session_id?: string | null
           source_url?: string
           status?: string
         }

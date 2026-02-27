@@ -16,10 +16,10 @@ Deno.serve(async (req) => {
     return new Response("Missing task_id", { status: 400 });
   }
 
-  // Find the pending task record
+  // Find the pending task record (join hunt if available)
   const { data: task } = await supabase
     .from("manus_search_tasks")
-    .select("*, sale_hunts(*)")
+    .select("*")
     .eq("manus_task_id", taskId)
     .single();
 
@@ -41,24 +41,37 @@ Deno.serve(async (req) => {
 
   console.log(`[MANUS-WEBHOOK] Task ${taskId}: parsed ${listings.length} listings`);
 
-  // Insert listings into retail_listings
-  const hunt = task.sale_hunts;
-  let inserted = 0;
+  // Determine make/model from hunt or stored filters
+  let make = "", model = "";
+  if (task.hunt_id) {
+    const { data: hunt } = await supabase
+      .from("sale_hunts")
+      .select("make, model")
+      .eq("id", task.hunt_id)
+      .single();
+    make = hunt?.make || "";
+    model = hunt?.model || "";
+  } else if (task.search_filters) {
+    const f = task.search_filters as Record<string, any>;
+    make = f.make || "";
+    model = f.model || "";
+  }
+
   let hostname = "unknown";
   try { hostname = new URL(task.source_url).hostname; } catch {}
 
+  let inserted = 0;
   for (const listing of listings) {
     if (!listing.direct_url || !listing.price) continue;
 
-    // Generate a source_listing_id from the URL
     const sourceListingId = `manus-${listing.stock_no || listing.direct_url.replace(/[^a-zA-Z0-9]/g, '').slice(-40)}`;
 
     const { error } = await supabase.from("retail_listings").upsert({
       source_listing_id: sourceListingId,
       listing_url: listing.direct_url,
-      make: hunt?.make,
-      model: hunt?.model,
-      year: listing.year || hunt?.year,
+      make: make || listing.make,
+      model: model || listing.model,
+      year: listing.year,
       badge: listing.badge,
       asking_price: listing.price,
       price_type: listing.price_type || "unknown",
@@ -80,13 +93,27 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Mark task as complete
+  // Store parsed results on the task itself for easy frontend polling
   await supabase
     .from("manus_search_tasks")
-    .update({ status: "complete", completed_at: new Date().toISOString() })
+    .update({
+      status: listings.length > 0 ? "complete" : "failed",
+      completed_at: new Date().toISOString(),
+      results: listings.map((l: any) => ({
+        title: `${l.year || ""} ${make} ${model} ${l.badge || ""}`.trim(),
+        price: l.price,
+        km: l.km,
+        year: l.year,
+        location: l.location,
+        dealer_name: l.dealer_name,
+        url: l.direct_url,
+        badge: l.badge,
+        source: hostname,
+      })),
+    })
     .eq("manus_task_id", taskId);
 
-  console.log(`[MANUS-WEBHOOK] Inserted ${inserted}/${listings.length} listings for hunt ${task.hunt_id}`);
+  console.log(`[MANUS-WEBHOOK] Inserted ${inserted}/${listings.length} listings for session ${task.search_session_id || task.hunt_id}`);
   return new Response(JSON.stringify({ ok: true, inserted }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
