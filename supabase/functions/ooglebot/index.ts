@@ -6,6 +6,33 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Well-known model → make mapping for fallback resolution
+const MODEL_TO_MAKE: Record<string, string> = {
+  "HILUX": "TOYOTA", "LANDCRUISER": "TOYOTA", "PRADO": "TOYOTA", "RAV4": "TOYOTA",
+  "COROLLA": "TOYOTA", "CAMRY": "TOYOTA", "KLUGER": "TOYOTA", "FORTUNER": "TOYOTA",
+  "HIACE": "TOYOTA", "YARIS": "TOYOTA", "86": "TOYOTA", "GR86": "TOYOTA", "SUPRA": "TOYOTA",
+  "RANGER": "FORD", "EVEREST": "FORD", "MUSTANG": "FORD", "BRONCO": "FORD",
+  "FOCUS": "FORD", "ESCAPE": "FORD", "ENDURA": "FORD", "PUMA": "FORD",
+  "TRITON": "MITSUBISHI", "PAJERO": "MITSUBISHI", "OUTLANDER": "MITSUBISHI",
+  "ASX": "MITSUBISHI", "ECLIPSE CROSS": "MITSUBISHI",
+  "NAVARA": "NISSAN", "PATROL": "NISSAN", "X-TRAIL": "NISSAN", "QASHQAI": "NISSAN",
+  "PATHFINDER": "NISSAN", "JUKE": "NISSAN",
+  "D-MAX": "ISUZU", "DMAX": "ISUZU", "MU-X": "ISUZU", "MUX": "ISUZU",
+  "BT-50": "MAZDA", "BT50": "MAZDA", "CX-5": "MAZDA", "CX5": "MAZDA",
+  "CX-9": "MAZDA", "CX9": "MAZDA", "CX-3": "MAZDA", "CX-30": "MAZDA",
+  "CX-60": "MAZDA", "CX-80": "MAZDA", "MAZDA3": "MAZDA", "MAZDA2": "MAZDA",
+  "COLORADO": "HOLDEN", "TRAILBLAZER": "HOLDEN",
+  "AMAROK": "VOLKSWAGEN", "TIGUAN": "VOLKSWAGEN", "GOLF": "VOLKSWAGEN",
+  "TUCSON": "HYUNDAI", "SANTA FE": "HYUNDAI", "KONA": "HYUNDAI", "IONIQ": "HYUNDAI",
+  "I30": "HYUNDAI", "PALISADE": "HYUNDAI", "VENUE": "HYUNDAI", "STARIA": "HYUNDAI",
+  "SPORTAGE": "KIA", "SORENTO": "KIA", "CARNIVAL": "KIA", "CERATO": "KIA",
+  "EV6": "KIA", "SELTOS": "KIA", "STONIC": "KIA",
+  "FORESTER": "SUBARU", "OUTBACK": "SUBARU", "XV": "SUBARU", "WRX": "SUBARU",
+  "CROSSTREK": "SUBARU", "BRZ": "SUBARU", "IMPREZA": "SUBARU",
+  "GRAND CHEROKEE": "JEEP", "WRANGLER": "JEEP", "GLADIATOR": "JEEP",
+  "RAPTOR": "FORD", "WILDTRAK": "FORD",
+};
+
 const INTENT_SCHEMA = `You are a vehicle search query parser. Return ONLY a JSON object, nothing else.
 
 Schema:
@@ -13,6 +40,7 @@ Schema:
 
 Rules:
 - Uppercase make and model
+- IMPORTANT: Always infer the make from the model name. For example, "Hilux" is always TOYOTA, "Ranger" is always FORD, "D-MAX" is always ISUZU, "Triton" is always MITSUBISHI, "Navara" is always NISSAN, "BT-50" is always MAZDA, "Amarok" is always VOLKSWAGEN, "Colorado" is always HOLDEN.
 - badge is the variant/trim/series e.g. "SX", "GXL", "Workmate", "Wildtrak", "SR5", "Hi-Rider". Uppercase it. Use null if not specified.
 - A single year like "2022" means year_min=2022, year_max=null (2022 or newer)
 - Only set year_max if the user specifies an upper year bound like "2020-2022" or "up to 2022"
@@ -172,6 +200,15 @@ Deno.serve(async (req) => {
         JSON.stringify({ status: "error", error: "Intent parsing failed: invalid JSON returned" }),
         { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Fallback: resolve make from model if LLM missed it
+    if (!parsed.make && parsed.model) {
+      const resolved = MODEL_TO_MAKE[parsed.model];
+      if (resolved) {
+        parsed.make = resolved;
+        console.log(`Make resolved from model fallback: ${parsed.model} → ${resolved}`);
+      }
     }
 
     if (!parsed.make) {
