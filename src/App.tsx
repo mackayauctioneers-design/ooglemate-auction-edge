@@ -89,6 +89,10 @@ import PicklesIngestionPage from "./pages/PicklesIngestionPage";
 import AuctionEnrichmentQueuePage from "./pages/operator/AuctionEnrichmentQueuePage";
 import HuntAlertsPage from "./pages/HuntAlertsPage";
 import DealerOogleBotPage from "./pages/DealerOogleBotPage";
+import AlertsMatchesPage from "./pages/operator/AlertsMatchesPage";
+import PipelineHealthPage from "./pages/operator/PipelineHealthPage";
+import BuyIntelligencePage from "./pages/operator/BuyIntelligencePage";
+import DataSourcesPage from "./pages/operator/DataSourcesPage";
 
 const queryClient = new QueryClient();
 
@@ -191,6 +195,10 @@ const App = () => (
               <Route path="/operator/dealer-upload" element={<OperatorGuard><OperatorDealerUploadPage /></OperatorGuard>} />
               <Route path="/operator/manual-intake" element={<OperatorGuard><ManualIntakePage /></OperatorGuard>} />
               <Route path="/operator/ooglebot" element={<OperatorGuard><OogleBotPage /></OperatorGuard>} />
+              <Route path="/operator/alerts-matches" element={<OperatorGuard><AlertsMatchesPage /></OperatorGuard>} />
+              <Route path="/operator/pipeline" element={<OperatorGuard><PipelineHealthPage /></OperatorGuard>} />
+              <Route path="/operator/buy-intelligence" element={<OperatorGuard><BuyIntelligencePage /></OperatorGuard>} />
+              <Route path="/operator/sources" element={<OperatorGuard><DataSourcesPage /></OperatorGuard>} />
 
               {/* Admin Tools */}
               <Route path="/admin-tools" element={<RequireAdmin><NotFound /></RequireAdmin>} />

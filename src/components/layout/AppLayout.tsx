@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { AppSidebar } from './AppSidebar';
 import { BobPanel } from '@/components/bob/BobPanel';
 import { useAuth } from '@/contexts/AuthContext';
+import { useIsNestedLayout, LayoutNestingProvider } from './LayoutContext';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -29,6 +30,7 @@ function useIsMobile() {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
+  const isNested = useIsNestedLayout();
   const location = useLocation();
   const { currentUser } = useAuth();
   const isMobile = useIsMobile();
@@ -36,22 +38,26 @@ export function AppLayout({ children }: AppLayoutProps) {
   // Don't show Bob features on ValoPage or on mobile devices (causes iOS crashes)
   const isValoPage = location.pathname === '/valo';
   const showBobFeatures = !isValoPage && !isMobile;
+
+  if (isNested) return <>{children}</>;
   
   return (
-    <div className="flex min-h-screen w-full bg-background">
-      <AppSidebar />
-      <main className="flex-1 overflow-auto">
-        {children}
-      </main>
-      
-      {/* Bob Avatar + Panel - Desktop only to prevent iOS memory crashes */}
-      {showBobFeatures && (
-        <>
-          <BobAvatarLazy dealerName={currentUser?.dealer_name} />
-          <BobPanel />
-        </>
-      )}
-    </div>
+    <LayoutNestingProvider value={true}>
+      <div className="flex min-h-screen w-full bg-background">
+        <AppSidebar />
+        <main className="flex-1 overflow-auto">
+          {children}
+        </main>
+        
+        {/* Bob Avatar + Panel - Desktop only to prevent iOS memory crashes */}
+        {showBobFeatures && (
+          <>
+            <BobAvatarLazy dealerName={currentUser?.dealer_name} />
+            <BobPanel />
+          </>
+        )}
+      </div>
+    </LayoutNestingProvider>
   );
 }
 
