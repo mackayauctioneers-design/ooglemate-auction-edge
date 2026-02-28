@@ -5587,13 +5587,17 @@ export type Database = {
           claimed_at: string | null
           claimed_by: string | null
           claimed_run_id: string | null
+          condition_notes: string[] | null
           content_len: number | null
           crawl_attempts: number
           crawl_status: string
+          damage_noted: boolean | null
           detail_url: string
           first_seen_at: string
+          fuel: string | null
           guide_price: number | null
           id: string
+          keys_present: boolean | null
           km: number | null
           last_crawl_at: string | null
           last_crawl_error: string | null
@@ -5603,8 +5607,10 @@ export type Database = {
           make: string | null
           model: string | null
           page_no: number | null
+          price_type: string | null
           reject_reason: string | null
           reserve_price: number | null
+          reserve_status: string | null
           retry_count: number | null
           run_id: string | null
           sale_close_at: string | null
@@ -5613,12 +5619,15 @@ export type Database = {
           sold_price: number | null
           source: string
           source_listing_id: string
+          starts_drives: boolean | null
           state: string | null
           stub_anchor_id: string | null
+          transmission: string | null
           va_notes: string | null
           validated_at: string | null
           validated_by: string | null
           variant_raw: string | null
+          wovr_indicator: boolean | null
           year: number | null
         }
         Insert: {
@@ -5628,13 +5637,17 @@ export type Database = {
           claimed_at?: string | null
           claimed_by?: string | null
           claimed_run_id?: string | null
+          condition_notes?: string[] | null
           content_len?: number | null
           crawl_attempts?: number
           crawl_status?: string
+          damage_noted?: boolean | null
           detail_url: string
           first_seen_at?: string
+          fuel?: string | null
           guide_price?: number | null
           id?: string
+          keys_present?: boolean | null
           km?: number | null
           last_crawl_at?: string | null
           last_crawl_error?: string | null
@@ -5644,8 +5657,10 @@ export type Database = {
           make?: string | null
           model?: string | null
           page_no?: number | null
+          price_type?: string | null
           reject_reason?: string | null
           reserve_price?: number | null
+          reserve_status?: string | null
           retry_count?: number | null
           run_id?: string | null
           sale_close_at?: string | null
@@ -5654,12 +5669,15 @@ export type Database = {
           sold_price?: number | null
           source?: string
           source_listing_id: string
+          starts_drives?: boolean | null
           state?: string | null
           stub_anchor_id?: string | null
+          transmission?: string | null
           va_notes?: string | null
           validated_at?: string | null
           validated_by?: string | null
           variant_raw?: string | null
+          wovr_indicator?: boolean | null
           year?: number | null
         }
         Update: {
@@ -5669,13 +5687,17 @@ export type Database = {
           claimed_at?: string | null
           claimed_by?: string | null
           claimed_run_id?: string | null
+          condition_notes?: string[] | null
           content_len?: number | null
           crawl_attempts?: number
           crawl_status?: string
+          damage_noted?: boolean | null
           detail_url?: string
           first_seen_at?: string
+          fuel?: string | null
           guide_price?: number | null
           id?: string
+          keys_present?: boolean | null
           km?: number | null
           last_crawl_at?: string | null
           last_crawl_error?: string | null
@@ -5685,8 +5707,10 @@ export type Database = {
           make?: string | null
           model?: string | null
           page_no?: number | null
+          price_type?: string | null
           reject_reason?: string | null
           reserve_price?: number | null
+          reserve_status?: string | null
           retry_count?: number | null
           run_id?: string | null
           sale_close_at?: string | null
@@ -5695,12 +5719,15 @@ export type Database = {
           sold_price?: number | null
           source?: string
           source_listing_id?: string
+          starts_drives?: boolean | null
           state?: string | null
           stub_anchor_id?: string | null
+          transmission?: string | null
           va_notes?: string | null
           validated_at?: string | null
           validated_by?: string | null
           variant_raw?: string | null
+          wovr_indicator?: boolean | null
           year?: number | null
         }
         Relationships: [
@@ -9555,9 +9582,12 @@ export type Database = {
           auction_history: Json | null
           auction_house: string | null
           avoid_reason: string | null
+          buy_method: string | null
           buy_window_at: string | null
+          condition_notes: string[] | null
           content_hash: string | null
           created_at: string
+          damage_noted: boolean | null
           dealer_name: string | null
           dealer_url: string | null
           delisted_at: string | null
@@ -9574,9 +9604,11 @@ export type Database = {
           fuel: string | null
           geo_confidence: string | null
           geo_source: string | null
+          guide_price: number | null
           highest_bid: number | null
           id: string
           is_dealer_grade: boolean | null
+          keys_present: boolean | null
           km: number | null
           last_attempt_at: string | null
           last_auction_date: string | null
@@ -9603,20 +9635,26 @@ export type Database = {
           relist_count: number
           replicated_at: string | null
           reserve: number | null
+          reserve_price: number | null
+          reserve_status: string | null
           risk_flag: boolean
           risk_flags: string[] | null
           sa2_code: string | null
           sa2_name: string | null
+          sale_close_at: string | null
+          sale_status: string | null
           seller_confidence: string | null
           seller_reasons: string[] | null
           seller_type: string
           sold_detected_at: string | null
+          sold_price: number | null
           sold_returned_at: string | null
           sold_returned_flagged_at: string | null
           sold_returned_reason: string | null
           sold_returned_suspected: boolean
           source: string
           source_class: string
+          starts_drives: boolean | null
           state: string | null
           status: string
           status_changed_at: string | null
@@ -9632,6 +9670,7 @@ export type Database = {
           watch_confidence: string | null
           watch_reason: string | null
           watch_status: string | null
+          wovr_indicator: boolean | null
           year: number
         }
         Insert: {
@@ -9647,9 +9686,12 @@ export type Database = {
           auction_history?: Json | null
           auction_house?: string | null
           avoid_reason?: string | null
+          buy_method?: string | null
           buy_window_at?: string | null
+          condition_notes?: string[] | null
           content_hash?: string | null
           created_at?: string
+          damage_noted?: boolean | null
           dealer_name?: string | null
           dealer_url?: string | null
           delisted_at?: string | null
@@ -9666,9 +9708,11 @@ export type Database = {
           fuel?: string | null
           geo_confidence?: string | null
           geo_source?: string | null
+          guide_price?: number | null
           highest_bid?: number | null
           id?: string
           is_dealer_grade?: boolean | null
+          keys_present?: boolean | null
           km?: number | null
           last_attempt_at?: string | null
           last_auction_date?: string | null
@@ -9695,20 +9739,26 @@ export type Database = {
           relist_count?: number
           replicated_at?: string | null
           reserve?: number | null
+          reserve_price?: number | null
+          reserve_status?: string | null
           risk_flag?: boolean
           risk_flags?: string[] | null
           sa2_code?: string | null
           sa2_name?: string | null
+          sale_close_at?: string | null
+          sale_status?: string | null
           seller_confidence?: string | null
           seller_reasons?: string[] | null
           seller_type?: string
           sold_detected_at?: string | null
+          sold_price?: number | null
           sold_returned_at?: string | null
           sold_returned_flagged_at?: string | null
           sold_returned_reason?: string | null
           sold_returned_suspected?: boolean
           source?: string
           source_class?: string
+          starts_drives?: boolean | null
           state?: string | null
           status?: string
           status_changed_at?: string | null
@@ -9724,6 +9774,7 @@ export type Database = {
           watch_confidence?: string | null
           watch_reason?: string | null
           watch_status?: string | null
+          wovr_indicator?: boolean | null
           year: number
         }
         Update: {
@@ -9739,9 +9790,12 @@ export type Database = {
           auction_history?: Json | null
           auction_house?: string | null
           avoid_reason?: string | null
+          buy_method?: string | null
           buy_window_at?: string | null
+          condition_notes?: string[] | null
           content_hash?: string | null
           created_at?: string
+          damage_noted?: boolean | null
           dealer_name?: string | null
           dealer_url?: string | null
           delisted_at?: string | null
@@ -9758,9 +9812,11 @@ export type Database = {
           fuel?: string | null
           geo_confidence?: string | null
           geo_source?: string | null
+          guide_price?: number | null
           highest_bid?: number | null
           id?: string
           is_dealer_grade?: boolean | null
+          keys_present?: boolean | null
           km?: number | null
           last_attempt_at?: string | null
           last_auction_date?: string | null
@@ -9787,20 +9843,26 @@ export type Database = {
           relist_count?: number
           replicated_at?: string | null
           reserve?: number | null
+          reserve_price?: number | null
+          reserve_status?: string | null
           risk_flag?: boolean
           risk_flags?: string[] | null
           sa2_code?: string | null
           sa2_name?: string | null
+          sale_close_at?: string | null
+          sale_status?: string | null
           seller_confidence?: string | null
           seller_reasons?: string[] | null
           seller_type?: string
           sold_detected_at?: string | null
+          sold_price?: number | null
           sold_returned_at?: string | null
           sold_returned_flagged_at?: string | null
           sold_returned_reason?: string | null
           sold_returned_suspected?: boolean
           source?: string
           source_class?: string
+          starts_drives?: boolean | null
           state?: string | null
           status?: string
           status_changed_at?: string | null
@@ -9816,6 +9878,7 @@ export type Database = {
           watch_confidence?: string | null
           watch_reason?: string | null
           watch_status?: string | null
+          wovr_indicator?: boolean | null
           year?: number
         }
         Relationships: [
@@ -11391,13 +11454,17 @@ export type Database = {
           claimed_at: string | null
           claimed_by: string | null
           claimed_run_id: string | null
+          condition_notes: string[] | null
           content_len: number | null
           crawl_attempts: number
           crawl_status: string
+          damage_noted: boolean | null
           detail_url: string
           first_seen_at: string
+          fuel: string | null
           guide_price: number | null
           id: string
+          keys_present: boolean | null
           km: number | null
           last_crawl_at: string | null
           last_crawl_error: string | null
@@ -11407,8 +11474,10 @@ export type Database = {
           make: string | null
           model: string | null
           page_no: number | null
+          price_type: string | null
           reject_reason: string | null
           reserve_price: number | null
+          reserve_status: string | null
           retry_count: number | null
           run_id: string | null
           sale_close_at: string | null
@@ -11417,12 +11486,15 @@ export type Database = {
           sold_price: number | null
           source: string
           source_listing_id: string
+          starts_drives: boolean | null
           state: string | null
           stub_anchor_id: string | null
+          transmission: string | null
           va_notes: string | null
           validated_at: string | null
           validated_by: string | null
           variant_raw: string | null
+          wovr_indicator: boolean | null
           year: number | null
         }[]
         SetofOptions: {
