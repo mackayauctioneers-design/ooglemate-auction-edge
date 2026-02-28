@@ -316,6 +316,7 @@ export function OogleBotSearch() {
   const [manusPending, setManusPending] = useState(0);
   const [manusTotal, setManusTotal] = useState(0);
   const [manusPolling, setManusPolling] = useState(false);
+  const [manusTriggered, setManusTriggered] = useState(false); // true from the moment search fires
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Poll Manus tasks by session_id
@@ -412,6 +413,7 @@ export function OogleBotSearch() {
 
     setHasSearched(true);
     setInternalLoading(true);
+    setManusTriggered(true); // show dealer sites card immediately
     setInternalResults([]);
     setDealerSpecs([]);
     setExternalResponse(null);
@@ -669,7 +671,7 @@ export function OogleBotSearch() {
       )}
 
       {/* ═══ MANUS DEALER SITE RESULTS ═══ */}
-      {(manusPolling || manusResults.length > 0) && (
+      {(manusTriggered || manusPolling || manusResults.length > 0) && (
         <Card className="border-amber-500/30">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
@@ -689,12 +691,22 @@ export function OogleBotSearch() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1.5">
-            {manusResults.length === 0 && manusPending > 0 && (
-              <p className="text-sm text-muted-foreground py-2">
-                AI agent searching dealer websites — results arrive in 2–5 min...
-              </p>
+            {/* Connecting — triggerManusSearch hasn't returned a session_id yet */}
+            {manusTriggered && !manusSessionId && !manusPolling && manusResults.length === 0 && (
+              <div className="flex items-center gap-3 py-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin text-amber-500 shrink-0" />
+                <span>Connecting to dealer search network…</span>
+              </div>
             )}
-            {manusResults.length === 0 && manusPending === 0 && (
+            {/* Session active, waiting for first results */}
+            {manusResults.length === 0 && manusPending > 0 && (
+              <div className="flex items-center gap-3 py-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin text-amber-500 shrink-0" />
+                <span>AI agent searching dealer websites — results arrive in 2–5 min…</span>
+              </div>
+            )}
+            {/* Done, nothing found */}
+            {manusTriggered && manusResults.length === 0 && manusPending === 0 && manusSessionId && (
               <p className="text-sm text-muted-foreground py-2">
                 No matching vehicles found on dealer sites.
               </p>
