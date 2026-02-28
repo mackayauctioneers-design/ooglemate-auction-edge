@@ -119,7 +119,7 @@ export default function AuctionEnrichmentQueuePage() {
 
       const { data, error } = await query;
       if (error) throw error;
-      setItems((data as QueueItem[]) || []);
+      setItems((data as unknown as QueueItem[]) || []);
     } catch (err) {
       console.error('Failed to fetch queue items:', err);
       toast.error('Failed to load queue');
@@ -141,10 +141,10 @@ export default function AuctionEnrichmentQueuePage() {
   const resetStuck = async () => {
     setResetting(true);
     try {
-      const { data, error } = await supabase.rpc('reset_stuck_auction_queue_items' as never, { p_stuck_minutes: 30 });
+      const { data, error } = await supabase.rpc('reset_stuck_auction_queue_items' as any, { p_stuck_minutes: 30 } as any);
       if (error) throw error;
       const count = typeof data === 'number' ? data : 0;
-      toast.success(`Reset ${count} stuck item${count !== 1 ? 's' : ''} back to pending`);
+      toast.success(`Reset ${count} stuck item${count !== 1 as any ? 's' : ''} back to pending`);
       await refresh();
     } catch (err: any) {
       toast.error(`Reset failed: ${err.message}`);

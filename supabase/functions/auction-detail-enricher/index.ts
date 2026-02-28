@@ -329,7 +329,7 @@ Deno.serve(async (req) => {
       last_seen_at: new Date().toISOString(),
       last_ok: false,
       note: `Fatal: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500),
-    }, { onConflict: "cron_name" }).catch(() => {});
+    }, { onConflict: "cron_name" }).then(({ error: e }) => { if (e) console.warn("[AUCTION-ENRICHER] heartbeat write failed:", e.message); });
     return new Response(
       JSON.stringify({
         success: false,
