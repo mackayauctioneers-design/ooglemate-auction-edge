@@ -186,7 +186,7 @@ Deno.serve(async (req) => {
           auction_target_price, motivation_signal, margin_flag
         `)
         .in("listing_id", listingIds)
-        .in("status", ["open", "watching"])
+        .not("status", "in", '("ignored","expired","bought")')
         .order("best_expected_margin", { ascending: false });
 
       (opps || []).forEach((o: any) => {
