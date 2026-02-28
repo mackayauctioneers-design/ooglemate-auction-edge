@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Search, Database, Globe, MapPin, Gauge, DollarSign, ExternalLink, Radar, Mic, MicOff, Building2 } from "lucide-react";
+import { KitingLoader } from "@/components/ui/KitingLoader";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -693,16 +694,14 @@ export function OogleBotSearch() {
           <CardContent className="space-y-1.5">
             {/* Connecting — triggerManusSearch hasn't returned a session_id yet */}
             {manusTriggered && !manusSessionId && !manusPolling && manusResults.length === 0 && (
-              <div className="flex items-center gap-3 py-3 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin text-amber-500 shrink-0" />
-                <span>Connecting to dealer search network…</span>
+              <div className="flex flex-col items-center py-4 gap-1">
+                <KitingLoader size="md" label="Connecting to dealer search network…" />
               </div>
             )}
             {/* Session active, waiting for first results */}
             {manusResults.length === 0 && manusPending > 0 && (
-              <div className="flex items-center gap-3 py-3 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin text-amber-500 shrink-0" />
-                <span>AI agent searching dealer websites — results arrive in 2–5 min…</span>
+              <div className="flex flex-col items-center py-4 gap-1">
+                <KitingLoader size="md" label="AI agent searching dealer websites — results arrive in 2–5 min…" />
               </div>
             )}
             {/* Done, nothing found */}
