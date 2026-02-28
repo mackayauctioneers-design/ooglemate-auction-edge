@@ -546,6 +546,35 @@ export function OogleBotSearch() {
             </div>
           )}
 
+          {/* Manus Activity Banner */}
+          {manusPolling && manusPending > 0 && (
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 animate-pulse">
+              <div className="relative flex h-3 w-3 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                  Manus AI searching {manusPending} dealer site{manusPending > 1 ? "s" : ""}…
+                </p>
+                <p className="text-[11px] text-amber-600/70 dark:text-amber-500/70">
+                  {manusTotal - manusPending}/{manusTotal} complete · Results arrive in 2–5 min
+                </p>
+              </div>
+              <Loader2 className="h-4 w-4 animate-spin text-amber-600 shrink-0" />
+            </div>
+          )}
+
+          {/* Manus Complete Banner */}
+          {!manusPolling && manusTotal > 0 && hasSearched && (
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shrink-0"></span>
+              <p className="text-sm text-emerald-700 dark:text-emerald-400">
+                Manus complete — {manusResults.length} vehicle{manusResults.length !== 1 ? "s" : ""} found from {manusTotal} dealer site{manusTotal > 1 ? "s" : ""}
+              </p>
+            </div>
+          )}
+
           {!hasSearched && (
             <div className="text-xs text-muted-foreground space-y-1">
               <p className="font-medium">Be specific — include badge/variant for better results:</p>
