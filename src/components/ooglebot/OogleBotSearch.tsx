@@ -399,7 +399,7 @@ export function OogleBotSearch() {
         setManusPending(data.tasks_created);
         toast({
           title: `Searching ${data.sources_count} dealer sites`,
-          description: "Results will arrive in 2–5 minutes via Manus AI agent.",
+          description: "Results will arrive in 2–5 minutes via CaroogleAI.",
         });
       }
     } catch (err) {
@@ -555,7 +555,7 @@ export function OogleBotSearch() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-                  Manus AI searching {manusPending} dealer site{manusPending > 1 ? "s" : ""}…
+                  CaroogleAI searching {manusPending} dealer site{manusPending > 1 ? "s" : ""}…
                 </p>
                 <p className="text-[11px] text-amber-600/70 dark:text-amber-500/70">
                   {manusTotal - manusPending}/{manusTotal} complete · Results arrive in 2–5 min
@@ -570,7 +570,7 @@ export function OogleBotSearch() {
             <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
               <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shrink-0"></span>
               <p className="text-sm text-emerald-700 dark:text-emerald-400">
-                Manus complete — {manusResults.length} vehicle{manusResults.length !== 1 ? "s" : ""} found from {manusTotal} dealer site{manusTotal > 1 ? "s" : ""}
+                CaroogleAI complete — {manusResults.length} vehicle{manusResults.length !== 1 ? "s" : ""} found from {manusTotal} dealer site{manusTotal > 1 ? "s" : ""}
               </p>
             </div>
           )}
