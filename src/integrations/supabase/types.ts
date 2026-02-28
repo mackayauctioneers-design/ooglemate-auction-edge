@@ -12544,6 +12544,10 @@ export type Database = {
         }[]
       }
       release_pipeline_lock: { Args: never; Returns: undefined }
+      reset_stuck_auction_queue_items: {
+        Args: { p_stuck_minutes?: number }
+        Returns: number
+      }
       rollup_geo_model_metrics_daily: {
         Args: { p_day?: string }
         Returns: {

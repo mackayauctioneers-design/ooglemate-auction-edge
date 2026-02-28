@@ -3,14 +3,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 /**
  * MANUS AUCTION WEBHOOK - Phase 3: Receives detail extraction results from Manus
  * 
- * Replaces the processing logic from: grays-deep-fetch, manheim-deep-fetch, pickles-detail-crawler
+ * Manus webhook event types:
+ * - task_created: task started (ignore)
+ * - task_progress: intermediate updates (ignore)  
+ * - task_stopped: task completed with result in task_detail.message
  * 
  * Flow:
- * 1. Receive Manus task completion with extracted fields
- * 2. Look up the queue item via manus_search_tasks correlation
- * 3. Update pickles_detail_queue with enriched data
- * 4. For grays/manheim: update stub_anchors → create vehicle_listings → dealer_spec_matches
- * 5. For pickles: only update queue (no downstream match creation — matching existing behaviour)
+ * 1. Only process task_stopped events
+ * 2. Look up queue item via manus_search_tasks correlation
+ * 3. Parse JSON from task_detail.message
+ * 4. Update pickles_detail_queue with enriched data
+ * 5. For grays/manheim: create vehicle_listings → dealer_spec_matches
  */
 
 Deno.serve(async (req) => {
@@ -20,13 +23,27 @@ Deno.serve(async (req) => {
   );
 
   const payload = await req.json();
-  console.log("[AUCTION-WEBHOOK] Received:", JSON.stringify(payload).slice(0, 500));
+  const eventType = payload?.event_type;
+  const taskDetail = payload?.task_detail || {};
+  const progressDetail = payload?.progress_detail || {};
 
-  const taskId = payload?.task_id || payload?.id;
-  const result = payload?.result || payload?.output;
+  // Only process task_stopped events (task completed)
+  if (eventType !== "task_stopped") {
+    // Silently acknowledge progress/created events
+    return new Response(JSON.stringify({ ok: true, skipped: eventType }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const taskId = taskDetail.task_id;
+  const resultMessage = taskDetail.message || "";
+  const stopReason = taskDetail.stop_reason || "unknown";
+
+  console.log(`[AUCTION-WEBHOOK] task_stopped: ${taskId}, reason=${stopReason}, message=${resultMessage.slice(0, 200)}`);
 
   if (!taskId) {
-    return new Response("Missing task_id", { status: 400 });
+    return new Response("Missing task_id in task_detail", { status: 400 });
   }
 
   // Find the task record
@@ -37,8 +54,11 @@ Deno.serve(async (req) => {
     .single();
 
   if (!task) {
-    console.log(`[AUCTION-WEBHOOK] Unknown task_id: ${taskId}`);
-    return new Response("Unknown task", { status: 200 });
+    console.log(`[AUCTION-WEBHOOK] Unknown task_id: ${taskId} (may be from a different flow)`);
+    return new Response(JSON.stringify({ ok: true, skipped: "unknown_task" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   const filters = (task.search_filters || {}) as Record<string, any>;
@@ -46,7 +66,10 @@ Deno.serve(async (req) => {
   // Only process auction detail enrichment tasks
   if (filters.flow !== "auction_detail_enrichment") {
     console.log(`[AUCTION-WEBHOOK] Not an auction enrichment task, ignoring: ${taskId}`);
-    return new Response("Not auction enrichment", { status: 200 });
+    return new Response(JSON.stringify({ ok: true, skipped: "wrong_flow" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   const queueItemId = filters.queue_item_id;
@@ -54,12 +77,10 @@ Deno.serve(async (req) => {
   const sourceListingId = filters.source_listing_id as string;
   const stubAnchorId = filters.stub_anchor_id as string | null;
 
-  // Parse the structured JSON result from Manus
+  // Parse the structured JSON result from Manus task_detail.message
   let extracted: Record<string, any> = {};
   try {
-    const resultStr = String(result);
-    // Try to find a JSON object in the response
-    const jsonMatch = resultStr.match(/\{[\s\S]*\}/);
+    const jsonMatch = resultMessage.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       extracted = JSON.parse(jsonMatch[0]);
     }
@@ -67,11 +88,32 @@ Deno.serve(async (req) => {
     console.error(`[AUCTION-WEBHOOK] Failed to parse result for ${taskId}:`, e);
   }
 
+  // Handle expired/unavailable listings
+  if (extracted.listing_expired === true || extracted.sale_status === "withdrawn") {
+    console.log(`[AUCTION-WEBHOOK] Listing expired/withdrawn: ${source}:${sourceListingId}`);
+    await supabase
+      .from("pickles_detail_queue")
+      .update({
+        crawl_status: "listing_expired",
+        last_crawl_at: new Date().toISOString(),
+        last_crawl_error: null,
+        claimed_at: null,
+        claimed_by: null,
+        sale_status: "withdrawn",
+      })
+      .eq("id", queueItemId);
+
+    await updateTaskStatus(supabase, taskId, "complete", extracted);
+    return new Response(JSON.stringify({ ok: true, source, expired: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const hasData = Object.keys(extracted).length > 0;
   console.log(`[AUCTION-WEBHOOK] Task ${taskId} (${source}:${sourceListingId}): parsed ${hasData ? "OK" : "EMPTY"}`);
 
   if (!hasData) {
-    // Mark as error and release
     await supabase
       .from("pickles_detail_queue")
       .update({
@@ -126,7 +168,6 @@ Deno.serve(async (req) => {
     variant_raw: variantRaw,
   };
 
-  // Pickles-specific fields (if columns exist on queue table)
   if (source === "pickles") {
     if (guidePrice !== null) queueUpdate.guide_price = guidePrice;
     if (reservePrice !== null) queueUpdate.reserve_price = reservePrice;
@@ -148,7 +189,6 @@ Deno.serve(async (req) => {
   let matchesCreated = 0;
 
   if ((source === "grays" || source === "manheim") && stubAnchorId) {
-    // Update stub_anchor
     await supabase.from("stub_anchors").update({
       status: "enriched",
       km: km,
@@ -156,7 +196,6 @@ Deno.serve(async (req) => {
       updated_at: new Date().toISOString(),
     }).eq("id", stubAnchorId);
 
-    // Get stub_anchor data for matched_hunt_ids
     const { data: stubData } = await supabase
       .from("stub_anchors")
       .select("matched_hunt_ids, year, make, model, km, location")
@@ -165,9 +204,8 @@ Deno.serve(async (req) => {
 
     if (stubData?.matched_hunt_ids && stubData.matched_hunt_ids.length > 0) {
       const detailUrl = task.source_url;
-
-      // STEP 2a: Upsert vehicle_listing FIRST (FK constraint)
       const listingId = `${source}:${sourceListingId}`;
+
       const { data: listingResult, error: listingError } = await supabase
         .from("vehicle_listings")
         .upsert({
@@ -197,15 +235,12 @@ Deno.serve(async (req) => {
       } else if (listingResult?.id) {
         listingsCreated++;
         const listingUuid = listingResult.id;
-        console.log(`[AUCTION-WEBHOOK] Upserted vehicle_listing: ${listingId} → ${listingUuid}`);
 
-        // Batch-fetch dealer_specs
         const { data: specs } = await supabase
           .from("dealer_specs")
           .select("id, km_max")
           .in("id", stubData.matched_hunt_ids);
 
-        // STEP 2b: Create dealer_spec_matches
         for (const spec of specs || []) {
           let score = 100;
           if (km && spec.km_max && km > spec.km_max) score -= 20;
@@ -234,7 +269,7 @@ Deno.serve(async (req) => {
             });
 
           if (matchError) {
-            console.error(`[AUCTION-WEBHOOK] dealer_spec_matches upsert failed: spec=${spec.id}, listing=${listingUuid}: ${matchError.message}`);
+            console.error(`[AUCTION-WEBHOOK] match upsert failed: spec=${spec.id}: ${matchError.message}`);
           } else {
             matchesCreated++;
           }
