@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,37 +11,56 @@ import carbitrageLogo from '@/assets/carbitrage-logo.jpg';
 
 export default function AuthPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, isLoading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(searchParams.get('mode') === 'signup');
 
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   useEffect(() => {
     if (!authLoading && user) {
-      navigate('/today', { replace: true });
+      navigate('/dealer-home', { replace: true });
     }
   }, [authLoading, user, navigate]);
 
-  // Splash → login transition
   useEffect(() => {
     const timer = setTimeout(() => setShowLogin(true), 2000);
     return () => clearTimeout(timer);
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: loginEmail,
-      password: loginPassword,
-    });
-
-    setLoading(false);
-    if (error) { toast.error(error.message); return; }
-    if (data.user) { toast.success(`Signed in as ${data.user.email}`); navigate('/today', { replace: true }); }
+    if (isSignUp) {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: window.location.origin },
+      });
+      setLoading(false);
+      if (error) { toast.error(error.message); return; }
+      if (data.user && !data.session) {
+        toast.success('Check your email to confirm your account');
+      } else if (data.session) {
+        toast.success('Account created!');
+        navigate('/onboarding', { replace: true });
+      }
+    } else {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      setLoading(false);
+      if (error) { toast.error(error.message); return; }
+      if (data.user) {
+        toast.success(`Signed in as ${data.user.email}`);
+        navigate('/dealer-home', { replace: true });
+      }
+    }
   };
 
   if (authLoading) {
@@ -67,37 +86,37 @@ export default function AuthPage() {
         />
       </div>
 
-      {/* Stage 2: Login Reveal */}
+      {/* Stage 2: Auth Form */}
       <div
         className={`relative z-10 w-full max-w-md px-4 transition-all duration-700 ease-in-out delay-200 ${
           showLogin ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6 pointer-events-none'
         }`}
       >
-        {/* Small branding above card */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold tracking-tight text-white">
-            Carbitrage
-          </h1>
+          <h1 className="text-4xl font-bold tracking-tight text-white">Carbitrage</h1>
           <p className="text-sm text-white/50 mt-1 tracking-wide">
             powered by <span className="text-white/70">CaroogleAi</span>
           </p>
         </div>
 
-        {/* Login card */}
         <div className="rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-6 shadow-2xl">
           <div className="text-center mb-5">
-            <h2 className="text-lg font-semibold text-white">Sign in to your account</h2>
-            <p className="text-sm text-white/40 mt-0.5">Access your dealer intelligence</p>
+            <h2 className="text-lg font-semibold text-white">
+              {isSignUp ? 'Create your account' : 'Sign in to your account'}
+            </h2>
+            <p className="text-sm text-white/40 mt-0.5">
+              {isSignUp ? 'Start finding deals today' : 'Access your dealer intelligence'}
+            </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="login-email" className="text-white/70 text-sm">Email</Label>
+              <Label htmlFor="auth-email" className="text-white/70 text-sm">Email</Label>
               <Input
-                id="login-email"
+                id="auth-email"
                 type="email"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
                 disabled={loading}
@@ -105,23 +124,46 @@ export default function AuthPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="login-password" className="text-white/70 text-sm">Password</Label>
+              <Label htmlFor="auth-password" className="text-white/70 text-sm">Password</Label>
               <Input
-                id="login-password"
+                id="auth-password"
                 type="password"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={loading}
+                minLength={6}
                 className="bg-white/5 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20"
               />
             </div>
-            <Button type="submit" className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/10" disabled={loading}>
-              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Signing in...</> : 'Sign In'}
+            <Button
+              type="submit"
+              className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/10"
+              disabled={loading}
+            >
+              {loading ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{isSignUp ? 'Creating...' : 'Signing in...'}</>
+              ) : (
+                isSignUp ? 'Sign Up' : 'Sign In'
+              )}
             </Button>
           </form>
 
-          <p className="text-center text-xs text-white/30 mt-4">Access is invite-only</p>
+          <p className="text-center text-sm text-white/40 mt-4">
+            {isSignUp ? (
+              <>Already have an account?{' '}
+                <button onClick={() => setIsSignUp(false)} className="text-white/70 underline">
+                  Sign in
+                </button>
+              </>
+            ) : (
+              <>Need an account?{' '}
+                <button onClick={() => setIsSignUp(true)} className="text-white/70 underline">
+                  Sign up
+                </button>
+              </>
+            )}
+          </p>
         </div>
 
         <p className="text-center text-xs text-white/20 mt-6">Automotive Truth</p>

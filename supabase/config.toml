@@ -486,3 +486,9 @@ verify_jwt = false
 [functions.auction-queue-cleanup]
 verify_jwt = false
 schedule = "*/15 * * * *"
+
+[functions.create-checkout-session]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false

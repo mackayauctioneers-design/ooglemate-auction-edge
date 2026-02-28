@@ -1806,6 +1806,45 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_settings: {
+        Row: {
+          created_at: string
+          email_enabled: boolean
+          id: string
+          phone: string | null
+          push_enabled: boolean
+          quiet_hours_end: number | null
+          quiet_hours_start: number | null
+          sms_enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_enabled?: boolean
+          id?: string
+          phone?: string | null
+          push_enabled?: boolean
+          quiet_hours_end?: number | null
+          quiet_hours_start?: number | null
+          sms_enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email_enabled?: boolean
+          id?: string
+          phone?: string | null
+          push_enabled?: boolean
+          quiet_hours_end?: number | null
+          quiet_hours_start?: number | null
+          sms_enabled?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       dealer_site_postcode_xref: {
         Row: {
           dealer_slug: string
@@ -5923,6 +5962,51 @@ export type Database = {
           },
         ]
       }
+      plans: {
+        Row: {
+          auction_data: boolean
+          created_at: string
+          email_alerts: boolean
+          id: string
+          max_hunts: number
+          name: string
+          price_aud: number
+          priority_support: boolean
+          push_alerts: boolean
+          sms_alerts: boolean
+          stripe_price_id: string | null
+          stripe_product_id: string | null
+        }
+        Insert: {
+          auction_data?: boolean
+          created_at?: string
+          email_alerts?: boolean
+          id: string
+          max_hunts?: number
+          name: string
+          price_aud?: number
+          priority_support?: boolean
+          push_alerts?: boolean
+          sms_alerts?: boolean
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
+        }
+        Update: {
+          auction_data?: boolean
+          created_at?: string
+          email_alerts?: boolean
+          id?: string
+          max_hunts?: number
+          name?: string
+          price_aud?: number
+          priority_support?: boolean
+          push_alerts?: boolean
+          sms_alerts?: boolean
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
+        }
+        Relationships: []
+      }
       proven_exits: {
         Row: {
           computed_at: string
@@ -5987,6 +6071,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      push_subscriptions: {
+        Row: {
+          created_at: string
+          dealer_name: string
+          enabled: boolean
+          endpoint: string
+          id: string
+          keys_auth: string
+          keys_p256dh: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          dealer_name: string
+          enabled?: boolean
+          endpoint: string
+          id?: string
+          keys_auth: string
+          keys_p256dh: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          dealer_name?: string
+          enabled?: boolean
+          endpoint?: string
+          id?: string
+          keys_auth?: string
+          keys_p256dh?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
       }
       retail_geo_heat_sa2_daily: {
         Row: {
@@ -7954,6 +8074,63 @@ export type Database = {
           stubs_updated?: number | null
         }
         Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
+          dealer_profile_id: string | null
+          id: string
+          plan_id: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          dealer_profile_id?: string | null
+          id?: string
+          plan_id?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          dealer_profile_id?: string | null
+          id?: string
+          plan_id?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_dealer_profile_id_fkey"
+            columns: ["dealer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       taxonomy_models: {
         Row: {
