@@ -11326,6 +11326,23 @@ export type Database = {
         }
         Returns: Json
       }
+      claim_auction_detail_batch: {
+        Args: {
+          p_batch_size?: number
+          p_claim_by?: string
+          p_max_retries?: number
+          p_sources?: string[]
+        }
+        Returns: {
+          crawl_status: string
+          detail_url: string
+          id: string
+          retry_count: number
+          source: string
+          source_listing_id: string
+          stub_anchor_id: string
+        }[]
+      }
       claim_autotrader_crawl_batch: {
         Args: { p_batch_size?: number }
         Returns: {
