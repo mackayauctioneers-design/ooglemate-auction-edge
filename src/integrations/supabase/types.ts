@@ -2379,6 +2379,86 @@ export type Database = {
           },
         ]
       }
+      dms_sales_feed: {
+        Row: {
+          acquisition_cost: number | null
+          acquisition_date: string | null
+          colour: string | null
+          created_at: string
+          drivetrain: string | null
+          engine_type: string | null
+          fingerprint: string | null
+          fleet_client_id: string
+          id: string
+          make: string
+          model: string
+          odometer: number | null
+          reconditioning_cost: number | null
+          sale_date: string
+          sale_price: number
+          source_channel: string | null
+          stock_number: string | null
+          transmission: string | null
+          trim: string | null
+          vin: string | null
+          year: number
+        }
+        Insert: {
+          acquisition_cost?: number | null
+          acquisition_date?: string | null
+          colour?: string | null
+          created_at?: string
+          drivetrain?: string | null
+          engine_type?: string | null
+          fingerprint?: string | null
+          fleet_client_id: string
+          id?: string
+          make: string
+          model: string
+          odometer?: number | null
+          reconditioning_cost?: number | null
+          sale_date: string
+          sale_price: number
+          source_channel?: string | null
+          stock_number?: string | null
+          transmission?: string | null
+          trim?: string | null
+          vin?: string | null
+          year: number
+        }
+        Update: {
+          acquisition_cost?: number | null
+          acquisition_date?: string | null
+          colour?: string | null
+          created_at?: string
+          drivetrain?: string | null
+          engine_type?: string | null
+          fingerprint?: string | null
+          fleet_client_id?: string
+          id?: string
+          make?: string
+          model?: string
+          odometer?: number | null
+          reconditioning_cost?: number | null
+          sale_date?: string
+          sale_price?: number
+          source_channel?: string | null
+          stock_number?: string | null
+          transmission?: string | null
+          trim?: string | null
+          vin?: string | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dms_sales_feed_fleet_client_id_fkey"
+            columns: ["fleet_client_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feeding_mode_reports: {
         Row: {
           created_at: string
@@ -2837,6 +2917,457 @@ export type Database = {
           url_scraped?: string | null
         }
         Relationships: []
+      }
+      fleet_buyer_activity: {
+        Row: {
+          action: string
+          action_data: Json | null
+          created_at: string
+          id: string
+          instruction_id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          action_data?: Json | null
+          created_at?: string
+          id?: string
+          instruction_id: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          action_data?: Json | null
+          created_at?: string
+          id?: string
+          instruction_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_buyer_activity_instruction_id_fkey"
+            columns: ["instruction_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_buyer_instructions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_buyer_instructions: {
+        Row: {
+          acknowledged_at: string | null
+          assigned_buyer_id: string | null
+          auction_house: string | null
+          bid_amount: number | null
+          bid_placed_at: string | null
+          created_at: string
+          expected_days_to_sell: number | null
+          expected_gross: number | null
+          fleet_client_id: string
+          has_damage: boolean | null
+          id: string
+          km: number | null
+          listing_id: string | null
+          listing_url: string | null
+          make: string | null
+          model: string | null
+          no_reserve: boolean | null
+          notes: string | null
+          opportunity_id: string | null
+          outcome_at: string | null
+          priority: string | null
+          sale_close_at: string | null
+          score: number | null
+          source: string | null
+          status: string | null
+          target_acquisition_price: number | null
+          trim: string | null
+          updated_at: string
+          year: number | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          assigned_buyer_id?: string | null
+          auction_house?: string | null
+          bid_amount?: number | null
+          bid_placed_at?: string | null
+          created_at?: string
+          expected_days_to_sell?: number | null
+          expected_gross?: number | null
+          fleet_client_id: string
+          has_damage?: boolean | null
+          id?: string
+          km?: number | null
+          listing_id?: string | null
+          listing_url?: string | null
+          make?: string | null
+          model?: string | null
+          no_reserve?: boolean | null
+          notes?: string | null
+          opportunity_id?: string | null
+          outcome_at?: string | null
+          priority?: string | null
+          sale_close_at?: string | null
+          score?: number | null
+          source?: string | null
+          status?: string | null
+          target_acquisition_price?: number | null
+          trim?: string | null
+          updated_at?: string
+          year?: number | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          assigned_buyer_id?: string | null
+          auction_house?: string | null
+          bid_amount?: number | null
+          bid_placed_at?: string | null
+          created_at?: string
+          expected_days_to_sell?: number | null
+          expected_gross?: number | null
+          fleet_client_id?: string
+          has_damage?: boolean | null
+          id?: string
+          km?: number | null
+          listing_id?: string | null
+          listing_url?: string | null
+          make?: string | null
+          model?: string | null
+          no_reserve?: boolean | null
+          notes?: string | null
+          opportunity_id?: string | null
+          outcome_at?: string | null
+          priority?: string | null
+          sale_close_at?: string | null
+          score?: number | null
+          source?: string | null
+          status?: string | null
+          target_acquisition_price?: number | null
+          trim?: string | null
+          updated_at?: string
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_buyer_instructions_fleet_client_id_fkey"
+            columns: ["fleet_client_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_buyer_instructions_opportunity_id_fkey"
+            columns: ["opportunity_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_opportunity_scores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_client_users: {
+        Row: {
+          created_at: string
+          display_name: string
+          fleet_client_id: string
+          id: string
+          is_active: boolean
+          role: string
+          speciality_makes: string[] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string
+          fleet_client_id: string
+          id?: string
+          is_active?: boolean
+          role?: string
+          speciality_makes?: string[] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          fleet_client_id?: string
+          id?: string
+          is_active?: boolean
+          role?: string
+          speciality_makes?: string[] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_client_users_fleet_client_id_fkey"
+            columns: ["fleet_client_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_clients: {
+        Row: {
+          contact_email: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          display_name: string
+          dms_type: string
+          id: string
+          ingest_api_key: string
+          is_active: boolean
+          settings: Json | null
+          slug: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          display_name: string
+          dms_type?: string
+          id?: string
+          ingest_api_key?: string
+          is_active?: boolean
+          settings?: Json | null
+          slug: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          display_name?: string
+          dms_type?: string
+          id?: string
+          ingest_api_key?: string
+          is_active?: boolean
+          settings?: Json | null
+          slug?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      fleet_inventory_feed: {
+        Row: {
+          acquisition_cost: number | null
+          asking_price: number | null
+          created_at: string
+          days_on_lot: number | null
+          fingerprint: string | null
+          fleet_client_id: string
+          id: string
+          make: string
+          model: string
+          odometer: number | null
+          status: string | null
+          stock_number: string | null
+          trim: string | null
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          acquisition_cost?: number | null
+          asking_price?: number | null
+          created_at?: string
+          days_on_lot?: number | null
+          fingerprint?: string | null
+          fleet_client_id: string
+          id?: string
+          make: string
+          model: string
+          odometer?: number | null
+          status?: string | null
+          stock_number?: string | null
+          trim?: string | null
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          acquisition_cost?: number | null
+          asking_price?: number | null
+          created_at?: string
+          days_on_lot?: number | null
+          fingerprint?: string | null
+          fleet_client_id?: string
+          id?: string
+          make?: string
+          model?: string
+          odometer?: number | null
+          status?: string | null
+          stock_number?: string | null
+          trim?: string | null
+          updated_at?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_inventory_feed_fleet_client_id_fkey"
+            columns: ["fleet_client_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_opportunity_scores: {
+        Row: {
+          asking_price: number | null
+          auction_house: string | null
+          expected_days_to_sell: number | null
+          expected_gross: number | null
+          fleet_client_id: string
+          has_damage: boolean | null
+          id: string
+          km: number | null
+          listing_id: string | null
+          listing_url: string | null
+          make: string | null
+          matched_fingerprint: string | null
+          model: string | null
+          no_reserve: boolean | null
+          sale_close_at: string | null
+          score: number | null
+          scored_at: string
+          source: string | null
+          target_acquisition_price: number | null
+          trim: string | null
+          year: number | null
+        }
+        Insert: {
+          asking_price?: number | null
+          auction_house?: string | null
+          expected_days_to_sell?: number | null
+          expected_gross?: number | null
+          fleet_client_id: string
+          has_damage?: boolean | null
+          id?: string
+          km?: number | null
+          listing_id?: string | null
+          listing_url?: string | null
+          make?: string | null
+          matched_fingerprint?: string | null
+          model?: string | null
+          no_reserve?: boolean | null
+          sale_close_at?: string | null
+          score?: number | null
+          scored_at?: string
+          source?: string | null
+          target_acquisition_price?: number | null
+          trim?: string | null
+          year?: number | null
+        }
+        Update: {
+          asking_price?: number | null
+          auction_house?: string | null
+          expected_days_to_sell?: number | null
+          expected_gross?: number | null
+          fleet_client_id?: string
+          has_damage?: boolean | null
+          id?: string
+          km?: number | null
+          listing_id?: string | null
+          listing_url?: string | null
+          make?: string | null
+          matched_fingerprint?: string | null
+          model?: string | null
+          no_reserve?: boolean | null
+          sale_close_at?: string | null
+          score?: number | null
+          scored_at?: string
+          source?: string | null
+          target_acquisition_price?: number | null
+          trim?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_opportunity_scores_fleet_client_id_fkey"
+            columns: ["fleet_client_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_velocity_metrics: {
+        Row: {
+          avg_acquisition_cost: number | null
+          avg_days_to_sell: number | null
+          avg_gross_profit: number | null
+          computed_at: string
+          engine_type: string | null
+          fingerprint: string
+          fleet_client_id: string
+          id: string
+          in_stock: number | null
+          make: string
+          model: string
+          monthly_opportunity_value: number | null
+          sold_30d: number | null
+          sold_90d: number | null
+          stock_gap: number | null
+          trim: string | null
+          year_max: number | null
+          year_min: number | null
+        }
+        Insert: {
+          avg_acquisition_cost?: number | null
+          avg_days_to_sell?: number | null
+          avg_gross_profit?: number | null
+          computed_at?: string
+          engine_type?: string | null
+          fingerprint: string
+          fleet_client_id: string
+          id?: string
+          in_stock?: number | null
+          make: string
+          model: string
+          monthly_opportunity_value?: number | null
+          sold_30d?: number | null
+          sold_90d?: number | null
+          stock_gap?: number | null
+          trim?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          avg_acquisition_cost?: number | null
+          avg_days_to_sell?: number | null
+          avg_gross_profit?: number | null
+          computed_at?: string
+          engine_type?: string | null
+          fingerprint?: string
+          fleet_client_id?: string
+          id?: string
+          in_stock?: number | null
+          make?: string
+          model?: string
+          monthly_opportunity_value?: number | null
+          sold_30d?: number | null
+          sold_90d?: number | null
+          stock_gap?: number | null
+          trim?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_velocity_metrics_fleet_client_id_fkey"
+            columns: ["fleet_client_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       franchise_dealer_candidates: {
         Row: {

@@ -18,7 +18,7 @@ import { formatDistanceToNow, format } from 'date-fns';
 
 interface Instruction {
   id: string;
-  listing_id: string;
+  listing_id: string | null;
   make: string | null;
   model: string | null;
   year: number | null;
@@ -28,16 +28,14 @@ interface Instruction {
   auction_house: string | null;
   listing_url: string | null;
   sale_close_at: string | null;
-  buy_method: string | null;
   target_acquisition_price: number | null;
-  expected_gross_profit: number | null;
-  historical_days_to_sell: number | null;
-  composite_score: number | null;
-  instruction_text: string | null;
+  expected_gross: number | null;
+  expected_days_to_sell: number | null;
+  score: number | null;
+  notes: string | null;
   priority: 'critical' | 'high' | 'normal';
-  wovr_indicator: boolean;
-  damage_noted: boolean;
   no_reserve: boolean;
+  has_damage: boolean;
   status: 'pending' | 'acknowledged' | 'bid_placed' | 'won' | 'lost' | 'passed' | 'expired';
   acknowledged_at: string | null;
   bid_amount: number | null;
@@ -114,7 +112,7 @@ function InstructionCard({
               {instruction.no_reserve && (
                 <span className="text-[10px] font-bold tracking-widest px-2 py-0.5 rounded border bg-emerald-500/20 text-emerald-400 border-emerald-500/30">NO RESERVE</span>
               )}
-              {instruction.damage_noted && (
+              {instruction.has_damage && (
                 <span className="text-[10px] font-bold tracking-widest px-2 py-0.5 rounded border bg-orange-500/20 text-orange-400 border-orange-500/30">DAMAGE</span>
               )}
             </div>
@@ -150,17 +148,17 @@ function InstructionCard({
           </div>
           <div className="text-center border-x border-white/[0.08]">
             <p className="text-white/40 text-[10px] uppercase tracking-wider mb-0.5">Exp. Gross</p>
-            <p className={cn('font-bold text-lg', instruction.expected_gross_profit && instruction.expected_gross_profit > 0 ? 'text-emerald-400' : 'text-white/50')}>
-              {instruction.expected_gross_profit
-                ? `$${Math.round(instruction.expected_gross_profit).toLocaleString()}`
+            <p className={cn('font-bold text-lg', instruction.expected_gross && instruction.expected_gross > 0 ? 'text-emerald-400' : 'text-white/50')}>
+              {instruction.expected_gross
+                ? `$${Math.round(instruction.expected_gross).toLocaleString()}`
                 : '—'}
             </p>
           </div>
           <div className="text-center">
             <p className="text-white/40 text-[10px] uppercase tracking-wider mb-0.5">Days to Sell</p>
             <p className="text-white font-bold text-lg">
-              {instruction.historical_days_to_sell
-                ? `${Math.round(instruction.historical_days_to_sell)}d`
+              {instruction.expected_days_to_sell
+                ? `${Math.round(instruction.expected_days_to_sell)}d`
                 : '—'}
             </p>
           </div>
@@ -170,11 +168,11 @@ function InstructionCard({
         <div className="flex items-center gap-2 mb-3">
           <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
             <div
-              className={cn('h-full rounded-full transition-all', instruction.composite_score && instruction.composite_score >= 75 ? 'bg-emerald-400' : instruction.composite_score && instruction.composite_score >= 50 ? 'bg-amber-400' : 'bg-white/30')}
-              style={{ width: `${instruction.composite_score || 0}%` }}
+              className={cn('h-full rounded-full transition-all', instruction.score && instruction.score >= 75 ? 'bg-emerald-400' : instruction.score && instruction.score >= 50 ? 'bg-amber-400' : 'bg-white/30')}
+              style={{ width: `${instruction.score || 0}%` }}
             />
           </div>
-          <span className="text-white/40 text-xs font-mono">{instruction.composite_score || 0}/100</span>
+          <span className="text-white/40 text-xs font-mono">{instruction.score || 0}/100</span>
           {instruction.listing_url && (
             <a href={instruction.listing_url} target="_blank" rel="noopener noreferrer" className="text-white/40 hover:text-white transition-colors">
               <ExternalLink className="h-3.5 w-3.5" />
@@ -267,7 +265,7 @@ export default function BuyerTerminalPage() {
       .eq('assigned_buyer_id', user.id)
       .order('sale_close_at', { ascending: true, nullsFirst: false });
     if (error) { toast.error('Failed to load instructions'); return; }
-    setInstructions((data as Instruction[]) || []);
+    setInstructions((data as unknown as Instruction[]) || []);
     setLoading(false);
   }, [user]);
 
@@ -295,7 +293,7 @@ export default function BuyerTerminalPage() {
     if (error) { toast.error('Failed to update instruction'); return; }
 
     // Log activity
-    await supabase.from('fleet_buyer_activity').insert({
+    await (supabase.from('fleet_buyer_activity') as any).insert({
       instruction_id: id,
       user_id: user?.id,
       action,
