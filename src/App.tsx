@@ -16,6 +16,11 @@ import DealDetailPage from "./pages/DealDetailPage";
 import SalesUploadPage from "./pages/carbitrage/SalesUploadPage";
 import SalesInsightsPage from "./pages/SalesInsightsPage";
 import AuthPage from "./pages/AuthPage";
+import PricingPage from "./pages/PricingPage";
+import OnboardingPage from "./pages/OnboardingPage";
+import DealerHomePage from "./pages/DealerHomePage";
+import MyHuntsPage from "./pages/MyHuntsPage";
+import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 import ArchitectureOverviewPage from "./pages/ArchitectureOverviewPage";
 import ValoPage from "./pages/ValoPage";
@@ -118,7 +123,8 @@ const App = () => (
             <Sonner />
             <Routes>
               {/* === DEALER ROUTES === */}
-              <Route path="/" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
+              <Route path="/" element={<RequireAuth><DealerHomePage /></RequireAuth>} />
+              <Route path="/dealer-home" element={<RequireAuth><DealerHomePage /></RequireAuth>} />
               <Route path="/trading-desk" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
               <Route path="/sales-upload" element={<RequireAuth><SalesUploadPage /></RequireAuth>} />
               <Route path="/sales-insights" element={<RequireAuth><SalesInsightsPage /></RequireAuth>} />
@@ -127,6 +133,10 @@ const App = () => (
               <Route path="/valo" element={<RequireAuth><ValoPage /></RequireAuth>} />
               <Route path="/scan-guide" element={<RequireAuth><ScanGuidePage /></RequireAuth>} />
               <Route path="/ooglebot" element={<RequireAuth><DealerOogleBotPage /></RequireAuth>} />
+              <Route path="/my-hunts" element={<RequireAuth><MyHuntsPage /></RequireAuth>} />
+              <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
+              <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
+              <Route path="/pricing" element={<PricingPage />} />
               <Route path="/auth" element={<AuthPage />} />
               <Route path="/architecture" element={<ArchitectureOverviewPage />} />
 
