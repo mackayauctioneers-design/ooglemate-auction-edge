@@ -15,6 +15,7 @@ import { CarsalesIdKitModal } from "@/components/hunts/CarsalesIdKitModal";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { HuntHeader } from "@/components/hunts/HuntHeader";
+import { ManusTaskStatusBar } from "@/components/hunts/ManusTaskStatusBar";
 import { HuntKPICards } from "@/components/hunts/HuntKPICards";
 import { HuntAlertCardEnhanced } from "@/components/hunts/HuntAlertCardEnhanced";
 import { ProofOfHuntModal } from "@/components/hunts/ProofOfHuntModal";
@@ -37,6 +38,7 @@ export default function HuntDetailPage() {
   const [proofModalOpen, setProofModalOpen] = useState(false);
   const [selectedStrike, setSelectedStrike] = useState<HuntAlert | null>(null);
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
+  const [manusActive, setManusActive] = useState(false);
 
   const { data: hunt, isLoading: huntLoading } = useQuery({
     queryKey: ['hunt', huntId],
@@ -235,7 +237,8 @@ export default function HuntDetailPage() {
 
       toast.success(`Web search: ${fcCandidates} candidates, ${fcAlerts} alerts`);
       if (manusTasks > 0) {
-        toast.info(`${manusTasks} dealer site searches running — results arrive in 2–5 minutes`, { duration: 6000 });
+        setManusActive(true);
+        toast.info(`${manusTasks} dealer site searches started — watch the status bar below`, { duration: 4000 });
       }
     },
     onError: (error) => {
@@ -437,6 +440,23 @@ export default function HuntDetailPage() {
           lastAlertAt={alerts[0]?.created_at}
           lastMatchAt={matches[0]?.matched_at}
         />
+
+        {/* Manus Task Status Bar — shows live progress when dealer site searches are running */}
+        {manusActive && huntId && (
+          <ManusTaskStatusBar
+            huntId={huntId}
+            onComplete={(totalResults) => {
+              setManusActive(false);
+              queryClient.invalidateQueries({ queryKey: ['unified-candidates', huntId] });
+              queryClient.invalidateQueries({ queryKey: ['candidate-counts', huntId] });
+              queryClient.invalidateQueries({ queryKey: ['live-matches', huntId] });
+              refetchLiveMatches();
+              if (totalResults > 0) {
+                toast.success(`Manus found ${totalResults} result${totalResults !== 1 ? 's' : ''} from dealer sites`);
+              }
+            }}
+          />
+        )}
 
         {/* Link to Hunt Alerts */}
         {alerts.length > 0 && (
