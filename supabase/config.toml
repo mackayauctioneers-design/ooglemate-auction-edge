@@ -476,3 +476,10 @@ verify_jwt = false
 
 [functions.manus-webhook]
 verify_jwt = false
+
+[functions.auction-detail-enricher]
+verify_jwt = false
+schedule = "*/10 * * * *"
+
+[functions.manus-auction-webhook]
+verify_jwt = false
