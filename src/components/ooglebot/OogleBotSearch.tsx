@@ -440,20 +440,24 @@ export function OogleBotSearch() {
 
       if (oogleBotResult.status === "fulfilled") {
         setExternalResponse(oogleBotResult.value);
+      }
 
-        // Use parsed filters from ooglebot to trigger Manus in parallel
-        const filters = oogleBotResult.value.filters;
-        if (filters?.make) {
-          triggerManusSearch({
-            make: filters.make,
-            model: filters.model || undefined,
-            badge: filters.badge,
-            year_min: filters.year_min,
-            year_max: filters.year_max,
-            max_km: filters.max_km,
-            price_max: filters.price_max,
-          });
-        }
+      // Trigger Manus dealer search — always fires regardless of OogleBot success.
+      // Prefer structured filters from OogleBot NLP; fall back to regex parser.
+      const oogFilters =
+        oogleBotResult.status === "fulfilled" ? oogleBotResult.value.filters : null;
+      const fallback = parseSearchQuery(query);
+      const manusFilters = {
+        make: oogFilters?.make || fallback.make || "",
+        model: oogFilters?.model || fallback.model || undefined,
+        badge: oogFilters?.badge ?? null,
+        year_min: oogFilters?.year_min ?? fallback.yearMin,
+        year_max: oogFilters?.year_max ?? fallback.yearMax,
+        max_km: oogFilters?.max_km ?? fallback.kmMax,
+        price_max: oogFilters?.price_max ?? fallback.priceMax,
+      };
+      if (manusFilters.make) {
+        triggerManusSearch(manusFilters);
       }
 
       // Always auto-fire CaroogleAI — no button press needed.
