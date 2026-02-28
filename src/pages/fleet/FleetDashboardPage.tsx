@@ -44,15 +44,15 @@ interface BuyerPerformance {
 interface StockGap {
   make: string;
   model: string;
-  year_band: string;
+  year_min: number | null;
+  year_max: number | null;
   trim: string | null;
-  units_sold_30d: number;
-  units_in_stock: number;
-  stock_gap_units: number;
-  opportunity_value_monthly: number | null;
-  avg_gross_profit_90d: number | null;
-  avg_days_to_sell_90d: number | null;
-  velocity_score: number | null;
+  sold_30d: number;
+  in_stock: number;
+  stock_gap: number;
+  monthly_opportunity_value: number | null;
+  avg_gross_profit: number | null;
+  avg_days_to_sell: number | null;
 }
 
 interface AgedStock {
@@ -205,13 +205,13 @@ export default function FleetDashboardPage() {
     // Stock gaps
     const { data: gaps } = await supabase
       .from('fleet_velocity_metrics')
-      .select('make, model, year_band, trim, units_sold_30d, units_in_stock, stock_gap_units, opportunity_value_monthly, avg_gross_profit_90d, avg_days_to_sell_90d, velocity_score')
+      .select('make, model, year_min, year_max, trim, sold_30d, in_stock, stock_gap, monthly_opportunity_value, avg_gross_profit, avg_days_to_sell')
       .eq('fleet_client_id', fleetClientId)
-      .gt('stock_gap_units', 0)
-      .order('opportunity_value_monthly', { ascending: false })
+      .gt('stock_gap', 0)
+      .order('monthly_opportunity_value', { ascending: false })
       .limit(20);
 
-    setStockGaps((gaps as StockGap[]) || []);
+    setStockGaps((gaps as unknown as StockGap[]) || []);
 
     // Aged stock (>60 days)
     const { data: aged } = await supabase
@@ -365,24 +365,24 @@ export default function FleetDashboardPage() {
                             <span className="text-white font-medium">{gap.make} {gap.model}</span>
                             {gap.trim && <span className="text-white/40 ml-1 text-xs">{gap.trim}</span>}
                           </td>
-                          <td className="px-4 py-3 text-white/60">{gap.year_band}</td>
+                          <td className="px-4 py-3 text-white/60">{gap.year_min}–{gap.year_max}</td>
                           <td className="px-4 py-3">
-                            <span className={cn('font-semibold', gap.units_sold_30d >= 5 ? 'text-emerald-400' : 'text-white')}>{gap.units_sold_30d}</span>
+                            <span className={cn('font-semibold', gap.sold_30d >= 5 ? 'text-emerald-400' : 'text-white')}>{gap.sold_30d}</span>
                           </td>
-                          <td className="px-4 py-3 text-white/60">{gap.units_in_stock}</td>
+                          <td className="px-4 py-3 text-white/60">{gap.in_stock}</td>
                           <td className="px-4 py-3">
-                            <Badge className={cn('text-xs', gap.stock_gap_units >= 3 ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-amber-500/20 text-amber-400 border-amber-500/30')}>
-                              {gap.stock_gap_units} needed
+                            <Badge className={cn('text-xs', gap.stock_gap >= 3 ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-amber-500/20 text-amber-400 border-amber-500/30')}>
+                              {gap.stock_gap} needed
                             </Badge>
                           </td>
                           <td className="px-4 py-3 text-emerald-400 font-semibold">
-                            {gap.opportunity_value_monthly ? `$${Math.round(gap.opportunity_value_monthly / 1000)}k` : '—'}
+                            {gap.monthly_opportunity_value ? `$${Math.round(gap.monthly_opportunity_value / 1000)}k` : '—'}
                           </td>
                           <td className="px-4 py-3 text-white/60">
-                            {gap.avg_gross_profit_90d ? `$${Math.round(gap.avg_gross_profit_90d).toLocaleString()}` : '—'}
+                            {gap.avg_gross_profit ? `$${Math.round(gap.avg_gross_profit).toLocaleString()}` : '—'}
                           </td>
                           <td className="px-4 py-3 text-white/60">
-                            {gap.avg_days_to_sell_90d ? `${Math.round(gap.avg_days_to_sell_90d)}d` : '—'}
+                            {gap.avg_days_to_sell ? `${Math.round(gap.avg_days_to_sell)}d` : '—'}
                           </td>
                         </tr>
                       ))}
