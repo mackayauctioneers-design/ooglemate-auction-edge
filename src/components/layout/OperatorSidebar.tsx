@@ -22,6 +22,8 @@ import {
   Bookmark,
   TrendingUp,
   Bot,
+  Building2,
+  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -47,6 +49,13 @@ interface NavItem {
 }
 
 const operatorSections: NavSection[] = [
+  {
+    title: 'Fleet Enterprise',
+    items: [
+      { path: '/fleet/dashboard', label: 'Fleet Dashboard', icon: Building2 },
+      { path: '/fleet/buyer-terminal', label: 'Buyer Terminal', icon: Users },
+    ],
+  },
   {
     title: 'OogleBot',
     items: [

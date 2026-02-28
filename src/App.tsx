@@ -99,6 +99,8 @@ import PipelineHealthPage from "./pages/operator/PipelineHealthPage";
 import BuyIntelligencePage from "./pages/operator/BuyIntelligencePage";
 import DataSourcesPage from "./pages/operator/DataSourcesPage";
 import MorningBriefPage from "./pages/operator/MorningBriefPage";
+import BuyerTerminalPage from "./pages/fleet/BuyerTerminalPage";
+import FleetDashboardPage from "./pages/fleet/FleetDashboardPage";
 
 const queryClient = new QueryClient();
 
@@ -211,6 +213,10 @@ const App = () => (
               <Route path="/operator/buy-intelligence" element={<OperatorGuard><BuyIntelligencePage /></OperatorGuard>} />
               <Route path="/operator/sources" element={<OperatorGuard><DataSourcesPage /></OperatorGuard>} />
               <Route path="/operator/morning-brief" element={<OperatorGuard><MorningBriefPage /></OperatorGuard>} />
+
+              {/* Fleet Enterprise */}
+              <Route path="/fleet/buyer-terminal" element={<RequireAuth><BuyerTerminalPage /></RequireAuth>} />
+              <Route path="/fleet/dashboard" element={<RequireAuth><FleetDashboardPage /></RequireAuth>} />
 
               {/* Admin Tools */}
               <Route path="/admin-tools" element={<RequireAdmin><NotFound /></RequireAdmin>} />
