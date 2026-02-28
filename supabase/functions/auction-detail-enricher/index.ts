@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
   }
 
   const body = await req.json().catch(() => ({}));
-  const batchSize = body.batch_size || 5;
+  const batchSize = body.batch_size || 20;
   const startTime = Date.now();
 
   try {
@@ -277,7 +277,33 @@ Deno.serve(async (req) => {
     }
 
     const duration = Date.now() - startTime;
+    const runSuccess = errors.length < claimed.length; // success if at least some tasks created
     console.log(`[AUCTION-ENRICHER] Done in ${duration}ms: ${tasksCreated.length} tasks, ${errors.length} errors`);
+
+    // ── Health monitoring: write to cron_audit_log + cron_heartbeat ──
+    const runDate = new Date().toISOString();
+    await supabase.from("cron_audit_log").insert({
+      cron_name: "auction-detail-enricher",
+      run_date: runDate.split("T")[0],
+      run_at: runDate,
+      success: runSuccess,
+      result: {
+        items_claimed: claimed.length,
+        tasks_created: tasksCreated.length,
+        errors: errors.length,
+        duration_ms: duration,
+        total_new: tasksCreated.length,
+        total_updated: 0,
+      },
+      error: errors.length > 0 ? errors.slice(0, 3).join("; ") : null,
+    }).then(({ error: e }) => { if (e) console.warn("[AUCTION-ENRICHER] cron_audit_log insert failed:", e.message); });
+
+    await supabase.from("cron_heartbeat").upsert({
+      cron_name: "auction-detail-enricher",
+      last_seen_at: runDate,
+      last_ok: runSuccess,
+      note: `claimed=${claimed.length} tasks=${tasksCreated.length} errors=${errors.length}`,
+    }, { onConflict: "cron_name" }).then(({ error: e }) => { if (e) console.warn("[AUCTION-ENRICHER] cron_heartbeat upsert failed:", e.message); });
 
     return new Response(
       JSON.stringify({
@@ -293,6 +319,17 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     console.error("[AUCTION-ENRICHER] Fatal error:", error);
+    // Write failure to heartbeat so health check catches it
+    const supabaseErr = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    await supabaseErr.from("cron_heartbeat").upsert({
+      cron_name: "auction-detail-enricher",
+      last_seen_at: new Date().toISOString(),
+      last_ok: false,
+      note: `Fatal: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500),
+    }, { onConflict: "cron_name" }).catch(() => {});
     return new Response(
       JSON.stringify({
         success: false,

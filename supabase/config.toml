@@ -95,7 +95,7 @@ schedule = "*/15 * * * *"
 
 [functions.manheim-deep-fetch]
 verify_jwt = false
-schedule = "*/10 * * * *"
+# schedule removed 2026-02-28 — retired, replaced by auction-detail-enricher
 
 [functions.gumtree-cookie-refresh-apify]
 verify_jwt = false
@@ -296,7 +296,7 @@ schedule = "*/30 * * * *"
 
 [functions.pickles-deep-fetch]
 verify_jwt = false
-schedule = "*/10 * * * *"
+# schedule removed 2026-02-28 — retired, replaced by auction-detail-enricher
 
 [functions.grays-stub-ingest-webhook]
 verify_jwt = false

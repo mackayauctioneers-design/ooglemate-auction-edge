@@ -2,18 +2,20 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
  * MANUS AUCTION WEBHOOK - Phase 3: Receives detail extraction results from Manus
- * 
+ *
  * Manus webhook event types:
  * - task_created: task started (ignore)
- * - task_progress: intermediate updates (ignore)  
+ * - task_progress: intermediate updates (ignore)
  * - task_stopped: task completed with result in task_detail.message
- * 
+ *
  * Flow:
  * 1. Only process task_stopped events
  * 2. Look up queue item via manus_search_tasks correlation
  * 3. Parse JSON from task_detail.message
- * 4. Update pickles_detail_queue with enriched data
- * 5. For grays/manheim: create vehicle_listings → dealer_spec_matches
+ * 4. Update pickles_detail_queue with ALL enriched fields (incl. fuel/transmission/wovr/condition)
+ * 5. For ALL sources: write enriched data back to vehicle_listings
+ * 6. For grays/manheim with stub_anchor: also update stub_anchors + dealer_spec_matches
+ * 7. For pickles with stub_anchor: also create dealer_spec_matches (same as grays/manheim)
  */
 
 Deno.serve(async (req) => {
@@ -25,11 +27,9 @@ Deno.serve(async (req) => {
   const payload = await req.json();
   const eventType = payload?.event_type;
   const taskDetail = payload?.task_detail || {};
-  const progressDetail = payload?.progress_detail || {};
 
   // Only process task_stopped events (task completed)
   if (eventType !== "task_stopped") {
-    // Silently acknowledge progress/created events
     return new Response(JSON.stringify({ ok: true, skipped: eventType }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -72,10 +72,11 @@ Deno.serve(async (req) => {
     });
   }
 
-  const queueItemId = filters.queue_item_id;
+  const queueItemId = filters.queue_item_id as string;
   const source = filters.source as string;
   const sourceListingId = filters.source_listing_id as string;
   const stubAnchorId = filters.stub_anchor_id as string | null;
+  const detailUrl = task.source_url as string;
 
   // Parse the structured JSON result from Manus task_detail.message
   let extracted: Record<string, any> = {};
@@ -102,6 +103,17 @@ Deno.serve(async (req) => {
         sale_status: "withdrawn",
       })
       .eq("id", queueItemId);
+
+    // Also mark the vehicle_listing as expired if it exists
+    await supabase
+      .from("vehicle_listings")
+      .update({
+        sale_status: "withdrawn",
+        status: "delisted",
+        delisted_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString(),
+      })
+      .eq("listing_id", `${source}:${sourceListingId}`);
 
     await updateTaskStatus(supabase, taskId, "complete", extracted);
     return new Response(JSON.stringify({ ok: true, source, expired: true }), {
@@ -133,7 +145,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Normalise extracted values
+  // ── Normalise extracted values ──────────────────────────────────────────────
   const km = safeInt(extracted.km);
   const askingPrice = safeInt(extracted.asking_price);
   const guidePrice = safeInt(extracted.guide_price);
@@ -155,46 +167,171 @@ Deno.serve(async (req) => {
   const keysPresent = extracted.keys_present ?? null;
   const startsDrives = extracted.starts_drives ?? null;
   const conditionNotes = Array.isArray(extracted.condition_notes) ? extracted.condition_notes : [];
+  const make = extracted.make || null;
+  const model = extracted.model || null;
+  const year = safeInt(extracted.year);
 
-  // ── Step 1: Update pickles_detail_queue ──
+  // ── Step 1: Update pickles_detail_queue with ALL enriched fields ─────────────
   const queueUpdate: Record<string, any> = {
     crawl_status: "done",
     last_crawl_at: new Date().toISOString(),
     last_crawl_error: null,
     claimed_at: null,
     claimed_by: null,
-    km: km,
+    km,
     asking_price: askingPrice,
     variant_raw: variantRaw,
+    fuel,
+    transmission,
+    wovr_indicator: wovrIndicator,
+    damage_noted: damageNoted,
+    keys_present: keysPresent,
+    starts_drives: startsDrives,
+    condition_notes: conditionNotes.length > 0 ? conditionNotes : null,
+    reserve_status: reserveStatus,
+    price_type: priceType,
   };
 
-  if (source === "pickles") {
-    if (guidePrice !== null) queueUpdate.guide_price = guidePrice;
-    if (reservePrice !== null) queueUpdate.reserve_price = reservePrice;
-    if (soldPrice !== null) queueUpdate.sold_price = soldPrice;
-    if (buyMethod !== null) queueUpdate.buy_method = buyMethod;
-    if (saleCloseAt !== null) queueUpdate.sale_close_at = saleCloseAt;
-    if (saleStatus !== null) queueUpdate.sale_status = saleStatus;
-    if (state !== null) queueUpdate.state = state;
-    if (location !== null) queueUpdate.location = location;
-  }
+  if (make) queueUpdate.make = make;
+  if (model) queueUpdate.model = model;
+  if (year) queueUpdate.year = year;
+  if (guidePrice !== null) queueUpdate.guide_price = guidePrice;
+  if (reservePrice !== null) queueUpdate.reserve_price = reservePrice;
+  if (soldPrice !== null) queueUpdate.sold_price = soldPrice;
+  if (buyMethod !== null) queueUpdate.buy_method = buyMethod;
+  if (saleCloseAt !== null) queueUpdate.sale_close_at = saleCloseAt;
+  if (saleStatus !== null) queueUpdate.sale_status = saleStatus;
+  if (state !== null) queueUpdate.state = state;
+  if (location !== null) queueUpdate.location = location;
 
   await supabase
     .from("pickles_detail_queue")
     .update(queueUpdate)
     .eq("id", queueItemId);
 
-  // ── Step 2: For grays/manheim — downstream pipeline ──
+  // ── Step 2: Write enriched data back to vehicle_listings (ALL sources) ───────
+  // This is the key step that makes Manus enrichment useful downstream.
+  // The Caroogle feed populates vehicle_listings with basic data; Manus adds
+  // the detail-page fields (guide price, reserve, sale close, condition, etc.)
   let listingsCreated = 0;
   let matchesCreated = 0;
 
-  if ((source === "grays" || source === "manheim") && stubAnchorId) {
-    await supabase.from("stub_anchors").update({
-      status: "enriched",
-      km: km,
-      deep_fetch_completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }).eq("id", stubAnchorId);
+  const listingId = `${source}:${sourceListingId}`;
+
+  const vehicleListingUpdate: Record<string, any> = {
+    km,
+    asking_price: askingPrice,
+    variant_raw: variantRaw,
+    fuel,
+    transmission,
+    drivetrain: drivetrain || undefined,
+    location: location || undefined,
+    state: state || undefined,
+    price_type: priceType,
+    wovr_indicator: wovrIndicator,
+    damage_noted: damageNoted,
+    keys_present: keysPresent,
+    starts_drives: startsDrives,
+    condition_notes: conditionNotes.length > 0 ? conditionNotes : null,
+    reserve_status: reserveStatus,
+    guide_price: guidePrice,
+    reserve_price: reservePrice,
+    sold_price: soldPrice,
+    buy_method: buyMethod,
+    sale_close_at: saleCloseAt,
+    sale_status: saleStatus,
+    last_seen_at: new Date().toISOString(),
+    last_ingested_at: new Date().toISOString(),
+  };
+
+  // Remove undefined values to avoid overwriting with null
+  Object.keys(vehicleListingUpdate).forEach((k) => {
+    if (vehicleListingUpdate[k] === undefined) delete vehicleListingUpdate[k];
+  });
+
+  // Also update make/model/year if Manus extracted them (fills gaps from Caroogle)
+  if (make) vehicleListingUpdate.make = make.toUpperCase();
+  if (model) vehicleListingUpdate.model = model.toUpperCase();
+  if (year) vehicleListingUpdate.year = year;
+
+  // If the listing already exists (from Caroogle feed), update it
+  // If it doesn't exist (Grays/Manheim items), we'll upsert below
+  const { data: existingListing } = await supabase
+    .from("vehicle_listings")
+    .select("id, make, model, year, km, location")
+    .eq("listing_id", listingId)
+    .maybeSingle();
+
+  if (existingListing) {
+    // Update existing listing with enriched data
+    const { error: updateErr } = await supabase
+      .from("vehicle_listings")
+      .update(vehicleListingUpdate)
+      .eq("listing_id", listingId);
+
+    if (updateErr) {
+      console.error(`[AUCTION-WEBHOOK] vehicle_listings update failed for ${listingId}: ${updateErr.message}`);
+    } else {
+      listingsCreated++; // counts as "enriched"
+      console.log(`[AUCTION-WEBHOOK] Enriched vehicle_listing: ${listingId}`);
+    }
+  } else if (source === "grays" || source === "manheim") {
+    // For Grays/Manheim, the listing may not exist yet — upsert it
+    // (Pickles listings are always pre-populated by Caroogle feed)
+    const { data: upsertResult, error: upsertErr } = await supabase
+      .from("vehicle_listings")
+      .upsert({
+        listing_id: listingId,
+        source,
+        make: (make || "Unknown").toUpperCase(),
+        model: (model || "Unknown").toUpperCase(),
+        year: year || 2020,
+        km,
+        variant_raw: variantRaw,
+        asking_price: askingPrice,
+        listing_url: detailUrl,
+        location,
+        status: saleStatus === "sold" ? "sold" : "catalogue",
+        source_class: "auction",
+        seller_type: "dealer",
+        fuel,
+        transmission,
+        wovr_indicator: wovrIndicator,
+        damage_noted: damageNoted,
+        condition_notes: conditionNotes.length > 0 ? conditionNotes : null,
+        guide_price: guidePrice,
+        reserve_price: reservePrice,
+        sold_price: soldPrice,
+        buy_method: buyMethod,
+        sale_close_at: saleCloseAt,
+        sale_status: saleStatus,
+        reserve_status: reserveStatus,
+        first_seen_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString(),
+      }, { onConflict: "listing_id,source" })
+      .select("id")
+      .single();
+
+    if (upsertErr) {
+      console.error(`[AUCTION-WEBHOOK] vehicle_listings upsert failed for ${listingId}: ${upsertErr.message}`);
+    } else if (upsertResult?.id) {
+      listingsCreated++;
+    }
+  }
+
+  // ── Step 3: Stub anchor + dealer_spec_matches (Grays/Manheim AND Pickles) ───
+  // Previously only Grays/Manheim got this treatment. Now Pickles with a
+  // stub_anchor_id also gets dealer_spec_matches created.
+  if (stubAnchorId) {
+    // For Grays/Manheim: update stub_anchor status
+    if (source === "grays" || source === "manheim") {
+      await supabase.from("stub_anchors").update({
+        status: "enriched",
+        km,
+        deep_fetch_completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq("id", stubAnchorId);
+    }
 
     const { data: stubData } = await supabase
       .from("stub_anchors")
@@ -203,39 +340,16 @@ Deno.serve(async (req) => {
       .single();
 
     if (stubData?.matched_hunt_ids && stubData.matched_hunt_ids.length > 0) {
-      const detailUrl = task.source_url;
-      const listingId = `${source}:${sourceListingId}`;
-
-      const { data: listingResult, error: listingError } = await supabase
+      // Get the vehicle_listing UUID for the FK
+      const { data: listingRow } = await supabase
         .from("vehicle_listings")
-        .upsert({
-          listing_id: listingId,
-          source: source,
-          make: extracted.make || stubData.make || "Unknown",
-          model: extracted.model || stubData.model || "Unknown",
-          year: safeInt(extracted.year) || stubData.year || 2020,
-          km: km || stubData.km,
-          variant_raw: variantRaw,
-          asking_price: askingPrice,
-          listing_url: detailUrl,
-          location: location || stubData.location,
-          status: saleStatus === "sold" ? "sold" : "catalogue",
-          source_class: "auction",
-          seller_type: "dealer",
-          first_seen_at: new Date().toISOString(),
-          last_seen_at: new Date().toISOString(),
-        }, {
-          onConflict: "listing_id,source",
-        })
         .select("id")
-        .single();
+        .eq("listing_id", listingId)
+        .maybeSingle();
 
-      if (listingError) {
-        console.error(`[AUCTION-WEBHOOK] vehicle_listings upsert failed for ${listingId}: ${listingError.message}`);
-      } else if (listingResult?.id) {
-        listingsCreated++;
-        const listingUuid = listingResult.id;
+      const listingUuid = listingRow?.id;
 
+      if (listingUuid) {
         const { data: specs } = await supabase
           .from("dealer_specs")
           .select("id, km_max")
@@ -246,15 +360,16 @@ Deno.serve(async (req) => {
           if (km && spec.km_max && km > spec.km_max) score -= 20;
           if (wovrIndicator) score -= 30;
           if (damageNoted) score -= 15;
+          if (!startsDrives && startsDrives !== null) score -= 25;
 
           const { error: matchError } = await supabase
             .from("dealer_spec_matches")
             .upsert({
               dealer_spec_id: spec.id,
               listing_uuid: listingUuid,
-              make: extracted.make || stubData.make,
-              model: extracted.model || stubData.model,
-              year: safeInt(extracted.year) || stubData.year,
+              make: (make || stubData.make || "Unknown").toUpperCase(),
+              model: (model || stubData.model || "Unknown").toUpperCase(),
+              year: year || stubData.year,
               km: km || stubData.km,
               asking_price: askingPrice,
               listing_url: detailUrl,
@@ -264,9 +379,7 @@ Deno.serve(async (req) => {
               match_score: score,
               deal_label: score >= 70 ? "BUY" : score >= 50 ? "WATCH" : "SKIP",
               matched_at: new Date().toISOString(),
-            }, {
-              onConflict: "dealer_spec_id,listing_uuid",
-            });
+            }, { onConflict: "dealer_spec_id,listing_uuid" });
 
           if (matchError) {
             console.error(`[AUCTION-WEBHOOK] match upsert failed: spec=${spec.id}: ${matchError.message}`);
@@ -278,24 +391,24 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ── Step 3: Update task status ──
+  // ── Step 4: Update task status ───────────────────────────────────────────────
   await updateTaskStatus(supabase, taskId, "complete", extracted);
 
-  console.log(`[AUCTION-WEBHOOK] Done: ${source}:${sourceListingId} — listings=${listingsCreated}, matches=${matchesCreated}`);
+  console.log(`[AUCTION-WEBHOOK] Done: ${source}:${sourceListingId} — listings_enriched=${listingsCreated}, matches=${matchesCreated}, wovr=${wovrIndicator}, damage=${damageNoted}`);
 
   return new Response(
     JSON.stringify({
       ok: true,
       source,
       source_listing_id: sourceListingId,
-      listings_created: listingsCreated,
+      listings_enriched: listingsCreated,
       matches_created: matchesCreated,
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
 });
 
-// ── Helpers ──
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function safeInt(val: any): number | null {
   if (val === null || val === undefined) return null;

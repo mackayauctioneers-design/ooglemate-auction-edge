@@ -86,6 +86,7 @@ import SavedSearchesPage from "./pages/SavedSearchesPage";
 import AdminToolsPage from "./pages/AdminToolsPage";
 import AlertsPage from "./pages/AlertsPage";
 import PicklesIngestionPage from "./pages/PicklesIngestionPage";
+import AuctionEnrichmentQueuePage from "./pages/operator/AuctionEnrichmentQueuePage";
 import HuntAlertsPage from "./pages/HuntAlertsPage";
 import DealerOogleBotPage from "./pages/DealerOogleBotPage";
 
@@ -176,6 +177,7 @@ const App = () => (
               <Route path="/operator/auctions/add" element={<OperatorGuard><AddAuctionSourcePage /></OperatorGuard>} />
               <Route path="/operator/franchise-feeds" element={<OperatorGuard><FranchisePortalFeedsPage /></OperatorGuard>} />
               <Route path="/operator/feeding-mode" element={<OperatorGuard><FeedingModeReportPage /></OperatorGuard>} />
+              <Route path="/operator/auction-queue" element={<OperatorGuard><AuctionEnrichmentQueuePage /></OperatorGuard>} />
               <Route path="/operator/fingerprints" element={<RequireAdmin><FingerprintsExplorerPage /></RequireAdmin>} />
               <Route path="/operator/benchmark-gaps" element={<RequireAdmin><BenchmarkGapPanel /></RequireAdmin>} />
               <Route path="/operator/benchmark-watchlist" element={<RequireAdmin><BenchmarkWatchlistPage /></RequireAdmin>} />

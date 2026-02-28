@@ -34,6 +34,7 @@ export default function OperatorDashboardPage() {
         { label: 'Cron Audit Log', path: '/operator/cron-audit', icon: Activity, desc: 'Scheduled task history' },
         { label: 'Trap Health', path: '/operator/trap-health', icon: Activity, desc: 'Failing traps & alerts' },
         { label: 'Job Queue', path: '/operator/job-queue', icon: Activity, desc: 'Background job management' },
+        { label: 'Auction Queue', path: '/operator/auction-queue', icon: Database, desc: 'Manus enrichment queue (Pickles/Grays/Manheim)' },
       ]
     },
     {
