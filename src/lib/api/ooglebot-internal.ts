@@ -32,20 +32,36 @@ export function parseSearchQuery(query: string): {
 } {
   const q = query.trim();
   
-  // Extract price ceiling: "under 55000", "below 80k", "< $55,000", "budget 55000"
-  let priceMax: number | null = null;
-  const priceMatch = q.match(/(?:under|below|budget|max|<|less than)\s*\$?\s*([\d,]+)\s*k?\b/i);
-  if (priceMatch) {
-    let val = parseFloat(priceMatch[1].replace(/,/g, ""));
-    if (priceMatch[0].toLowerCase().includes("k") && val < 1000) val *= 1000;
-    priceMax = val;
+  // Extract KM first — MUST have an explicit km/kms/klm unit suffix.
+  // e.g. "under 80,000 km", "under 80k km", "<20000km", "low km"
+  let kmMax: number | null = null;
+  const kmMatch = q.match(/(?:under|below|<|less than)\s*([\d,]+)\s*k?\s*(?:klms|klm|kms|km)/i);
+  if (kmMatch) {
+    let kmVal = parseFloat(kmMatch[1].replace(/,/g, ""));
+    // handle "80k km" — the k before the unit means *1000
+    if (/\d+k\s*(?:klms|klm|kms|km)/i.test(kmMatch[0]) && kmVal < 1000) kmVal *= 1000;
+    kmMax = Math.round(kmVal);
+  } else if (/\blow\s*km\b/i.test(q)) {
+    kmMax = 80000;
   }
 
-  // Extract KM: "under 40000km", "low km", "<20000km"
-  let kmMax: number | null = null;
-  const kmMatch = q.match(/(?:under|below|<|less than)\s*([\d,]+)\s*(?:klms|klm|kms|km)/i);
-  if (kmMatch) {
-    kmMax = parseInt(kmMatch[1].replace(/,/g, ""), 10);
+  // Extract price ceiling.
+  // Requires $ sign OR explicit price/budget keyword,
+  // OR a bare "under N" / "under Nk" only when no km unit was already matched.
+  let priceMax: number | null = null;
+  const explicitPriceMatch = q.match(/(?:\$|under\s+\$|below\s+\$|budget|price|cost|max)\s*\$?\s*([\d,]+)\s*k?\b/i);
+  if (explicitPriceMatch) {
+    let val = parseFloat(explicitPriceMatch[1].replace(/,/g, ""));
+    if (explicitPriceMatch[0].toLowerCase().includes("k") && val < 1000) val *= 1000;
+    priceMax = Math.round(val);
+  } else if (!kmMax) {
+    // Bare "under N" or "under Nk" with no km unit — treat as price
+    const bareMatch = q.match(/(?:under|below|<|less than)\s*([\d,]+)\s*(k?)\b(?!\s*(?:klms|klm|kms|km))/i);
+    if (bareMatch) {
+      let val = parseFloat(bareMatch[1].replace(/,/g, ""));
+      if (bareMatch[2]?.toLowerCase() === "k" && val < 1000) val *= 1000;
+      priceMax = Math.round(val);
+    }
   }
 
   // Extract year(s): "2024", "2022-2025"

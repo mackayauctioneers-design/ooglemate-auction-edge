@@ -456,10 +456,9 @@ export function OogleBotSearch() {
         }
       }
 
-      // Auto-trigger CaroogleAI when no internal matches
-      if (listings.length === 0) {
-        triggerOutwardSearch(query, 0);
-      }
+      // Always auto-fire CaroogleAI — no button press needed.
+      // Pass internal count so the function can gate if there are plenty of results.
+      triggerOutwardSearch(query, listings.length);
     } catch (err) {
       console.error("Search error:", err);
     } finally {
@@ -705,33 +704,14 @@ export function OogleBotSearch() {
         </Card>
       )}
 
-      {/* ═══ OUTWARD SEARCH ═══ */}
-      {hasSearched && !internalLoading && !outwardResponse && (
-        <Card className="border-primary/30">
+      {/* CaroogleAI loading indicator — auto-fires, no button needed */}
+      {hasSearched && outwardLoading && !outwardResponse && (
+        <Card className="border-primary/20 bg-primary/5">
           <CardContent className="py-4">
-            <Button
-              onClick={handleOutwardSearch}
-              disabled={outwardLoading}
-              className="w-full"
-            >
-              {outwardLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Searching 10 domains...
-                </>
-              ) : (
-                <>
-                  <Radar className="h-4 w-4 mr-2" />
-                  🔍 CaroogleAI — Scan External Markets
-                </>
-              )}
-            </Button>
-            <p className="text-[10px] text-muted-foreground text-center mt-2">
-              {internalResults.length >= 3
-                ? `⚠️ ${internalResults.length} internal matches — CaroogleAI will be gated unless urgency is high`
-                : `${internalResults.length} internal matches — CaroogleAI enabled`}
-              {" · "}Pickles · Grays · Manheim · Slattery · Lloyds · Carsales · Autotrader · Drive · Carsguide · EasyAuto
-            </p>
+            <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <span>Scanning auctions, classifieds &amp; dealer stock…</span>
+            </div>
           </CardContent>
         </Card>
       )}
