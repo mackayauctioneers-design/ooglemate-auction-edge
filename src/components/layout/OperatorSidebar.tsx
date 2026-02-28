@@ -56,6 +56,7 @@ const operatorSections: NavSection[] = [
   {
     title: 'Trading',
     items: [
+      { path: '/operator/morning-brief', label: "Tomorrow's Targets", icon: Target },
       { path: '/operator/trading-desk', label: 'Trading Desk', icon: DollarSign },
       { path: '/today', label: 'Today', icon: Calendar },
       { path: '/dealer-dashboard', label: 'Dealer Dashboard', icon: BarChart3 },

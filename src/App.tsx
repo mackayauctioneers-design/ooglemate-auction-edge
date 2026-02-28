@@ -93,6 +93,7 @@ import AlertsMatchesPage from "./pages/operator/AlertsMatchesPage";
 import PipelineHealthPage from "./pages/operator/PipelineHealthPage";
 import BuyIntelligencePage from "./pages/operator/BuyIntelligencePage";
 import DataSourcesPage from "./pages/operator/DataSourcesPage";
+import MorningBriefPage from "./pages/operator/MorningBriefPage";
 
 const queryClient = new QueryClient();
 
@@ -199,6 +200,7 @@ const App = () => (
               <Route path="/operator/pipeline" element={<OperatorGuard><PipelineHealthPage /></OperatorGuard>} />
               <Route path="/operator/buy-intelligence" element={<OperatorGuard><BuyIntelligencePage /></OperatorGuard>} />
               <Route path="/operator/sources" element={<OperatorGuard><DataSourcesPage /></OperatorGuard>} />
+              <Route path="/operator/morning-brief" element={<OperatorGuard><MorningBriefPage /></OperatorGuard>} />
 
               {/* Admin Tools */}
               <Route path="/admin-tools" element={<RequireAdmin><NotFound /></RequireAdmin>} />
