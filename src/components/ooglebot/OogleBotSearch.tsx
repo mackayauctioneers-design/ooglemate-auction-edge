@@ -464,8 +464,8 @@ export function OogleBotSearch() {
       }
 
       // Always auto-fire CaroogleAI — no button press needed.
-      // Pass internal count so the function can gate if there are plenty of results.
-      triggerOutwardSearch(query, listings.length);
+      // Pass internal count + parsed filters so badge/model constraints stay strict.
+      triggerOutwardSearch(query, listings.length, manusFilters);
     } catch (err) {
       console.error("Search error:", err);
     } finally {
@@ -473,10 +473,22 @@ export function OogleBotSearch() {
     }
   };
 
-  const triggerOutwardSearch = async (searchQuery: string, internalCount: number) => {
+  const triggerOutwardSearch = async (
+    searchQuery: string,
+    internalCount: number,
+    filters?: {
+      make?: string | null;
+      model?: string | null;
+      badge?: string | null;
+      year_min?: number | null;
+      year_max?: number | null;
+      max_km?: number | null;
+      price_max?: number | null;
+    },
+  ) => {
     setOutwardLoading(true);
     try {
-      const response = await runOutwardSearch(searchQuery, internalCount);
+      const response = await runOutwardSearch(searchQuery, internalCount, "normal", filters);
       setOutwardResponse(response);
       if (response.gated) {
         toast({

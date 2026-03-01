@@ -55,6 +55,8 @@ const FREIGHT_FLAT = 800;
 const MAX_RESULTS = 30;
 const EXCLUDED_LIFECYCLE = ["STALE", "DEAD", "stale", "dead"];
 
+const normalizeToken = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -72,7 +74,20 @@ Deno.serve(async (req) => {
 
   const apiKey = Deno.env.get("LOVABLE_API_KEY") || "";
 
-  let body: { instruction?: string; internal_count?: number; urgency?: string };
+  let body: {
+    instruction?: string;
+    internal_count?: number;
+    urgency?: string;
+    filters?: {
+      make?: string | null;
+      model?: string | null;
+      badge?: string | null;
+      year_min?: number | null;
+      year_max?: number | null;
+      max_km?: number | null;
+      price_max?: number | null;
+    } | null;
+  };
   try {
     body = await req.json();
   } catch {
@@ -106,13 +121,24 @@ Deno.serve(async (req) => {
 
   const startMs = Date.now();
 
-  // --- 1. Parse intent with LLM ---
+  // --- 1. Resolve intent (prefer caller-provided structured filters) ---
   let intent: ParsedIntent = {
     make: null, model: null, badge: null,
     year_min: null, year_max: null, max_km: null, price_max: null,
   };
 
-  if (apiKey) {
+  const provided = body.filters;
+  if (provided?.make) {
+    intent = {
+      make: String(provided.make).toUpperCase(),
+      model: provided.model ? String(provided.model).toUpperCase() : null,
+      badge: provided.badge ? String(provided.badge).toUpperCase() : null,
+      year_min: typeof provided.year_min === "number" ? provided.year_min : null,
+      year_max: typeof provided.year_max === "number" ? provided.year_max : null,
+      max_km: typeof provided.max_km === "number" ? provided.max_km : null,
+      price_max: typeof provided.price_max === "number" ? provided.price_max : null,
+    };
+  } else if (apiKey) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
@@ -153,7 +179,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  // --- 2. Regex fallback if LLM unavailable or returned no make ---
+  // --- 2. Regex fallback if no make ---
   if (!intent.make) {
     const q = instruction;
     // km: must have km/klm/kms unit
@@ -229,24 +255,19 @@ Deno.serve(async (req) => {
   // If zero matches exist in the DB, we return empty results (correct behaviour — don't pollute with wrong variants).
   if (intent.badge) {
     const badgeUpper = intent.badge.toUpperCase();
-    // Tokenise multi-word badges: "N LINE PREMIUM" → ["N", "LINE", "PREMIUM"]
-    // Short tokens (1 char) are skipped to avoid false positives on single letters.
-    const badgeTokens = badgeUpper.split(/\s+/).filter(t => t.length > 1);
     filtered = filtered.filter((l: any) => {
-      // IMPORTANT: Do NOT include l.model in the variant check.
-      // Including model would cause false positives when the model name happens to
-      // contain badge-like words (e.g. model="I30 N LINE" would match any i30 listing).
-      const variants = [
-        l.variant_raw, l.variant_family, l.variant_used,
-      ]
+      const variants = [l.variant_raw, l.variant_family, l.variant_used]
         .filter(Boolean)
-        .map((v: string) => v.toUpperCase());
-      // If no variant fields are populated, we cannot confirm the badge — exclude the listing.
+        .map((v: string) => String(v).toUpperCase());
       if (variants.length === 0) return false;
-      // ALL badge tokens must appear somewhere in the variant fields
-      return badgeTokens.every(token =>
-        variants.some((v: string) => v.includes(token))
-      );
+
+      const normalizedVariants = variants.map(normalizeToken);
+      const normalizedBadge = normalizeToken(badgeUpper);
+      const badgeTokens = badgeUpper.split(/[\s-]+/).filter(Boolean).map(normalizeToken);
+
+      // Match either full normalized badge (NLINEPREMIUM) or all component tokens (N, LINE, PREMIUM).
+      if (normalizedBadge && normalizedVariants.some(v => v.includes(normalizedBadge))) return true;
+      return badgeTokens.every(token => normalizedVariants.some(v => v.includes(token)));
     });
   }
 
@@ -262,11 +283,13 @@ Deno.serve(async (req) => {
       score += 5; reasons.push("EXACT_MAKE");
     }
     if (intent.badge) {
-      const badgeUpper = intent.badge!.toUpperCase();
-      const variants = [l.variant_raw, l.variant_family, l.variant_used].filter(Boolean);
-      if (variants.some((v: string) => v.toUpperCase() === badgeUpper)) {
+      const normalizedBadge = normalizeToken(intent.badge!);
+      const normalizedVariants = [l.variant_raw, l.variant_family, l.variant_used]
+        .filter(Boolean)
+        .map((v: string) => normalizeToken(String(v)));
+      if (normalizedVariants.some((v: string) => v === normalizedBadge)) {
         score += 10; reasons.push("EXACT_BADGE");
-      } else if (variants.some((v: string) => v.toUpperCase().includes(badgeUpper))) {
+      } else if (normalizedVariants.some((v: string) => v.includes(normalizedBadge))) {
         score += 5; reasons.push("BADGE_PARTIAL");
       }
     }
@@ -336,6 +359,7 @@ Deno.serve(async (req) => {
       intent: {
         make: intent.make,
         model_keywords: intent.model ? [intent.model] : [],
+        badge: intent.badge,
         year: intent.year_min,
         max_km: intent.max_km,
         price_max: intent.price_max,

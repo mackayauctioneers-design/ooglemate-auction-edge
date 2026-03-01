@@ -138,9 +138,23 @@ export async function runOutwardSearch(
   instruction: string,
   internalCount?: number,
   urgency?: string,
+  filters?: {
+    make?: string | null;
+    model?: string | null;
+    badge?: string | null;
+    year_min?: number | null;
+    year_max?: number | null;
+    max_km?: number | null;
+    price_max?: number | null;
+  },
 ): Promise<OutwardSearchResponse> {
   const { data, error } = await supabase.functions.invoke("run-outward-search", {
-    body: { instruction, internal_count: internalCount ?? 0, urgency: urgency ?? "normal" },
+    body: {
+      instruction,
+      internal_count: internalCount ?? 0,
+      urgency: urgency ?? "normal",
+      filters: filters ?? null,
+    },
   });
 
   if (error) {
