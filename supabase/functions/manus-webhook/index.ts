@@ -189,6 +189,7 @@ Deno.serve(async (req) => {
       results: listings.map((l: any) => ({
         title: `${l.year || ""} ${make} ${model} ${l.badge || ""}`.trim(),
         price: l.price,
+        price_type: l.price_type || "unknown",
         km: l.km,
         year: l.year,
         location: l.location,
