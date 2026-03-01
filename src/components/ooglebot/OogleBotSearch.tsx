@@ -195,6 +195,7 @@ function OutwardResultCard({ result }: { result: OutwardSearchResult }) {
 interface ManusResult {
   title: string;
   price: number | null;
+  price_type: string | null;
   km: number | null;
   year: number | null;
   location: string | null;
@@ -204,6 +205,14 @@ interface ManusResult {
   source: string;
   colour: string | null;
   stock_no: string | null;
+}
+
+/** For sorting: normalise excl_govt prices by adding estimated on-road cost */
+const EGC_ON_ROAD_ESTIMATE = 3500;
+function sortablePrice(r: ManusResult): number {
+  if (r.price == null) return Infinity;
+  if (r.price_type === 'excl_govt') return r.price + EGC_ON_ROAD_ESTIMATE;
+  return r.price;
 }
 
 function ManusResultCard({ result, isBestPrice }: { result: ManusResult; isBestPrice?: boolean }) {
@@ -234,6 +243,9 @@ function ManusResultCard({ result, isBestPrice }: { result: ManusResult; isBestP
             <span className="flex items-center gap-1 font-medium text-foreground">
               <DollarSign className="h-3 w-3" />
               {formatPrice(result.price)}
+              {result.price_type === 'excl_govt' && (
+                <span className="text-[10px] text-muted-foreground font-normal">excl. govt charges</span>
+              )}
             </span>
           )}
           {result.km != null && (
@@ -291,11 +303,12 @@ function ManusResultsSection({
         map.set(key, r);
       }
     }
-    return Array.from(map.values()).sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+    return Array.from(map.values()).sort((a, b) => sortablePrice(a) - sortablePrice(b));
   })();
 
-  const top3 = deduped.slice(0, 3);
-  const rest = deduped.slice(3);
+  const DEFAULT_SHOW = 3;
+  const top3 = deduped.slice(0, DEFAULT_SHOW);
+  const hasMore = deduped.length > DEFAULT_SHOW;
   const displayed = showAll ? deduped : top3;
 
   return (
@@ -341,7 +354,7 @@ function ManusResultsSection({
           <ManusResultCard key={result.url || i} result={result} isBestPrice={i === 0 && deduped.length > 1} />
         ))}
         {/* Show all toggle */}
-        {rest.length > 0 && !showAll && (
+        {hasMore && !showAll && (
           <Button
             variant="ghost"
             size="sm"
@@ -351,7 +364,7 @@ function ManusResultsSection({
             Show all {deduped.length} results
           </Button>
         )}
-        {showAll && rest.length > 0 && (
+        {showAll && hasMore && (
           <Button
             variant="ghost"
             size="sm"
