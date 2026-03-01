@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { searchOogleBot, searchOogleBotDirect, runOutwardSearch, type OogleBotResponse, type OogleBotResult, type OutwardSearchResponse, type OutwardSearchResult } from "@/lib/api/ooglebot";
+import { searchOogleBot, searchOogleBotDirect, type OogleBotResponse, type OogleBotResult } from "@/lib/api/ooglebot";
 import { searchInternalInventory, searchDealerSpecs, parseSearchQuery, type InternalMatch } from "@/lib/api/ooglebot-internal";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, Database, Globe, MapPin, Gauge, DollarSign, ExternalLink, Radar, Mic, MicOff, Building2 } from "lucide-react";
+import { Loader2, Search, Database, Globe, MapPin, Gauge, DollarSign, ExternalLink, Mic, MicOff, Building2 } from "lucide-react";
 import { KitingLoader } from "@/components/ui/KitingLoader";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
 import { useToast } from "@/hooks/use-toast";
@@ -141,58 +141,6 @@ function ScoredResultCard({ result, showUrl, isOperator }: { result: OogleBotRes
     </div>
   );
 }
-
-function OutwardResultCard({ result }: { result: OutwardSearchResult }) {
-  return (
-    <div className="flex items-start justify-between gap-4 p-3 rounded-lg border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors">
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-sm text-foreground">
-            {result.title || "Untitled Listing"}
-          </span>
-          <Badge variant="default" className="text-[10px] px-1.5 py-0">
-            {result.source}
-          </Badge>
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-            Score: {result.score}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          {result.year && (
-            <span className="font-medium text-foreground">{result.year}</span>
-          )}
-          {result.variant && (
-            <span className="text-xs text-muted-foreground">{result.variant}</span>
-          )}
-          {result.price != null && (
-            <span className="flex items-center gap-1 font-medium text-foreground">
-              <DollarSign className="h-3 w-3" />
-              {formatPrice(result.price)}
-            </span>
-          )}
-          {result.km != null && (
-            <span className="flex items-center gap-1">
-              <Gauge className="h-3 w-3" />
-              {formatKm(result.km)}
-            </span>
-          )}
-          {result.location && (
-            <span className="flex items-center gap-1">
-              <MapPin className="h-3 w-3" />
-              {result.location}
-            </span>
-          )}
-        </div>
-      </div>
-      <a href={result.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-        <Button variant="ghost" size="iconSm" className="text-muted-foreground hover:text-primary">
-          <ExternalLink className="h-3.5 w-3.5" />
-        </Button>
-      </a>
-    </div>
-  );
-}
-
 interface ManusResult {
   title: string;
   price: number | null;
@@ -282,6 +230,7 @@ function ManusResultCard({ result, isBestPrice }: { result: ManusResult; isBestP
     </div>
   );
 }
+
 function ManusResultsSection({
   manusTriggered, manusSessionId, manusPolling, manusPending, manusTotal, manusResults,
 }: {
@@ -435,10 +384,8 @@ export function OogleBotSearch() {
   const [internalResults, setInternalResults] = useState<InternalMatch[]>([]);
   const [dealerSpecs, setDealerSpecs] = useState<{ id: string; name: string; make: string; model: string; dealer_name: string }[]>([]);
   const [externalResponse, setExternalResponse] = useState<OogleBotResponse | null>(null);
-  const [outwardResponse, setOutwardResponse] = useState<OutwardSearchResponse | null>(null);
   const [internalLoading, setInternalLoading] = useState(false);
   const [externalLoading, setExternalLoading] = useState(false);
-  const [outwardLoading, setOutwardLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
   // Manus state
@@ -558,7 +505,6 @@ export function OogleBotSearch() {
     setInternalResults([]);
     setDealerSpecs([]);
     setExternalResponse(null);
-    setOutwardResponse(null);
     setManusSessionId(null);
     setManusResults([]);
     setManusPending(0);
@@ -603,9 +549,7 @@ export function OogleBotSearch() {
         triggerManusSearch(manusFilters);
       }
 
-      // Always auto-fire CaroogleAI — no button press needed.
-      // Pass internal count + parsed filters so badge/model constraints stay strict.
-      triggerOutwardSearch(query, listings.length, manusFilters);
+      // Legacy outward search removed — trigger-manus-search handles all external sources now.
     } catch (err) {
       console.error("Search error:", err);
     } finally {
@@ -613,66 +557,6 @@ export function OogleBotSearch() {
     }
   };
 
-  const triggerOutwardSearch = async (
-    searchQuery: string,
-    internalCount: number,
-    filters?: {
-      make?: string | null;
-      model?: string | null;
-      badge?: string | null;
-      year_min?: number | null;
-      year_max?: number | null;
-      max_km?: number | null;
-      price_max?: number | null;
-    },
-  ) => {
-    setOutwardLoading(true);
-    try {
-      const response = await runOutwardSearch(searchQuery, internalCount, "normal", filters);
-      setOutwardResponse(response);
-      if (response.gated) {
-        toast({
-          title: "CaroogleAI skipped",
-          description: response.reason || "Sufficient internal matches available.",
-        });
-      } else if (response.results?.length === 0) {
-        toast({
-          title: "No external results",
-          description: response.message || "No qualifying vehicles found across external sources.",
-        });
-      }
-    } catch (err) {
-      console.error("CaroogleAI search error:", err);
-      toast({
-        title: "CaroogleAI search failed",
-        description: err instanceof Error ? err.message : "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setOutwardLoading(false);
-    }
-  };
-
-  const handleExternalSearch = async () => {
-    setExternalLoading(true);
-    try {
-      const response = await searchOogleBot(query);
-      setExternalResponse(response);
-    } catch (err) {
-      console.error("External search error:", err);
-      toast({
-        title: "External search failed",
-        description: err instanceof Error ? err.message : "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setExternalLoading(false);
-    }
-  };
-
-  const handleOutwardSearch = async () => {
-    triggerOutwardSearch(query, internalResults.length);
-  };
 
   const parsed = query.trim() ? parseSearchQuery(query) : null;
 
@@ -835,59 +719,7 @@ export function OogleBotSearch() {
         />
       )}
 
-      {/* CaroogleAI loading indicator — auto-fires, no button needed */}
-      {hasSearched && outwardLoading && !outwardResponse && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="py-4">
-            <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              <span>Scanning auctions, classifieds &amp; dealer stock…</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* CaroogleAI Results */}
-      {outwardResponse && (
-        <Card className="border-primary/30">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <Radar className="h-4 w-4 text-primary" />
-              CaroogleAI Results — Top {outwardResponse.results?.length || 0}
-            </CardTitle>
-            {outwardResponse.intent && (
-              <div className="flex flex-wrap gap-1.5 text-xs mt-1">
-                {outwardResponse.intent.make && <Badge variant="secondary">{outwardResponse.intent.make}</Badge>}
-                {outwardResponse.intent.model_keywords?.map((k, i) => (
-                  <Badge key={i} variant="secondary">{k}</Badge>
-                ))}
-                {outwardResponse.intent.year && (
-                  <Badge variant="outline">{outwardResponse.intent.year}</Badge>
-                )}
-                {outwardResponse.intent.max_km && <Badge variant="outline">≤{outwardResponse.intent.max_km.toLocaleString()} km</Badge>}
-                {outwardResponse.intent.price_max && <Badge variant="outline">≤${outwardResponse.intent.price_max.toLocaleString()}</Badge>}
-              </div>
-            )}
-            <div className="flex gap-3 text-[10px] text-muted-foreground mt-1">
-              {outwardResponse.total_searched != null && <span>Scanned: {outwardResponse.total_searched} listings</span>}
-              {outwardResponse.duration_ms != null && <span>Time: {(outwardResponse.duration_ms / 1000).toFixed(1)}s</span>}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-1.5">
-            {(outwardResponse.results?.length || 0) === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">
-                No qualifying vehicles found within current filters.
-              </p>
-            ) : (
-              [...outwardResponse.results!]
-                .sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity))
-                .map((result, i) => (
-                  <OutwardResultCard key={result.url || i} result={result} />
-                ))
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Legacy CaroogleAI section removed — trigger-manus-search handles all external sources */}
     </div>
   );
 }
