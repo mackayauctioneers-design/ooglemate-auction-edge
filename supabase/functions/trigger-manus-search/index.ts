@@ -229,8 +229,29 @@ Deno.serve(async (req) => {
     console.warn("[PIPELINE] Drive aggregator error:", err);
   }
 
-  /* ── ALWAYS dispatch CarsGuide + mega-dealers (no short-circuit) ── */
-  console.log(`[PIPELINE] Drive returned ${driveResultCount} results — dispatching all sources in parallel`);
+  /* ── Conditional dispatch: Drive >= 5 → skip Manus entirely ── */
+
+  if (driveResultCount >= 5) {
+    console.log(`[PIPELINE] Drive returned ${driveResultCount} results (≥5) — skipping all Manus tasks`);
+    return new Response(
+      JSON.stringify({
+        session_id: sessionId,
+        message: `Drive returned ${driveResultCount} results — Manus skipped`,
+        pipeline: {
+          drive_results: driveResultCount,
+          carsguide_task: null,
+          mega_dealer_tasks: 0,
+          brand_fallback_tasks: 0,
+        },
+        tasks_created: 0,
+        task_ids: [],
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  /* ── Drive < 5 → dispatch CarsGuide + mega-dealers in parallel ── */
+  console.log(`[PIPELINE] Drive returned ${driveResultCount} results (<5) — dispatching Manus sources`);
 
   /* ── STEP 3: CarsGuide aggregator (via Manus) ─── */
   let carsguideTaskId: string | null = null;
