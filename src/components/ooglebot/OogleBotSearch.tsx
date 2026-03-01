@@ -524,14 +524,24 @@ export function OogleBotSearch() {
         console.error("Manus trigger error:", error);
         return;
       }
+
+      // Immediately display tier-1 instant results (auction DB, Drive, Toyota)
+      if (data?.instant_results && Array.isArray(data.instant_results) && data.instant_results.length > 0) {
+        setManusResults(prev => [...prev, ...data.instant_results]);
+      }
+
       if (data?.session_id && data?.tasks_created > 0) {
         setManusSessionId(data.session_id);
         setManusTotal(data.tasks_created);
         setManusPending(data.tasks_created);
         toast({
-          title: `Searching ${data.sources_count} dealer sites`,
-          description: "Results will arrive in 2–5 minutes via CaroogleAI.",
+          title: `Searching ${data.tasks_created} dealer sites`,
+          description: "Results will arrive in 2–5 minutes.",
         });
+      } else if (data?.instant_results?.length > 0) {
+        // No Manus tasks dispatched but we have instant results — mark as done
+        setManusTotal(0);
+        setManusPending(0);
       }
     } catch (err) {
       console.error("Manus trigger failed:", err);
