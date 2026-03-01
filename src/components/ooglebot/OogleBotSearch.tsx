@@ -77,7 +77,7 @@ function InternalResultCard({ match, showUrl }: { match: InternalMatch; showUrl:
   );
 }
 
-function ScoredResultCard({ result, showUrl }: { result: OogleBotResult; showUrl: boolean }) {
+function ScoredResultCard({ result, showUrl, isOperator }: { result: OogleBotResult; showUrl: boolean; isOperator?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-4 p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors">
       <div className="flex-1 min-w-0 space-y-1">
@@ -88,20 +88,11 @@ function ScoredResultCard({ result, showUrl }: { result: OogleBotResult; showUrl
           {result.variant && (
             <span className="text-xs text-muted-foreground">{result.variant}</span>
           )}
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-            {result.source_class || result.source}
-          </Badge>
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-            Score: {result.score}
-          </Badge>
         </div>
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
           <span className="flex items-center gap-1 font-medium text-foreground">
             <DollarSign className="h-3 w-3" />
             {formatPrice(result.price)}
-          </span>
-          <span className="text-muted-foreground">
-            eff: {formatPrice(result.effective_cost)}
           </span>
           {result.km && (
             <span className="flex items-center gap-1">
@@ -115,12 +106,22 @@ function ScoredResultCard({ result, showUrl }: { result: OogleBotResult; showUrl
               {result.location || result.state}
             </span>
           )}
-          {result.auction_house && <span>{result.auction_house}</span>}
           {result.days_listed !== null && (
             <span>{result.days_listed}d listed</span>
           )}
         </div>
-        {result.match_reason.length > 0 && (
+        {/* Operator-only: source, score, effective cost, match reasons */}
+        {isOperator && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              {result.source_class || result.source}
+            </Badge>
+            <span>Score: {result.score}</span>
+            {result.effective_cost && <span>eff: {formatPrice(result.effective_cost)}</span>}
+            {result.auction_house && <span>{result.auction_house}</span>}
+          </div>
+        )}
+        {isOperator && result.match_reason.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {result.match_reason.map((r, i) => (
               <Badge key={i} variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground">
@@ -815,7 +816,7 @@ export function OogleBotSearch() {
               <p className="text-sm text-muted-foreground py-2">No scored results found.</p>
             ) : (
               externalResponse.results!.map((result, i) => (
-                <ScoredResultCard key={result.listing_id || i} result={result} showUrl={isAdmin} />
+                <ScoredResultCard key={result.listing_id || i} result={result} showUrl={isAdmin} isOperator={isAdmin} />
               ))
             )}
           </CardContent>
