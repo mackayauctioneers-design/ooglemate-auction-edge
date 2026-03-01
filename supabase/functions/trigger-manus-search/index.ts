@@ -232,7 +232,7 @@ async function queryDrive(
         year: r.year || null,
         location: loc,
         dealer_name: null, // Drive doesn't expose dealer name in listing results
-        url: `https://www.drive.com.au/cars-for-sale/listing/${r.id}/`,
+        url: `https://www.drive.com.au/cars-for-sale/${(r.makeDescription || make).toLowerCase().replace(/\s+/g, "-")}/${(r.familyDescription || model).toLowerCase().replace(/\s+/g, "-")}/${r.id}/`,
         badge: r.description || null,
         source: "drive",
         colour: null,
