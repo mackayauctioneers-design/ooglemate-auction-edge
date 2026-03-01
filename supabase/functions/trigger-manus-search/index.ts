@@ -42,43 +42,90 @@ interface FloorAssessment {
   outlier: boolean;
 }
 
-function assessMarketFloor(results: NormalisedResult[]): FloorAssessment {
-  const priced = results.filter((r) => r.price != null && r.price > 0).sort((a, b) => a.price! - b.price!);
-  const reasons: string[] = [];
+const STATE_STAMP_DUTY_RATES: Record<string, { threshold: number; low_rate: number; high_rate: number; base?: number }> = {
+  "VIC": { threshold: 76950, low_rate: 0.084, high_rate: 0.104 },
+  "NSW": { threshold: 45000, low_rate: 0.03, high_rate: 0.05, base: 1350 },
+  "QLD": { threshold: 100000, low_rate: 0.035, high_rate: 0.045, base: 3500 },
+  "WA": { threshold: 50000, low_rate: 0.028, high_rate: 0.065, base: 1400 },
+  "SA": { threshold: 3000, low_rate: 0.02, high_rate: 0.04, base: 60 },
+  "TAS": { threshold: 40000, low_rate: 0.03, high_rate: 0.04, base: 1200 },
+  "ACT": { threshold: 45000, low_rate: 0.03, high_rate: 0.05, base: 1350 },
+  "NT": { threshold: 0, low_rate: 0.03, high_rate: 0.03 },
+};
 
-  // LOW_VOLUME: fewer than 3 priced matches → floor unconfirmed
+function calculateExclGovtPrice(price: number, state: string | null): number {
+  const stateStr = (state || "").split(",").pop()?.trim().toUpperCase() || "NSW";
+  const stateAbbr = stateStr.substring(0, 3);
+  const rules = STATE_STAMP_DUTY_RATES[stateAbbr] || STATE_STAMP_DUTY_RATES["NSW"];
+
+  let stampDuty = 0;
+  if (rules.threshold === 0) {
+    stampDuty = price * rules.low_rate;
+  } else if (price <= rules.threshold) {
+    stampDuty = price * rules.low_rate;
+  } else {
+    stampDuty = (rules.base || 0) + (price - rules.threshold) * rules.high_rate;
+  }
+
+  const registrationFee = 800;
+  return price - stampDuty - registrationFee;
+}
+
+function assessMarketFloor(results: NormalisedResult[], yearMin?: number, yearMax?: number): FloorAssessment {
+  const priced = results
+    .map((r) => {
+      const newResult = { ...r };
+      if (newResult.price_type === "drive_away" && newResult.price) {
+        newResult.price = calculateExclGovtPrice(newResult.price, newResult.location);
+        newResult.price_type = 'excl_govt';
+      }
+      return newResult;
+    })
+    .filter((r) => r.price != null && r.price > 0)
+    .sort((a, b) => a.price! - b.price!);
+
+  const reasons: string[] = [];
+  const currentYear = new Date().getFullYear();
+  const isUsedCarSearch = (yearMin && yearMin < currentYear) || (yearMax && yearMax < currentYear);
+
+  const hasOnlyDriveResults = priced.length > 0 && priced.every((r) => r.source === "drive");
+  if (isUsedCarSearch && hasOnlyDriveResults) {
+    reasons.push("USED_CAR_DRIVE_ONLY");
+  }
+
   if (priced.length < 3) {
     reasons.push(`LOW_VOLUME(${priced.length})`);
   }
 
-  // HIGH_SPREAD: price spread > 8% between cheapest and 2nd cheapest
   let spreadPct: number | null = null;
-  if (priced.length >= 2) {
+  let outlierPct: number | null = null;
+
+  if (priced.length >= 3) {
     const cheapest = priced[0].price!;
-    const second = priced[1].price!;
-    if (second > 0) {
-      spreadPct = ((second - cheapest) / second) * 100;
+    const third = priced[2].price!;
+    if (third > 0) {
+      spreadPct = ((third - cheapest) / third) * 100;
       if (spreadPct > 8) {
-        reasons.push(`HIGH_SPREAD(${spreadPct.toFixed(1)}%)`);
+        reasons.push(`HIGH_SPREAD_TO_3RD(${spreadPct.toFixed(1)}%)`);
       }
     }
   }
 
-  // OUTLIER: cheapest is > 15% below the next result
-  let outlier = false;
   if (priced.length >= 2) {
     const cheapest = priced[0].price!;
-    const next = priced[1].price!;
-    if (next > 0 && ((next - cheapest) / next) * 100 > 15) {
-      outlier = true;
-      reasons.push(`OUTLIER(${cheapest} vs ${next})`);
+    const second = priced[1].price!;
+    if (second > 0) {
+      outlierPct = ((second - cheapest) / second) * 100;
+      if (outlierPct > 12) {
+        reasons.push(`OUTLIER_CHEAPEST(${outlierPct.toFixed(1)}%)`);
+      }
     }
   }
 
   const confirmed = reasons.length === 0;
-  console.log(`[FLOOR] pricedCount=${priced.length} spread=${spreadPct?.toFixed(1) ?? "N/A"}% outlier=${outlier} confirmed=${confirmed} reasons=[${reasons.join(",")}]`);
+  console.log(`[FLOOR_FINAL] priced=${priced.length} spreadTo3rd=${spreadPct?.toFixed(1)}% outlier=${outlierPct?.toFixed(1)}% confirmed=${confirmed} reasons=[${reasons.join(",")}]`);
 
-  return { confirmed, reasons, pricedCount: priced.length, spread_pct: spreadPct, outlier };
+  return { confirmed, reasons, pricedCount: priced.length, spread_pct: spreadPct, outlier: outlierPct ? outlierPct > 12 : false };
 }
 
 /* ── Manus execution contract prompt builder ─────── */
@@ -87,7 +134,13 @@ function buildManusPrompt(
   inventoryUrl: string,
   filters: Record<string, any>,
 ): string {
-  const { make, model, badge, yearLine, kmLine, priceLine } = filters;
+  const { make, model, badge, yearLine, kmLine, priceLine, tier1_min_price, tier1_max_price, year_min, year_max } = filters;
+  const currentYear = new Date().getFullYear();
+  const isUsedCarSearch = (year_min && year_min < currentYear) || (year_max && year_max < currentYear);
+
+  const priceRangeLine = tier1_min_price && tier1_max_price
+    ? `Price Range Hint: Focus on listings between $${Math.floor(tier1_min_price * 0.8)} and $${Math.ceil(tier1_max_price * 1.2)}.`
+    : "";
 
   const badgeContract = badge
     ? [
@@ -117,6 +170,8 @@ function buildManusPrompt(
     yearLine || "",
     kmLine || "",
     priceLine || "",
+    priceRangeLine,
+    isUsedCarSearch ? `VEHICLE AGE: This is a used vehicle search. Prioritize listings described as 'Used'. Ignore listings marked as 'New' or 'Demo'.` : "",
     ``,
     badgeContract,
     ``,
@@ -499,16 +554,30 @@ Deno.serve(async (req) => {
     console.log(`[PIPELINE] Drive badge exact filter "${badge}": ${beforeCount} → ${driveResults.length}`);
   }
 
-  const tier1Results = [...auctionResults, ...driveResults, ...toyotaResults];
+  // Normalize all Layer 0 prices to excl_govt basis BEFORE sorting or any downstream use.
+  const tier1Raw = [...auctionResults, ...driveResults, ...toyotaResults];
+  const tier1Results: NormalisedResult[] = tier1Raw.map((r) => {
+    if (r.price_type === "drive_away" && r.price) {
+      return {
+        ...r,
+        price: calculateExclGovtPrice(r.price, r.location),
+        price_type: "excl_govt",
+      };
+    }
+    return r;
+  }).sort((a, b) => (a.price || 999999) - (b.price || 999999));
   const tier1Count = tier1Results.length;
 
   console.log(`[PIPELINE] Layer-0: Auction(${auctionResults.length}) + Drive(${driveResultCount}) + Toyota(${toyotaResults.length}) = ${tier1Count} instant results`);
 
   /* ══════════════════════════════════════════════════
    * MARKET FLOOR ASSESSMENT
-   * Replace simple count threshold with statistical check
    * ══════════════════════════════════════════════════ */
-  const floor = assessMarketFloor(tier1Results);
+  const floor = assessMarketFloor(tier1Results, yearMin, yearMax);
+
+  const tier1Prices = tier1Results.map(r => r.price).filter(Boolean) as number[];
+  const minPrice = tier1Prices.length > 0 ? Math.min(...tier1Prices) : undefined;
+  const maxPrice = tier1Prices.length > 0 ? Math.max(...tier1Prices) : undefined;
 
   let carsguideTaskId: string | null = null;
   let carsalesTaskId: string | null = null;
@@ -558,7 +627,7 @@ Deno.serve(async (req) => {
 
         const csUrl = `https://www.carsales.com.au/cars/?${csParams.toString()}`;
 
-        carsalesTaskId = await dispatchManusTask(supabase, MANUS_API_KEY, csUrl, { ...taskFilterPayload, source: "carsales" }, sessionId, huntId);
+        carsalesTaskId = await dispatchManusTask(supabase, MANUS_API_KEY, csUrl, { ...taskFilterPayload, source: "carsales", tier1_min_price: minPrice, tier1_max_price: maxPrice }, sessionId, huntId);
         if (carsalesTaskId) totalManusDispatched++;
         console.log(`[PIPELINE] Carsales task: ${carsalesTaskId || "failed"}`);
       } catch (err) {
@@ -569,8 +638,6 @@ Deno.serve(async (req) => {
     /* ══════════════════════════════════════════════════
      * LAYER 2: Brand-scoped mega-dealer sweep
      * Only when Layer 0 returned zero results.
-     * Query dealer_outbound_sources filtered by brand,
-     * take top 3 brand-matching mega-dealers only.
      * ══════════════════════════════════════════════════ */
     if (tier1Count === 0 && totalManusDispatched < MAX_TOTAL_MANUS_TASKS) {
       const makeUpper = make.toUpperCase();
@@ -582,13 +649,11 @@ Deno.serve(async (req) => {
         .eq("enabled", true)
         .order("priority", { ascending: true });
 
-      // Filter to brand-matching sources (mega_dealer type preferred, then others)
       const brandMatched = (brandMegaSources || []).filter((s: any) => {
-        if (!s.brands || s.brands.length === 0) return false; // must explicitly list the brand
+        if (!s.brands || s.brands.length === 0) return false;
         return s.brands.some((b: string) => b.toUpperCase() === makeUpper);
       });
 
-      // Prefer mega_dealers first, then others
       const sorted = brandMatched.sort((a: any, b: any) => {
         if (a.dealer_type === "mega_dealer" && b.dealer_type !== "mega_dealer") return -1;
         if (a.dealer_type !== "mega_dealer" && b.dealer_type === "mega_dealer") return 1;
