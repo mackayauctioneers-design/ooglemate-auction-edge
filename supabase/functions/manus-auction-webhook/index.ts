@@ -18,6 +18,73 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * 7. For pickles with stub_anchor: also create dealer_spec_matches (same as grays/manheim)
  */
 
+const STAMP_DUTY_RATES: Record<string, any> = {
+  VIC: {
+    thresholds: [2400, 5900, 100000, 150000],
+    rates: [0.084, 0.06, 0.07, 0.09, 0.18],
+    base: [0, 201.6, 411.6, 6711.6, 11211.6],
+  },
+  NSW: {
+    thresholds: [45000, 60000],
+    rates: [0.03, 0.05, 0.05],
+    base: [0, 1350, 2100],
+  },
+  QLD: {
+    thresholds: [100000],
+    rates: [0.03, 0.04],
+    base: [0, 3000],
+  },
+  WA: {
+    thresholds: [25000, 50000],
+    rates: [0.0275, 0.065, 0.065],
+    base: [0, 687.5, 2312.5],
+  },
+  SA: {
+    thresholds: [1000, 2000, 3000],
+    rates: [0.01, 0.02, 0.03, 0.04],
+    base: [0, 10, 30, 60],
+  },
+  TAS: {
+    thresholds: [600, 35000, 40000],
+    rates: [0.03, 0.03, 0.04, 0.04],
+    base: [0, 18, 1068, 1268],
+  },
+  ACT: {
+    thresholds: [45000],
+    rates: [0.03, 0.05],
+    base: [0, 1350],
+  },
+  NT: {
+    rates: [0.03],
+    base: [0],
+  },
+};
+
+function calculateExclGovtPrice(driveAwayPrice: number, location: string): number {
+  const state = location?.split(",").pop()?.trim().toUpperCase() || "NSW";
+  const rules = STAMP_DUTY_RATES[state] || STAMP_DUTY_RATES.NSW;
+  let duty = 0;
+
+  if (rules.thresholds) {
+    for (let i = 0; i < rules.thresholds.length; i++) {
+      if (driveAwayPrice <= rules.thresholds[i]) {
+        duty = rules.base[i] + (driveAwayPrice - (rules.thresholds[i-1] || 0)) * rules.rates[i];
+        break;
+      }
+    }
+    if (duty === 0) { // Above top threshold
+      duty = rules.base[rules.base.length - 1] + (driveAwayPrice - rules.thresholds[rules.thresholds.length - 1]) * rules.rates[rules.rates.length - 1];
+    }
+  } else {
+    duty = driveAwayPrice * rules.rates[0];
+  }
+
+  // Simplified GST removal (assumes 1/11th of pre-duty price)
+  const preDutyPrice = driveAwayPrice - duty;
+  const gst = preDutyPrice / 11;
+  return preDutyPrice - gst;
+}
+
 Deno.serve(async (req) => {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -633,7 +700,29 @@ async function handleSearchTaskResult(
     for (const listing of listings) {
       if (!listing.direct_url || !listing.price) continue;
 
-      const sourceListingId = `manus-${listing.stock_no || listing.direct_url.replace(/[^a-zA-Z0-9]/g, "").slice(-40)}`;
+      // Prefix with hostname to prevent cross-source stock_no collisions
+      const sourceListingId = `manus-${hostname}-${listing.stock_no || listing.direct_url.replace(/[^a-zA-Z0-9]/g, "").slice(-40)}`;
+
+            // Fix 1: Price normalization
+      let price = listing.price;
+      let price_type = listing.price_type || "unknown";
+      if (price_type === "drive_away" && price) {
+        price = calculateExclGovtPrice(price, listing.location);
+        price_type = "excl_govt";
+      }
+
+      // Fix 2: Location parsing
+      let state = null;
+      let suburb = null;
+      if (listing.location) {
+        const parts = listing.location.split(",");
+        if (parts.length > 1) {
+          state = parts.pop().trim();
+          suburb = parts.join(", ").trim();
+        } else {
+          state = listing.location;
+        }
+      }
 
       const { error } = await supabase.from("retail_listings").upsert(
         {
@@ -642,12 +731,14 @@ async function handleSearchTaskResult(
           make: make || listing.make,
           model: model || listing.model,
           year: listing.year,
-          badge: listing.badge,
-          asking_price: listing.price,
-          price_type: listing.price_type || "unknown",
+          badge: listing.badge, // Fix 3: Badge is already the full string from Manus
+          asking_price: price,
+          price_type: price_type,
           km: listing.km,
           seller_name_raw: listing.dealer_name,
           region_raw: listing.location,
+          state: state,
+          suburb: suburb,
           source: hostname,
           source_type: "dealer_site",
           manus_task_id: taskId,
