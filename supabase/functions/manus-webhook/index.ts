@@ -182,7 +182,9 @@ Deno.serve(async (req) => {
   await supabase
     .from("manus_search_tasks")
     .update({
-      status: listings.length > 0 ? "complete" : "failed",
+      // "complete" even when zero results — empty is a valid completion, not a failure.
+      // "failed" should only be used when the webhook payload itself is malformed.
+      status: "complete",
       completed_at: new Date().toISOString(),
       results: listings.map((l: any) => ({
         title: `${l.year || ""} ${make} ${model} ${l.badge || ""}`.trim(),

@@ -146,10 +146,9 @@ Deno.serve(async (req) => {
           "API_KEY": MANUS_API_KEY,
           "accept": "application/json",
         },
-        body: JSON.stringify({
-          prompt,
-          webhook_url: webhookUrl,
-        }),
+        // Webhooks are account-scoped in Manus — do NOT pass webhook_url in the task body.
+        // The account-level webhook registered by auction-detail-enricher fires on all task completions.
+        body: JSON.stringify({ prompt }),
       });
 
       if (!res.ok) {

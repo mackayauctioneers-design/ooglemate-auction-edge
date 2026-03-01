@@ -233,12 +233,16 @@ Deno.serve(async (req) => {
     // Short tokens (1 char) are skipped to avoid false positives on single letters.
     const badgeTokens = badgeUpper.split(/\s+/).filter(t => t.length > 1);
     filtered = filtered.filter((l: any) => {
+      // IMPORTANT: Do NOT include l.model in the variant check.
+      // Including model would cause false positives when the model name happens to
+      // contain badge-like words (e.g. model="I30 N LINE" would match any i30 listing).
       const variants = [
         l.variant_raw, l.variant_family, l.variant_used,
-        l.model  // some sources embed badge in model field
       ]
         .filter(Boolean)
         .map((v: string) => v.toUpperCase());
+      // If no variant fields are populated, we cannot confirm the badge — exclude the listing.
+      if (variants.length === 0) return false;
       // ALL badge tokens must appear somewhere in the variant fields
       return badgeTokens.every(token =>
         variants.some((v: string) => v.includes(token))
