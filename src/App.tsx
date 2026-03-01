@@ -98,6 +98,7 @@ import AlertsMatchesPage from "./pages/operator/AlertsMatchesPage";
 import PipelineHealthPage from "./pages/operator/PipelineHealthPage";
 import BuyIntelligencePage from "./pages/operator/BuyIntelligencePage";
 import DataSourcesPage from "./pages/operator/DataSourcesPage";
+import AuctionSourcesPage from "./pages/operator/AuctionSourcesPage";
 import MorningBriefPage from "./pages/operator/MorningBriefPage";
 import BuyerTerminalPage from "./pages/fleet/BuyerTerminalPage";
 import FleetDashboardPage from "./pages/fleet/FleetDashboardPage";
@@ -212,6 +213,7 @@ const App = () => (
               <Route path="/operator/pipeline" element={<OperatorGuard><PipelineHealthPage /></OperatorGuard>} />
               <Route path="/operator/buy-intelligence" element={<OperatorGuard><BuyIntelligencePage /></OperatorGuard>} />
               <Route path="/operator/sources" element={<OperatorGuard><DataSourcesPage /></OperatorGuard>} />
+              <Route path="/operator/auction-sources" element={<OperatorGuard><AuctionSourcesPage /></OperatorGuard>} />
               <Route path="/operator/morning-brief" element={<OperatorGuard><MorningBriefPage /></OperatorGuard>} />
 
               {/* Fleet Enterprise */}

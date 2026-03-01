@@ -9,6 +9,7 @@ import CronAuditPage from '@/pages/operator/CronAuditPage';
 import JobQueuePage from '@/pages/operator/JobQueuePage';
 import AuctionEnrichmentQueuePage from '@/pages/operator/AuctionEnrichmentQueuePage';
 import CrossSafeMonitorPage from '@/pages/operator/CrossSafeMonitorPage';
+import { SourceCoverageWidget } from '@/components/operator/SourceCoverageWidget';
 
 export default function PipelineHealthPage() {
   useEffect(() => {
@@ -25,6 +26,8 @@ export default function PipelineHealthPage() {
             <p className="text-sm text-muted-foreground">Ingestion health, audit logs, cron jobs, and queue monitoring.</p>
           </div>
         </div>
+        {/* Source Coverage Widget */}
+        <SourceCoverageWidget />
 
         <Tabs defaultValue="health" className="w-full">
           <TabsList className="flex-wrap">
