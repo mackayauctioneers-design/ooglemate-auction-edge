@@ -1306,6 +1306,7 @@ export type Database = {
           dealer_domain: string
           dealer_name: string
           dealer_slug: string
+          dealer_type: string
           enabled: boolean
           id: string
           inventory_path: string
@@ -1314,6 +1315,7 @@ export type Database = {
           last_crawl_error: string | null
           notes: string | null
           priority: string
+          state: string | null
           updated_at: string
         }
         Insert: {
@@ -1323,6 +1325,7 @@ export type Database = {
           dealer_domain: string
           dealer_name: string
           dealer_slug: string
+          dealer_type?: string
           enabled?: boolean
           id?: string
           inventory_path?: string
@@ -1331,6 +1334,7 @@ export type Database = {
           last_crawl_error?: string | null
           notes?: string | null
           priority?: string
+          state?: string | null
           updated_at?: string
         }
         Update: {
@@ -1340,6 +1344,7 @@ export type Database = {
           dealer_domain?: string
           dealer_name?: string
           dealer_slug?: string
+          dealer_type?: string
           enabled?: boolean
           id?: string
           inventory_path?: string
@@ -1348,6 +1353,7 @@ export type Database = {
           last_crawl_error?: string | null
           notes?: string | null
           priority?: string
+          state?: string | null
           updated_at?: string
         }
         Relationships: []

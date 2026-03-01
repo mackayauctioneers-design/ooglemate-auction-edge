@@ -1,0 +1,43 @@
+
+-- Second-tier auction houses — corrected to use actual dealer_outbound_sources schema
+INSERT INTO public.dealer_outbound_sources (dealer_slug, dealer_name, dealer_domain, inventory_path, state, dealer_type, adapter_type, priority, enabled, notes)
+VALUES
+  ('f3-motor-auctions', 'F3 Motor Auctions', 'f3motorauctions.com.au', '/', 'NSW', 'wholesale', 'manus', 'high', true, 'Newcastle. Dealer + public. Auctions every Friday 10am. Lower price range to prestige.'),
+  ('auto-auctions-fairfield', 'Auto Auctions Fairfield', 'auto-auctions.com.au', '/', 'NSW', 'wholesale', 'manus', 'high', true, 'Fairfield East NSW. Public auction Wed 10:30am. All makes. Est. 1946.'),
+  ('suttons-auto-auctions', 'Suttons Auto Auctions', 'suttons.com.au', '/auto-auctions', 'NSW', 'wholesale', 'manus', 'high', true, 'Sydney. Public + dealer. Tue/Wed/Thu 10:30am. Wholesale prices.'),
+  ('carlins-sydney', 'Carlins Sydney', 'carlins.com.au', '/', 'NSW', 'wholesale', 'manus', 'normal', true, 'Girraween NSW. Dealer only. Weekly online auction. Corporate/fleet.'),
+  ('carbids-allbids', 'Carbids / AllBids Car Auctions', 'carbids.com.au', '/', 'NSW', 'wholesale', 'manus', 'normal', true, 'ACT/national. Public online. Police-seized, ex-government.'),
+  ('allbids-car-auctions', 'AllBids Car Auctions', 'allbids.com.au', '/b/allbids-car-auctions', 'ACT', 'wholesale', 'manus', 'normal', true, 'Fyshwick ACT. Public online. Police, government, estate vehicles.'),
+  ('lloyds-auctions-cars', 'Lloyds Auctions - Used Cars', 'lloydsauctions.com.au', '/used-cars-auto/', 'NSW', 'wholesale', 'manus', 'high', true, 'National. Public online. Weekly car auctions — sedans, 4WDs, utes.'),
+  ('slattery-auctions', 'Slattery Auctions', 'slatteryauctions.com.au', '/', 'NSW', 'wholesale', 'manus', 'normal', true, 'National. Public. Cars, trucks, machinery. Regular vehicle auctions.'),
+  ('iaai-australia', 'IAAI Australia', 'iaai.com.au', '/', 'NSW', 'wholesale', 'manus', 'high', true, 'National. 14 locations. Salvage and used vehicles. Largest salvage auction AU.'),
+  ('central-auto-auctions-brisbane', 'Central Auto Auctions Brisbane', 'centralautoauctions.com.au', '/', 'QLD', 'wholesale', 'manus', 'high', true, 'Eagle Farm QLD. Dealer only. Est. 1977. QLD oldest dealer-only auction.'),
+  ('city-motor-auction-brisbane', 'City Motor Auction Brisbane', 'citymotorauction.com.au', '/', 'QLD', 'wholesale', 'manus', 'high', true, 'Eagle Farm QLD. Dealer only. Wed 10am + Fri 11am.'),
+  ('carlins-brisbane', 'Carlins Brisbane', 'carlins.com.au', '/auctions', 'QLD', 'wholesale', 'manus', 'normal', true, 'Brisbane. Dealer only. Weekly auctions. Part of Carlins national network.'),
+  ('car-auctions-pacific', 'Car Auctions Pacific', 'carauctions.com.au', '/', 'QLD', 'wholesale', 'manus', 'normal', true, 'QLD. Public and dealer. Regular vehicle auctions SE QLD.'),
+  ('southside-auto-auctions', 'Southside Auto Auctions', 'southsideautoauctions.com.au', '/', 'QLD', 'wholesale', 'manus', 'normal', true, 'Brisbane Southside. Public. Weekly auctions. Price range and fleet.'),
+  ('central-motor-auctions-melbourne', 'Central Motor Auctions Melbourne', 'centralmotorauctions.com.au', '/', 'VIC', 'wholesale', 'manus', 'high', true, 'Melbourne. Est. 1988. One of Melbourne oldest vehicle wholesalers.'),
+  ('carlins-melbourne', 'Carlins Melbourne', 'carlins.com.au', '/melbourne', 'VIC', 'wholesale', 'manus', 'normal', true, 'Melbourne. Dealer only. Weekly auctions. Founded 1960.'),
+  ('fowles-auction-sales', 'Fowles Auction & Sales', 'fowles.com.au', '/', 'VIC', 'wholesale', 'manus', 'normal', true, 'Doreen VIC. Public. Weekly vehicle auctions. Wide price range.'),
+  ('manheim-fowles-melbourne', 'Manheim Fowles Melbourne', 'manheimfowles.com.au', '/', 'VIC', 'wholesale', 'manus', 'high', true, 'Melbourne. Dealer and fleet. Government, fleet, damaged, prestige.'),
+  ('lloyds-auctions-victoria', 'Lloyds Auctions Victoria', 'lloydsauctions.com.au', '/victoria', 'VIC', 'wholesale', 'manus', 'normal', true, 'VIC operations. Weekly vehicle auctions including classic.'),
+  ('carlins-perth', 'Carlins Perth', 'carlins.com.au', '/perth', 'WA', 'wholesale', 'manus', 'normal', true, 'Perth WA. Dealer only. Weekly auctions.'),
+  ('pickles-perth', 'Pickles Perth', 'pickles.com.au', '/locations/perth', 'WA', 'wholesale', 'manus', 'normal', true, 'Perth WA. Pickles branch. Government, fleet, damaged.'),
+  ('slattery-adelaide', 'Slattery Auctions Adelaide', 'slatteryauctions.com.au', '/adelaide', 'SA', 'wholesale', 'manus', 'normal', true, 'Adelaide SA operations. Cars, trucks, machinery.'),
+  ('pickles-adelaide', 'Pickles Adelaide', 'pickles.com.au', '/locations/adelaide', 'SA', 'wholesale', 'manus', 'normal', true, 'Adelaide SA. Pickles branch. Government, fleet, damaged.'),
+  ('lloyds-adelaide', 'Lloyds Auctions Adelaide', 'lloydsauctions.com.au', '/adelaide', 'SA', 'wholesale', 'manus', 'normal', true, 'SA operations. Weekly vehicle auctions.'),
+  ('carbids-fyshwick', 'Carbids Auctionplace Fyshwick', 'carbids.com.au', '/fyshwick', 'ACT', 'wholesale', 'manus', 'normal', true, 'Fyshwick ACT. Public. Enthusiast, police-seized, government fleet.'),
+  ('turners-auctions-au', 'Turners Auctions Australia', 'turners.co.nz', '/au', 'National', 'wholesale', 'manus', 'normal', true, 'NZ-origin, expanding AU. Online. Fleet, damaged, finance repo.'),
+  ('grays-online-cars', 'GraysOnline Cars', 'grays.com', '/cars', 'National', 'wholesale', 'manus', 'high', true, 'National online. Fleet, government, damaged. Partially integrated.'),
+  ('pickles-online', 'Pickles Online', 'pickles.com.au', '/', 'National', 'wholesale', 'manus', 'high', true, 'National. Primary integrated source. Included for outbound search.'),
+  ('manheim-online', 'Manheim Online', 'manheim.com.au', '/', 'National', 'wholesale', 'manus', 'high', true, 'National. Fleet, government, damaged, prestige. Weekly auctions.')
+ON CONFLICT (dealer_slug) DO UPDATE SET
+  dealer_name = EXCLUDED.dealer_name,
+  dealer_domain = EXCLUDED.dealer_domain,
+  inventory_path = EXCLUDED.inventory_path,
+  state = EXCLUDED.state,
+  dealer_type = EXCLUDED.dealer_type,
+  adapter_type = EXCLUDED.adapter_type,
+  priority = EXCLUDED.priority,
+  notes = EXCLUDED.notes,
+  updated_at = now();
