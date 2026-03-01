@@ -64,15 +64,35 @@ Deno.serve(async (req) => {
   // Generate a session_id for grouping (used by OogleBot frontend to poll)
   const sessionId = crypto.randomUUID();
 
-  // Get Manus-type sources
-  const { data: sources } = await supabase
+  // Get all active sources that can be searched by Manus:
+  // - adapter_type = 'manus' (complex JS-heavy dealer sites)
+  // - adapter_type = 'generic_scrape' (auction houses, standard dealer sites)
+  // Exclude 'none' (blocked crawlers), 'pickles', 'grays', 'manheim' (have dedicated pipelines)
+  // Cap at 15 sources per search to avoid overwhelming the Manus task queue.
+  const { data: allSources } = await supabase
     .from("dealer_outbound_sources")
     .select("*")
-    .eq("adapter_type", "manus")
-    .eq("enabled", true);
+    .in("adapter_type", ["manus", "generic_scrape"])
+    .eq("is_active", true)
+    .not("adapter_type", "in", "(pickles,grays,manheim)")
+    .order("priority", { ascending: false })
+    .limit(15);
+
+  // Also try the old 'enabled' column name for backwards compatibility
+  const { data: legacySources } = !allSources || allSources.length === 0
+    ? await supabase
+        .from("dealer_outbound_sources")
+        .select("*")
+        .in("adapter_type", ["manus", "generic_scrape"])
+        .eq("enabled", true)
+        .order("priority", { ascending: false })
+        .limit(15)
+    : { data: null };
+
+  const sources = allSources?.length ? allSources : (legacySources || []);
 
   if (!sources || sources.length === 0) {
-    return new Response(JSON.stringify({ session_id: sessionId, message: "No Manus sources configured", tasks_created: 0 }), {
+    return new Response(JSON.stringify({ session_id: sessionId, message: "No searchable sources configured", tasks_created: 0 }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
@@ -81,9 +101,17 @@ Deno.serve(async (req) => {
   const tasksCreated: string[] = [];
 
   for (const source of sources) {
-    const inventoryUrl = source.inventory_path
-      ? `https://${source.dealer_domain}${source.inventory_path}`
-      : `https://${source.dealer_domain}`;
+    // Support both new schema (url column) and old schema (dealer_domain + inventory_path)
+    const inventoryUrl = source.url
+      || (source.inventory_path
+          ? `https://${source.dealer_domain}${source.inventory_path}`
+          : `https://${source.dealer_domain}`);
+
+    if (!inventoryUrl || inventoryUrl === 'https://undefined') continue;
+
+    const strictBadgeInstruction = badge
+      ? `IMPORTANT: Only return vehicles that are specifically the "${badge}" variant/badge/trim. Do NOT return other variants like BASE, Active, Elite, or any other trim that is not "${badge}". If no exact match exists, return an empty array.`
+      : "";
 
     const prompt = [
       `Search the website ${inventoryUrl} for used cars matching:`,
@@ -93,13 +121,14 @@ Deno.serve(async (req) => {
       yearLine,
       kmLine,
       priceLine,
+      strictBadgeInstruction,
       "",
       "For each matching vehicle found, extract and return a JSON array with these fields:",
       "- price (integer, AUD, exclude govt charges if possible)",
       "- price_type (string: 'drive_away' or 'excl_govt' or 'unknown')",
       "- km (integer)",
       "- year (integer)",
-      "- badge (string)",
+      "- badge (string, the exact variant/trim name as shown on the listing)",
       "- colour (string)",
       "- location (string, suburb and state)",
       "- dealer_name (string)",

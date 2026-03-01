@@ -224,15 +224,26 @@ Deno.serve(async (req) => {
   // --- 4. Badge/variant filter and scoring ---
   let filtered = listings || [];
 
-  // If badge specified, prefer exact badge matches but don't hard-exclude
+  // STRICT badge filter — if a badge/variant is specified, ONLY return listings that match it.
+  // A search for "N Line Premium" must NEVER return "BASE", "Active", "Elite" etc.
+  // If zero matches exist in the DB, we return empty results (correct behaviour — don't pollute with wrong variants).
   if (intent.badge) {
     const badgeUpper = intent.badge.toUpperCase();
-    const exact = filtered.filter((l: any) => {
-      const variants = [l.variant_raw, l.variant_family, l.variant_used].filter(Boolean);
-      return variants.some((v: string) => v.toUpperCase().includes(badgeUpper));
+    // Tokenise multi-word badges: "N LINE PREMIUM" → ["N", "LINE", "PREMIUM"]
+    // Short tokens (1 char) are skipped to avoid false positives on single letters.
+    const badgeTokens = badgeUpper.split(/\s+/).filter(t => t.length > 1);
+    filtered = filtered.filter((l: any) => {
+      const variants = [
+        l.variant_raw, l.variant_family, l.variant_used,
+        l.model  // some sources embed badge in model field
+      ]
+        .filter(Boolean)
+        .map((v: string) => v.toUpperCase());
+      // ALL badge tokens must appear somewhere in the variant fields
+      return badgeTokens.every(token =>
+        variants.some((v: string) => v.includes(token))
+      );
     });
-    // Use exact matches if we have enough, otherwise fall back to all
-    if (exact.length >= 3) filtered = exact;
   }
 
   const results = filtered.map((l: any) => {
