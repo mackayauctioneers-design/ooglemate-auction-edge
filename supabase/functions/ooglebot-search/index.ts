@@ -112,15 +112,20 @@ Deno.serve(async (req) => {
     const { data: listings, error: listErr } = await query;
     if (listErr) throw listErr;
 
-    // --- 1b. Badge/variant filtering (post-query, case-insensitive partial match) ---
+    // --- 1b. Badge/variant filtering (exact token match, not substring) ---
     let filtered = listings || [];
     if (input.badge) {
-      const badgeUpper = input.badge.toUpperCase();
+      const badgeUpper = input.badge.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      // Exact token match: badge must appear as a complete word, not as prefix of longer badge
+      const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
       filtered = filtered.filter((l: any) => {
         const variants = [l.variant_raw, l.variant_family, l.variant_used].filter(Boolean);
-        return variants.some((v: string) => v.toUpperCase().includes(badgeUpper));
+        return variants.some((v: string) => {
+          const vNorm = v.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
+          return vNorm === badgeUpper || badgeRegex.test(v);
+        });
       });
-      console.log(`Badge filter "${input.badge}": ${(listings || []).length} → ${filtered.length}`);
+      console.log(`Badge filter (exact) "${input.badge}": ${(listings || []).length} → ${filtered.length}`);
     }
 
     // --- 2. Load fingerprint data for scoring ---
@@ -178,17 +183,21 @@ Deno.serve(async (req) => {
         reasons.push("EXACT_MAKE");
       }
 
-      // Badge/variant match bonus
+      // Badge/variant match bonus — when badge is specified, ONLY exact matches are kept
       if (input.badge) {
-        const badgeUpper = input.badge.toUpperCase();
+        const badgeUpper = input.badge.toUpperCase().replace(/[^A-Z0-9]/g, "");
         const variants = [l.variant_raw, l.variant_family, l.variant_used].filter(Boolean);
-        const exactBadge = variants.some((v: string) => v.toUpperCase() === badgeUpper);
+        const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
+        const exactBadge = variants.some((v: string) => {
+          const vNorm = v.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
+          return vNorm === badgeUpper || badgeRegex.test(v);
+        });
         if (exactBadge) {
           score += 10;
           reasons.push("EXACT_BADGE");
         } else {
-          score += 5;
-          reasons.push("BADGE_PARTIAL");
+          // BADGE_PARTIAL = not an exact match → exclude entirely when badge was specified
+          continue; // skip this listing
         }
       }
 

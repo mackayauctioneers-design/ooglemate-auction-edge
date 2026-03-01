@@ -44,7 +44,7 @@ async function dispatchManusTask(
   const { make, model, badge, yearLine, kmLine, priceLine } = filters as any;
 
   const strictBadgeInstruction = badge
-    ? `IMPORTANT: Only return vehicles that are specifically the "${badge}" variant/badge/trim. Do NOT return other variants like BASE, Active, Elite, or any other trim that is not "${badge}". If no exact match exists, return an empty array.`
+    ? `IMPORTANT: Only return vehicles that are specifically the "${badge}" variant/badge/trim. Do NOT return other variants like BASE, Active, Elite, or any other trim that is not "${badge}". If no exact match exists, return an empty array.\n${badge} is NOT the same as ${badge}L or ${badge}R. Only return vehicles where the badge is exactly "${badge}", not a variant that starts with or contains "${badge}" as a prefix.`
     : "";
 
   const prompt = [
@@ -123,7 +123,7 @@ async function queryAuctionDB(
     .ilike("make", make)
     .not("status", "in", '("STALE","DEAD")')
     .order("asking_price", { ascending: true, nullsFirst: false })
-    .limit(30);
+    .limit(60);
 
   if (model) query = query.ilike("model", model);
   if (yearMin) query = query.gte("year", yearMin);
@@ -137,7 +137,21 @@ async function queryAuctionDB(
     return [];
   }
 
-  return (data || []).map((r: any) => ({
+  let rows = data || [];
+
+  // Exact badge token matching (not substring) — "GX" must NOT match "GXL"
+  if (badge) {
+    const badgeUpper = badge.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
+    rows = rows.filter((r: any) => {
+      const v = r.variant_raw || "";
+      const vNorm = v.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
+      return vNorm === badgeUpper || badgeRegex.test(v);
+    });
+    console.log(`[PIPELINE] Auction badge exact filter "${badge}": ${(data || []).length} → ${rows.length}`);
+  }
+
+  return rows.map((r: any) => ({
     title: `${r.year || ""} ${r.make || ""} ${r.model || ""} ${r.variant_raw || ""}`.trim(),
     price: r.asking_price,
     price_type: "excl_govt" as string,
@@ -252,7 +266,6 @@ async function queryToyotaDB(
     .limit(30);
 
   if (model) query = query.ilike("model", model);
-  if (badge) query = query.ilike("variant_raw", `%${badge}%`);
   if (yearMin) query = query.gte("year", yearMin);
   if (yearMax) query = query.lte("year", yearMax);
   if (maxKm) query = query.lte("km", maxKm);
@@ -264,7 +277,21 @@ async function queryToyotaDB(
     return [];
   }
 
-  return (data || []).map((r: any) => ({
+  let rows = data || [];
+
+  // Exact badge token matching for Toyota — "GX" must NOT match "GXL"
+  if (badge) {
+    const badgeUpper = badge.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
+    rows = rows.filter((r: any) => {
+      const v = r.variant_raw || "";
+      const vNorm = v.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
+      return vNorm === badgeUpper || badgeRegex.test(v);
+    });
+    console.log(`[PIPELINE] Toyota badge exact filter "${badge}": ${(data || []).length} → ${rows.length}`);
+  }
+
+  return rows.map((r: any) => ({
     title: `${r.year || ""} ${r.make || ""} ${r.model || ""} ${r.variant_raw || ""}`.trim(),
     price: r.asking_price,
     price_type: "drive_away" as string,
@@ -374,8 +401,22 @@ Deno.serve(async (req) => {
     queryToyotaDB(supabase, make, model, badge, yearMin, yearMax, maxKm, priceMax),
   ]);
 
-  const driveResults = driveResponse.results;
+  let driveResults = driveResponse.results;
   const driveResultCount = driveResponse.totalCount;
+
+  // Post-filter Drive results for exact badge token match
+  if (badge && driveResults.length > 0) {
+    const badgeUpper = badge.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
+    const beforeCount = driveResults.length;
+    driveResults = driveResults.filter((r) => {
+      const b = r.badge || r.title || "";
+      const bNorm = b.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
+      return bNorm === badgeUpper || badgeRegex.test(b);
+    });
+    console.log(`[PIPELINE] Drive badge exact filter "${badge}": ${beforeCount} → ${driveResults.length}`);
+  }
+
   const tier1Results = [...auctionResults, ...driveResults, ...toyotaResults];
   const tier1Count = tier1Results.length;
 
