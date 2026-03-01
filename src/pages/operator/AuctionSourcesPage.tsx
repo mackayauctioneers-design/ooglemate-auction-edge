@@ -27,8 +27,8 @@ type Source = {
   notes: string | null;
 };
 
-const ADAPTER_OPTIONS = ["all", "manus", "firecrawl", "none"];
-const PRIORITY_OPTIONS = ["all", "high", "medium", "low"];
+const ADAPTER_OPTIONS = ["all", "manus", "firecrawl", "generic_scrape", "none"];
+const PRIORITY_OPTIONS = ["all", "critical", "high", "normal", "low"];
 
 export default function AuctionSourcesPage() {
   const isNested = useIsNestedLayout();
@@ -202,7 +202,7 @@ export default function AuctionSourcesPage() {
                     </Badge>
                   </td>
                   <td className="p-3">
-                    <Badge variant={s.priority === "high" ? "destructive" : "outline"}>
+                    <Badge variant={s.priority === "critical" ? "destructive" : s.priority === "high" ? "secondary" : "outline"}>
                       {s.priority}
                     </Badge>
                   </td>
