@@ -4,11 +4,12 @@
 -- Covers: QLD, NSW, VIC, WA, SA, ACT — franchise, independent, wholesale, luxury, specialist
 -- ============================================================
 
--- Add state and dealer_type columns if not already present
+-- Add state, dealer_type, and adapter_type columns if not already present
 ALTER TABLE public.dealer_outbound_sources
   ADD COLUMN IF NOT EXISTS state text,
   ADD COLUMN IF NOT EXISTS dealer_type text NOT NULL DEFAULT 'independent'
-    CHECK (dealer_type IN ('franchise', 'independent', 'wholesale', 'luxury', 'specialist'));
+    CHECK (dealer_type IN ('franchise', 'independent', 'wholesale', 'luxury', 'specialist')),
+  ADD COLUMN IF NOT EXISTS adapter_type text NOT NULL DEFAULT 'generic_scrape';
 
 -- ============================================================
 -- QUEENSLAND (QLD)
