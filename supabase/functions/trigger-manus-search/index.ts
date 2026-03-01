@@ -47,6 +47,8 @@ async function dispatchManusTask(
     ? `IMPORTANT: Only return vehicles that are specifically the "${badge}" variant/badge/trim. Do NOT return other variants like BASE, Active, Elite, or any other trim that is not "${badge}". If no exact match exists, return an empty array.\n${badge} is NOT the same as ${badge}L or ${badge}R. Only return vehicles where the badge is exactly "${badge}", not a variant that starts with or contains "${badge}" as a prefix.`
     : "";
 
+  const webhookUrl = Deno.env.get("MANUS_WEBHOOK_URL");
+
   const prompt = [
     `Search the website ${inventoryUrl} for used cars matching:`,
     `Make: ${make}`,
@@ -72,11 +74,16 @@ async function dispatchManusTask(
     "Return ONLY a JSON array. No commentary. If no matching vehicles are found, return an empty array [].",
   ].filter(Boolean).join("\n");
 
+  const taskBody: Record<string, unknown> = { prompt };
+  if (webhookUrl) {
+    taskBody.webhook_url = webhookUrl;
+  }
+
   try {
     const res = await fetch("https://api.manus.im/v1/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json", API_KEY: apiKey, accept: "application/json" },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify(taskBody),
     });
 
     if (!res.ok) {
@@ -431,8 +438,8 @@ Deno.serve(async (req) => {
   let megaTaskIds: string[] = [];
   let brandTaskIds: string[] = [];
 
-  if (driveResultCount < DRIVE_SUFFICIENT_THRESHOLD) {
-    console.log(`[PIPELINE] Drive returned ${driveResultCount} (<${DRIVE_SUFFICIENT_THRESHOLD}) — dispatching Tier-2 Manus tasks`);
+  if (tier1Count < DRIVE_SUFFICIENT_THRESHOLD) {
+    console.log(`[PIPELINE] Post-filter Tier-1 total ${tier1Count} (<${DRIVE_SUFFICIENT_THRESHOLD}) — dispatching Tier-2 Manus tasks`);
 
     // CarsGuide
     try {
@@ -500,7 +507,7 @@ Deno.serve(async (req) => {
       console.log(`[PIPELINE] Brand fallback tasks: ${brandTaskIds.length}`);
     }
   } else {
-    console.log(`[PIPELINE] Drive returned ${driveResultCount} (≥${DRIVE_SUFFICIENT_THRESHOLD}) — skipping all Manus tasks`);
+    console.log(`[PIPELINE] Post-filter Tier-1 total ${tier1Count} (≥${DRIVE_SUFFICIENT_THRESHOLD}) — skipping all Manus tasks`);
   }
 
   const allTaskIds = [carsguideTaskId, ...megaTaskIds, ...brandTaskIds].filter(Boolean) as string[];
