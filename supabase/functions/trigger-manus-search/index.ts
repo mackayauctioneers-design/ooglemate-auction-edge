@@ -148,12 +148,12 @@ async function queryAuctionDB(
 
   // Exact badge token matching (not substring) — "GX" must NOT match "GXL"
   if (badge) {
-    const badgeUpper = badge.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
+    const badgeNorm = badge.toUpperCase().replace(/[^A-Z0-9 ]/g, "").trim();
+    const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
     rows = rows.filter((r: any) => {
       const v = r.variant_raw || "";
-      const vNorm = v.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
-      return vNorm === badgeUpper || badgeRegex.test(v);
+      const vNorm = v.toUpperCase().replace(/[^A-Z0-9 ]/g, "").trim();
+      return vNorm === badgeNorm || vNorm.includes(badgeNorm) || badgeRegex.test(v);
     });
     console.log(`[PIPELINE] Auction badge exact filter "${badge}": ${(data || []).length} → ${rows.length}`);
   }
@@ -288,12 +288,12 @@ async function queryToyotaDB(
 
   // Exact badge token matching for Toyota — "GX" must NOT match "GXL"
   if (badge) {
-    const badgeUpper = badge.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
+    const badgeNorm = badge.toUpperCase().replace(/[^A-Z0-9 ]/g, "").trim();
+    const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
     rows = rows.filter((r: any) => {
       const v = r.variant_raw || "";
-      const vNorm = v.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
-      return vNorm === badgeUpper || badgeRegex.test(v);
+      const vNorm = v.toUpperCase().replace(/[^A-Z0-9 ]/g, "").trim();
+      return vNorm === badgeNorm || vNorm.includes(badgeNorm) || badgeRegex.test(v);
     });
     console.log(`[PIPELINE] Toyota badge exact filter "${badge}": ${(data || []).length} → ${rows.length}`);
   }
@@ -413,13 +413,13 @@ Deno.serve(async (req) => {
 
   // Post-filter Drive results for exact badge token match
   if (badge && driveResults.length > 0) {
-    const badgeUpper = badge.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
+    const badgeNorm = badge.toUpperCase().replace(/[^A-Z0-9 ]/g, "").trim();
+    const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
     const beforeCount = driveResults.length;
     driveResults = driveResults.filter((r) => {
       const b = r.badge || r.title || "";
-      const bNorm = b.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
-      return bNorm === badgeUpper || badgeRegex.test(b);
+      const bNorm = b.toUpperCase().replace(/[^A-Z0-9 ]/g, "").trim();
+      return bNorm === badgeNorm || bNorm.includes(badgeNorm) || badgeRegex.test(b);
     });
     console.log(`[PIPELINE] Drive badge exact filter "${badge}": ${beforeCount} → ${driveResults.length}`);
   }
@@ -435,6 +435,7 @@ Deno.serve(async (req) => {
    * If tier-1 Drive < 5  → dispatch CarsGuide + mega-dealers
    * ══════════════════════════════════════════════════ */
   let carsguideTaskId: string | null = null;
+  let carsalesTaskId: string | null = null;
   let megaTaskIds: string[] = [];
   let brandTaskIds: string[] = [];
 
@@ -459,6 +460,23 @@ Deno.serve(async (req) => {
       console.log(`[PIPELINE] CarsGuide task: ${carsguideTaskId || "failed"}`);
     } catch (err) {
       console.warn("[PIPELINE] CarsGuide dispatch error:", err);
+    }
+
+    // Carsales.com.au
+    try {
+      const csParams = new URLSearchParams();
+      csParams.set("q", `(And.Service.carsales._.Type.Used._.${make ? `Make.${encodeURIComponent(make)}.` : ""}${model ? `FamilyDescription.${encodeURIComponent(model)}.` : ""})`);
+      if (yearMin) csParams.set("year_from", String(yearMin));
+      if (yearMax) csParams.set("year_to", String(yearMax));
+      if (maxKm) csParams.set("odometer_max", String(maxKm));
+      if (priceMax) csParams.set("price_max", String(priceMax));
+
+      const csUrl = `https://www.carsales.com.au/cars/?${csParams.toString()}`;
+
+      carsalesTaskId = await dispatchManusTask(supabase, MANUS_API_KEY, csUrl, { ...taskFilterPayload, source: "carsales" }, sessionId, huntId);
+      console.log(`[PIPELINE] Carsales task: ${carsalesTaskId || "failed"}`);
+    } catch (err) {
+      console.warn("[PIPELINE] Carsales dispatch error:", err);
     }
 
     // Mega-dealers (EasyAuto123, Tony White, etc.)
@@ -510,7 +528,7 @@ Deno.serve(async (req) => {
     console.log(`[PIPELINE] Post-filter Tier-1 total ${tier1Count} (≥${DRIVE_SUFFICIENT_THRESHOLD}) — skipping all Manus tasks`);
   }
 
-  const allTaskIds = [carsguideTaskId, ...megaTaskIds, ...brandTaskIds].filter(Boolean) as string[];
+  const allTaskIds = [carsguideTaskId, carsalesTaskId, ...megaTaskIds, ...brandTaskIds].filter(Boolean) as string[];
 
   return new Response(
     JSON.stringify({
@@ -522,6 +540,7 @@ Deno.serve(async (req) => {
         toyota_results: toyotaResults.length,
         tier1_total: tier1Count,
         carsguide_task: carsguideTaskId,
+        carsales_task: carsalesTaskId,
         mega_dealer_tasks: megaTaskIds.length,
         brand_fallback_tasks: brandTaskIds.length,
       },
