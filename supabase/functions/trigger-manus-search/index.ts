@@ -5,6 +5,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/**
+ * Generates a deterministic cache key from search filters.
+ */
+function buildCacheKey(make: string, model: string, badge: string, yearMin?: number, yearMax?: number, maxKm?: number, priceMax?: number): string {
+  return [
+    make.toUpperCase(),
+    model.toUpperCase(),
+    badge.toUpperCase(),
+    yearMin ?? "",
+    yearMax ?? "",
+    maxKm ?? "",
+    priceMax ?? "",
+  ].join("|");
+}
+
+const MAX_DEALER_SEARCHES = 5;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -22,11 +39,11 @@ Deno.serve(async (req) => {
 
   const body = await req.json();
 
-  // Support two modes: hunt_id (from hunts) or filters (from OogleBot)
   const huntId: string | null = body.hunt_id || null;
   const filters: { make?: string; model?: string; badge?: string; year_min?: number; year_max?: number; max_km?: number; price_max?: number } | null = body.filters || null;
 
   let make = "", model = "", badge = "", yearLine = "", kmLine = "", priceLine = "";
+  let yearMin: number | undefined, yearMax: number | undefined, maxKm: number | undefined, priceMax: number | undefined;
 
   if (huntId) {
     const { data: hunt, error: huntError } = await supabase
@@ -44,64 +61,104 @@ Deno.serve(async (req) => {
     badge = hunt.required_badge || "";
     yearLine = hunt.year ? `Year: ${hunt.year}` : "";
     kmLine = hunt.km ? `Maximum kilometres: ${hunt.km}` : "";
+    yearMin = hunt.year ?? undefined;
+    maxKm = hunt.km ?? undefined;
   } else if (filters?.make) {
     make = filters.make;
     model = filters.model || "";
     badge = filters.badge || "";
-    if (filters.year_min && filters.year_max) {
-      yearLine = `Year range: ${filters.year_min}–${filters.year_max}`;
-    } else if (filters.year_min) {
-      yearLine = `Year from: ${filters.year_min}`;
+    yearMin = filters.year_min ?? undefined;
+    yearMax = filters.year_max ?? undefined;
+    maxKm = filters.max_km ?? undefined;
+    priceMax = filters.price_max ?? undefined;
+    if (yearMin && yearMax) {
+      yearLine = `Year range: ${yearMin}–${yearMax}`;
+    } else if (yearMin) {
+      yearLine = `Year from: ${yearMin}`;
     }
-    kmLine = filters.max_km ? `Maximum kilometres: ${filters.max_km}` : "";
-    priceLine = filters.price_max ? `Maximum price: $${filters.price_max}` : "";
+    kmLine = maxKm ? `Maximum kilometres: ${maxKm}` : "";
+    priceLine = priceMax ? `Maximum price: $${priceMax}` : "";
   } else {
     return new Response(JSON.stringify({ error: "hunt_id or filters.make required" }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
 
-  // Generate a session_id for grouping (used by OogleBot frontend to poll)
+  // --- OPTIMIZATION 1: Check 3-hour cache ---
+  const cacheKey = buildCacheKey(make, model, badge, yearMin, yearMax, maxKm, priceMax);
+  const { data: cached } = await supabase
+    .from("search_cache")
+    .select("*")
+    .eq("cache_key", cacheKey)
+    .eq("source", "manus")
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+
+  if (cached) {
+    // Increment hit count
+    await supabase.from("search_cache").update({ hits: (cached.hits || 0) + 1 }).eq("id", cached.id);
+    console.log(`[MANUS] Cache hit for ${cacheKey} — returning ${(cached.results as any[])?.length || 0} cached results`);
+    return new Response(
+      JSON.stringify({
+        session_id: cached.id,
+        message: "Cached results returned",
+        cached: true,
+        tasks_created: 0,
+        results: cached.results,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
   const sessionId = crypto.randomUUID();
 
-  // Get all active sources that can be searched by Manus:
-  // - adapter_type = 'manus' (complex JS-heavy dealer sites)
-  // - adapter_type = 'generic_scrape' (auction houses, standard dealer sites)
-  // Exclude 'none' (blocked crawlers), 'pickles', 'grays', 'manheim' (have dedicated pipelines)
-  // Cap at 15 sources per search to avoid overwhelming the Manus task queue.
+  // --- OPTIMIZATION 2: Brand routing ---
+  // Filter dealer sources by brand. Empty brands[] = multi-brand (always included).
+  const makeUpper = make.toUpperCase();
+
+  // Get ALL enabled sources with manus/generic_scrape adapter
   const { data: allSources } = await supabase
     .from("dealer_outbound_sources")
     .select("*")
     .in("adapter_type", ["manus", "generic_scrape"])
-    .eq("is_active", true)
-    .not("adapter_type", "in", "(pickles,grays,manheim)")
-    .order("priority", { ascending: false })
-    .limit(15);
+    .eq("enabled", true)
+    .order("priority", { ascending: false });
 
-  // Also try the old 'enabled' column name for backwards compatibility
-  const { data: legacySources } = !allSources || allSources.length === 0
-    ? await supabase
-        .from("dealer_outbound_sources")
-        .select("*")
-        .in("adapter_type", ["manus", "generic_scrape"])
-        .eq("enabled", true)
-        .order("priority", { ascending: false })
-        .limit(15)
-    : { data: null };
+  const sources = (allSources || []).filter((s: any) => {
+    // Empty brands = multi-brand dealer/auction → always include
+    if (!s.brands || s.brands.length === 0) return true;
+    // Only include if this dealer sells the requested brand
+    return s.brands.some((b: string) => b.toUpperCase() === makeUpper);
+  });
 
-  const sources = allSources?.length ? allSources : (legacySources || []);
+  // --- OPTIMIZATION 3: Hard cap at MAX_DEALER_SEARCHES ---
+  const cappedSources = sources.slice(0, MAX_DEALER_SEARCHES);
 
-  if (!sources || sources.length === 0) {
-    return new Response(JSON.stringify({ session_id: sessionId, message: "No searchable sources configured", tasks_created: 0 }), {
+  console.log(`[MANUS] Brand routing: ${make} → ${sources.length} matching sources, capped to ${cappedSources.length}`);
+
+  if (cappedSources.length === 0) {
+    // Store empty cache to avoid re-searching
+    await supabase.from("search_cache").upsert({
+      cache_key: cacheKey,
+      make, model, badge,
+      year_min: yearMin, year_max: yearMax,
+      max_km: maxKm, price_max: priceMax,
+      results: [],
+      source: "manus",
+    }, { onConflict: "cache_key" });
+
+    return new Response(JSON.stringify({
+      session_id: sessionId,
+      message: "No matching dealer sources for this brand",
+      tasks_created: 0,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
 
-  const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/manus-webhook`;
   const tasksCreated: string[] = [];
 
-  for (const source of sources) {
-    // Support both new schema (url column) and old schema (dealer_domain + inventory_path)
+  for (const source of cappedSources) {
     const inventoryUrl = source.url
       || (source.inventory_path
           ? `https://${source.dealer_domain}${source.inventory_path}`
@@ -146,8 +203,6 @@ Deno.serve(async (req) => {
           "API_KEY": MANUS_API_KEY,
           "accept": "application/json",
         },
-        // Webhooks are account-scoped in Manus — do NOT pass webhook_url in the task body.
-        // The account-level webhook registered by auction-detail-enricher fires on all task completions.
         body: JSON.stringify({ prompt }),
       });
 
@@ -179,10 +234,12 @@ Deno.serve(async (req) => {
   return new Response(
     JSON.stringify({
       session_id: sessionId,
-      message: "Manus tasks triggered",
+      message: `Manus tasks triggered (${cappedSources.length} sources, brand-filtered)`,
       tasks_created: tasksCreated.length,
       task_ids: tasksCreated,
-      sources_count: sources.length,
+      sources_searched: cappedSources.length,
+      sources_matched: sources.length,
+      sources_total: (allSources || []).length,
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );

@@ -2,12 +2,12 @@
  * run-outward-search
  *
  * Accepts a free-text instruction (e.g. "2024 Toyota Hilux SR5 under 80,000 km")
- * and returns matching listings from vehicle_listings across all sources
- * (auctions, classifieds, dealer stock, etc.).
+ * and returns matching listings from vehicle_listings across all sources.
  *
- * Uses the Lovable AI gateway to parse intent, then queries vehicle_listings.
- *
- * Response shape matches OutwardSearchResponse in src/lib/api/ooglebot.ts.
+ * Optimizations:
+ * - 3-hour cache: identical searches return cached results
+ * - Structured filter passthrough: caller-provided filters skip LLM
+ * - Strict badge filtering with token normalization
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -25,15 +25,11 @@ Schema:
 
 Rules:
 - Uppercase make and model
-- Always infer the make from the model name: Hilux=TOYOTA, Ranger=FORD, D-MAX=ISUZU, Triton=MITSUBISHI, Navara=NISSAN, BT-50=MAZDA, Amarok=VOLKSWAGEN, Colorado=HOLDEN, Prado=TOYOTA, LandCruiser=TOYOTA, Patrol=NISSAN, Pajero=MITSUBISHI, Everest=FORD, Wildtrak=FORD, Raptor=FORD, MU-X=ISUZU, Fortuner=TOYOTA, Kluger=TOYOTA, RAV4=TOYOTA, CX-5=MAZDA, Sportage=KIA, Tucson=HYUNDAI, Santa Fe=HYUNDAI, Forester=SUBARU, Outback=SUBARU
-- badge is the variant/trim/series e.g. "SR5", "GXL", "Workmate", "Wildtrak", "SX", "Hi-Rider". Uppercase it. null if not specified.
+- Always infer the make from the model name: Hilux=TOYOTA, Ranger=FORD, D-MAX=ISUZU, Triton=MITSUBISHI, Navara=NISSAN, BT-50=MAZDA, Amarok=VOLKSWAGEN, Colorado=HOLDEN, Prado=TOYOTA, LandCruiser=TOYOTA, Patrol=NISSAN, Pajero=MITSUBISHI, Everest=FORD, Wildtrak=FORD, Raptor=FORD, MU-X=ISUZU, Fortuner=TOYOTA, Kluger=TOYOTA, RAV4=TOYOTA, CX-5=MAZDA, Sportage=KIA, Tucson=HYUNDAI, Santa Fe=HYUNDAI, Forester=SUBARU, Outback=SUBARU, i30=HYUNDAI, i20=HYUNDAI, i40=HYUNDAI
+- badge is the variant/trim/series e.g. "SR5", "GXL", "Workmate", "Wildtrak", "SX", "Hi-Rider", "N Line Premium". Uppercase it. null if not specified.
 - A single year like "2024" means year_min=2024, year_max=null (2024 or newer)
 - Only set year_max if an upper bound is explicitly stated
 - CRITICAL: "under Nk km" or "under N,000 km" or "low km" refers to KILOMETRES (max_km), NOT price. Only set price_max when the user mentions "$", "dollars", "budget", "price", or "under $N".
-- "under 80k km" → max_km=80000, price_max=null
-- "under $80k" → price_max=80000, max_km=null
-- "under 80k" with no context → price_max=80000 (assume price unless km unit is present)
-- "low km" → max_km=80000
 - Output raw JSON only. No markdown. No backticks. No explanation.`;
 
 interface ParsedIntent {
@@ -56,6 +52,18 @@ const MAX_RESULTS = 30;
 const EXCLUDED_LIFECYCLE = ["STALE", "DEAD", "stale", "dead"];
 
 const normalizeToken = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+function buildCacheKey(intent: ParsedIntent): string {
+  return [
+    intent.make?.toUpperCase() ?? "",
+    intent.model?.toUpperCase() ?? "",
+    intent.badge?.toUpperCase() ?? "",
+    intent.year_min ?? "",
+    intent.year_max ?? "",
+    intent.max_km ?? "",
+    intent.price_max ?? "",
+  ].join("|");
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -182,10 +190,8 @@ Deno.serve(async (req) => {
   // --- 2. Regex fallback if no make ---
   if (!intent.make) {
     const q = instruction;
-    // km: must have km/klm/kms unit
     const kmMatch = q.match(/(?:under|below|<|less than)\s*([\d,]+)\s*(?:klms|klm|kms|km)/i);
     if (kmMatch) intent.max_km = parseInt(kmMatch[1].replace(/,/g, ""), 10);
-    // price: $ sign or explicit price/budget keyword
     const priceMatch = q.match(/(?:\$|under\s+\$|below\s+\$|budget|price)\s*([\d,]+)\s*k?\b/i);
     if (priceMatch) {
       let val = parseFloat(priceMatch[1].replace(/,/g, ""));
@@ -213,6 +219,41 @@ Deno.serve(async (req) => {
     );
   }
 
+  // --- OPTIMIZATION: Check 3-hour cache ---
+  const cacheKey = buildCacheKey(intent);
+  const { data: cached } = await sb
+    .from("search_cache")
+    .select("*")
+    .eq("cache_key", cacheKey)
+    .eq("source", "outward")
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+
+  if (cached) {
+    await sb.from("search_cache").update({ hits: (cached.hits || 0) + 1 }).eq("id", cached.id);
+    console.log(`[outward-search] Cache hit for ${cacheKey}`);
+    return new Response(
+      JSON.stringify({
+        status: "ok",
+        gated: false,
+        cached: true,
+        intent: {
+          make: intent.make,
+          model_keywords: intent.model ? [intent.model] : [],
+          badge: intent.badge,
+          year: intent.year_min,
+          max_km: intent.max_km,
+          price_max: intent.price_max,
+        },
+        results: cached.results,
+        total_searched: 0,
+        total_filtered: (cached.results as any[])?.length ?? 0,
+        duration_ms: Date.now() - startMs,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
   // --- 3. Query vehicle_listings ---
   let query = sb
     .from("vehicle_listings")
@@ -229,7 +270,6 @@ Deno.serve(async (req) => {
     .limit(200);
 
   if (intent.model) {
-    // Split model into words and match on the first meaningful word to handle badge in model
     const modelCore = intent.model.split(/\s+/)[0];
     query = query.ilike("model", `%${modelCore}%`);
   }
@@ -250,9 +290,6 @@ Deno.serve(async (req) => {
   // --- 4. Badge/variant filter and scoring ---
   let filtered = listings || [];
 
-  // STRICT badge filter — if a badge/variant is specified, ONLY return listings that match it.
-  // A search for "N Line Premium" must NEVER return "BASE", "Active", "Elite" etc.
-  // If zero matches exist in the DB, we return empty results (correct behaviour — don't pollute with wrong variants).
   if (intent.badge) {
     const badgeUpper = intent.badge.toUpperCase();
     filtered = filtered.filter((l: any) => {
@@ -265,7 +302,6 @@ Deno.serve(async (req) => {
       const normalizedBadge = normalizeToken(badgeUpper);
       const badgeTokens = badgeUpper.split(/[\s-]+/).filter(Boolean).map(normalizeToken);
 
-      // Match either full normalized badge (NLINEPREMIUM) or all component tokens (N, LINE, PREMIUM).
       if (normalizedBadge && normalizedVariants.some(v => v.includes(normalizedBadge))) return true;
       return badgeTokens.every(token => normalizedVariants.some(v => v.includes(token)));
     });
@@ -336,6 +372,24 @@ Deno.serve(async (req) => {
 
   const durationMs = Date.now() - startMs;
 
+  // --- Store in cache for 3 hours ---
+  try {
+    await sb.from("search_cache").upsert({
+      cache_key: cacheKey,
+      make: intent.make,
+      model: intent.model,
+      badge: intent.badge,
+      year_min: intent.year_min,
+      year_max: intent.year_max,
+      max_km: intent.max_km,
+      price_max: intent.price_max,
+      results: topResults,
+      source: "outward",
+    }, { onConflict: "cache_key" });
+  } catch (e) {
+    console.warn("Failed to write search cache:", e);
+  }
+
   // Log
   try {
     await sb.from("cron_audit_log").insert({
@@ -356,6 +410,7 @@ Deno.serve(async (req) => {
     JSON.stringify({
       status: "ok",
       gated: false,
+      cached: false,
       intent: {
         make: intent.make,
         model_keywords: intent.model ? [intent.model] : [],
