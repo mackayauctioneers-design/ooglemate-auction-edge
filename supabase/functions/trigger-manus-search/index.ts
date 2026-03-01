@@ -229,6 +229,29 @@ Deno.serve(async (req) => {
     console.warn("[PIPELINE] Drive aggregator error:", err);
   }
 
+  /* ── Short-circuit: Drive returned results → skip all Manus tasks ── */
+  if (driveResultCount > 0) {
+    console.log(`[PIPELINE] Drive returned ${driveResultCount} results — skipping Manus tasks`);
+    return new Response(
+      JSON.stringify({
+        session_id: sessionId,
+        message: `Pipeline: Drive(${driveResultCount}) — Manus tasks skipped`,
+        pipeline: {
+          drive_results: driveResultCount,
+          carsguide_task: null,
+          mega_dealer_tasks: 0,
+          brand_fallback_tasks: 0,
+        },
+        tasks_created: 0,
+        task_ids: [],
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  /* ── Drive returned 0 → dispatch CarsGuide + mega-dealers + brand fallback ── */
+  console.log(`[PIPELINE] Drive returned 0 results — dispatching Manus tasks`);
+
   /* ── STEP 3: CarsGuide aggregator (via Manus) ─── */
   let carsguideTaskId: string | null = null;
   try {
@@ -250,13 +273,13 @@ Deno.serve(async (req) => {
     console.warn("[PIPELINE] CarsGuide dispatch error:", err);
   }
 
-  /* ── STEPS 4 & 5: Mega-dealer sources (ALWAYS, in parallel) ── */
+  /* ── STEPS 4 & 5: Mega-dealer sources (in parallel) ── */
   const { data: megaSources } = await supabase
     .from("dealer_outbound_sources")
     .select("*")
     .eq("dealer_type", "mega_dealer")
     .eq("enabled", true)
-    .order("priority", { ascending: true }); // 'critical' first
+    .order("priority", { ascending: true });
 
   const megaTaskPromises = (megaSources || []).map((s: any) => {
     const url = s.url || `https://${s.dealer_domain}${s.inventory_path || ""}`;
@@ -269,45 +292,40 @@ Deno.serve(async (req) => {
 
   /* ── STEP 6: Brand-routed dealer sites (fallback, max 3) ────── */
   let brandTaskIds: string[] = [];
-  const totalAggregatorResults = driveResultCount; // Drive is the structured count we can check
 
-  if (totalAggregatorResults === 0) {
-    const makeUpper = make.toUpperCase();
-    const { data: allSources } = await supabase
-      .from("dealer_outbound_sources")
-      .select("*")
-      .in("adapter_type", ["manus", "generic_scrape"])
-      .eq("enabled", true)
-      .neq("dealer_type", "mega_dealer") // exclude mega-dealers already queried
-      .order("priority", { ascending: true });
+  const makeUpper = make.toUpperCase();
+  const { data: allSources } = await supabase
+    .from("dealer_outbound_sources")
+    .select("*")
+    .in("adapter_type", ["manus", "generic_scrape"])
+    .eq("enabled", true)
+    .neq("dealer_type", "mega_dealer")
+    .order("priority", { ascending: true });
 
-    const brandFiltered = (allSources || []).filter((s: any) => {
-      if (!s.brands || s.brands.length === 0) return true; // multi-brand
-      return s.brands.some((b: string) => b.toUpperCase() === makeUpper);
-    });
+  const brandFiltered = (allSources || []).filter((s: any) => {
+    if (!s.brands || s.brands.length === 0) return true;
+    return s.brands.some((b: string) => b.toUpperCase() === makeUpper);
+  });
 
-    const capped = brandFiltered.slice(0, MAX_BRAND_DEALER_SEARCHES);
-    console.log(`[PIPELINE] Brand fallback: ${brandFiltered.length} matched, capped to ${capped.length}`);
+  const capped = brandFiltered.slice(0, MAX_BRAND_DEALER_SEARCHES);
+  console.log(`[PIPELINE] Brand fallback: ${brandFiltered.length} matched, capped to ${capped.length}`);
 
-    const brandPromises = capped.map((s: any) => {
-      const url = s.url || `https://${s.dealer_domain}${s.inventory_path || ""}`;
-      if (!url || url === "https://undefined") return Promise.resolve(null);
-      return dispatchManusTask(supabase, MANUS_API_KEY, url, { ...taskFilterPayload, dealer_slug: s.dealer_slug }, sessionId, huntId);
-    });
+  const brandPromises = capped.map((s: any) => {
+    const url = s.url || `https://${s.dealer_domain}${s.inventory_path || ""}`;
+    if (!url || url === "https://undefined") return Promise.resolve(null);
+    return dispatchManusTask(supabase, MANUS_API_KEY, url, { ...taskFilterPayload, dealer_slug: s.dealer_slug }, sessionId, huntId);
+  });
 
-    brandTaskIds = (await Promise.all(brandPromises)).filter(Boolean) as string[];
-  } else {
-    console.log(`[PIPELINE] Skipping brand fallback — Drive returned ${driveResultCount} results`);
-  }
+  brandTaskIds = (await Promise.all(brandPromises)).filter(Boolean) as string[];
 
   const allTaskIds = [carsguideTaskId, ...megaTaskIds, ...brandTaskIds].filter(Boolean) as string[];
 
   return new Response(
     JSON.stringify({
       session_id: sessionId,
-      message: `Pipeline: Drive(${driveResultCount}) → CarsGuide → ${megaTaskIds.length} mega-dealers → ${brandTaskIds.length} brand-routed`,
+      message: `Pipeline: Drive(0) → CarsGuide → ${megaTaskIds.length} mega-dealers → ${brandTaskIds.length} brand-routed`,
       pipeline: {
-        drive_results: driveResultCount,
+        drive_results: 0,
         carsguide_task: carsguideTaskId,
         mega_dealer_tasks: megaTaskIds.length,
         brand_fallback_tasks: brandTaskIds.length,
