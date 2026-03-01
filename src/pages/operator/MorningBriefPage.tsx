@@ -60,6 +60,10 @@ interface BriefItem {
   margin_flag: string | null;
   matched_spec_names: string[];
   composite_score: number;
+  auction_pass_number?: number | null;
+  auction_first_seen_at?: string | null;
+  auction_days_circulating?: number | null;
+  pass_score_bonus?: number | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -183,6 +187,21 @@ function LotCard({ item, rank }: { item: BriefItem; rank: number }) {
             {item.matched_spec_names?.length > 0 && (
               <Badge variant="outline" className="text-xs text-green-600 border-green-400">
                 ✓ Spec match
+              </Badge>
+            )}
+            {item.auction_pass_number && item.auction_pass_number >= 2 && (
+              <Badge className={cn(
+                'text-xs font-bold',
+                item.auction_pass_number === 2 ? 'bg-amber-500 text-white' :
+                item.auction_pass_number === 3 ? 'bg-orange-600 text-white' :
+                'bg-red-700 text-white'
+              )}>
+                {item.auction_pass_number === 2 ? '2nd Pass' :
+                 item.auction_pass_number === 3 ? '3rd Pass' :
+                 `${item.auction_pass_number}th Pass`}
+                {item.auction_days_circulating && item.auction_days_circulating > 0
+                  ? ` · ${item.auction_days_circulating}d circulating`
+                  : ''}
               </Badge>
             )}
           </div>

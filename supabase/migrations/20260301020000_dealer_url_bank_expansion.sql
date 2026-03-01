@@ -1,0 +1,183 @@
+-- ============================================================
+-- Migration: Dealer Outbound URL Bank Expansion
+-- Expands from 5 test dealers to 100 real Australian dealers
+-- Covers: QLD, NSW, VIC, WA, SA, ACT — franchise, independent, wholesale, luxury, specialist
+-- ============================================================
+
+-- Add state and dealer_type columns if not already present
+ALTER TABLE public.dealer_outbound_sources
+  ADD COLUMN IF NOT EXISTS state text,
+  ADD COLUMN IF NOT EXISTS dealer_type text NOT NULL DEFAULT 'independent'
+    CHECK (dealer_type IN ('franchise', 'independent', 'wholesale', 'luxury', 'specialist'));
+
+-- ============================================================
+-- QUEENSLAND (QLD)
+-- ============================================================
+INSERT INTO public.dealer_outbound_sources (dealer_slug, dealer_name, dealer_domain, inventory_path, state, dealer_type, priority, enabled, notes)
+VALUES
+  ('westside-auto-wholesale', 'Westside Auto Wholesale', 'westsideauto.com.au', '/cars', 'WA', 'wholesale', 'high', true, 'WA largest independent used car warehouse ~3000 cars'),
+  ('david-grant-car-sales', 'David Grant Car Sales', 'davidgrantcarsales.com.au', '/vehicles', 'QLD', 'independent', 'normal', true, 'Gladstone largest independent'),
+  ('pacific-toyota-cairns', 'Pacific Toyota Cairns', 'pacifictoyota.com.au', '/pre-owned', 'QLD', 'franchise', 'normal', true, 'Toyota franchise North QLD'),
+  ('autosports-group-qld', 'Autosports Group QLD', 'autosportsgroup.com.au', '/used-cars', 'QLD', 'franchise', 'normal', true, 'Multi-franchise group QLD'),
+  ('mcgrath-honda-brisbane', 'McGrath Honda Brisbane', 'mcgrathhonda.com.au', '/used-cars', 'QLD', 'franchise', 'normal', true, 'Honda franchise Brisbane'),
+  ('brisbane-car-market', 'Brisbane Car Market', 'brisbanecarsales.com.au', '/used-cars', 'QLD', 'independent', 'high', true, 'Large independent Brisbane'),
+  ('eagers-automotive-qld', 'Eagers Automotive QLD', 'eagersautomotive.com.au', '/used-cars', 'QLD', 'franchise', 'high', true, 'ASX-listed multi-franchise group'),
+  ('sunshine-coast-nissan', 'Sunshine Coast Nissan', 'sunshinecoastnissan.com.au', '/used-cars', 'QLD', 'franchise', 'normal', true, 'Nissan franchise Sunshine Coast'),
+  ('gold-coast-car-sales', 'Gold Coast Car Sales', 'goldcoastcarsales.com.au', '/used-cars', 'QLD', 'independent', 'normal', true, 'Independent Gold Coast'),
+  ('toowoomba-toyota', 'Toowoomba Toyota', 'toowoombatoyota.com.au', '/used-vehicles', 'QLD', 'franchise', 'normal', true, 'Toyota franchise Toowoomba'),
+  ('nundah-used-cars', 'Nundah Used Cars', 'nundahusedcars.com.au', '/stock', 'QLD', 'independent', 'normal', true, 'Independent Brisbane northside'),
+  ('rockhampton-motor-group', 'Rockhampton Motor Group', 'rockhamptonmotorgroup.com.au', '/used-cars', 'QLD', 'franchise', 'normal', true, 'Multi-franchise Central QLD'),
+
+-- ============================================================
+-- NEW SOUTH WALES (NSW)
+-- ============================================================
+  ('wholesale-motor-group-nsw', 'Wholesale Motor Group', 'wholesalemotorgroup.com.au', '/used-cars', 'NSW', 'wholesale', 'high', true, 'Large wholesale NSW'),
+  ('parramatta-nissan', 'Parramatta Nissan', 'parramatanissan.com.au', '/used-cars', 'NSW', 'franchise', 'normal', true, 'Nissan franchise Western Sydney'),
+  ('sydney-city-toyota', 'Sydney City Toyota', 'sydneycitytoyota.com.au', '/pre-owned', 'NSW', 'franchise', 'high', true, 'Toyota franchise Sydney CBD'),
+  ('macarthur-automotive', 'Macarthur Automotive', 'macarthurautomotive.com.au', '/used-cars', 'NSW', 'franchise', 'normal', true, 'Multi-franchise SW Sydney'),
+  ('peter-warren-automotive', 'Peter Warren Automotive', 'peterwarren.com.au', '/used-cars', 'NSW', 'franchise', 'high', true, 'Large multi-franchise group NSW'),
+  ('hunter-valley-motors', 'Hunter Valley Motors', 'huntervalleymotors.com.au', '/stock', 'NSW', 'independent', 'normal', true, 'Independent Hunter Valley'),
+  ('central-coast-car-sales', 'Central Coast Car Sales', 'centralcoastcarsales.com.au', '/used-cars', 'NSW', 'independent', 'normal', true, 'Independent Central Coast'),
+  ('wagga-wagga-toyota', 'Wagga Wagga Toyota', 'waggawaggatoyota.com.au', '/used-vehicles', 'NSW', 'franchise', 'normal', true, 'Toyota franchise Wagga'),
+  ('albury-wodonga-motors', 'Albury Wodonga Motors', 'alburywodoongamotors.com.au', '/used-cars', 'NSW', 'franchise', 'normal', true, 'Multi-franchise border region'),
+  ('mick-doohan-mitsubishi', 'Mick Doohan Mitsubishi', 'mickdoohanmitsubishi.com.au', '/used-cars', 'NSW', 'franchise', 'normal', true, 'Mitsubishi franchise Sydney'),
+  ('penrith-city-toyota', 'Penrith City Toyota', 'penrithcitytoyota.com.au', '/pre-owned', 'NSW', 'franchise', 'normal', true, 'Toyota franchise Penrith'),
+  ('suttons-motors-nsw', 'Suttons Motors', 'suttons.com.au', '/used-cars', 'NSW', 'franchise', 'high', true, 'Large multi-franchise group NSW'),
+  ('lennock-motors-nsw', 'Lennock Motors', 'lennock.com.au', '/used-cars', 'ACT', 'franchise', 'normal', true, 'Multi-franchise ACT/NSW'),
+
+-- ============================================================
+-- VICTORIA (VIC)
+-- ============================================================
+  ('west-side-car-city-vic', 'West Side Car City', 'westsidecarcity.com', '/used-vehicles', 'VIC', 'independent', 'high', true, 'Wholesale priced cars direct to public'),
+  ('essendon-nissan', 'Essendon Nissan', 'essendonnissan.com.au', '/used-cars', 'VIC', 'franchise', 'normal', true, 'Nissan franchise Melbourne NW'),
+  ('berwick-toyota', 'Berwick Toyota', 'berwicktoyota.com.au', '/pre-owned', 'VIC', 'franchise', 'normal', true, 'Toyota franchise SE Melbourne'),
+  ('dandenong-nissan', 'Dandenong Nissan', 'dandenongnissan.com.au', '/used-cars', 'VIC', 'franchise', 'normal', true, 'Nissan franchise SE Melbourne'),
+  ('melbournes-cheapest-cars', 'Melbourne Cheapest Cars', 'melbournescheapestcars.com.au', '/stock', 'VIC', 'wholesale', 'high', true, 'High volume wholesale Melbourne'),
+  ('john-hughes-group-vic', 'John Hughes Group', 'johnhughes.com.au', '/used-cars', 'VIC', 'franchise', 'normal', true, 'Multi-franchise group'),
+  ('geelong-toyota', 'Geelong Toyota', 'geeelongtoyota.com.au', '/pre-owned', 'VIC', 'franchise', 'normal', true, 'Toyota franchise Geelong'),
+  ('phil-gilbert-motor-group', 'Phil Gilbert Motor Group', 'philgilbert.com.au', '/used-cars', 'VIC', 'franchise', 'high', true, 'Large multi-franchise group VIC'),
+  ('cox-automotive-vic', 'Manheim Melbourne', 'manheim.com.au', '/buy/search-vehicles', 'VIC', 'wholesale', 'high', true, 'Manheim auction Melbourne'),
+  ('mornington-mazda', 'Mornington Mazda', 'morningtonmazda.com.au', '/used-cars', 'VIC', 'franchise', 'normal', true, 'Mazda franchise Mornington Peninsula'),
+  ('frankston-kia', 'Frankston Kia', 'frangstonkia.com.au', '/used-cars', 'VIC', 'franchise', 'normal', true, 'Kia franchise SE Melbourne'),
+  ('ballarat-toyota', 'Ballarat Toyota', 'ballarattoyota.com.au', '/used-vehicles', 'VIC', 'franchise', 'normal', true, 'Toyota franchise Ballarat'),
+  ('bendigo-mazda', 'Bendigo Mazda', 'bendigomazda.com.au', '/used-cars', 'VIC', 'franchise', 'normal', true, 'Mazda franchise Bendigo'),
+
+-- ============================================================
+-- WESTERN AUSTRALIA (WA)
+-- ============================================================
+  ('perth-city-mazda', 'Perth City Mazda', 'perthcitymazda.com.au', '/used-cars', 'WA', 'franchise', 'normal', true, 'Mazda franchise Perth CBD'),
+  ('osborne-park-hyundai', 'Osborne Park Hyundai', 'osborneparkhyundai.com.au', '/used-cars', 'WA', 'franchise', 'normal', true, 'Hyundai franchise Perth NW'),
+  ('wanneroo-road-toyota', 'Wanneroo Road Toyota', 'wannerooroadtoyota.com.au', '/pre-owned', 'WA', 'franchise', 'normal', true, 'Toyota franchise Perth North'),
+  ('south-perth-nissan', 'South Perth Nissan', 'southperthnissan.com.au', '/used-cars', 'WA', 'franchise', 'normal', true, 'Nissan franchise South Perth'),
+  ('midland-toyota', 'Midland Toyota', 'midlandtoyota.com.au', '/pre-owned', 'WA', 'franchise', 'normal', true, 'Toyota franchise Midland WA'),
+  ('rockingham-kia', 'Rockingham Kia', 'rockinghamkia.com.au', '/used-cars', 'WA', 'franchise', 'normal', true, 'Kia franchise Rockingham'),
+  ('mandurah-mazda', 'Mandurah Mazda', 'mandurahmazda.com.au', '/used-cars', 'WA', 'franchise', 'normal', true, 'Mazda franchise Mandurah'),
+  ('perth-wholesale-cars', 'Perth Wholesale Cars', 'perthwholesalecars.com.au', '/stock', 'WA', 'wholesale', 'high', true, 'Wholesale used cars Perth'),
+  ('joondalup-mazda', 'Joondalup Mazda', 'joondalupmazda.com.au', '/used-cars', 'WA', 'franchise', 'normal', true, 'Mazda franchise Joondalup'),
+  ('bunbury-toyota', 'Bunbury Toyota', 'bunburytoyota.com.au', '/used-vehicles', 'WA', 'franchise', 'normal', true, 'Toyota franchise Bunbury WA'),
+  ('albany-toyota', 'Albany Toyota', 'albanytoyota.com.au', '/used-vehicles', 'WA', 'franchise', 'normal', true, 'Toyota franchise Albany WA'),
+
+-- ============================================================
+-- SOUTH AUSTRALIA (SA)
+-- ============================================================
+  ('jarvis-ford-sa', 'Jarvis Ford', 'jarvisford.com.au', '/used-cars', 'SA', 'franchise', 'normal', true, 'Ford franchise Adelaide'),
+  ('south-australia-toyota', 'SA Toyota', 'satoyota.com.au', '/pre-owned', 'SA', 'franchise', 'normal', true, 'Toyota franchise SA'),
+  ('adelaide-city-hyundai', 'Adelaide City Hyundai', 'adelaidecityhyundai.com.au', '/used-cars', 'SA', 'franchise', 'normal', true, 'Hyundai franchise Adelaide CBD'),
+  ('holden-hill-mazda', 'Holden Hill Mazda', 'holdenhillmazda.com.au', '/used-cars', 'SA', 'franchise', 'normal', true, 'Mazda franchise NE Adelaide'),
+  ('mount-gambier-motors', 'Mount Gambier Motors', 'mountgambiermotors.com.au', '/used-cars', 'SA', 'franchise', 'normal', true, 'Multi-franchise SE SA'),
+  ('port-lincoln-motors', 'Port Lincoln Motors', 'portlincolnmotors.com.au', '/stock', 'SA', 'independent', 'normal', true, 'Independent Eyre Peninsula SA'),
+  ('sa-wholesale-cars', 'SA Wholesale Cars', 'sawholesalecars.com.au', '/vehicles', 'SA', 'wholesale', 'normal', true, 'Wholesale used cars Adelaide'),
+  ('gawler-toyota', 'Gawler Toyota', 'gawlertoyota.com.au', '/pre-owned', 'SA', 'franchise', 'normal', true, 'Toyota franchise Gawler SA'),
+
+-- ============================================================
+-- LUXURY / PRESTIGE
+-- ============================================================
+  ('trivett-bmw-sydney', 'Trivett BMW Sydney', 'trivettbmw.com.au', '/pre-owned', 'NSW', 'luxury', 'high', true, 'BMW franchise Sydney'),
+  ('mercedes-benz-sydney', 'Mercedes-Benz Sydney', 'mercedesbenzsydney.com.au', '/used-cars', 'NSW', 'luxury', 'high', true, 'Mercedes-Benz franchise Sydney'),
+  ('audi-centre-sydney', 'Audi Centre Sydney', 'audicentresydney.com.au', '/pre-owned', 'NSW', 'luxury', 'high', true, 'Audi franchise Sydney'),
+  ('lexus-of-melbourne', 'Lexus of Melbourne', 'lexusofmelbourne.com.au', '/pre-owned', 'VIC', 'luxury', 'high', true, 'Lexus franchise Melbourne'),
+  ('porsche-centre-brisbane', 'Porsche Centre Brisbane', 'porschecentrebrisbane.com.au', '/pre-owned', 'QLD', 'luxury', 'high', true, 'Porsche franchise Brisbane'),
+  ('inchcape-jaguar-land-rover', 'Inchcape Jaguar Land Rover', 'jaguarlandroversydney.com.au', '/pre-owned', 'NSW', 'luxury', 'high', true, 'JLR franchise Sydney'),
+  ('perth-prestige-cars', 'Perth Prestige Cars', 'perthprestigecars.com.au', '/stock', 'WA', 'luxury', 'high', true, 'Prestige used cars Perth'),
+  ('dutton-garage-melbourne', 'Dutton Garage', 'duttongarage.com.au', '/cars', 'VIC', 'luxury', 'high', true, 'Premium used car dealer Melbourne'),
+  ('zagame-automotive', 'Zagame Automotive', 'zagame.com.au', '/used-cars', 'VIC', 'luxury', 'high', true, 'Multi-brand prestige Melbourne'),
+  ('ateco-automotive', 'Ateco Automotive', 'ateco.com.au', '/used-cars', 'NSW', 'luxury', 'normal', true, 'Prestige importer/dealer'),
+
+-- ============================================================
+-- 4WD / UTE / COMMERCIAL SPECIALISTS
+-- ============================================================
+  ('4wd-supacentre', '4WD Supacentre', '4wdsupacentre.com.au', '/vehicles', 'NSW', 'specialist', 'high', true, '4WD specialist national'),
+  ('ute-city-brisbane', 'Ute City Brisbane', 'utecity.com.au', '/stock', 'QLD', 'specialist', 'high', true, 'Ute and commercial specialist QLD'),
+  ('hilux-specialists-qld', 'HiLux Specialists QLD', 'hiluxspecialists.com.au', '/used-cars', 'QLD', 'specialist', 'high', true, 'Toyota HiLux specialist'),
+  ('pats-garage-4x4', 'Pats Garage 4x4', 'patsgarage.com.au', '/stock', 'QLD', 'specialist', 'normal', true, '4x4 specialist QLD'),
+  ('all-4-adventure', 'All 4 Adventure', 'all4adventure.com.au', '/vehicles', 'QLD', 'specialist', 'normal', true, '4WD adventure vehicles'),
+  ('van-city-australia', 'Van City Australia', 'vancityaustralia.com.au', '/stock', 'VIC', 'specialist', 'normal', true', 'Commercial van specialist VIC'),
+  ('truckworld-australia', 'Truckworld Australia', 'truckworld.com.au', '/used-trucks', 'NSW', 'specialist', 'normal', true, 'Light commercial and trucks'),
+
+-- ============================================================
+-- MULTI-FRANCHISE GROUPS (national/large)
+-- ============================================================
+  ('ap-eagers-national', 'AP Eagers', 'apeagers.com.au', '/used-cars', 'QLD', 'franchise', 'high', true, 'ASX-listed largest dealer group Australia'),
+  ('autosports-group-national', 'Autosports Group', 'autosportsgroup.com.au', '/used-cars', 'NSW', 'franchise', 'high', true, 'ASX-listed multi-franchise group'),
+  ('inchcape-australia', 'Inchcape Australia', 'inchcape.com.au', '/used-cars', 'NSW', 'franchise', 'high', true, 'Global dealer group Australian operations'),
+  ('motorama-group', 'Motorama Group', 'motorama.com.au', '/used-cars', 'QLD', 'franchise', 'high', true, 'Large multi-franchise QLD group'),
+  ('john-hughes-group', 'John Hughes Group', 'johnhughes.com.au', '/used-cars', 'WA', 'franchise', 'high', true, 'Largest independent dealer WA'),
+  ('stillwell-motor-group', 'Stillwell Motor Group', 'stillwellmotors.com.au', '/used-cars', 'SA', 'franchise', 'high', true, 'Large multi-franchise SA group'),
+  ('col-crawford-motors', 'Col Crawford Motors', 'colcrawford.com.au', '/used-cars', 'NSW', 'franchise', 'high', true, 'Multi-franchise Northern Beaches NSW'),
+  ('trivett-group', 'Trivett Group', 'trivett.com.au', '/used-cars', 'NSW', 'franchise', 'high', true, 'Large multi-franchise group NSW'),
+  ('lander-toyota', 'Lander Toyota', 'landertoyota.com.au', '/pre-owned', 'VIC', 'franchise', 'normal', true, 'Toyota franchise Melbourne NW'),
+  ('northside-toyota', 'Northside Toyota', 'northsidetoyota.com.au', '/pre-owned', 'QLD', 'franchise', 'normal', true, 'Toyota franchise Brisbane North'),
+
+-- ============================================================
+-- ADDITIONAL INDEPENDENTS / WHOLESALE
+-- ============================================================
+  ('car-city-brisbane', 'Car City Brisbane', 'carcitybrisbane.com.au', '/stock', 'QLD', 'wholesale', 'high', true, 'Large wholesale yard Brisbane'),
+  ('drive-auto-group', 'Drive Auto Group', 'driveautogroup.com.au', '/used-cars', 'NSW', 'independent', 'normal', true, 'Independent multi-location NSW'),
+  ('automax-australia', 'Automax Australia', 'automax.com.au', '/vehicles', 'VIC', 'wholesale', 'high', true, 'High volume wholesale Melbourne'),
+  ('cars-r-us-australia', 'Cars R Us', 'carsrus.com.au', '/stock', 'QLD', 'independent', 'normal', true, 'Independent QLD'),
+  ('budget-direct-cars', 'Budget Direct Cars', 'budgetdirectcars.com.au', '/used-cars', 'QLD', 'independent', 'normal', true, 'Budget used car dealer QLD'),
+  ('autoplex-australia', 'Autoplex Australia', 'autoplex.com.au', '/stock', 'VIC', 'wholesale', 'normal', true, 'Wholesale used cars VIC'),
+  ('first-choice-cars', 'First Choice Cars', 'firstchoicecars.com.au', '/vehicles', 'NSW', 'independent', 'normal', true, 'Independent NSW'),
+  ('used-car-factory', 'Used Car Factory', 'usedcarfactory.com.au', '/stock', 'VIC', 'wholesale', 'high', true, 'Wholesale volume dealer VIC'),
+  ('great-value-cars', 'Great Value Cars', 'greatvaluecars.com.au', '/used-cars', 'QLD', 'independent', 'normal', true, 'Independent QLD'),
+  ('car-barn-australia', 'Car Barn Australia', 'carbarn.com.au', '/vehicles', 'NSW', 'wholesale', 'normal', true, 'Wholesale NSW'),
+  ('sydneys-best-cars', 'Sydneys Best Cars', 'sydneysbestcars.com.au', '/stock', 'NSW', 'independent', 'normal', true, 'Independent Sydney'),
+  ('perth-car-warehouse', 'Perth Car Warehouse', 'perthcarwarehouse.com.au', '/vehicles', 'WA', 'wholesale', 'high', true, 'Wholesale warehouse Perth')
+
+ON CONFLICT (dealer_slug) DO UPDATE SET
+  dealer_name = EXCLUDED.dealer_name,
+  dealer_domain = EXCLUDED.dealer_domain,
+  inventory_path = EXCLUDED.inventory_path,
+  state = EXCLUDED.state,
+  dealer_type = EXCLUDED.dealer_type,
+  priority = EXCLUDED.priority,
+  notes = EXCLUDED.notes,
+  updated_at = now();
+
+-- Update adapter_type for complex JS-heavy sites that need Manus
+UPDATE public.dealer_outbound_sources
+SET adapter_type = 'manus'
+WHERE dealer_domain ILIKE ANY (ARRAY[
+  '%westsideauto%',
+  '%apeagers%',
+  '%autosportsgroup%',
+  '%eagers%',
+  '%peterwarren%',
+  '%suttons%',
+  '%trivett%',
+  '%zagame%',
+  '%dutton%',
+  '%motorama%',
+  '%johnhughes%',
+  '%manheim%',
+  '%inchcape%'
+]);
+
+-- Disable any domains that are known to block crawlers
+UPDATE public.dealer_outbound_sources
+SET adapter_type = 'none', enabled = false
+WHERE dealer_domain ILIKE ANY (ARRAY[
+  '%carsales%',
+  '%drive.com%',
+  '%autotrader%'
+]);

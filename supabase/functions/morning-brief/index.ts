@@ -139,7 +139,8 @@ Deno.serve(async (req) => {
         buy_method, sale_status, sale_close_at, reserve_status,
         wovr_indicator, damage_noted, condition_notes, keys_present, starts_drives,
         fuel, transmission, drivetrain, location, state, source,
-        listing_url, auction_house, platform_class, trim_class
+        listing_url, auction_house, platform_class, trim_class,
+        auction_pass_number, auction_first_seen_at, auction_days_circulating, vehicle_fingerprint
       `)
       .in("source", ["pickles", "grays", "manheim", "slattery", "bidsonline"])
       .gte("sale_close_at", from)
@@ -244,6 +245,10 @@ Deno.serve(async (req) => {
       margin_flag: string | null;
       matched_spec_names: string[];
       composite_score: number;
+      auction_pass_number: number;
+      auction_first_seen_at: string | null;
+      auction_days_circulating: number;
+      pass_score_bonus: number;
       brief_date: string;
     }
 
@@ -264,7 +269,7 @@ Deno.serve(async (req) => {
         guideVsMedianGap = opp.retail_median - lot.asking_price;
       }
 
-      // Composite score: tier + margin + spec match bonus + no_reserve bonus + guide gap bonus
+      // Composite score: tier + margin + spec match bonus + no_reserve bonus + guide gap bonus + pass bonus
       let score = tierScore(opp?.tier);
       if (opp?.best_expected_margin) score += Math.min(opp.best_expected_margin / 500, 20);
       if (matchedSpecs.length > 0) score += 15; // spec match bonus
@@ -273,6 +278,15 @@ Deno.serve(async (req) => {
       if (lot.wovr_indicator) score -= 30; // WOVR penalty
       if (lot.damage_noted) score -= 10;
       if (!lot.starts_drives && lot.starts_drives !== null) score -= 20;
+      // Auction cycle pass bonus — seller motivation increases with each failed pass
+      const passNumber = lot.auction_pass_number || 1;
+      const daysCirculating = lot.auction_days_circulating || 0;
+      let passScoreBonus = 0;
+      if (passNumber === 2) passScoreBonus = 15;      // 2nd pass: seller starting to feel it
+      if (passNumber === 3) passScoreBonus = 25;      // 3rd pass: seller likely desperate
+      if (passNumber >= 4) passScoreBonus = 35;       // 4th+ pass: motivated seller, reserve likely gone
+      if (daysCirculating >= 21 && passNumber > 1) passScoreBonus += 10; // 3+ weeks circulating
+      score += passScoreBonus;
 
       briefItems.push({
         listing_id: lot.listing_id,
@@ -312,6 +326,10 @@ Deno.serve(async (req) => {
         margin_flag: opp?.margin_flag ?? null,
         matched_spec_names: matchedSpecNames,
         composite_score: Math.round(score),
+        auction_pass_number: passNumber,
+        auction_first_seen_at: lot.auction_first_seen_at ?? null,
+        auction_days_circulating: daysCirculating,
+        pass_score_bonus: passScoreBonus,
         brief_date: new Date().toISOString().split("T")[0],
       });
     }

@@ -391,7 +391,91 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ── Step 4: Update task status ───────────────────────────────────────────────
+  // ── Step 4: Auction history — repeat listing detection ──────────────────────────
+  // Compute a normalised fingerprint for cross-source vehicle matching
+  const resolvedMake = (make || existingListing?.make || 'unknown').toLowerCase();
+  const resolvedModel = (model || existingListing?.model || 'unknown').toLowerCase();
+  const resolvedYear = year || existingListing?.year || 0;
+  const resolvedKm = km || existingListing?.km || 0;
+  const yearBandStart = Math.floor(resolvedYear / 2) * 2;
+  const kmBandStart = Math.floor(resolvedKm / 20000) * 20000;
+  const fingerprint = `${resolvedMake}|${resolvedModel}|${yearBandStart}-${yearBandStart + 1}|${kmBandStart}k-${kmBandStart + 20000}k`;
+
+  // Upsert this appearance into vehicle_auction_history
+  const { data: historyRecord } = await supabase
+    .from('vehicle_auction_history')
+    .upsert({
+      fingerprint,
+      listing_id: listingId,
+      source,
+      auction_house: source === 'pickles' ? 'Pickles' : source === 'grays' ? 'Grays Online' : source === 'manheim' ? 'Manheim' : source,
+      listing_url: detailUrl,
+      guide_price: guidePrice,
+      reserve_status: reserveStatus,
+      sale_close_at: saleCloseAt,
+      sale_status: saleStatus,
+      sold_price: soldPrice,
+      buy_method: buyMethod,
+      make: resolvedMake.toUpperCase(),
+      model: resolvedModel.toUpperCase(),
+      year: resolvedYear || null,
+      odometer: resolvedKm || null,
+      state: state || existingListing?.state || null,
+      wovr_indicator: wovrIndicator,
+      damage_noted: damageNoted,
+      condition_notes: conditionNotes.length > 0 ? conditionNotes : null,
+    }, { onConflict: 'listing_id,source' })
+    .select('id')
+    .maybeSingle();
+
+  // Count prior appearances of this fingerprint (excluding current listing)
+  const { count: priorCount } = await supabase
+    .from('vehicle_auction_history')
+    .select('id', { count: 'exact', head: true })
+    .eq('fingerprint', fingerprint)
+    .neq('listing_id', listingId);
+
+  const passNumber = (priorCount || 0) + 1;
+
+  // Get the earliest appearance date for this fingerprint
+  const { data: firstSeenRow } = await supabase
+    .from('vehicle_auction_history')
+    .select('created_at')
+    .eq('fingerprint', fingerprint)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const firstSeenAt = firstSeenRow?.created_at || new Date().toISOString();
+  const daysCirculating = saleCloseAt
+    ? Math.max(0, Math.floor((new Date(saleCloseAt).getTime() - new Date(firstSeenAt).getTime()) / 86400000))
+    : 0;
+
+  // Update pass_number and first_seen_at on the history record
+  if (historyRecord?.id) {
+    await supabase
+      .from('vehicle_auction_history')
+      .update({ pass_number: passNumber, first_seen_at: firstSeenAt })
+      .eq('id', historyRecord.id);
+  }
+
+  // Denormalise pass data back to vehicle_listings for fast scoring (no join needed)
+  await supabase
+    .from('vehicle_listings')
+    .update({
+      auction_pass_number: passNumber,
+      auction_first_seen_at: firstSeenAt,
+      auction_days_circulating: daysCirculating,
+      auction_history_count: priorCount || 0,
+      vehicle_fingerprint: fingerprint,
+    })
+    .eq('listing_id', listingId);
+
+  if (passNumber > 1) {
+    console.log(`[AUCTION-WEBHOOK] REPEAT LISTING pass #${passNumber}: ${listingId} — ${daysCirculating} days circulating, fingerprint=${fingerprint}`);
+  }
+
+  // ── Step 5: Update task status ───────────────────────────────────────────────
   await updateTaskStatus(supabase, taskId, "complete", extracted);
 
   console.log(`[AUCTION-WEBHOOK] Done: ${source}:${sourceListingId} — listings_enriched=${listingsCreated}, matches=${matchesCreated}, wovr=${wovrIndicator}, damage=${damageNoted}`);

@@ -36,6 +36,8 @@ interface Instruction {
   priority: 'critical' | 'high' | 'normal';
   no_reserve: boolean;
   has_damage: boolean;
+  auction_pass_number?: number | null;
+  auction_days_circulating?: number | null;
   status: 'pending' | 'acknowledged' | 'bid_placed' | 'won' | 'lost' | 'passed' | 'expired';
   acknowledged_at: string | null;
   bid_amount: number | null;
@@ -114,6 +116,23 @@ function InstructionCard({
               )}
               {instruction.has_damage && (
                 <span className="text-[10px] font-bold tracking-widest px-2 py-0.5 rounded border bg-orange-500/20 text-orange-400 border-orange-500/30">DAMAGE</span>
+              )}
+              {instruction.auction_pass_number && instruction.auction_pass_number >= 2 && (
+                <span className={cn(
+                  'text-[10px] font-bold tracking-widest px-2 py-0.5 rounded border',
+                  instruction.auction_pass_number === 2
+                    ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                    : instruction.auction_pass_number === 3
+                    ? 'bg-orange-600/20 text-orange-300 border-orange-600/30'
+                    : 'bg-red-700/20 text-red-300 border-red-700/30'
+                )}>
+                  {instruction.auction_pass_number === 2 ? '2ND PASS' :
+                   instruction.auction_pass_number === 3 ? '3RD PASS' :
+                   `${instruction.auction_pass_number}TH PASS`}
+                  {instruction.auction_days_circulating && instruction.auction_days_circulating > 0
+                    ? ` · ${instruction.auction_days_circulating}D`
+                    : ''}
+                </span>
               )}
             </div>
             <h3 className="text-white font-semibold text-base leading-tight">

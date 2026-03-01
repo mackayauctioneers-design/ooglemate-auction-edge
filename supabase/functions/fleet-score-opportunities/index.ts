@@ -147,7 +147,15 @@ function scoreListing(
     return { gap_fit_score: 0, margin_score: 0, price_score: 0, condition_score: 0, composite_score: 0, target_acquisition_price: null, expected_gross_profit: null };
   }
 
-  const compositeScore = gapFitScore + marginScore + priceScore + conditionScore;
+  // 5. Auction cycle pass bonus — seller motivation increases with each failed pass
+  const passNumber = (listing as any).auction_pass_number || 1;
+  const daysCirculating = (listing as any).auction_days_circulating || 0;
+  let passBonus = 0;
+  if (passNumber === 2) passBonus = 8;
+  if (passNumber === 3) passBonus = 15;
+  if (passNumber >= 4) passBonus = 22;
+  if (daysCirculating >= 21 && passNumber > 1) passBonus += 5;
+  const compositeScore = gapFitScore + marginScore + priceScore + conditionScore + passBonus;
 
   // Target acquisition price: historical avg acquisition cost, adjusted for condition
   let targetAcqPrice: number | null = null;
@@ -226,7 +234,8 @@ Deno.serve(async (req) => {
         asking_price, guide_price, reserve_price,
         source, location, state, listing_url,
         sale_close_at, buy_method, auction_house,
-        wovr_indicator, damage_noted, keys_present, starts_drives, reserve_status
+        wovr_indicator, damage_noted, keys_present, starts_drives, reserve_status,
+        auction_pass_number, auction_first_seen_at, auction_days_circulating
       `)
       .or(`sale_close_at.lte.${cutoff},sale_close_at.is.null`)
       .eq("sale_status", "active")
