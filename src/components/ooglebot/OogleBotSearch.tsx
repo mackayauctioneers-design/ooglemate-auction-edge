@@ -231,8 +231,21 @@ function ManusResultCard({ result, isBestPrice }: { result: ManusResult; isBestP
   );
 }
 
+const REASSURANCE_MESSAGES = [
+  "Searching dealer inventory sites…",
+  "Checking stock listings…",
+  "Scanning dealer catalogues…",
+  "Checking EasyAuto123…",
+  "Searching CarsGuide…",
+  "Scanning Tony White Group…",
+  "Cross-checking dealer stock…",
+  "Almost done — finalising results…",
+];
+
+const MANUS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 function ManusResultsSection({
-  manusTriggered, manusSessionId, manusPolling, manusPending, manusTotal, manusResults,
+  manusTriggered, manusSessionId, manusPolling, manusPending, manusTotal, manusResults, manusTimedOut,
 }: {
   manusTriggered: boolean;
   manusSessionId: string | null;
@@ -240,8 +253,19 @@ function ManusResultsSection({
   manusPending: number;
   manusTotal: number;
   manusResults: ManusResult[];
+  manusTimedOut: boolean;
 }) {
   const [showAll, setShowAll] = useState(false);
+  const [msgIndex, setMsgIndex] = useState(0);
+
+  // Cycle reassurance messages every 30s while searching
+  useEffect(() => {
+    if (manusPending === 0) return;
+    const interval = setInterval(() => {
+      setMsgIndex(i => (i + 1) % REASSURANCE_MESSAGES.length);
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [manusPending]);
 
   // Deduplicate by stock_no (prefer lower price), then sort cheapest first
   const deduped = (() => {
@@ -260,6 +284,7 @@ function ManusResultsSection({
   const top3 = deduped.slice(0, DEFAULT_SHOW);
   const hasMore = deduped.length > DEFAULT_SHOW;
   const displayed = showAll ? deduped : top3;
+  const completedCount = manusTotal - manusPending;
 
   return (
     <Card>
@@ -267,10 +292,10 @@ function ManusResultsSection({
         <CardTitle className="flex items-center gap-2 text-sm font-medium">
           <Search className="h-4 w-4 text-primary" />
           Market Results
-          {manusPending > 0 && (
+          {manusPending > 0 && !manusTimedOut && (
             <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
-              {manusPending}/{manusTotal} searching...
+              {completedCount}/{manusTotal} complete
             </span>
           )}
           {manusPending === 0 && manusTotal > 0 && deduped.length > 0 && (
@@ -282,19 +307,46 @@ function ManusResultsSection({
       </CardHeader>
       <CardContent className="space-y-1.5">
         {/* Connecting */}
-        {manusTriggered && !manusSessionId && !manusPolling && manusResults.length === 0 && (
+        {manusTriggered && !manusSessionId && !manusPolling && manusResults.length === 0 && !manusTimedOut && (
           <div className="flex flex-col items-center py-4 gap-1">
             <KitingLoader size="md" label="Connecting to search network…" />
           </div>
         )}
-        {/* Waiting for results */}
-        {manusResults.length === 0 && manusPending > 0 && (
-          <div className="flex flex-col items-center py-4 gap-1">
-            <KitingLoader size="md" label="Searching the market — results arrive in 2–5 min…" />
+        {/* Waiting for results with progress + reassurance */}
+        {manusResults.length === 0 && manusPending > 0 && !manusTimedOut && (
+          <div className="flex flex-col items-center py-4 gap-2">
+            <KitingLoader size="md" />
+            {/* Progress bar */}
+            <div className="w-full max-w-xs space-y-1">
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-700 ease-out"
+                  style={{ width: `${manusTotal > 0 ? Math.max(5, (completedCount / manusTotal) * 100) : 5}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground text-center animate-pulse">
+                {REASSURANCE_MESSAGES[msgIndex]}
+              </p>
+            </div>
           </div>
         )}
+        {/* Partial results arriving while still searching */}
+        {manusResults.length > 0 && manusPending > 0 && !manusTimedOut && (
+          <div className="flex items-center gap-2 mb-2 px-1">
+            <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
+            <p className="text-xs text-muted-foreground">
+              {completedCount}/{manusTotal} sites searched · {deduped.length} result{deduped.length !== 1 ? "s" : ""} so far
+            </p>
+          </div>
+        )}
+        {/* Timed out */}
+        {manusTimedOut && deduped.length === 0 && (
+          <p className="text-sm text-muted-foreground py-2">
+            Search complete — no matching vehicles found at this time. Try broadening your search criteria.
+          </p>
+        )}
         {/* Done, nothing found */}
-        {manusTriggered && deduped.length === 0 && manusPending === 0 && manusSessionId && (
+        {!manusTimedOut && manusTriggered && deduped.length === 0 && manusPending === 0 && manusSessionId && (
           <p className="text-sm text-muted-foreground py-2">
             No matching vehicles found.
           </p>
@@ -394,8 +446,10 @@ export function OogleBotSearch() {
   const [manusPending, setManusPending] = useState(0);
   const [manusTotal, setManusTotal] = useState(0);
   const [manusPolling, setManusPolling] = useState(false);
-  const [manusTriggered, setManusTriggered] = useState(false); // true from the moment search fires
+  const [manusTriggered, setManusTriggered] = useState(false);
+  const [manusTimedOut, setManusTimedOut] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Poll Manus tasks by session_id
   const pollManusTasks = useCallback(async (sessionId: string) => {
@@ -430,28 +484,61 @@ export function OogleBotSearch() {
     }
   }, []);
 
-  // Cleanup polling on unmount
+  // Cleanup polling + timeout on unmount
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, []);
 
-  // Start polling when session changes
+  // Start polling + realtime + timeout when session changes
   useEffect(() => {
     if (!manusSessionId) return;
 
     setManusPolling(true);
-    // Initial poll after 5s (Manus needs time)
+    setManusTimedOut(false);
+
+    // Poll immediately, then every 8s
     const initialTimeout = setTimeout(() => {
       pollManusTasks(manusSessionId);
-      // Then poll every 15s
-      pollRef.current = setInterval(() => pollManusTasks(manusSessionId), 15000);
-    }, 5000);
+      pollRef.current = setInterval(() => pollManusTasks(manusSessionId), 8000);
+    }, 3000);
+
+    // Realtime subscription for instant updates
+    const channel = supabase
+      .channel(`manus-tasks-${manusSessionId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "manus_search_tasks",
+          filter: `search_session_id=eq.${manusSessionId}`,
+        },
+        () => {
+          // Re-poll immediately on any update
+          pollManusTasks(manusSessionId);
+        },
+      )
+      .subscribe();
+
+    // 5-minute timeout
+    timeoutRef.current = setTimeout(() => {
+      setManusTimedOut(true);
+      setManusPolling(false);
+      setManusPending(0);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    }, MANUS_TIMEOUT_MS);
 
     return () => {
       clearTimeout(initialTimeout);
       if (pollRef.current) clearInterval(pollRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      supabase.removeChannel(channel);
     };
   }, [manusSessionId, pollManusTasks]);
 
@@ -501,7 +588,8 @@ export function OogleBotSearch() {
 
     setHasSearched(true);
     setInternalLoading(true);
-    setManusTriggered(true); // show dealer sites card immediately
+    setManusTriggered(true);
+    setManusTimedOut(false);
     setInternalResults([]);
     setDealerSpecs([]);
     setExternalResponse(null);
@@ -716,6 +804,7 @@ export function OogleBotSearch() {
           manusPending={manusPending}
           manusTotal={manusTotal}
           manusResults={manusResults}
+          manusTimedOut={manusTimedOut}
         />
       )}
 
