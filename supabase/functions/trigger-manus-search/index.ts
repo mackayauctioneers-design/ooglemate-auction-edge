@@ -32,6 +32,115 @@ interface NormalisedResult {
   stock_no: string | null;
 }
 
+/* ── Market floor assessment ─────────────────────── */
+
+interface FloorAssessment {
+  confirmed: boolean;
+  reasons: string[];
+  pricedCount: number;
+  spread_pct: number | null;
+  outlier: boolean;
+}
+
+function assessMarketFloor(results: NormalisedResult[]): FloorAssessment {
+  const priced = results.filter((r) => r.price != null && r.price > 0).sort((a, b) => a.price! - b.price!);
+  const reasons: string[] = [];
+
+  // LOW_VOLUME: fewer than 3 priced matches → floor unconfirmed
+  if (priced.length < 3) {
+    reasons.push(`LOW_VOLUME(${priced.length})`);
+  }
+
+  // HIGH_SPREAD: price spread > 8% between cheapest and 2nd cheapest
+  let spreadPct: number | null = null;
+  if (priced.length >= 2) {
+    const cheapest = priced[0].price!;
+    const second = priced[1].price!;
+    if (second > 0) {
+      spreadPct = ((second - cheapest) / second) * 100;
+      if (spreadPct > 8) {
+        reasons.push(`HIGH_SPREAD(${spreadPct.toFixed(1)}%)`);
+      }
+    }
+  }
+
+  // OUTLIER: cheapest is > 15% below the next result
+  let outlier = false;
+  if (priced.length >= 2) {
+    const cheapest = priced[0].price!;
+    const next = priced[1].price!;
+    if (next > 0 && ((next - cheapest) / next) * 100 > 15) {
+      outlier = true;
+      reasons.push(`OUTLIER(${cheapest} vs ${next})`);
+    }
+  }
+
+  const confirmed = reasons.length === 0;
+  console.log(`[FLOOR] pricedCount=${priced.length} spread=${spreadPct?.toFixed(1) ?? "N/A"}% outlier=${outlier} confirmed=${confirmed} reasons=[${reasons.join(",")}]`);
+
+  return { confirmed, reasons, pricedCount: priced.length, spread_pct: spreadPct, outlier };
+}
+
+/* ── Manus execution contract prompt builder ─────── */
+
+function buildManusPrompt(
+  inventoryUrl: string,
+  filters: Record<string, any>,
+): string {
+  const { make, model, badge, yearLine, kmLine, priceLine } = filters;
+
+  const badgeContract = badge
+    ? [
+        `BADGE VALIDATION: Only return vehicles where the badge/variant/trim is EXACTLY "${badge}".`,
+        `"${badge}" is NOT "${badge}L", "${badge}R", "${badge}S", or any other variant containing "${badge}" as a prefix/suffix.`,
+        `If zero exact badge matches exist, return an empty array [].`,
+      ].join("\n")
+    : "";
+
+  return [
+    `## EXECUTION CONTRACT — BOUNDED SOURCING AGENT`,
+    ``,
+    `You are a deterministic vehicle sourcing agent. Follow these rules strictly:`,
+    ``,
+    `### HARD LIMITS`,
+    `- Runtime: STOP after 120 seconds regardless of progress.`,
+    `- Pages: Navigate at most 30 listing pages. Do NOT follow pagination beyond page 30.`,
+    `- Matches: STOP as soon as you have collected 3 or more credible matches.`,
+    `- Scope: Search ONLY the provided URL. Do NOT discover or navigate to other websites.`,
+    `- No wandering: Do NOT click into individual listing detail pages unless required to extract a missing field.`,
+    ``,
+    `### SEARCH TARGET`,
+    `Website: ${inventoryUrl}`,
+    `Make: ${make}`,
+    model ? `Model: ${model}` : "",
+    badge ? `Badge/Variant: ${badge}` : "",
+    yearLine || "",
+    kmLine || "",
+    priceLine || "",
+    ``,
+    badgeContract,
+    ``,
+    `### SORT ORDER`,
+    `Sort results by price ascending (cheapest first). If the website supports price sorting, use it.`,
+    ``,
+    `### OUTPUT FORMAT`,
+    `Return ONLY a JSON array sorted by price ASC. No commentary, no markdown fences.`,
+    `Each object must have these fields:`,
+    `- price (integer, AUD, exclude govt charges if possible)`,
+    `- price_type (string: 'drive_away' | 'excl_govt' | 'unknown')`,
+    `- km (integer)`,
+    `- year (integer)`,
+    `- badge (string, exact variant/trim as shown on listing)`,
+    `- colour (string)`,
+    `- location (string, suburb and state)`,
+    `- dealer_name (string)`,
+    `- direct_url (string, full URL to the individual listing page)`,
+    `- stock_no (string, if visible)`,
+    ``,
+    `If no matching vehicles found, return [].`,
+  ].filter(Boolean).join("\n");
+}
+
 /** Create a Manus task and record it. Returns the task ID or null. */
 async function dispatchManusTask(
   supabase: ReturnType<typeof createClient>,
@@ -41,38 +150,8 @@ async function dispatchManusTask(
   sessionId: string,
   huntId: string | null,
 ): Promise<string | null> {
-  const { make, model, badge, yearLine, kmLine, priceLine } = filters as any;
-
-  const strictBadgeInstruction = badge
-    ? `IMPORTANT: Only return vehicles that are specifically the "${badge}" variant/badge/trim. Do NOT return other variants like BASE, Active, Elite, or any other trim that is not "${badge}". If no exact match exists, return an empty array.\n${badge} is NOT the same as ${badge}L or ${badge}R. Only return vehicles where the badge is exactly "${badge}", not a variant that starts with or contains "${badge}" as a prefix.`
-    : "";
-
+  const prompt = buildManusPrompt(inventoryUrl, filters);
   const webhookUrl = Deno.env.get("MANUS_WEBHOOK_URL");
-
-  const prompt = [
-    `Search the website ${inventoryUrl} for used cars matching:`,
-    `Make: ${make}`,
-    model ? `Model: ${model}` : "",
-    badge ? `Badge/Variant: ${badge}` : "",
-    yearLine,
-    kmLine,
-    priceLine,
-    strictBadgeInstruction,
-    "",
-    "For each matching vehicle found, extract and return a JSON array with these fields:",
-    "- price (integer, AUD, exclude govt charges if possible)",
-    "- price_type (string: 'drive_away' or 'excl_govt' or 'unknown')",
-    "- km (integer)",
-    "- year (integer)",
-    "- badge (string, the exact variant/trim name as shown on the listing)",
-    "- colour (string)",
-    "- location (string, suburb and state)",
-    "- dealer_name (string)",
-    "- direct_url (string, full URL to the individual listing page)",
-    "- stock_no (string, if visible)",
-    "",
-    "Return ONLY a JSON array. No commentary. If no matching vehicles are found, return an empty array [].",
-  ].filter(Boolean).join("\n");
 
   const taskBody: Record<string, unknown> = { prompt };
   if (webhookUrl) {
@@ -115,7 +194,7 @@ async function dispatchManusTask(
 /* ── constants ───────────────────────────────────── */
 
 const MAX_BRAND_DEALER_SEARCHES = 3;
-const DRIVE_SUFFICIENT_THRESHOLD = 5;
+const MAX_TOTAL_MANUS_TASKS = 5;
 
 /* ── Tier-1 source: Auction DB (local Supabase query) ── */
 
@@ -146,7 +225,6 @@ async function queryAuctionDB(
 
   let rows = data || [];
 
-  // Exact badge token matching (not substring) — "GX" must NOT match "GXL"
   if (badge) {
     const badgeNorm = badge.toUpperCase().replace(/[^A-Z0-9 ]/g, "").trim();
     const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
@@ -227,7 +305,6 @@ async function queryDrive(
       const dealerSuburb = r.Dealer?.suburb || r.Region?.name || "";
       const dealerState = r.Dealer?.state || r.Region?.state || "";
       const loc = [dealerSuburb, dealerState].filter(Boolean).join(" ");
-      // priceIgc = inclusive govt charges (drive-away), priceEgc = excl govt charges
       const price = r.priceEgc || r.priceIgc || null;
       const priceType = r.priceEgc ? "excl_govt" : (r.priceIgc ? "drive_away" : "unknown");
 
@@ -238,7 +315,7 @@ async function queryDrive(
         km: r.odometer || null,
         year: r.year || null,
         location: loc,
-        dealer_name: null, // Drive doesn't expose dealer name in listing results
+        dealer_name: null,
         url: `https://www.drive.com.au/cars-for-sale/${(r.makeDescription || make).toLowerCase().replace(/\s+/g, "-")}/${(r.familyDescription || model).toLowerCase().replace(/\s+/g, "-")}/${r.id}/`,
         badge: r.description || null,
         source: "drive",
@@ -254,14 +331,13 @@ async function queryDrive(
   }
 }
 
-/* ── Tier-1 source: Toyota Used Cars (local DB — ingested by caroogle-toyota-cron) ── */
+/* ── Tier-1 source: Toyota Used Cars (local DB) ── */
 
 async function queryToyotaDB(
   supabase: ReturnType<typeof createClient>,
   make: string, model: string, badge: string,
   yearMin?: number, yearMax?: number, maxKm?: number, priceMax?: number,
 ): Promise<NormalisedResult[]> {
-  // Only relevant for Toyota-brand searches
   if (make.toUpperCase() !== "TOYOTA") return [];
 
   let query = supabase
@@ -286,7 +362,6 @@ async function queryToyotaDB(
 
   let rows = data || [];
 
-  // Exact badge token matching for Toyota — "GX" must NOT match "GXL"
   if (badge) {
     const badgeNorm = badge.toUpperCase().replace(/[^A-Z0-9 ]/g, "").trim();
     const badgeRegex = new RegExp(`(^|[\\s\\-\\/,])${badgeNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
@@ -400,7 +475,7 @@ Deno.serve(async (req) => {
   const taskFilterPayload = { make, model, badge, yearLine, kmLine, priceLine, year_min: yearMin, year_max: yearMax, max_km: maxKm, price_max: priceMax };
 
   /* ══════════════════════════════════════════════════
-   * STEP 2: Tier-1 instant sources (parallel, zero cost)
+   * LAYER 0: Tier-1 instant sources (parallel, zero cost)
    * ══════════════════════════════════════════════════ */
   const [auctionResults, driveResponse, toyotaResults] = await Promise.all([
     queryAuctionDB(supabase, make, model, badge, yearMin, yearMax, maxKm, priceMax),
@@ -427,93 +502,101 @@ Deno.serve(async (req) => {
   const tier1Results = [...auctionResults, ...driveResults, ...toyotaResults];
   const tier1Count = tier1Results.length;
 
-  console.log(`[PIPELINE] Tier-1: Auction(${auctionResults.length}) + Drive(${driveResultCount}) + Toyota(${toyotaResults.length}) = ${tier1Count} instant results`);
+  console.log(`[PIPELINE] Layer-0: Auction(${auctionResults.length}) + Drive(${driveResultCount}) + Toyota(${toyotaResults.length}) = ${tier1Count} instant results`);
 
   /* ══════════════════════════════════════════════════
-   * STEP 3: Tier-2 Manus sources (conditional dispatch)
-   * If tier-1 Drive >= 5 → skip Manus entirely
-   * If tier-1 Drive < 5  → dispatch CarsGuide + mega-dealers
+   * MARKET FLOOR ASSESSMENT
+   * Replace simple count threshold with statistical check
    * ══════════════════════════════════════════════════ */
+  const floor = assessMarketFloor(tier1Results);
+
   let carsguideTaskId: string | null = null;
   let carsalesTaskId: string | null = null;
   let megaTaskIds: string[] = [];
   let brandTaskIds: string[] = [];
+  let totalManusDispatched = 0;
 
-  if (tier1Count < DRIVE_SUFFICIENT_THRESHOLD) {
-    console.log(`[PIPELINE] Post-filter Tier-1 total ${tier1Count} (<${DRIVE_SUFFICIENT_THRESHOLD}) — dispatching Tier-2 Manus tasks`);
+  if (!floor.confirmed) {
+    console.log(`[PIPELINE] Market floor UNCONFIRMED [${floor.reasons.join(", ")}] — dispatching Layer-1 Manus tasks`);
+
+    /* ══════════════════════════════════════════════════
+     * LAYER 1: Marketplace aggregators (CarsGuide + Carsales)
+     * ══════════════════════════════════════════════════ */
 
     // CarsGuide
-    try {
-      const cgParams = new URLSearchParams();
-      if (yearMin) cgParams.set("year_from", String(yearMin));
-      if (yearMax) cgParams.set("year_to", String(yearMax));
-      if (maxKm) cgParams.set("odometer_max", String(maxKm));
-      if (priceMax) cgParams.set("price_to", String(priceMax));
+    if (totalManusDispatched < MAX_TOTAL_MANUS_TASKS) {
+      try {
+        const cgParams = new URLSearchParams();
+        if (yearMin) cgParams.set("year_from", String(yearMin));
+        if (yearMax) cgParams.set("year_to", String(yearMax));
+        if (maxKm) cgParams.set("odometer_max", String(maxKm));
+        if (priceMax) cgParams.set("price_to", String(priceMax));
 
-      const makeLower = make.toLowerCase().replace(/\s+/g, "-");
-      const modelLower = model ? model.toLowerCase().replace(/\s+/g, "-") : "";
-      const cgUrl = modelLower
-        ? `https://www.carsguide.com.au/buy-a-car/${makeLower}/${modelLower}/?${cgParams.toString()}`
-        : `https://www.carsguide.com.au/buy-a-car/${makeLower}/?${cgParams.toString()}`;
+        const makeLower = make.toLowerCase().replace(/\s+/g, "-");
+        const modelLower = model ? model.toLowerCase().replace(/\s+/g, "-") : "";
+        const cgUrl = modelLower
+          ? `https://www.carsguide.com.au/buy-a-car/${makeLower}/${modelLower}/?${cgParams.toString()}`
+          : `https://www.carsguide.com.au/buy-a-car/${makeLower}/?${cgParams.toString()}`;
 
-      carsguideTaskId = await dispatchManusTask(supabase, MANUS_API_KEY, cgUrl, { ...taskFilterPayload, source: "carsguide" }, sessionId, huntId);
-      console.log(`[PIPELINE] CarsGuide task: ${carsguideTaskId || "failed"}`);
-    } catch (err) {
-      console.warn("[PIPELINE] CarsGuide dispatch error:", err);
+        carsguideTaskId = await dispatchManusTask(supabase, MANUS_API_KEY, cgUrl, { ...taskFilterPayload, source: "carsguide" }, sessionId, huntId);
+        if (carsguideTaskId) totalManusDispatched++;
+        console.log(`[PIPELINE] CarsGuide task: ${carsguideTaskId || "failed"}`);
+      } catch (err) {
+        console.warn("[PIPELINE] CarsGuide dispatch error:", err);
+      }
     }
 
     // Carsales.com.au
-    try {
-      const csParams = new URLSearchParams();
-      csParams.set("q", `(And.Service.carsales._.Type.Used._.${make ? `Make.${encodeURIComponent(make)}.` : ""}${model ? `FamilyDescription.${encodeURIComponent(model)}.` : ""})`);
-      if (yearMin) csParams.set("year_from", String(yearMin));
-      if (yearMax) csParams.set("year_to", String(yearMax));
-      if (maxKm) csParams.set("odometer_max", String(maxKm));
-      if (priceMax) csParams.set("price_max", String(priceMax));
+    if (totalManusDispatched < MAX_TOTAL_MANUS_TASKS) {
+      try {
+        const csParams = new URLSearchParams();
+        csParams.set("q", `(And.Service.carsales._.Type.Used._.${make ? `Make.${encodeURIComponent(make)}.` : ""}${model ? `FamilyDescription.${encodeURIComponent(model)}.` : ""})`);
+        if (yearMin) csParams.set("year_from", String(yearMin));
+        if (yearMax) csParams.set("year_to", String(yearMax));
+        if (maxKm) csParams.set("odometer_max", String(maxKm));
+        if (priceMax) csParams.set("price_max", String(priceMax));
 
-      const csUrl = `https://www.carsales.com.au/cars/?${csParams.toString()}`;
+        const csUrl = `https://www.carsales.com.au/cars/?${csParams.toString()}`;
 
-      carsalesTaskId = await dispatchManusTask(supabase, MANUS_API_KEY, csUrl, { ...taskFilterPayload, source: "carsales" }, sessionId, huntId);
-      console.log(`[PIPELINE] Carsales task: ${carsalesTaskId || "failed"}`);
-    } catch (err) {
-      console.warn("[PIPELINE] Carsales dispatch error:", err);
+        carsalesTaskId = await dispatchManusTask(supabase, MANUS_API_KEY, csUrl, { ...taskFilterPayload, source: "carsales" }, sessionId, huntId);
+        if (carsalesTaskId) totalManusDispatched++;
+        console.log(`[PIPELINE] Carsales task: ${carsalesTaskId || "failed"}`);
+      } catch (err) {
+        console.warn("[PIPELINE] Carsales dispatch error:", err);
+      }
     }
 
-    // Mega-dealers (EasyAuto123, Tony White, etc.)
-    const { data: megaSources } = await supabase
-      .from("dealer_outbound_sources")
-      .select("*")
-      .eq("dealer_type", "mega_dealer")
-      .eq("enabled", true)
-      .order("priority", { ascending: true });
-
-    const megaTaskPromises = (megaSources || []).map((s: any) => {
-      const url = s.url || `https://${s.dealer_domain}${s.inventory_path || ""}`;
-      if (!url || url === "https://undefined") return Promise.resolve(null);
-      return dispatchManusTask(supabase, MANUS_API_KEY, url, { ...taskFilterPayload, dealer_slug: s.dealer_slug }, sessionId, huntId);
-    });
-
-    megaTaskIds = (await Promise.all(megaTaskPromises)).filter(Boolean) as string[];
-    console.log(`[PIPELINE] Mega-dealer tasks: ${megaTaskIds.length}`);
-
-    /* ── STEP 4: Brand-routed fallback (only if ALL tier-1 returned 0) ── */
-    if (tier1Count === 0) {
+    /* ══════════════════════════════════════════════════
+     * LAYER 2: Brand-scoped mega-dealer sweep
+     * Only when Layer 0 returned zero results.
+     * Query dealer_outbound_sources filtered by brand,
+     * take top 3 brand-matching mega-dealers only.
+     * ══════════════════════════════════════════════════ */
+    if (tier1Count === 0 && totalManusDispatched < MAX_TOTAL_MANUS_TASKS) {
       const makeUpper = make.toUpperCase();
-      const { data: allSources } = await supabase
+      const remaining = MAX_TOTAL_MANUS_TASKS - totalManusDispatched;
+
+      const { data: brandMegaSources } = await supabase
         .from("dealer_outbound_sources")
         .select("*")
-        .in("adapter_type", ["manus", "generic_scrape"])
         .eq("enabled", true)
-        .neq("dealer_type", "mega_dealer")
         .order("priority", { ascending: true });
 
-      const brandFiltered = (allSources || []).filter((s: any) => {
-        if (!s.brands || s.brands.length === 0) return true;
+      // Filter to brand-matching sources (mega_dealer type preferred, then others)
+      const brandMatched = (brandMegaSources || []).filter((s: any) => {
+        if (!s.brands || s.brands.length === 0) return false; // must explicitly list the brand
         return s.brands.some((b: string) => b.toUpperCase() === makeUpper);
       });
 
-      const capped = brandFiltered.slice(0, MAX_BRAND_DEALER_SEARCHES);
-      console.log(`[PIPELINE] Brand fallback: ${brandFiltered.length} matched, capped to ${capped.length}`);
+      // Prefer mega_dealers first, then others
+      const sorted = brandMatched.sort((a: any, b: any) => {
+        if (a.dealer_type === "mega_dealer" && b.dealer_type !== "mega_dealer") return -1;
+        if (a.dealer_type !== "mega_dealer" && b.dealer_type === "mega_dealer") return 1;
+        return 0;
+      });
+
+      const capped = sorted.slice(0, Math.min(MAX_BRAND_DEALER_SEARCHES, remaining));
+      console.log(`[PIPELINE] Layer-2 brand sweep: ${brandMatched.length} brand-matched, dispatching ${capped.length} (remaining budget: ${remaining})`);
 
       const brandPromises = capped.map((s: any) => {
         const url = s.url || `https://${s.dealer_domain}${s.inventory_path || ""}`;
@@ -522,10 +605,11 @@ Deno.serve(async (req) => {
       });
 
       brandTaskIds = (await Promise.all(brandPromises)).filter(Boolean) as string[];
-      console.log(`[PIPELINE] Brand fallback tasks: ${brandTaskIds.length}`);
+      totalManusDispatched += brandTaskIds.length;
+      console.log(`[PIPELINE] Layer-2 brand tasks: ${brandTaskIds.length}`);
     }
   } else {
-    console.log(`[PIPELINE] Post-filter Tier-1 total ${tier1Count} (≥${DRIVE_SUFFICIENT_THRESHOLD}) — skipping all Manus tasks`);
+    console.log(`[PIPELINE] Market floor CONFIRMED (${floor.pricedCount} priced, spread=${floor.spread_pct?.toFixed(1) ?? "N/A"}%) — skipping all Manus tasks`);
   }
 
   const allTaskIds = [carsguideTaskId, carsalesTaskId, ...megaTaskIds, ...brandTaskIds].filter(Boolean) as string[];
@@ -533,18 +617,25 @@ Deno.serve(async (req) => {
   return new Response(
     JSON.stringify({
       session_id: sessionId,
-      message: `Tier-1: Auction(${auctionResults.length})+Drive(${driveResultCount})+Toyota(${toyotaResults.length}) | Tier-2: ${allTaskIds.length} Manus tasks`,
+      message: `Layer-0: Auction(${auctionResults.length})+Drive(${driveResultCount})+Toyota(${toyotaResults.length}) | Floor: ${floor.confirmed ? "CONFIRMED" : "UNCONFIRMED"} | Manus: ${allTaskIds.length} tasks`,
       pipeline: {
         auction_results: auctionResults.length,
         drive_results: driveResultCount,
         toyota_results: toyotaResults.length,
         tier1_total: tier1Count,
+        floor_assessment: {
+          confirmed: floor.confirmed,
+          reasons: floor.reasons,
+          priced_count: floor.pricedCount,
+          spread_pct: floor.spread_pct,
+          outlier: floor.outlier,
+        },
         carsguide_task: carsguideTaskId,
         carsales_task: carsalesTaskId,
         mega_dealer_tasks: megaTaskIds.length,
-        brand_fallback_tasks: brandTaskIds.length,
+        brand_sweep_tasks: brandTaskIds.length,
+        total_manus_tasks: allTaskIds.length,
       },
-      // Tier-1 instant results returned inline for immediate display
       instant_results: tier1Results,
       tasks_created: allTaskIds.length,
       task_ids: allTaskIds,
