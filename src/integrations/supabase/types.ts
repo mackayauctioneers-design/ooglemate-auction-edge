@@ -1301,6 +1301,7 @@ export type Database = {
       dealer_outbound_sources: {
         Row: {
           adapter_type: string
+          brands: string[] | null
           consecutive_failures: number
           created_at: string
           dealer_domain: string
@@ -1320,6 +1321,7 @@ export type Database = {
         }
         Insert: {
           adapter_type?: string
+          brands?: string[] | null
           consecutive_failures?: number
           created_at?: string
           dealer_domain: string
@@ -1339,6 +1341,7 @@ export type Database = {
         }
         Update: {
           adapter_type?: string
+          brands?: string[] | null
           consecutive_failures?: number
           created_at?: string
           dealer_domain?: string
@@ -8162,6 +8165,57 @@ export type Database = {
           last_run_at?: string | null
           last_seen_cutoff?: string | null
           note?: Json | null
+        }
+        Relationships: []
+      }
+      search_cache: {
+        Row: {
+          badge: string | null
+          cache_key: string
+          created_at: string
+          expires_at: string
+          hits: number
+          id: string
+          make: string
+          max_km: number | null
+          model: string | null
+          price_max: number | null
+          results: Json
+          source: string
+          year_max: number | null
+          year_min: number | null
+        }
+        Insert: {
+          badge?: string | null
+          cache_key: string
+          created_at?: string
+          expires_at?: string
+          hits?: number
+          id?: string
+          make: string
+          max_km?: number | null
+          model?: string | null
+          price_max?: number | null
+          results?: Json
+          source?: string
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          badge?: string | null
+          cache_key?: string
+          created_at?: string
+          expires_at?: string
+          hits?: number
+          id?: string
+          make?: string
+          max_km?: number | null
+          model?: string | null
+          price_max?: number | null
+          results?: Json
+          source?: string
+          year_max?: number | null
+          year_min?: number | null
         }
         Relationships: []
       }
