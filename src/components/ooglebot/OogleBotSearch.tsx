@@ -202,22 +202,34 @@ interface ManusResult {
   url: string;
   badge: string | null;
   source: string;
+  colour: string | null;
+  stock_no: string | null;
 }
 
-function ManusResultCard({ result }: { result: ManusResult }) {
+function ManusResultCard({ result, isBestPrice }: { result: ManusResult; isBestPrice?: boolean }) {
   return (
-    <div className="flex items-start justify-between gap-4 p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-colors">
+    <div className={`flex items-start justify-between gap-4 p-3 rounded-lg border transition-colors ${
+      isBestPrice
+        ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15 ring-1 ring-emerald-500/20"
+        : "border-border bg-card hover:bg-muted/30"
+    }`}>
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex items-center gap-2 flex-wrap">
+          {isBestPrice && (
+            <Badge className="text-[10px] px-1.5 py-0 bg-emerald-500 text-white border-emerald-600">
+              Best Price
+            </Badge>
+          )}
           <span className="font-semibold text-sm text-foreground">
             {result.title || "Untitled"}
           </span>
-          <Badge className="text-[10px] px-1.5 py-0 bg-amber-500/20 text-amber-700 border-amber-500/30">
-            <Building2 className="h-2.5 w-2.5 mr-0.5" />
-            {result.source}
-          </Badge>
+          {result.badge && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              {result.badge}
+            </Badge>
+          )}
         </div>
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
           {result.price != null && (
             <span className="flex items-center gap-1 font-medium text-foreground">
               <DollarSign className="h-3 w-3" />
@@ -230,14 +242,22 @@ function ManusResultCard({ result }: { result: ManusResult }) {
               {formatKm(result.km)}
             </span>
           )}
+          {result.colour && (
+            <span className="text-muted-foreground">{result.colour}</span>
+          )}
           {result.location && (
             <span className="flex items-center gap-1">
               <MapPin className="h-3 w-3" />
               {result.location}
             </span>
           )}
-          {result.dealer_name && <span>{result.dealer_name}</span>}
         </div>
+        {result.dealer_name && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Building2 className="h-3 w-3" />
+            <span>{result.dealer_name}</span>
+          </div>
+        )}
       </div>
       {result.url && (
         <a href={result.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
@@ -247,6 +267,102 @@ function ManusResultCard({ result }: { result: ManusResult }) {
         </a>
       )}
     </div>
+  );
+}
+function ManusResultsSection({
+  manusTriggered, manusSessionId, manusPolling, manusPending, manusTotal, manusResults,
+}: {
+  manusTriggered: boolean;
+  manusSessionId: string | null;
+  manusPolling: boolean;
+  manusPending: number;
+  manusTotal: number;
+  manusResults: ManusResult[];
+}) {
+  const [showAll, setShowAll] = useState(false);
+
+  // Deduplicate by stock_no (prefer lower price), then sort cheapest first
+  const deduped = (() => {
+    const map = new Map<string, ManusResult>();
+    for (const r of manusResults) {
+      const key = r.stock_no || r.url || crypto.randomUUID();
+      const existing = map.get(key);
+      if (!existing || (r.price != null && (existing.price == null || r.price < existing.price))) {
+        map.set(key, r);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+  })();
+
+  const top3 = deduped.slice(0, 3);
+  const rest = deduped.slice(3);
+  const displayed = showAll ? deduped : top3;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm font-medium">
+          <Search className="h-4 w-4 text-primary" />
+          Market Results
+          {manusPending > 0 && (
+            <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {manusPending}/{manusTotal} searching...
+            </span>
+          )}
+          {manusPending === 0 && manusTotal > 0 && deduped.length > 0 && (
+            <span className="text-xs font-normal text-muted-foreground">
+              Top 3 of {deduped.length} results
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-1.5">
+        {/* Connecting */}
+        {manusTriggered && !manusSessionId && !manusPolling && manusResults.length === 0 && (
+          <div className="flex flex-col items-center py-4 gap-1">
+            <KitingLoader size="md" label="Connecting to search network…" />
+          </div>
+        )}
+        {/* Waiting for results */}
+        {manusResults.length === 0 && manusPending > 0 && (
+          <div className="flex flex-col items-center py-4 gap-1">
+            <KitingLoader size="md" label="Searching the market — results arrive in 2–5 min…" />
+          </div>
+        )}
+        {/* Done, nothing found */}
+        {manusTriggered && deduped.length === 0 && manusPending === 0 && manusSessionId && (
+          <p className="text-sm text-muted-foreground py-2">
+            No matching vehicles found.
+          </p>
+        )}
+        {/* Results */}
+        {displayed.map((result, i) => (
+          <ManusResultCard key={result.url || i} result={result} isBestPrice={i === 0 && deduped.length > 1} />
+        ))}
+        {/* Show all toggle */}
+        {rest.length > 0 && !showAll && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-xs text-muted-foreground"
+            onClick={() => setShowAll(true)}
+          >
+            Show all {deduped.length} results
+          </Button>
+        )}
+        {showAll && rest.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-xs text-muted-foreground"
+            onClick={() => setShowAll(false)}
+          >
+            Show top 3 only
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -683,52 +799,16 @@ export function OogleBotSearch() {
         </Card>
       )}
 
-      {/* ═══ MANUS DEALER SITE RESULTS ═══ */}
+      {/* ═══ MARKET RESULTS — TOP 3 CHEAPEST ═══ */}
       {(manusTriggered || manusPolling || manusResults.length > 0) && (
-        <Card className="border-amber-500/30">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <Building2 className="h-4 w-4 text-amber-600" />
-              Dealer Sites
-              {manusPending > 0 && (
-                <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  {manusPending}/{manusTotal} searching...
-                </span>
-              )}
-              {manusPending === 0 && manusTotal > 0 && (
-                <span className="text-xs font-normal text-muted-foreground">
-                  {manusResults.length} found from {manusTotal} sites
-                </span>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1.5">
-            {/* Connecting — triggerManusSearch hasn't returned a session_id yet */}
-            {manusTriggered && !manusSessionId && !manusPolling && manusResults.length === 0 && (
-              <div className="flex flex-col items-center py-4 gap-1">
-                <KitingLoader size="md" label="Connecting to dealer search network…" />
-              </div>
-            )}
-            {/* Session active, waiting for first results */}
-            {manusResults.length === 0 && manusPending > 0 && (
-              <div className="flex flex-col items-center py-4 gap-1">
-                <KitingLoader size="md" label="AI agent searching dealer websites — results arrive in 2–5 min…" />
-              </div>
-            )}
-            {/* Done, nothing found */}
-            {manusTriggered && manusResults.length === 0 && manusPending === 0 && manusSessionId && (
-              <p className="text-sm text-muted-foreground py-2">
-                No matching vehicles found on dealer sites.
-              </p>
-            )}
-            {manusResults
-              .sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity))
-              .map((result, i) => (
-                <ManusResultCard key={result.url || i} result={result} />
-              ))}
-          </CardContent>
-        </Card>
+        <ManusResultsSection
+          manusTriggered={manusTriggered}
+          manusSessionId={manusSessionId}
+          manusPolling={manusPolling}
+          manusPending={manusPending}
+          manusTotal={manusTotal}
+          manusResults={manusResults}
+        />
       )}
 
       {/* CaroogleAI loading indicator — auto-fires, no button needed */}
