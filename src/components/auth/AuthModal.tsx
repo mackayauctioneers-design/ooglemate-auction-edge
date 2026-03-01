@@ -32,6 +32,11 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
+  // Magic link state
+  const [magicLinkMode, setMagicLinkMode] = useState(false);
+  const [magicLinkEmail, setMagicLinkEmail] = useState('');
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -79,6 +84,19 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
     }
   };
 
+  const handleMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOtp({
+      email: magicLinkEmail,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    setLoading(false);
+    if (error) { toast.error(error.message); return; }
+    setMagicLinkSent(true);
+    toast.success('Check your email for the magic link!');
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -90,9 +108,10 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
         </DialogHeader>
         
         <Tabs defaultValue="login" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="login">Sign In</TabsTrigger>
-            <TabsTrigger value="signup">Create Account</TabsTrigger>
+            <TabsTrigger value="magic">Magic Link</TabsTrigger>
+            <TabsTrigger value="signup">Sign Up</TabsTrigger>
           </TabsList>
           
           <TabsContent value="login" className="space-y-4 mt-4">
@@ -131,6 +150,44 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
                 )}
               </Button>
             </form>
+          </TabsContent>
+
+          <TabsContent value="magic" className="space-y-4 mt-4">
+            {magicLinkSent ? (
+              <div className="text-center space-y-3 py-4">
+                <p className="text-sm">Magic link sent to <span className="font-medium">{magicLinkEmail}</span></p>
+                <p className="text-xs text-muted-foreground">Check your inbox and click the link to sign in.</p>
+                <button onClick={() => setMagicLinkSent(false)} className="text-xs text-muted-foreground underline">
+                  Send again
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleMagicLink} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="magic-email">Email</Label>
+                  <Input
+                    id="magic-email"
+                    type="email"
+                    value={magicLinkEmail}
+                    onChange={(e) => setMagicLinkEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                    disabled={loading}
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    'Send Magic Link'
+                  )}
+                </Button>
+                <p className="text-xs text-center text-muted-foreground">No password needed — we'll email you a sign-in link</p>
+              </form>
+            )}
           </TabsContent>
           
           <TabsContent value="signup" className="space-y-4 mt-4">

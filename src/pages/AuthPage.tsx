@@ -19,6 +19,8 @@ export default function AuthPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [magicLinkMode, setMagicLinkMode] = useState(false);
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -30,6 +32,19 @@ export default function AuthPage() {
     const timer = setTimeout(() => setShowLogin(true), 2000);
     return () => clearTimeout(timer);
   }, []);
+
+  const handleMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    setLoading(false);
+    if (error) { toast.error(error.message); return; }
+    setMagicLinkSent(true);
+    toast.success('Check your email for the magic link!');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,61 +124,111 @@ export default function AuthPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="auth-email" className="text-white/70 text-sm">Email</Label>
-              <Input
-                id="auth-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-                disabled={loading}
-                className="bg-white/5 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="auth-password" className="text-white/70 text-sm">Password</Label>
-              <Input
-                id="auth-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-                minLength={6}
-                className="bg-white/5 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20"
-              />
-            </div>
-            <Button
-              type="submit"
-              className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/10"
-              disabled={loading}
-            >
-              {loading ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{isSignUp ? 'Creating...' : 'Signing in...'}</>
-              ) : (
-                isSignUp ? 'Sign Up' : 'Sign In'
-              )}
-            </Button>
-          </form>
-
-          <p className="text-center text-sm text-white/40 mt-4">
-            {isSignUp ? (
-              <>Already have an account?{' '}
-                <button onClick={() => setIsSignUp(false)} className="text-white/70 underline">
-                  Sign in
+          {magicLinkMode ? (
+            magicLinkSent ? (
+              <div className="text-center space-y-3">
+                <p className="text-white/70">Magic link sent to <span className="text-white font-medium">{email}</span></p>
+                <p className="text-sm text-white/40">Check your inbox and click the link to sign in.</p>
+                <button onClick={() => { setMagicLinkSent(false); setMagicLinkMode(false); }} className="text-white/50 underline text-sm">
+                  Back to sign in
                 </button>
-              </>
+              </div>
             ) : (
-              <>Need an account?{' '}
-                <button onClick={() => setIsSignUp(true)} className="text-white/70 underline">
-                  Sign up
+              <form onSubmit={handleMagicLink} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="magic-email" className="text-white/70 text-sm">Email</Label>
+                  <Input
+                    id="magic-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                    disabled={loading}
+                    className="bg-white/5 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/10"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending link...</>
+                  ) : (
+                    'Send Magic Link'
+                  )}
+                </Button>
+                <button onClick={() => setMagicLinkMode(false)} className="text-white/50 underline text-sm w-full text-center">
+                  Sign in with password instead
                 </button>
-              </>
-            )}
-          </p>
+              </form>
+            )
+          ) : (
+            <>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="auth-email" className="text-white/70 text-sm">Email</Label>
+                  <Input
+                    id="auth-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                    disabled={loading}
+                    className="bg-white/5 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="auth-password" className="text-white/70 text-sm">Password</Label>
+                  <Input
+                    id="auth-password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    disabled={loading}
+                    minLength={6}
+                    className="bg-white/5 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/10"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{isSignUp ? 'Creating...' : 'Signing in...'}</>
+                  ) : (
+                    isSignUp ? 'Sign Up' : 'Sign In'
+                  )}
+                </Button>
+              </form>
+
+              {!isSignUp && (
+                <button onClick={() => setMagicLinkMode(true)} className="text-white/50 underline text-sm w-full text-center mt-3">
+                  Sign in with magic link (no password)
+                </button>
+              )}
+
+              <p className="text-center text-sm text-white/40 mt-4">
+                {isSignUp ? (
+                  <>Already have an account?{' '}
+                    <button onClick={() => setIsSignUp(false)} className="text-white/70 underline">
+                      Sign in
+                    </button>
+                  </>
+                ) : (
+                  <>Need an account?{' '}
+                    <button onClick={() => setIsSignUp(true)} className="text-white/70 underline">
+                      Sign up
+                    </button>
+                  </>
+                )}
+              </p>
+            </>
+          )}
         </div>
 
         <p className="text-center text-xs text-white/20 mt-6">Automotive Truth</p>
