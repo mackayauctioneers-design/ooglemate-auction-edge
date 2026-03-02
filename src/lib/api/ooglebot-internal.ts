@@ -149,9 +149,18 @@ export function parseSearchQuery(query: string): ParsedIntent {
  * Tier 1: All other internal inventory
  * Outward gate: blocked if Tier 0 >= OUTWARD_GATE_THRESHOLD
  */
-export async function searchTiered(query: string): Promise<TieredSearchResult> {
+export async function searchTiered(query: string, structuredOverride?: Partial<ParsedIntent>): Promise<TieredSearchResult> {
   const startMs = performance.now();
-  const parsed = parseSearchQuery(query);
+  const textParsed = parseSearchQuery(query);
+  // Structured overrides take priority over text parsing
+  const parsed: ParsedIntent = {
+    make: structuredOverride?.make || textParsed.make,
+    model: structuredOverride?.model || textParsed.model,
+    yearMin: structuredOverride?.yearMin ?? textParsed.yearMin,
+    yearMax: structuredOverride?.yearMax ?? textParsed.yearMax,
+    kmMax: structuredOverride?.kmMax ?? textParsed.kmMax,
+    priceMax: structuredOverride?.priceMax ?? textParsed.priceMax,
+  };
 
   if (!parsed.make) {
     return {
@@ -216,7 +225,7 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
     .gte("last_seen_at", recencyCutoff)
     .not("status", "eq", "sold")
     .ilike("make", `%${parsed.make}%`)
-    .order("asking_price", { ascending: true, nullsFirst: false })
+    .order("asking_price", { ascending: false, nullsFirst: false })
     .limit(TIER0_LIMIT);
 
   // Model matching — with Toyota Prado special case
@@ -257,7 +266,7 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
     .gte("last_seen_at", recencyCutoff)
     .not("status", "eq", "sold")
     .ilike("make", `%${parsed.make}%`)
-    .order("asking_price", { ascending: true, nullsFirst: false })
+    .order("asking_price", { ascending: false, nullsFirst: false })
     .limit(TIER1_LIMIT);
 
   // Exclude auction sources (they're in Tier 0) and blocklisted sources
