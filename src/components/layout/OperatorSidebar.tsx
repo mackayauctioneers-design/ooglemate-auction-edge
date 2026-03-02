@@ -24,6 +24,7 @@ import {
   Bot,
   Building2,
   Users,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
