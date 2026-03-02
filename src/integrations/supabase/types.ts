@@ -6177,6 +6177,7 @@ export type Database = {
           id: string
           ingested_at: string | null
           job_id: string
+          listing_id: string | null
           listing_url: string
           make_norm: string | null
           margin_band_high: number | null
@@ -6206,6 +6207,7 @@ export type Database = {
           id?: string
           ingested_at?: string | null
           job_id: string
+          listing_id?: string | null
           listing_url: string
           make_norm?: string | null
           margin_band_high?: number | null
@@ -6235,6 +6237,7 @@ export type Database = {
           id?: string
           ingested_at?: string | null
           job_id?: string
+          listing_id?: string | null
           listing_url?: string
           make_norm?: string | null
           margin_band_high?: number | null

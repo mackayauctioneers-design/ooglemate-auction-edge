@@ -230,6 +230,7 @@ Deno.serve(async (req) => {
         year: l.year,
         state: l.state,
         listing_url: l.listing_url,
+        listing_id: l.source_id,
         source_id: l.source_id,
         make_norm: identity.make_norm,
         model_norm: identity.model_norm,
@@ -240,7 +241,7 @@ Deno.serve(async (req) => {
 
     const { error: insertErr } = await sb
       .from("outward_search_results")
-      .upsert(rows, { onConflict: "listing_url" });
+      .upsert(rows, { onConflict: "listing_url", ignoreDuplicates: true });
 
     if (insertErr) {
       console.error("[lindy-webhook] Insert error:", insertErr);

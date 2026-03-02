@@ -4,6 +4,23 @@
  * All fields are strings from the browser (Lindy can't do type coercion).
  * Numeric parsing happens in normalizeExtractedListing() before scoring.
  */
+
+// ── Raw shape returned by Lindy browser extraction (no source/state) ────────
+
+export interface BrowserExtractedListing {
+  make:         string | null;
+  model:        string | null;
+  year:         number | string | null;
+  variant:      string | null;
+  odometer_km:  number | string | null;
+  price_asking: number | string | null;
+  listing_url:  string;
+  listing_id:   string | null;
+  state:        string | null;
+}
+
+// ── Full raw listing with source injected by dispatch loop ──────────────────
+
 export interface RawExtractedListing {
   // ── Identity (required for scoring) ──────────────────────────────────────
   make:         string;        // "Toyota"
@@ -22,6 +39,15 @@ export interface RawExtractedListing {
   // ── Injected by dispatch loop (not extracted from page) ───────────────────
   source:       "carsales" | "carsguide" | "gumtree";
   state:        string | null; // "NSW" — from intent, not scraped
+}
+
+// ── Webhook payload shape ───────────────────────────────────────────────────
+
+export interface WebhookPayload {
+  job_id:   string;
+  source:   string;
+  page:     number;
+  listings: NormalizedListing[];
 }
 
 /**
@@ -53,6 +79,32 @@ export function normalizeExtractedListing(raw: RawExtractedListing): NormalizedL
     listing_id:   raw.listing_id.trim(),
     source:       raw.source,
     state:        raw.state?.toUpperCase() ?? null,
+  };
+}
+
+/**
+ * Convert a browser-extracted listing (loose types) into a RawExtractedListing
+ * by injecting source + state and coercing fields to strings.
+ */
+export function toBrowserRaw(
+  item: BrowserExtractedListing,
+  source: "carsales" | "carsguide" | "gumtree",
+  state: string | null,
+): RawExtractedListing | null {
+  // Hard reject: must have make, model, listing_url
+  if (!item.make || !item.model || !item.listing_url) return null;
+
+  return {
+    make:         String(item.make),
+    model:        String(item.model),
+    year:         item.year != null ? String(item.year) : "0",
+    variant:      item.variant ? String(item.variant) : null,
+    odometer_km:  item.odometer_km != null ? String(item.odometer_km) : "0",
+    price_asking: item.price_asking != null ? String(item.price_asking) : "0",
+    listing_url:  item.listing_url,
+    listing_id:   item.listing_id ? String(item.listing_id) : "",
+    source,
+    state:        state?.toUpperCase() ?? null,
   };
 }
 
