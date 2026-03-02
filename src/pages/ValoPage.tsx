@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DealerLayout } from '@/components/layout/DealerLayout';
 import { Badge } from '@/components/ui/badge';
@@ -7,9 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Loader2, CheckCircle, DollarSign, TrendingUp, BarChart3, Clock,
-  Sparkles, Target, ShieldCheck, Camera, AlertTriangle, Mic, MicOff,
-  ExternalLink, ChevronDown, ChevronUp, X
+  Loader2, CheckCircle, DollarSign, TrendingUp, BarChart3,
+  Sparkles, Target, Camera, AlertTriangle, Mic, MicOff,
+  ExternalLink, ChevronDown, ChevronUp, X, Upload, ShieldCheck, ImageIcon
 } from 'lucide-react';
 import { useSpeechToText } from '@/hooks/useSpeechToText';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,11 +27,16 @@ import {
 
 declare const __BUILD_TIME__: string;
 
-// ── Accessory presets ──
 const ACCESSORY_PRESETS = [
   'Bullbar', 'Towbar', 'Canopy', 'ARB', 'Norweld Tray',
   'Snorkel', 'Lift Kit', 'Roof Racks', 'Side Steps', 'Winch',
 ];
+
+const CONFIDENCE_INFO: Record<string, { label: string; color: string; explanation: string }> = {
+  HIGH: { label: 'HIGH', color: 'bg-green-500 hover:bg-green-600', explanation: 'Strong like-for-like comp depth.' },
+  MEDIUM: { label: 'MEDIUM', color: 'bg-yellow-500 hover:bg-yellow-600 text-black', explanation: 'Good comp set, some variance.' },
+  LOW: { label: 'LOW', color: '', explanation: 'Wider market spread or limited like-for-like comps.' },
+};
 
 // ============================================================================
 // VALO — Market-Backed Trade-In Valuation Tool
@@ -41,15 +46,17 @@ export default function ValoPage() {
   const { currentUser, isAdmin } = useAuth();
   const [searchParams] = useSearchParams();
 
-  // Input state
+  // Structured inputs
   const [description, setDescription] = useState('');
+  const [year, setYear] = useState('');
   const [km, setKm] = useState('');
+  const [badge, setBadge] = useState('');
   const [condition, setCondition] = useState<string>('good');
   const [allowance, setAllowance] = useState<string>('1000');
   const [selectedAccessories, setSelectedAccessories] = useState<string[]>([]);
   const [customAccessory, setCustomAccessory] = useState('');
 
-  // Voice input
+  // Voice
   const handleVoiceResult = useCallback((transcript: string) => {
     setDescription(prev => prev ? `${prev} ${transcript}` : transcript);
   }, []);
@@ -58,7 +65,7 @@ export default function ValoPage() {
     lang: 'en-AU',
   });
 
-  // Processing state
+  // Processing
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsed, setParsed] = useState<ValoParsedVehicle | null>(null);
   const [result, setResult] = useState<ValoResult | null>(null);
@@ -67,7 +74,13 @@ export default function ValoPage() {
   const [showDebug, setShowDebug] = useState(false);
   const [expandedComp, setExpandedComp] = useState<number | null>(null);
 
-  // Prefill from URL
+  // MODO state
+  const [modoPhotos, setModoPhotos] = useState<File[]>([]);
+  const [modoPhotoUrls, setModoPhotoUrls] = useState<string[]>([]);
+  const [isModoRunning, setIsModoRunning] = useState(false);
+  const [modoResult, setModoResult] = useState<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const prefillText = searchParams.get('prefill');
     if (prefillText) setDescription(decodeURIComponent(prefillText));
@@ -92,12 +105,15 @@ export default function ValoPage() {
     }
   };
 
+  const canRunValo = description.trim().length > 0 && year.trim().length > 0 && km.trim().length > 0;
+
   const handleRunValo = async () => {
-    if (!description.trim()) {
-      toast.error('Describe the vehicle first');
+    if (!description.trim()) { toast.error('Describe the vehicle first'); return; }
+    const yearNum = parseInt(year, 10);
+    if (!year.trim() || isNaN(yearNum) || yearNum < 1980 || yearNum > new Date().getFullYear() + 1) {
+      toast.error('Valid year is required for VALO');
       return;
     }
-
     const kmNum = parseInt(km, 10);
     if (!km.trim() || isNaN(kmNum) || kmNum <= 0) {
       toast.error('Kilometres is required for VALO');
@@ -108,20 +124,23 @@ export default function ValoPage() {
     setResult(null);
     setValoComps([]);
     setOancaDebug(null);
+    setModoResult(null);
+    setModoPhotos([]);
+    setModoPhotoUrls([]);
     setIsProcessing(true);
 
     try {
-      // Step 1: Parse vehicle description
+      // Step 1: Parse
       const { data: parseData, error: parseError } = await supabase.functions.invoke('valo-parse', {
         body: { description: description.trim() }
       });
-
       if (parseError) throw new Error(parseError.message);
       if (parseData?.error) throw new Error(parseData.error);
 
       const parsedVehicle: ValoParsedVehicle = parseData.parsed;
       if (!parsedVehicle.assumptions) parsedVehicle.assumptions = [];
       parsedVehicle.km = kmNum;
+      if (yearNum) parsedVehicle.year = yearNum;
       setParsed(parsedVehicle);
 
       if (!parsedVehicle.make || !parsedVehicle.model) {
@@ -130,14 +149,27 @@ export default function ValoPage() {
         return;
       }
 
-      // Build instruction with accessories context
+      // Build instruction
       let fullInstruction = description.trim();
       if (selectedAccessories.length > 0) {
         fullInstruction += ` accessories: ${selectedAccessories.join(', ')}`;
       }
       fullInstruction += ` ${kmNum}km condition:${condition} allow ${allowance}`;
 
-      // Step 2: Run valuation engine
+      // Build filters object
+      const filters: Record<string, unknown> = {
+        year_min: yearNum,
+        year_max: yearNum,
+        max_km: kmNum,
+        condition,
+        allowance_aud: parseInt(allowance, 10) || 1000,
+      };
+      if (badge.trim()) filters.badge = badge.trim();
+      if (selectedAccessories.length > 0) {
+        filters.accessory_terms = selectedAccessories.map(a => a.toUpperCase());
+      }
+
+      // Step 2: Run VALO
       const { data: valoData, error: valoError } = await supabase.functions.invoke('run-valo-v1', {
         body: {
           instruction: fullInstruction,
@@ -145,12 +177,13 @@ export default function ValoPage() {
           account_id: null,
           initiated_by: 'dealer',
           full_market_scan: true,
+          filters,
         }
       });
 
       if (valoError) throw new Error(valoError.message);
       if (valoData?.status === 'missing_required_fields') {
-        toast.error(`Missing required fields: ${valoData.missing?.join(', ')}`);
+        toast.error(`Missing: ${valoData.missing?.join(', ')}`);
         setIsProcessing(false);
         return;
       }
@@ -158,15 +191,11 @@ export default function ValoPage() {
 
       if (isAdmin) setOancaDebug(valoData);
 
-      // Build top comps list
       const comps: any[] = [];
       if (valoData.anchor) comps.push({ ...valoData.anchor, _role: 'anchor' });
-      if (valoData.backups) {
-        valoData.backups.forEach((b: any) => comps.push({ ...b, _role: 'backup' }));
-      }
+      if (valoData.backups) valoData.backups.forEach((b: any) => comps.push({ ...b, _role: 'backup' }));
       setValoComps(comps);
 
-      // Map response
       const offer = valoData.trade_in_offer;
       const market = valoData.market;
 
@@ -196,10 +225,83 @@ export default function ValoPage() {
     }
   };
 
+  // ── MODO Photo Handling ──
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const validFiles = files.filter(f => f.type.startsWith('image/')).slice(0, 6 - modoPhotos.length);
+    if (validFiles.length === 0) return;
+    setModoPhotos(prev => [...prev, ...validFiles].slice(0, 6));
+  };
+
+  const removePhoto = (index: number) => {
+    setModoPhotos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleRunModo = async () => {
+    if (modoPhotos.length < 3 || !parsed) return;
+    setIsModoRunning(true);
+
+    try {
+      // Upload photos to valo-photos bucket
+      const uploadedUrls: string[] = [];
+      const runId = result?.request_id ?? crypto.randomUUID();
+
+      for (let i = 0; i < modoPhotos.length; i++) {
+        const file = modoPhotos[i];
+        const ext = file.name.split('.').pop() || 'jpg';
+        const path = `modo/${runId}/${i}.${ext}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('valo-photos')
+          .upload(path, file, { upsert: true });
+
+        if (uploadError) throw new Error(`Photo upload failed: ${uploadError.message}`);
+
+        const { data: signedData } = await supabase.storage
+          .from('valo-photos')
+          .createSignedUrl(path, 3600);
+
+        if (signedData?.signedUrl) uploadedUrls.push(signedData.signedUrl);
+      }
+
+      setModoPhotoUrls(uploadedUrls);
+
+      // Call MODO
+      const { data: modoData, error: modoError } = await supabase.functions.invoke('run-modo-evaluation', {
+        body: {
+          vehicle_identity: {
+            make: parsed.make,
+            model: parsed.model,
+            variant_family: parsed.variant_family || null,
+            year: parsed.year || parseInt(year, 10),
+            km: parsed.km || parseInt(km, 10),
+          },
+          dealer_input: {
+            condition_stated: condition,
+            allowance: parseInt(allowance, 10) || 1000,
+            description_transcript: description.trim(),
+          },
+          photos: uploadedUrls,
+        }
+      });
+
+      if (modoError) throw new Error(modoError.message);
+      if (modoData?.error) throw new Error(modoData.error);
+
+      setModoResult(modoData);
+      toast.success('MODO assessment complete');
+    } catch (err) {
+      console.error('MODO error:', err);
+      toast.error(err instanceof Error ? err.message : 'MODO assessment failed');
+    } finally {
+      setIsModoRunning(false);
+    }
+  };
+
   const confidenceBadge = (c: ValuationConfidence) => {
-    if (c === 'LOW') return <Badge variant="destructive">LOW</Badge>;
-    if (c === 'MEDIUM') return <Badge className="bg-yellow-500 hover:bg-yellow-600 text-black">MEDIUM</Badge>;
-    return <Badge className="bg-green-500 hover:bg-green-600">HIGH</Badge>;
+    const info = CONFIDENCE_INFO[c] || CONFIDENCE_INFO.LOW;
+    if (c === 'LOW') return <Badge variant="destructive">{info.label}</Badge>;
+    return <Badge className={info.color}>{info.label}</Badge>;
   };
 
   const tierBadge = (t: ValoTier) => {
@@ -231,9 +333,7 @@ export default function ValoPage() {
               <button
                 onClick={() => setShowDebug(!showDebug)}
                 className={`px-2 py-1 text-xs rounded border transition-colors ${
-                  showDebug
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-border hover:bg-muted'
+                  showDebug ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'
                 }`}
               >
                 🔧 Debug
@@ -254,36 +354,23 @@ export default function ValoPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="vehicle-desc">Description</Label>
-                {isSupported && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={toggleVoice}
-                    className={`gap-1.5 text-xs ${isListening ? 'text-destructive' : 'text-muted-foreground'}`}
-                  >
-                    {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
-                    {isListening ? 'Stop' : 'Voice'}
-                  </Button>
-                )}
+            {/* Structured fields first */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div>
+                <Label htmlFor="year">
+                  Year <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="year"
+                  type="number"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  placeholder="e.g. 2021"
+                  className="mt-1"
+                  min={1980}
+                  max={new Date().getFullYear() + 1}
+                />
               </div>
-              <Textarea
-                id="vehicle-desc"
-                placeholder="e.g. 2021 Toyota HiLux SR5 4x4 Auto, White, NSW"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                className={`mt-1 ${isListening ? 'ring-2 ring-destructive/50' : ''}`}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Include make, model, year, variant, and location if known.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="km">
                   Kilometres <span className="text-destructive">*</span>
@@ -295,7 +382,16 @@ export default function ValoPage() {
                   onChange={(e) => setKm(e.target.value)}
                   placeholder="e.g. 45000"
                   className="mt-1"
-                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="badge">Variant / Badge</Label>
+                <Input
+                  id="badge"
+                  value={badge}
+                  onChange={(e) => setBadge(e.target.value)}
+                  placeholder="e.g. SR5, LS-U"
+                  className="mt-1"
                 />
               </div>
               <div>
@@ -312,6 +408,9 @@ export default function ValoPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="allowance">Allowance ($)</Label>
                 <Input
@@ -323,17 +422,45 @@ export default function ValoPage() {
                   className="mt-1"
                 />
               </div>
+              <div className="flex items-end">
+                <p className="text-xs text-muted-foreground pb-2">
+                  Year + Kilometres are required. Badge is encouraged for accurate matching.
+                </p>
+              </div>
+            </div>
+
+            {/* Description / Voice */}
+            <div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="vehicle-desc">Description</Label>
+                {isSupported && (
+                  <Button
+                    type="button" variant="ghost" size="sm"
+                    onClick={toggleVoice}
+                    className={`gap-1.5 text-xs ${isListening ? 'text-destructive' : 'text-muted-foreground'}`}
+                  >
+                    {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                    {isListening ? 'Stop' : 'Voice'}
+                  </Button>
+                )}
+              </div>
+              <Textarea
+                id="vehicle-desc"
+                placeholder="e.g. Toyota HiLux SR5 4x4 Auto, White, NSW — bullbar, towbar fitted"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+                className={`mt-1 ${isListening ? 'ring-2 ring-destructive/50' : ''}`}
+              />
             </div>
 
             {/* Accessory Chips */}
             <div>
-              <Label>Accessories / Features</Label>
+              <Label>Accessories / Features (optional)</Label>
               <div className="flex flex-wrap gap-2 mt-2">
                 {ACCESSORY_PRESETS.map(acc => (
                   <button
-                    key={acc}
-                    type="button"
-                    onClick={() => toggleAccessory(acc)}
+                    key={acc} type="button" onClick={() => toggleAccessory(acc)}
                     className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                       selectedAccessories.includes(acc)
                         ? 'bg-primary text-primary-foreground border-primary'
@@ -344,28 +471,20 @@ export default function ValoPage() {
                   </button>
                 ))}
               </div>
-              {/* Custom accessory input */}
               <div className="flex gap-2 mt-2">
                 <Input
-                  value={customAccessory}
-                  onChange={(e) => setCustomAccessory(e.target.value)}
-                  placeholder="Add custom accessory…"
-                  className="h-8 text-xs"
+                  value={customAccessory} onChange={(e) => setCustomAccessory(e.target.value)}
+                  placeholder="Add custom…" className="h-8 text-xs"
                   onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomAccessory())}
                 />
-                <Button type="button" variant="outline" size="sm" onClick={addCustomAccessory} className="h-8 text-xs">
-                  Add
-                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={addCustomAccessory} className="h-8 text-xs">Add</Button>
               </div>
-              {/* Show custom selections */}
               {selectedAccessories.filter(a => !ACCESSORY_PRESETS.includes(a)).length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
                   {selectedAccessories.filter(a => !ACCESSORY_PRESETS.includes(a)).map(acc => (
                     <Badge key={acc} variant="secondary" className="gap-1 text-xs">
                       {acc}
-                      <button onClick={() => toggleAccessory(acc)} className="ml-0.5 hover:text-destructive">
-                        <X className="h-3 w-3" />
-                      </button>
+                      <button onClick={() => toggleAccessory(acc)} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
                     </Badge>
                   ))}
                 </div>
@@ -374,20 +493,13 @@ export default function ValoPage() {
 
             <Button
               onClick={handleRunValo}
-              disabled={isProcessing || !description.trim() || !km.trim()}
-              className="w-full gap-2"
-              size="lg"
+              disabled={isProcessing || !canRunValo}
+              className="w-full gap-2" size="lg"
             >
               {isProcessing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Running Valuation…
-                </>
+                <><Loader2 className="h-4 w-4 animate-spin" /> Running Valuation…</>
               ) : (
-                <>
-                  <Sparkles className="h-4 w-4" />
-                  Run VALO
-                </>
+                <><Sparkles className="h-4 w-4" /> Run VALO</>
               )}
             </Button>
           </CardContent>
@@ -420,17 +532,13 @@ export default function ValoPage() {
                   </div>
                 ))}
               </div>
-
               {parsed.missing_fields.length > 0 && (
                 <div className="mt-4 flex flex-wrap gap-1">
                   {parsed.missing_fields.map(field => (
-                    <Badge key={field} variant="outline" className="text-xs text-muted-foreground">
-                      {field} unknown
-                    </Badge>
+                    <Badge key={field} variant="outline" className="text-xs text-muted-foreground">{field} unknown</Badge>
                   ))}
                 </div>
               )}
-
               {parsed.assumptions.length > 0 && (
                 <div className="mt-3 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
                   <strong>Assumptions:</strong> {parsed.assumptions.join('; ')}
@@ -443,64 +551,74 @@ export default function ValoPage() {
         {/* ── Section 3: Valuation Results ── */}
         {result && result.sample_size > 0 && !isProcessing && (
           <>
-            {/* Confidence + Tier Badges */}
+            {/* Confidence + Tier */}
             <div className="flex flex-wrap items-center gap-2">
               {confidenceBadge(result.confidence)}
               {tierBadge(result.tier)}
-              <Badge variant="secondary">n = {result.sample_size}</Badge>
+              <Badge variant="secondary">Based on {result.sample_size} comparables</Badge>
             </div>
 
-            {/* Market Range Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Confidence explanation */}
+            <div className={`flex items-start gap-3 p-3 rounded-lg border ${
+              result.confidence === 'LOW' ? 'border-destructive/30 bg-destructive/5' :
+              result.confidence === 'MEDIUM' ? 'border-yellow-500/30 bg-yellow-500/5' :
+              'border-green-500/30 bg-green-500/5'
+            }`}>
+              <ShieldCheck className={`h-4 w-4 mt-0.5 shrink-0 ${
+                result.confidence === 'LOW' ? 'text-destructive' :
+                result.confidence === 'MEDIUM' ? 'text-yellow-500' : 'text-green-500'
+              }`} />
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">Confidence: {result.confidence}</span>
+                {' — '}
+                {CONFIDENCE_INFO[result.confidence]?.explanation}
+              </p>
+            </div>
+
+            {/* Market Range Cards — hide Days to Sell if unavailable */}
+            <div className={`grid grid-cols-2 ${result.typical_days_to_sell ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
               <Card className="p-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                  <DollarSign className="h-4 w-4" />
-                  Buy Range
+                  <DollarSign className="h-4 w-4" /> Buy Range
                 </div>
                 <div className="text-lg font-semibold">
                   {result.suggested_buy_range
                     ? `${formatCurrency(result.suggested_buy_range.min)} – ${formatCurrency(result.suggested_buy_range.max)}`
-                    : 'N/A'}
+                    : '—'}
                 </div>
               </Card>
-
               <Card className="p-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                  <TrendingUp className="h-4 w-4" />
-                  Sell Range
+                  <TrendingUp className="h-4 w-4" /> Sell Range
                 </div>
                 <div className="text-lg font-semibold">
                   {result.suggested_sell_range
                     ? `${formatCurrency(result.suggested_sell_range.min)} – ${formatCurrency(result.suggested_sell_range.max)}`
-                    : 'N/A'}
+                    : '—'}
                 </div>
               </Card>
-
               <Card className="p-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                  <BarChart3 className="h-4 w-4" />
-                  Gross Band
+                  <BarChart3 className="h-4 w-4" /> Gross Band
                 </div>
                 <div className={`text-lg font-semibold ${
                   result.expected_gross_band && result.expected_gross_band.min > 0 ? 'text-green-600' : ''
                 }`}>
                   {result.expected_gross_band
                     ? `${formatCurrency(result.expected_gross_band.min)} – ${formatCurrency(result.expected_gross_band.max)}`
-                    : 'N/A'}
+                    : '—'}
                 </div>
               </Card>
-
-              <Card className="p-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                  <Clock className="h-4 w-4" />
-                  Days to Sell
-                </div>
-                <div className="text-lg font-semibold">
-                  {result.typical_days_to_sell
-                    ? `~${Math.round(result.typical_days_to_sell)} days`
-                    : 'N/A'}
-                </div>
-              </Card>
+              {result.typical_days_to_sell && (
+                <Card className="p-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                    <BarChart3 className="h-4 w-4" /> Days to Sell
+                  </div>
+                  <div className="text-lg font-semibold">
+                    ~{Math.round(result.typical_days_to_sell)} days
+                  </div>
+                </Card>
+              )}
             </div>
 
             {/* ── Top Comparables ── */}
@@ -513,28 +631,19 @@ export default function ValoPage() {
                 {valoComps.map((comp, i) => {
                   const isAnchor = comp._role === 'anchor';
                   const isExpanded = expandedComp === i;
+                  const hasUrl = !!comp.url;
                   return (
-                    <Card
-                      key={i}
-                      className={`overflow-hidden ${isAnchor ? 'border-primary/50 ring-1 ring-primary/20' : ''}`}
-                    >
+                    <Card key={i} className={`overflow-hidden ${isAnchor ? 'border-primary/50 ring-1 ring-primary/20' : ''}`}>
                       <div className="p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              {isAnchor && (
-                                <Badge className="bg-primary text-primary-foreground text-[10px] px-1.5 py-0">
-                                  ANCHOR
-                                </Badge>
-                              )}
-                              {!isAnchor && (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                                  BACKUP
-                                </Badge>
-                              )}
+                              <Badge className={isAnchor ? 'bg-primary text-primary-foreground text-[10px] px-1.5 py-0' : 'text-[10px] px-1.5 py-0'} variant={isAnchor ? 'default' : 'outline'}>
+                                {isAnchor ? 'ANCHOR' : 'BACKUP'}
+                              </Badge>
                               {comp.source && (
                                 <span className="text-[10px] text-muted-foreground font-mono uppercase">
-                                  {comp.source === 'internal_db' ? 'Internal' : comp.source}
+                                  {comp.source === 'internal_db' ? 'Internal' : comp.source === 'drive' ? 'Drive' : comp.source === 'carsales' ? 'Carsales' : comp.source}
                                 </span>
                               )}
                             </div>
@@ -545,66 +654,65 @@ export default function ValoPage() {
                               {comp.year && <span>{comp.year}</span>}
                               {comp.km != null && <span>{comp.km.toLocaleString()} km</span>}
                               {(comp.price ?? comp.effective_cost) != null && (
-                                <span className="font-semibold text-foreground">
-                                  ${(comp.price ?? comp.effective_cost).toLocaleString()}
-                                </span>
+                                <span className="font-semibold text-foreground">${(comp.price ?? comp.effective_cost).toLocaleString()}</span>
                               )}
                               {comp.state && <span>{comp.state}</span>}
                             </div>
-
-                            {/* Feature hits */}
                             {comp.feature_hits?.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-2">
                                 {comp.feature_hits.map((hit: string) => (
                                   <Badge key={hit} variant="secondary" className="text-[10px] gap-1">
-                                    <CheckCircle className="h-2.5 w-2.5 text-green-500" />
-                                    {hit}
+                                    <CheckCircle className="h-2.5 w-2.5 text-green-500" />{hit}
                                   </Badge>
                                 ))}
                               </div>
                             )}
-
-                            {/* VALO score + reasons */}
                             {comp.valo_score != null && (
                               <div className="flex items-center gap-2 mt-2">
-                                <span className="text-[10px] font-mono text-muted-foreground">
-                                  Score: {comp.valo_score}
-                                </span>
+                                <span className="text-[10px] font-mono text-muted-foreground">Score: {comp.valo_score}</span>
                                 {comp.valo_reasons?.slice(0, 3).map((r: string) => (
-                                  <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">
-                                    {r}
-                                  </span>
+                                  <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">{r}</span>
                                 ))}
                               </div>
                             )}
                           </div>
-
                           <div className="flex flex-col gap-1 shrink-0">
-                            {comp.url && (
-                              <a
-                                href={comp.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                            {hasUrl ? (
+                              <a href={comp.url} target="_blank" rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                               >
-                                View listing
-                                <ExternalLink className="h-3 w-3" />
+                                View listing <ExternalLink className="h-3 w-3" />
                               </a>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs text-muted-foreground bg-muted cursor-not-allowed">
+                                Link unavailable
+                              </span>
                             )}
                             <button
                               onClick={() => setExpandedComp(isExpanded ? null : i)}
                               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted transition-colors"
                             >
-                              {isExpanded ? 'Less' : 'Details'}
+                              {isExpanded ? 'Less' : 'Why this match?'}
                               {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                             </button>
                           </div>
                         </div>
 
-                        {/* Expanded details */}
                         {isExpanded && (
-                          <div className="mt-3 pt-3 border-t border-border space-y-2">
-                            {comp.feature_evidence?.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-border space-y-3">
+                            {/* Match reasons */}
+                            {comp.valo_reasons?.length > 0 && (
+                              <div>
+                                <p className="text-xs font-medium mb-1">Match Reasons</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {comp.valo_reasons.map((r: string) => (
+                                    <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">{r}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {/* Feature evidence */}
+                            {comp.feature_evidence?.length > 0 ? (
                               <div>
                                 <p className="text-xs font-medium mb-1">Feature Evidence</p>
                                 {comp.feature_evidence.map((fe: any, j: number) => (
@@ -614,18 +722,8 @@ export default function ValoPage() {
                                   </div>
                                 ))}
                               </div>
-                            )}
-                            {comp.valo_reasons?.length > 0 && (
-                              <div>
-                                <p className="text-xs font-medium mb-1">All Match Reasons</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {comp.valo_reasons.map((r: string) => (
-                                    <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">
-                                      {r}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground italic">No feature evidence available for this listing.</p>
                             )}
                             {comp.description && (
                               <div>
@@ -641,24 +739,10 @@ export default function ValoPage() {
                 })}
               </div>
             )}
-
-            {/* Confidence Explanation */}
-            {result.confidence === 'LOW' && (
-              <div className="flex items-start gap-3 p-4 rounded-lg border border-yellow-500/30 bg-yellow-500/5">
-                <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5 shrink-0" />
-                <div className="text-sm">
-                  <p className="font-medium">Low confidence — limited comparables</p>
-                  <p className="text-muted-foreground mt-1">
-                    This valuation is based on {result.sample_size} comparable{result.sample_size !== 1 ? 's' : ''}. 
-                    Consider uploading photos for a condition-adjusted assessment.
-                  </p>
-                </div>
-              </div>
-            )}
           </>
         )}
 
-        {/* No data state */}
+        {/* No data */}
         {result && result.sample_size === 0 && !isProcessing && (
           <Card className="border-destructive/30">
             <CardContent className="py-8 text-center">
@@ -671,41 +755,155 @@ export default function ValoPage() {
           </Card>
         )}
 
-        {/* ── Section 4: MODO — Condition & Photo Assessment ── */}
+        {/* ── Section 4: MODO — Photo Assessment ── */}
         {result && result.sample_size > 0 && !isProcessing && (
-          <Card className="border-dashed">
+          <Card className={modoResult ? 'border-green-500/30' : 'border-dashed'}>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Camera className="h-4 w-4 text-primary" />
                 Refine with Photos (MODO)
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                Upload 4–5 photos of the vehicle. MODO will assess condition and adjust 
-                the recon buffer for a tighter offer range.
-              </p>
-              <Button variant="outline" disabled className="gap-2">
-                <Camera className="h-4 w-4" />
-                Upload Photos
-                <Badge variant="secondary" className="ml-1 text-xs">Coming Soon</Badge>
-              </Button>
+            <CardContent className="space-y-4">
+              {!modoResult ? (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Upload 3–6 photos for condition assessment. MODO will identify damage, confirm accessories, and adjust the recon buffer.
+                  </p>
+
+                  {/* Photo upload area */}
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    {modoPhotos.map((file, i) => (
+                      <div key={i} className="relative aspect-square rounded-md overflow-hidden border bg-muted">
+                        <img src={URL.createObjectURL(file)} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          onClick={() => removePhoto(i)}
+                          className="absolute top-1 right-1 p-0.5 rounded-full bg-background/80 hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {modoPhotos.length < 6 && (
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="aspect-square rounded-md border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                      >
+                        <ImageIcon className="h-5 w-5" />
+                        <span className="text-[10px]">Add</span>
+                      </button>
+                    )}
+                  </div>
+                  <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={handleRunModo}
+                      disabled={modoPhotos.length < 3 || isModoRunning}
+                      className="gap-2"
+                    >
+                      {isModoRunning ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> Assessing…</>
+                      ) : (
+                        <><Camera className="h-4 w-4" /> Send to MODO</>
+                      )}
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {modoPhotos.length}/3 minimum photos
+                    </span>
+                  </div>
+                </>
+              ) : (
+                /* MODO Results */
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Condition</p>
+                      <p className="font-semibold text-lg">{modoResult.condition_rating}/5</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Recon Buffer</p>
+                      <p className="font-semibold text-lg">${modoResult.recommended_recon_buffer?.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Damage Flags</p>
+                      <p className="font-medium">{modoResult.damage_flags?.length || 0}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Risk Flags</p>
+                      <p className={`font-medium ${modoResult.risk_flags?.length > 0 ? 'text-destructive' : ''}`}>
+                        {modoResult.risk_flags?.length || 0}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Confirmed accessories */}
+                  {modoResult.visible_accessories?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium mb-1">Confirmed Accessories</p>
+                      <div className="flex flex-wrap gap-1">
+                        {modoResult.visible_accessories.map((acc: string) => (
+                          <Badge key={acc} variant="secondary" className="text-xs gap-1">
+                            <CheckCircle className="h-3 w-3 text-green-500" />{acc}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Damage flags */}
+                  {modoResult.damage_flags?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium mb-1">Damage Flags</p>
+                      <div className="flex flex-wrap gap-1">
+                        {modoResult.damage_flags.map((flag: string) => (
+                          <Badge key={flag} variant="outline" className="text-xs text-destructive border-destructive/50">
+                            {flag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Risk flags */}
+                  {modoResult.risk_flags?.length > 0 && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg border border-destructive/30 bg-destructive/5">
+                      <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-medium">Risk Flags</p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {modoResult.risk_flags.map((flag: string) => (
+                            <Badge key={flag} variant="destructive" className="text-xs">{flag}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  {modoResult.notes && (
+                    <div className="p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+                      <strong>MODO Notes:</strong> {modoResult.notes}
+                    </div>
+                  )}
+
+                  <Button variant="outline" size="sm" onClick={() => { setModoResult(null); setModoPhotos([]); }}>
+                    Re-assess with new photos
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
 
-        {/* ── Debug Panel (Admin Only) ── */}
+        {/* ── Debug Panel ── */}
         {isAdmin && showDebug && oancaDebug && (
           <Card className="border-yellow-500/50 bg-yellow-500/5">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-mono flex items-center gap-2">
                 🔧 VALO Debug
-                <Badge variant="outline" className="text-xs">
-                  {oancaDebug.status}
-                </Badge>
-                <Badge variant="secondary" className="text-xs">
-                  {oancaDebug.confidence}
-                </Badge>
+                <Badge variant="outline" className="text-xs">{oancaDebug.status}</Badge>
+                <Badge variant="secondary" className="text-xs">{oancaDebug.confidence}</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="font-mono text-xs">
