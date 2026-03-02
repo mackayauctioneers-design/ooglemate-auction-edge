@@ -1,19 +1,18 @@
 /**
  * run-outward-search-v2
  *
- * Registry-driven orchestrator with:
- * - Quota enforcement per dealer account
- * - Source selection from source_registry
- * - Adapter dispatch (internal_db now, manus later)
- * - 3-hour cache
- * - Full telemetry logging to outward_search_runs
+ * Two-phase orchestrator:
+ *   PHASE 1: Internal DB search (always, free, no quota cost)
+ *   PHASE 2: Outward registry sources (gated by entitlement + quota)
+ *
+ * With: quota enforcement, cache (tier-aware), telemetry, global system cap.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import type { ParsedIntent, AdapterResult, SearchRunRecord } from "../_shared/outward-search/types.ts";
+import type { ParsedIntent, AdapterResult } from "../_shared/outward-search/types.ts";
 import { MAX_RESULTS } from "../_shared/outward-search/types.ts";
 import { emptyIntent, parseIntentLLM, parseIntentRegex } from "../_shared/outward-search/intent-parser.ts";
-import { checkQuota, incrementUsage } from "../_shared/outward-search/quota.ts";
+import { checkQuota, incrementUsage, checkGlobalCap, incrementGlobalCap } from "../_shared/outward-search/quota.ts";
 import { InternalDbAdapter } from "../_shared/outward-search/adapters/internal-db.ts";
 
 const corsHeaders = {
@@ -22,7 +21,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-function buildCacheKey(intent: ParsedIntent): string {
+/** Cache key includes tier to prevent cross-tier pollution */
+function buildCacheKey(intent: ParsedIntent, tier: string, sourceKeys: string[]): string {
   return [
     intent.make?.toUpperCase() ?? "",
     intent.model?.toUpperCase() ?? "",
@@ -31,12 +31,13 @@ function buildCacheKey(intent: ParsedIntent): string {
     intent.year_max ?? "",
     intent.max_km ?? "",
     intent.price_max ?? "",
+    tier,
+    sourceKeys.sort().join("+"),
   ].join("|");
 }
 
-// Adapter registry — add new adapters here
+// Outward adapter registry — internal_db is NOT here (it's Phase 1)
 const ADAPTERS: Record<string, () => { search: (intent: ParsedIntent, config: Record<string, unknown>, signal?: AbortSignal) => Promise<AdapterResult[]> }> = {
-  internal_db: () => new InternalDbAdapter(),
   // manus: () => new ManusAdapter(),  — future
 };
 
@@ -54,7 +55,6 @@ Deno.serve(async (req) => {
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const apiKey = Deno.env.get("LOVABLE_API_KEY") || "";
 
-  // Parse body
   let body: {
     instruction?: string;
     account_id?: string;
@@ -80,66 +80,7 @@ Deno.serve(async (req) => {
 
   const accountId = body.account_id || null;
   const initiatedBy = body.initiated_by || "user";
-  const internalCount = body.internal_count ?? 0;
   const urgency = body.urgency ?? "normal";
-
-  // ── Demand gating ──
-  if (internalCount >= 5 && urgency !== "high") {
-    // Log gated run
-    try {
-      await sb.from("outward_search_runs").insert({
-        account_id: accountId,
-        initiated_by: initiatedBy,
-        instruction,
-        parsed_intent: {},
-        sources_queried: [],
-        gated: true,
-        gate_reason: `${internalCount} internal results — external search skipped`,
-        status: "gated",
-        duration_ms: Date.now() - startMs,
-      });
-    } catch (_) { /* swallow */ }
-
-    return new Response(JSON.stringify({
-      status: "ok", gated: true,
-      reason: `${internalCount} internal results found — external search skipped`,
-      results: [],
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-
-  // ── Quota check ──
-  const quota = await checkQuota(accountId, initiatedBy);
-  if (!quota.allowed) {
-    try {
-      await sb.from("outward_search_runs").insert({
-        account_id: accountId,
-        initiated_by: initiatedBy,
-        instruction,
-        parsed_intent: {},
-        sources_queried: [],
-        gated: true,
-        gate_reason: quota.reason,
-        quota_snapshot: quota.entitlement ? {
-          used: quota.entitlement.searches_used_today,
-          max: quota.entitlement.max_searches_per_day,
-          tier: quota.entitlement.plan_tier,
-        } : null,
-        status: "gated",
-        duration_ms: Date.now() - startMs,
-      });
-    } catch (_) { /* swallow */ }
-
-    return new Response(JSON.stringify({
-      status: "ok", gated: true,
-      reason: quota.reason,
-      results: [],
-      quota: quota.entitlement ? {
-        used: quota.entitlement.searches_used_today,
-        max: quota.entitlement.max_searches_per_day,
-        tier: quota.entitlement.plan_tier,
-      } : null,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
 
   // ── Parse intent ──
   let intent: ParsedIntent = emptyIntent();
@@ -167,49 +108,149 @@ Deno.serve(async (req) => {
     });
   }
 
-  // ── Cache check ──
-  const cacheKey = buildCacheKey(intent);
+  // ══════════════════════════════════════════════════════════
+  // PHASE 1: Internal DB search (always runs, no quota cost)
+  // ══════════════════════════════════════════════════════════
+  const internalAdapter = new InternalDbAdapter();
+  let internalResults: AdapterResult[] = [];
+  try {
+    internalResults = await internalAdapter.search(intent, {});
+  } catch (err) {
+    console.error("Phase 1 internal search error:", err);
+  }
+
+  const internalCount = body.internal_count ?? internalResults.length;
+
+  // ── Demand gating: skip outward if plenty of internal results ──
+  if (internalCount >= 5 && urgency !== "high") {
+    const durationMs = Date.now() - startMs;
+    try {
+      await sb.from("outward_search_runs").insert({
+        account_id: accountId, initiated_by: initiatedBy, instruction,
+        parsed_intent: intent,
+        sources_queried: ["internal_db"],
+        total_results: internalResults.length,
+        results_by_source: { internal_db: internalResults.length },
+        gated: true,
+        gate_reason: `${internalCount} internal results — outward search skipped`,
+        status: "gated", duration_ms: durationMs,
+      });
+    } catch (_) { /* swallow */ }
+
+    return new Response(JSON.stringify({
+      status: "ok", gated: true,
+      reason: `${internalCount} internal results found — outward search skipped`,
+      phase: "internal_only",
+      intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
+      results: internalResults.slice(0, MAX_RESULTS),
+      internal_count: internalResults.length,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // PHASE 2: Outward registry sources (quota-gated)
+  // ══════════════════════════════════════════════════════════
+
+  // Quota check
+  const quota = await checkQuota(accountId, initiatedBy);
+  if (!quota.allowed) {
+    // Return internal results even when quota blocks outward
+    const durationMs = Date.now() - startMs;
+    try {
+      await sb.from("outward_search_runs").insert({
+        account_id: accountId, initiated_by: initiatedBy, instruction,
+        parsed_intent: intent, sources_queried: ["internal_db"],
+        total_results: internalResults.length,
+        results_by_source: { internal_db: internalResults.length },
+        gated: true, gate_reason: quota.reason,
+        quota_snapshot: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
+        status: "gated", duration_ms: durationMs,
+      });
+    } catch (_) { /* swallow */ }
+
+    return new Response(JSON.stringify({
+      status: "ok", gated: true,
+      reason: quota.reason, phase: "internal_only",
+      intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
+      results: internalResults.slice(0, MAX_RESULTS),
+      internal_count: internalResults.length,
+      quota: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  // Global system cap
+  const globalOk = await checkGlobalCap(sb);
+  if (!globalOk) {
+    const durationMs = Date.now() - startMs;
+    try {
+      await sb.from("outward_search_runs").insert({
+        account_id: accountId, initiated_by: initiatedBy, instruction,
+        parsed_intent: intent, sources_queried: ["internal_db"],
+        total_results: internalResults.length,
+        results_by_source: { internal_db: internalResults.length },
+        gated: true, gate_reason: "Global daily outward search limit reached",
+        status: "gated", duration_ms: durationMs,
+      });
+    } catch (_) { /* swallow */ }
+
+    return new Response(JSON.stringify({
+      status: "ok", gated: true,
+      reason: "Global daily outward search limit reached", phase: "internal_only",
+      results: internalResults.slice(0, MAX_RESULTS),
+      internal_count: internalResults.length,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  // Filter eligible outward sources (exclude internal_db — it's Phase 1)
+  const outwardSources = quota.eligible_sources.filter(s => s.adapter_type !== "internal_db");
+
+  // Cache check (tier-aware key)
+  const tier = quota.entitlement?.plan_tier ?? "free";
+  const outwardSourceKeys = outwardSources.map(s => s.source);
+  const cacheKey = buildCacheKey(intent, tier, outwardSourceKeys);
+
   const { data: cached } = await sb
     .from("search_cache")
     .select("*")
     .eq("cache_key", cacheKey)
-    .eq("source", "outward")
+    .eq("source", "outward_v2")
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
 
   if (cached) {
     await sb.from("search_cache").update({ hits: (cached.hits || 0) + 1 }).eq("id", cached.id);
+    const cachedOutward = (cached.results as AdapterResult[]) || [];
+    // Merge internal + cached outward, dedup, sort
+    const merged = deduplicateResults([...internalResults, ...cachedOutward]);
+    merged.sort((a, b) => b.score - a.score || (a.effective_cost ?? Infinity) - (b.effective_cost ?? Infinity));
+    const topResults = merged.slice(0, MAX_RESULTS);
 
     try {
       await sb.from("outward_search_runs").insert({
-        account_id: accountId,
-        initiated_by: initiatedBy,
-        instruction,
-        parsed_intent: intent,
-        sources_queried: [],
-        total_results: (cached.results as any[])?.length ?? 0,
-        cache_hit: true,
-        status: "completed",
-        duration_ms: Date.now() - startMs,
+        account_id: accountId, initiated_by: initiatedBy, instruction,
+        parsed_intent: intent, sources_queried: ["internal_db"],
+        total_results: topResults.length, cache_hit: true,
+        status: "completed", duration_ms: Date.now() - startMs,
         completed_at: new Date().toISOString(),
       });
     } catch (_) { /* swallow */ }
 
     return new Response(JSON.stringify({
-      status: "ok", gated: false, cached: true,
+      status: "ok", gated: false, cached: true, phase: "internal+outward_cached",
       intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
-      results: cached.results,
-      total_filtered: (cached.results as any[])?.length ?? 0,
+      results: topResults,
+      internal_count: internalResults.length,
+      total_filtered: topResults.length,
       duration_ms: Date.now() - startMs,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  // ── Dispatch to adapters ──
-  const allResults: AdapterResult[] = [];
-  const resultsBySource: Record<string, number> = {};
-  const sourcesQueried: string[] = [];
+  // ── Dispatch to outward adapters ──
+  const outwardResults: AdapterResult[] = [];
+  const resultsBySource: Record<string, number> = { internal_db: internalResults.length };
+  const sourcesQueried: string[] = ["internal_db"];
 
-  for (const source of quota.eligible_sources) {
+  for (const source of outwardSources) {
     const adapterFactory = ADAPTERS[source.adapter_type];
     if (!adapterFactory) {
       console.warn(`No adapter for type: ${source.adapter_type} (source: ${source.source})`);
@@ -223,11 +264,10 @@ Deno.serve(async (req) => {
       const results = await adapter.search(intent, source.config || {}, controller.signal);
       clearTimeout(timeout);
 
-      allResults.push(...results);
+      outwardResults.push(...results);
       resultsBySource[source.source] = results.length;
       sourcesQueried.push(source.source);
 
-      // Update source health
       await sb.from("source_registry").update({
         last_success_at: new Date().toISOString(),
         consecutive_failures: 0,
@@ -237,7 +277,6 @@ Deno.serve(async (req) => {
       resultsBySource[source.source] = 0;
       sourcesQueried.push(source.source);
 
-      // Track failures
       await sb.from("source_registry").update({
         last_error_at: new Date().toISOString(),
         last_error: String(err),
@@ -246,71 +285,86 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ── Sort and cap ──
-  allResults.sort((a, b) => b.score - a.score || (a.effective_cost ?? Infinity) - (b.effective_cost ?? Infinity));
-  const topResults = allResults.slice(0, MAX_RESULTS);
+  // ── Merge, dedup, sort, cap ──
+  const merged = deduplicateResults([...internalResults, ...outwardResults]);
+  merged.sort((a, b) => b.score - a.score || (a.effective_cost ?? Infinity) - (b.effective_cost ?? Infinity));
+  const topResults = merged.slice(0, MAX_RESULTS);
   const durationMs = Date.now() - startMs;
 
-  // ── Increment usage ──
-  if (accountId && initiatedBy === "user") {
+  // Increment usage (only counts outward, not internal)
+  if (accountId && initiatedBy === "user" && outwardSources.length > 0) {
     await incrementUsage(accountId);
   }
-
-  // ── Write cache ──
-  try {
-    await sb.from("search_cache").upsert({
-      cache_key: cacheKey,
-      make: intent.make,
-      model: intent.model,
-      badge: intent.badge,
-      year_min: intent.year_min,
-      year_max: intent.year_max,
-      max_km: intent.max_km,
-      price_max: intent.price_max,
-      results: topResults,
-      source: "outward",
-    }, { onConflict: "cache_key" });
-  } catch (e) {
-    console.warn("Cache write failed:", e);
+  if (outwardSources.length > 0) {
+    await incrementGlobalCap(sb);
   }
 
-  // ── Log telemetry ──
+  // Write cache (outward results only — internal is always fresh)
+  if (outwardResults.length > 0) {
+    try {
+      await sb.from("search_cache").upsert({
+        cache_key: cacheKey,
+        make: intent.make, model: intent.model, badge: intent.badge,
+        year_min: intent.year_min, year_max: intent.year_max,
+        max_km: intent.max_km, price_max: intent.price_max,
+        results: outwardResults,
+        source: "outward_v2",
+      }, { onConflict: "cache_key" });
+    } catch (e) {
+      console.warn("Cache write failed:", e);
+    }
+  }
+
+  // Telemetry
   try {
     await sb.from("outward_search_runs").insert({
-      account_id: accountId,
-      initiated_by: initiatedBy,
-      instruction,
-      parsed_intent: intent,
-      sources_queried: sourcesQueried,
-      total_results: topResults.length,
-      results_by_source: resultsBySource,
-      cache_hit: false,
-      status: "completed",
-      duration_ms: durationMs,
+      account_id: accountId, initiated_by: initiatedBy, instruction,
+      parsed_intent: intent, sources_queried: sourcesQueried,
+      total_results: topResults.length, results_by_source: resultsBySource,
+      cache_hit: false, status: "completed", duration_ms: durationMs,
       completed_at: new Date().toISOString(),
-      quota_snapshot: quota.entitlement ? {
-        used: quota.entitlement.searches_used_today,
-        max: quota.entitlement.max_searches_per_day,
-        tier: quota.entitlement.plan_tier,
-      } : null,
+      quota_snapshot: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
     });
   } catch (_) { /* swallow */ }
 
   return new Response(JSON.stringify({
-    status: "ok",
-    gated: false,
-    cached: false,
+    status: "ok", gated: false, cached: false,
+    phase: outwardSources.length > 0 ? "internal+outward" : "internal_only",
     intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
     results: topResults,
-    total_searched: allResults.length,
+    internal_count: internalResults.length,
+    outward_count: outwardResults.length,
+    total_searched: internalResults.length + outwardResults.length,
     total_filtered: topResults.length,
     sources_queried: sourcesQueried,
     results_by_source: resultsBySource,
     duration_ms: durationMs,
-    quota: quota.entitlement ? {
-      used: (quota.entitlement.searches_used_today || 0) + 1,
-      max: quota.entitlement.max_searches_per_day,
-      tier: quota.entitlement.plan_tier,
-    } : null,
+    quota: quota.entitlement ? { used: (quota.entitlement.searches_used_today || 0) + 1, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
   }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });
+
+/**
+ * Deduplicate results across sources.
+ * Uses a composite key of: year + make + model + km-band + price-band + state
+ * This catches the same vehicle listed on multiple platforms.
+ */
+function deduplicateResults(results: AdapterResult[]): AdapterResult[] {
+  const seen = new Map<string, AdapterResult>();
+  for (const r of results) {
+    const kmBand = r.km ? Math.round(r.km / 5000) * 5000 : 0;
+    const priceBand = r.price ? Math.round(r.price / 500) * 500 : 0;
+    const key = [
+      r.year ?? "",
+      (r.title || "").substring(0, 30).toUpperCase(),
+      kmBand,
+      priceBand,
+      (r.state || "").toUpperCase(),
+    ].join("|");
+
+    const existing = seen.get(key);
+    if (!existing || r.score > existing.score) {
+      seen.set(key, r);
+    }
+  }
+  return Array.from(seen.values());
+}

@@ -1,8 +1,10 @@
 /**
  * Quota & Entitlement Engine
  *
- * Checks dealer entitlements, enforces daily limits,
- * filters sources by tier access, handles cooldowns.
+ * - Per-account daily limits with auto-reset
+ * - Source tier filtering + cooldown enforcement
+ * - Operator/cron bypass
+ * - Global system daily cap (prevents runaway costs)
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -11,6 +13,8 @@ import type {
   SourceRegistryEntry,
   QuotaCheckResult,
 } from "./types.ts";
+
+const GLOBAL_DAILY_LIMIT = 300;
 
 export async function checkQuota(
   accountId: string | null,
@@ -21,7 +25,7 @@ export async function checkQuota(
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Operator/cron bypass — no quota limits
+  // Operator/cron bypass — no per-account quota limits
   if (initiatedBy === "operator" || initiatedBy === "cron") {
     const { data: sources } = await sb
       .from("source_registry")
@@ -36,7 +40,6 @@ export async function checkQuota(
   }
 
   if (!accountId) {
-    // Anonymous — internal DB only
     const { data: sources } = await sb
       .from("source_registry")
       .select("*")
@@ -69,7 +72,6 @@ export async function checkQuota(
     ent.searches_used_today = 0;
   }
 
-  // Default entitlement if none exists
   const entitlement: DealerEntitlement = ent
     ? {
         account_id: ent.account_id,
@@ -92,7 +94,6 @@ export async function checkQuota(
         is_active: true,
       };
 
-  // Check quota
   if (!entitlement.is_active) {
     return { allowed: false, reason: "Account entitlement is inactive", entitlement, eligible_sources: [] };
   }
@@ -112,7 +113,6 @@ export async function checkQuota(
     .eq("enabled", true)
     .in("tier", entitlement.allowed_source_tiers);
 
-  // Filter by cooldown
   const now = Date.now();
   const eligible = (sources || []).filter((s: any) => {
     if (!s.last_success_at || !s.cooldown_minutes) return true;
@@ -133,7 +133,6 @@ export async function incrementUsage(accountId: string): Promise<void> {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Upsert: increment or create
   const { data: existing } = await sb
     .from("dealer_entitlements")
     .select("id, searches_used_today")
@@ -151,4 +150,27 @@ export async function incrementUsage(accountId: string): Promise<void> {
       searches_used_today: 1,
     });
   }
+}
+
+/**
+ * Global system daily cap — prevents runaway costs across all accounts.
+ * Counts today's non-gated outward search runs.
+ */
+export async function checkGlobalCap(sb: any): Promise<boolean> {
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+
+  const { count } = await sb
+    .from("outward_search_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "completed")
+    .eq("cache_hit", false)
+    .gte("created_at", todayStart.toISOString());
+
+  return (count ?? 0) < GLOBAL_DAILY_LIMIT;
+}
+
+export async function incrementGlobalCap(_sb: any): Promise<void> {
+  // No-op — the outward_search_runs insert IS the counter.
+  // checkGlobalCap counts completed runs directly.
 }
