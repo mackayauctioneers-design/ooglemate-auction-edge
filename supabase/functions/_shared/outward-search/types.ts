@@ -27,6 +27,12 @@ export interface ParsedIntent {
   prefer_terms: string[];             // soft boost — "preferably ARB"
   must_have_terms: string[];          // hard gate — "must have Norweld"
   exclude_terms: string[];            // hard exclude — "no automatics"
+
+  // VALO-specific (trade-in valuation)
+  condition: "poor" | "fair" | "good" | "excellent" | null;
+  allowance_aud: number | null;       // dealer's stated buffer e.g. "allow $1,000"
+  accessory_terms: string[];          // bullbar, towbar, canopy etc
+  body_keywords: string[];            // dual cab, single cab, wagon etc
 }
 
 // ─── Feature Alias Map (single source of truth) ─────────────────

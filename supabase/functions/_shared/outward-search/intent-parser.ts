@@ -21,7 +21,11 @@ Schema:
   "body_type": string|null,
   "prefer_terms": string[],
   "must_have_terms": string[],
-  "exclude_terms": string[]
+  "exclude_terms": string[],
+  "condition": string|null,
+  "allowance_aud": number|null,
+  "accessory_terms": string[],
+  "body_keywords": string[]
 }
 
 Rules:
@@ -29,7 +33,7 @@ Rules:
 MAKE/MODEL
 - Uppercase make and model always.
 - Always infer make from model: Hilux=TOYOTA, Ranger=FORD, D-MAX=ISUZU, Triton=MITSUBISHI, Navara=NISSAN, BT-50=MAZDA, Amarok=VOLKSWAGEN, Colorado=HOLDEN, LandCruiser=TOYOTA, Patrol=NISSAN, Prado=TOYOTA.
-- badge is the variant/trim e.g. "GXL", "SR5", "Wildtrak", "GX". Uppercase. null if not specified.
+- badge is the variant/trim e.g. "GXL", "SR5", "Wildtrak", "GX", "LS-U". Uppercase. null if not specified.
 - If user says "GX or GXL" or "GX/GXL", set badge=null and add "GX" and "GXL" to prefer_terms.
 
 YEAR/KM/PRICE
@@ -47,6 +51,22 @@ STATE
 BODY TYPE
 - Extract body configuration if mentioned: "dual cab"="DUAL CAB", "single cab"="SINGLE CAB", "cab chassis"="CAB CHASSIS", "ute"="UTE", "wagon"="WAGON".
 - Uppercase. null if not specified.
+
+CONDITION
+- Extract condition if explicitly stated: "poor", "fair", "good", "excellent". Lowercase.
+- Do NOT infer condition. If not mentioned, return null.
+
+ALLOWANCE
+- Extract numeric allowance if stated: "allow 1000", "allow $1,000", "allow $500" → extract numeric value only.
+- Do NOT infer allowance. If not mentioned, return null.
+
+ACCESSORY TERMS
+- Extract accessory keywords found in the text: bullbar, towbar, canopy, winch, snorkel, roof rack, side steps, nudge bar, tray, drawers, fridge slide.
+- Uppercase each term. Return [] if none found.
+
+BODY KEYWORDS
+- Extract body configuration keywords found: "dual cab", "single cab", "cab chassis", "wagon", "ute".
+- Uppercase each. Return [] if none found.
 
 FEATURE TERMS — prefer_terms, must_have_terms, exclude_terms
 - Use prefer_terms when user says: "preferably", "prefer", "ideally", "would like", "if possible".
@@ -66,13 +86,13 @@ FEATURE TERMS — prefer_terms, must_have_terms, exclude_terms
 EXAMPLES
 
 Input: "Need a 2024 LandCruiser 79 GXL V8 dual cab under 40,000km, preferably ARB accessories or Norweld tray"
-Output: {"make":"TOYOTA","model":"LANDCRUISER 79","badge":"GXL","year_min":2024,"year_max":null,"max_km":40000,"price_max":null,"state":null,"body_type":"DUAL CAB","prefer_terms":["ARB","NORWELD"],"must_have_terms":[],"exclude_terms":[]}
+Output: {"make":"TOYOTA","model":"LANDCRUISER 79","badge":"GXL","year_min":2024,"year_max":null,"max_km":40000,"price_max":null,"state":null,"body_type":"DUAL CAB","prefer_terms":["ARB","NORWELD"],"must_have_terms":[],"exclude_terms":[],"condition":null,"allowance_aud":null,"accessory_terms":[],"body_keywords":["DUAL CAB"]}
+
+Input: "2023 Isuzu D-Max LS-U 120,000km bullbar towbar good condition allow $1,000"
+Output: {"make":"ISUZU","model":"D-MAX","badge":"LS-U","year_min":2023,"year_max":null,"max_km":120000,"price_max":null,"state":null,"body_type":null,"prefer_terms":[],"must_have_terms":[],"exclude_terms":[],"condition":"good","allowance_aud":1000,"accessory_terms":["BULLBAR","TOWBAR"],"body_keywords":[]}
 
 Input: "Looking for a 2022 or newer Hilux SR5 in QLD, must have GVM upgrade, no automatics, under $65k"
-Output: {"make":"TOYOTA","model":"HILUX","badge":"SR5","year_min":2022,"year_max":null,"max_km":null,"price_max":65000,"state":"QLD","body_type":null,"prefer_terms":[],"must_have_terms":["GVM_UPGRADE"],"exclude_terms":["AUTOMATIC"]}
-
-Input: "Ranger Wildtrak 2021-2023 under 80k km, ideally with ARB or TJM bar"
-Output: {"make":"FORD","model":"RANGER","badge":"WILDTRAK","year_min":2021,"year_max":2023,"max_km":80000,"price_max":null,"state":null,"body_type":null,"prefer_terms":["ARB","TJM"],"must_have_terms":[],"exclude_terms":[]}
+Output: {"make":"TOYOTA","model":"HILUX","badge":"SR5","year_min":2022,"year_max":null,"max_km":null,"price_max":65000,"state":"QLD","body_type":null,"prefer_terms":[],"must_have_terms":["GVM_UPGRADE"],"exclude_terms":["AUTOMATIC"],"condition":null,"allowance_aud":null,"accessory_terms":[],"body_keywords":[]}
 
 Output raw JSON only. No markdown. No backticks. No explanation.`;
 
@@ -82,6 +102,8 @@ export function emptyIntent(): ParsedIntent {
     year_min: null, year_max: null, max_km: null, price_max: null,
     state: null, body_type: null,
     prefer_terms: [], must_have_terms: [], exclude_terms: [],
+    condition: null, allowance_aud: null,
+    accessory_terms: [], body_keywords: [],
   };
 }
 
@@ -141,6 +163,10 @@ export async function parseIntentLLM(instruction: string, apiKey: string): Promi
         prefer_terms: parseTermsArray(parsed.prefer_terms),
         must_have_terms: parseTermsArray(parsed.must_have_terms),
         exclude_terms: parseTermsArray(parsed.exclude_terms),
+        condition: ["poor", "fair", "good", "excellent"].includes(parsed.condition) ? parsed.condition : null,
+        allowance_aud: typeof parsed.allowance_aud === "number" ? parsed.allowance_aud : null,
+        accessory_terms: parseTermsArray(parsed.accessory_terms),
+        body_keywords: parseTermsArray(parsed.body_keywords),
       };
     }
   } catch (err) {
@@ -173,12 +199,39 @@ export function parseIntentRegex(instruction: string): ParsedIntent {
   const bodyMatch = q.match(/\b(dual\s*cab|single\s*cab|cab\s*chassis|wagon|ute)\b/i);
   if (bodyMatch) intent.body_type = bodyMatch[1].toUpperCase().replace(/\s+/g, " ");
 
+  // VALO: Allowance extraction
+  const allowanceMatch = q.match(/allow\s*\$?\s*([\d,]+)/i);
+  if (allowanceMatch) {
+    intent.allowance_aud = parseInt(allowanceMatch[1].replace(/,/g, ""), 10);
+  }
+
+  // VALO: Condition extraction
+  if (/\bexcellent\b/i.test(q)) intent.condition = "excellent";
+  else if (/\bgood\b/i.test(q)) intent.condition = "good";
+  else if (/\bfair\b/i.test(q)) intent.condition = "fair";
+  else if (/\bpoor\b/i.test(q)) intent.condition = "poor";
+
+  // VALO: Accessory extraction
+  const accessoryKeywords = ["bullbar", "towbar", "canopy", "winch", "snorkel", "roof rack", "side steps", "nudge bar", "tray", "drawers", "fridge slide"];
+  intent.accessory_terms = accessoryKeywords
+    .filter(k => new RegExp(`\\b${k}\\b`, "i").test(q))
+    .map(k => k.toUpperCase());
+
+  // VALO: Body keywords
+  const bodyKeywordsList = ["dual cab", "single cab", "cab chassis", "wagon"];
+  intent.body_keywords = bodyKeywordsList
+    .filter(k => new RegExp(`\\b${k}\\b`, "i").test(q))
+    .map(k => k.toUpperCase());
+
   const words = q
     .replace(/(?:under|below|budget|max|less than)\s*\$?\s*[\d,]+\s*k?\b/gi, "")
     .replace(/(?:under|below|<|less than)\s*[\d,]+\s*km/gi, "")
     .replace(/\b20[1-3]\d\b/g, "")
     .replace(/\b(?:NSW|VIC|QLD|WA|SA|TAS|ACT|NT)\b/gi, "")
     .replace(/\b(?:dual\s*cab|single\s*cab|cab\s*chassis|wagon|ute)\b/gi, "")
+    .replace(/allow\s*\$?\s*[\d,]+/gi, "")
+    .replace(/\b(?:excellent|good|fair|poor)\s*(?:condition)?\b/gi, "")
+    .replace(/\b(?:bullbar|towbar|canopy|winch|snorkel|roof rack|side steps|nudge bar|tray|drawers|fridge slide)\b/gi, "")
     .replace(/[^\w\s-]/g, "")
     .trim()
     .split(/\s+/)
