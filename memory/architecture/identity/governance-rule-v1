@@ -3,7 +3,7 @@ Updated: now
 
 ## Iron Rule: Identity Is Backend-Only
 
-Vehicle identity resolution (make, model, variant, platform classification) is defined EXCLUSIVELY in:
+Vehicle identity resolution (make, model, variant, platform classification, badge extraction) is defined EXCLUSIVELY in:
 
 1. `supabase/functions/_shared/taxonomy/normalizeVehicleIdentity.ts` — canonical normalizer
 2. `supabase/functions/_shared/taxonomy/derivePlatform.ts` — platform classifier + badge extractor
@@ -18,21 +18,26 @@ Vehicle identity resolution (make, model, variant, platform classification) is d
 | `src/utils/variantFamilyExtractor.ts` | 261-line hardcoded variant ladders + VARIANT_FAMILIES map | Stripped to display-only (isPicklesSource, getKmStatus) |
 | `score-operator-opportunities/index.ts` | Inline `derivePlatform()` + `extractBadge()` copies | Imports from `_shared/taxonomy/derivePlatform.ts` |
 | `listing-normalizer/index.ts` | Inline `extractMake()` + `extractModel()` with hardcoded `modelMap` | Removed entirely; normalizer is sole identity source |
+| `pickles-replication-cron/index.ts` | Inline `derivePlatform()` + `extractBadge()` copies | Imports from `_shared/taxonomy/derivePlatform.ts` |
+| `caroogle-shadow-promotion/index.ts` | Inline `derivePlatform()` + `extractBadge()` copies | Imports from `_shared/taxonomy/derivePlatform.ts` |
+| `caroogle-shadow-cron/index.ts` | Inline `extractBadge()` copy, renamed `extractModel` to `extractRawModelFromApi` | Imports badge from shared; raw model extractor is API-specific, not identity |
+| `pickles-ingest-cron/index.ts` | 24-line inline badge if/else chain | Replaced with `canonicalExtractBadge()` from shared |
 | `src/utils/derivePlatform.ts` | Standalone copy | Now explicitly marked as display-only mirror of backend |
 
 ## Legacy Shim (Marked for Removal)
 
-`src/types/index.ts` → `extractVariantFamily()` — still used by `picklesAlertMatcher.ts`, `ManualFingerprintForm.tsx`, `googleSheetsService.ts`. Marked with deprecation warning. Must be replaced by reading `variant_family` from DB.
+`src/types/index.ts` → `extractVariantFamily_UI_ONLY_DEPRECATED()` — renamed from `extractVariantFamily`. Still used by `picklesAlertMatcher.ts`, `ManualFingerprintForm.tsx`, `googleSheetsService.ts` via deprecated alias. Must be replaced by reading `variant_family` from DB.
 
-## Regression Test Harness
+## Test Harnesses
 
-`supabase/functions/identity-regression-tests/index_test.ts` — 19 tests covering:
-- Prado vs LandCruiser collision prevention
-- SR vs SR5 badge isolation
-- Word-boundary enforcement for short badges
-- Platform class separation (Pajero Sport, Patrol)
-- Badge priority (longer matches first)
-- Null/empty handling
+1. **Regression tests** (`identity-regression-tests/index_test.ts`) — 19 tests: platform separation, badge isolation, priority, null handling
+2. **Contract tests** (`identity-contract-tests/index_test.ts`) — 22 tests: 20 real-world fixtures from live DB data + 2 cross-collision assertions
+
+## Remaining Acceptable Patterns
+
+- `ooglebot/index.ts` → `MODEL_TO_MAKE` — fallback for LLM intent parsing, not identity resolution
+- `useBuyAgainTargets.ts` → `.includes("GX")` — reads from DB-resolved fields, display bucketing only
+- `LogSalePage.tsx` — inline badge list for form UI hints only
 
 ## Frontend Rule
 

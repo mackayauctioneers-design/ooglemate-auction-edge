@@ -710,11 +710,15 @@ const STRIP_WORDS = [
 ];
 
 /**
- * Extract variant family from variant text.
- * Returns uppercase normalized family token (e.g., "SR5", "XLT", "WILDTRAK").
- * Returns undefined if no known family token is found.
+ * @deprecated USE BACKEND variant_family INSTEAD.
+ * 
+ * ⛔ DO NOT USE FOR: fingerprint matching, scoring, alert routing, platform classification.
+ * ✅ ALLOWED FOR: UI display hints, form prefill, Google Sheets backfill ONLY.
+ * 
+ * This function will be DELETED once all consumers read variant_family from DB.
+ * Canonical badge extraction lives in: _shared/taxonomy/derivePlatform.ts → extractBadge()
  */
-export function extractVariantFamily(variantText: string | undefined | null): string | undefined {
+export function extractVariantFamily_UI_ONLY_DEPRECATED(variantText: string | undefined | null): string | undefined {
   if (!variantText) return undefined;
   
   // Normalize: uppercase and strip noise words
@@ -745,6 +749,9 @@ export function extractVariantFamily(variantText: string | undefined | null): st
   
   return undefined;
 }
+
+/** @deprecated Alias — use extractVariantFamily_UI_ONLY_DEPRECATED or read variant_family from DB */
+export const extractVariantFamily = extractVariantFamily_UI_ONLY_DEPRECATED;
 
 // ========== VALO AI VALUATION ==========
 
