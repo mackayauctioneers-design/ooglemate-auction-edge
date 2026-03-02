@@ -16,21 +16,18 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-lindy-signature",
 };
 
-// ─── HMAC helpers ────────────────────────────────────────────────────────────
+// ─── Constant-time string comparison (no HMAC — Lindy sends static header) ──
 
-async function computeHmac(secret: string, body: string): Promise<string> {
+function timingSafeEqual(a: string, b: string): boolean {
   const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
-  return Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
+  if (aBytes.length !== bBytes.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < aBytes.length; i++) {
+    mismatch |= aBytes[i] ^ bBytes[i];
+  }
+  return mismatch === 0;
 }
 
 // ─── Schema validation ──────────────────────────────────────────────────────
@@ -147,13 +144,10 @@ Deno.serve(async (req) => {
     });
   }
 
-  // ── 1. Read body and verify HMAC ────────────────────────────────────────
-  const rawBody = await req.text();
+  // ── 1. Signature validation (constant-time string compare) ──────────────
   const signature = req.headers.get("x-lindy-signature") || "";
-  const expectedSig = await computeHmac(secret, rawBody);
-
-  if (signature !== expectedSig) {
-    console.warn("[lindy-webhook] HMAC mismatch — rejecting");
+  if (!timingSafeEqual(signature, secret)) {
+    console.warn("[lindy-webhook] Signature mismatch — rejecting");
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -163,7 +157,7 @@ Deno.serve(async (req) => {
   // ── 2. Parse body ──────────────────────────────────────────────────────
   let body: { job_id?: string; source?: string; listings?: unknown[]; completed_at?: string };
   try {
-    body = JSON.parse(rawBody);
+    body = JSON.parse(await req.text());
   } catch {
     return new Response(JSON.stringify({ error: "Invalid JSON" }), {
       status: 400,
