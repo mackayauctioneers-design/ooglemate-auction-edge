@@ -18,6 +18,7 @@ export interface ParsedIntent {
   year_max: number | null;
   max_km: number | null;
   price_max: number | null;
+  state: string | null;
 }
 
 // ─── Source Registry Row ─────────────────────────────────────────
