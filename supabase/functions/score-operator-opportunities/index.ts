@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { derivePlatform, extractBadge as sharedExtractBadge } from "../_shared/taxonomy/derivePlatform.ts";
 
 /**
  * SCORE OPERATOR OPPORTUNITIES — v2 (Delta + Caps + Rank-before-Insert)
@@ -28,34 +29,10 @@ const TOP_K_PER_FINGERPRINT = 3; // max opps per platform_class+trim per run
 
 // ── HELPERS (unchanged logic) ────────────────────────────────────────────────
 
-function derivePlatform(make: string, model: string): string {
-  const m = (make || "").toUpperCase().trim();
-  const mo = (model || "").toUpperCase().trim();
-  if (m === "TOYOTA") {
-    if (mo.includes("PRADO")) return "PRADO";
-    if (mo.includes("LANDCRUISER")) return "LANDCRUISER";
-  }
-  if (m === "MITSUBISHI" && mo === "OUTLANDER") return "OUTLANDER";
-  return `${m}:${mo}`;
-}
-
+// derivePlatform and extractBadge are now imported from _shared/taxonomy/derivePlatform.ts
+// This eliminates identity duplication. See canonical module for rules.
 function extractBadge(text: string | null): string {
-  if (!text) return "";
-  const d = text.toUpperCase();
-  const badges = [
-    "EXCEED TOURER","EXCEED","X-TERRAIN","XTERRAIN","PRO-4X","PRO4X",
-    "GLX-R","GLX+","GLX PLUS","SR5","ROGUE","RUGGED X","RUGGED-X","RUGGED",
-    "RAPTOR","WILDTRAK","KAKADU","SAHARA","ASPIRE","TITANIUM","PLATINUM",
-    "GXL","VX","GX","XLT","XLS","LS-U","LSU","LS-M","LSM","LS-T","LST",
-    "ST-X","STX","ST-L","STL","GLS","GR","N-TREK","COMMUTER","SLWB","LWB",
-    "WORKMATE","AMBIENTE","TREND",
-    "ASCENT SPORT","ASCENT","MAXX SPORT","MAXX",
-    "AKARI","GT-LINE","SPORT","TOURING",
-  ];
-  const shortBadges = ["SR","XL","LS","ES","SL","ST","TI","LT","LTZ","Z71","SS","SSV","SV6","SX","XT","RX"];
-  for (const b of badges) { if (d.includes(b)) return b; }
-  for (const b of shortBadges) { if (new RegExp(`\\b${b}\\b`).test(d)) return b; }
-  return "";
+  return sharedExtractBadge(text);
 }
 
 const PRODUCTION_SOURCES = [

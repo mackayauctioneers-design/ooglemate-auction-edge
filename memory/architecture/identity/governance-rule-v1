@@ -1,0 +1,40 @@
+# Memory: architecture/identity/governance-rule-v1
+Updated: now
+
+## Iron Rule: Identity Is Backend-Only
+
+Vehicle identity resolution (make, model, variant, platform classification) is defined EXCLUSIVELY in:
+
+1. `supabase/functions/_shared/taxonomy/normalizeVehicleIdentity.ts` — canonical normalizer
+2. `supabase/functions/_shared/taxonomy/derivePlatform.ts` — platform classifier + badge extractor
+3. `supabase/functions/_shared/taxonomy/parseSlug.ts` — MULTI_WORD_MODELS for slug parsing
+4. DB taxonomy tables (`taxonomy_models`, `taxonomy_variant_rank`)
+5. DB function `derive_platform_class(make, model)` — SQL mirror
+
+## What Was Removed (2026-03-02)
+
+| File | What Was Killed | Replacement |
+|------|----------------|-------------|
+| `src/utils/variantFamilyExtractor.ts` | 261-line hardcoded variant ladders + VARIANT_FAMILIES map | Stripped to display-only (isPicklesSource, getKmStatus) |
+| `score-operator-opportunities/index.ts` | Inline `derivePlatform()` + `extractBadge()` copies | Imports from `_shared/taxonomy/derivePlatform.ts` |
+| `listing-normalizer/index.ts` | Inline `extractMake()` + `extractModel()` with hardcoded `modelMap` | Removed entirely; normalizer is sole identity source |
+| `src/utils/derivePlatform.ts` | Standalone copy | Now explicitly marked as display-only mirror of backend |
+
+## Legacy Shim (Marked for Removal)
+
+`src/types/index.ts` → `extractVariantFamily()` — still used by `picklesAlertMatcher.ts`, `ManualFingerprintForm.tsx`, `googleSheetsService.ts`. Marked with deprecation warning. Must be replaced by reading `variant_family` from DB.
+
+## Regression Test Harness
+
+`supabase/functions/identity-regression-tests/index_test.ts` — 19 tests covering:
+- Prado vs LandCruiser collision prevention
+- SR vs SR5 badge isolation
+- Word-boundary enforcement for short badges
+- Platform class separation (Pajero Sport, Patrol)
+- Badge priority (longer matches first)
+- Null/empty handling
+
+## Frontend Rule
+
+Frontend may DISPLAY `vehicle.variant_family`, `vehicle.platform_class`, etc.
+Frontend must NEVER derive, classify, or resolve identity.

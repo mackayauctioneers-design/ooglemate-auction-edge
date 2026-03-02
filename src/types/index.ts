@@ -670,8 +670,11 @@ export function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-AU').format(value);
 }
 
-// ========== VARIANT FAMILY EXTRACTION ==========
-
+// ========== VARIANT FAMILY EXTRACTION (LEGACY — SCHEDULED FOR REMOVAL) ==========
+// ⚠️  IDENTITY GOVERNANCE: This function duplicates backend taxonomy logic.
+// It exists ONLY as a transitional shim for Google Sheets backfill and alert matching.
+// New code MUST use backend-resolved variant_family from the database.
+// TODO: Remove once all consumers read variant_family from DB instead of deriving it.
 // Common variant family tokens (uppercase normalized)
 // Whitelist from user requirements: SR5, GXL, XLT, ST, ST-X, WILDTRAK, LT, LTZ, Z71, ZR2, GL, GX, VX, SAHARA, GR, GT, RS
 const VARIANT_FAMILY_TOKENS = [
