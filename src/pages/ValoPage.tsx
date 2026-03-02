@@ -8,13 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Loader2, CheckCircle, DollarSign, TrendingUp, BarChart3, Clock,
-  Sparkles, Target, ShieldCheck, Camera, AlertTriangle, Mic, MicOff
+  Sparkles, Target, ShieldCheck, Camera, AlertTriangle, Mic, MicOff,
+  ExternalLink, ChevronDown, ChevronUp, X
 } from 'lucide-react';
 import { useSpeechToText } from '@/hooks/useSpeechToText';
 import { useAuth } from '@/contexts/AuthContext';
 import { ValoParsedVehicle, ValoResult, ValoTier, ValuationConfidence, formatCurrency } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
-import { dataService } from '@/services/dataService';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -27,6 +27,12 @@ import {
 
 declare const __BUILD_TIME__: string;
 
+// ── Accessory presets ──
+const ACCESSORY_PRESETS = [
+  'Bullbar', 'Towbar', 'Canopy', 'ARB', 'Norweld Tray',
+  'Snorkel', 'Lift Kit', 'Roof Racks', 'Side Steps', 'Winch',
+];
+
 // ============================================================================
 // VALO — Market-Backed Trade-In Valuation Tool
 // ============================================================================
@@ -37,8 +43,11 @@ export default function ValoPage() {
 
   // Input state
   const [description, setDescription] = useState('');
+  const [km, setKm] = useState('');
   const [condition, setCondition] = useState<string>('good');
   const [allowance, setAllowance] = useState<string>('1000');
+  const [selectedAccessories, setSelectedAccessories] = useState<string[]>([]);
+  const [customAccessory, setCustomAccessory] = useState('');
 
   // Voice input
   const handleVoiceResult = useCallback((transcript: string) => {
@@ -53,15 +62,15 @@ export default function ValoPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsed, setParsed] = useState<ValoParsedVehicle | null>(null);
   const [result, setResult] = useState<ValoResult | null>(null);
+  const [valoComps, setValoComps] = useState<any[]>([]);
   const [oancaDebug, setOancaDebug] = useState<any>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [expandedComp, setExpandedComp] = useState<number | null>(null);
 
   // Prefill from URL
   useEffect(() => {
     const prefillText = searchParams.get('prefill');
-    if (prefillText) {
-      setDescription(decodeURIComponent(prefillText));
-    }
+    if (prefillText) setDescription(decodeURIComponent(prefillText));
   }, [searchParams]);
 
   useEffect(() => {
@@ -69,14 +78,35 @@ export default function ValoPage() {
     return () => { document.title = 'OogleMate'; };
   }, []);
 
+  const toggleAccessory = (acc: string) => {
+    setSelectedAccessories(prev =>
+      prev.includes(acc) ? prev.filter(a => a !== acc) : [...prev, acc]
+    );
+  };
+
+  const addCustomAccessory = () => {
+    const trimmed = customAccessory.trim();
+    if (trimmed && !selectedAccessories.includes(trimmed)) {
+      setSelectedAccessories(prev => [...prev, trimmed]);
+      setCustomAccessory('');
+    }
+  };
+
   const handleRunValo = async () => {
     if (!description.trim()) {
       toast.error('Describe the vehicle first');
       return;
     }
 
+    const kmNum = parseInt(km, 10);
+    if (!km.trim() || isNaN(kmNum) || kmNum <= 0) {
+      toast.error('Kilometres is required for VALO');
+      return;
+    }
+
     setParsed(null);
     setResult(null);
+    setValoComps([]);
     setOancaDebug(null);
     setIsProcessing(true);
 
@@ -91,6 +121,7 @@ export default function ValoPage() {
 
       const parsedVehicle: ValoParsedVehicle = parseData.parsed;
       if (!parsedVehicle.assumptions) parsedVehicle.assumptions = [];
+      parsedVehicle.km = kmNum;
       setParsed(parsedVehicle);
 
       if (!parsedVehicle.make || !parsedVehicle.model) {
@@ -99,10 +130,18 @@ export default function ValoPage() {
         return;
       }
 
+      // Build instruction with accessories context
+      let fullInstruction = description.trim();
+      if (selectedAccessories.length > 0) {
+        fullInstruction += ` accessories: ${selectedAccessories.join(', ')}`;
+      }
+      fullInstruction += ` ${kmNum}km condition:${condition} allow ${allowance}`;
+
       // Step 2: Run valuation engine
       const { data: valoData, error: valoError } = await supabase.functions.invoke('run-valo-v1', {
         body: {
-          instruction: description.trim(),
+          instruction: fullInstruction,
+          km: kmNum,
           account_id: null,
           initiated_by: 'dealer',
           full_market_scan: true,
@@ -110,24 +149,31 @@ export default function ValoPage() {
       });
 
       if (valoError) throw new Error(valoError.message);
+      if (valoData?.status === 'missing_required_fields') {
+        toast.error(`Missing required fields: ${valoData.missing?.join(', ')}`);
+        setIsProcessing(false);
+        return;
+      }
       if (valoData?.status === 'error') throw new Error(valoData.error);
 
-      if (isAdmin) {
-        setOancaDebug(valoData);
-      }
+      if (isAdmin) setOancaDebug(valoData);
 
-      // Map run-valo-v1 response to ValoResult
+      // Build top comps list
+      const comps: any[] = [];
+      if (valoData.anchor) comps.push({ ...valoData.anchor, _role: 'anchor' });
+      if (valoData.backups) {
+        valoData.backups.forEach((b: any) => comps.push({ ...b, _role: 'backup' }));
+      }
+      setValoComps(comps);
+
+      // Map response
       const offer = valoData.trade_in_offer;
       const market = valoData.market;
 
       setResult({
         parsed: parsedVehicle,
-        suggested_buy_range: offer
-          ? { min: offer.low, max: offer.high }
-          : null,
-        suggested_sell_range: market
-          ? { min: market.p25, max: market.p75 }
-          : null,
+        suggested_buy_range: offer ? { min: offer.low, max: offer.high } : null,
+        suggested_sell_range: market ? { min: market.p25, max: market.p75 } : null,
         expected_gross_band: market && offer
           ? { min: market.p25 - offer.high, max: market.p75 - offer.low }
           : null,
@@ -136,7 +182,7 @@ export default function ValoPage() {
         tier: 'dealer',
         tier_label: `VALO (${valoData.comp_count} comps)`,
         sample_size: valoData.comp_count ?? 0,
-        top_comps: valoData.anchor ? [valoData.anchor, ...(valoData.backups ?? [])] : [],
+        top_comps: comps,
         request_id: valoData.valo_run_id ?? crypto.randomUUID(),
         timestamp: new Date().toISOString(),
       });
@@ -150,100 +196,10 @@ export default function ValoPage() {
     }
   };
 
-  const runLocalValuation = async (
-    parsed: ValoParsedVehicle,
-    dealerName?: string
-  ): Promise<Omit<ValoResult, 'parsed' | 'request_id' | 'timestamp'>> => {
-    const make = parsed.make!;
-    const model = parsed.model!;
-    const year = parsed.year || new Date().getFullYear();
-    const variantFamily = parsed.variant_family || undefined;
-    const km = parsed.km || undefined;
-
-    if (dealerName) {
-      const dealerResult = await dataService.getNetworkValuation({
-        make, model, variant_family: variantFamily, year, km, requesting_dealer: dealerName,
-      }, isAdmin);
-
-      if (dealerResult.data_source === 'internal' && dealerResult.sample_size >= 1) {
-        const confidence: ValuationConfidence = dealerResult.sample_size >= 3 ? 'HIGH' : 'MEDIUM';
-        return {
-          suggested_buy_range: dealerResult.buy_price_range,
-          suggested_sell_range: dealerResult.sell_price_range,
-          expected_gross_band: dealerResult.avg_gross_profit
-            ? { min: dealerResult.avg_gross_profit * 0.8, max: dealerResult.avg_gross_profit * 1.2 }
-            : null,
-          typical_days_to_sell: dealerResult.avg_days_to_sell,
-          confidence,
-          tier: 'dealer',
-          tier_label: 'Dealer history',
-          sample_size: dealerResult.sample_size,
-          top_comps: [],
-        };
-      }
-    }
-
-    const networkResult = await dataService.getNetworkValuation({
-      make, model, variant_family: variantFamily, year, year_tolerance: 2,
-    }, isAdmin);
-
-    if (networkResult.sample_size >= 5) {
-      return {
-        suggested_buy_range: networkResult.buy_price_range,
-        suggested_sell_range: networkResult.sell_price_range,
-        expected_gross_band: networkResult.avg_gross_profit
-          ? { min: networkResult.avg_gross_profit * 0.8, max: networkResult.avg_gross_profit * 1.2 }
-          : null,
-        typical_days_to_sell: networkResult.avg_days_to_sell,
-        confidence: 'MEDIUM',
-        tier: 'network',
-        tier_label: 'Network outcomes',
-        sample_size: networkResult.sample_size,
-        top_comps: [],
-      };
-    }
-
-    const proxyResult = await dataService.getNetworkValuation({
-      make, model, year, year_tolerance: 3,
-    }, isAdmin);
-
-    if (proxyResult.sample_size > 0) {
-      return {
-        suggested_buy_range: proxyResult.buy_price_range,
-        suggested_sell_range: proxyResult.sell_price_range,
-        expected_gross_band: proxyResult.avg_gross_profit
-          ? { min: proxyResult.avg_gross_profit * 0.7, max: proxyResult.avg_gross_profit * 1.3 }
-          : null,
-        typical_days_to_sell: proxyResult.avg_days_to_sell,
-        confidence: 'LOW',
-        tier: 'proxy',
-        tier_label: 'Proxy',
-        sample_size: proxyResult.sample_size,
-        top_comps: [],
-      };
-    }
-
-    return {
-      suggested_buy_range: null,
-      suggested_sell_range: null,
-      expected_gross_band: null,
-      typical_days_to_sell: null,
-      confidence: 'LOW',
-      tier: 'proxy',
-      tier_label: 'No comparable data',
-      sample_size: 0,
-      top_comps: [],
-    };
-  };
-
   const confidenceBadge = (c: ValuationConfidence) => {
-    const map = {
-      HIGH: 'bg-green-500 hover:bg-green-600',
-      MEDIUM: 'bg-yellow-500 hover:bg-yellow-600 text-black',
-      LOW: '',
-    };
     if (c === 'LOW') return <Badge variant="destructive">LOW</Badge>;
-    return <Badge className={map[c]}>{c}</Badge>;
+    if (c === 'MEDIUM') return <Badge className="bg-yellow-500 hover:bg-yellow-600 text-black">MEDIUM</Badge>;
+    return <Badge className="bg-green-500 hover:bg-green-600">HIGH</Badge>;
   };
 
   const tierBadge = (t: ValoTier) => {
@@ -316,18 +272,32 @@ export default function ValoPage() {
               </div>
               <Textarea
                 id="vehicle-desc"
-                placeholder="e.g. 2021 Toyota HiLux SR5 4x4 Auto, 45,000km, White, NSW"
+                placeholder="e.g. 2021 Toyota HiLux SR5 4x4 Auto, White, NSW"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
                 className={`mt-1 ${isListening ? 'ring-2 ring-destructive/50' : ''}`}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Include make, model, year, variant, kilometres, and location if known.
+                Include make, model, year, variant, and location if known.
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="km">
+                  Kilometres <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="km"
+                  type="number"
+                  value={km}
+                  onChange={(e) => setKm(e.target.value)}
+                  placeholder="e.g. 45000"
+                  className="mt-1"
+                  required
+                />
+              </div>
               <div>
                 <Label htmlFor="condition">Condition</Label>
                 <Select value={condition} onValueChange={setCondition}>
@@ -355,9 +325,56 @@ export default function ValoPage() {
               </div>
             </div>
 
+            {/* Accessory Chips */}
+            <div>
+              <Label>Accessories / Features</Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {ACCESSORY_PRESETS.map(acc => (
+                  <button
+                    key={acc}
+                    type="button"
+                    onClick={() => toggleAccessory(acc)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      selectedAccessories.includes(acc)
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'
+                    }`}
+                  >
+                    {acc}
+                  </button>
+                ))}
+              </div>
+              {/* Custom accessory input */}
+              <div className="flex gap-2 mt-2">
+                <Input
+                  value={customAccessory}
+                  onChange={(e) => setCustomAccessory(e.target.value)}
+                  placeholder="Add custom accessory…"
+                  className="h-8 text-xs"
+                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomAccessory())}
+                />
+                <Button type="button" variant="outline" size="sm" onClick={addCustomAccessory} className="h-8 text-xs">
+                  Add
+                </Button>
+              </div>
+              {/* Show custom selections */}
+              {selectedAccessories.filter(a => !ACCESSORY_PRESETS.includes(a)).length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {selectedAccessories.filter(a => !ACCESSORY_PRESETS.includes(a)).map(acc => (
+                    <Badge key={acc} variant="secondary" className="gap-1 text-xs">
+                      {acc}
+                      <button onClick={() => toggleAccessory(acc)} className="ml-0.5 hover:text-destructive">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <Button
               onClick={handleRunValo}
-              disabled={isProcessing || !description.trim()}
+              disabled={isProcessing || !description.trim() || !km.trim()}
               className="w-full gap-2"
               size="lg"
             >
@@ -486,6 +503,145 @@ export default function ValoPage() {
               </Card>
             </div>
 
+            {/* ── Top Comparables ── */}
+            {valoComps.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                  <Target className="h-4 w-4 text-primary" />
+                  Top Comparables
+                </h3>
+                {valoComps.map((comp, i) => {
+                  const isAnchor = comp._role === 'anchor';
+                  const isExpanded = expandedComp === i;
+                  return (
+                    <Card
+                      key={i}
+                      className={`overflow-hidden ${isAnchor ? 'border-primary/50 ring-1 ring-primary/20' : ''}`}
+                    >
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              {isAnchor && (
+                                <Badge className="bg-primary text-primary-foreground text-[10px] px-1.5 py-0">
+                                  ANCHOR
+                                </Badge>
+                              )}
+                              {!isAnchor && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                  BACKUP
+                                </Badge>
+                              )}
+                              {comp.source && (
+                                <span className="text-[10px] text-muted-foreground font-mono uppercase">
+                                  {comp.source === 'internal_db' ? 'Internal' : comp.source}
+                                </span>
+                              )}
+                            </div>
+                            <p className="font-medium text-sm truncate">
+                              {comp.title || `${comp.year ?? ''} ${comp.make ?? ''} ${comp.model ?? ''} ${comp.variant ?? ''}`.trim()}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-muted-foreground">
+                              {comp.year && <span>{comp.year}</span>}
+                              {comp.km != null && <span>{comp.km.toLocaleString()} km</span>}
+                              {(comp.price ?? comp.effective_cost) != null && (
+                                <span className="font-semibold text-foreground">
+                                  ${(comp.price ?? comp.effective_cost).toLocaleString()}
+                                </span>
+                              )}
+                              {comp.state && <span>{comp.state}</span>}
+                            </div>
+
+                            {/* Feature hits */}
+                            {comp.feature_hits?.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {comp.feature_hits.map((hit: string) => (
+                                  <Badge key={hit} variant="secondary" className="text-[10px] gap-1">
+                                    <CheckCircle className="h-2.5 w-2.5 text-green-500" />
+                                    {hit}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* VALO score + reasons */}
+                            {comp.valo_score != null && (
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="text-[10px] font-mono text-muted-foreground">
+                                  Score: {comp.valo_score}
+                                </span>
+                                {comp.valo_reasons?.slice(0, 3).map((r: string) => (
+                                  <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">
+                                    {r}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex flex-col gap-1 shrink-0">
+                            {comp.url && (
+                              <a
+                                href={comp.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                              >
+                                View listing
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                            <button
+                              onClick={() => setExpandedComp(isExpanded ? null : i)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted transition-colors"
+                            >
+                              {isExpanded ? 'Less' : 'Details'}
+                              {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Expanded details */}
+                        {isExpanded && (
+                          <div className="mt-3 pt-3 border-t border-border space-y-2">
+                            {comp.feature_evidence?.length > 0 && (
+                              <div>
+                                <p className="text-xs font-medium mb-1">Feature Evidence</p>
+                                {comp.feature_evidence.map((fe: any, j: number) => (
+                                  <div key={j} className="text-xs text-muted-foreground flex gap-2 py-0.5">
+                                    <Badge variant="outline" className="text-[10px] shrink-0">{fe.code}</Badge>
+                                    <span className="italic">…{fe.snippet}…</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {comp.valo_reasons?.length > 0 && (
+                              <div>
+                                <p className="text-xs font-medium mb-1">All Match Reasons</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {comp.valo_reasons.map((r: string) => (
+                                    <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">
+                                      {r}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {comp.description && (
+                              <div>
+                                <p className="text-xs font-medium mb-1">Listing Description</p>
+                                <p className="text-xs text-muted-foreground line-clamp-4">{comp.description}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Confidence Explanation */}
             {result.confidence === 'LOW' && (
               <div className="flex items-start gap-3 p-4 rounded-lg border border-yellow-500/30 bg-yellow-500/5">
@@ -543,44 +699,19 @@ export default function ValoPage() {
           <Card className="border-yellow-500/50 bg-yellow-500/5">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-mono flex items-center gap-2">
-                🔧 OANCA Debug
+                🔧 VALO Debug
                 <Badge variant="outline" className="text-xs">
-                  {oancaDebug.allow_price ? 'PRICED' : 'NO PRICE'}
+                  {oancaDebug.status}
                 </Badge>
-                <Badge
-                  variant={oancaDebug.verdict === 'BUY' ? 'default' : oancaDebug.verdict === 'HIT_IT' ? 'destructive' : 'secondary'}
-                  className="text-xs"
-                >
-                  {oancaDebug.verdict}
+                <Badge variant="secondary" className="text-xs">
+                  {oancaDebug.confidence}
                 </Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent className="font-mono text-xs space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <div><span className="text-muted-foreground">allow_price:</span> <span className={oancaDebug.allow_price ? 'text-green-500' : 'text-red-500'}>{String(oancaDebug.allow_price)}</span></div>
-                <div><span className="text-muted-foreground">verdict:</span> <span className="font-semibold">{oancaDebug.verdict}</span></div>
-                <div><span className="text-muted-foreground">demand_class:</span> {oancaDebug.demand_class || 'N/A'}</div>
-                <div><span className="text-muted-foreground">confidence:</span> {oancaDebug.confidence || 'N/A'}</div>
-                <div><span className="text-muted-foreground">n_comps:</span> <span className={oancaDebug.n_comps < 2 ? 'text-red-500' : 'text-green-500'}>{oancaDebug.n_comps}</span></div>
-                <div><span className="text-muted-foreground">anchor_owe:</span> {oancaDebug.anchor_owe ? `$${oancaDebug.anchor_owe.toLocaleString()}` : 'N/A'}</div>
-              </div>
-              {oancaDebug.allow_price && (
-                <div className="pt-2 border-t border-yellow-500/20">
-                  <p className="text-muted-foreground mb-1">Approved Range:</p>
-                  <div className="flex gap-4">
-                    <span>Low: <strong className="text-green-500">${oancaDebug.buy_low?.toLocaleString()}</strong></span>
-                    <span>High: <strong className="text-green-500">${oancaDebug.buy_high?.toLocaleString()}</strong></span>
-                  </div>
-                </div>
-              )}
-              {oancaDebug.notes?.length > 0 && (
-                <div className="pt-2 border-t border-yellow-500/20">
-                  <p className="text-muted-foreground mb-1">Notes:</p>
-                  <ul className="list-disc list-inside opacity-80 max-h-32 overflow-y-auto">
-                    {oancaDebug.notes.map((note: string, i: number) => <li key={i}>{note}</li>)}
-                  </ul>
-                </div>
-              )}
+            <CardContent className="font-mono text-xs">
+              <pre className="overflow-auto max-h-64 p-2 rounded bg-muted/50">
+                {JSON.stringify(oancaDebug, null, 2)}
+              </pre>
             </CardContent>
           </Card>
         )}
