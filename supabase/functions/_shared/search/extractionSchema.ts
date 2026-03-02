@@ -45,6 +45,8 @@ export interface RawExtractedListing {
 
 export interface WebhookPayload {
   job_id:   string;
+  run_id?:  string;
+  queue_id?: string;
   source:   string;
   page:     number;
   listings: NormalizedListing[];

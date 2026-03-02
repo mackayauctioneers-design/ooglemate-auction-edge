@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
   }
 
   // ── 2. Parse body ──────────────────────────────────────────────────────
-  let body: { job_id?: string; source?: string; listings?: unknown[]; completed_at?: string };
+  let body: { job_id?: string; run_id?: string; queue_id?: string; source?: string; listings?: unknown[]; completed_at?: string };
   try {
     body = JSON.parse(await req.text());
   } catch {
@@ -302,7 +302,16 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ── 7. Mark job complete ───────────────────────────────────────────────
+  // ── 7. Mark browse queue row complete (if queue_id provided) ─────────
+  if (body.queue_id && typeof body.queue_id === "string") {
+    await sb
+      .from("outward_browse_queue")
+      .update({ status: "complete", completed_at: new Date().toISOString() })
+      .eq("id", body.queue_id)
+      .eq("status", "dispatched"); // guard: only if still dispatched
+  }
+
+  // ── 8. Mark job complete ───────────────────────────────────────────────
   await sb
     .from("outward_jobs")
     .update({
