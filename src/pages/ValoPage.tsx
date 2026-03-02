@@ -98,7 +98,7 @@ export default function ValoPage() {
         .select('canonical_model')
         .eq('make', make.trim())
         .order('canonical_model');
-      if (data) setModelSuggestions(data.map(d => d.canonical_model));
+      if (data) setModelSuggestions([...new Set(data.map(d => d.canonical_model).filter(Boolean))]);
     };
     fetchModels();
   }, [make]);
@@ -158,7 +158,9 @@ export default function ValoPage() {
     }
   };
 
+  const authReady = !!(dealerProfile?.account_id);
   const canRunValo = make.trim().length > 0 && model.trim().length > 0 && year.trim().length > 0 && km.trim().length > 0;
+  const badgeMissing = canRunValo && !badge.trim();
 
   const handleRunValo = async () => {
     if (!make.trim() || !model.trim()) {
@@ -479,7 +481,13 @@ export default function ValoPage() {
                   id="badge" value={badge} onChange={(e) => setBadge(e.target.value)}
                   placeholder="e.g. SR5, LS-U" className="mt-1"
                 />
-                <p className="text-[10px] text-muted-foreground mt-0.5">Improves matching accuracy</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {badgeMissing ? (
+                    <span className="text-action-watch">Badge not provided — matching will be broader.</span>
+                  ) : (
+                    'Improves matching accuracy'
+                  )}
+                </p>
               </div>
               <div>
                 <Label htmlFor="year">Year <span className="text-destructive">*</span></Label>
