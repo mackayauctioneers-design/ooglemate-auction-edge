@@ -18,6 +18,7 @@ export interface BrowserExtractedListing {
   listing_id:   string | null;
   state:        string | null;
   image_url:    string | null;
+  seller_name:  string | null;
 }
 
 // ── Full raw listing with source injected by dispatch loop ──────────────────
@@ -39,6 +40,9 @@ export interface RawExtractedListing {
 
   // ── Image (best effort — may be null if blocked or unavailable) ───────────
   image_url:    string | null; // primary listing photo URL
+
+  // ── Seller (best effort) ──────────────────────────────────────────────────
+  seller_name:  string | null; // dealer or private seller name
 
   // ── Injected by dispatch loop (not extracted from page) ───────────────────
   source:       "carsales" | "carsguide" | "gumtree";
@@ -72,6 +76,18 @@ export interface NormalizedListing {
   source:       string;
   state:        string | null;
   image_url:    string | null;
+  seller_name:  string | null;
+}
+
+export function sanitizeImageUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (trimmed.length > 500) return null;
+  if (!trimmed.startsWith("https://")) return null;
+  if (trimmed.startsWith("data:")) return null;
+  // Reject obvious non-photo URLs
+  if (/\.(svg|gif|ico)(\?|$)/i.test(trimmed)) return null;
+  return trimmed;
 }
 
 export function normalizeExtractedListing(raw: RawExtractedListing): NormalizedListing {
@@ -86,7 +102,8 @@ export function normalizeExtractedListing(raw: RawExtractedListing): NormalizedL
     listing_id:   raw.listing_id.trim(),
     source:       raw.source,
     state:        raw.state?.toUpperCase() ?? null,
-    image_url:    (raw as any).image_url?.trim() || null,
+    image_url:    sanitizeImageUrl(raw.image_url),
+    seller_name:  raw.seller_name?.trim() ?? null,
   };
 }
 
@@ -112,6 +129,7 @@ export function toBrowserRaw(
     listing_url:  item.listing_url,
     listing_id:   item.listing_id ? String(item.listing_id) : "",
     image_url:    item.image_url ? String(item.image_url) : null,
+    seller_name:  (item as any).seller_name ? String((item as any).seller_name) : null,
     source,
     state:        state?.toUpperCase() ?? null,
   };

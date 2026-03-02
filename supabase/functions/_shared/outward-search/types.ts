@@ -87,6 +87,7 @@ export interface AdapterResult {
   variant: string | null;
   url: string | null;
   image_url: string | null;
+  seller_name: string | null;
   score: number;
   match_reason: string[];
   source_class: string | null;

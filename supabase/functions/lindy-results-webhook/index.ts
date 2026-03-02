@@ -98,8 +98,11 @@ function validateListings(raw: unknown[], sourceKey: string): ValidatedListing[]
       continue;
     }
 
+    // Map seller_name through
+    // (no normalization needed, just pass-through)
+
     // Reject truly unexpected keys (after normalization)
-    const allowedKeys = new Set(["title", "price_aud", "odometer_km", "year", "state", "listing_url", "source_id"]);
+    const allowedKeys = new Set(["title", "price_aud", "odometer_km", "year", "state", "listing_url", "source_id", "image_url", "seller_name"]);
     const extraKeys = Object.keys(r).filter((k) => !allowedKeys.has(k));
     if (extraKeys.length > 0) {
       console.warn(`[lindy-webhook] Dropping listing with unexpected keys: ${extraKeys.join(", ")}`);
