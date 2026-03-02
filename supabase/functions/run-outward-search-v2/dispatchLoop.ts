@@ -8,7 +8,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { buildSearchUrls, type SearchTarget } from "../_shared/search/buildSearchUrls.ts";
+import { buildSearchUrls, type SearchTarget, type SourceKey } from "../_shared/search/buildSearchUrls.ts";
 import { getExtractionPrompt } from "../_shared/search/extractionPrompts.ts";
 import type { ParsedIntent } from "../_shared/outward-search/types.ts";
 
@@ -38,12 +38,12 @@ export async function runDispatchLoop(
   jobId: string,
   intent: ParsedIntent,
   options: {
-    sources?: Array<"carsales" | "carsguide" | "gumtree">;
+    sources?: SourceKey[];
     maxPages?: number;
   } = {},
 ): Promise<DispatchResult> {
   const {
-    sources = ["carsales", "carsguide", "gumtree"],
+    sources = ["carsales", "carsguide", "gumtree", "drive"],
     maxPages = 2,
   } = options;
 

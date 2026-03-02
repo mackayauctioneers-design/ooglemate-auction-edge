@@ -37,7 +37,7 @@ RULES:
 - Do not include dealer ads for new vehicles (condition must be "Used").
 `.trim();
 
-const EXTRACTION_PROMPTS: Record<"carsales" | "carsguide" | "gumtree", string> = {
+const EXTRACTION_PROMPTS: Record<"carsales" | "carsguide" | "gumtree" | "drive", string> = {
 
   carsales: `
 You are extracting used car listings from a Carsales.com.au search results page.
@@ -77,6 +77,20 @@ Each listing card contains:
 - Listing URL: the href on the listing card (starts with /s-ad/)
   → Prepend "https://www.gumtree.com.au" if relative.
 - Listing ID: the numeric segment at the end of the URL path (e.g. "1316547890")
+
+${SHARED_RULES}
+`.trim(),
+
+  drive: `
+You are extracting used car listings from a Drive.com.au search results page.
+
+Each listing card contains:
+- Title: usually "{Year} {Make} {Model} {Variant}" (e.g. "2021 Toyota HiLux SR5")
+- Price: shown as "$42,500" or "Price on Application"
+- Odometer: shown as "87,000 km"
+- Listing URL: the href on the listing card (contains /cars-for-sale/ or /car/)
+  → Prepend "https://www.drive.com.au" if relative.
+- Listing ID: extract the numeric or slug ID from the URL path
 
 ${SHARED_RULES}
 `.trim(),
