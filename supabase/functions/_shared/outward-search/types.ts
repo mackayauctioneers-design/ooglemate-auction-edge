@@ -19,7 +19,26 @@ export interface ParsedIntent {
   max_km: number | null;
   price_max: number | null;
   state: string | null;
+
+  // Body type
+  body_type: string | null;           // e.g. "DUAL CAB", "SINGLE CAB", "CAB CHASSIS"
+
+  // Feature signals
+  prefer_terms: string[];             // soft boost — "preferably ARB"
+  must_have_terms: string[];          // hard gate — "must have Norweld"
+  exclude_terms: string[];            // hard exclude — "no automatics"
 }
+
+// ─── Feature Alias Map (single source of truth) ─────────────────
+export const FEATURE_ALIASES: Record<string, string[]> = {
+  NORWELD: ["norweld", "norwell", "norweld tray", "norweld canopy", "norweld box"],
+  ARB: ["arb", "arb 4x4", "arb bullbar", "arb bar", "arb barwork", "arb accessories"],
+  TJM: ["tjm", "tjm suspension", "tjm bar", "tjm barwork"],
+  GVM_UPGRADE: ["gvm", "gvm upgrade", "gvm upgraded", "4200kg", "4,200kg"],
+  MANUAL: ["manual", "manual transmission", "6-speed manual"],
+  AUTOMATIC: ["auto", "automatic", "auto transmission"],
+  DIFF_LOCK: ["diff lock", "diff locks", "locking diff", "factory diff lock"],
+};
 
 // ─── Source Registry Row ─────────────────────────────────────────
 export interface SourceRegistryEntry {
