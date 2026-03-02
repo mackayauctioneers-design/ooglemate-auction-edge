@@ -188,30 +188,13 @@ export async function dispatchLindyJobs(
       callback_url: callbackUrl,
     };
 
-    // Compute HMAC for outbound dispatch
-    let hmacHeader = "";
-    if (lindySecret) {
-      const encoder = new TextEncoder();
-      const key = await crypto.subtle.importKey(
-        "raw",
-        encoder.encode(lindySecret),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"],
-      );
-      const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(JSON.stringify(payload)));
-      hmacHeader = Array.from(new Uint8Array(sig))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-    }
-
     // POST to Lindy webhook
     try {
       const resp = await fetch(lindyWebhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(hmacHeader ? { "X-Dispatch-Signature": hmacHeader } : {}),
+          ...(lindySecret ? { "X-Dispatch-Signature": lindySecret } : {}),
         },
         body: JSON.stringify(payload),
       });
