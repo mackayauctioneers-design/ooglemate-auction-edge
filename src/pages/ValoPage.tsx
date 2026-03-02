@@ -66,7 +66,7 @@ const CONFIDENCE_INFO: Record<string, { label: string; color: string; explanatio
 // ============================================================================
 
 export default function ValoPage() {
-  const { currentUser, isAdmin } = useAuth();
+  const { currentUser, isAdmin, dealerProfile } = useAuth();
   const [searchParams] = useSearchParams();
 
   // Structured identity
@@ -96,7 +96,7 @@ export default function ValoPage() {
       const { data } = await supabase
         .from('taxonomy_models')
         .select('canonical_model')
-        .ilike('make', make)
+        .eq('make', make.trim())
         .order('canonical_model');
       if (data) setModelSuggestions(data.map(d => d.canonical_model));
     };
@@ -231,7 +231,7 @@ export default function ValoPage() {
         body: {
           instruction: fullInstruction,
           km: kmNum,
-          account_id: null,
+          account_id: dealerProfile?.account_id ?? null,
           initiated_by: 'dealer',
           full_market_scan: true,
           filters,
@@ -433,7 +433,11 @@ export default function ValoPage() {
                     <Command>
                       <CommandInput placeholder="Search makes…" value={makeSearch} onValueChange={setMakeSearch} />
                       <CommandList>
-                        <CommandEmpty>No make found.</CommandEmpty>
+                        <CommandEmpty>
+                          <CommandItem value={makeSearch} onSelect={() => { setMake(makeSearch.trim()); setModel(''); setMakeOpen(false); setMakeSearch(''); }}>
+                            Use "{makeSearch}"
+                          </CommandItem>
+                        </CommandEmpty>
                         <CommandGroup>
                           {filteredMakes.map(m => (
                             <CommandItem key={m} value={m} onSelect={() => { setMake(m); setModel(''); setMakeOpen(false); setMakeSearch(''); }}>
@@ -470,11 +474,12 @@ export default function ValoPage() {
             {/* Row 2: Badge, Year, KM, State */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
-                <Label htmlFor="badge">Variant / Badge <span className="text-destructive">*</span></Label>
+                <Label htmlFor="badge">Variant / Badge</Label>
                 <Input
                   id="badge" value={badge} onChange={(e) => setBadge(e.target.value)}
                   placeholder="e.g. SR5, LS-U" className="mt-1"
                 />
+                <p className="text-[10px] text-muted-foreground mt-0.5">Improves matching accuracy</p>
               </div>
               <div>
                 <Label htmlFor="year">Year <span className="text-destructive">*</span></Label>
