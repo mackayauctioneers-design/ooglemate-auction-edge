@@ -36,18 +36,72 @@ const MODEL_TO_MAKE: Record<string, string> = {
 const INTENT_SCHEMA = `You are a vehicle search query parser. Return ONLY a JSON object, nothing else.
 
 Schema:
-{"make":string|null,"model":string|null,"badge":string|null,"year_min":number|null,"year_max":number|null,"max_km":number|null,"price_max":number|null}
+{
+  "make": string|null,
+  "model": string|null,
+  "badge": string|null,
+  "year_min": number|null,
+  "year_max": number|null,
+  "max_km": number|null,
+  "price_max": number|null,
+  "state": string|null,
+  "body_type": string|null,
+  "prefer_terms": string[],
+  "must_have_terms": string[],
+  "exclude_terms": string[]
+}
 
 Rules:
-- Uppercase make and model
-- IMPORTANT: Always infer the make from the model name. For example, "Hilux" is always TOYOTA, "Ranger" is always FORD, "D-MAX" is always ISUZU, "Triton" is always MITSUBISHI, "Navara" is always NISSAN, "BT-50" is always MAZDA, "Amarok" is always VOLKSWAGEN, "Colorado" is always HOLDEN.
-- badge is the variant/trim/series e.g. "SX", "GXL", "Workmate", "Wildtrak", "SR5", "Hi-Rider". Uppercase it. Use null if not specified.
-- A single year like "2022" means year_min=2022, year_max=null (2022 or newer)
-- Only set year_max if the user specifies an upper year bound like "2020-2022" or "up to 2022"
-- "under 50k" or "under 50000" means price_max=50000
-- "low km" means max_km=60000
-- Use null for anything not specified
-- Output raw JSON only. No markdown. No backticks. No explanation.`;
+
+MAKE/MODEL
+- Uppercase make and model always.
+- Always infer make from model: Hilux=TOYOTA, Ranger=FORD, D-MAX=ISUZU, Triton=MITSUBISHI, Navara=NISSAN, BT-50=MAZDA, Amarok=VOLKSWAGEN, Colorado=HOLDEN, LandCruiser=TOYOTA, Patrol=NISSAN, Prado=TOYOTA.
+- badge is the variant/trim e.g. "GXL", "SR5", "Wildtrak", "GX". Uppercase. null if not specified.
+- If user says "GX or GXL" or "GX/GXL", set badge=null and add "GX" and "GXL" to prefer_terms.
+
+YEAR/KM/PRICE
+- A single year like "2022" means year_min=2022, year_max=null.
+- "2020-2022" or "up to 2022" means year_min=2020, year_max=2022.
+- "under 50k" or "under 50,000km" = max_km=50000. "under $50k" or "under $50,000" = price_max=50000.
+- "low km" = max_km=60000.
+- null for anything not specified.
+
+STATE
+- Recognise full names and abbreviations: "in WA", "Western Australia", "Queensland", "QLD" etc.
+- Uppercase abbreviation: "NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT".
+- null if not specified.
+
+BODY TYPE
+- Extract body configuration if mentioned: "dual cab"="DUAL CAB", "single cab"="SINGLE CAB", "cab chassis"="CAB CHASSIS", "ute"="UTE", "wagon"="WAGON".
+- Uppercase. null if not specified.
+
+FEATURE TERMS — prefer_terms, must_have_terms, exclude_terms
+- Use prefer_terms when user says: "preferably", "prefer", "ideally", "would like", "if possible".
+- Use must_have_terms when user says: "must have", "must", "only", "required", "needs to have".
+- Use exclude_terms when user says: "no", "without", "not", "exclude", "don't want".
+- Normalise all terms to canonical uppercase form using this alias map:
+    NORWELD: ["norweld", "norwell", "norweld tray", "norweld canopy", "norweld box"]
+    ARB: ["arb", "arb 4x4", "arb bullbar", "arb bar", "arb barwork", "arb accessories"]
+    TJM: ["tjm", "tjm suspension", "tjm bar", "tjm barwork"]
+    GVM_UPGRADE: ["gvm", "gvm upgrade", "gvm upgraded", "4200kg", "4,200kg"]
+    MANUAL: ["manual", "manual transmission", "6-speed manual"]
+    AUTOMATIC: ["auto", "automatic", "auto transmission"]
+    DIFF_LOCK: ["diff lock", "diff locks", "locking diff", "factory diff lock"]
+- If a term doesn't match any alias, include it uppercase as-is (e.g. "SUSPENSION LIFT").
+- prefer_terms, must_have_terms, exclude_terms are always arrays. Use [] if nothing specified.
+
+EXAMPLES
+
+Input: "Need a 2024 LandCruiser 79 GXL V8 dual cab under 40,000km, preferably ARB accessories or Norweld tray"
+Output: {"make":"TOYOTA","model":"LANDCRUISER 79","badge":"GXL","year_min":2024,"year_max":null,"max_km":40000,"price_max":null,"state":null,"body_type":"DUAL CAB","prefer_terms":["ARB","NORWELD"],"must_have_terms":[],"exclude_terms":[]}
+
+Input: "Looking for a 2022 or newer Hilux SR5 in QLD, must have GVM upgrade, no automatics, under $65k"
+Output: {"make":"TOYOTA","model":"HILUX","badge":"SR5","year_min":2022,"year_max":null,"max_km":null,"price_max":65000,"state":"QLD","body_type":null,"prefer_terms":[],"must_have_terms":["GVM_UPGRADE"],"exclude_terms":["AUTOMATIC"]}
+
+Input: "Ranger Wildtrak 2021-2023 under 80k km, ideally with ARB or TJM bar"
+Output: {"make":"FORD","model":"RANGER","badge":"WILDTRAK","year_min":2021,"year_max":2023,"max_km":80000,"price_max":null,"state":null,"body_type":null,"prefer_terms":["ARB","TJM"],"must_have_terms":[],"exclude_terms":[]}
+
+Output raw JSON only. No markdown. No backticks. No explanation.`;
 
 interface ParsedIntent {
   make: string | null;
@@ -57,6 +111,11 @@ interface ParsedIntent {
   year_max: number | null;
   max_km: number | null;
   price_max: number | null;
+  state: string | null;
+  body_type: string | null;
+  prefer_terms: string[];
+  must_have_terms: string[];
+  exclude_terms: string[];
 }
 
 function validateIntent(raw: unknown): ParsedIntent {
@@ -67,6 +126,8 @@ function validateIntent(raw: unknown): ParsedIntent {
     typeof v === "string" && v.trim() ? v.trim().toUpperCase() : null;
   const num = (v: unknown, min: number, max: number): number | null =>
     typeof v === "number" && v >= min && v <= max ? v : null;
+  const strArr = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((s): s is string => typeof s === "string" && s.trim().length > 0).map(s => s.toUpperCase()) : [];
 
   return {
     make: str(o.make),
@@ -76,6 +137,11 @@ function validateIntent(raw: unknown): ParsedIntent {
     year_max: num(o.year_max, 1990, 2030),
     max_km: num(o.max_km, 1, 999999),
     price_max: num(o.price_max, 1, 9999999),
+    state: str(o.state),
+    body_type: str(o.body_type),
+    prefer_terms: strArr(o.prefer_terms),
+    must_have_terms: strArr(o.must_have_terms),
+    exclude_terms: strArr(o.exclude_terms),
   };
 }
 
@@ -227,6 +293,11 @@ Deno.serve(async (req) => {
       year_max: parsed.year_max,
       max_km: parsed.max_km,
       price_max: parsed.price_max,
+      state: parsed.state,
+      body_type: parsed.body_type,
+      prefer_terms: parsed.prefer_terms,
+      must_have_terms: parsed.must_have_terms,
+      exclude_terms: parsed.exclude_terms,
       limit: 20,
     };
 
