@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DealerLayout } from '@/components/layout/DealerLayout';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Loader2, CheckCircle, DollarSign, TrendingUp, BarChart3,
   Sparkles, Target, Camera, AlertTriangle, Mic, MicOff,
-  ExternalLink, ChevronDown, ChevronUp, X, Upload, ShieldCheck, ImageIcon
+  ExternalLink, ChevronDown, ChevronUp, X, Upload, ShieldCheck, ImageIcon,
+  Search,
 } from 'lucide-react';
 import { useSpeechToText } from '@/hooks/useSpeechToText';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,12 +25,34 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 
 declare const __BUILD_TIME__: string;
 
 const ACCESSORY_PRESETS = [
   'Bullbar', 'Towbar', 'Canopy', 'ARB', 'Norweld Tray',
   'Snorkel', 'Lift Kit', 'Roof Racks', 'Side Steps', 'Winch',
+];
+
+const AU_STATES = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'];
+
+const COMMON_MAKES = [
+  'Toyota', 'Ford', 'Mazda', 'Hyundai', 'Kia', 'Nissan', 'Mitsubishi',
+  'Isuzu', 'Subaru', 'Volkswagen', 'Land Rover', 'Holden', 'Honda',
+  'BMW', 'Mercedes-Benz', 'Audi', 'Lexus', 'Jeep', 'RAM', 'Suzuki',
+  'Volvo', 'Porsche', 'LDV', 'GWM', 'BYD', 'MG', 'Peugeot', 'Skoda',
 ];
 
 const CONFIDENCE_INFO: Record<string, { label: string; color: string; explanation: string }> = {
@@ -46,15 +69,15 @@ export default function ValoPage() {
   const { currentUser, isAdmin } = useAuth();
   const [searchParams] = useSearchParams();
 
-  // Structured inputs
+  // Structured identity
+  const [make, setMake] = useState('');
+  const [model, setModel] = useState('');
+  const [makeSearch, setMakeSearch] = useState('');
+  const [makeOpen, setMakeOpen] = useState(false);
+  const [stateFilter, setStateFilter] = useState('');
+
+  // Description / voice (supplementary only)
   const [description, setDescription] = useState('');
-  const [year, setYear] = useState('');
-  const [km, setKm] = useState('');
-  const [badge, setBadge] = useState('');
-  const [condition, setCondition] = useState<string>('good');
-  const [allowance, setAllowance] = useState<string>('1000');
-  const [selectedAccessories, setSelectedAccessories] = useState<string[]>([]);
-  const [customAccessory, setCustomAccessory] = useState('');
 
   // Voice
   const handleVoiceResult = useCallback((transcript: string) => {
@@ -64,6 +87,36 @@ export default function ValoPage() {
     onResult: handleVoiceResult,
     lang: 'en-AU',
   });
+
+  // Model suggestions from taxonomy
+  const [modelSuggestions, setModelSuggestions] = useState<string[]>([]);
+  useEffect(() => {
+    if (!make) { setModelSuggestions([]); return; }
+    const fetchModels = async () => {
+      const { data } = await supabase
+        .from('taxonomy_models')
+        .select('canonical_model')
+        .ilike('make', make)
+        .order('canonical_model');
+      if (data) setModelSuggestions(data.map(d => d.canonical_model));
+    };
+    fetchModels();
+  }, [make]);
+
+  const filteredMakes = useMemo(() => {
+    if (!makeSearch) return COMMON_MAKES;
+    const q = makeSearch.toLowerCase();
+    return COMMON_MAKES.filter(m => m.toLowerCase().includes(q));
+  }, [makeSearch]);
+
+  // Remaining structured inputs
+  const [year, setYear] = useState('');
+  const [km, setKm] = useState('');
+  const [badge, setBadge] = useState('');
+  const [condition, setCondition] = useState<string>('good');
+  const [allowance, setAllowance] = useState<string>('1000');
+  const [selectedAccessories, setSelectedAccessories] = useState<string[]>([]);
+  const [customAccessory, setCustomAccessory] = useState('');
 
   // Processing
   const [isProcessing, setIsProcessing] = useState(false);
@@ -105,10 +158,13 @@ export default function ValoPage() {
     }
   };
 
-  const canRunValo = description.trim().length > 0 && year.trim().length > 0 && km.trim().length > 0;
+  const canRunValo = make.trim().length > 0 && model.trim().length > 0 && year.trim().length > 0 && km.trim().length > 0;
 
   const handleRunValo = async () => {
-    if (!description.trim()) { toast.error('Describe the vehicle first'); return; }
+    if (!make.trim() || !model.trim()) {
+      toast.error('Make and Model are required for VALO');
+      return;
+    }
     const yearNum = parseInt(year, 10);
     if (!year.trim() || isNaN(yearNum) || yearNum < 1980 || yearNum > new Date().getFullYear() + 1) {
       toast.error('Valid year is required for VALO');
@@ -130,34 +186,34 @@ export default function ValoPage() {
     setIsProcessing(true);
 
     try {
-      // Step 1: Parse
-      const { data: parseData, error: parseError } = await supabase.functions.invoke('valo-parse', {
-        body: { description: description.trim() }
-      });
-      if (parseError) throw new Error(parseError.message);
-      if (parseData?.error) throw new Error(parseData.error);
-
-      const parsedVehicle: ValoParsedVehicle = parseData.parsed;
-      if (!parsedVehicle.assumptions) parsedVehicle.assumptions = [];
-      parsedVehicle.km = kmNum;
-      if (yearNum) parsedVehicle.year = yearNum;
+      // Build structured identity — no LLM parsing needed
+      const parsedVehicle: ValoParsedVehicle = {
+        make: make.trim(),
+        model: model.trim(),
+        variant_family: badge.trim() || null,
+        variant_raw: badge.trim() || null,
+        year: yearNum,
+        km: kmNum,
+        body_style: null,
+        engine: null,
+        transmission: null,
+        drivetrain: null,
+        notes: description.trim() || null,
+        missing_fields: [],
+        assumptions: [],
+      };
       setParsed(parsedVehicle);
 
-      if (!parsedVehicle.make || !parsedVehicle.model) {
-        toast.error('Could not identify make/model. Please provide more detail.');
-        setIsProcessing(false);
-        return;
-      }
-
-      // Build instruction
-      let fullInstruction = description.trim();
-      if (selectedAccessories.length > 0) {
-        fullInstruction += ` accessories: ${selectedAccessories.join(', ')}`;
-      }
-      fullInstruction += ` ${kmNum}km condition:${condition} allow ${allowance}`;
+      // Build instruction string for backend (supplementary)
+      let fullInstruction = `${yearNum} ${make} ${model}`;
+      if (badge.trim()) fullInstruction += ` ${badge.trim()}`;
+      fullInstruction += ` ${kmNum}km`;
+      if (description.trim()) fullInstruction += ` — ${description.trim()}`;
 
       // Build filters object
       const filters: Record<string, unknown> = {
+        make: make.trim(),
+        model: model.trim(),
         year_min: yearNum,
         year_max: yearNum,
         max_km: kmNum,
@@ -165,11 +221,12 @@ export default function ValoPage() {
         allowance_aud: parseInt(allowance, 10) || 1000,
       };
       if (badge.trim()) filters.badge = badge.trim();
+      if (stateFilter && stateFilter !== 'any') filters.state = stateFilter;
       if (selectedAccessories.length > 0) {
         filters.accessory_terms = selectedAccessories.map(a => a.toUpperCase());
       }
 
-      // Step 2: Run VALO
+      // Run VALO — skip valo-parse, go direct to run-valo-v1
       const { data: valoData, error: valoError } = await supabase.functions.invoke('run-valo-v1', {
         body: {
           instruction: fullInstruction,
@@ -345,55 +402,110 @@ export default function ValoPage() {
           )}
         </div>
 
-        {/* ── Section 1: Vehicle Input ── */}
+        {/* ── Section 1: Vehicle Identity ── */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Target className="h-4 w-4 text-primary" />
-              Vehicle Details
+              Vehicle Identity
             </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Make, Model, Year and Kilometres are required for valuation.
+            </p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Structured fields first */}
+          <CardContent className="space-y-5">
+            {/* Row 1: Make + Model (identity core) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Make — searchable dropdown */}
+              <div>
+                <Label>Make <span className="text-destructive">*</span></Label>
+                <Popover open={makeOpen} onOpenChange={setMakeOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline" role="combobox" aria-expanded={makeOpen}
+                      className="w-full justify-between mt-1 font-normal"
+                    >
+                      {make || <span className="text-muted-foreground">Select make…</span>}
+                      <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search makes…" value={makeSearch} onValueChange={setMakeSearch} />
+                      <CommandList>
+                        <CommandEmpty>No make found.</CommandEmpty>
+                        <CommandGroup>
+                          {filteredMakes.map(m => (
+                            <CommandItem key={m} value={m} onSelect={() => { setMake(m); setModel(''); setMakeOpen(false); setMakeSearch(''); }}>
+                              {m}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {/* Model — input with datalist suggestions from taxonomy */}
+              <div>
+                <Label>Model <span className="text-destructive">*</span></Label>
+                <div className="relative mt-1">
+                  <Input
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder={make ? 'e.g. HiLux, Ranger…' : 'Select make first'}
+                    disabled={!make}
+                    list="model-suggestions"
+                  />
+                  {modelSuggestions.length > 0 && (
+                    <datalist id="model-suggestions">
+                      {modelSuggestions.map(m => <option key={m} value={m} />)}
+                    </datalist>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: Badge, Year, KM, State */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
-                <Label htmlFor="year">
-                  Year <span className="text-destructive">*</span>
-                </Label>
+                <Label htmlFor="badge">Variant / Badge <span className="text-destructive">*</span></Label>
                 <Input
-                  id="year"
-                  type="number"
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  placeholder="e.g. 2021"
-                  className="mt-1"
-                  min={1980}
-                  max={new Date().getFullYear() + 1}
+                  id="badge" value={badge} onChange={(e) => setBadge(e.target.value)}
+                  placeholder="e.g. SR5, LS-U" className="mt-1"
                 />
               </div>
               <div>
-                <Label htmlFor="km">
-                  Kilometres <span className="text-destructive">*</span>
-                </Label>
+                <Label htmlFor="year">Year <span className="text-destructive">*</span></Label>
                 <Input
-                  id="km"
-                  type="number"
-                  value={km}
-                  onChange={(e) => setKm(e.target.value)}
-                  placeholder="e.g. 45000"
-                  className="mt-1"
+                  id="year" type="number" value={year} onChange={(e) => setYear(e.target.value)}
+                  placeholder="e.g. 2021" className="mt-1" min={1980} max={new Date().getFullYear() + 1}
                 />
               </div>
               <div>
-                <Label htmlFor="badge">Variant / Badge</Label>
+                <Label htmlFor="km">Kilometres <span className="text-destructive">*</span></Label>
                 <Input
-                  id="badge"
-                  value={badge}
-                  onChange={(e) => setBadge(e.target.value)}
-                  placeholder="e.g. SR5, LS-U"
-                  className="mt-1"
+                  id="km" type="number" value={km} onChange={(e) => setKm(e.target.value)}
+                  placeholder="e.g. 45000" className="mt-1"
                 />
               </div>
+              <div>
+                <Label htmlFor="state">State</Label>
+                <Select value={stateFilter} onValueChange={setStateFilter}>
+                  <SelectTrigger id="state" className="mt-1">
+                    <SelectValue placeholder="Any" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any</SelectItem>
+                    {AU_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Row 3: Condition + Allowance */}
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="condition">Condition</Label>
                 <Select value={condition} onValueChange={setCondition}>
@@ -408,50 +520,13 @@ export default function ValoPage() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="allowance">Allowance ($)</Label>
                 <Input
-                  id="allowance"
-                  type="number"
-                  value={allowance}
-                  onChange={(e) => setAllowance(e.target.value)}
-                  placeholder="1000"
-                  className="mt-1"
+                  id="allowance" type="number" value={allowance}
+                  onChange={(e) => setAllowance(e.target.value)} placeholder="1000" className="mt-1"
                 />
               </div>
-              <div className="flex items-end">
-                <p className="text-xs text-muted-foreground pb-2">
-                  Year + Kilometres are required. Badge is encouraged for accurate matching.
-                </p>
-              </div>
-            </div>
-
-            {/* Description / Voice */}
-            <div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="vehicle-desc">Description</Label>
-                {isSupported && (
-                  <Button
-                    type="button" variant="ghost" size="sm"
-                    onClick={toggleVoice}
-                    className={`gap-1.5 text-xs ${isListening ? 'text-destructive' : 'text-muted-foreground'}`}
-                  >
-                    {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
-                    {isListening ? 'Stop' : 'Voice'}
-                  </Button>
-                )}
-              </div>
-              <Textarea
-                id="vehicle-desc"
-                placeholder="e.g. Toyota HiLux SR5 4x4 Auto, White, NSW — bullbar, towbar fitted"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={2}
-                className={`mt-1 ${isListening ? 'ring-2 ring-destructive/50' : ''}`}
-              />
             </div>
 
             {/* Accessory Chips */}
@@ -490,6 +565,39 @@ export default function ValoPage() {
                 </div>
               )}
             </div>
+
+            {/* Additional Notes (supplementary) */}
+            <div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="vehicle-notes">Additional Notes (optional)</Label>
+                {isSupported && (
+                  <Button
+                    type="button" variant="ghost" size="sm"
+                    onClick={toggleVoice}
+                    className={`gap-1.5 text-xs ${isListening ? 'text-destructive' : 'text-muted-foreground'}`}
+                  >
+                    {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                    {isListening ? 'Stop' : 'Voice'}
+                  </Button>
+                )}
+              </div>
+              <Textarea
+                id="vehicle-notes"
+                placeholder="Any extra detail — colour, features, damage notes…"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+                className={`mt-1 ${isListening ? 'ring-2 ring-destructive/50' : ''}`}
+              />
+            </div>
+
+            {/* Validation message */}
+            {!canRunValo && (make || model || year || km) && (
+              <p className="text-xs text-destructive flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                Make, Model, Year and Kilometres are required for valuation.
+              </p>
+            )}
 
             <Button
               onClick={handleRunValo}
