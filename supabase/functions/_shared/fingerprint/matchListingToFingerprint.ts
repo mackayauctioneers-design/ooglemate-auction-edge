@@ -240,6 +240,31 @@ function resolveConfidence(
 
 const CONFIDENCE_SCORE: Record<string, number> = { HIGH: 10, MEDIUM: 5, LOW: 0 };
 
+// ─── Match outcome types ────────────────────────────────────────────────────
+
+type MatchFailure = { pass: false; reason: string; score?: number };
+type MatchOutcome = FingerprintMatchResult | MatchFailure;
+
+// Reason priority for no_match diagnostics (most actionable first)
+const REASON_PRIORITY: string[] = [
+  "ABOVE_TARGET_CEILING",
+  "VARIANT_FAMILY_MISMATCH",
+  "MODEL_MISMATCH",
+  "MAKE_MISMATCH",
+  "LISTING_IDENTITY_MISSING",
+  "SCORE_BELOW_THRESHOLD",
+  "MARGIN_BELOW_FLOOR",
+  "NO_LIQUIDITY_DATA",
+];
+
+function pickPrimaryReason(failures: MatchFailure[]): string {
+  for (const reason of REASON_PRIORITY) {
+    const found = failures.find((f) => f.reason === reason);
+    if (found) return found.reason;
+  }
+  return failures[0]?.reason ?? "NO_FINGERPRINT_MATCH";
+}
+
 // ─── Single fingerprint match ───────────────────────────────────────────────
 
 function matchOne(
@@ -247,17 +272,17 @@ function matchOne(
   fp: Fingerprint,
   liq: LiquidityProfile | null,
   targetCeiling: number | null,
-): FingerprintMatchResult | null {
+): MatchOutcome {
   // Step 1: Structural Gate (includes target ceiling)
   const gate = structuralGate(listing, fp, targetCeiling);
-  if (!gate.pass) return null;
+  if (!gate.pass) return { pass: false, reason: gate.reason };
 
   // Step 2: Tolerance
   const tol = toleranceScore(listing, fp);
 
   // No liquidity profile → can't calculate margin
   if (!liq || liq.median_sell_price == null) {
-    return null;
+    return { pass: false, reason: "NO_LIQUIDITY_DATA", score: tol.score };
   }
 
   // Step 3: Margin
@@ -372,22 +397,50 @@ export async function scoreListingsForDealer(
 
   for (const listing of listings) {
     const results: FingerprintMatchResult[] = [];
+    const failures: MatchFailure[] = [];
+    let bestAttemptScore: number | null = null;
 
     for (const fp of activeFps) {
       const mmKey = `${fp.make.toLowerCase()}|${fp.model.toLowerCase()}`;
       const liq = liqMap.get(mmKey) ?? null;
       const targets = targetsMap.get(mmKey) ?? [];
       const ceiling = resolveCeiling(targets, listing.variant_family);
-      const result = matchOne(listing, fp, liq, ceiling);
-      if (result && result.viable && result.match_score >= VIABILITY_THRESHOLD) {
-        results.push(result);
+      const outcome = matchOne(listing, fp, liq, ceiling);
+
+      if ("pass" in outcome && !outcome.pass) {
+        failures.push(outcome);
+        if (outcome.score != null) {
+          bestAttemptScore = Math.max(bestAttemptScore ?? 0, outcome.score);
+        }
+        continue;
       }
+
+      const result = outcome as FingerprintMatchResult;
+      // Track best attempt score even for non-viable results
+      bestAttemptScore = Math.max(bestAttemptScore ?? 0, result.match_score);
+
+      if (!result.viable) {
+        failures.push({ pass: false, reason: "MARGIN_BELOW_FLOOR", score: result.match_score });
+        continue;
+      }
+      if (result.match_score < VIABILITY_THRESHOLD) {
+        failures.push({ pass: false, reason: "SCORE_BELOW_THRESHOLD", score: result.match_score });
+        continue;
+      }
+
+      results.push(result);
     }
 
     if (results.length === 0) {
+      const primaryReason = pickPrimaryReason(failures);
       await sb
         .from("outward_search_results")
-        .update({ status: "no_match", scored_at: new Date().toISOString() })
+        .update({
+          status: "no_match",
+          match_reasons: [primaryReason],
+          match_score: bestAttemptScore,
+          scored_at: new Date().toISOString(),
+        })
         .eq("id", listing.id);
       no_match++;
       continue;
