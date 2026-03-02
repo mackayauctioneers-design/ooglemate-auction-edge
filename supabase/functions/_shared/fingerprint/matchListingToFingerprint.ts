@@ -2,7 +2,7 @@
  * FINGERPRINT MATCHING LAYER — Phase 2
  *
  * Scores outward_search_results listings against a dealer's active fingerprints.
- * Architecture: Structural Gate → Tolerance Scoring → Margin Calc → Confidence → Final Score
+ * Architecture: Structural Gate (incl. target ceiling) → Tolerance Scoring → Margin Calc → Confidence → Final Score
  *
  * Max score: 45 pts (tolerance 25 + margin 10 + confidence 10)
  * Viability threshold: 15 pts
@@ -47,6 +47,13 @@ type LiquidityProfile = {
   min_viable_profit_floor: number;
 };
 
+type TargetRow = {
+  variant: string | null;
+  max_buy_price: number | null;
+  median_sale_price: number | null;
+  median_profit: number | null;
+};
+
 export type FingerprintMatchResult = {
   fingerprint_id: string;
   match_score: number;
@@ -65,11 +72,38 @@ type GateSuccess = { pass: true };
 
 const VIABILITY_THRESHOLD = 15;
 
+// ─── Target ceiling resolution ──────────────────────────────────────────────
+
+function resolveCeiling(
+  targets: TargetRow[],
+  variantFamily: string | null,
+): number | null {
+  // 1. Exact variant match
+  const exact = targets.find(
+    (t) =>
+      t.variant != null &&
+      variantFamily != null &&
+      t.variant.toLowerCase() === variantFamily.toLowerCase(),
+  );
+  // 2. Wildcard (variant is null)
+  const wildcard = targets.find((t) => t.variant == null);
+
+  const row = exact ?? wildcard ?? null;
+  if (!row) return null;
+
+  if (row.max_buy_price != null) return Number(row.max_buy_price);
+  if (row.median_sale_price != null && row.median_profit != null) {
+    return Number(row.median_sale_price) - Number(row.median_profit);
+  }
+  return null;
+}
+
 // ─── Step 1: Structural Gate ────────────────────────────────────────────────
 
 function structuralGate(
   listing: StagedListing,
   fp: Fingerprint,
+  targetCeiling: number | null,
 ): GateSuccess | GateFailure {
   if (!listing.make_norm || !listing.model_norm) {
     return { pass: false, reason: "LISTING_IDENTITY_MISSING" };
@@ -89,6 +123,15 @@ function structuralGate(
     !listing.variant_family.toLowerCase().includes(fp.variant_family.toLowerCase())
   ) {
     return { pass: false, reason: "VARIANT_FAMILY_MISMATCH" };
+  }
+
+  // Target ceiling gate — hard discard if listing price exceeds dealer's stated ceiling
+  if (
+    targetCeiling != null &&
+    listing.price_aud != null &&
+    listing.price_aud > targetCeiling
+  ) {
+    return { pass: false, reason: "ABOVE_TARGET_CEILING" };
   }
 
   return { pass: true };
@@ -203,9 +246,10 @@ function matchOne(
   listing: StagedListing,
   fp: Fingerprint,
   liq: LiquidityProfile | null,
+  targetCeiling: number | null,
 ): FingerprintMatchResult | null {
-  // Step 1: Structural Gate
-  const gate = structuralGate(listing, fp);
+  // Step 1: Structural Gate (includes target ceiling)
+  const gate = structuralGate(listing, fp, targetCeiling);
   if (!gate.pass) return null;
 
   // Step 2: Tolerance
@@ -272,13 +316,27 @@ export async function scoreListingsForDealer(
     return { scored: 0, no_match: listings.length };
   }
 
-  // 2. Pre-fetch liquidity profiles for all make/model combos in fingerprints
-  const liqKeys = [...new Set(activeFps.map((f) => `${f.make.toLowerCase()}|${f.model.toLowerCase()}`))];
-  const liqMap = new Map<string, LiquidityProfile>();
+  // 2. Resolve account_id from dealer_profile for fingerprint_targets lookup
+  const { data: profileRow } = await sb
+    .from("dealer_profiles")
+    .select("account_id")
+    .eq("id", dealerProfileId)
+    .single();
 
-  for (const key of liqKeys) {
+  const accountId = profileRow?.account_id ?? null;
+
+  // 3. Pre-fetch liquidity profiles + fingerprint_targets for all make/model combos
+  const makeModelKeys = [
+    ...new Set(activeFps.map((f) => `${f.make.toLowerCase()}|${f.model.toLowerCase()}`)),
+  ];
+  const liqMap = new Map<string, LiquidityProfile>();
+  const targetsMap = new Map<string, TargetRow[]>();
+
+  for (const key of makeModelKeys) {
     const [make, model] = key.split("|");
-    const { data: liqRows } = await sb
+
+    // Liquidity profile (best by flip_count)
+    const liqPromise = sb
       .from("dealer_liquidity_profiles")
       .select("median_sell_price, median_profit, p75_profit, confidence_tier, flip_count, min_viable_profit_floor")
       .eq("dealer_key", dealerProfileId)
@@ -287,12 +345,28 @@ export async function scoreListingsForDealer(
       .order("flip_count", { ascending: false })
       .limit(1);
 
-    if (liqRows?.length) {
-      liqMap.set(key, liqRows[0] as LiquidityProfile);
+    // Fingerprint targets — fetch ALL rows for make/model (variant resolved in TS)
+    const targetsPromise = accountId
+      ? sb
+          .from("fingerprint_targets")
+          .select("variant, max_buy_price, median_sale_price, median_profit")
+          .eq("account_id", accountId)
+          .ilike("make", make)
+          .ilike("model", model)
+          .eq("status", "active")
+      : Promise.resolve({ data: null });
+
+    const [liqResult, targetsResult] = await Promise.all([liqPromise, targetsPromise]);
+
+    if (liqResult.data?.length) {
+      liqMap.set(key, liqResult.data[0] as LiquidityProfile);
+    }
+    if (targetsResult.data?.length) {
+      targetsMap.set(key, targetsResult.data as TargetRow[]);
     }
   }
 
-  // 3. Score each listing against all fingerprints, take best
+  // 4. Score each listing against all fingerprints, take best
   let scored = 0;
   let no_match = 0;
 
@@ -300,16 +374,17 @@ export async function scoreListingsForDealer(
     const results: FingerprintMatchResult[] = [];
 
     for (const fp of activeFps) {
-      const liqKey = `${fp.make.toLowerCase()}|${fp.model.toLowerCase()}`;
-      const liq = liqMap.get(liqKey) ?? null;
-      const result = matchOne(listing, fp, liq);
+      const mmKey = `${fp.make.toLowerCase()}|${fp.model.toLowerCase()}`;
+      const liq = liqMap.get(mmKey) ?? null;
+      const targets = targetsMap.get(mmKey) ?? [];
+      const ceiling = resolveCeiling(targets, listing.variant_family);
+      const result = matchOne(listing, fp, liq, ceiling);
       if (result && result.viable && result.match_score >= VIABILITY_THRESHOLD) {
         results.push(result);
       }
     }
 
     if (results.length === 0) {
-      // No viable match
       await sb
         .from("outward_search_results")
         .update({ status: "no_match", scored_at: new Date().toISOString() })
