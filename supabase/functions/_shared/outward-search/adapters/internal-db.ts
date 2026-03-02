@@ -2,7 +2,12 @@
  * Internal DB Adapter
  *
  * Searches vehicle_listings table directly.
- * This is the "free tier" adapter — no external calls.
+ * Phase 1 adapter — always runs, no quota cost.
+ *
+ * Badge matching uses STRICT canonical comparison:
+ * - Exact match on variant_family (canonical resolved field)
+ * - Token-boundary-safe matching on variant_raw/variant_used
+ * - NO substring .includes() — prevents SR matching SR5, GX matching GXL
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -18,7 +23,32 @@ import {
   EXCLUDED_LIFECYCLE,
 } from "../types.ts";
 
-const normalizeToken = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+/**
+ * Strict token-boundary badge match.
+ * "SR5" matches "SR5", "SR5+" but NOT "SR" or "SR50".
+ * "GX" matches "GX" but NOT "GXL".
+ * Uses word-boundary regex to prevent substring bleed.
+ */
+function badgeMatchesVariant(badge: string, variant: string): "exact" | "token" | false {
+  const b = badge.toUpperCase().trim();
+  const v = variant.toUpperCase().trim();
+
+  // Exact match on full string
+  if (v === b) return "exact";
+
+  // Token-boundary match: badge appears as a whole token in variant
+  // \b doesn't work well with alphanumeric boundaries, so we use explicit separators
+  const escaped = b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const tokenRegex = new RegExp(`(?:^|[\\s\\-\\/,()]+)${escaped}(?:[\\s\\-\\/,()]+|\\+|$)`, "i");
+  if (tokenRegex.test(v)) return "token";
+
+  // Also match if variant starts with badge followed by non-alphanumeric
+  // e.g. "SR5+" matches "SR5", but "SR50" does not
+  const startRegex = new RegExp(`^${escaped}(?:[^A-Z0-9]|$)`, "i");
+  if (startRegex.test(v)) return "token";
+
+  return false;
+}
 
 export class InternalDbAdapter implements OutwardSearchAdapter {
   readonly sourceKey = "internal_db";
@@ -66,21 +96,20 @@ export class InternalDbAdapter implements OutwardSearchAdapter {
 
     let filtered = listings || [];
 
-    // Badge/variant filtering
+    // Badge/variant filtering — STRICT, no substring matching
     if (intent.badge) {
-      const badgeUpper = intent.badge.toUpperCase();
       filtered = filtered.filter((l: any) => {
+        // Priority 1: Exact match on canonical variant_family
+        if (l.variant_family && l.variant_family.toUpperCase() === intent.badge!.toUpperCase()) {
+          return true;
+        }
+
+        // Priority 2: Token-boundary match on variant fields
         const variants = [l.variant_raw, l.variant_family, l.variant_used]
           .filter(Boolean)
-          .map((v: string) => String(v).toUpperCase());
-        if (variants.length === 0) return false;
+          .map((v: string) => String(v));
 
-        const normalizedVariants = variants.map(normalizeToken);
-        const normalizedBadge = normalizeToken(badgeUpper);
-        const badgeTokens = badgeUpper.split(/[\s-]+/).filter(Boolean).map(normalizeToken);
-
-        if (normalizedBadge && normalizedVariants.some(v => v.includes(normalizedBadge))) return true;
-        return badgeTokens.every(token => normalizedVariants.some(v => v.includes(token)));
+        return variants.some(v => badgeMatchesVariant(intent.badge!, v) !== false);
       });
     }
 
@@ -98,13 +127,24 @@ export class InternalDbAdapter implements OutwardSearchAdapter {
       if ((l.make || "").toUpperCase() === intent.make!.toUpperCase()) {
         score += 5; reasons.push("EXACT_MAKE");
       }
+
+      // Badge scoring — strict
       if (intent.badge) {
-        const nb = normalizeToken(intent.badge);
-        const nv = [l.variant_raw, l.variant_family, l.variant_used]
-          .filter(Boolean).map((v: string) => normalizeToken(String(v)));
-        if (nv.some(v => v === nb)) { score += 10; reasons.push("EXACT_BADGE"); }
-        else if (nv.some(v => v.includes(nb))) { score += 5; reasons.push("BADGE_PARTIAL"); }
+        if (l.variant_family && l.variant_family.toUpperCase() === intent.badge.toUpperCase()) {
+          score += 10; reasons.push("EXACT_BADGE_CANONICAL");
+        } else {
+          const variants = [l.variant_raw, l.variant_used].filter(Boolean).map((v: string) => String(v));
+          const bestMatch = variants.reduce<"exact" | "token" | false>((best, v) => {
+            const m = badgeMatchesVariant(intent.badge!, v);
+            if (m === "exact") return "exact";
+            if (m === "token" && best !== "exact") return "token";
+            return best;
+          }, false);
+          if (bestMatch === "exact") { score += 8; reasons.push("EXACT_BADGE_RAW"); }
+          else if (bestMatch === "token") { score += 4; reasons.push("BADGE_TOKEN_MATCH"); }
+        }
       }
+
       if (intent.year_min && l.year >= intent.year_min) { score += 5; reasons.push("YEAR_IN_RANGE"); }
       if (l.km && l.km < 30000) { score += 10; reasons.push("LOW_KM"); }
       else if (l.km && l.km < 60000) { score += 5; reasons.push("MODERATE_KM"); }
