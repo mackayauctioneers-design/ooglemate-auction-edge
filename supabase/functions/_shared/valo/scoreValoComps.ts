@@ -33,19 +33,33 @@ function scoreYear(targetYear: number | null, compYear: number | null): number {
  * Basic accessory matching against comp text surface.
  * Returns list of matched terms.
  */
-function matchAccessories(surface: string, terms: string[]): string[] {
-  const upper = surface.toUpperCase();
-  return terms.filter((t) => {
+function matchAccessories(surface: string, terms: string[]): { hits: string[]; evidence: FeatureEvidence[] } {
+  const hits: string[] = [];
+  const evidence: FeatureEvidence[] = [];
+  for (const t of terms) {
     const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(`\\b${escaped}\\b`, "i").test(upper);
-  });
+    const regex = new RegExp(`(.{0,30}\\b${escaped}\\b.{0,30})`, "i");
+    const match = surface.match(regex);
+    if (match) {
+      hits.push(t.toUpperCase());
+      evidence.push({ code: t.toUpperCase(), snippet: match[1].trim() });
+    }
+  }
+  return { hits, evidence };
 }
 
 // ─── Per-Comp Scoring ───────────────────────────────────────────
 
+export interface FeatureEvidence {
+  code: string;
+  snippet: string;
+}
+
 export interface ScoredComp extends AdapterResult {
   valo_score: number;
   valo_reasons: string[];
+  feature_hits: string[];
+  feature_evidence: FeatureEvidence[];
 }
 
 export function scoreValoComp(
@@ -54,6 +68,8 @@ export function scoreValoComp(
 ): ScoredComp {
   let score = 0;
   const reasons: string[] = [];
+  let featureHits: string[] = [];
+  let featureEvidence: FeatureEvidence[] = [];
 
   // Exact variant match
   if (
@@ -93,11 +109,13 @@ export function scoreValoComp(
 
   // Accessory match
   if (intent.accessory_terms?.length) {
-    const surface = `${comp.title} ${comp.variant ?? ""}`;
-    const hits = matchAccessories(surface, intent.accessory_terms);
-    if (hits.length > 0) {
+    const surface = `${comp.title} ${comp.variant ?? ""} ${comp.description ?? ""}`;
+    const result = matchAccessories(surface, intent.accessory_terms);
+    featureHits = result.hits;
+    featureEvidence = result.evidence;
+    if (result.hits.length > 0) {
       score += 10;
-      reasons.push(`ACCESSORY_MATCH:${hits.join(",")}`);
+      reasons.push(`ACCESSORY_MATCH:${result.hits.join(",")}`);
     }
   }
 
@@ -107,7 +125,7 @@ export function scoreValoComp(
     reasons.push("INTERNAL_SOURCE");
   }
 
-  return { ...comp, valo_score: score, valo_reasons: reasons };
+  return { ...comp, valo_score: score, valo_reasons: reasons, feature_hits: featureHits, feature_evidence: featureEvidence };
 }
 
 // ─── Anchor + Backup Selection ──────────────────────────────────

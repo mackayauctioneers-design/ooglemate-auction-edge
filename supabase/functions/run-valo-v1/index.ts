@@ -54,9 +54,22 @@ Deno.serve(async (req) => {
     const instruction: string = body.instruction ?? "";
     const fullMarketScan: boolean = body.full_market_scan === true;
     const initiatedBy: string = body.initiated_by ?? "dealer";
+    const kmInput: number | null = body.km ?? null;
 
     if (!instruction.trim()) {
       return errorResponse("Missing instruction");
+    }
+
+    // KM is required for VALO strict mode
+    if (!kmInput || kmInput <= 0) {
+      return new Response(
+        JSON.stringify({
+          status: "missing_required_fields",
+          missing: ["km"],
+          error: "Kilometres (km) is required for VALO valuation",
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // ── Supabase client ──
