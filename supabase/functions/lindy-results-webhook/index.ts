@@ -66,12 +66,39 @@ function validateListings(raw: unknown[], sourceKey: string): ValidatedListing[]
     if (typeof item !== "object" || item === null) continue;
     const r = item as Record<string, unknown>;
 
+    // ── Normalize Lindy extraction prompt fields → webhook schema ──
+    // Lindy sends: make, model, year, variant, odometer_km, price_asking, listing_url, listing_id
+    // Webhook expects: title, price_aud, odometer_km, year, state, listing_url, source_id
+
+    // Build title from make+model+year+variant if title not provided
+    if (!r.title && (r.make || r.model)) {
+      const parts = [r.year, r.make, r.model, r.variant].filter(Boolean);
+      r.title = parts.join(" ");
+    }
+
+    // Map price_asking → price_aud
+    if (r.price_asking !== undefined && r.price_aud === undefined) {
+      r.price_aud = r.price_asking;
+    }
+
+    // Map listing_id → source_id
+    if (r.listing_id !== undefined && r.source_id === undefined) {
+      r.source_id = r.listing_id;
+    }
+
+    // Remove Lindy-specific keys after normalization so they don't trip the guard
+    delete r.make;
+    delete r.model;
+    delete r.variant;
+    delete r.price_asking;
+    delete r.listing_id;
+
     // Hard reject: must have a valid listing_url
     if (typeof r.listing_url !== "string" || !r.listing_url.startsWith("http")) {
       continue;
     }
 
-    // Reject unexpected top-level keys
+    // Reject truly unexpected keys (after normalization)
     const allowedKeys = new Set(["title", "price_aud", "odometer_km", "year", "state", "listing_url", "source_id"]);
     const extraKeys = Object.keys(r).filter((k) => !allowedKeys.has(k));
     if (extraKeys.length > 0) {
