@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DealerLayout } from '@/components/layout/DealerLayout';
 import { Badge } from '@/components/ui/badge';
@@ -8,8 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Loader2, CheckCircle, DollarSign, TrendingUp, BarChart3, Clock,
-  Sparkles, Target, ShieldCheck, Camera, AlertTriangle
+  Sparkles, Target, ShieldCheck, Camera, AlertTriangle, Mic, MicOff
 } from 'lucide-react';
+import { useSpeechToText } from '@/hooks/useSpeechToText';
 import { useAuth } from '@/contexts/AuthContext';
 import { ValoParsedVehicle, ValoResult, ValoTier, ValuationConfidence, formatCurrency } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
@@ -38,6 +39,15 @@ export default function ValoPage() {
   const [description, setDescription] = useState('');
   const [condition, setCondition] = useState<string>('good');
   const [allowance, setAllowance] = useState<string>('1000');
+
+  // Voice input
+  const handleVoiceResult = useCallback((transcript: string) => {
+    setDescription(prev => prev ? `${prev} ${transcript}` : transcript);
+  }, []);
+  const { isListening, isSupported, toggle: toggleVoice } = useSpeechToText({
+    onResult: handleVoiceResult,
+    lang: 'en-AU',
+  });
 
   // Processing state
   const [isProcessing, setIsProcessing] = useState(false);
@@ -294,14 +304,28 @@ export default function ValoPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="vehicle-desc">Description</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="vehicle-desc">Description</Label>
+                {isSupported && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleVoice}
+                    className={`gap-1.5 text-xs ${isListening ? 'text-destructive' : 'text-muted-foreground'}`}
+                  >
+                    {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                    {isListening ? 'Stop' : 'Voice'}
+                  </Button>
+                )}
+              </div>
               <Textarea
                 id="vehicle-desc"
                 placeholder="e.g. 2021 Toyota HiLux SR5 4x4 Auto, 45,000km, White, NSW"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="mt-1"
+                className={`mt-1 ${isListening ? 'ring-2 ring-destructive/50' : ''}`}
               />
               <p className="text-xs text-muted-foreground mt-1">
                 Include make, model, year, variant, kilometres, and location if known.
