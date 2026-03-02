@@ -7,8 +7,10 @@
 
 import type { ParsedIntent } from "../outward-search/types.ts";
 
+export type SourceKey = "carsales" | "carsguide" | "gumtree" | "drive";
+
 export interface SearchTarget {
-  source: "carsales" | "carsguide" | "gumtree";
+  source: SourceKey;
   url: string;
   page: number;
 }
@@ -129,17 +131,42 @@ function buildGumtreeUrls(intent: ParsedIntent, maxPages: number): SearchTarget[
   }));
 }
 
+// ─── Drive.com.au ────────────────────────────────────────────────────────────
+// Query: /cars-for-sale/?make=toyota&model=hilux&yearFrom=2018&yearTo=2022&sort=price
+// Pagination: &page=2
+
+function buildDriveUrls(intent: ParsedIntent, maxPages: number): SearchTarget[] {
+  const params = new URLSearchParams();
+
+  if (intent.make) params.set("make", intent.make.toLowerCase());
+  if (intent.model) params.set("model", intent.model.toLowerCase().replace(/\s+/g, "-"));
+  if (intent.year_min) params.set("yearFrom", String(intent.year_min));
+  if (intent.year_max) params.set("yearTo", String(intent.year_max));
+  if (intent.max_km) params.set("kmTo", String(intent.max_km));
+  if (intent.state) params.set("state", intent.state.toUpperCase());
+  params.set("sort", "price");
+
+  const base = `https://www.drive.com.au/cars-for-sale/?${params}`;
+
+  return Array.from({ length: maxPages }, (_, i) => ({
+    source: "drive" as const,
+    url: i === 0 ? base : `${base}&page=${i + 1}`,
+    page: i + 1,
+  }));
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 export function buildSearchUrls(
   intent: ParsedIntent,
-  sources: Array<"carsales" | "carsguide" | "gumtree"> = ["carsales", "carsguide", "gumtree"],
+  sources: SourceKey[] = ["carsales", "carsguide", "gumtree", "drive"],
   maxPages = 2,
 ): SearchTarget[] {
   const builders: Record<string, () => SearchTarget[]> = {
     carsales: () => buildCarsalesUrls(intent, maxPages),
     carsguide: () => buildCarsguideUrls(intent, maxPages),
     gumtree: () => buildGumtreeUrls(intent, maxPages),
+    drive: () => buildDriveUrls(intent, maxPages),
   };
 
   return sources.flatMap((s) => builders[s]());
