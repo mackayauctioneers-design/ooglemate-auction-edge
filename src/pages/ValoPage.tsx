@@ -614,8 +614,9 @@ export default function ValoPage() {
 
             <Button
               onClick={handleRunValo}
-              disabled={isProcessing || !canRunValo}
+              disabled={isProcessing || !canRunValo || !authReady}
               className="w-full gap-2" size="lg"
+              title={!authReady ? 'Loading dealer profile…' : !canRunValo ? 'Fill in Make, Model, Year and KM' : undefined}
             >
               {isProcessing ? (
                 <><Loader2 className="h-4 w-4 animate-spin" /> Running Valuation…</>
@@ -749,6 +750,9 @@ export default function ValoPage() {
                   <Target className="h-4 w-4 text-primary" />
                   Top Comparables
                 </h3>
+                <p className="text-[10px] text-muted-foreground -mt-1">
+                  Comps filtered to ±1 year and ±20,000 km (approx).
+                </p>
                 {valoComps.map((comp, i) => {
                   const isAnchor = comp._role === 'anchor';
                   const isExpanded = expandedComp === i;
