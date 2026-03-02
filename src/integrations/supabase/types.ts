@@ -6121,6 +6121,119 @@ export type Database = {
           },
         ]
       }
+      outward_jobs: {
+        Row: {
+          account_id: string | null
+          completed_at: string | null
+          created_at: string | null
+          dispatched_at: string | null
+          error: string | null
+          id: string
+          intent: Json
+          result_count: number | null
+          search_run_id: string
+          search_url: string
+          source_key: string
+          status: string
+        }
+        Insert: {
+          account_id?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          dispatched_at?: string | null
+          error?: string | null
+          id?: string
+          intent?: Json
+          result_count?: number | null
+          search_run_id: string
+          search_url: string
+          source_key: string
+          status?: string
+        }
+        Update: {
+          account_id?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          dispatched_at?: string | null
+          error?: string | null
+          id?: string
+          intent?: Json
+          result_count?: number | null
+          search_run_id?: string
+          search_url?: string
+          source_key?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      outward_search_results: {
+        Row: {
+          fingerprint: string | null
+          id: string
+          ingested_at: string | null
+          job_id: string
+          listing_url: string
+          make_norm: string | null
+          model_norm: string | null
+          norm_confidence: number | null
+          norm_explain: string[] | null
+          odometer_km: number | null
+          price_aud: number | null
+          search_run_id: string
+          source_key: string
+          state: string | null
+          title: string | null
+          variant_family: string | null
+          year: number | null
+        }
+        Insert: {
+          fingerprint?: string | null
+          id?: string
+          ingested_at?: string | null
+          job_id: string
+          listing_url: string
+          make_norm?: string | null
+          model_norm?: string | null
+          norm_confidence?: number | null
+          norm_explain?: string[] | null
+          odometer_km?: number | null
+          price_aud?: number | null
+          search_run_id: string
+          source_key: string
+          state?: string | null
+          title?: string | null
+          variant_family?: string | null
+          year?: number | null
+        }
+        Update: {
+          fingerprint?: string | null
+          id?: string
+          ingested_at?: string | null
+          job_id?: string
+          listing_url?: string
+          make_norm?: string | null
+          model_norm?: string | null
+          norm_confidence?: number | null
+          norm_explain?: string[] | null
+          odometer_km?: number | null
+          price_aud?: number | null
+          search_run_id?: string
+          source_key?: string
+          state?: string | null
+          title?: string | null
+          variant_family?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outward_search_results_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "outward_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       outward_search_runs: {
         Row: {
           account_id: string | null
