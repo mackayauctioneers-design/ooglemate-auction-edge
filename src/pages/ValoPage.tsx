@@ -634,6 +634,33 @@ export default function ValoPage() {
                   const hasUrl = !!comp.url;
                   return (
                     <Card key={i} className={`overflow-hidden ${isAnchor ? 'border-primary/50 ring-1 ring-primary/20' : ''}`}>
+                      {/* Listing image thumbnail */}
+                      {comp.image_url ? (
+                        <div className="relative w-full aspect-video bg-muted">
+                          <img
+                            src={comp.image_url}
+                            alt={comp.title || 'Vehicle listing'}
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              target.style.display = 'none';
+                              const fallback = target.nextElementSibling as HTMLElement;
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                          <div className="hidden w-full h-full absolute inset-0 items-center justify-center bg-muted text-muted-foreground flex-col gap-1">
+                            <ImageIcon className="h-8 w-8" />
+                            <span className="text-xs">No photo available</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-full aspect-video bg-muted flex items-center justify-center text-muted-foreground flex-col gap-1">
+                          <ImageIcon className="h-8 w-8" />
+                          <span className="text-xs">No photo available</span>
+                        </div>
+                      )}
                       <div className="p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">

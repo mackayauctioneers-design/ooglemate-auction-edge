@@ -86,6 +86,7 @@ export interface AdapterResult {
   state: string | null;
   variant: string | null;
   url: string | null;
+  image_url: string | null;
   score: number;
   match_reason: string[];
   source_class: string | null;
