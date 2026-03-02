@@ -1,17 +1,22 @@
 /**
- * Lindy Computer Dispatch Module
+ * Lindy Email Dispatch Module
  *
- * Dispatches browser automation jobs to Lindy Computer for JS-rendered
- * classified sites (Carsales, CarsGuide, Gumtree).
+ * Dispatches browser automation jobs to Lindy via LindyMail email trigger.
+ * The Lindy agent parses the JSON batch from the email body, browses each URL,
+ * extracts listings, signs with HMAC, and POSTs to lindy-results-webhook.
  *
- * Concurrency: max 3 concurrent sessions across all sources.
- * Each source has a deterministic URL builder.
+ * Trigger: carbitrage-dispatch-mackayauctioneers@lindymail.ai
+ * Subject must contain: carbitrage-batch
+ * Recommended batch size: 3–5 rows per email.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { ParsedIntent } from "./types.ts";
 
 const MAX_CONCURRENT_SESSIONS = 3;
+const BATCH_SIZE = 5;
+const LINDY_TRIGGER_EMAIL = "carbitrage-dispatch-mackayauctioneers@lindymail.ai";
+const LINDY_SUBJECT = "carbitrage-batch";
 
 // ─── URL Builders (deterministic search URLs from intent) ────────────────────
 
@@ -49,18 +54,23 @@ const URL_BUILDERS: Record<string, (intent: ParsedIntent) => string | null> = {
   },
 };
 
-// ─── Dispatch payload schema (what Lindy receives) ───────────────────────────
+// ─── Extraction prompt per source ────────────────────────────────────────────
 
-export interface LindyDispatchPayload {
-  job_id: string;
-  source: string;
-  search_url: string;
-  intent: ParsedIntent;
-  schema: {
-    fields: string[];
-    rules: string[];
-  };
-  callback_url: string;
+function buildExtractionPrompt(source: string, intent: ParsedIntent): string {
+  const ctx = [
+    intent.make && `Target make: ${intent.make}`,
+    intent.model && `Target model: ${intent.model}`,
+    intent.year_min && intent.year_max
+      ? `Target year range: ${intent.year_min}–${intent.year_max}`
+      : intent.year_min
+        ? `Target year from: ${intent.year_min}`
+        : null,
+    intent.max_km && `Max odometer: ${intent.max_km.toLocaleString()} km`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return `Extract all car listings from this ${source} page. For each listing return: make, model, variant, year, odometer (km), price (AUD), listing URL, listing ID, and state.\n\nSearch context:\n${ctx}`;
 }
 
 // ─── Concurrency check ──────────────────────────────────────────────────────
@@ -74,20 +84,7 @@ async function getActiveJobCount(sb: ReturnType<typeof createClient>): Promise<n
   return count ?? 0;
 }
 
-async function getActiveJobCountForSource(
-  sb: ReturnType<typeof createClient>,
-  sourceKey: string,
-): Promise<number> {
-  const { count } = await sb
-    .from("outward_jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "dispatched")
-    .eq("source_key", sourceKey);
-
-  return count ?? 0;
-}
-
-// ─── Main dispatch function ─────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface DispatchResult {
   source: string;
@@ -96,9 +93,23 @@ export interface DispatchResult {
   reason?: string;
 }
 
+interface QueueRow {
+  id: string;
+  source: string;
+  page: number;
+  url: string;
+  prompt: string;
+  job_id: string;
+  search_run_id: string;
+}
+
+// ─── Main dispatch function ─────────────────────────────────────────────────
+
 /**
  * Dispatch Lindy Computer jobs for the given outward sources.
- * Creates outward_jobs rows and POSTs to the Lindy webhook.
+ * 1. Creates outward_jobs rows
+ * 2. Inserts outward_browse_queue rows
+ * 3. Sends batch email to LindyMail trigger via Resend
  *
  * @returns Array of dispatch results per source
  */
@@ -108,19 +119,16 @@ export async function dispatchLindyJobs(
   intent: ParsedIntent,
   sourceKeys: string[],
 ): Promise<DispatchResult[]> {
-  const lindyWebhookUrl = Deno.env.get("LINDY_WEBHOOK_URL");
-  const lindySecret = Deno.env.get("LINDY_WEBHOOK_SECRET");
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const resendApiKey = Deno.env.get("RESEND_API_KEY");
 
-  if (!lindyWebhookUrl) {
-    console.warn("[lindy-dispatch] LINDY_WEBHOOK_URL not configured");
-    return sourceKeys.map((s) => ({ source: s, job_id: null, status: "skipped" as const, reason: "No webhook URL" }));
+  if (!resendApiKey) {
+    console.warn("[lindy-dispatch] RESEND_API_KEY not configured — cannot send dispatch email");
+    return sourceKeys.map((s) => ({ source: s, job_id: null, status: "skipped" as const, reason: "No RESEND_API_KEY" }));
   }
-
-  const callbackUrl = `${supabaseUrl}/functions/v1/lindy-results-webhook`;
 
   const activeCount = await getActiveJobCount(sb);
   const results: DispatchResult[] = [];
+  const queueRows: QueueRow[] = [];
 
   for (const sourceKey of sourceKeys) {
     // Build search URL
@@ -143,13 +151,6 @@ export async function dispatchLindyJobs(
       continue;
     }
 
-    // Per-source concurrency (max 1 per source at a time)
-    const sourceActive = await getActiveJobCountForSource(sb, sourceKey);
-    if (sourceActive > 0) {
-      results.push({ source: sourceKey, job_id: null, status: "queued", reason: "Source already has an active job" });
-      continue;
-    }
-
     // Create job record
     const { data: job, error: jobErr } = await sb
       .from("outward_jobs")
@@ -168,54 +169,115 @@ export async function dispatchLindyJobs(
       continue;
     }
 
-    // Build dispatch payload
-    const payload: LindyDispatchPayload = {
-      job_id: job.id,
+    // Build queue row
+    const prompt = buildExtractionPrompt(sourceKey, intent);
+    queueRows.push({
+      id: crypto.randomUUID(),
       source: sourceKey,
-      search_url: searchUrl,
-      intent,
-      schema: {
-        fields: ["title", "price_aud", "odometer_km", "year", "state", "listing_url"],
-        rules: [
-          "return null if unconfirmed",
-          "do not infer",
-          "no summaries",
-          "no scoring",
-          "first page only — do not paginate",
-          "do not follow listing detail links",
-        ],
-      },
-      callback_url: callbackUrl,
-    };
+      page: 1,
+      url: searchUrl,
+      prompt,
+      job_id: job.id,
+      search_run_id: searchRunId,
+    });
 
-    // POST to Lindy webhook
+    results.push({ source: sourceKey, job_id: job.id, status: "dispatched" });
+  }
+
+  // Nothing to dispatch
+  if (queueRows.length === 0) {
+    return results;
+  }
+
+  // Insert queue rows
+  const { error: queueErr } = await sb
+    .from("outward_browse_queue")
+    .insert(queueRows.map((r) => ({
+      id: r.id,
+      source: r.source,
+      page: r.page,
+      url: r.url,
+      prompt: r.prompt,
+      job_id: r.job_id,
+      search_run_id: r.search_run_id,
+      status: "pending",
+    })));
+
+  if (queueErr) {
+    console.error("[lindy-dispatch] Failed to insert queue rows:", queueErr);
+    // Mark all as error
+    for (const r of queueRows) {
+      await sb.from("outward_jobs").update({ status: "failed", error: "Queue insert failed" }).eq("id", r.job_id);
+      const idx = results.findIndex((res) => res.job_id === r.job_id);
+      if (idx >= 0) results[idx] = { ...results[idx], status: "error", reason: "Queue insert failed" };
+    }
+    return results;
+  }
+
+  // Send batched emails to LindyMail trigger
+  const batches: QueueRow[][] = [];
+  for (let i = 0; i < queueRows.length; i += BATCH_SIZE) {
+    batches.push(queueRows.slice(i, i + BATCH_SIZE));
+  }
+
+  for (const batch of batches) {
+    const emailBody = JSON.stringify({
+      rows: batch.map((r) => ({
+        id: r.id,
+        source: r.source,
+        page: r.page,
+        url: r.url,
+        prompt: r.prompt,
+        job_id: r.job_id,
+        search_run_id: r.search_run_id,
+      })),
+    });
+
     try {
-      const resp = await fetch(lindyWebhookUrl, {
+      const resp = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
           "Content-Type": "application/json",
-          ...(lindySecret ? { "X-Dispatch-Signature": lindySecret } : {}),
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          from: "dispatch@carbitrage.app",
+          to: LINDY_TRIGGER_EMAIL,
+          subject: LINDY_SUBJECT,
+          text: emailBody,
+        }),
       });
 
       if (!resp.ok) {
         const errText = await resp.text().catch(() => "unknown");
-        console.error(`[lindy-dispatch] Lindy returned ${resp.status} for ${sourceKey}: ${errText}`);
-        await sb.from("outward_jobs").update({ status: "failed", error: `Dispatch HTTP ${resp.status}` }).eq("id", job.id);
-        results.push({ source: sourceKey, job_id: job.id, status: "error", reason: `HTTP ${resp.status}` });
+        console.error(`[lindy-dispatch] Resend returned ${resp.status}: ${errText}`);
+        // Mark batch jobs as error
+        for (const r of batch) {
+          await sb.from("outward_jobs").update({ status: "failed", error: `Resend HTTP ${resp.status}` }).eq("id", r.job_id);
+          await sb.from("outward_browse_queue").update({ status: "failed", last_error: `Resend HTTP ${resp.status}` }).eq("id", r.id);
+          const idx = results.findIndex((res) => res.job_id === r.job_id);
+          if (idx >= 0) results[idx] = { ...results[idx], status: "error", reason: `Resend HTTP ${resp.status}` };
+        }
         continue;
       }
 
-      // Mark as dispatched
-      await sb.from("outward_jobs").update({ status: "dispatched", dispatched_at: new Date().toISOString() }).eq("id", job.id);
-      results.push({ source: sourceKey, job_id: job.id, status: "dispatched" });
+      await resp.text(); // consume body
 
-      console.log(`[lindy-dispatch] Dispatched job ${job.id} for ${sourceKey}`);
+      // Mark queue rows as dispatched
+      for (const r of batch) {
+        await sb.from("outward_jobs").update({ status: "dispatched", dispatched_at: new Date().toISOString() }).eq("id", r.job_id);
+        await sb.from("outward_browse_queue").update({ status: "dispatched", dispatched_at: new Date().toISOString() }).eq("id", r.id);
+      }
+
+      console.log(`[lindy-dispatch] Email dispatched with ${batch.length} rows to LindyMail`);
     } catch (err) {
-      console.error(`[lindy-dispatch] Fetch error for ${sourceKey}:`, err);
-      await sb.from("outward_jobs").update({ status: "failed", error: String(err) }).eq("id", job.id);
-      results.push({ source: sourceKey, job_id: job.id, status: "error", reason: String(err) });
+      console.error(`[lindy-dispatch] Email send error:`, err);
+      for (const r of batch) {
+        await sb.from("outward_jobs").update({ status: "failed", error: String(err) }).eq("id", r.job_id);
+        await sb.from("outward_browse_queue").update({ status: "failed", last_error: String(err) }).eq("id", r.id);
+        const idx = results.findIndex((res) => res.job_id === r.job_id);
+        if (idx >= 0) results[idx] = { ...results[idx], status: "error", reason: String(err) };
+      }
     }
   }
 
