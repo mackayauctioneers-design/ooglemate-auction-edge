@@ -1,0 +1,47 @@
+# Memory: architecture/outward-search/v2-engine
+Updated: 2026-03-02
+
+## Outward Search v2 — Architecture
+
+### Foundation Tables
+- `source_registry` — evolved from existing table, added: adapter_type, tier, rate_limit_per_hour, cooldown_minutes, health tracking (last_success_at, consecutive_failures, auto_disabled_at)
+- `dealer_entitlements` — per-account quota: plan_tier (free/pro/enterprise), max_searches_per_day, max_sources_per_search, allowed_source_tiers, daily reset
+- `outward_search_runs` — full telemetry: intent, sources queried, results by source, cache hits, quota snapshots, duration
+
+### Shared Modules (`_shared/outward-search/`)
+- `types.ts` — ParsedIntent, AdapterResult, OutwardSearchAdapter interface, QuotaCheckResult, SearchRunRecord, constants
+- `intent-parser.ts` — LLM parser (gemini-2.5-flash-lite) + regex fallback
+- `quota.ts` — checkQuota() + incrementUsage(); operator/cron bypass, daily reset, cooldown filtering
+- `adapters/internal-db.ts` — InternalDbAdapter: queries vehicle_listings with badge filtering + scoring
+
+### Edge Function: `run-outward-search-v2`
+Orchestration flow:
+1. Demand gating (skip if ≥5 internal results + non-urgent)
+2. Quota check via checkQuota()
+3. Intent parsing (structured filters → LLM → regex fallback)
+4. Cache check (3-hour, search_cache table)
+5. Adapter dispatch (iterates eligible sources from registry)
+6. Score + sort + cap at 30 results
+7. Increment usage
+8. Write cache
+9. Log telemetry to outward_search_runs
+
+### Adapter Contract
+Any new source adapter implements `OutwardSearchAdapter`:
+- `sourceKey: string`
+- `search(intent, config, signal): Promise<AdapterResult[]>`
+- Registered in ADAPTERS map in v2 index.ts
+
+### Source Tiers
+- `free`: internal_db, auction sources (pickles, manheim, grays, slattery, f3, aav)
+- `premium`: carsales, autotrader, drive, carsguide, gumtree, facebook (manus adapter)
+
+### Quota Defaults
+- Free: 5 searches/day, 3 sources/search, free tier only
+- Operator/cron: unlimited, all sources
+- Anonymous: free tier sources only, no usage tracking
+
+### What's Next
+- Manus adapter implementation
+- UI: Super Search button, usage counter, premium lock
+- Deduplication across sources (fingerprint-based)
