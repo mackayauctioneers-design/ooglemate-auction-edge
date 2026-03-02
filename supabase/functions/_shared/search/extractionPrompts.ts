@@ -31,8 +31,10 @@ RULES:
     "odometer_km": string | null,
     "price_asking": string | null,
     "listing_url": string,
-    "listing_id": string
+    "listing_id": string,
+    "image_url": string | null
   }
+- For image_url: extract the primary listing photo URL (the first/main image). If no image is visible or the URL is embedded in JS, use null.
 - If a listing is missing make, model, or year — skip it entirely.
 - Do not include dealer ads for new vehicles (condition must be "Used").
 `.trim();

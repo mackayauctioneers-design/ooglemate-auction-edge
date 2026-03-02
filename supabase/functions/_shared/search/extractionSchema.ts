@@ -17,6 +17,7 @@ export interface BrowserExtractedListing {
   listing_url:  string;
   listing_id:   string | null;
   state:        string | null;
+  image_url:    string | null;
 }
 
 // ── Full raw listing with source injected by dispatch loop ──────────────────
@@ -35,6 +36,9 @@ export interface RawExtractedListing {
   // ── Provenance (required for dedup + webhook routing) ─────────────────────
   listing_url:  string;        // full canonical URL of the individual listing
   listing_id:   string;        // source-native ID (e.g. "OAG-AD-21234567")
+
+  // ── Image (best effort — may be null if blocked or unavailable) ───────────
+  image_url:    string | null; // primary listing photo URL
 
   // ── Injected by dispatch loop (not extracted from page) ───────────────────
   source:       "carsales" | "carsguide" | "gumtree";
@@ -67,6 +71,7 @@ export interface NormalizedListing {
   listing_id:   string;
   source:       string;
   state:        string | null;
+  image_url:    string | null;
 }
 
 export function normalizeExtractedListing(raw: RawExtractedListing): NormalizedListing {
@@ -81,6 +86,7 @@ export function normalizeExtractedListing(raw: RawExtractedListing): NormalizedL
     listing_id:   raw.listing_id.trim(),
     source:       raw.source,
     state:        raw.state?.toUpperCase() ?? null,
+    image_url:    (raw as any).image_url?.trim() || null,
   };
 }
 
@@ -105,6 +111,7 @@ export function toBrowserRaw(
     price_asking: item.price_asking != null ? String(item.price_asking) : "0",
     listing_url:  item.listing_url,
     listing_id:   item.listing_id ? String(item.listing_id) : "",
+    image_url:    item.image_url ? String(item.image_url) : null,
     source,
     state:        state?.toUpperCase() ?? null,
   };
