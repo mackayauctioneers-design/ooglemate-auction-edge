@@ -55,13 +55,15 @@ Deno.serve(async (req) => {
     const fullMarketScan: boolean = body.full_market_scan === true;
     const initiatedBy: string = body.initiated_by ?? "dealer";
     const kmInput: number | null = body.km ?? null;
+    const filters: Record<string, unknown> | null = body.filters ?? null;
 
     if (!instruction.trim()) {
       return errorResponse("Missing instruction");
     }
 
-    // KM is required for VALO strict mode
-    if (!kmInput || kmInput <= 0) {
+    // KM is required for VALO strict mode (check body.km or filters.max_km)
+    const effectiveKm = kmInput ?? (filters?.max_km as number | null) ?? null;
+    if (!effectiveKm || effectiveKm <= 0) {
       return new Response(
         JSON.stringify({
           status: "missing_required_fields",
@@ -99,6 +101,23 @@ Deno.serve(async (req) => {
 
     if (!intent.make) {
       return errorResponse("Unable to determine vehicle make/model from description");
+    }
+
+    // ── 2b. Apply structured filters (override parsed intent) ──
+    if (filters) {
+      if (filters.year_min != null) intent.year_min = filters.year_min as number;
+      if (filters.year_max != null) intent.year_max = filters.year_max as number;
+      if (filters.max_km != null) intent.max_km = filters.max_km as number;
+      if (filters.badge != null) intent.badge = filters.badge as string;
+      if (filters.condition != null) intent.condition = filters.condition as string;
+      if (filters.allowance_aud != null) intent.allowance_aud = filters.allowance_aud as number;
+      if (Array.isArray(filters.accessory_terms) && filters.accessory_terms.length > 0) {
+        intent.accessory_terms = filters.accessory_terms as string[];
+      }
+    }
+    // Ensure KM is set on intent
+    if (!intent.max_km && effectiveKm) {
+      intent.max_km = effectiveKm;
     }
 
     // ── 3. Fetch comparables ──
