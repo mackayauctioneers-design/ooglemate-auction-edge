@@ -2760,6 +2760,7 @@ export type Database = {
           id: string
           last_promoted_at: string | null
           make: string
+          max_buy_price: number | null
           median_days_to_clear: number | null
           median_km: number | null
           median_profit: number | null
@@ -2789,6 +2790,7 @@ export type Database = {
           id?: string
           last_promoted_at?: string | null
           make: string
+          max_buy_price?: number | null
           median_days_to_clear?: number | null
           median_km?: number | null
           median_profit?: number | null
@@ -2818,6 +2820,7 @@ export type Database = {
           id?: string
           last_promoted_at?: string | null
           make?: string
+          max_buy_price?: number | null
           median_days_to_clear?: number | null
           median_km?: number | null
           median_profit?: number | null
