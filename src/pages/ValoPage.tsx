@@ -100,7 +100,7 @@ export default function ValoPage() {
       }
 
       // Step 2: Run valuation engine
-      const { data: valoData, error: valoError } = await supabase.functions.invoke('bob', {
+      const { data: valoData, error: valoError } = await supabase.functions.invoke('run-valo-v1', {
         body: {
           transcript: description.trim(),
           dealerName: currentUser?.dealer_name,
