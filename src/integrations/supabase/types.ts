@@ -879,6 +879,56 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_entitlements: {
+        Row: {
+          account_id: string
+          allowed_source_tiers: string[]
+          created_at: string
+          id: string
+          is_active: boolean
+          max_searches_per_day: number
+          max_sources_per_search: number
+          plan_tier: string
+          searches_reset_at: string
+          searches_used_today: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          allowed_source_tiers?: string[]
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          max_searches_per_day?: number
+          max_sources_per_search?: number
+          plan_tier?: string
+          searches_reset_at?: string
+          searches_used_today?: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          allowed_source_tiers?: string[]
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          max_searches_per_day?: number
+          max_sources_per_search?: number
+          plan_tier?: string
+          searches_reset_at?: string
+          searches_used_today?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_entitlements_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: true
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_fingerprints: {
         Row: {
           created_at: string
@@ -6071,6 +6121,74 @@ export type Database = {
           },
         ]
       }
+      outward_search_runs: {
+        Row: {
+          account_id: string | null
+          cache_hit: boolean
+          completed_at: string | null
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          gate_reason: string | null
+          gated: boolean
+          id: string
+          initiated_by: string | null
+          instruction: string
+          parsed_intent: Json | null
+          quota_snapshot: Json | null
+          results_by_source: Json | null
+          sources_queried: string[]
+          status: string
+          total_results: number
+        }
+        Insert: {
+          account_id?: string | null
+          cache_hit?: boolean
+          completed_at?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          gate_reason?: string | null
+          gated?: boolean
+          id?: string
+          initiated_by?: string | null
+          instruction: string
+          parsed_intent?: Json | null
+          quota_snapshot?: Json | null
+          results_by_source?: Json | null
+          sources_queried?: string[]
+          status?: string
+          total_results?: number
+        }
+        Update: {
+          account_id?: string | null
+          cache_hit?: boolean
+          completed_at?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          gate_reason?: string | null
+          gated?: boolean
+          id?: string
+          initiated_by?: string | null
+          instruction?: string
+          parsed_intent?: Json | null
+          quota_snapshot?: Json | null
+          results_by_source?: Json | null
+          sources_queried?: string[]
+          status?: string
+          total_results?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outward_search_runs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pickles_buy_now_listings: {
         Row: {
           first_seen_at: string
@@ -8368,43 +8486,85 @@ export type Database = {
       }
       source_registry: {
         Row: {
+          adapter_type: string
+          auto_disabled_at: string | null
+          auto_disabled_reason: string | null
+          avg_latency_ms: number | null
           base_url: string | null
+          config: Json | null
+          consecutive_failures: number
+          cooldown_minutes: number | null
           created_at: string
+          display_name: string | null
           enabled: boolean
           geo_required: boolean
           ingest_lane: string | null
+          last_error: string | null
+          last_error_at: string | null
+          last_success_at: string | null
           notes: string | null
+          rate_limit_per_hour: number | null
           source: string
           source_type: string
           stale_days: number
           supports_identity_relist: boolean
           supports_price_history: boolean
+          tier: string
+          updated_at: string
         }
         Insert: {
+          adapter_type?: string
+          auto_disabled_at?: string | null
+          auto_disabled_reason?: string | null
+          avg_latency_ms?: number | null
           base_url?: string | null
+          config?: Json | null
+          consecutive_failures?: number
+          cooldown_minutes?: number | null
           created_at?: string
+          display_name?: string | null
           enabled?: boolean
           geo_required?: boolean
           ingest_lane?: string | null
+          last_error?: string | null
+          last_error_at?: string | null
+          last_success_at?: string | null
           notes?: string | null
+          rate_limit_per_hour?: number | null
           source: string
           source_type: string
           stale_days?: number
           supports_identity_relist?: boolean
           supports_price_history?: boolean
+          tier?: string
+          updated_at?: string
         }
         Update: {
+          adapter_type?: string
+          auto_disabled_at?: string | null
+          auto_disabled_reason?: string | null
+          avg_latency_ms?: number | null
           base_url?: string | null
+          config?: Json | null
+          consecutive_failures?: number
+          cooldown_minutes?: number | null
           created_at?: string
+          display_name?: string | null
           enabled?: boolean
           geo_required?: boolean
           ingest_lane?: string | null
+          last_error?: string | null
+          last_error_at?: string | null
+          last_success_at?: string | null
           notes?: string | null
+          rate_limit_per_hour?: number | null
           source?: string
           source_type?: string
           stale_days?: number
           supports_identity_relist?: boolean
           supports_price_history?: boolean
+          tier?: string
+          updated_at?: string
         }
         Relationships: []
       }
