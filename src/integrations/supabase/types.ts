@@ -6241,6 +6241,7 @@ export type Database = {
           retail_truth: number | null
           scored_at: string | null
           search_run_id: string
+          source_id: string | null
           source_key: string
           state: string | null
           status: string
@@ -6271,6 +6272,7 @@ export type Database = {
           retail_truth?: number | null
           scored_at?: string | null
           search_run_id: string
+          source_id?: string | null
           source_key: string
           state?: string | null
           status?: string
@@ -6301,6 +6303,7 @@ export type Database = {
           retail_truth?: number | null
           scored_at?: string | null
           search_run_id?: string
+          source_id?: string | null
           source_key?: string
           state?: string | null
           status?: string

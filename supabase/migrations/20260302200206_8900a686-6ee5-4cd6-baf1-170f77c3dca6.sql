@@ -1,0 +1,1 @@
+ALTER TABLE public.outward_search_results ADD COLUMN source_id TEXT;
