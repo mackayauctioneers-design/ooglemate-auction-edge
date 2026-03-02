@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
       `)
       .ilike("make", input.make)
       .not("lifecycle_state", "in", `(${EXCLUDED_LIFECYCLE.join(",")})`)
-      .order("asking_price", { ascending: true, nullsFirst: false })
+      .order("asking_price", { ascending: false, nullsFirst: false })
       .limit(input.limit! * 3); // over-fetch for scoring/filtering
 
     // Model matching: check model field OR variant fields for multi-word models like "LANDCRUISER PRADO"
@@ -285,7 +285,7 @@ Deno.serve(async (req) => {
     }
 
     // Sort by score descending, then effective_cost ascending
-    results.sort((a, b) => b.score - a.score || (a.effective_cost ?? Infinity) - (b.effective_cost ?? Infinity));
+    results.sort((a, b) => b.score - a.score || (b.effective_cost ?? 0) - (a.effective_cost ?? 0));
     const topResults = results.slice(0, input.limit!);
 
     // --- 4. Log the request ---

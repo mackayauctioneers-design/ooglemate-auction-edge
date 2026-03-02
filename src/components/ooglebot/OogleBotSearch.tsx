@@ -626,8 +626,18 @@ export function OogleBotSearch() {
 
     try {
       // Run tiered search with structured filters (no LLM dependency)
+      // Build structured intent for tiered search (bypasses text parsing)
+      const structuredIntent = {
+        make: structuredFilters.make,
+        model: structuredFilters.model,
+        yearMin: structuredFilters.year_min,
+        yearMax: structuredFilters.year_max,
+        kmMax: structuredFilters.max_km,
+        priceMax: structuredFilters.price_max,
+      };
+
       const [tieredResult, specsResult, directResult] = await Promise.allSettled([
-        searchTiered(instruction),
+        searchTiered(instruction, structuredIntent),
         searchDealerSpecs(instruction),
         searchOogleBotDirect(structuredFilters),
       ]);
