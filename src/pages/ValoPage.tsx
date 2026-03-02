@@ -715,6 +715,11 @@ export default function ValoPage() {
                                 Link unavailable
                               </span>
                             )}
+                            {comp.seller_name && (
+                              <span className="text-[10px] text-muted-foreground">
+                                Seller: {comp.seller_name}
+                              </span>
+                            )}
                             <button
                               onClick={() => setExpandedComp(isExpanded ? null : i)}
                               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted transition-colors"

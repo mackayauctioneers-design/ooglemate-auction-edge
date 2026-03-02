@@ -32,9 +32,11 @@ RULES:
     "price_asking": string | null,
     "listing_url": string,
     "listing_id": string,
-    "image_url": string | null
+    "image_url": string | null,
+    "seller_name": string | null
   }
-- For image_url: extract the primary listing photo URL (the first/main image). If no image is visible or the URL is embedded in JS, use null.
+- For image_url: extract the MAIN HERO PHOTO of the vehicle listing card (the large primary vehicle image). Do NOT extract dealer logos, site banners, header images, or thumbnail strips. If the primary vehicle image URL is not clearly visible in the HTML or is embedded in JavaScript, use null.
+- For seller_name: extract the dealer or seller name shown on the listing card (e.g. "Westside Auto", "Private Seller"). Use null if not shown.
 - If a listing is missing make, model, or year — skip it entirely.
 - Do not include dealer ads for new vehicles (condition must be "Used").
 `.trim();
