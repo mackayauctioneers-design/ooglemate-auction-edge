@@ -14,6 +14,7 @@ import { MAX_RESULTS } from "../_shared/outward-search/types.ts";
 import { emptyIntent, parseIntentLLM, parseIntentRegex } from "../_shared/outward-search/intent-parser.ts";
 import { checkQuota, incrementUsage, checkGlobalCap, incrementGlobalCap } from "../_shared/outward-search/quota.ts";
 import { InternalDbAdapter } from "../_shared/outward-search/adapters/internal-db.ts";
+import { dispatchLindyJobs } from "../_shared/outward-search/lindy-dispatch.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -245,99 +246,75 @@ Deno.serve(async (req) => {
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  // ── Dispatch to outward adapters ──
-  const outwardResults: AdapterResult[] = [];
-  const resultsBySource: Record<string, number> = { internal_db: internalResults.length };
-  const sourcesQueried: string[] = ["internal_db"];
-
-  for (const source of outwardSources) {
-    const adapterFactory = ADAPTERS[source.adapter_type];
-    if (!adapterFactory) {
-      console.warn(`No adapter for type: ${source.adapter_type} (source: ${source.source})`);
-      continue;
-    }
-
-    try {
-      const adapter = adapterFactory();
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
-      const results = await adapter.search(intent, source.config || {}, controller.signal);
-      clearTimeout(timeout);
-
-      outwardResults.push(...results);
-      resultsBySource[source.source] = results.length;
-      sourcesQueried.push(source.source);
-
-      await sb.from("source_registry").update({
-        last_success_at: new Date().toISOString(),
-        consecutive_failures: 0,
-      }).eq("source", source.source);
-    } catch (err) {
-      console.error(`Adapter error for ${source.source}:`, err);
-      resultsBySource[source.source] = 0;
-      sourcesQueried.push(source.source);
-
-      await sb.from("source_registry").update({
-        last_error_at: new Date().toISOString(),
-        last_error: String(err),
-        consecutive_failures: (source.consecutive_failures || 0) + 1,
-      }).eq("source", source.source);
-    }
+  // ── Create search run record first (needed for job FK) ──
+  let searchRunId: string | null = null;
+  try {
+    const { data: runRow } = await sb.from("outward_search_runs").insert({
+      account_id: accountId, initiated_by: initiatedBy, instruction,
+      parsed_intent: intent, sources_queried: ["internal_db", ...outwardSources.map(s => s.source)],
+      total_results: internalResults.length,
+      results_by_source: { internal_db: internalResults.length },
+      cache_hit: false, status: "processing", duration_ms: 0,
+      quota_snapshot: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
+    }).select("id").single();
+    searchRunId = runRow?.id ?? null;
+  } catch (err) {
+    console.error("Failed to create search run:", err);
   }
 
-  // ── Merge, dedup, sort, cap ──
-  const merged = deduplicateResults([...internalResults, ...outwardResults]);
-  merged.sort((a, b) => b.score - a.score || (a.effective_cost ?? Infinity) - (b.effective_cost ?? Infinity));
-  const topResults = merged.slice(0, MAX_RESULTS);
-  const durationMs = Date.now() - startMs;
+  if (!searchRunId) {
+    return new Response(JSON.stringify({
+      status: "error", error: "Failed to create search run record",
+      results: internalResults.slice(0, MAX_RESULTS),
+      internal_count: internalResults.length,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
 
-  // Increment usage (only counts outward, not internal)
-  if (accountId && initiatedBy === "user" && outwardSources.length > 0) {
+  // ── Dispatch Lindy Computer jobs (async — returns immediately) ──
+  const lindySourceKeys = outwardSources
+    .filter(s => ["carsales", "carsguide", "gumtree"].includes(s.source))
+    .map(s => s.source);
+
+  let dispatchResults: Awaited<ReturnType<typeof dispatchLindyJobs>> = [];
+  if (lindySourceKeys.length > 0) {
+    dispatchResults = await dispatchLindyJobs(sb, searchRunId, intent, lindySourceKeys);
+  }
+
+  // Increment usage (outward was dispatched)
+  if (accountId && initiatedBy === "user" && lindySourceKeys.length > 0) {
     await incrementUsage(accountId);
   }
-  if (outwardSources.length > 0) {
+  if (lindySourceKeys.length > 0) {
     await incrementGlobalCap(sb);
   }
 
-  // Write cache (outward results only — internal is always fresh)
-  if (outwardResults.length > 0) {
-    try {
-      await sb.from("search_cache").upsert({
-        cache_key: cacheKey,
-        make: intent.make, model: intent.model, badge: intent.badge,
-        year_min: intent.year_min, year_max: intent.year_max,
-        max_km: intent.max_km, price_max: intent.price_max,
-        results: outwardResults,
-        source: "outward_v2",
-      }, { onConflict: "cache_key" });
-    } catch (e) {
-      console.warn("Cache write failed:", e);
-    }
-  }
+  const durationMs = Date.now() - startMs;
 
-  // Telemetry
+  // Update search run with dispatch info
   try {
-    await sb.from("outward_search_runs").insert({
-      account_id: accountId, initiated_by: initiatedBy, instruction,
-      parsed_intent: intent, sources_queried: sourcesQueried,
-      total_results: topResults.length, results_by_source: resultsBySource,
-      cache_hit: false, status: "completed", duration_ms: durationMs,
-      completed_at: new Date().toISOString(),
-      quota_snapshot: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
-    });
+    await sb.from("outward_search_runs").update({
+      duration_ms: durationMs,
+      results_by_source: {
+        internal_db: internalResults.length,
+        ...Object.fromEntries(dispatchResults.map(d => [d.source, d.status === "dispatched" ? -1 : 0])),
+      },
+    }).eq("id", searchRunId);
   } catch (_) { /* swallow */ }
 
+  // Return immediately with internal results + job references for polling
   return new Response(JSON.stringify({
-    status: "ok", gated: false, cached: false,
-    phase: outwardSources.length > 0 ? "internal+outward" : "internal_only",
+    status: "ok",
+    phase: lindySourceKeys.length > 0 ? "internal+outward_dispatched" : "internal_only",
+    search_run_id: searchRunId,
     intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
-    results: topResults,
+    results: internalResults.slice(0, MAX_RESULTS),
     internal_count: internalResults.length,
-    outward_count: outwardResults.length,
-    total_searched: internalResults.length + outwardResults.length,
-    total_filtered: topResults.length,
-    sources_queried: sourcesQueried,
-    results_by_source: resultsBySource,
+    outward_jobs: dispatchResults.map(d => ({
+      source: d.source,
+      job_id: d.job_id,
+      status: d.status,
+      reason: d.reason,
+    })),
     duration_ms: durationMs,
     quota: quota.entitlement ? { used: (quota.entitlement.searches_used_today || 0) + 1, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
   }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
