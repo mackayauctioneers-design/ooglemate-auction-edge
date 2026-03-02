@@ -10471,6 +10471,59 @@ export type Database = {
         }
         Relationships: []
       }
+      valo_runs: {
+        Row: {
+          account_id: string | null
+          adjusted_confidence: string | null
+          adjusted_offer: Json | null
+          anchor: Json | null
+          backups: Json | null
+          confidence: string | null
+          created_at: string
+          id: string
+          intent: Json
+          market: Json | null
+          modo_result: Json | null
+          trade_in_offer: Json | null
+        }
+        Insert: {
+          account_id?: string | null
+          adjusted_confidence?: string | null
+          adjusted_offer?: Json | null
+          anchor?: Json | null
+          backups?: Json | null
+          confidence?: string | null
+          created_at?: string
+          id?: string
+          intent: Json
+          market?: Json | null
+          modo_result?: Json | null
+          trade_in_offer?: Json | null
+        }
+        Update: {
+          account_id?: string | null
+          adjusted_confidence?: string | null
+          adjusted_offer?: Json | null
+          anchor?: Json | null
+          backups?: Json | null
+          confidence?: string | null
+          created_at?: string
+          id?: string
+          intent?: Json
+          market?: Json | null
+          modo_result?: Json | null
+          trade_in_offer?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "valo_runs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       variant_aliases: {
         Row: {
           alias: string
