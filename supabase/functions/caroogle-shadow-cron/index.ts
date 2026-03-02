@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { normalizeVehicleIdentity } from "../_shared/taxonomy/normalizeVehicleIdentity.ts";
 import { createTaxonomyDeps } from "../_shared/taxonomy/taxonomyRepo.ts";
+import { extractBadge } from "../_shared/taxonomy/derivePlatform.ts";
 
 /**
  * CAROOGLE → PICKLES PRODUCTION FEED
@@ -57,7 +58,10 @@ function parseYear(raw: any): number | null {
   return y >= 1990 && y <= 2030 ? y : null;
 }
 
-function extractModel(ad: any): string {
+// Extract raw model text from Caroogle API response
+// NOTE: This is NOT identity resolution — it's a simple field extractor for the API format.
+// The actual canonical model is resolved downstream by normalizeVehicleIdentity().
+function extractRawModelFromApi(ad: any): string {
   const rawMake = ad.make ? String(ad.make).toUpperCase().trim() : null;
   let rawModel: string | null = ad.model ? String(ad.model).toUpperCase().trim() : null;
   
@@ -72,26 +76,8 @@ function extractModel(ad: any): string {
   return rawModel || "UNKNOWN";
 }
 
-// ─── BADGE EXTRACTION ────────────────────────────────────────────────────────
-
-function extractBadge(text: string | null): string {
-  if (!text) return "";
-  const d = text.toUpperCase();
-  const badges = [
-    "EXCEED TOURER", "EXCEED", "X-TERRAIN", "XTERRAIN", "PRO-4X", "PRO4X",
-    "GLX-R", "GLX+", "GLX PLUS", "SR5", "ROGUE", "RUGGED X", "RUGGED-X", "RUGGED",
-    "RAPTOR", "WILDTRAK", "KAKADU", "SAHARA", "ASPIRE", "TITANIUM", "PLATINUM",
-    "GXL", "VX", "GX", "XLT", "XLS", "LS-U", "LSU", "LS-M", "LSM", "LS-T", "LST",
-    "ST-X", "STX", "ST-L", "STL", "GLS", "N-TREK", "COMMUTER", "SLWB", "LWB",
-    "WORKMATE", "AMBIENTE", "TREND",
-    "ASCENT SPORT", "ASCENT", "MAXX SPORT", "MAXX",
-    "AKARI", "GT-LINE", "TOURING",
-  ];
-  const shortBadges = ["SR", "XL", "LS", "ES", "SL", "ST", "TI", "LT", "LTZ", "Z71", "SS", "SSV", "SV6", "SX", "XT", "RX"];
-  for (const b of badges) { if (d.includes(b)) return b; }
-  for (const b of shortBadges) { if (new RegExp(`\\b${b}\\b`).test(d)) return b; }
-  return "";
-}
+// extractBadge imported from _shared/taxonomy/derivePlatform.ts
+// No inline copies allowed. See memory/architecture/identity/governance-rule-v1
 
 /**
  * Extract the model/variant portion from Pickles sellerNotes.
@@ -177,7 +163,7 @@ Deno.serve(async (req) => {
       const rawMake = ad.make ? String(ad.make).toUpperCase().trim() : null;
       if (!rawMake) { skipped++; continue; }
 
-      const rawModel = extractModel(ad);
+      const rawModel = extractRawModelFromApi(ad);
       const year = parseYear(ad.year);
       if (!year) { skipped++; continue; }
 

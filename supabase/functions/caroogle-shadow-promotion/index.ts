@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { derivePlatform, extractBadge } from "../_shared/taxonomy/derivePlatform.ts";
 
 /**
  * CAROOGLE SHADOW PROMOTION — Fingerprint-Gated Production Promotion
@@ -15,39 +16,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// ─── DERIVE PLATFORM (mirrors DB function derive_platform_class) ─────────────
-
-function derivePlatform(make: string, model: string): string {
-  const m = (make || "").toUpperCase().trim();
-  const mo = (model || "").toUpperCase().trim();
-  if (m === "TOYOTA") {
-    if (mo.includes("PRADO")) return "PRADO";
-    if (mo.includes("LANDCRUISER")) return "LANDCRUISER";
-  }
-  if (m === "MITSUBISHI" && mo === "OUTLANDER") return "OUTLANDER";
-  return `${m}:${mo}`;
-}
-
-// ─── EXTRACT BADGE FROM TEXT ─────────────────────────────────────────────────
-
-function extractBadge(text: string | null): string {
-  if (!text) return "";
-  const d = text.toUpperCase();
-  const badges = [
-    "EXCEED TOURER", "EXCEED", "X-TERRAIN", "XTERRAIN", "PRO-4X", "PRO4X",
-    "GLX-R", "GLX+", "GLX PLUS", "SR5", "ROGUE", "RUGGED X", "RUGGED-X", "RUGGED",
-    "RAPTOR", "WILDTRAK", "KAKADU", "SAHARA", "ASPIRE", "TITANIUM", "PLATINUM",
-    "GXL", "VX", "GX", "XLT", "XLS", "LS-U", "LSU", "LS-M", "LSM", "LS-T", "LST",
-    "ST-X", "STX", "ST-L", "STL", "GLS", "GR", "N-TREK", "COMMUTER", "SLWB", "LWB",
-    "WORKMATE", "AMBIENTE", "TREND",
-    "ASCENT SPORT", "ASCENT", "MAXX SPORT", "MAXX",
-    "AKARI", "GT-LINE", "SPORT", "TOURING",
-  ];
-  const shortBadges = ["SR", "XL", "LS", "ES", "SL", "ST", "TI", "LT", "LTZ", "Z71", "SS", "SSV", "SV6", "SX", "XT", "RX"];
-  for (const b of badges) { if (d.includes(b)) return b; }
-  for (const b of shortBadges) { if (new RegExp(`\\b${b}\\b`).test(d)) return b; }
-  return "";
-}
+// derivePlatform + extractBadge imported from _shared/taxonomy/derivePlatform.ts
+// No inline copies allowed. See memory/architecture/identity/governance-rule-v1
 
 // ─── DRIVETRAIN BUCKET ───────────────────────────────────────────────────────
 

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { MULTI_WORD_MODELS } from "../_shared/taxonomy/parseSlug.ts";
+import { extractBadge as canonicalExtractBadge } from "../_shared/taxonomy/derivePlatform.ts";
 
 /**
  * PICKLES INGEST CRON v6 — Ingest Only (no replication)
@@ -243,30 +244,8 @@ async function scrapeSearchPages(firecrawlKey: string): Promise<{ listings: Scra
 
       if (SALVAGE_RE.test(`${item.title || ""} ${make} ${model} ${variant}`)) continue;
 
-      // ── TITLE-BASED TRIM HINT ──
-      const titleUpper = (item.title || "").toUpperCase();
-      let trimHint: string | null = null;
-      if (titleUpper.includes("EXCEED TOURER")) trimHint = "Exceed Tourer";
-      else if (titleUpper.includes("EXCEED")) trimHint = "Exceed";
-      else if (titleUpper.includes("ASPIRE")) trimHint = "Aspire";
-      else if (titleUpper.includes("SR5")) trimHint = "SR5";
-      else if (titleUpper.includes("ROGUE")) trimHint = "Rogue";
-      else if (titleUpper.includes("RUGGED")) trimHint = "Rugged";
-      else if (titleUpper.includes("RAPTOR")) trimHint = "Raptor";
-      else if (titleUpper.includes("WILDTRAK")) trimHint = "Wildtrak";
-      else if (titleUpper.includes("KAKADU")) trimHint = "Kakadu";
-      else if (titleUpper.includes("SAHARA")) trimHint = "Sahara";
-      else if (titleUpper.includes("X-TERRAIN")) trimHint = "X-Terrain";
-      else if (titleUpper.includes("WORKMATE")) trimHint = "Workmate";
-      else if (titleUpper.includes("GXL")) trimHint = "GXL";
-      else if (titleUpper.includes("GX") && !titleUpper.includes("GXL")) trimHint = "GX";
-      else if (titleUpper.includes("VX")) trimHint = "VX";
-      else if (titleUpper.includes("XLT")) trimHint = "XLT";
-      else if (titleUpper.includes("XLS")) trimHint = "XLS";
-      else if (titleUpper.match(/\bXL\b/)) trimHint = "XL";
-      else if (titleUpper.match(/\bSR\b/) && !titleUpper.includes("SR5")) trimHint = "SR";
-      else if (titleUpper.match(/\bLS\b/) && !titleUpper.includes("LS-")) trimHint = "LS";
-      else if (titleUpper.match(/\bES\b/)) trimHint = "ES";
+      // ── TITLE-BASED TRIM HINT (uses canonical badge extractor) ──
+      const trimHint = canonicalExtractBadge(item.title) || null;
 
       const finalVariant = trimHint || variant;
 
