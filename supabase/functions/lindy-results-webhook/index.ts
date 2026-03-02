@@ -258,7 +258,6 @@ Deno.serve(async (req) => {
         state: l.state,
         listing_url: l.listing_url,
         listing_id: l.source_id,
-        source_id: l.source_id,
         make_norm: identity.make_norm,
         model_norm: identity.model_norm,
         fingerprint: identity.fingerprint,
