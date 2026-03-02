@@ -8,10 +8,11 @@ import type { ParsedIntent } from "./types.ts";
 const INTENT_SCHEMA = `You are a vehicle search query parser for an Australian used car platform. Return ONLY a JSON object, nothing else.
 
 Schema:
-{"make":string|null,"model":string|null,"badge":string|null,"year_min":number|null,"year_max":number|null,"max_km":number|null,"price_max":number|null}
+{"make":string|null,"model":string|null,"badge":string|null,"year_min":number|null,"year_max":number|null,"max_km":number|null,"price_max":number|null,"state":string|null}
 
 Rules:
 - Uppercase make and model
+- state is the Australian state abbreviation if mentioned (NSW, VIC, QLD, WA, SA, TAS, ACT, NT). null if not specified.
 - Always infer the make from the model name: Hilux=TOYOTA, Ranger=FORD, D-MAX=ISUZU, Triton=MITSUBISHI, Navara=NISSAN, BT-50=MAZDA, Amarok=VOLKSWAGEN, Colorado=HOLDEN, Prado=TOYOTA, LandCruiser=TOYOTA, Patrol=NISSAN, Pajero=MITSUBISHI, Everest=FORD, Wildtrak=FORD, Raptor=FORD, MU-X=ISUZU, Fortuner=TOYOTA, Kluger=TOYOTA, RAV4=TOYOTA, CX-5=MAZDA, Sportage=KIA, Tucson=HYUNDAI, Santa Fe=HYUNDAI, Forester=SUBARU, Outback=SUBARU, i30=HYUNDAI, i20=HYUNDAI, i40=HYUNDAI
 - badge is the variant/trim/series e.g. "SR5", "GXL", "Workmate", "Wildtrak", "SX", "Hi-Rider", "N Line Premium". Uppercase it. null if not specified.
 - A single year like "2024" means year_min=2024, year_max=null (2024 or newer)
@@ -20,7 +21,7 @@ Rules:
 - Output raw JSON only. No markdown. No backticks. No explanation.`;
 
 export function emptyIntent(): ParsedIntent {
-  return { make: null, model: null, badge: null, year_min: null, year_max: null, max_km: null, price_max: null };
+  return { make: null, model: null, badge: null, year_min: null, year_max: null, max_km: null, price_max: null, state: null };
 }
 
 export async function parseIntentLLM(instruction: string, apiKey: string): Promise<ParsedIntent> {
@@ -58,6 +59,7 @@ export async function parseIntentLLM(instruction: string, apiKey: string): Promi
         year_max: typeof parsed.year_max === "number" ? parsed.year_max : null,
         max_km: typeof parsed.max_km === "number" ? parsed.max_km : null,
         price_max: typeof parsed.price_max === "number" ? parsed.price_max : null,
+        state: typeof parsed.state === "string" ? parsed.state.toUpperCase() : null,
       };
     }
   } catch (err) {
@@ -83,10 +85,15 @@ export function parseIntentRegex(instruction: string): ParsedIntent {
   const yearMatch = q.match(/\b(20[1-3]\d)\b/);
   if (yearMatch) intent.year_min = parseInt(yearMatch[1], 10);
 
+  // State extraction (Australian states/territories)
+  const stateMatch = q.match(/\b(NSW|VIC|QLD|WA|SA|TAS|ACT|NT)\b/i);
+  if (stateMatch) intent.state = stateMatch[1].toUpperCase();
+
   const words = q
     .replace(/(?:under|below|budget|max|less than)\s*\$?\s*[\d,]+\s*k?\b/gi, "")
     .replace(/(?:under|below|<|less than)\s*[\d,]+\s*km/gi, "")
     .replace(/\b20[1-3]\d\b/g, "")
+    .replace(/\b(?:NSW|VIC|QLD|WA|SA|TAS|ACT|NT)\b/gi, "")
     .replace(/[^\w\s-]/g, "")
     .trim()
     .split(/\s+/)

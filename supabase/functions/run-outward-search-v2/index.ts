@@ -95,6 +95,7 @@ Deno.serve(async (req) => {
       year_max: typeof provided.year_max === "number" ? provided.year_max : null,
       max_km: typeof provided.max_km === "number" ? provided.max_km : null,
       price_max: typeof provided.price_max === "number" ? provided.price_max : null,
+      state: typeof provided.state === "string" ? provided.state.toUpperCase() : null,
     };
   } else {
     intent = await parseIntentLLM(instruction, apiKey);
