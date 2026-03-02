@@ -102,49 +102,44 @@ export default function ValoPage() {
       // Step 2: Run valuation engine
       const { data: valoData, error: valoError } = await supabase.functions.invoke('run-valo-v1', {
         body: {
-          transcript: description.trim(),
-          dealerName: currentUser?.dealer_name,
-          includeDebug: isAdmin,
+          instruction: description.trim(),
+          account_id: null,
+          initiated_by: 'dealer',
+          full_market_scan: true,
         }
       });
 
       if (valoError) throw new Error(valoError.message);
-      if (valoData?.error) throw new Error(valoData.error);
+      if (valoData?.status === 'error') throw new Error(valoData.error);
 
-      if (isAdmin && valoData.oanca_debug) {
-        setOancaDebug(valoData.oanca_debug);
+      if (isAdmin) {
+        setOancaDebug(valoData);
       }
 
-      // Build result from OANCA data or fallback
-      if (valoData.oanca_debug) {
-        const oanca = valoData.oanca_debug;
-        setResult({
-          parsed: parsedVehicle,
-          suggested_buy_range: oanca.allow_price
-            ? { min: oanca.buy_low!, max: oanca.buy_high! }
-            : null,
-          suggested_sell_range: oanca.retail_context_low && oanca.retail_context_high
-            ? { min: oanca.retail_context_low, max: oanca.retail_context_high }
-            : null,
-          expected_gross_band: null,
-          typical_days_to_sell: null,
-          confidence: oanca.confidence === 'HIGH' ? 'HIGH' : oanca.confidence === 'MED' ? 'MEDIUM' : 'LOW',
-          tier: 'dealer',
-          tier_label: `OANCA (${oanca.verdict})`,
-          sample_size: oanca.n_comps,
-          top_comps: [],
-          request_id: crypto.randomUUID(),
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        const valuation = await runLocalValuation(parsedVehicle, currentUser?.dealer_name);
-        setResult({
-          parsed: parsedVehicle,
-          ...valuation,
-          request_id: crypto.randomUUID(),
-          timestamp: new Date().toISOString(),
-        });
-      }
+      // Map run-valo-v1 response to ValoResult
+      const offer = valoData.trade_in_offer;
+      const market = valoData.market;
+
+      setResult({
+        parsed: parsedVehicle,
+        suggested_buy_range: offer
+          ? { min: offer.low, max: offer.high }
+          : null,
+        suggested_sell_range: market
+          ? { min: market.p25, max: market.p75 }
+          : null,
+        expected_gross_band: market && offer
+          ? { min: market.p25 - offer.high, max: market.p75 - offer.low }
+          : null,
+        typical_days_to_sell: null,
+        confidence: valoData.confidence === 'HIGH' ? 'HIGH' : valoData.confidence === 'MED' ? 'MEDIUM' : 'LOW',
+        tier: 'dealer',
+        tier_label: `VALO (${valoData.comp_count} comps)`,
+        sample_size: valoData.comp_count ?? 0,
+        top_comps: valoData.anchor ? [valoData.anchor, ...(valoData.backups ?? [])] : [],
+        request_id: valoData.valo_run_id ?? crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+      });
 
       toast.success('Valuation complete');
     } catch (err) {
