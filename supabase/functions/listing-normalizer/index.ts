@@ -105,56 +105,9 @@ function extractKm(text: string): number | null {
   return null;
 }
 
-// Make extraction
-function extractMake(text: string): string | null {
-  const makes = [
-    'TOYOTA', 'FORD', 'HOLDEN', 'MAZDA', 'NISSAN', 'HYUNDAI', 'KIA',
-    'HONDA', 'SUBARU', 'MITSUBISHI', 'VOLKSWAGEN', 'BMW', 'MERCEDES',
-    'AUDI', 'LEXUS', 'JEEP', 'LAND ROVER', 'ISUZU', 'SUZUKI', 'PEUGEOT',
-    'RENAULT', 'VOLVO', 'SKODA', 'FIAT', 'PORSCHE', 'MINI', 'CHRYSLER',
-    'DODGE', 'RAM', 'TESLA', 'MG', 'HAVAL', 'GWM', 'LDV', 'SSANGYONG'
-  ];
-  
-  const upper = text.toUpperCase();
-  
-  for (const make of makes) {
-    if (upper.includes(make)) {
-      return make;
-    }
-  }
-  
-  return null;
-}
-
-// Model extraction (based on make)
-function extractModel(text: string, make: string | null): string | null {
-  if (!make) return null;
-  
-  const modelMap: Record<string, string[]> = {
-    TOYOTA: ['LANDCRUISER', 'LAND CRUISER', 'HILUX', 'PRADO', 'CAMRY', 'COROLLA', 'RAV4', 'KLUGER', 'FORTUNER', '86', 'SUPRA', 'YARIS', 'CH-R', 'AVALON'],
-    FORD: ['RANGER', 'MUSTANG', 'EVEREST', 'FOCUS', 'ESCAPE', 'TERRITORY', 'FALCON', 'MONDEO', 'FIESTA', 'ENDURA', 'PUMA'],
-    HOLDEN: ['COMMODORE', 'COLORADO', 'CAPTIVA', 'CRUZE', 'TRAX', 'EQUINOX', 'ACADIA', 'ASTRA', 'TRAILBLAZER'],
-    MAZDA: ['BT-50', 'BT50', 'CX-5', 'CX5', 'CX-3', 'CX3', 'CX-9', 'CX9', 'CX-30', 'CX30', 'MAZDA3', 'MAZDA6', 'MAZDA2', 'MX-5'],
-    NISSAN: ['PATROL', 'NAVARA', 'X-TRAIL', 'XTRAIL', 'PATHFINDER', 'QASHQAI', 'JUKE', 'LEAF', '370Z', 'GT-R'],
-    HYUNDAI: ['TUCSON', 'SANTA FE', 'I30', 'KONA', 'VENUE', 'PALISADE', 'IONIQ', 'STARIA', 'ILOAD'],
-    KIA: ['SPORTAGE', 'SELTOS', 'CERATO', 'SORENTO', 'CARNIVAL', 'STINGER', 'PICANTO', 'RIO', 'EV6'],
-    MITSUBISHI: ['TRITON', 'PAJERO', 'OUTLANDER', 'ASX', 'ECLIPSE CROSS', 'PAJERO SPORT'],
-    ISUZU: ['D-MAX', 'DMAX', 'MU-X', 'MUX'],
-    SUBARU: ['OUTBACK', 'FORESTER', 'XV', 'IMPREZA', 'WRX', 'BRZ', 'LIBERTY', 'LEVORG'],
-    VOLKSWAGEN: ['AMAROK', 'GOLF', 'TIGUAN', 'TOUAREG', 'POLO', 'PASSAT', 'T-ROC', 'ARTEON'],
-  };
-  
-  const upper = text.toUpperCase();
-  const models = modelMap[make] || [];
-  
-  for (const model of models) {
-    if (upper.includes(model)) {
-      return model.replace('-', '').replace(' ', '');
-    }
-  }
-  
-  return null;
-}
+// ─── REMOVED: extractMake() and extractModel() with inline model maps ────────
+// Identity resolution is now handled EXCLUSIVELY by normalizeVehicleIdentity().
+// No inline make/model maps allowed. See _shared/taxonomy/normalizeVehicleIdentity.ts.
 
 // Transmission extraction
 function extractTransmission(text: string): string | null {
@@ -274,23 +227,25 @@ serve(async (req) => {
       const fuelType = extractFuelType(text);
       const bodyType = extractBodyType(text);
 
-      // ── Canonical make/model/variant via shared normalizer ──
-      let make: string | null = extractMake(text);
-      let model: string | null = extractModel(text, make);
+      // ── Canonical make/model/variant via shared normalizer (SINGLE SOURCE OF TRUTH) ──
+      // No inline make/model extraction — normalizer handles everything.
+      let make: string | null = null;
+      let model: string | null = null;
       try {
         const normResult = await normalizeVehicleIdentity(taxonomyDeps, {
           source: domainType,
           url: raw.url_canonical,
           title: raw.title || '',
-          makeRaw: make,
-          modelRaw: model,
           bodyText: text.slice(0, 4000),
           year,
           km,
         });
-        if (normResult.make) make = normResult.make;
-        if (normResult.model) model = normResult.model;
-      } catch (_) { /* keep inline extraction as fallback */ }
+        make = normResult.make;
+        model = normResult.model;
+      } catch (normErr) {
+        console.warn(`[listing-normalizer] Normalizer failed for ${raw.id}:`, normErr);
+        // No fallback — identity must come from canonical normalizer
+      }
 
       const extractedFields = {
         make,
