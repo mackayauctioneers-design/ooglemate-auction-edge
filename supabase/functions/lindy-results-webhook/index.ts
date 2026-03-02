@@ -2,13 +2,16 @@
  * lindy-results-webhook
  *
  * Receives structured listing results from Lindy Computer browser automation.
- * Validates HMAC signature, enforces schema, normalizes identity, writes to staging.
+ * Validates signature, enforces schema, normalizes identity, writes to staging,
+ * then runs fingerprint scoring against the dealer's active fingerprints.
  *
- * Security: HMAC-SHA256 signature required via X-Lindy-Signature header.
+ * Security: Constant-time string comparison via X-Lindy-Signature header.
  * Idempotent: re-posting for an already-completed job returns 200.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { scoreListingsForDealer } from "../_shared/fingerprint/matchListingToFingerprint.ts";
+import type { StagedListing } from "../_shared/fingerprint/matchListingToFingerprint.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -181,7 +184,7 @@ Deno.serve(async (req) => {
   // ── 3. Fetch job record ────────────────────────────────────────────────
   const { data: job, error: jobErr } = await sb
     .from("outward_jobs")
-    .select("id, search_run_id, source_key, status")
+    .select("id, search_run_id, source_key, status, account_id")
     .eq("id", jobId)
     .single();
 
@@ -257,7 +260,48 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ── 6. Mark job complete ───────────────────────────────────────────────
+  // ── 6. Fingerprint scoring ──────────────────────────────────────────────
+  let scoreResult = { scored: 0, no_match: 0 };
+
+  if (validated.length > 0 && job.account_id) {
+    // Resolve dealer_profile_id from account_id
+    const { data: profile } = await sb
+      .from("dealer_profiles")
+      .select("id")
+      .eq("account_id", job.account_id)
+      .limit(1)
+      .single();
+
+    if (profile?.id) {
+      // Fetch the just-inserted listings for scoring
+      const { data: staged } = await sb
+        .from("outward_search_results")
+        .select("id, make_norm, model_norm, variant_family, year, odometer_km, price_aud, listing_url")
+        .eq("job_id", job.id)
+        .eq("status", "pending_score");
+
+      if (staged?.length) {
+        const listingsToScore: StagedListing[] = staged.map((r) => ({
+          id: r.id,
+          make_norm: r.make_norm,
+          model_norm: r.model_norm,
+          variant_family: r.variant_family,
+          year: r.year,
+          odometer_km: r.odometer_km ? Number(r.odometer_km) : null,
+          price_aud: r.price_aud ? Number(r.price_aud) : null,
+          listing_url: r.listing_url,
+        }));
+        scoreResult = await scoreListingsForDealer(sb, profile.id, listingsToScore);
+        console.log(
+          `[lindy-webhook] Scoring complete: ${scoreResult.scored} scored, ${scoreResult.no_match} no_match`,
+        );
+      }
+    } else {
+      console.warn(`[lindy-webhook] No dealer_profile found for account_id=${job.account_id}`);
+    }
+  }
+
+  // ── 7. Mark job complete ───────────────────────────────────────────────
   await sb
     .from("outward_jobs")
     .update({
@@ -268,7 +312,12 @@ Deno.serve(async (req) => {
     .eq("id", job.id);
 
   return new Response(
-    JSON.stringify({ status: "ok", received: validated.length }),
+    JSON.stringify({
+      status: "ok",
+      received: validated.length,
+      scored: scoreResult.scored,
+      no_match: scoreResult.no_match,
+    }),
     {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
