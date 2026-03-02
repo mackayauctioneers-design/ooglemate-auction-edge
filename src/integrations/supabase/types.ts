@@ -6168,58 +6168,88 @@ export type Database = {
       }
       outward_search_results: {
         Row: {
+          confidence: string | null
           fingerprint: string | null
+          fingerprint_id: string | null
           id: string
           ingested_at: string | null
           job_id: string
           listing_url: string
           make_norm: string | null
+          margin_band_high: number | null
+          margin_band_low: number | null
+          margin_estimate: number | null
+          match_reasons: Json | null
+          match_score: number | null
           model_norm: string | null
           norm_confidence: number | null
           norm_explain: string[] | null
           odometer_km: number | null
           price_aud: number | null
+          retail_truth: number | null
+          scored_at: string | null
           search_run_id: string
           source_key: string
           state: string | null
+          status: string
           title: string | null
           variant_family: string | null
           year: number | null
         }
         Insert: {
+          confidence?: string | null
           fingerprint?: string | null
+          fingerprint_id?: string | null
           id?: string
           ingested_at?: string | null
           job_id: string
           listing_url: string
           make_norm?: string | null
+          margin_band_high?: number | null
+          margin_band_low?: number | null
+          margin_estimate?: number | null
+          match_reasons?: Json | null
+          match_score?: number | null
           model_norm?: string | null
           norm_confidence?: number | null
           norm_explain?: string[] | null
           odometer_km?: number | null
           price_aud?: number | null
+          retail_truth?: number | null
+          scored_at?: string | null
           search_run_id: string
           source_key: string
           state?: string | null
+          status?: string
           title?: string | null
           variant_family?: string | null
           year?: number | null
         }
         Update: {
+          confidence?: string | null
           fingerprint?: string | null
+          fingerprint_id?: string | null
           id?: string
           ingested_at?: string | null
           job_id?: string
           listing_url?: string
           make_norm?: string | null
+          margin_band_high?: number | null
+          margin_band_low?: number | null
+          margin_estimate?: number | null
+          match_reasons?: Json | null
+          match_score?: number | null
           model_norm?: string | null
           norm_confidence?: number | null
           norm_explain?: string[] | null
           odometer_km?: number | null
           price_aud?: number | null
+          retail_truth?: number | null
+          scored_at?: string | null
           search_run_id?: string
           source_key?: string
           state?: string | null
+          status?: string
           title?: string | null
           variant_family?: string | null
           year?: number | null
