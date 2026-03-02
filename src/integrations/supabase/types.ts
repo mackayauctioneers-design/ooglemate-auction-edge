@@ -5895,6 +5895,54 @@ export type Database = {
           },
         ]
       }
+      outward_browse_queue: {
+        Row: {
+          attempt_count: number
+          completed_at: string | null
+          created_at: string
+          dispatched_at: string | null
+          id: string
+          job_id: string
+          last_error: string | null
+          page: number
+          prompt: string
+          search_run_id: string
+          source: string
+          status: string
+          url: string
+        }
+        Insert: {
+          attempt_count?: number
+          completed_at?: string | null
+          created_at?: string
+          dispatched_at?: string | null
+          id?: string
+          job_id: string
+          last_error?: string | null
+          page?: number
+          prompt: string
+          search_run_id: string
+          source: string
+          status?: string
+          url: string
+        }
+        Update: {
+          attempt_count?: number
+          completed_at?: string | null
+          created_at?: string
+          dispatched_at?: string | null
+          id?: string
+          job_id?: string
+          last_error?: string | null
+          page?: number
+          prompt?: string
+          search_run_id?: string
+          source?: string
+          status?: string
+          url?: string
+        }
+        Relationships: []
+      }
       outward_candidate_links: {
         Row: {
           candidate_id: string
