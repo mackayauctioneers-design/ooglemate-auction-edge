@@ -236,7 +236,7 @@ export default function ValoPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    document.title = 'Ask Bob | OogleMate';
+    document.title = 'Do A Valo | OogleMate';
     return () => { document.title = 'OogleMate'; };
   }, []);
 
@@ -477,9 +477,9 @@ export default function ValoPage() {
         {/* Minimal header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="text-4xl">👨‍🔧</div>
+            <div className="text-4xl">🚗</div>
             <div>
-              <h1 className="text-2xl font-bold">Bob</h1>
+              <h1 className="text-2xl font-bold">Do A Valo</h1>
               {/* Build version stamp - visible for debugging */}
               <p className="text-xs text-muted-foreground font-mono">
                 {import.meta.env.MODE} | Build: {__BUILD_TIME__}
