@@ -8168,6 +8168,48 @@ export type Database = {
         }
         Relationships: []
       }
+      search_audit_log: {
+        Row: {
+          created_at: string
+          dealer_id: string | null
+          duration_ms: number | null
+          id: string
+          outward_reason: string | null
+          outward_triggered: boolean
+          parsed_intent: Json
+          raw_query: string
+          tier0_count: number
+          tier1_count: number
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          dealer_id?: string | null
+          duration_ms?: number | null
+          id?: string
+          outward_reason?: string | null
+          outward_triggered?: boolean
+          parsed_intent?: Json
+          raw_query: string
+          tier0_count?: number
+          tier1_count?: number
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          dealer_id?: string | null
+          duration_ms?: number | null
+          id?: string
+          outward_reason?: string | null
+          outward_triggered?: boolean
+          parsed_intent?: Json
+          raw_query?: string
+          tier0_count?: number
+          tier1_count?: number
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       search_cache: {
         Row: {
           badge: string | null

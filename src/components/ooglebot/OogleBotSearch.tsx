@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { searchOogleBot, searchOogleBotDirect, type OogleBotResponse, type OogleBotResult } from "@/lib/api/ooglebot";
-import { searchInternalInventory, searchDealerSpecs, parseSearchQuery, type InternalMatch } from "@/lib/api/ooglebot-internal";
+import { searchTiered, searchDealerSpecs, parseSearchQuery, type InternalMatch, type TieredSearchResult } from "@/lib/api/ooglebot-internal";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -603,38 +603,50 @@ export function OogleBotSearch() {
     }
 
     try {
-      // Run internal search + AI intent parse in parallel
-      const [listingsResult, specsResult, oogleBotResult] = await Promise.allSettled([
-        searchInternalInventory(query),
+      // Run tiered internal search + AI intent parse in parallel
+      const [tieredResult, specsResult, oogleBotResult] = await Promise.allSettled([
+        searchTiered(query),
         searchDealerSpecs(query),
         searchOogleBot(query),
       ]);
 
-      const listings = listingsResult.status === "fulfilled" ? listingsResult.value : [];
+      const tiered: TieredSearchResult | null = tieredResult.status === "fulfilled" ? tieredResult.value : null;
+      const listings = tiered ? [...tiered.tier0_auctions, ...tiered.tier1_internal] : [];
       const specs = specsResult.status === "fulfilled" ? specsResult.value : [];
       setInternalResults(listings);
       setDealerSpecs(specs);
+
+      // Log tier counts for operator visibility
+      if (tiered) {
+        console.log(`[Search] Tier 0 (auctions): ${tiered.tier0_auctions.length} | Tier 1 (retail): ${tiered.tier1_internal.length} | Outward: ${tiered.outward_allowed ? "ALLOWED" : "BLOCKED"} (${tiered.outward_reason}) | ${tiered.duration_ms}ms`);
+      }
 
       if (oogleBotResult.status === "fulfilled") {
         setExternalResponse(oogleBotResult.value);
       }
 
-      // Trigger Manus dealer search — always fires regardless of OogleBot success.
-      // Prefer structured filters from OogleBot NLP; fall back to regex parser.
-      const oogFilters =
-        oogleBotResult.status === "fulfilled" ? oogleBotResult.value.filters : null;
-      const fallback = parseSearchQuery(query);
-      const manusFilters = {
-        make: oogFilters?.make || fallback.make || "",
-        model: oogFilters?.model || fallback.model || undefined,
-        badge: oogFilters?.badge ?? null,
-        year_min: oogFilters?.year_min ?? fallback.yearMin,
-        year_max: oogFilters?.year_max ?? fallback.yearMax,
-        max_km: oogFilters?.max_km ?? fallback.kmMax,
-        price_max: oogFilters?.price_max ?? fallback.priceMax,
-      };
-      if (manusFilters.make) {
-        triggerManusSearch(manusFilters);
+      // Outward gate: only trigger Manus if Tier 0 is insufficient
+      const outwardAllowed = tiered?.outward_allowed ?? true;
+
+      if (outwardAllowed) {
+        // Prefer structured filters from OogleBot NLP; fall back to regex parser.
+        const oogFilters =
+          oogleBotResult.status === "fulfilled" ? oogleBotResult.value.filters : null;
+        const fallback = parseSearchQuery(query);
+        const manusFilters = {
+          make: oogFilters?.make || fallback.make || "",
+          model: oogFilters?.model || fallback.model || undefined,
+          badge: oogFilters?.badge ?? null,
+          year_min: oogFilters?.year_min ?? fallback.yearMin,
+          year_max: oogFilters?.year_max ?? fallback.yearMax,
+          max_km: oogFilters?.max_km ?? fallback.kmMax,
+          price_max: oogFilters?.price_max ?? fallback.priceMax,
+        };
+        if (manusFilters.make) {
+          triggerManusSearch(manusFilters);
+        }
+      } else {
+        console.log(`[Search] Outward search BLOCKED: ${tiered?.outward_reason}`);
       }
 
       // Legacy outward search removed — trigger-manus-search handles all external sources now.
