@@ -498,3 +498,6 @@ verify_jwt = false
 
 [functions.run-outward-search-v2]
 verify_jwt = false
+
+[functions.run-modo-evaluation]
+verify_jwt = false
