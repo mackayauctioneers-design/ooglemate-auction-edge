@@ -101,12 +101,13 @@ function validateListings(raw: unknown[], sourceKey: string): ValidatedListing[]
     // Map seller_name through
     // (no normalization needed, just pass-through)
 
-    // Reject truly unexpected keys (after normalization)
+    // RELAXED VALIDATION: Log unexpected keys but DON'T reject during integration
     const allowedKeys = new Set(["title", "price_aud", "odometer_km", "year", "state", "listing_url", "source_id", "image_url", "seller_name"]);
     const extraKeys = Object.keys(r).filter((k) => !allowedKeys.has(k));
     if (extraKeys.length > 0) {
-      console.warn(`[lindy-webhook] Dropping listing with unexpected keys: ${extraKeys.join(", ")}`);
-      continue;
+      console.warn(`[lindy-webhook] Listing has unexpected keys (KEPT): ${extraKeys.join(", ")}`, JSON.stringify(r));
+      // Strip extra keys but keep the listing
+      for (const k of extraKeys) delete r[k];
     }
 
     const price = toNumberOrNull(r.price_aud);
@@ -180,7 +181,7 @@ Deno.serve(async (req) => {
   // ── 1. Signature validation (constant-time string compare) ──────────────
   const signature = req.headers.get("x-lindy-signature") || "";
   if (!timingSafeEqual(signature, secret)) {
-    console.warn("[lindy-webhook] Signature mismatch — rejecting");
+    console.warn("[lindy-webhook] Signature mismatch — rejecting. Received:", JSON.stringify(signature));
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -188,10 +189,15 @@ Deno.serve(async (req) => {
   }
 
   // ── 2. Parse body ──────────────────────────────────────────────────────
+  let rawText: string;
   let body: { job_id?: string; run_id?: string; queue_id?: string; source?: string; listings?: unknown[]; completed_at?: string };
   try {
-    body = JSON.parse(await req.text());
-  } catch {
+    rawText = await req.text();
+    console.log("[lindy-webhook] LINDY RAW PAYLOAD:", rawText.slice(0, 5000));
+    console.log("[lindy-webhook] Headers:", JSON.stringify(Object.fromEntries(req.headers.entries())));
+    body = JSON.parse(rawText);
+  } catch (e) {
+    console.error("[lindy-webhook] JSON parse failed:", e);
     return new Response(JSON.stringify({ error: "Invalid JSON" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
