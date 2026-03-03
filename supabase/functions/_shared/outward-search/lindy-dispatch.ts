@@ -120,10 +120,13 @@ function buildExtractionPrompt(source: string, intent: ParsedIntent): string {
 // ─── Concurrency check ──────────────────────────────────────────────────────
 
 async function getActiveJobCount(sb: ReturnType<typeof createClient>): Promise<number> {
+  // Only count jobs dispatched in the last 30 minutes to prevent stale jobs from permanently blocking
+  const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const { count } = await sb
     .from("outward_jobs")
     .select("id", { count: "exact", head: true })
-    .eq("status", "dispatched");
+    .eq("status", "dispatched")
+    .gte("dispatched_at", cutoff);
 
   return count ?? 0;
 }
