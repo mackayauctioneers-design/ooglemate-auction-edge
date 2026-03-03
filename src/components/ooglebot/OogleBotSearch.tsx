@@ -156,15 +156,9 @@ function UnifiedResultCard({ result, isBestPrice, isOperator }: { result: Unifie
           {result.dealer_name && (
             <span className="flex items-center gap-1"><Building2 className="h-3 w-3" />{result.dealer_name}</span>
           )}
-          {result.is_auction && result.auction_house && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{result.auction_house}</Badge>
-          )}
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">{result.source_class || result.source}</Badge>
-          {result.is_discovery && (
-            <Badge variant="outline" className="text-[9px] px-1 py-0 border-muted text-muted-foreground/60 italic">
-              AI Discovery
-            </Badge>
-          )}
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+            {result.is_discovery ? "AI Discovery" : (result.is_auction && result.auction_house ? result.auction_house : (result.source_class || result.source))}
+          </Badge>
           {isOperator && result.score != null && <span className="text-[10px]">Score: {result.score}</span>}
           {isOperator && result.effective_price != null && <span className="text-[10px]">eff: {formatPrice(result.effective_price)}</span>}
         </div>
