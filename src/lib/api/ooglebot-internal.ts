@@ -225,7 +225,7 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
     .gte("last_seen_at", recencyCutoff)
     .not("status", "eq", "sold")
     .ilike("make", `%${parsed.make}%`)
-    .order("asking_price", { ascending: false, nullsFirst: false })
+    .order("asking_price", { ascending: true, nullsFirst: false })
     .limit(TIER0_LIMIT);
 
   // Model matching — with Toyota Prado special case
@@ -266,7 +266,7 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
     .gte("last_seen_at", recencyCutoff)
     .not("status", "eq", "sold")
     .ilike("make", `%${parsed.make}%`)
-    .order("asking_price", { ascending: false, nullsFirst: false })
+    .order("asking_price", { ascending: true, nullsFirst: false })
     .limit(TIER1_LIMIT);
 
   // Exclude auction sources (they're in Tier 0) and blocklisted sources
