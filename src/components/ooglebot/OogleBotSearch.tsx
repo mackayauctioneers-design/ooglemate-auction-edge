@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { searchOogleBot, searchOogleBotDirect, type OogleBotResponse, type OogleBotResult } from "@/lib/api/ooglebot";
 import { searchTiered, searchDealerSpecs, parseSearchQuery, type InternalMatch, type TieredSearchResult } from "@/lib/api/ooglebot-internal";
 import { supabase } from "@/integrations/supabase/client";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -439,6 +440,11 @@ export function OogleBotSearch() {
   const prevOutwardCountRef = useRef(0);
   const [jobStatuses, setJobStatuses] = useState<Array<{ source_key: string; status: string; result_count: number }>>([]);
 
+  // ── Gemini Market Insight (auto, top 3 only) ──
+  const [insightText, setInsightText] = useState<string | null>(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const insightFiredRef = useRef<string | null>(null); // track which search triggered insight
+
   // Elapsed timer while outward polling
   useEffect(() => {
     if (!outwardPolling || outwardPending === 0) { setElapsedSec(0); return; }
@@ -452,6 +458,51 @@ export function OogleBotSearch() {
     const interval = setInterval(() => setMsgIndex(i => (i + 1) % REASSURANCE_MESSAGES.length), 15_000);
     return () => clearInterval(interval);
   }, [outwardPending]);
+
+  // ── Auto-fire Gemini insight when we have 3+ market results ──
+  useEffect(() => {
+    if (marketResults.length < 3) return;
+    // Build a fingerprint to avoid re-firing for same results
+    const top3Key = marketResults.slice(0, 3).map(r => r.id).join("|");
+    if (insightFiredRef.current === top3Key) return;
+    insightFiredRef.current = top3Key;
+
+    const floor = marketResults[0];
+    const second = marketResults[1];
+    const third = marketResults[2];
+    const floorPrice = floor.effective_price ?? floor.price ?? 0;
+    const secondPrice = second.effective_price ?? second.price ?? 0;
+    const thirdPrice = third.effective_price ?? third.price ?? 0;
+    const spread = floorPrice > 0 ? (((thirdPrice - floorPrice) / floorPrice) * 100).toFixed(1) : "0";
+    const vehicleLabel = `${make} ${model} ${badge}`.trim();
+
+    setInsightLoading(true);
+    setInsightText(null);
+
+    supabase.functions.invoke("ooglebot-gemini-insight", {
+      body: {
+        vehicle: vehicleLabel,
+        floor: floorPrice,
+        second: secondPrice,
+        third: thirdPrice,
+        spread_pct: parseFloat(spread),
+        count: marketResults.length,
+        outlier_flag: false,
+      },
+    }).then(({ data, error }) => {
+      if (error) {
+        console.error("Gemini insight error:", error);
+        setInsightText(null);
+      } else {
+        setInsightText(data?.insight || null);
+      }
+    }).catch((err) => {
+      console.error("Gemini insight error:", err);
+      setInsightText(null);
+    }).finally(() => {
+      setInsightLoading(false);
+    });
+  }, [marketResults, make, model, badge]);
 
   // ── Outward polling (poll outward_jobs + outward_search_results by search_run_id) ──
   // FIX #1: Correct column names (source_key not source) and terminal statuses
@@ -703,6 +754,9 @@ export function OogleBotSearch() {
     setOutwardPending(0);
     setOutwardTotal(0);
     setPhase1Count(0);
+    setInsightText(null);
+    setInsightLoading(false);
+    insightFiredRef.current = null;
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     seenJobIdsRef.current.clear();
     prevOutwardCountRef.current = 0;
@@ -1099,7 +1153,56 @@ export function OogleBotSearch() {
             </p>
           </CardHeader>
           <CardContent className="space-y-1.5">
-            {/* Loading states */}
+            {/* ── Market Insight (auto, top 3) ── */}
+            {!internalLoading && marketResults.length >= 3 && (
+              <div className="rounded-lg border border-border bg-muted/30 p-4 mb-3 space-y-2">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 text-center">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Floor</p>
+                    <p className="text-sm font-semibold text-foreground">{formatPrice(marketResults[0].effective_price ?? marketResults[0].price)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">2nd</p>
+                    <p className="text-sm font-semibold text-foreground">{formatPrice(marketResults[1].effective_price ?? marketResults[1].price)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">3rd</p>
+                    <p className="text-sm font-semibold text-foreground">{formatPrice(marketResults[2].effective_price ?? marketResults[2].price)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Spread</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {(() => {
+                        const f = marketResults[0].effective_price ?? marketResults[0].price ?? 0;
+                        const t = marketResults[2].effective_price ?? marketResults[2].price ?? 0;
+                        return f > 0 ? `${(((t - f) / f) * 100).toFixed(1)}%` : "—";
+                      })()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Listings</p>
+                    <p className="text-sm font-semibold text-foreground">{marketResults.length}</p>
+                  </div>
+                </div>
+
+                {/* Gemini insight */}
+                {insightLoading && (
+                  <div className="space-y-1.5 pt-2 border-t border-border">
+                    <p className="text-xs text-muted-foreground animate-pulse">Analysing market structure…</p>
+                    <Skeleton className="h-3 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                )}
+                {!insightLoading && insightText && (
+                  <div className="pt-2 border-t border-border">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Market Insight</p>
+                    <div className="text-xs text-foreground whitespace-pre-line leading-relaxed">
+                      {insightText}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {internalLoading && (
               <div className="flex flex-col items-center py-6 gap-1">
                 <KitingLoader size="md" label="Searching…" />
