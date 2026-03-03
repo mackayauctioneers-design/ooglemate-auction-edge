@@ -43,7 +43,7 @@ export async function runDispatchLoop(
   } = {},
 ): Promise<DispatchResult> {
   const {
-    sources = ["carsales", "carsguide", "gumtree", "drive"],
+    sources = ["gumtree", "drive", "autotrader", "carsguide"],
     maxPages = 2,
   } = options;
 

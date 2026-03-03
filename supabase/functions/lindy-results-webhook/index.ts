@@ -217,18 +217,39 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // ── 3. Fetch job record ────────────────────────────────────────────────
-  const { data: job, error: jobErr } = await sb
+  // ── 3. Fetch or auto-create job record ─────────────────────────────────
+  let { data: job, error: jobErr } = await sb
     .from("outward_jobs")
     .select("id, search_run_id, source_key, status, account_id")
     .eq("id", jobId)
     .single();
 
   if (jobErr || !job) {
-    return new Response(JSON.stringify({ error: "Job not found" }), {
-      status: 404,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    // Auto-create a stub job so Lindy results are never lost
+    const sourceKey = body.source || "unknown";
+    const searchRunId = body.run_id || jobId; // fallback to jobId if no run_id
+    console.warn(`[lindy-webhook] Job ${jobId} not found — auto-creating stub (source=${sourceKey})`);
+
+    const { data: created, error: createErr } = await sb
+      .from("outward_jobs")
+      .insert({
+        id: jobId,
+        source_key: sourceKey,
+        search_run_id: searchRunId,
+        status: "dispatched",
+        search_url: "auto-created-by-webhook",
+      })
+      .select("id, search_run_id, source_key, status, account_id")
+      .single();
+
+    if (createErr || !created) {
+      console.error("[lindy-webhook] Failed to auto-create job:", createErr);
+      return new Response(JSON.stringify({ error: "Job not found and auto-create failed" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    job = created;
   }
 
   // Idempotent — already processed
@@ -239,8 +260,8 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Reject if job wasn't dispatched
-  if (job.status !== "dispatched") {
+  // Accept both 'dispatched' and 'pending' statuses (auto-created jobs start as 'dispatched')
+  if (job.status !== "dispatched" && job.status !== "pending") {
     return new Response(JSON.stringify({ error: `Job status is '${job.status}', expected 'dispatched'` }), {
       status: 409,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
