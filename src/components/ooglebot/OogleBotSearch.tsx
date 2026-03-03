@@ -75,7 +75,7 @@ function formatKm(km: number | null) {
   return `${km.toLocaleString()} km`;
 }
 
-// ── Result Cards (unchanged) ──
+// ── Result Cards ──
 
 function InternalResultCard({ match, showUrl }: { match: InternalMatch; showUrl: boolean }) {
   return (
@@ -112,7 +112,10 @@ function InternalResultCard({ match, showUrl }: { match: InternalMatch; showUrl:
             </span>
           )}
           {match.auction_house && (
-            <span>{match.auction_house}</span>
+            <span className="flex items-center gap-1">
+              <Building2 className="h-3 w-3" />
+              {match.auction_house}
+            </span>
           )}
         </div>
       </div>
@@ -191,9 +194,9 @@ function ScoredResultCard({ result, showUrl, isOperator }: { result: OogleBotRes
   );
 }
 
-// ── Manus types + section ──
+// ── Outward Result types + section ──
 
-interface ManusResult {
+interface OutwardResult {
   title: string;
   price: number | null;
   price_type: string | null;
@@ -209,13 +212,13 @@ interface ManusResult {
 }
 
 const EGC_ON_ROAD_ESTIMATE = 3500;
-function sortablePrice(r: ManusResult): number {
+function sortablePrice(r: OutwardResult): number {
   if (r.price == null) return Infinity;
   if (r.price_type === 'excl_govt') return r.price + EGC_ON_ROAD_ESTIMATE;
   return r.price;
 }
 
-function ManusResultCard({ result, isBestPrice }: { result: ManusResult; isBestPrice?: boolean }) {
+function OutwardResultCard({ result, isBestPrice }: { result: OutwardResult; isBestPrice?: boolean }) {
   return (
     <div className={`flex items-start justify-between gap-4 p-3 rounded-lg border transition-colors ${
       isBestPrice
@@ -293,34 +296,39 @@ const REASSURANCE_MESSAGES = [
   "Almost done — finalising results…",
 ];
 
-const MANUS_TIMEOUT_MS = 5 * 60 * 1000;
+const OUTWARD_TIMEOUT_MS = 5 * 60 * 1000;
 
-function ManusResultsSection({
-  manusTriggered, manusSessionId, manusPolling, manusPending, manusTotal, manusResults, manusTimedOut,
+/** Terminal statuses for outward_jobs */
+const TERMINAL_STATUSES = new Set(["complete", "failed", "timeout"]);
+
+function OutwardResultsSection({
+  outwardTriggered, searchRunId, outwardPolling, outwardPending, outwardTotal, outwardResults, outwardTimedOut, phase1Count,
 }: {
-  manusTriggered: boolean;
-  manusSessionId: string | null;
-  manusPolling: boolean;
-  manusPending: number;
-  manusTotal: number;
-  manusResults: ManusResult[];
-  manusTimedOut: boolean;
+  outwardTriggered: boolean;
+  searchRunId: string | null;
+  outwardPolling: boolean;
+  outwardPending: number;
+  outwardTotal: number;
+  outwardResults: OutwardResult[];
+  outwardTimedOut: boolean;
+  phase1Count: number;
 }) {
   const [showAll, setShowAll] = useState(false);
   const [msgIndex, setMsgIndex] = useState(0);
 
   useEffect(() => {
-    if (manusPending === 0) return;
+    if (outwardPending === 0) return;
     const interval = setInterval(() => {
       setMsgIndex(i => (i + 1) % REASSURANCE_MESSAGES.length);
     }, 30_000);
     return () => clearInterval(interval);
-  }, [manusPending]);
+  }, [outwardPending]);
 
+  // Deduplicate by listing URL (primary key), keeping lowest price
   const deduped = (() => {
-    const map = new Map<string, ManusResult>();
-    for (const r of manusResults) {
-      const key = r.stock_no || r.url || crypto.randomUUID();
+    const map = new Map<string, OutwardResult>();
+    for (const r of outwardResults) {
+      const key = r.url || r.stock_no || crypto.randomUUID();
       const existing = map.get(key);
       if (!existing || (r.price != null && (existing.price == null || r.price < existing.price))) {
         map.set(key, r);
@@ -333,7 +341,7 @@ function ManusResultsSection({
   const top3 = deduped.slice(0, DEFAULT_SHOW);
   const hasMore = deduped.length > DEFAULT_SHOW;
   const displayed = showAll ? deduped : top3;
-  const completedCount = manusTotal - manusPending;
+  const completedCount = outwardTotal - outwardPending;
 
   return (
     <Card>
@@ -341,33 +349,39 @@ function ManusResultsSection({
         <CardTitle className="flex items-center gap-2 text-sm font-medium">
           <Search className="h-4 w-4 text-primary" />
           Market Results
-          {manusPending > 0 && !manusTimedOut && (
+          {outwardPending > 0 && !outwardTimedOut && (
             <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
-              {completedCount}/{manusTotal} complete
+              {completedCount}/{outwardTotal} complete
             </span>
           )}
-          {manusPending === 0 && manusTotal > 0 && deduped.length > 0 && (
+          {outwardPending === 0 && outwardTotal > 0 && deduped.length > 0 && (
             <span className="text-xs font-normal text-muted-foreground">
               Top 3 of {deduped.length} results
             </span>
           )}
         </CardTitle>
+        {/* Phase 1 indicator */}
+        {phase1Count > 0 && outwardPending > 0 && (
+          <p className="text-[10px] text-muted-foreground">
+            ✓ {phase1Count} internal results ready · Extended search in progress…
+          </p>
+        )}
       </CardHeader>
       <CardContent className="space-y-1.5">
-        {manusTriggered && !manusSessionId && !manusPolling && manusResults.length === 0 && !manusTimedOut && (
+        {outwardTriggered && !searchRunId && !outwardPolling && outwardResults.length === 0 && !outwardTimedOut && (
           <div className="flex flex-col items-center py-4 gap-1">
             <KitingLoader size="md" label="Connecting to search network…" />
           </div>
         )}
-        {manusResults.length === 0 && manusPending > 0 && !manusTimedOut && (
+        {outwardResults.length === 0 && outwardPending > 0 && !outwardTimedOut && (
           <div className="flex flex-col items-center py-4 gap-2">
             <KitingLoader size="md" />
             <div className="w-full max-w-xs space-y-1">
               <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full bg-primary rounded-full transition-all duration-700 ease-out"
-                  style={{ width: `${manusTotal > 0 ? Math.max(5, (completedCount / manusTotal) * 100) : 5}%` }}
+                  style={{ width: `${outwardTotal > 0 ? Math.max(5, (completedCount / outwardTotal) * 100) : 5}%` }}
                 />
               </div>
               <p className="text-xs text-muted-foreground text-center animate-pulse">
@@ -376,26 +390,26 @@ function ManusResultsSection({
             </div>
           </div>
         )}
-        {manusResults.length > 0 && manusPending > 0 && !manusTimedOut && (
+        {outwardResults.length > 0 && outwardPending > 0 && !outwardTimedOut && (
           <div className="flex items-center gap-2 mb-2 px-1">
             <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
             <p className="text-xs text-muted-foreground">
-              {completedCount}/{manusTotal} sites searched · {deduped.length} result{deduped.length !== 1 ? "s" : ""} so far
+              {completedCount}/{outwardTotal} sites searched · {deduped.length} result{deduped.length !== 1 ? "s" : ""} so far
             </p>
           </div>
         )}
-        {manusTimedOut && deduped.length === 0 && (
+        {outwardTimedOut && deduped.length === 0 && (
           <p className="text-sm text-muted-foreground py-2">
             Search complete — no matching vehicles found at this time. Try broadening your search criteria.
           </p>
         )}
-        {!manusTimedOut && manusTriggered && deduped.length === 0 && manusPending === 0 && manusSessionId && (
+        {!outwardTimedOut && outwardTriggered && deduped.length === 0 && outwardPending === 0 && searchRunId && (
           <p className="text-sm text-muted-foreground py-2">
             No matching vehicles found.
           </p>
         )}
         {displayed.map((result, i) => (
-          <ManusResultCard key={result.url || i} result={result} isBestPrice={i === 0 && deduped.length > 1} />
+          <OutwardResultCard key={result.url || i} result={result} isBestPrice={i === 0 && deduped.length > 1} />
         ))}
         {hasMore && !showAll && (
           <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => setShowAll(true)}>
@@ -473,14 +487,15 @@ export function OogleBotSearch() {
   const [internalLoading, setInternalLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
-  // ── Lindy/Outward state (was Manus) ──
-  const [manusSessionId, setManusSessionId] = useState<string | null>(null); // now search_run_id
-  const [manusResults, setManusResults] = useState<ManusResult[]>([]);
-  const [manusPending, setManusPending] = useState(0);
-  const [manusTotal, setManusTotal] = useState(0);
-  const [manusPolling, setManusPolling] = useState(false);
-  const [manusTriggered, setManusTriggered] = useState(false);
-  const [manusTimedOut, setManusTimedOut] = useState(false);
+  // ── Outward search state (Phase 2) ──
+  const [searchRunId, setSearchRunId] = useState<string | null>(null);
+  const [outwardResults, setOutwardResults] = useState<OutwardResult[]>([]);
+  const [outwardPending, setOutwardPending] = useState(0);
+  const [outwardTotal, setOutwardTotal] = useState(0);
+  const [outwardPolling, setOutwardPolling] = useState(false);
+  const [outwardTriggered, setOutwardTriggered] = useState(false);
+  const [outwardTimedOut, setOutwardTimedOut] = useState(false);
+  const [phase1Count, setPhase1Count] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -503,48 +518,64 @@ export function OogleBotSearch() {
   const canSearch = make.trim().length > 0 && model.trim().length > 0;
   const badgeMissing = canSearch && !badge.trim();
 
-  // ── Lindy polling (poll outward_jobs + outward_search_results by search_run_id) ──
-  const pollManusTasks = useCallback(async (searchRunId: string) => {
-    // Poll outward_jobs for this search run
+  // ── Outward polling (poll outward_jobs + outward_search_results by search_run_id) ──
+  // FIX #1: Correct column names (source_key not source) and terminal statuses
+  // FIX #2: job_id in outward_search_results references outward_jobs.id (confirmed)
+  // FIX #3: MERGE results instead of overwrite — dedupe by listing_url
+  const pollOutwardJobs = useCallback(async (runId: string) => {
     const { data: jobs } = await supabase
       .from("outward_jobs")
       .select("id, status, source_key, result_count")
-      .eq("search_run_id", searchRunId);
+      .eq("search_run_id", runId);
     if (!jobs) return;
-    const pending = jobs.filter(j => j.status === "dispatched" || j.status === "pending").length;
+
+    const pending = jobs.filter(j => !TERMINAL_STATUSES.has(j.status)).length;
     const completed = jobs.filter(j => j.status === "complete");
 
-    // Fetch results from completed jobs
+    // Fetch results from completed jobs and MERGE with existing
     if (completed.length > 0) {
       const completedIds = completed.map(j => j.id);
       const { data: results } = await supabase
         .from("outward_search_results")
-        .select("title, price_aud, odometer_km, year, state, listing_url, make_norm, model_norm")
+        .select("title, price_aud, odometer_km, year, state, listing_url, make_norm, model_norm, variant_family, source_key")
         .in("job_id", completedIds);
 
-      if (results) {
-        const mapped: ManusResult[] = results.map(r => ({
+      if (results && results.length > 0) {
+        const newResults: OutwardResult[] = results.map(r => ({
           title: r.title || `${r.year || ""} ${r.make_norm || ""} ${r.model_norm || ""}`.trim(),
-          price: r.price_aud,
+          price: r.price_aud ? Number(r.price_aud) : null,
           price_type: null,
-          km: r.odometer_km,
+          km: r.odometer_km ? Number(r.odometer_km) : null,
           year: r.year,
           location: r.state,
           dealer_name: null,
           url: r.listing_url,
-          badge: null,
-          source: "lindy",
+          badge: r.variant_family || null,
+          source: r.source_key || "lindy",
           colour: null,
           stock_no: null,
         }));
-        setManusResults(mapped);
+
+        // Merge with existing results — deduplicate by URL
+        setOutwardResults(prev => {
+          const merged = [...prev, ...newResults];
+          const urlMap = new Map<string, OutwardResult>();
+          for (const r of merged) {
+            const key = r.url || crypto.randomUUID();
+            const existing = urlMap.get(key);
+            if (!existing || (r.price != null && (existing.price == null || r.price < existing.price))) {
+              urlMap.set(key, r);
+            }
+          }
+          return Array.from(urlMap.values());
+        });
       }
     }
 
-    setManusPending(pending);
-    setManusTotal(jobs.length);
+    setOutwardPending(pending);
+    setOutwardTotal(jobs.length);
     if (pending === 0) {
-      setManusPolling(false);
+      setOutwardPolling(false);
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     }
   }, []);
@@ -557,39 +588,39 @@ export function OogleBotSearch() {
   }, []);
 
   useEffect(() => {
-    if (!manusSessionId) return;
-    setManusPolling(true);
-    setManusTimedOut(false);
+    if (!searchRunId) return;
+    setOutwardPolling(true);
+    setOutwardTimedOut(false);
     const initialTimeout = setTimeout(() => {
-      pollManusTasks(manusSessionId);
-      pollRef.current = setInterval(() => pollManusTasks(manusSessionId), 8000);
+      pollOutwardJobs(searchRunId);
+      pollRef.current = setInterval(() => pollOutwardJobs(searchRunId), 8000);
     }, 3000);
     const channel = supabase
-      .channel(`outward-jobs-${manusSessionId}`)
+      .channel(`outward-jobs-${searchRunId}`)
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "outward_jobs",
-        filter: `search_run_id=eq.${manusSessionId}`,
-      }, () => pollManusTasks(manusSessionId))
+        filter: `search_run_id=eq.${searchRunId}`,
+      }, () => pollOutwardJobs(searchRunId))
       .subscribe();
     timeoutRef.current = setTimeout(() => {
-      setManusTimedOut(true); setManusPolling(false); setManusPending(0);
+      setOutwardTimedOut(true); setOutwardPolling(false); setOutwardPending(0);
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    }, MANUS_TIMEOUT_MS);
+    }, OUTWARD_TIMEOUT_MS);
     return () => {
       clearTimeout(initialTimeout);
       if (pollRef.current) clearInterval(pollRef.current);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       supabase.removeChannel(channel);
     };
-  }, [manusSessionId, pollManusTasks]);
+  }, [searchRunId, pollOutwardJobs]);
 
-  const triggerManusSearch = async (filters: {
+  // FIX #5: Pass full_market_scan to edge function
+  const triggerOutwardSearch = async (filters: {
     make: string; model?: string; badge?: string | null;
     year_min?: number | null; year_max?: number | null;
     max_km?: number | null; price_max?: number | null;
   }) => {
     try {
-      // Build instruction text for run-outward-search-v2
       const instructionParts = [filters.make, filters.model].filter(Boolean);
       if (filters.badge) instructionParts.push(filters.badge);
       if (filters.year_min) instructionParts.push(`${filters.year_min}`);
@@ -602,6 +633,7 @@ export function OogleBotSearch() {
           instruction,
           account_id: dealerProfile?.account_id || null,
           initiated_by: "dealer",
+          full_market_scan: fullMarketScan,
           filters: {
             make: filters.make,
             model: filters.model,
@@ -615,9 +647,9 @@ export function OogleBotSearch() {
       });
       if (error) { console.error("Outward search v2 error:", error); return; }
 
-      // Handle immediate internal results from Phase 1
+      // FIX #4: Phase 1 results — merge into outward results with "internal" source tag
       if (data?.results && Array.isArray(data.results) && data.results.length > 0) {
-        const mapped: ManusResult[] = data.results.map((r: any) => ({
+        const mapped: OutwardResult[] = data.results.map((r: any) => ({
           title: r.title || "",
           price: r.price ?? r.effective_cost ?? null,
           price_type: null,
@@ -631,20 +663,33 @@ export function OogleBotSearch() {
           colour: null,
           stock_no: null,
         }));
-        setManusResults(mapped);
+        setPhase1Count(mapped.length);
+        // Merge Phase 1 results (don't overwrite — these are the baseline)
+        setOutwardResults(prev => {
+          const merged = [...prev, ...mapped];
+          const urlMap = new Map<string, OutwardResult>();
+          for (const r of merged) {
+            const key = r.url || crypto.randomUUID();
+            const existing = urlMap.get(key);
+            if (!existing || (r.price != null && (existing.price == null || r.price < existing.price))) {
+              urlMap.set(key, r);
+            }
+          }
+          return Array.from(urlMap.values());
+        });
       }
 
       // If Lindy jobs were dispatched, start polling
       if (data?.search_run_id && data?.outward_jobs?.length > 0) {
-        const dispatchedJobs = data.outward_jobs.filter((j: any) => j.status === "dispatched");
+        const dispatchedJobs = data.outward_jobs.filter((j: any) => !TERMINAL_STATUSES.has(j.status));
         if (dispatchedJobs.length > 0) {
-          setManusSessionId(data.search_run_id);
-          setManusTotal(dispatchedJobs.length);
-          setManusPending(dispatchedJobs.length);
+          setSearchRunId(data.search_run_id);
+          setOutwardTotal(data.outward_jobs.length);
+          setOutwardPending(dispatchedJobs.length);
           toast({ title: `Searching ${dispatchedJobs.length} external source${dispatchedJobs.length > 1 ? "s" : ""}`, description: "Results will arrive in 2–5 minutes." });
         }
       } else if (data?.results?.length > 0) {
-        setManusTotal(0); setManusPending(0);
+        setOutwardTotal(0); setOutwardPending(0);
       }
     } catch (err) { console.error("Outward search v2 failed:", err); }
   };
@@ -653,7 +698,6 @@ export function OogleBotSearch() {
   const handleSearch = async () => {
     if (!canSearch) return;
 
-    // Build structured filters from form
     const structuredFilters = {
       make: make.trim(),
       model: model.trim(),
@@ -667,7 +711,6 @@ export function OogleBotSearch() {
       prefer_terms: selectedAccessories.map(a => a.toUpperCase()),
     };
 
-    // Build instruction text from structured fields (for backend compatibility)
     const instructionParts = [structuredFilters.make, structuredFilters.model];
     if (structuredFilters.badge) instructionParts.push(structuredFilters.badge);
     if (structuredFilters.year_min) instructionParts.push(`${structuredFilters.year_min}`);
@@ -677,20 +720,19 @@ export function OogleBotSearch() {
 
     setHasSearched(true);
     setInternalLoading(true);
-    setManusTriggered(true);
-    setManusTimedOut(false);
+    setOutwardTriggered(true);
+    setOutwardTimedOut(false);
     setInternalResults([]);
     setDealerSpecs([]);
     setExternalResponse(null);
-    setManusSessionId(null);
-    setManusResults([]);
-    setManusPending(0);
-    setManusTotal(0);
+    setSearchRunId(null);
+    setOutwardResults([]);
+    setOutwardPending(0);
+    setOutwardTotal(0);
+    setPhase1Count(0);
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
 
     try {
-      // Run tiered search with structured filters (no LLM dependency)
-      // Build structured intent for tiered search (bypasses text parsing)
       const structuredIntent = {
         make: structuredFilters.make,
         model: structuredFilters.model,
@@ -723,7 +765,7 @@ export function OogleBotSearch() {
       // Outward gate
       const outwardAllowed = tiered?.outward_allowed ?? true;
       if (outwardAllowed || fullMarketScan) {
-        const manusFilters = {
+        const outwardFilters = {
           make: structuredFilters.make,
           model: structuredFilters.model,
           badge: structuredFilters.badge,
@@ -732,7 +774,7 @@ export function OogleBotSearch() {
           max_km: structuredFilters.max_km,
           price_max: structuredFilters.price_max,
         };
-        triggerManusSearch(manusFilters);
+        triggerOutwardSearch(outwardFilters);
       } else {
         console.log(`[Search] Outward search BLOCKED: ${tiered?.outward_reason}`);
       }
@@ -889,7 +931,6 @@ export function OogleBotSearch() {
                 Add
               </Button>
             </div>
-            {/* Custom accessories shown */}
             {selectedAccessories.filter(a => !ACCESSORY_PRESETS.includes(a)).length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1">
                 {selectedAccessories.filter(a => !ACCESSORY_PRESETS.includes(a)).map(acc => (
@@ -962,8 +1003,8 @@ export function OogleBotSearch() {
             )}
           </Button>
 
-          {/* Manus Activity Banner */}
-          {manusPolling && manusPending > 0 && (
+          {/* Outward Activity Banner */}
+          {outwardPolling && outwardPending > 0 && (
             <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 animate-pulse">
               <div className="relative flex h-3 w-3 shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
@@ -971,22 +1012,22 @@ export function OogleBotSearch() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-                  CaroogleAI searching {manusPending} dealer site{manusPending > 1 ? "s" : ""}…
+                  CaroogleAI searching {outwardPending} dealer site{outwardPending > 1 ? "s" : ""}…
                 </p>
                 <p className="text-[11px] text-amber-600/70 dark:text-amber-500/70">
-                  {manusTotal - manusPending}/{manusTotal} complete · Results arrive in 2–5 min
+                  {outwardTotal - outwardPending}/{outwardTotal} complete · Results arrive in 2–5 min
                 </p>
               </div>
               <Loader2 className="h-4 w-4 animate-spin text-amber-600 shrink-0" />
             </div>
           )}
 
-          {/* Manus Complete Banner */}
-          {!manusPolling && manusTotal > 0 && hasSearched && (
+          {/* Outward Complete Banner */}
+          {!outwardPolling && outwardTotal > 0 && hasSearched && (
             <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
               <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shrink-0"></span>
               <p className="text-sm text-emerald-700 dark:text-emerald-400">
-                CaroogleAI complete — {manusResults.length} vehicle{manusResults.length !== 1 ? "s" : ""} found from {manusTotal} dealer site{manusTotal > 1 ? "s" : ""}
+                CaroogleAI complete — {outwardResults.length} vehicle{outwardResults.length !== 1 ? "s" : ""} found from {outwardTotal} dealer site{outwardTotal > 1 ? "s" : ""}
               </p>
             </div>
           )}
@@ -1069,15 +1110,16 @@ export function OogleBotSearch() {
       )}
 
       {/* ═══ MARKET RESULTS ═══ */}
-      {(manusTriggered || manusPolling || manusResults.length > 0) && (
-        <ManusResultsSection
-          manusTriggered={manusTriggered}
-          manusSessionId={manusSessionId}
-          manusPolling={manusPolling}
-          manusPending={manusPending}
-          manusTotal={manusTotal}
-          manusResults={manusResults}
-          manusTimedOut={manusTimedOut}
+      {(outwardTriggered || outwardPolling || outwardResults.length > 0) && (
+        <OutwardResultsSection
+          outwardTriggered={outwardTriggered}
+          searchRunId={searchRunId}
+          outwardPolling={outwardPolling}
+          outwardPending={outwardPending}
+          outwardTotal={outwardTotal}
+          outwardResults={outwardResults}
+          outwardTimedOut={outwardTimedOut}
+          phase1Count={phase1Count}
         />
       )}
     </div>
