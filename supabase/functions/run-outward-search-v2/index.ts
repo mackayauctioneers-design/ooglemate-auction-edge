@@ -62,6 +62,7 @@ Deno.serve(async (req) => {
     initiated_by?: string;
     internal_count?: number;
     urgency?: string;
+    full_market_scan?: boolean;
     filters?: Partial<ParsedIntent> | null;
   };
   try {
@@ -81,7 +82,7 @@ Deno.serve(async (req) => {
 
   const accountId = body.account_id || null;
   const initiatedBy = body.initiated_by || "user";
-  const urgency = body.urgency ?? "normal";
+  const urgency = body.urgency ?? (body.full_market_scan ? "high" : "normal");
 
   // ── Parse intent ──
   let intent: ParsedIntent = emptyIntent();
@@ -124,7 +125,7 @@ Deno.serve(async (req) => {
   const internalCount = body.internal_count ?? internalResults.length;
 
   // ── Demand gating: skip outward if plenty of internal results ──
-  if (internalCount >= 5 && urgency !== "high") {
+  if (internalCount >= 5 && urgency !== "high" && !body.full_market_scan) {
     const durationMs = Date.now() - startMs;
     try {
       await sb.from("outward_search_runs").insert({
