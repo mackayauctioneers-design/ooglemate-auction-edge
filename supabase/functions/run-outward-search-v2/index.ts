@@ -286,8 +286,9 @@ Deno.serve(async (req) => {
   }
 
   // ── Dispatch Lindy Computer jobs (async — returns immediately) ──
+  // Filter to non-internal outward sources that have URL builders
   const lindySourceKeys = outwardSources
-    .filter(s => ["carsales", "carsguide", "gumtree"].includes(s.source))
+    .filter(s => s.adapter_type !== "internal_db")
     .map(s => s.source);
 
   let dispatchResults: Awaited<ReturnType<typeof dispatchLindyJobs>> = [];
