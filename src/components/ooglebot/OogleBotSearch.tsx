@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Loader2, Search, Database, Globe, MapPin, Gauge, DollarSign,
-  ExternalLink, Mic, MicOff, Building2, ChevronDown, X,
+  ExternalLink, Mic, MicOff, Building2, ChevronDown, X, Gavel,
 } from "lucide-react";
 import { KitingLoader } from "@/components/ui/KitingLoader";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
@@ -79,116 +79,105 @@ function numericOrInfinity(value: number | null | undefined) {
   return value == null ? Number.POSITIVE_INFINITY : value;
 }
 
-// ── Result Cards ──
+// ── Unified Result (canonical shape for merged display) ──
 
-function InternalResultCard({ match, showUrl }: { match: InternalMatch; showUrl: boolean }) {
-  return (
-    <div className="flex items-start justify-between gap-4 p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors">
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-sm text-foreground">
-            {match.year} {match.make} {match.model}
-          </span>
-          {match.variant_raw && (
-            <span className="text-xs text-muted-foreground">{match.variant_raw}</span>
-          )}
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-            {match.source_class || match.source}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          {match.asking_price && (
-            <span className="flex items-center gap-1 font-medium text-foreground">
-              <DollarSign className="h-3 w-3" />
-              {formatPrice(match.asking_price)}
-            </span>
-          )}
-          {match.km && (
-            <span className="flex items-center gap-1">
-              <Gauge className="h-3 w-3" />
-              {formatKm(match.km)}
-            </span>
-          )}
-          {(match.location || match.state) && (
-            <span className="flex items-center gap-1">
-              <MapPin className="h-3 w-3" />
-              {match.location || match.state}
-            </span>
-          )}
-          {match.auction_house && (
-            <span className="flex items-center gap-1">
-              <Building2 className="h-3 w-3" />
-              {match.auction_house}
-            </span>
-          )}
-        </div>
-      </div>
-      {showUrl && match.listing_url && (
-        <a href={match.listing_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-          <Button variant="ghost" size="iconSm" className="text-muted-foreground hover:text-primary">
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Button>
-        </a>
-      )}
-    </div>
-  );
+interface UnifiedResult {
+  id: string;
+  title: string;
+  year: number | null;
+  price: number | null;
+  effective_price: number | null;
+  price_type: string | null;
+  km: number | null;
+  location: string | null;
+  source: string;
+  source_class: string | null;
+  auction_house: string | null;
+  variant: string | null;
+  url: string | null;
+  dealer_name: string | null;
+  days_listed: number | null;
+  score: number | null;
+  match_reason: string[];
+  is_auction: boolean;
+  is_discovery: boolean;
 }
 
-function ScoredResultCard({ result, showUrl, isOperator }: { result: OogleBotResult; showUrl: boolean; isOperator?: boolean }) {
+const AUCTION_SOURCES = new Set([
+  "pickles", "manheim", "slattery", "f3", "aav",
+  "auto_auctions", "vma", "bidsonline",
+  "auto_auctions_aav", "pickles_crawl",
+]);
+
+function isAuctionResult(r: { source?: string; source_class?: string | null; auction_house?: string | null }): boolean {
+  return r.source_class === "auction" || !!r.auction_house || AUCTION_SOURCES.has(r.source || "");
+}
+
+// ── Result Cards ──
+
+// ── Unified Result Card ──
+
+function UnifiedResultCard({ result, isBestPrice, isOperator }: { result: UnifiedResult; isBestPrice?: boolean; isOperator?: boolean }) {
   return (
-    <div className="flex items-start justify-between gap-4 p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors">
+    <div className={`flex items-start justify-between gap-4 p-3 rounded-lg border transition-colors ${
+      isBestPrice
+        ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15 ring-1 ring-emerald-500/20"
+        : "border-border bg-card hover:bg-muted/30"
+    }`}>
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-sm text-foreground">
-            {result.year} {result.make} {result.model}
-          </span>
-          {result.variant && (
-            <span className="text-xs text-muted-foreground">{result.variant}</span>
+          {isBestPrice && (
+            <Badge className="text-[10px] px-1.5 py-0 bg-emerald-500 text-white border-emerald-600">
+              Best Price
+            </Badge>
           )}
+          <span className="font-semibold text-sm text-foreground">{result.title}</span>
+          {result.variant && <span className="text-xs text-muted-foreground">{result.variant}</span>}
         </div>
         <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-          <span className="flex items-center gap-1 font-medium text-foreground">
-            <DollarSign className="h-3 w-3" />
-            {formatPrice(result.price)}
-          </span>
-          {result.km && (
-            <span className="flex items-center gap-1">
-              <Gauge className="h-3 w-3" />
-              {formatKm(result.km)}
+          {result.price != null && (
+            <span className="flex items-center gap-1 font-medium text-foreground">
+              <DollarSign className="h-3 w-3" />
+              {formatPrice(result.price)}
+              {result.price_type === 'excl_govt' && (
+                <span className="text-[10px] text-muted-foreground font-normal">excl. govt charges</span>
+              )}
             </span>
           )}
-          {(result.location || result.state) && (
-            <span className="flex items-center gap-1">
-              <MapPin className="h-3 w-3" />
-              {result.location || result.state}
-            </span>
+          {result.km != null && (
+            <span className="flex items-center gap-1"><Gauge className="h-3 w-3" />{formatKm(result.km)}</span>
           )}
-          {result.days_listed !== null && (
-            <span>{result.days_listed}d listed</span>
+          {result.location && (
+            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{result.location}</span>
           )}
+          {result.days_listed != null && <span>{result.days_listed}d listed</span>}
         </div>
-        {isOperator && (
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-              {result.source_class || result.source}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+          {result.dealer_name && (
+            <span className="flex items-center gap-1"><Building2 className="h-3 w-3" />{result.dealer_name}</span>
+          )}
+          {result.is_auction && result.auction_house && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{result.auction_house}</Badge>
+          )}
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0">{result.source_class || result.source}</Badge>
+          {result.is_discovery && (
+            <Badge variant="outline" className="text-[9px] px-1 py-0 border-muted text-muted-foreground/60 italic">
+              AI Discovery
             </Badge>
-            <span>Score: {result.score}</span>
-            {result.effective_cost && <span>eff: {formatPrice(result.effective_cost)}</span>}
-            {result.auction_house && <span>{result.auction_house}</span>}
-          </div>
-        )}
+          )}
+          {isOperator && result.score != null && <span className="text-[10px]">Score: {result.score}</span>}
+          {isOperator && result.effective_price != null && <span className="text-[10px]">eff: {formatPrice(result.effective_price)}</span>}
+        </div>
         {isOperator && result.match_reason.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {result.match_reason.map((r, i) => (
-              <Badge key={i} variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground">
-                {r}
-              </Badge>
+              <Badge key={i} variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground">{r}</Badge>
             ))}
           </div>
         )}
       </div>
-      {showUrl && result.listing_url && (
-        <a href={result.listing_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+      {result.url && (
+        <a href={result.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
           <Button variant="ghost" size="iconSm" className="text-muted-foreground hover:text-primary">
             <ExternalLink className="h-3.5 w-3.5" />
           </Button>
@@ -198,8 +187,7 @@ function ScoredResultCard({ result, showUrl, isOperator }: { result: OogleBotRes
   );
 }
 
-// ── Outward Result types + section ──
-
+// OutwardResult shape kept for polling data
 interface OutwardResult {
   title: string;
   price: number | null;
@@ -216,90 +204,6 @@ interface OutwardResult {
 }
 
 const EGC_ON_ROAD_ESTIMATE = 3500;
-function sortablePrice(r: OutwardResult): number {
-  if (r.price == null) return Infinity;
-  if (r.price_type === 'excl_govt') return r.price + EGC_ON_ROAD_ESTIMATE;
-  return r.price;
-}
-
-function OutwardResultCard({ result, isBestPrice }: { result: OutwardResult; isBestPrice?: boolean }) {
-  return (
-    <div className={`flex items-start justify-between gap-4 p-3 rounded-lg border transition-colors ${
-      isBestPrice
-        ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15 ring-1 ring-emerald-500/20"
-        : "border-border bg-card hover:bg-muted/30"
-    }`}>
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          {isBestPrice && (
-            <Badge className="text-[10px] px-1.5 py-0 bg-emerald-500 text-white border-emerald-600">
-              Best Price
-            </Badge>
-          )}
-          <span className="font-semibold text-sm text-foreground">
-            {result.title || "Untitled"}
-          </span>
-          {result.badge && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-              {result.badge}
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-          {result.price != null && (
-            <span className="flex items-center gap-1 font-medium text-foreground">
-              <DollarSign className="h-3 w-3" />
-              {formatPrice(result.price)}
-              {result.price_type === 'excl_govt' && (
-                <span className="text-[10px] text-muted-foreground font-normal">excl. govt charges</span>
-              )}
-            </span>
-          )}
-          {result.km != null && (
-            <span className="flex items-center gap-1">
-              <Gauge className="h-3 w-3" />
-              {formatKm(result.km)}
-            </span>
-          )}
-          {result.colour && (
-            <span className="text-muted-foreground">{result.colour}</span>
-          )}
-          {result.location && (
-            <span className="flex items-center gap-1">
-              <MapPin className="h-3 w-3" />
-              {result.location}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {result.dealer_name && (
-            <span className="flex items-center gap-1">
-              <Building2 className="h-3 w-3" />
-              {result.dealer_name}
-            </span>
-          )}
-          {result.source && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-              {result.source}
-            </Badge>
-          )}
-          {result.source === "lindy_discovery" && (
-            <Badge variant="outline" className="text-[9px] px-1 py-0 border-primary/30 text-primary/70">
-              AI Discovery
-            </Badge>
-          )}
-        </div>
-      </div>
-      {result.url && (
-        <a href={result.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-          <Button variant="ghost" size="iconSm" className="text-muted-foreground hover:text-primary">
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Button>
-        </a>
-      )}
-    </div>
-  );
-}
 
 const REASSURANCE_MESSAGES = [
   "Searching dealer inventory sites…",
@@ -313,132 +217,106 @@ const REASSURANCE_MESSAGES = [
 ];
 
 const OUTWARD_TIMEOUT_MS = 5 * 60 * 1000;
-
-/** Terminal statuses for outward_jobs */
 const TERMINAL_STATUSES = new Set(["complete", "failed", "timeout"]);
 
-function OutwardResultsSection({
-  outwardTriggered, searchRunId, outwardPolling, outwardPending, outwardTotal, outwardResults, outwardTimedOut, phase1Count,
-}: {
-  outwardTriggered: boolean;
-  searchRunId: string | null;
-  outwardPolling: boolean;
-  outwardPending: number;
-  outwardTotal: number;
-  outwardResults: OutwardResult[];
-  outwardTimedOut: boolean;
-  phase1Count: number;
-}) {
-  const [showAll, setShowAll] = useState(false);
-  const [msgIndex, setMsgIndex] = useState(0);
+/** Convert all result types into UnifiedResult[] */
+function mergeAllResults(
+  internalResults: InternalMatch[],
+  scoredResults: OogleBotResult[],
+  outwardResults: OutwardResult[],
+): UnifiedResult[] {
+  const all: UnifiedResult[] = [];
 
-  useEffect(() => {
-    if (outwardPending === 0) return;
-    const interval = setInterval(() => {
-      setMsgIndex(i => (i + 1) % REASSURANCE_MESSAGES.length);
-    }, 30_000);
-    return () => clearInterval(interval);
-  }, [outwardPending]);
+  // Internal results
+  for (const m of internalResults) {
+    all.push({
+      id: m.id,
+      title: `${m.year ?? ""} ${m.make ?? ""} ${m.model ?? ""}`.trim(),
+      year: m.year ?? null,
+      price: m.asking_price ?? null,
+      effective_price: m.asking_price ?? null,
+      price_type: null,
+      km: m.km ?? null,
+      location: m.location || m.state || null,
+      source: m.source || "internal",
+      source_class: m.source_class || null,
+      auction_house: m.auction_house || null,
+      variant: m.variant_raw || null,
+      url: m.listing_url || null,
+      dealer_name: m.source_class === "auction" ? (m.auction_house || null) : null,
+      days_listed: null,
+      score: null,
+      match_reason: [],
+      is_auction: isAuctionResult(m),
+      is_discovery: false,
+    });
+  }
 
-  // Deduplicate by listing URL (primary key), keeping lowest price
-  const deduped = (() => {
-    const map = new Map<string, OutwardResult>();
-    for (const r of outwardResults) {
-      const key = r.url || r.stock_no || `${r.title}|${r.year ?? ""}|${r.km ?? ""}|${r.location ?? ""}`;
-      const existing = map.get(key);
-      if (!existing || (r.price != null && (existing.price == null || r.price < existing.price))) {
-        map.set(key, r);
-      }
+  // Scored / ooglebot-search results
+  for (const r of scoredResults) {
+    all.push({
+      id: r.listing_id,
+      title: `${r.year ?? ""} ${r.make ?? ""} ${r.model ?? ""}`.trim(),
+      year: r.year,
+      price: r.price ?? null,
+      effective_price: r.effective_cost ?? r.price ?? null,
+      price_type: null,
+      km: r.km ?? null,
+      location: r.location || r.state || null,
+      source: r.source,
+      source_class: r.source_class || null,
+      auction_house: r.auction_house || null,
+      variant: r.variant || null,
+      url: r.listing_url || null,
+      dealer_name: r.source_class === "auction" ? (r.auction_house || null) : null,
+      days_listed: r.days_listed ?? null,
+      score: r.score,
+      match_reason: r.match_reason || [],
+      is_auction: isAuctionResult(r),
+      is_discovery: false,
+    });
+  }
+
+  // Outward results
+  for (const r of outwardResults) {
+    const effPrice = r.price != null
+      ? (r.price_type === 'excl_govt' ? r.price + EGC_ON_ROAD_ESTIMATE : r.price)
+      : null;
+    all.push({
+      id: r.url || `${r.title}|${r.year}|${r.km}`,
+      title: r.title || "Untitled",
+      year: r.year,
+      price: r.price,
+      effective_price: effPrice,
+      price_type: r.price_type || null,
+      km: r.km,
+      location: r.location,
+      source: r.source,
+      source_class: null,
+      auction_house: null,
+      variant: r.badge || null,
+      url: r.url,
+      dealer_name: r.dealer_name,
+      days_listed: null,
+      score: null,
+      match_reason: [],
+      is_auction: isAuctionResult({ source: r.source }),
+      is_discovery: r.source === "lindy_discovery",
+    });
+  }
+
+  // Deduplicate by URL, keep lowest effective price
+  const map = new Map<string, UnifiedResult>();
+  for (const r of all) {
+    const key = r.url || r.id;
+    const existing = map.get(key);
+    if (!existing || (r.effective_price != null && (existing.effective_price == null || r.effective_price < existing.effective_price))) {
+      map.set(key, r);
     }
-    return Array.from(map.values()).sort((a, b) => sortablePrice(a) - sortablePrice(b));
-  })();
+  }
 
-  const DEFAULT_SHOW = 3;
-  const top3 = deduped.slice(0, DEFAULT_SHOW);
-  const hasMore = deduped.length > DEFAULT_SHOW;
-  const displayed = showAll ? deduped : top3;
-  const completedCount = outwardTotal - outwardPending;
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm font-medium">
-          <Search className="h-4 w-4 text-primary" />
-          Market Results
-          {outwardPending > 0 && !outwardTimedOut && (
-            <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {completedCount}/{outwardTotal} complete
-            </span>
-          )}
-          {outwardPending === 0 && outwardTotal > 0 && deduped.length > 0 && (
-            <span className="text-xs font-normal text-muted-foreground">
-              Top 3 of {deduped.length} results
-            </span>
-          )}
-        </CardTitle>
-        {/* Phase 1 indicator */}
-        {phase1Count > 0 && outwardPending > 0 && (
-          <p className="text-[10px] text-muted-foreground">
-            ✓ {phase1Count} internal results ready · Extended search in progress…
-          </p>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-1.5">
-        {outwardTriggered && !searchRunId && !outwardPolling && outwardResults.length === 0 && !outwardTimedOut && (
-          <div className="flex flex-col items-center py-4 gap-1">
-            <KitingLoader size="md" label="Connecting to search network…" />
-          </div>
-        )}
-        {outwardResults.length === 0 && outwardPending > 0 && !outwardTimedOut && (
-          <div className="flex flex-col items-center py-4 gap-2">
-            <KitingLoader size="md" />
-            <div className="w-full max-w-xs space-y-1">
-              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all duration-700 ease-out"
-                  style={{ width: `${outwardTotal > 0 ? Math.max(5, (completedCount / outwardTotal) * 100) : 5}%` }}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground text-center animate-pulse">
-                {REASSURANCE_MESSAGES[msgIndex]}
-              </p>
-            </div>
-          </div>
-        )}
-        {outwardResults.length > 0 && outwardPending > 0 && !outwardTimedOut && (
-          <div className="flex items-center gap-2 mb-2 px-1">
-            <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
-            <p className="text-xs text-muted-foreground">
-              {completedCount}/{outwardTotal} sites searched · {deduped.length} result{deduped.length !== 1 ? "s" : ""} so far
-            </p>
-          </div>
-        )}
-        {outwardTimedOut && deduped.length === 0 && (
-          <p className="text-sm text-muted-foreground py-2">
-            Search complete — no matching vehicles found at this time. Try broadening your search criteria.
-          </p>
-        )}
-        {!outwardTimedOut && outwardTriggered && deduped.length === 0 && outwardPending === 0 && searchRunId && (
-          <p className="text-sm text-muted-foreground py-2">
-            No matching vehicles found.
-          </p>
-        )}
-        {displayed.map((result, i) => (
-          <OutwardResultCard key={result.url || i} result={result} isBestPrice={i === 0 && deduped.length > 1} />
-        ))}
-        {hasMore && !showAll && (
-          <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => setShowAll(true)}>
-            Show all {deduped.length} results
-          </Button>
-        )}
-        {showAll && hasMore && (
-          <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => setShowAll(false)}>
-            Show top 3 only
-          </Button>
-        )}
-      </CardContent>
-    </Card>
+  return Array.from(map.values()).sort(
+    (a, b) => numericOrInfinity(a.effective_price) - numericOrInfinity(b.effective_price)
   );
 }
 
@@ -550,20 +428,24 @@ export function OogleBotSearch() {
   const canSearch = make.trim().length > 0 && model.trim().length > 0;
   const badgeMissing = canSearch && !badge.trim();
 
-  // Always render lists cheapest → dearest
-  const sortedInternalResults = useMemo(
-    () => [...internalResults].sort((a, b) => numericOrInfinity(a.asking_price) - numericOrInfinity(b.asking_price)),
-    [internalResults],
+  // ── Unified result merge ──
+  const allUnified = useMemo(
+    () => mergeAllResults(internalResults, externalResponse?.results ?? [], outwardResults),
+    [internalResults, externalResponse?.results, outwardResults],
   );
+  const marketResults = useMemo(() => allUnified.filter(r => !r.is_auction), [allUnified]);
+  const auctionResults = useMemo(() => allUnified.filter(r => r.is_auction), [allUnified]);
 
-  const sortedScoredResults = useMemo(
-    () => [...(externalResponse?.results ?? [])].sort((a, b) => {
-      const aPrice = numericOrInfinity(a.effective_cost ?? a.price);
-      const bPrice = numericOrInfinity(b.effective_cost ?? b.price);
-      return aPrice - bPrice;
-    }),
-    [externalResponse?.results],
-  );
+  // Outward polling state
+  const [showAllMarket, setShowAllMarket] = useState(false);
+  const [showAllAuction, setShowAllAuction] = useState(false);
+  const [msgIndex, setMsgIndex] = useState(0);
+
+  useEffect(() => {
+    if (outwardPending === 0) return;
+    const interval = setInterval(() => setMsgIndex(i => (i + 1) % REASSURANCE_MESSAGES.length), 30_000);
+    return () => clearInterval(interval);
+  }, [outwardPending]);
 
   // ── Outward polling (poll outward_jobs + outward_search_results by search_run_id) ──
   // FIX #1: Correct column names (source_key not source) and terminal statuses
@@ -780,6 +662,8 @@ export function OogleBotSearch() {
     setHasSearched(true);
     setInternalLoading(true);
     setOutwardTriggered(true);
+    setShowAllMarket(false);
+    setShowAllAuction(false);
     setOutwardTimedOut(false);
     setInternalResults([]);
     setDealerSpecs([]);
@@ -1095,7 +979,131 @@ export function OogleBotSearch() {
         </CardContent>
       </Card>
 
-      {/* ═══ DEALER SPECS MATCHES ═══ */}
+      {/* ═══ 1️⃣ MARKET RESULTS (hero section) ═══ */}
+      {hasSearched && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+              <Search className="h-5 w-5 text-primary" />
+              Market Results
+              {outwardPending > 0 && !outwardTimedOut && (
+                <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {outwardTotal - outwardPending}/{outwardTotal} sources complete
+                </span>
+              )}
+              {marketResults.length > 0 && outwardPending === 0 && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  {marketResults.length} vehicle{marketResults.length !== 1 ? "s" : ""}
+                </span>
+              )}
+            </CardTitle>
+            <p className="text-[11px] text-muted-foreground">
+              Sorted by lowest available market price.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-1.5">
+            {/* Loading states */}
+            {internalLoading && (
+              <div className="flex flex-col items-center py-6 gap-1">
+                <KitingLoader size="md" label="Searching…" />
+              </div>
+            )}
+            {!internalLoading && marketResults.length === 0 && outwardPending > 0 && !outwardTimedOut && (
+              <div className="flex flex-col items-center py-6 gap-2">
+                <KitingLoader size="md" />
+                <div className="w-full max-w-xs space-y-1">
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all duration-700 ease-out"
+                      style={{ width: `${outwardTotal > 0 ? Math.max(5, ((outwardTotal - outwardPending) / outwardTotal) * 100) : 5}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center animate-pulse">
+                    {REASSURANCE_MESSAGES[msgIndex]}
+                  </p>
+                </div>
+              </div>
+            )}
+            {!internalLoading && marketResults.length > 0 && outwardPending > 0 && !outwardTimedOut && (
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
+                <p className="text-xs text-muted-foreground">
+                  Extended search in progress… {marketResults.length} result{marketResults.length !== 1 ? "s" : ""} so far
+                </p>
+              </div>
+            )}
+            {!internalLoading && marketResults.length === 0 && outwardPending === 0 && (
+              <p className="text-sm text-muted-foreground py-4">
+                No matching vehicles found. Try broadening your search criteria.
+              </p>
+            )}
+            {/* Results list */}
+            {(() => {
+              const displayed = showAllMarket ? marketResults : marketResults.slice(0, 10);
+              return (
+                <>
+                  {displayed.map((result, i) => (
+                    <UnifiedResultCard key={result.id} result={result} isBestPrice={i === 0 && marketResults.length > 1} isOperator={isAdmin} />
+                  ))}
+                  {marketResults.length > 10 && !showAllMarket && (
+                    <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => setShowAllMarket(true)}>
+                      Show all {marketResults.length} results
+                    </Button>
+                  )}
+                  {showAllMarket && marketResults.length > 10 && (
+                    <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => setShowAllMarket(false)}>
+                      Show top 10 only
+                    </Button>
+                  )}
+                </>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ═══ 2️⃣ AUCTION ALTERNATIVES ═══ */}
+      {hasSearched && auctionResults.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Gavel className="h-4 w-4 text-muted-foreground" />
+              Auction Alternatives
+              <span className="text-xs font-normal text-muted-foreground">
+                {auctionResults.length} listing{auctionResults.length !== 1 ? "s" : ""}
+              </span>
+            </CardTitle>
+            <p className="text-[10px] text-muted-foreground">
+              Dealer trade channels — not mixed with retail market results.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-1.5">
+            {(() => {
+              const displayed = showAllAuction ? auctionResults : auctionResults.slice(0, 5);
+              return (
+                <>
+                  {displayed.map((result) => (
+                    <UnifiedResultCard key={result.id} result={result} isOperator={isAdmin} />
+                  ))}
+                  {auctionResults.length > 5 && !showAllAuction && (
+                    <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => setShowAllAuction(true)}>
+                      Show all {auctionResults.length} auction listings
+                    </Button>
+                  )}
+                  {showAllAuction && auctionResults.length > 5 && (
+                    <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => setShowAllAuction(false)}>
+                      Show top 5 only
+                    </Button>
+                  )}
+                </>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ═══ 3️⃣ DEALER SPECS ═══ */}
       {dealerSpecs.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -1114,74 +1122,6 @@ export function OogleBotSearch() {
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {/* ═══ INTERNAL RESULTS ═══ */}
-      {hasSearched && !internalLoading && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <Database className="h-4 w-4 text-primary" />
-              Our Inventory ({internalResults.length} found)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {internalResults.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">No matching vehicles in our database.</p>
-            ) : (
-              <div className="space-y-1.5">
-                {sortedInternalResults.map(match => (
-                  <InternalResultCard key={match.id} match={match} showUrl={isAdmin} />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ═══ SCORED RESULTS ═══ */}
-      {externalResponse && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <Globe className="h-4 w-4 text-primary" />
-              Scored Results ({externalResponse.count || 0})
-            </CardTitle>
-            {externalResponse.filters && (
-              <div className="flex flex-wrap gap-1.5 text-xs mt-1">
-                {externalResponse.filters.make && <Badge variant="secondary">{externalResponse.filters.make}</Badge>}
-                {externalResponse.filters.model && <Badge variant="secondary">{externalResponse.filters.model}</Badge>}
-                {externalResponse.filters.badge && <Badge variant="default" className="text-[10px]">{externalResponse.filters.badge}</Badge>}
-                {externalResponse.filters.year_min && <Badge variant="outline">{externalResponse.filters.year_min}+</Badge>}
-                {externalResponse.filters.max_km && <Badge variant="outline">≤{externalResponse.filters.max_km.toLocaleString()} km</Badge>}
-                {externalResponse.filters.price_max && <Badge variant="outline">≤${externalResponse.filters.price_max.toLocaleString()}</Badge>}
-              </div>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-1.5">
-            {(externalResponse.results?.length || 0) === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">No scored results found.</p>
-            ) : (
-              sortedScoredResults.map((result, i) => (
-                <ScoredResultCard key={result.listing_id || i} result={result} showUrl={isAdmin} isOperator={isAdmin} />
-              ))
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ═══ MARKET RESULTS ═══ */}
-      {(outwardTriggered || outwardPolling || outwardResults.length > 0) && (
-        <OutwardResultsSection
-          outwardTriggered={outwardTriggered}
-          searchRunId={searchRunId}
-          outwardPolling={outwardPolling}
-          outwardPending={outwardPending}
-          outwardTotal={outwardTotal}
-          outwardResults={outwardResults}
-          outwardTimedOut={outwardTimedOut}
-          phase1Count={phase1Count}
-        />
       )}
     </div>
   );
