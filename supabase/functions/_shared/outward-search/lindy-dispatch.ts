@@ -52,6 +52,50 @@ const URL_BUILDERS: Record<string, (intent: ParsedIntent) => string | null> = {
     if (intent.price_max) params.set("price_max", String(intent.price_max));
     return `https://www.gumtree.com.au/s-cars-vans-utes/c18320?${params.toString()}`;
   },
+
+  // Aliases for actual source_registry keys
+  gumtree_dealer: (intent) => {
+    if (!intent.make) return null;
+    const q = [intent.make, intent.model, intent.badge].filter(Boolean).join(" ");
+    const params = new URLSearchParams({ search_query: q, seller_type: "dealer" });
+    if (intent.price_max) params.set("price_max", String(intent.price_max));
+    return `https://www.gumtree.com.au/s-cars-vans-utes/c18320?${params.toString()}`;
+  },
+
+  gumtree_private: (intent) => {
+    if (!intent.make) return null;
+    const q = [intent.make, intent.model, intent.badge].filter(Boolean).join(" ");
+    const params = new URLSearchParams({ search_query: q, seller_type: "private" });
+    if (intent.price_max) params.set("price_max", String(intent.price_max));
+    return `https://www.gumtree.com.au/s-cars-vans-utes/c18320?${params.toString()}`;
+  },
+
+  drive: (intent) => {
+    if (!intent.make) return null;
+    const params = new URLSearchParams({ make: intent.make.toLowerCase(), sort: "price" });
+    if (intent.model) params.set("model", intent.model.toLowerCase());
+    if (intent.year_min) params.set("year_from", String(intent.year_min));
+    if (intent.year_max) params.set("year_to", String(intent.year_max));
+    if (intent.max_km) params.set("max_km", String(intent.max_km));
+    if (intent.price_max) params.set("price_to", String(intent.price_max));
+    return `https://www.drive.com.au/cars-for-sale/?${params.toString()}`;
+  },
+
+  autotrader: (intent) => {
+    if (!intent.make) return null;
+    const params = new URLSearchParams({
+      make: intent.make.toLowerCase(),
+      sourceCondition: "1:Used",
+      sortBy: "price",
+      orderBy: "asc",
+    });
+    if (intent.model) params.set("model", intent.model.toLowerCase());
+    if (intent.year_min) params.set("yearFrom", String(intent.year_min));
+    if (intent.year_max) params.set("yearTo", String(intent.year_max));
+    if (intent.max_km) params.set("odometerMax", String(intent.max_km));
+    if (intent.price_max) params.set("priceTo", String(intent.price_max));
+    return `https://www.autotrader.com.au/cars-for-sale?${params.toString()}`;
+  },
 };
 
 // ─── Extraction prompt per source ────────────────────────────────────────────
