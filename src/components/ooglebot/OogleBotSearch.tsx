@@ -624,7 +624,7 @@ export function OogleBotSearch() {
           km: r.km ?? null,
           year: r.year ?? null,
           location: r.state || r.location || null,
-          dealer_name: r.auction_house || null,
+          dealer_name: r.source_class === "auction" ? (r.auction_house || r.source || null) : (r.source_class || r.source || null),
           url: r.url || r.listing_url || "",
           badge: r.variant || null,
           source: r.source || "internal",
