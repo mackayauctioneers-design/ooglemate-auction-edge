@@ -160,7 +160,7 @@ serve(async (req) => {
           const { data: upsertResult, error: upsertError } = await supabase.rpc("upsert_retail_listing", {
             p_source: "drive",
             p_source_listing_id: String(listing.id),
-            p_listing_url: listing.id ? `https://www.drive.com.au/cars-for-sale/dealer-listing/${listing.id}` : null,
+            p_listing_url: listing.id ? `https://www.drive.com.au/cars-for-sale/car/${listing.id}/` : null,
             p_year: listing.year,
             p_make: make,
             p_model: model,
