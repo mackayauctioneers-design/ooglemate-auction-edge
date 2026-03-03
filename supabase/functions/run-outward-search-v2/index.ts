@@ -82,7 +82,18 @@ Deno.serve(async (req) => {
 
   const accountId = body.account_id || null;
   const initiatedBy = body.initiated_by || "user";
-  const isPrivileged = body.full_market_scan === true || initiatedBy === "operator";
+
+  // ── Backend plan-tier verification ──
+  // Do NOT trust frontend full_market_scan alone — verify entitlement
+  let isPrivileged = initiatedBy === "operator"; // operators always privileged
+  if (!isPrivileged && body.full_market_scan === true && accountId) {
+    const { data: ent } = await sb
+      .from("dealer_entitlements")
+      .select("plan_tier")
+      .eq("account_id", accountId)
+      .maybeSingle();
+    isPrivileged = ent?.plan_tier === "enterprise" || ent?.plan_tier === "premium";
+  }
   const urgency = body.urgency ?? (isPrivileged ? "high" : "normal");
 
   // ── Parse intent ──

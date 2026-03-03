@@ -283,7 +283,7 @@ function OutwardResultCard({ result, isBestPrice }: { result: OutwardResult; isB
               {result.source}
             </Badge>
           )}
-          {["carsales", "carsguide", "gumtree", "easyauto123", "lindy", "lindy_discovery"].includes(result.source) && (
+          {result.source === "lindy_discovery" && (
             <Badge variant="outline" className="text-[9px] px-1 py-0 border-primary/30 text-primary/70">
               AI Discovery
             </Badge>
