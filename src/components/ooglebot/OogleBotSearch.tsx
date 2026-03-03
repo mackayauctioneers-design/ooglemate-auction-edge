@@ -75,6 +75,10 @@ function formatKm(km: number | null) {
   return `${km.toLocaleString()} km`;
 }
 
+function numericOrInfinity(value: number | null | undefined) {
+  return value == null ? Number.POSITIVE_INFINITY : value;
+}
+
 // ── Result Cards ──
 
 function InternalResultCard({ match, showUrl }: { match: InternalMatch; showUrl: boolean }) {
@@ -524,6 +528,21 @@ export function OogleBotSearch() {
   const authReady = !!(dealerProfile?.account_id);
   const canSearch = make.trim().length > 0 && model.trim().length > 0;
   const badgeMissing = canSearch && !badge.trim();
+
+  // Always render lists cheapest → dearest
+  const sortedInternalResults = useMemo(
+    () => [...internalResults].sort((a, b) => numericOrInfinity(a.asking_price) - numericOrInfinity(b.asking_price)),
+    [internalResults],
+  );
+
+  const sortedScoredResults = useMemo(
+    () => [...(externalResponse?.results ?? [])].sort((a, b) => {
+      const aPrice = numericOrInfinity(a.effective_cost ?? a.price);
+      const bPrice = numericOrInfinity(b.effective_cost ?? b.price);
+      return aPrice - bPrice;
+    }),
+    [externalResponse?.results],
+  );
 
   // ── Outward polling (poll outward_jobs + outward_search_results by search_run_id) ──
   // FIX #1: Correct column names (source_key not source) and terminal statuses
@@ -1089,7 +1108,7 @@ export function OogleBotSearch() {
               <p className="text-sm text-muted-foreground py-2">No matching vehicles in our database.</p>
             ) : (
               <div className="space-y-1.5">
-                {internalResults.map(match => (
+                {sortedInternalResults.map(match => (
                   <InternalResultCard key={match.id} match={match} showUrl={isAdmin} />
                 ))}
               </div>
@@ -1121,7 +1140,7 @@ export function OogleBotSearch() {
             {(externalResponse.results?.length || 0) === 0 ? (
               <p className="text-sm text-muted-foreground py-2">No scored results found.</p>
             ) : (
-              externalResponse.results!.map((result, i) => (
+              sortedScoredResults.map((result, i) => (
                 <ScoredResultCard key={result.listing_id || i} result={result} showUrl={isAdmin} isOperator={isAdmin} />
               ))
             )}
