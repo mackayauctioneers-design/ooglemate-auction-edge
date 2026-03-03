@@ -267,12 +267,19 @@ function OutwardResultCard({ result, isBestPrice }: { result: OutwardResult; isB
             </span>
           )}
         </div>
-        {result.dealer_name && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Building2 className="h-3 w-3" />
-            <span>{result.dealer_name}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {result.dealer_name && (
+            <span className="flex items-center gap-1">
+              <Building2 className="h-3 w-3" />
+              {result.dealer_name}
+            </span>
+          )}
+          {result.source && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              {result.source}
+            </Badge>
+          )}
+        </div>
       </div>
       {result.url && (
         <a href={result.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
@@ -328,7 +335,7 @@ function OutwardResultsSection({
   const deduped = (() => {
     const map = new Map<string, OutwardResult>();
     for (const r of outwardResults) {
-      const key = r.url || r.stock_no || crypto.randomUUID();
+      const key = r.url || r.stock_no || `${r.title}|${r.year ?? ""}|${r.km ?? ""}|${r.location ?? ""}`;
       const existing = map.get(key);
       if (!existing || (r.price != null && (existing.price == null || r.price < existing.price))) {
         map.set(key, r);
@@ -542,13 +549,15 @@ export function OogleBotSearch() {
 
     if (fetchable.length > 0) {
       const newJobIds = fetchable.map(j => j.id);
-      // Mark as seen immediately to prevent re-fetch on next poll
-      newJobIds.forEach(id => seenJobIdsRef.current.add(id));
-
-      const { data: results } = await supabase
+      const { data: results, error: fetchErr } = await supabase
         .from("outward_search_results")
         .select("title, price_aud, odometer_km, year, state, listing_url, make_norm, model_norm, variant_family, source_key")
         .in("job_id", newJobIds);
+
+      // Only mark as seen if fetch succeeded — allows retry on transient failures
+      if (!fetchErr) {
+        newJobIds.forEach(id => seenJobIdsRef.current.add(id));
+      }
 
       if (results && results.length > 0) {
         const newResults: OutwardResult[] = results.map(r => ({
@@ -571,7 +580,7 @@ export function OogleBotSearch() {
           const merged = [...prev, ...newResults];
           const urlMap = new Map<string, OutwardResult>();
           for (const r of merged) {
-            const key = r.url || crypto.randomUUID();
+            const key = r.url || `${r.title}|${r.year ?? ""}|${r.km ?? ""}|${r.location ?? ""}`;
             const existing = urlMap.get(key);
             if (!existing || (r.price != null && (existing.price == null || r.price < existing.price))) {
               urlMap.set(key, r);
@@ -679,7 +688,7 @@ export function OogleBotSearch() {
           const merged = [...prev, ...mapped];
           const urlMap = new Map<string, OutwardResult>();
           for (const r of merged) {
-            const key = r.url || crypto.randomUUID();
+            const key = r.url || `${r.title}|${r.year ?? ""}|${r.km ?? ""}|${r.location ?? ""}`;
             const existing = urlMap.get(key);
             if (!existing || (r.price != null && (existing.price == null || r.price < existing.price))) {
               urlMap.set(key, r);
