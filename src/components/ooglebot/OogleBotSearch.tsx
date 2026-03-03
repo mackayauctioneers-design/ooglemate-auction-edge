@@ -522,6 +522,9 @@ export function OogleBotSearch() {
   // FIX #1: Correct column names (source_key not source) and terminal statuses
   // FIX #2: job_id in outward_search_results references outward_jobs.id (confirmed)
   // FIX #3: MERGE results instead of overwrite — dedupe by listing_url
+  // Track which job IDs we've already fetched results for — prevents duplicate queries
+  const seenJobIdsRef = useRef<Set<string>>(new Set());
+
   const pollOutwardJobs = useCallback(async (runId: string) => {
     const { data: jobs } = await supabase
       .from("outward_jobs")
@@ -530,15 +533,22 @@ export function OogleBotSearch() {
     if (!jobs) return;
 
     const pending = jobs.filter(j => !TERMINAL_STATUSES.has(j.status)).length;
-    const completed = jobs.filter(j => j.status === "complete");
 
-    // Fetch results from completed jobs and MERGE with existing
-    if (completed.length > 0) {
-      const completedIds = completed.map(j => j.id);
+    // Fetch results for jobs that have results OR are terminal — but only NEW ones
+    const fetchable = jobs.filter(j =>
+      !seenJobIdsRef.current.has(j.id) &&
+      ((j.result_count ?? 0) > 0 || TERMINAL_STATUSES.has(j.status))
+    );
+
+    if (fetchable.length > 0) {
+      const newJobIds = fetchable.map(j => j.id);
+      // Mark as seen immediately to prevent re-fetch on next poll
+      newJobIds.forEach(id => seenJobIdsRef.current.add(id));
+
       const { data: results } = await supabase
         .from("outward_search_results")
         .select("title, price_aud, odometer_km, year, state, listing_url, make_norm, model_norm, variant_family, source_key")
-        .in("job_id", completedIds);
+        .in("job_id", newJobIds);
 
       if (results && results.length > 0) {
         const newResults: OutwardResult[] = results.map(r => ({
@@ -556,7 +566,7 @@ export function OogleBotSearch() {
           stock_no: null,
         }));
 
-        // Merge with existing results — deduplicate by URL
+        // Merge with existing results — deduplicate by URL, keep lowest price
         setOutwardResults(prev => {
           const merged = [...prev, ...newResults];
           const urlMap = new Map<string, OutwardResult>();
@@ -731,6 +741,7 @@ export function OogleBotSearch() {
     setOutwardTotal(0);
     setPhase1Count(0);
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    seenJobIdsRef.current.clear();
 
     try {
       const structuredIntent = {
