@@ -437,6 +437,7 @@ export function OogleBotSearch() {
   const [msgIndex, setMsgIndex] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
   const prevOutwardCountRef = useRef(0);
+  const [jobStatuses, setJobStatuses] = useState<Array<{ source_key: string; status: string; result_count: number }>>([]);
 
   // Elapsed timer while outward polling
   useEffect(() => {
@@ -520,6 +521,7 @@ export function OogleBotSearch() {
 
     setOutwardPending(pending);
     setOutwardTotal(jobs.length);
+    setJobStatuses(jobs.map(j => ({ source_key: j.source_key, status: j.status, result_count: j.result_count ?? 0 })));
     if (pending === 0) {
       setOutwardPolling(false);
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -704,6 +706,7 @@ export function OogleBotSearch() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     seenJobIdsRef.current.clear();
     prevOutwardCountRef.current = 0;
+    setJobStatuses([]);
 
     try {
       const structuredIntent = {
@@ -979,33 +982,94 @@ export function OogleBotSearch() {
 
           {/* Outward Activity Banner */}
           {outwardPolling && outwardPending > 0 && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
-              <div className="relative flex h-3 w-3 shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="relative flex h-3 w-3 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                    AI Discovery — {outwardTotal - outwardPending}/{outwardTotal} sources complete
+                  </p>
+                  <p className="text-[11px] text-amber-600/70 dark:text-amber-500/70">
+                    {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, '0')} elapsed
+                  </p>
+                </div>
+                <Loader2 className="h-4 w-4 animate-spin text-amber-600 shrink-0" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-                  CaroogleAI searching {outwardPending} dealer site{outwardPending > 1 ? "s" : ""}…
-                </p>
-                <p className="text-[11px] text-amber-600/70 dark:text-amber-500/70">
-                  {outwardTotal - outwardPending}/{outwardTotal} complete · {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, '0')} elapsed
-                </p>
-                <p className="text-[10px] text-amber-600/50 dark:text-amber-500/50 mt-0.5 animate-pulse">
-                  {REASSURANCE_MESSAGES[msgIndex]}
-                </p>
-              </div>
-              <Loader2 className="h-4 w-4 animate-spin text-amber-600 shrink-0" />
+              {/* Per-source progress list */}
+              {jobStatuses.length > 0 && (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 pl-6">
+                  {jobStatuses.map((j) => {
+                    const displayName: Record<string, string> = {
+                      autotrader: "Autotrader",
+                      drive: "Drive",
+                      gumtree_dealer: "Gumtree",
+                      gumtree_private: "Gumtree Private",
+                      carsales: "Carsales",
+                      carsguide: "CarsGuide",
+                    };
+                    const name = displayName[j.source_key] || j.source_key;
+                    const isComplete = j.status === "complete";
+                    const isFailed = j.status === "failed" || j.status === "timeout";
+                    const isPending = !isComplete && !isFailed;
+                    return (
+                      <div key={j.source_key} className="flex items-center gap-1.5 text-[11px]">
+                        {isComplete && <span className="text-emerald-500">✓</span>}
+                        {isFailed && <span className="text-red-400">✗</span>}
+                        {isPending && <Loader2 className="h-3 w-3 animate-spin text-amber-500" />}
+                        <span className={isComplete ? "text-emerald-600 dark:text-emerald-400" : isFailed ? "text-red-500/70" : "text-amber-600 dark:text-amber-400"}>
+                          {name}
+                        </span>
+                        {isComplete && j.result_count > 0 && (
+                          <span className="text-emerald-500/70">({j.result_count})</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <p className="text-[10px] text-amber-600/50 dark:text-amber-500/50 pl-6 animate-pulse">
+                {REASSURANCE_MESSAGES[msgIndex]}
+              </p>
             </div>
           )}
 
           {/* Outward Complete Banner */}
           {!outwardPolling && outwardTotal > 0 && hasSearched && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shrink-0"></span>
-              <p className="text-sm text-emerald-700 dark:text-emerald-400">
-                CaroogleAI complete — {outwardResults.length} vehicle{outwardResults.length !== 1 ? "s" : ""} found from {outwardTotal} dealer site{outwardTotal > 1 ? "s" : ""}
-              </p>
+            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 space-y-2">
+              <div className="flex items-center gap-3">
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shrink-0"></span>
+                <p className="text-sm text-emerald-700 dark:text-emerald-400">
+                  AI Discovery complete — {outwardResults.length} vehicle{outwardResults.length !== 1 ? "s" : ""} found
+                </p>
+              </div>
+              {jobStatuses.length > 0 && (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 pl-6">
+                  {jobStatuses.map((j) => {
+                    const displayName: Record<string, string> = {
+                      autotrader: "Autotrader",
+                      drive: "Drive",
+                      gumtree_dealer: "Gumtree",
+                      gumtree_private: "Gumtree Private",
+                      carsales: "Carsales",
+                      carsguide: "CarsGuide",
+                    };
+                    const name = displayName[j.source_key] || j.source_key;
+                    const isComplete = j.status === "complete";
+                    const isFailed = j.status === "failed" || j.status === "timeout";
+                    return (
+                      <div key={j.source_key} className="flex items-center gap-1.5 text-[11px]">
+                        {isComplete ? <span className="text-emerald-500">✓</span> : <span className="text-red-400">✗</span>}
+                        <span className={isComplete ? "text-emerald-600 dark:text-emerald-400" : "text-red-500/70"}>
+                          {name}{isComplete && j.result_count > 0 ? ` (${j.result_count})` : isFailed ? " — no response" : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </CardContent>
