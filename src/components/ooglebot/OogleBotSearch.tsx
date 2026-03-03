@@ -45,6 +45,7 @@ import {
 import { KitingLoader } from "@/components/ui/KitingLoader";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
 import { useToast } from "@/hooks/use-toast";
+import { toast as sonnerToast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
 // ── Constants ──
@@ -434,10 +435,20 @@ export function OogleBotSearch() {
   const [showAllMarket, setShowAllMarket] = useState(false);
   const [showAllAuction, setShowAllAuction] = useState(false);
   const [msgIndex, setMsgIndex] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const prevOutwardCountRef = useRef(0);
+
+  // Elapsed timer while outward polling
+  useEffect(() => {
+    if (!outwardPolling || outwardPending === 0) { setElapsedSec(0); return; }
+    const start = Date.now();
+    const interval = setInterval(() => setElapsedSec(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(interval);
+  }, [outwardPolling, outwardPending > 0]);
 
   useEffect(() => {
     if (outwardPending === 0) return;
-    const interval = setInterval(() => setMsgIndex(i => (i + 1) % REASSURANCE_MESSAGES.length), 30_000);
+    const interval = setInterval(() => setMsgIndex(i => (i + 1) % REASSURANCE_MESSAGES.length), 15_000);
     return () => clearInterval(interval);
   }, [outwardPending]);
 
@@ -514,6 +525,29 @@ export function OogleBotSearch() {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     }
   }, []);
+
+  // Notify user when new outward results arrive
+  useEffect(() => {
+    const prev = prevOutwardCountRef.current;
+    const curr = outwardResults.length;
+    if (curr > prev && prev > 0) {
+      const newCount = curr - prev;
+      sonnerToast.success(`${newCount} new result${newCount > 1 ? "s" : ""} found`, {
+        description: `${curr} total vehicles from dealer sites`,
+      });
+    }
+    prevOutwardCountRef.current = curr;
+  }, [outwardResults.length]);
+
+  // Notify when outward search completes
+  useEffect(() => {
+    if (!outwardPolling && outwardTotal > 0 && hasSearched && !outwardTimedOut) {
+      sonnerToast.success("Market search complete", {
+        description: `${outwardResults.length} vehicle${outwardResults.length !== 1 ? "s" : ""} found across ${outwardTotal} dealer sites`,
+        duration: 8000,
+      });
+    }
+  }, [outwardPolling, outwardTotal, hasSearched, outwardTimedOut]);
 
   useEffect(() => {
     return () => {
@@ -669,6 +703,7 @@ export function OogleBotSearch() {
     setPhase1Count(0);
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     seenJobIdsRef.current.clear();
+    prevOutwardCountRef.current = 0;
 
     try {
       const structuredIntent = {
@@ -944,7 +979,7 @@ export function OogleBotSearch() {
 
           {/* Outward Activity Banner */}
           {outwardPolling && outwardPending > 0 && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 animate-pulse">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
               <div className="relative flex h-3 w-3 shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
@@ -954,7 +989,10 @@ export function OogleBotSearch() {
                   CaroogleAI searching {outwardPending} dealer site{outwardPending > 1 ? "s" : ""}…
                 </p>
                 <p className="text-[11px] text-amber-600/70 dark:text-amber-500/70">
-                  {outwardTotal - outwardPending}/{outwardTotal} complete · Results arrive in 2–5 min
+                  {outwardTotal - outwardPending}/{outwardTotal} complete · {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, '0')} elapsed
+                </p>
+                <p className="text-[10px] text-amber-600/50 dark:text-amber-500/50 mt-0.5 animate-pulse">
+                  {REASSURANCE_MESSAGES[msgIndex]}
                 </p>
               </div>
               <Loader2 className="h-4 w-4 animate-spin text-amber-600 shrink-0" />
