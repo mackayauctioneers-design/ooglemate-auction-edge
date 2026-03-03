@@ -1,5 +1,6 @@
 /**
  * ooglebot-gemini-insight — Interpretive market insight from top 3 cheapest listings.
+ * Only called when listing age data is available.
  *
  * RULES:
  * - Gemini can ONLY interpret the numbers provided
@@ -23,7 +24,10 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { vehicle, floor, second, third, spread_pct, count, outlier_flag } = body;
+    const {
+      vehicle, floor, second, third, spread_pct, count, outlier_flag,
+      floor_days_listed, second_days_listed, third_days_listed,
+    } = body;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -42,7 +46,14 @@ STRICT RULES:
 - Do NOT use AI branding, emoji, or chatbot language.
 - Do NOT use markdown headers or formatting.
 - Maximum 5 bullet points using • character.
-- Professional tone. Data-driven. No fluff.`;
+- Professional tone. Data-driven. No fluff.
+- ALWAYS reference listing age / velocity in your analysis.`;
+
+    const ageLines = [
+      floor_days_listed != null ? `Floor listing age: ${floor_days_listed} days` : null,
+      second_days_listed != null ? `2nd listing age: ${second_days_listed} days` : null,
+      third_days_listed != null ? `3rd listing age: ${third_days_listed} days` : null,
+    ].filter(Boolean).join("\n");
 
     const userPrompt = `Vehicle: ${vehicle}
 Floor (cheapest): $${floor?.toLocaleString()}
@@ -51,11 +62,13 @@ Third: $${third?.toLocaleString()}
 Spread: ${spread_pct}%
 Listing count: ${count}
 Outlier detected: ${outlier_flag ? "Yes" : "No"}
+${ageLines}
 
 Provide:
+• Market velocity (fast-moving / steady / stale) based on listing ages
 • Market strength (tight / moderate / weak)
 • Risk level (low / medium / high)
-• Likely negotiation window (%)
+• Likely negotiation window (%) — factor in listing age
 • One short buying insight (max 15 words)`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
