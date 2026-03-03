@@ -459,20 +459,21 @@ export function OogleBotSearch() {
     return () => clearInterval(interval);
   }, [outwardPending]);
 
-  // ── Auto-fire Gemini insight when we have 3+ market results ──
+  // ── Auto-fire Gemini insight when top 3 have listing age data ──
   useEffect(() => {
     if (marketResults.length < 3) return;
-    // Build a fingerprint to avoid re-firing for same results
-    const top3Key = marketResults.slice(0, 3).map(r => r.id).join("|");
+    const top3 = marketResults.slice(0, 3);
+    // Gate: only fire if at least 2 of top 3 have days_listed
+    const withAge = top3.filter(r => r.days_listed != null);
+    if (withAge.length < 2) return;
+
+    const top3Key = top3.map(r => r.id).join("|");
     if (insightFiredRef.current === top3Key) return;
     insightFiredRef.current = top3Key;
 
-    const floor = marketResults[0];
-    const second = marketResults[1];
-    const third = marketResults[2];
-    const floorPrice = floor.effective_price ?? floor.price ?? 0;
-    const secondPrice = second.effective_price ?? second.price ?? 0;
-    const thirdPrice = third.effective_price ?? third.price ?? 0;
+    const floorPrice = top3[0].effective_price ?? top3[0].price ?? 0;
+    const secondPrice = top3[1].effective_price ?? top3[1].price ?? 0;
+    const thirdPrice = top3[2].effective_price ?? top3[2].price ?? 0;
     const spread = floorPrice > 0 ? (((thirdPrice - floorPrice) / floorPrice) * 100).toFixed(1) : "0";
     const vehicleLabel = `${make} ${model} ${badge}`.trim();
 
@@ -488,6 +489,9 @@ export function OogleBotSearch() {
         spread_pct: parseFloat(spread),
         count: marketResults.length,
         outlier_flag: false,
+        floor_days_listed: top3[0].days_listed,
+        second_days_listed: top3[1].days_listed,
+        third_days_listed: top3[2].days_listed,
       },
     }).then(({ data, error }) => {
       if (error) {
@@ -1153,8 +1157,8 @@ export function OogleBotSearch() {
             </p>
           </CardHeader>
           <CardContent className="space-y-1.5">
-            {/* ── Market Insight (auto, top 3) ── */}
-            {!internalLoading && marketResults.length >= 3 && (
+            {/* ── Market Insight (auto, top 3 — only when listing age available) ── */}
+            {!internalLoading && marketResults.length >= 3 && marketResults.slice(0, 3).filter(r => r.days_listed != null).length >= 2 && (
               <div className="rounded-lg border border-border bg-muted/30 p-4 mb-3 space-y-2">
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 text-center">
                   <div>
