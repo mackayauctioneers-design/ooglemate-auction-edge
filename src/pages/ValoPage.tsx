@@ -127,6 +127,12 @@ export default function ValoPage() {
   const [showDebug, setShowDebug] = useState(false);
   const [expandedComp, setExpandedComp] = useState<number | null>(null);
 
+  // Market Commentary (lazy Gemini layer)
+  const [commentaryOpen, setCommentaryOpen] = useState(false);
+  const [commentaryText, setCommentaryText] = useState<string | null>(null);
+  const [commentaryLoading, setCommentaryLoading] = useState(false);
+  const [valoRawData, setValoRawData] = useState<any>(null);
+
   // MODO state
   const [modoPhotos, setModoPhotos] = useState<File[]>([]);
   const [modoPhotoUrls, setModoPhotoUrls] = useState<string[]>([]);
@@ -185,6 +191,8 @@ export default function ValoPage() {
     setModoResult(null);
     setModoPhotos([]);
     setModoPhotoUrls([]);
+    setCommentaryOpen(false);
+    setCommentaryText(null);
     setIsProcessing(true);
 
     try {
@@ -248,6 +256,7 @@ export default function ValoPage() {
       }
       if (valoData?.status === 'error') throw new Error(valoData.error);
 
+      setValoRawData(valoData);
       if (isAdmin) setOancaDebug(valoData);
 
       const comps: any[] = [];
@@ -371,6 +380,73 @@ export default function ValoPage() {
     };
     const labels = { dealer: 'Dealer History', network: 'Network', proxy: 'Proxy' };
     return <Badge variant="outline" className={map[t]}>{labels[t]}</Badge>;
+  };
+
+  const handleCommentaryToggle = async () => {
+    if (commentaryOpen) {
+      setCommentaryOpen(false);
+      return;
+    }
+    setCommentaryOpen(true);
+    if (commentaryText) return; // already fetched
+
+    if (!result || !valoRawData?.market) return;
+    setCommentaryLoading(true);
+
+    try {
+      const market = valoRawData.market;
+      const offer = valoRawData.trade_in_offer;
+      const vehicleLabel = [parsed?.year, parsed?.make, parsed?.model, parsed?.variant_family].filter(Boolean).join(' ');
+
+      // Compute state breakdown from comps
+      const stateMap = new Map<string, { prices: number[]; count: number }>();
+      valoComps.forEach((c: any) => {
+        const st = c.state;
+        const price = c.price ?? c.effective_cost;
+        if (st && price > 0) {
+          const entry = stateMap.get(st) || { prices: [], count: 0 };
+          entry.prices.push(price);
+          entry.count++;
+          stateMap.set(st, entry);
+        }
+      });
+      const stateBreakdown = Array.from(stateMap.entries()).map(([state, d]) => {
+        const sorted = [...d.prices].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 !== 0 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+        return { state, median, count: d.count };
+      });
+
+      const prices = valoComps
+        .map((c: any) => c.price ?? c.effective_cost)
+        .filter((p: number) => p != null && p > 0);
+      const spreadPct = prices.length >= 2
+        ? (((Math.max(...prices) - Math.min(...prices)) / Math.min(...prices)) * 100).toFixed(1)
+        : '0';
+
+      const { data, error } = await supabase.functions.invoke('valo-market-commentary', {
+        body: {
+          vehicle: vehicleLabel,
+          floor: market.p25,
+          median: market.median,
+          ceiling: market.p75,
+          spread_pct: parseFloat(spreadPct),
+          comp_count: market.comp_count,
+          trimmed: market.trimmed,
+          confidence: valoRawData.confidence,
+          state_breakdown: stateBreakdown,
+          trade_in_offer: offer,
+        },
+      });
+
+      if (error) throw new Error(error.message);
+      setCommentaryText(data?.commentary || 'No commentary available.');
+    } catch (err) {
+      console.error('Commentary error:', err);
+      setCommentaryText('Commentary unavailable.');
+    } finally {
+      setCommentaryLoading(false);
+    }
   };
 
   return (
@@ -740,6 +816,30 @@ export default function ValoPage() {
                     ~{Math.round(result.typical_days_to_sell)} days
                   </div>
                 </Card>
+              )}
+            </div>
+
+            {/* ── Market Commentary (collapsible, lazy Gemini) ── */}
+            <div className="border border-border rounded-lg overflow-hidden">
+              <button
+                onClick={handleCommentaryToggle}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
+              >
+                <span>{commentaryOpen ? '▼' : '▶'} Show Market Commentary</span>
+                {commentaryLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              </button>
+              {commentaryOpen && (
+                <div className="px-4 pb-4 border-t border-border">
+                  {commentaryLoading ? (
+                    <p className="text-sm text-muted-foreground py-3 animate-pulse">
+                      Analysing market structure…
+                    </p>
+                  ) : commentaryText ? (
+                    <div className="text-sm text-foreground py-3 space-y-1.5 leading-relaxed whitespace-pre-line">
+                      {commentaryText}
+                    </div>
+                  ) : null}
+                </div>
               )}
             </div>
 
