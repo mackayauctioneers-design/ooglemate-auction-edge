@@ -283,6 +283,11 @@ function OutwardResultCard({ result, isBestPrice }: { result: OutwardResult; isB
               {result.source}
             </Badge>
           )}
+          {["carsales", "carsguide", "gumtree", "easyauto123", "lindy", "lindy_discovery"].includes(result.source) && (
+            <Badge variant="outline" className="text-[9px] px-1 py-0 border-primary/30 text-primary/70">
+              AI Discovery
+            </Badge>
+          )}
         </div>
       </div>
       {result.url && (
@@ -445,6 +450,21 @@ export function OogleBotSearch() {
   const { toast } = useToast();
   const { isAdmin, dealerProfile } = useAuth();
 
+  // ── Entitlement: fetch plan_tier for discovery eligibility ──
+  const [planTier, setPlanTier] = useState<string | null>(null);
+  useEffect(() => {
+    if (!dealerProfile?.account_id) return;
+    supabase
+      .from("dealer_entitlements")
+      .select("plan_tier")
+      .eq("account_id", dealerProfile.account_id)
+      .maybeSingle()
+      .then(({ data }) => setPlanTier(data?.plan_tier ?? null));
+  }, [dealerProfile?.account_id]);
+
+  // Enterprise + Operator always get AI Market Discovery
+  const canUseDiscovery = isAdmin || planTier === "enterprise" || planTier === "premium";
+
   // ── Structured identity fields ──
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
@@ -458,7 +478,8 @@ export function OogleBotSearch() {
   const [stateFilter, setStateFilter] = useState("");
   const [selectedAccessories, setSelectedAccessories] = useState<string[]>([]);
   const [customAccessory, setCustomAccessory] = useState("");
-  const [fullMarketScan, setFullMarketScan] = useState(false);
+  // Discovery users always get full market scan — no toggle needed
+  const fullMarketScan = canUseDiscovery;
 
   // ── Quick search (secondary) ──
   const [quickSearchOpen, setQuickSearchOpen] = useState(false);
@@ -670,8 +691,8 @@ export function OogleBotSearch() {
         body: {
           instruction,
           account_id: dealerProfile?.account_id || null,
-          initiated_by: "dealer",
-          full_market_scan: fullMarketScan,
+          initiated_by: isAdmin ? "operator" : "dealer",
+          full_market_scan: canUseDiscovery,
           filters: {
             make: filters.make,
             model: filters.model,
@@ -981,14 +1002,15 @@ export function OogleBotSearch() {
             )}
           </div>
 
-          {/* CaroogleAI Full Market Scan toggle — enterprise only */}
-          {dealerProfile?.account_id && (
-            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+          {/* AI Market Discovery — auto-enabled for enterprise/operator, hidden for others */}
+          {canUseDiscovery && (
+            <div className="flex items-center gap-2 p-3 rounded-lg border border-primary/20 bg-primary/5">
+              <Search className="h-4 w-4 text-primary shrink-0" />
               <div>
-                <p className="text-sm font-medium">CaroogleAI Full Market Scan</p>
-                <p className="text-[10px] text-muted-foreground">Search all external dealer sites and marketplaces</p>
+                <p className="text-sm font-medium text-primary">AI Market Discovery Enabled</p>
+                <p className="text-[10px] text-muted-foreground">External marketplaces will be searched automatically</p>
               </div>
-              <Switch checked={fullMarketScan} onCheckedChange={setFullMarketScan} />
+              <Badge variant="outline" className="ml-auto text-[9px] shrink-0">Premium</Badge>
             </div>
           )}
 

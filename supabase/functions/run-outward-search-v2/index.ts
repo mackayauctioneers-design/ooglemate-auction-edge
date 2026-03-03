@@ -82,7 +82,8 @@ Deno.serve(async (req) => {
 
   const accountId = body.account_id || null;
   const initiatedBy = body.initiated_by || "user";
-  const urgency = body.urgency ?? (body.full_market_scan ? "high" : "normal");
+  const isPrivileged = body.full_market_scan === true || initiatedBy === "operator";
+  const urgency = body.urgency ?? (isPrivileged ? "high" : "normal");
 
   // ── Parse intent ──
   let intent: ParsedIntent = emptyIntent();
@@ -125,7 +126,8 @@ Deno.serve(async (req) => {
   const internalCount = body.internal_count ?? internalResults.length;
 
   // ── Demand gating: skip outward if plenty of internal results ──
-  if (internalCount >= 5 && urgency !== "high" && !body.full_market_scan) {
+  // Enterprise + operator always bypass this gate (isPrivileged = true)
+  if (!isPrivileged && internalCount >= 5) {
     const durationMs = Date.now() - startMs;
     try {
       await sb.from("outward_search_runs").insert({
