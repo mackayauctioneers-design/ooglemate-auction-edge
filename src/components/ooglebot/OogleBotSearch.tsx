@@ -473,8 +473,8 @@ export function OogleBotSearch() {
   const [internalLoading, setInternalLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
-  // ── Manus state ──
-  const [manusSessionId, setManusSessionId] = useState<string | null>(null);
+  // ── Lindy/Outward state (was Manus) ──
+  const [manusSessionId, setManusSessionId] = useState<string | null>(null); // now search_run_id
   const [manusResults, setManusResults] = useState<ManusResult[]>([]);
   const [manusPending, setManusPending] = useState(0);
   const [manusTotal, setManusTotal] = useState(0);
@@ -503,24 +503,46 @@ export function OogleBotSearch() {
   const canSearch = make.trim().length > 0 && model.trim().length > 0;
   const badgeMissing = canSearch && !badge.trim();
 
-  // ── Manus polling (unchanged logic) ──
-  const pollManusTasks = useCallback(async (sessionId: string) => {
-    const { data: tasks } = await supabase
-      .from("manus_search_tasks")
-      .select("status, results, source_url")
-      .eq("search_session_id", sessionId);
-    if (!tasks) return;
-    const pending = tasks.filter(t => t.status === "pending").length;
-    const completed = tasks.filter(t => t.status === "complete");
-    const allResults: ManusResult[] = [];
-    for (const t of completed) {
-      if (t.results && Array.isArray(t.results)) {
-        allResults.push(...(t.results as unknown as ManusResult[]));
+  // ── Lindy polling (poll outward_jobs + outward_search_results by search_run_id) ──
+  const pollManusTasks = useCallback(async (searchRunId: string) => {
+    // Poll outward_jobs for this search run
+    const { data: jobs } = await supabase
+      .from("outward_jobs")
+      .select("id, status, source_key, result_count")
+      .eq("search_run_id", searchRunId);
+    if (!jobs) return;
+    const pending = jobs.filter(j => j.status === "dispatched" || j.status === "pending").length;
+    const completed = jobs.filter(j => j.status === "complete");
+
+    // Fetch results from completed jobs
+    if (completed.length > 0) {
+      const completedIds = completed.map(j => j.id);
+      const { data: results } = await supabase
+        .from("outward_search_results")
+        .select("title, price_aud, odometer_km, year, state, listing_url, make_norm, model_norm")
+        .in("job_id", completedIds);
+
+      if (results) {
+        const mapped: ManusResult[] = results.map(r => ({
+          title: r.title || `${r.year || ""} ${r.make_norm || ""} ${r.model_norm || ""}`.trim(),
+          price: r.price_aud,
+          price_type: null,
+          km: r.odometer_km,
+          year: r.year,
+          location: r.state,
+          dealer_name: null,
+          url: r.listing_url,
+          badge: null,
+          source: "lindy",
+          colour: null,
+          stock_no: null,
+        }));
+        setManusResults(mapped);
       }
     }
+
     setManusPending(pending);
-    setManusTotal(tasks.length);
-    setManusResults(allResults);
+    setManusTotal(jobs.length);
     if (pending === 0) {
       setManusPolling(false);
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -543,10 +565,10 @@ export function OogleBotSearch() {
       pollRef.current = setInterval(() => pollManusTasks(manusSessionId), 8000);
     }, 3000);
     const channel = supabase
-      .channel(`manus-tasks-${manusSessionId}`)
+      .channel(`outward-jobs-${manusSessionId}`)
       .on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "manus_search_tasks",
-        filter: `search_session_id=eq.${manusSessionId}`,
+        event: "UPDATE", schema: "public", table: "outward_jobs",
+        filter: `search_run_id=eq.${manusSessionId}`,
       }, () => pollManusTasks(manusSessionId))
       .subscribe();
     timeoutRef.current = setTimeout(() => {
@@ -567,22 +589,64 @@ export function OogleBotSearch() {
     max_km?: number | null; price_max?: number | null;
   }) => {
     try {
-      const { data, error } = await supabase.functions.invoke("trigger-manus-search", {
-        body: { filters },
+      // Build instruction text for run-outward-search-v2
+      const instructionParts = [filters.make, filters.model].filter(Boolean);
+      if (filters.badge) instructionParts.push(filters.badge);
+      if (filters.year_min) instructionParts.push(`${filters.year_min}`);
+      if (filters.max_km) instructionParts.push(`under ${filters.max_km}km`);
+      if (filters.price_max) instructionParts.push(`under $${filters.price_max}`);
+      const instruction = instructionParts.join(" ");
+
+      const { data, error } = await supabase.functions.invoke("run-outward-search-v2", {
+        body: {
+          instruction,
+          account_id: dealerProfile?.account_id || null,
+          initiated_by: "dealer",
+          filters: {
+            make: filters.make,
+            model: filters.model,
+            badge: filters.badge,
+            year_min: filters.year_min,
+            year_max: filters.year_max,
+            max_km: filters.max_km,
+            price_max: filters.price_max,
+          },
+        },
       });
-      if (error) { console.error("Manus trigger error:", error); return; }
-      if (data?.instant_results && Array.isArray(data.instant_results) && data.instant_results.length > 0) {
-        setManusResults(prev => [...prev, ...data.instant_results]);
+      if (error) { console.error("Outward search v2 error:", error); return; }
+
+      // Handle immediate internal results from Phase 1
+      if (data?.results && Array.isArray(data.results) && data.results.length > 0) {
+        const mapped: ManusResult[] = data.results.map((r: any) => ({
+          title: r.title || "",
+          price: r.price ?? r.effective_cost ?? null,
+          price_type: null,
+          km: r.km ?? null,
+          year: r.year ?? null,
+          location: r.state || r.location || null,
+          dealer_name: r.auction_house || null,
+          url: r.url || r.listing_url || "",
+          badge: r.variant || null,
+          source: r.source || "internal",
+          colour: null,
+          stock_no: null,
+        }));
+        setManusResults(mapped);
       }
-      if (data?.session_id && data?.tasks_created > 0) {
-        setManusSessionId(data.session_id);
-        setManusTotal(data.tasks_created);
-        setManusPending(data.tasks_created);
-        toast({ title: `Searching ${data.tasks_created} dealer sites`, description: "Results will arrive in 2–5 minutes." });
-      } else if (data?.instant_results?.length > 0) {
+
+      // If Lindy jobs were dispatched, start polling
+      if (data?.search_run_id && data?.outward_jobs?.length > 0) {
+        const dispatchedJobs = data.outward_jobs.filter((j: any) => j.status === "dispatched");
+        if (dispatchedJobs.length > 0) {
+          setManusSessionId(data.search_run_id);
+          setManusTotal(dispatchedJobs.length);
+          setManusPending(dispatchedJobs.length);
+          toast({ title: `Searching ${dispatchedJobs.length} external source${dispatchedJobs.length > 1 ? "s" : ""}`, description: "Results will arrive in 2–5 minutes." });
+        }
+      } else if (data?.results?.length > 0) {
         setManusTotal(0); setManusPending(0);
       }
-    } catch (err) { console.error("Manus trigger failed:", err); }
+    } catch (err) { console.error("Outward search v2 failed:", err); }
   };
 
   // ── Main search handler ──
