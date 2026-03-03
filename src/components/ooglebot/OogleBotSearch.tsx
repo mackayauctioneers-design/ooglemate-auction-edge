@@ -105,9 +105,9 @@ interface UnifiedResult {
 }
 
 const AUCTION_SOURCES = new Set([
-  "pickles", "manheim", "slattery", "f3", "aav",
+  "pickles", "manheim", "slattery", "grays", "f3", "aav",
   "auto_auctions", "vma", "bidsonline",
-  "auto_auctions_aav", "pickles_crawl",
+  "auto_auctions_aav", "uaa_nsw",
 ]);
 
 function isAuctionResult(r: { source?: string; source_class?: string | null; auction_house?: string | null }): boolean {
