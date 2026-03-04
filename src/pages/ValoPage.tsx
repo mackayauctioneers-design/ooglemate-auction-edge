@@ -519,9 +519,13 @@ export default function ValoPage() {
                       <CommandInput placeholder="Search makes…" value={makeSearch} onValueChange={setMakeSearch} />
                       <CommandList>
                         <CommandEmpty>
-                          <CommandItem value={makeSearch} onSelect={() => { setMake(makeSearch.trim()); setModel(''); setMakeOpen(false); setMakeSearch(''); }}>
+                          <button
+                            type="button"
+                            className="w-full px-2 py-1.5 text-sm text-left hover:bg-accent rounded cursor-pointer"
+                            onMouseDown={(e) => { e.preventDefault(); setMake(makeSearch.trim()); setModel(''); setMakeOpen(false); setMakeSearch(''); }}
+                          >
                             Use "{makeSearch}"
-                          </CommandItem>
+                          </button>
                         </CommandEmpty>
                         <CommandGroup>
                           {filteredMakes.map(m => (
