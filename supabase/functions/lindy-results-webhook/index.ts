@@ -137,15 +137,69 @@ function validateListings(raw: unknown[], sourceKey: string): ValidatedListing[]
 const URL_CHECK_TIMEOUT_MS = 4000;
 const URL_CHECK_CONCURRENCY = 5;
 
-/** Known "listing removed" redirect patterns */
+/** Known "listing removed" page content patterns */
 const REMOVED_PATTERNS = [
-  /sorry.*car.*removed/i,
+  /sorry.*car.*(?:you were looking for has been|removed)/i,
   /listing.*no longer available/i,
   /this vehicle has been sold/i,
+  /this listing has ended/i,
   /page not found/i,
+  /we couldn.t find that listing/i,
 ];
 
+/** Domains that return 200 with "removed" content instead of 404 — must GET-check */
+const NEEDS_BODY_CHECK = [
+  "autotrader.com.au",
+  "carsales.com.au",
+  "carsguide.com.au",
+  "gumtree.com.au",
+  "drive.com.au",
+];
+
+/** Search page URL patterns — these are not individual listings */
+const SEARCH_PAGE_PATTERNS = [
+  /autotrader\.com\.au\/cars-for-sale\?/i,
+  /carsales\.com\.au\/cars\/\?/i,
+  /carsguide\.com\.au\/buy-a-car\//i,
+  /gumtree\.com\.au\/s-cars/i,
+  /drive\.com\.au\/cars-for-sale\/\?/i,
+];
+
+function isSearchPageUrl(url: string): boolean {
+  return SEARCH_PAGE_PATTERNS.some(p => p.test(url));
+}
+
+function needsBodyCheck(url: string): boolean {
+  return NEEDS_BODY_CHECK.some(domain => url.includes(domain));
+}
+
+async function fetchBodySnippet(url: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), URL_CHECK_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      redirect: "follow",
+      headers: { "User-Agent": "CaroogleBot/1.0 (listing-verify)" },
+    });
+    clearTimeout(timer);
+    if (!resp.ok) return null;
+    const body = await resp.text();
+    return body.slice(0, 8000);
+  } catch {
+    clearTimeout(timer);
+    return null;
+  }
+}
+
 async function isListingAlive(url: string): Promise<boolean> {
+  // Pre-filter: reject search page URLs that Lindy may have returned instead of listing URLs
+  if (isSearchPageUrl(url)) {
+    console.log(`[lindy-webhook] Rejected search page URL: ${url}`);
+    return false;
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), URL_CHECK_TIMEOUT_MS);
   try {
@@ -160,34 +214,24 @@ async function isListingAlive(url: string): Promise<boolean> {
     // 404/410 = dead
     if (resp.status === 404 || resp.status === 410) return false;
 
-    // Some sites redirect removed listings to a search page with a different path
+    // Check if redirected to a search page
     const finalUrl = resp.url || url;
-    if (resp.redirected && !finalUrl.includes("/listing") && !finalUrl.includes("/car-details") && !finalUrl.includes("/item/")) {
-      // Redirected away from a listing page — likely removed
-      // Do a GET to check for "removed" messaging
-      const getController = new AbortController();
-      const getTimer = setTimeout(() => getController.abort(), URL_CHECK_TIMEOUT_MS);
-      try {
-        const getResp = await fetch(url, {
-          method: "GET",
-          signal: getController.signal,
-          redirect: "follow",
-          headers: { "User-Agent": "CaroogleBot/1.0 (listing-verify)" },
-        });
-        clearTimeout(getTimer);
-        const body = await getResp.text();
-        const snippet = body.slice(0, 5000);
-        if (REMOVED_PATTERNS.some(p => p.test(snippet))) return false;
-      } catch {
-        clearTimeout(getTimer);
-        // Can't verify — assume alive
-      }
+    if (resp.redirected && isSearchPageUrl(finalUrl)) return false;
+
+    // For domains that show "removed" on 200, always do a body check
+    if (needsBodyCheck(url)) {
+      const snippet = await fetchBodySnippet(url);
+      if (snippet && REMOVED_PATTERNS.some(p => p.test(snippet))) return false;
+    } else if (resp.redirected && !finalUrl.includes("/listing") && !finalUrl.includes("/car-details") && !finalUrl.includes("/item/")) {
+      // Generic redirect check for other domains
+      const snippet = await fetchBodySnippet(url);
+      if (snippet && REMOVED_PATTERNS.some(p => p.test(snippet))) return false;
     }
 
     return resp.ok || resp.status === 301 || resp.status === 302;
   } catch {
     clearTimeout(timer);
-    // Network error or timeout — assume alive (don't penalise slow sites)
+    // Network error or timeout — assume alive
     return true;
   }
 }
