@@ -907,7 +907,7 @@ export default function ValoPage() {
                               </Badge>
                               {comp.source && (
                                 <span className="text-[10px] text-muted-foreground font-mono uppercase">
-                                  {comp.source === 'internal_db' ? 'Internal' : comp.source === 'drive' ? 'Drive' : comp.source === 'carsales' ? 'Carsales' : comp.source}
+                                  {comp.source === 'internal_db' ? 'Internal' : comp.source === 'drive' ? 'Drive' : comp.source === 'carsales' ? 'Carsales' : comp.source === 'perplexity' || comp.source === 'caroogleai' ? 'CaroogleAI' : comp.source}
                                 </span>
                               )}
                             </div>

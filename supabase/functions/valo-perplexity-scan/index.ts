@@ -226,7 +226,7 @@ Citations: ${JSON.stringify(citations)}`,
     const results: AdapterResult[] = listings
       .filter((l: any) => l.price && l.price > 0)
       .map((l: any) => ({
-        source: "perplexity",
+        source: "caroogleai",
         title: [l.year, intent.make, intent.model, l.variant].filter(Boolean).join(" "),
         year: l.year ?? null,
         km: l.km ?? null,
@@ -239,8 +239,8 @@ Citations: ${JSON.stringify(citations)}`,
         image_url: null,
         seller_name: l.dealer ?? null,
         score: 50, // base score for external discovery
-        match_reason: ["PERPLEXITY_DISCOVERY"],
-        source_class: l.source ?? "perplexity",
+        match_reason: ["CAROOGLEAI_DISCOVERY"],
+        source_class: l.source ?? "caroogleai",
         auction_house: null,
         drivetrain: null,
         fuel: null,
