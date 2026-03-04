@@ -13817,7 +13817,7 @@ export type Database = {
         Returns: string
       }
       mark_listings_delisted: {
-        Args: { p_source: string; p_stale_interval?: unknown }
+        Args: { p_source: string; p_stale_interval?: string }
         Returns: number
       }
       mark_pickles_stale: {
