@@ -131,8 +131,10 @@ Deno.serve(async (req) => {
 
     let allComps = [...internalResults];
 
-    // ── 3b. Perplexity market scan (supplementary comps) ──
+    // ── 3b. Perplexity market scan (supplementary comps, 25s timeout) ──
     try {
+      const perplexityAbort = new AbortController();
+      const perplexityTimeout = setTimeout(() => perplexityAbort.abort(), 25000);
       const perplexityResp = await fetch(`${sbUrl}/functions/v1/valo-perplexity-scan`, {
         method: "POST",
         headers: {
@@ -140,7 +142,9 @@ Deno.serve(async (req) => {
           Authorization: `Bearer ${sbKey}`,
         },
         body: JSON.stringify({ intent }),
+        signal: perplexityAbort.signal,
       });
+      clearTimeout(perplexityTimeout);
 
       if (perplexityResp.ok) {
         const perplexityData = await perplexityResp.json();
