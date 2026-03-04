@@ -200,6 +200,7 @@ export default function ValoPage() {
       const parsedVehicle: ValoParsedVehicle = {
         make: make.trim(),
         model: model.trim(),
+        series: null, // Will be derived by backend from model text
         variant_family: badge.trim() || null,
         variant_raw: badge.trim() || null,
         year: yearNum,
@@ -258,6 +259,12 @@ export default function ValoPage() {
 
       setValoRawData(valoData);
       if (isAdmin) setOancaDebug(valoData);
+
+      // Update parsed vehicle with backend-derived series
+      if (valoData.parsed_intent?.series) {
+        parsedVehicle.series = valoData.parsed_intent.series;
+        setParsed({ ...parsedVehicle });
+      }
 
       const comps: any[] = [];
       if (valoData.anchor) comps.push({ ...valoData.anchor, _role: 'anchor' });
@@ -718,6 +725,7 @@ export default function ValoPage() {
                   ['Year', parsed.year],
                   ['Make', parsed.make],
                   ['Model', parsed.model],
+                  ['Series', parsed.series],
                   ['Variant', parsed.variant_family || parsed.variant_raw],
                   ['Body', parsed.body_style],
                   ['Engine', parsed.engine],

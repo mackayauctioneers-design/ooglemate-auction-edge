@@ -19,6 +19,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { ParsedIntent, AdapterResult } from "../_shared/outward-search/types.ts";
 import { parseIntentLLM, parseIntentRegex } from "../_shared/outward-search/intent-parser.ts";
 import { InternalDbAdapter } from "../_shared/outward-search/adapters/internal-db.ts";
+import { extractSeries } from "../_shared/taxonomy/derivePlatform.ts";
 import {
   runValoScoring,
   computeConfidence,
@@ -118,6 +119,14 @@ Deno.serve(async (req) => {
     // Ensure KM is set on intent
     if (!intent.max_km && effectiveKm) {
       intent.max_km = effectiveKm;
+    }
+
+    // ── 2c. Derive platform series (LC300 vs LC70 etc) ──
+    if (!intent.series && intent.make && intent.model) {
+      intent.series = extractSeries(intent.make, intent.model);
+      if (intent.series) {
+        console.log(`VALO series derived: ${intent.series}`);
+      }
     }
 
     // ── 3. Fetch comparables ──
@@ -239,6 +248,7 @@ Deno.serve(async (req) => {
           make: intent.make,
           model: intent.model,
           badge: intent.badge,
+          series: intent.series,
           year_min: intent.year_min,
           year_max: intent.year_max,
           max_km: intent.max_km,

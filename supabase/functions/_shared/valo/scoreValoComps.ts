@@ -9,6 +9,7 @@
  */
 
 import type { ParsedIntent, AdapterResult } from "../outward-search/types.ts";
+import { extractSeries } from "../taxonomy/derivePlatform.ts";
 
 // ─── Scoring Helpers ────────────────────────────────────────────
 
@@ -263,8 +264,30 @@ export function runValoScoring(
   intent: ParsedIntent,
   comps: AdapterResult[],
 ): ValoResult | null {
+  // ── Series gate: reject cross-generation comps before scoring ──
+  let filtered = comps;
+  if (intent.series) {
+    filtered = comps.filter((c) => {
+      // Extract series from comp title (Perplexity comps have title but no model field)
+      const titleUpper = (c.title || "").toUpperCase();
+      // Try to detect make/model from title for series extraction
+      const compMake = intent.make || "";
+      const compModel = c.title || "";
+      const compSeries = extractSeries(compMake, compModel);
+      // If comp has detectable series and it differs, reject
+      if (compSeries && compSeries !== intent.series) {
+        console.log(`VALO series gate: rejected "${c.title}" (${compSeries} ≠ ${intent.series})`);
+        return false;
+      }
+      return true;
+    });
+    if (filtered.length < comps.length) {
+      console.log(`VALO series gate: ${comps.length - filtered.length} comps rejected, ${filtered.length} remain`);
+    }
+  }
+
   // Score all comps
-  const scored = comps.map((c) => scoreValoComp(intent, c));
+  const scored = filtered.map((c) => scoreValoComp(intent, c));
 
   // Select anchor + backups
   const selection = selectAnchorAndBackups(scored);

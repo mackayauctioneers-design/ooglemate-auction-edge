@@ -28,3 +28,33 @@ export function derivePlatform(make: string, model: string): string {
   }
   return `${m}:${mo}`;
 }
+
+/**
+ * Frontend mirror of extractSeries from backend.
+ * Display-only — for showing generation labels in UI.
+ */
+export function extractSeries(make: string, model: string): string | null {
+  const m = (make || "").toUpperCase().trim();
+  const mo = (model || "").toUpperCase().trim();
+
+  if (m === "TOYOTA") {
+    if (mo.includes("LANDCRUISER") || mo.includes("LAND CRUISER")) {
+      if (mo.includes("300")) return "LC300";
+      if (mo.includes("200")) return "LC200";
+      if (mo.includes("79") || mo.includes("76") || mo.includes("78") || mo.includes("70")) return "LC70";
+      return null;
+    }
+    if (mo.includes("PRADO")) {
+      if (mo.includes("250")) return "PRADO_250";
+      if (mo.includes("150")) return "PRADO_150";
+      return null;
+    }
+  }
+  if (m === "FORD") {
+    if (mo.includes("RANGER")) {
+      if (mo.includes("NEXT GEN") || mo.includes("NEXTGEN") || mo.includes("V6")) return "RANGER_PY";
+      return null;
+    }
+  }
+  return null;
+}

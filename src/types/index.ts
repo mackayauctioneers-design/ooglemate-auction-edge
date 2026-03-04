@@ -780,6 +780,7 @@ export interface ValoParsedVehicle {
   year: number | null;
   make: string | null;
   model: string | null;
+  series: string | null;
   body_style: string | null;
   variant_raw: string | null;
   variant_family: string | null;
