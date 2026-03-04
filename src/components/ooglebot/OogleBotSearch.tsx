@@ -297,7 +297,7 @@ function mergeAllResults(
       score: null,
       match_reason: [],
       is_auction: isAuctionResult({ source: r.source }),
-      is_discovery: r.source === "lindy_discovery" || r.source === "perplexity",
+      is_discovery: r.source === "lindy_discovery" || r.source === "perplexity" || r.source === "caroogleai",
     });
   }
 

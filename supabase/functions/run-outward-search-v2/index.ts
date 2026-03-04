@@ -124,17 +124,17 @@ Deno.serve(async (req) => {
   }
 
   // ══════════════════════════════════════════════════════════
-  // PHASE 1: Internal DB + Perplexity (always runs, no quota cost)
+  // PHASE 1: Internal DB + CaroogleAI (always runs, no quota cost)
   // ══════════════════════════════════════════════════════════
   const internalAdapter = new InternalDbAdapter();
   let internalResults: AdapterResult[] = [];
-  let perplexityResults: AdapterResult[] = [];
+  let caroogleaiResults: AdapterResult[] = [];
 
-  // Run internal DB and Perplexity in parallel
+  // Run internal DB and CaroogleAI in parallel
   const sbUrl = Deno.env.get("SUPABASE_URL")!;
   const sbServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-  const [internalSettled, perplexitySettled] = await Promise.allSettled([
+  const [internalSettled, caroogleaiSettled] = await Promise.allSettled([
     internalAdapter.search(intent, {}),
     (async () => {
       try {
@@ -147,13 +147,13 @@ Deno.serve(async (req) => {
           body: JSON.stringify({ intent }),
         });
         if (!resp.ok) {
-          console.error("Perplexity scan HTTP error:", resp.status);
+          console.error("CaroogleAI scan HTTP error:", resp.status);
           return [];
         }
         const pData = await resp.json();
         return (pData.results ?? []) as AdapterResult[];
       } catch (err) {
-        console.error("Perplexity scan error:", err);
+        console.error("CaroogleAI scan error:", err);
         return [];
       }
     })(),
@@ -165,15 +165,15 @@ Deno.serve(async (req) => {
     console.error("Phase 1 internal search error:", internalSettled.reason);
   }
 
-  if (perplexitySettled.status === "fulfilled") {
-    perplexityResults = perplexitySettled.value;
-    if (perplexityResults.length > 0) {
-      console.log(`Phase 1 Perplexity: ${perplexityResults.length} results`);
+  if (caroogleaiSettled.status === "fulfilled") {
+    caroogleaiResults = caroogleaiSettled.value;
+    if (caroogleaiResults.length > 0) {
+      console.log(`Phase 1 CaroogleAI: ${caroogleaiResults.length} results`);
     }
   }
 
-  // Merge internal + perplexity for Phase 1
-  const phase1Results = deduplicateResults([...internalResults, ...perplexityResults]);
+  // Merge internal + caroogleai for Phase 1
+  const phase1Results = deduplicateResults([...internalResults, ...caroogleaiResults]);
 
   const internalCount = body.internal_count ?? phase1Results.length;
 
@@ -185,9 +185,9 @@ Deno.serve(async (req) => {
       await sb.from("outward_search_runs").insert({
         account_id: accountId, initiated_by: initiatedBy, instruction,
         parsed_intent: intent,
-        sources_queried: ["internal_db", "perplexity"],
+        sources_queried: ["internal_db", "caroogleai"],
         total_results: phase1Results.length,
-        results_by_source: { internal_db: internalResults.length, perplexity: perplexityResults.length },
+        results_by_source: { internal_db: internalResults.length, caroogleai: caroogleaiResults.length },
         gated: true,
         gate_reason: `${internalCount} phase 1 results — outward search skipped`,
         status: "gated", duration_ms: durationMs,
@@ -216,9 +216,9 @@ Deno.serve(async (req) => {
     try {
       await sb.from("outward_search_runs").insert({
         account_id: accountId, initiated_by: initiatedBy, instruction,
-        parsed_intent: intent, sources_queried: ["internal_db", "perplexity"],
+        parsed_intent: intent, sources_queried: ["internal_db", "caroogleai"],
         total_results: phase1Results.length,
-        results_by_source: { internal_db: internalResults.length, perplexity: perplexityResults.length },
+        results_by_source: { internal_db: internalResults.length, caroogleai: caroogleaiResults.length },
         gated: true, gate_reason: quota.reason,
         quota_snapshot: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
         status: "gated", duration_ms: durationMs,
@@ -242,9 +242,9 @@ Deno.serve(async (req) => {
     try {
       await sb.from("outward_search_runs").insert({
         account_id: accountId, initiated_by: initiatedBy, instruction,
-        parsed_intent: intent, sources_queried: ["internal_db", "perplexity"],
+        parsed_intent: intent, sources_queried: ["internal_db", "caroogleai"],
         total_results: phase1Results.length,
-        results_by_source: { internal_db: internalResults.length, perplexity: perplexityResults.length },
+        results_by_source: { internal_db: internalResults.length, caroogleai: caroogleaiResults.length },
         gated: true, gate_reason: "Global daily outward search limit reached",
         status: "gated", duration_ms: durationMs,
       });
@@ -285,7 +285,7 @@ Deno.serve(async (req) => {
     try {
       await sb.from("outward_search_runs").insert({
         account_id: accountId, initiated_by: initiatedBy, instruction,
-        parsed_intent: intent, sources_queried: ["internal_db", "perplexity"],
+        parsed_intent: intent, sources_queried: ["internal_db", "caroogleai"],
         total_results: topResults.length, cache_hit: true,
         status: "completed", duration_ms: Date.now() - startMs,
         completed_at: new Date().toISOString(),
@@ -307,9 +307,9 @@ Deno.serve(async (req) => {
   try {
     const { data: runRow } = await sb.from("outward_search_runs").insert({
       account_id: accountId, initiated_by: initiatedBy, instruction,
-      parsed_intent: intent, sources_queried: ["internal_db", "perplexity", ...outwardSources.map(s => s.source)],
+      parsed_intent: intent, sources_queried: ["internal_db", "caroogleai", ...outwardSources.map(s => s.source)],
       total_results: phase1Results.length,
-      results_by_source: { internal_db: internalResults.length, perplexity: perplexityResults.length },
+      results_by_source: { internal_db: internalResults.length, caroogleai: caroogleaiResults.length },
       cache_hit: false, status: "processing", duration_ms: 0,
       quota_snapshot: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
     }).select("id").single();
@@ -353,7 +353,7 @@ Deno.serve(async (req) => {
       duration_ms: durationMs,
       results_by_source: {
         internal_db: internalResults.length,
-        perplexity: perplexityResults.length,
+        caroogleai: caroogleaiResults.length,
         ...Object.fromEntries(dispatchResults.map(d => [d.source, d.status === "dispatched" ? -1 : 0])),
       },
     }).eq("id", searchRunId);

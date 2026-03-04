@@ -140,34 +140,34 @@ Deno.serve(async (req) => {
 
     let allComps = [...internalResults];
 
-    // ── 3b. Perplexity market scan (supplementary comps, 25s timeout) ──
+    // ── 3b. CaroogleAI market scan (supplementary comps, 25s timeout) ──
     try {
-      const perplexityAbort = new AbortController();
-      const perplexityTimeout = setTimeout(() => perplexityAbort.abort(), 25000);
-      const perplexityResp = await fetch(`${sbUrl}/functions/v1/valo-perplexity-scan`, {
+      const scanAbort = new AbortController();
+      const scanTimeout = setTimeout(() => scanAbort.abort(), 25000);
+      const scanResp = await fetch(`${sbUrl}/functions/v1/valo-perplexity-scan`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${sbKey}`,
         },
         body: JSON.stringify({ intent }),
-        signal: perplexityAbort.signal,
+        signal: scanAbort.signal,
       });
-      clearTimeout(perplexityTimeout);
+      clearTimeout(scanTimeout);
 
-      if (perplexityResp.ok) {
-        const perplexityData = await perplexityResp.json();
-        const perplexityResults: AdapterResult[] = perplexityData.results ?? [];
-        if (perplexityResults.length > 0) {
-          console.log(`VALO Perplexity scan: ${perplexityResults.length} comps found`);
-          allComps = deduplicateResults([...allComps, ...perplexityResults]);
+      if (scanResp.ok) {
+        const scanData = await scanResp.json();
+        const scanResults: AdapterResult[] = scanData.results ?? [];
+        if (scanResults.length > 0) {
+          console.log(`VALO CaroogleAI scan: ${scanResults.length} comps found`);
+          allComps = deduplicateResults([...allComps, ...scanResults]);
         }
       } else {
-        const errText = await perplexityResp.text();
-        console.error("VALO Perplexity scan failed:", perplexityResp.status, errText);
+        const errText = await scanResp.text();
+        console.error("VALO CaroogleAI scan failed:", scanResp.status, errText);
       }
     } catch (err) {
-      console.error("VALO Perplexity scan error:", err);
+      console.error("VALO CaroogleAI scan error:", err);
     }
 
     // If still insufficient and full_market_scan requested, try outward search
