@@ -132,6 +132,83 @@ function validateListings(raw: unknown[], sourceKey: string): ValidatedListing[]
   return valid;
 }
 
+// ─── URL health-check: filter out dead/removed listings ─────────────────────
+
+const URL_CHECK_TIMEOUT_MS = 4000;
+const URL_CHECK_CONCURRENCY = 5;
+
+/** Known "listing removed" redirect patterns */
+const REMOVED_PATTERNS = [
+  /sorry.*car.*removed/i,
+  /listing.*no longer available/i,
+  /this vehicle has been sold/i,
+  /page not found/i,
+];
+
+async function isListingAlive(url: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), URL_CHECK_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, {
+      method: "HEAD",
+      signal: controller.signal,
+      redirect: "follow",
+      headers: { "User-Agent": "CaroogleBot/1.0 (listing-verify)" },
+    });
+    clearTimeout(timer);
+
+    // 404/410 = dead
+    if (resp.status === 404 || resp.status === 410) return false;
+
+    // Some sites redirect removed listings to a search page with a different path
+    const finalUrl = resp.url || url;
+    if (resp.redirected && !finalUrl.includes("/listing") && !finalUrl.includes("/car-details") && !finalUrl.includes("/item/")) {
+      // Redirected away from a listing page — likely removed
+      // Do a GET to check for "removed" messaging
+      const getController = new AbortController();
+      const getTimer = setTimeout(() => getController.abort(), URL_CHECK_TIMEOUT_MS);
+      try {
+        const getResp = await fetch(url, {
+          method: "GET",
+          signal: getController.signal,
+          redirect: "follow",
+          headers: { "User-Agent": "CaroogleBot/1.0 (listing-verify)" },
+        });
+        clearTimeout(getTimer);
+        const body = await getResp.text();
+        const snippet = body.slice(0, 5000);
+        if (REMOVED_PATTERNS.some(p => p.test(snippet))) return false;
+      } catch {
+        clearTimeout(getTimer);
+        // Can't verify — assume alive
+      }
+    }
+
+    return resp.ok || resp.status === 301 || resp.status === 302;
+  } catch {
+    clearTimeout(timer);
+    // Network error or timeout — assume alive (don't penalise slow sites)
+    return true;
+  }
+}
+
+async function filterDeadListings(listings: ValidatedListing[]): Promise<ValidatedListing[]> {
+  const alive: ValidatedListing[] = [];
+  // Process in batches to limit concurrency
+  for (let i = 0; i < listings.length; i += URL_CHECK_CONCURRENCY) {
+    const batch = listings.slice(i, i + URL_CHECK_CONCURRENCY);
+    const checks = await Promise.all(batch.map(async (l) => {
+      const ok = await isListingAlive(l.listing_url);
+      return { listing: l, ok };
+    }));
+    for (const { listing, ok } of checks) {
+      if (ok) alive.push(listing);
+      else console.log(`[lindy-webhook] Filtered dead listing: ${listing.listing_url}`);
+    }
+  }
+  return alive;
+}
+
 // ─── Lightweight identity normalization (no DB deps for webhook speed) ───────
 
 function extractIdentityFromTitle(title: string | null): {
@@ -273,9 +350,16 @@ Deno.serve(async (req) => {
 
   console.log(`[lindy-webhook] job=${jobId} source=${job.source_key}: ${validated.length}/${(body.listings ?? []).length} listings validated`);
 
+  // ── 4b. URL health-check: filter out dead/removed listings ────────────
+  const liveListings = await filterDeadListings(validated);
+  const deadCount = validated.length - liveListings.length;
+  if (deadCount > 0) {
+    console.log(`[lindy-webhook] job=${jobId}: ${deadCount} dead listing(s) filtered out`);
+  }
+
   // ── 5. Identity normalization + insert into staging ────────────────────
-  if (validated.length > 0) {
-    const rows = validated.map((l) => {
+  if (liveListings.length > 0) {
+    const rows = liveListings.map((l) => {
       const identity = extractIdentityFromTitle(l.title);
       return {
         search_run_id: job.search_run_id,
@@ -321,7 +405,7 @@ Deno.serve(async (req) => {
   // ── 6. Fingerprint scoring ──────────────────────────────────────────────
   let scoreResult = { scored: 0, no_match: 0 };
 
-  if (validated.length > 0 && job.account_id) {
+  if (liveListings.length > 0 && job.account_id) {
     // Resolve dealer_profile_id from account_id
     const { data: profile } = await sb
       .from("dealer_profiles")
@@ -373,7 +457,7 @@ Deno.serve(async (req) => {
     .from("outward_jobs")
     .update({
       status: "complete",
-      result_count: validated.length,
+      result_count: liveListings.length,
       completed_at: new Date().toISOString(),
     })
     .eq("id", job.id);
@@ -381,7 +465,8 @@ Deno.serve(async (req) => {
   return new Response(
     JSON.stringify({
       status: "ok",
-      received: validated.length,
+      received: liveListings.length,
+      filtered_dead: deadCount,
       scored: scoreResult.scored,
       no_match: scoreResult.no_match,
     }),
