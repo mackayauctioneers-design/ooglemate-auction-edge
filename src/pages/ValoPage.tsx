@@ -908,7 +908,7 @@ export default function ValoPage() {
                               {(comp.price ?? comp.effective_cost) != null && (
                                 <span className="font-semibold text-foreground">${(comp.price ?? comp.effective_cost).toLocaleString()}</span>
                               )}
-                              {comp.state && <span>{comp.state}</span>}
+                              {comp.state && comp.state !== 'null' && <span>{comp.state}</span>}
                             </div>
                             {comp.feature_hits?.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-2">
@@ -940,7 +940,7 @@ export default function ValoPage() {
                                 Link unavailable
                               </span>
                             )}
-                            {comp.seller_name && (
+                            {comp.seller_name && comp.seller_name !== 'null' && (
                               <span className="text-[10px] text-muted-foreground">
                                 Seller: {comp.seller_name}
                               </span>
