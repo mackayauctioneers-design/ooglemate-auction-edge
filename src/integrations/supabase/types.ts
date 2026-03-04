@@ -5348,6 +5348,75 @@ export type Database = {
           },
         ]
       }
+      market_listing_history: {
+        Row: {
+          dealer: string | null
+          discovered_by: string
+          first_seen_at: string
+          id: string
+          image_url: string | null
+          km: number | null
+          last_seen_at: string
+          listing_id: string | null
+          make: string
+          model: string
+          price: number | null
+          price_at_first_seen: number | null
+          price_at_last_seen: number | null
+          seller_type: string | null
+          source_site: string
+          state: string | null
+          stock_number: string | null
+          url: string | null
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          dealer?: string | null
+          discovered_by?: string
+          first_seen_at?: string
+          id?: string
+          image_url?: string | null
+          km?: number | null
+          last_seen_at?: string
+          listing_id?: string | null
+          make: string
+          model: string
+          price?: number | null
+          price_at_first_seen?: number | null
+          price_at_last_seen?: number | null
+          seller_type?: string | null
+          source_site: string
+          state?: string | null
+          stock_number?: string | null
+          url?: string | null
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          dealer?: string | null
+          discovered_by?: string
+          first_seen_at?: string
+          id?: string
+          image_url?: string | null
+          km?: number | null
+          last_seen_at?: string
+          listing_id?: string | null
+          make?: string
+          model?: string
+          price?: number | null
+          price_at_first_seen?: number | null
+          price_at_last_seen?: number | null
+          seller_type?: string | null
+          source_site?: string
+          state?: string | null
+          stock_number?: string | null
+          url?: string | null
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       matched_opportunities_v1: {
         Row: {
           account_id: string

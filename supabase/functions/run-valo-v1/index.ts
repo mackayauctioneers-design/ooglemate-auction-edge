@@ -140,34 +140,23 @@ Deno.serve(async (req) => {
 
     let allComps = [...internalResults];
 
-    // ── 3b. CaroogleAI market scan (supplementary comps, 25s timeout) ──
-    try {
-      const scanAbort = new AbortController();
-      const scanTimeout = setTimeout(() => scanAbort.abort(), 25000);
-      const scanResp = await fetch(`${sbUrl}/functions/v1/valo-perplexity-scan`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${sbKey}`,
-        },
-        body: JSON.stringify({ intent }),
-        signal: scanAbort.signal,
-      });
-      clearTimeout(scanTimeout);
+    // ── 3b. Parallel AI discovery: Perplexity + Gemini (25s timeout each) ──
+    const [perplexityResults, geminiResults] = await Promise.all([
+      runDiscoveryScan(sbUrl, sbKey, intent, "valo-perplexity-scan", "Perplexity"),
+      runDiscoveryScan(sbUrl, sbKey, intent, "valo-gemini-scan", "Gemini"),
+    ]);
 
-      if (scanResp.ok) {
-        const scanData = await scanResp.json();
-        const scanResults: AdapterResult[] = scanData.results ?? [];
-        if (scanResults.length > 0) {
-          console.log(`VALO CaroogleAI scan: ${scanResults.length} comps found`);
-          allComps = deduplicateResults([...allComps, ...scanResults]);
-        }
-      } else {
-        const errText = await scanResp.text();
-        console.error("VALO CaroogleAI scan failed:", scanResp.status, errText);
-      }
+    if (perplexityResults.length > 0 || geminiResults.length > 0) {
+      const merged = deduplicateResults([...allComps, ...perplexityResults, ...geminiResults]);
+      console.log(`VALO parallel discovery: ${perplexityResults.length} Perplexity + ${geminiResults.length} Gemini → ${merged.length} after dedup`);
+      allComps = merged;
+    }
+
+    // ── 3c. Persist discovered listings to market_listing_history ──
+    try {
+      await persistDiscoveredListings(sb, intent, [...perplexityResults, ...geminiResults]);
     } catch (err) {
-      console.error("VALO CaroogleAI scan error:", err);
+      console.error("VALO market_listing_history persist error:", err);
     }
 
     // If still insufficient and full_market_scan requested, try outward search
@@ -335,11 +324,37 @@ function downgrade(c: Confidence): Confidence {
   return "LOW";
 }
 
-// ─── Deduplication (mirrored from outward-search-v2) ────────────
+// ─── Deduplication (enhanced with listing_id) ───────────────────
+
+function extractListingId(url: string): string | null {
+  if (!url) return null;
+  try {
+    const carsales = url.match(/OAG-AD-\d+/i);
+    if (carsales) return carsales[0];
+    const drive = url.match(/drive\.com\.au\/.*\/car\/(\d+)/i);
+    if (drive) return `drive-${drive[1]}`;
+    const autotrader = url.match(/autotrader\.com\.au\/.*?(\d{6,})/i);
+    if (autotrader) return `at-${autotrader[1]}`;
+    const carsguide = url.match(/carsguide\.com\.au\/.*?(\d{6,})/i);
+    if (carsguide) return `cg-${carsguide[1]}`;
+  } catch { /* ignore */ }
+  return null;
+}
 
 function deduplicateResults(results: AdapterResult[]): AdapterResult[] {
   const seen = new Map<string, AdapterResult>();
   for (const r of results) {
+    // Primary dedup: listing_id from URL
+    const listingId = extractListingId(r.url ?? "");
+    if (listingId) {
+      const existing = seen.get(`lid:${listingId}`);
+      if (!existing || (r.price ?? Infinity) < (existing.price ?? Infinity)) {
+        seen.set(`lid:${listingId}`, r);
+      }
+      continue;
+    }
+
+    // Secondary dedup: composite key
     const kmBand = r.km ? Math.round(r.km / 5000) * 5000 : 0;
     const priceBand = r.price ? Math.round(r.price / 500) * 500 : 0;
     const key = [
@@ -351,9 +366,108 @@ function deduplicateResults(results: AdapterResult[]): AdapterResult[] {
     ].join("|");
 
     const existing = seen.get(key);
-    if (!existing || r.score > existing.score) {
+    if (!existing || (r.price ?? Infinity) < (existing.price ?? Infinity)) {
       seen.set(key, r);
     }
   }
   return Array.from(seen.values());
+}
+
+// ─── Parallel Discovery Scan Helper ─────────────────────────────
+
+async function runDiscoveryScan(
+  sbUrl: string,
+  sbKey: string,
+  intent: ParsedIntent,
+  functionName: string,
+  label: string,
+): Promise<AdapterResult[]> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    const resp = await fetch(`${sbUrl}/functions/v1/${functionName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sbKey}`,
+      },
+      body: JSON.stringify({ intent }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (resp.ok) {
+      const data = await resp.json();
+      const results: AdapterResult[] = data.results ?? [];
+      console.log(`VALO ${label} scan: ${results.length} comps found`);
+      return results;
+    } else {
+      const errText = await resp.text();
+      console.error(`VALO ${label} scan failed:`, resp.status, errText);
+      return [];
+    }
+  } catch (err) {
+    console.error(`VALO ${label} scan error:`, err);
+    return [];
+  }
+}
+
+// ─── Persist Discovered Listings ────────────────────────────────
+
+async function persistDiscoveredListings(
+  sb: any,
+  intent: ParsedIntent,
+  results: AdapterResult[],
+) {
+  if (results.length === 0) return;
+
+  const now = new Date().toISOString();
+  const rows = results
+    .filter(r => r.price && r.price > 0)
+    .map(r => {
+      const listingId = extractListingId(r.url ?? "") ?? (r as any)._listing_id ?? null;
+      const sourceSite = (r as any)._source_site ?? r.source_class ?? r.source ?? "unknown";
+      return {
+        listing_id: listingId,
+        url: r.url,
+        source_site: sourceSite,
+        make: intent.make ?? "unknown",
+        model: intent.model ?? "unknown",
+        variant: r.variant,
+        year: r.year,
+        price: r.price,
+        km: r.km,
+        dealer: r.seller_name,
+        seller_type: (r as any)._seller_type ?? null,
+        state: r.state,
+        stock_number: (r as any)._stock_number ?? null,
+        image_url: r.image_url,
+        discovered_by: r.source === "gemini_discovery" ? "gemini" : "perplexity",
+        first_seen_at: now,
+        last_seen_at: now,
+        price_at_first_seen: r.price,
+        price_at_last_seen: r.price,
+      };
+    });
+
+  if (rows.length === 0) return;
+
+  // Upsert: update last_seen and price_at_last_seen for existing listings
+  for (const row of rows) {
+    if (row.listing_id) {
+      const { error } = await sb.from("market_listing_history").upsert(row, {
+        onConflict: "listing_id,source_site",
+        ignoreDuplicates: false,
+      });
+      if (error) console.error("MLH upsert error:", error.message);
+    } else {
+      // No listing_id — just insert, skip if it fails on constraint
+      const { error } = await sb.from("market_listing_history").insert(row);
+      if (error && !error.message.includes("duplicate")) {
+        console.error("MLH insert error:", error.message);
+      }
+    }
+  }
+
+  console.log(`VALO persisted ${rows.length} listings to market_listing_history`);
 }
