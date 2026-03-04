@@ -41,15 +41,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Build search query
+    // Build search query — include series to prevent cross-generation contamination
     const yearPart = intent.year_min ? `${intent.year_min}` : "";
     const badgePart = intent.badge ?? "";
     const kmPart = intent.max_km ? `under ${intent.max_km.toLocaleString()} km` : "";
 
+    // If series is known, inject it into the model string for precision
+    // e.g. "LandCruiser" → "LandCruiser 300" to prevent LC70 results
+    let modelPart = intent.model ?? "";
+    if (intent.series) {
+      const seriesNum = intent.series.replace(/[^0-9]/g, "");
+      if (seriesNum && !modelPart.includes(seriesNum)) {
+        modelPart = `${modelPart} ${seriesNum}`;
+      }
+    }
+
     const query = [
       yearPart,
       intent.make,
-      intent.model,
+      modelPart,
       badgePart,
       "for sale Australia",
       kmPart,
@@ -61,6 +71,16 @@ Deno.serve(async (req) => {
     // Call Perplexity with structured output via tool calling
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
+    // Build exclusion guidance for series precision
+    let seriesExclusion = "";
+    if (intent.series === "LC300") {
+      seriesExclusion = "\n- EXCLUDE any LandCruiser 70 Series, 76, 78, 79, or 200 Series listings. Only include LandCruiser 300 Series.";
+    } else if (intent.series === "LC70") {
+      seriesExclusion = "\n- EXCLUDE any LandCruiser 200 or 300 Series listings. Only include LandCruiser 70 Series (70, 76, 78, 79).";
+    } else if (intent.series === "LC200") {
+      seriesExclusion = "\n- EXCLUDE any LandCruiser 70 Series or 300 Series listings. Only include LandCruiser 200 Series.";
+    }
+
     const systemPrompt = `You are a vehicle market research assistant. Search Australian automotive marketplaces (Carsales, Drive, CarsGuide, AutoTrader, dealer websites) for currently advertised vehicles matching the query.
 
 RULES:
@@ -70,7 +90,7 @@ RULES:
 - Return up to 5 of the cheapest comparable listings.
 - Prices must be in AUD as integers (no $ or commas).
 - KM must be integers.
-- State should be abbreviated (NSW, VIC, QLD, etc).`;
+- State should be abbreviated (NSW, VIC, QLD, etc).${seriesExclusion}`;
 
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
