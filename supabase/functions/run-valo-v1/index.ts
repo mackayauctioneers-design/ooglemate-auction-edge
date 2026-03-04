@@ -131,10 +131,35 @@ Deno.serve(async (req) => {
 
     let allComps = [...internalResults];
 
-    // If insufficient and full_market_scan requested, try outward search
-    if (internalResults.length < 8 && fullMarketScan) {
+    // ── 3b. Perplexity market scan (supplementary comps) ──
+    try {
+      const perplexityResp = await fetch(`${sbUrl}/functions/v1/valo-perplexity-scan`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sbKey}`,
+        },
+        body: JSON.stringify({ intent }),
+      });
+
+      if (perplexityResp.ok) {
+        const perplexityData = await perplexityResp.json();
+        const perplexityResults: AdapterResult[] = perplexityData.results ?? [];
+        if (perplexityResults.length > 0) {
+          console.log(`VALO Perplexity scan: ${perplexityResults.length} comps found`);
+          allComps = deduplicateResults([...allComps, ...perplexityResults]);
+        }
+      } else {
+        const errText = await perplexityResp.text();
+        console.error("VALO Perplexity scan failed:", perplexityResp.status, errText);
+      }
+    } catch (err) {
+      console.error("VALO Perplexity scan error:", err);
+    }
+
+    // If still insufficient and full_market_scan requested, try outward search
+    if (allComps.length < 8 && fullMarketScan) {
       try {
-        // Call run-outward-search-v2 internally for outward comps
         const outwardResp = await fetch(`${sbUrl}/functions/v1/run-outward-search-v2`, {
           method: "POST",
           headers: {
@@ -145,19 +170,17 @@ Deno.serve(async (req) => {
             account_id: accountId,
             initiated_by: "valo",
             instruction,
-            urgency: "high", // bypass demand gate for VALO
+            urgency: "high",
           }),
         });
 
         if (outwardResp.ok) {
           const outwardData = await outwardResp.json();
           const outwardResults: AdapterResult[] = outwardData.results ?? [];
-          // Merge + dedup
-          allComps = deduplicateResults([...internalResults, ...outwardResults]);
+          allComps = deduplicateResults([...allComps, ...outwardResults]);
         } else {
           const errText = await outwardResp.text();
           console.error("VALO outward search failed:", outwardResp.status, errText);
-          // Continue with internal only
         }
       } catch (err) {
         console.error("VALO outward search error:", err);
