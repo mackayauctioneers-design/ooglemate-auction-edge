@@ -124,17 +124,58 @@ Deno.serve(async (req) => {
   }
 
   // ══════════════════════════════════════════════════════════
-  // PHASE 1: Internal DB search (always runs, no quota cost)
+  // PHASE 1: Internal DB + Perplexity (always runs, no quota cost)
   // ══════════════════════════════════════════════════════════
   const internalAdapter = new InternalDbAdapter();
   let internalResults: AdapterResult[] = [];
-  try {
-    internalResults = await internalAdapter.search(intent, {});
-  } catch (err) {
-    console.error("Phase 1 internal search error:", err);
+  let perplexityResults: AdapterResult[] = [];
+
+  // Run internal DB and Perplexity in parallel
+  const sbUrl = Deno.env.get("SUPABASE_URL")!;
+  const sbServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  const [internalSettled, perplexitySettled] = await Promise.allSettled([
+    internalAdapter.search(intent, {}),
+    (async () => {
+      try {
+        const resp = await fetch(`${sbUrl}/functions/v1/valo-perplexity-scan`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sbServiceKey}`,
+          },
+          body: JSON.stringify({ intent }),
+        });
+        if (!resp.ok) {
+          console.error("Perplexity scan HTTP error:", resp.status);
+          return [];
+        }
+        const pData = await resp.json();
+        return (pData.results ?? []) as AdapterResult[];
+      } catch (err) {
+        console.error("Perplexity scan error:", err);
+        return [];
+      }
+    })(),
+  ]);
+
+  if (internalSettled.status === "fulfilled") {
+    internalResults = internalSettled.value;
+  } else {
+    console.error("Phase 1 internal search error:", internalSettled.reason);
   }
 
-  const internalCount = body.internal_count ?? internalResults.length;
+  if (perplexitySettled.status === "fulfilled") {
+    perplexityResults = perplexitySettled.value;
+    if (perplexityResults.length > 0) {
+      console.log(`Phase 1 Perplexity: ${perplexityResults.length} results`);
+    }
+  }
+
+  // Merge internal + perplexity for Phase 1
+  const phase1Results = deduplicateResults([...internalResults, ...perplexityResults]);
+
+  const internalCount = body.internal_count ?? phase1Results.length;
 
   // ── Demand gating: skip outward if plenty of internal results ──
   // Enterprise + operator always bypass this gate (isPrivileged = true)
@@ -144,22 +185,22 @@ Deno.serve(async (req) => {
       await sb.from("outward_search_runs").insert({
         account_id: accountId, initiated_by: initiatedBy, instruction,
         parsed_intent: intent,
-        sources_queried: ["internal_db"],
-        total_results: internalResults.length,
-        results_by_source: { internal_db: internalResults.length },
+        sources_queried: ["internal_db", "perplexity"],
+        total_results: phase1Results.length,
+        results_by_source: { internal_db: internalResults.length, perplexity: perplexityResults.length },
         gated: true,
-        gate_reason: `${internalCount} internal results — outward search skipped`,
+        gate_reason: `${internalCount} phase 1 results — outward search skipped`,
         status: "gated", duration_ms: durationMs,
       });
     } catch (_) { /* swallow */ }
 
     return new Response(JSON.stringify({
       status: "ok", gated: true,
-      reason: `${internalCount} internal results found — outward search skipped`,
+      reason: `${internalCount} results found — outward search skipped`,
       phase: "internal_only",
       intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
-      results: internalResults.slice(0, MAX_RESULTS),
-      internal_count: internalResults.length,
+      results: phase1Results.slice(0, MAX_RESULTS),
+      internal_count: phase1Results.length,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
@@ -170,14 +211,14 @@ Deno.serve(async (req) => {
   // Quota check
   const quota = await checkQuota(accountId, initiatedBy);
   if (!quota.allowed) {
-    // Return internal results even when quota blocks outward
+    // Return phase1 results even when quota blocks outward
     const durationMs = Date.now() - startMs;
     try {
       await sb.from("outward_search_runs").insert({
         account_id: accountId, initiated_by: initiatedBy, instruction,
-        parsed_intent: intent, sources_queried: ["internal_db"],
-        total_results: internalResults.length,
-        results_by_source: { internal_db: internalResults.length },
+        parsed_intent: intent, sources_queried: ["internal_db", "perplexity"],
+        total_results: phase1Results.length,
+        results_by_source: { internal_db: internalResults.length, perplexity: perplexityResults.length },
         gated: true, gate_reason: quota.reason,
         quota_snapshot: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
         status: "gated", duration_ms: durationMs,
@@ -188,8 +229,8 @@ Deno.serve(async (req) => {
       status: "ok", gated: true,
       reason: quota.reason, phase: "internal_only",
       intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
-      results: internalResults.slice(0, MAX_RESULTS),
-      internal_count: internalResults.length,
+      results: phase1Results.slice(0, MAX_RESULTS),
+      internal_count: phase1Results.length,
       quota: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
@@ -201,9 +242,9 @@ Deno.serve(async (req) => {
     try {
       await sb.from("outward_search_runs").insert({
         account_id: accountId, initiated_by: initiatedBy, instruction,
-        parsed_intent: intent, sources_queried: ["internal_db"],
-        total_results: internalResults.length,
-        results_by_source: { internal_db: internalResults.length },
+        parsed_intent: intent, sources_queried: ["internal_db", "perplexity"],
+        total_results: phase1Results.length,
+        results_by_source: { internal_db: internalResults.length, perplexity: perplexityResults.length },
         gated: true, gate_reason: "Global daily outward search limit reached",
         status: "gated", duration_ms: durationMs,
       });
@@ -212,8 +253,8 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       status: "ok", gated: true,
       reason: "Global daily outward search limit reached", phase: "internal_only",
-      results: internalResults.slice(0, MAX_RESULTS),
-      internal_count: internalResults.length,
+      results: phase1Results.slice(0, MAX_RESULTS),
+      internal_count: phase1Results.length,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
@@ -237,14 +278,14 @@ Deno.serve(async (req) => {
     await sb.from("search_cache").update({ hits: (cached.hits || 0) + 1 }).eq("id", cached.id);
     const cachedOutward = (cached.results as AdapterResult[]) || [];
     // Merge internal + cached outward, dedup, sort
-    const merged = deduplicateResults([...internalResults, ...cachedOutward]);
+    const merged = deduplicateResults([...phase1Results, ...cachedOutward]);
     merged.sort((a, b) => b.score - a.score || (a.effective_cost ?? Infinity) - (b.effective_cost ?? Infinity));
     const topResults = merged.slice(0, MAX_RESULTS);
 
     try {
       await sb.from("outward_search_runs").insert({
         account_id: accountId, initiated_by: initiatedBy, instruction,
-        parsed_intent: intent, sources_queried: ["internal_db"],
+        parsed_intent: intent, sources_queried: ["internal_db", "perplexity"],
         total_results: topResults.length, cache_hit: true,
         status: "completed", duration_ms: Date.now() - startMs,
         completed_at: new Date().toISOString(),
@@ -255,7 +296,7 @@ Deno.serve(async (req) => {
       status: "ok", gated: false, cached: true, phase: "internal+outward_cached",
       intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
       results: topResults,
-      internal_count: internalResults.length,
+      internal_count: phase1Results.length,
       total_filtered: topResults.length,
       duration_ms: Date.now() - startMs,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -266,9 +307,9 @@ Deno.serve(async (req) => {
   try {
     const { data: runRow } = await sb.from("outward_search_runs").insert({
       account_id: accountId, initiated_by: initiatedBy, instruction,
-      parsed_intent: intent, sources_queried: ["internal_db", ...outwardSources.map(s => s.source)],
-      total_results: internalResults.length,
-      results_by_source: { internal_db: internalResults.length },
+      parsed_intent: intent, sources_queried: ["internal_db", "perplexity", ...outwardSources.map(s => s.source)],
+      total_results: phase1Results.length,
+      results_by_source: { internal_db: internalResults.length, perplexity: perplexityResults.length },
       cache_hit: false, status: "processing", duration_ms: 0,
       quota_snapshot: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
     }).select("id").single();
@@ -280,8 +321,8 @@ Deno.serve(async (req) => {
   if (!searchRunId) {
     return new Response(JSON.stringify({
       status: "error", error: "Failed to create search run record",
-      results: internalResults.slice(0, MAX_RESULTS),
-      internal_count: internalResults.length,
+      results: phase1Results.slice(0, MAX_RESULTS),
+      internal_count: phase1Results.length,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
@@ -312,19 +353,20 @@ Deno.serve(async (req) => {
       duration_ms: durationMs,
       results_by_source: {
         internal_db: internalResults.length,
+        perplexity: perplexityResults.length,
         ...Object.fromEntries(dispatchResults.map(d => [d.source, d.status === "dispatched" ? -1 : 0])),
       },
     }).eq("id", searchRunId);
   } catch (_) { /* swallow */ }
 
-  // Return immediately with internal results + job references for polling
+  // Return immediately with phase1 results + job references for polling
   return new Response(JSON.stringify({
     status: "ok",
     phase: lindySourceKeys.length > 0 ? "internal+outward_dispatched" : "internal_only",
     search_run_id: searchRunId,
     intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
-    results: internalResults.slice(0, MAX_RESULTS),
-    internal_count: internalResults.length,
+    results: phase1Results.slice(0, MAX_RESULTS),
+    internal_count: phase1Results.length,
     outward_jobs: dispatchResults.map(d => ({
       source: d.source,
       job_id: d.job_id,
