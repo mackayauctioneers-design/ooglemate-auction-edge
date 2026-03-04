@@ -1113,31 +1113,37 @@ export function OogleBotSearch() {
                   AI Discovery complete — {outwardResults.length} vehicle{outwardResults.length !== 1 ? "s" : ""} found
                 </p>
               </div>
-              {jobStatuses.length > 0 && (
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 pl-6">
-                  {jobStatuses.map((j) => {
-                    const displayName: Record<string, string> = {
-                      autotrader: "Autotrader",
-                      drive: "Drive",
-                      gumtree_dealer: "Gumtree",
-                      gumtree_private: "Gumtree Private",
-                      carsales: "Carsales",
-                      carsguide: "CarsGuide",
-                    };
-                    const name = displayName[j.source_key] || j.source_key;
-                    const isComplete = j.status === "complete";
-                    const isFailed = j.status === "failed" || j.status === "timeout";
-                    return (
-                      <div key={j.source_key} className="flex items-center gap-1.5 text-[11px]">
-                        {isComplete ? <span className="text-emerald-500">✓</span> : <span className="text-red-400">✗</span>}
-                        <span className={isComplete ? "text-emerald-600 dark:text-emerald-400" : "text-red-500/70"}>
-                          {name}{isComplete && j.result_count > 0 ? ` (${j.result_count})` : isFailed ? " — no response" : ""}
-                        </span>
+              {jobStatuses.length > 0 && (() => {
+                const displayName: Record<string, string> = {
+                  autotrader: "Autotrader",
+                  drive: "Drive",
+                  gumtree_dealer: "Gumtree",
+                  gumtree_private: "Gumtree Private",
+                  carsales: "Carsales",
+                  carsguide: "CarsGuide",
+                };
+                const succeeded = jobStatuses.filter(j => j.status === "complete" && j.result_count > 0);
+                const scannedNoResults = jobStatuses.filter(j => j.status === "complete" && j.result_count === 0);
+                const failedCount = jobStatuses.filter(j => j.status === "failed" || j.status === "timeout").length;
+                return (
+                  <div className="pl-6 space-y-1">
+                    {succeeded.length > 0 && (
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                        {succeeded.map(j => (
+                          <span key={j.source_key} className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                            ✓ {displayName[j.source_key] || j.source_key} ({j.result_count})
+                          </span>
+                        ))}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    )}
+                    {(scannedNoResults.length > 0 || failedCount > 0) && (
+                      <p className="text-[10px] text-muted-foreground">
+                        {scannedNoResults.length + failedCount} source{scannedNoResults.length + failedCount !== 1 ? "s" : ""} scanned — no matching inventory
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </CardContent>
