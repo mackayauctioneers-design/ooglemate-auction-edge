@@ -85,6 +85,12 @@ RULES:
           { role: "user", content: query },
         ],
         temperature: 0.1,
+        search_domain_filter: [
+          "drive.com.au",
+          "autotrader.com.au",
+          "carsguide.com.au",
+          "carsales.com.au",
+        ],
       }),
     });
 
