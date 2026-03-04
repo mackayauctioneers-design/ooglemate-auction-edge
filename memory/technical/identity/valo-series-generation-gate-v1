@@ -1,0 +1,28 @@
+# Memory: technical/identity/valo-series-generation-gate-v1
+Updated: now
+
+## Problem
+VALO trade-in valuations were contaminated by cross-generation comparables. A search for "2024 LandCruiser 300 GXL" would match LC70, LC200, and LC300 listings because the internal DB query uses `ilike model '%LandCruiser%'` — too broad.
+
+## Fix: Series-Aware Filtering
+
+### New Function: `extractSeries(make, model)`
+Added to `_shared/taxonomy/derivePlatform.ts` (and frontend mirror). Returns generation classifier:
+- Toyota LandCruiser: LC300, LC200, LC70
+- Toyota Prado: PRADO_250, PRADO_150
+- Toyota Hilux: HILUX_N80, HILUX_REVO
+- Ford Ranger: RANGER_PY
+- Isuzu D-Max: DMAX_RG
+- Nissan Patrol: PATROL_Y62, PATROL_Y61
+
+### Pipeline Changes
+1. **ParsedIntent** — new `series: string | null` field
+2. **run-valo-v1** — auto-derives series from intent.make + intent.model after parsing
+3. **InternalDbAdapter** — pre-filters comps by series before badge matching
+4. **scoreValoComps.runValoScoring()** — series gate rejects cross-gen comps from Perplexity before scoring
+5. **ValoPage.tsx** — displays Series in Parsed Vehicle section, picks up backend-derived series
+
+### Design Decision
+- `derivePlatform()` return values NOT changed (still returns "LANDCRUISER" globally) to avoid breaking fingerprinting/replication pipelines
+- `extractSeries()` is a supplementary classifier used only where generation precision matters (VALO, future scoring)
+- Comps with no detectable series are allowed through (permissive) — only comps with a DIFFERENT detected series are rejected

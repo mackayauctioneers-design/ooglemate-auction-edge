@@ -33,6 +33,9 @@ export interface ParsedIntent {
   allowance_aud: number | null;       // dealer's stated buffer e.g. "allow $1,000"
   accessory_terms: string[];          // bullbar, towbar, canopy etc
   body_keywords: string[];            // dual cab, single cab, wagon etc
+
+  // Platform generation (e.g. LC300, LC70, PRADO_250) — prevents cross-gen contamination
+  series: string | null;
 }
 
 // ─── Feature Alias Map (single source of truth) ─────────────────

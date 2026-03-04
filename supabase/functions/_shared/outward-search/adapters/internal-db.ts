@@ -22,6 +22,7 @@ import {
   FREIGHT_FLAT,
   EXCLUDED_LIFECYCLE,
 } from "../types.ts";
+import { extractSeries } from "../../taxonomy/derivePlatform.ts";
 
 /**
  * Strict token-boundary badge match.
@@ -95,6 +96,19 @@ export class InternalDbAdapter implements OutwardSearchAdapter {
     }
 
     let filtered = listings || [];
+
+    // ── Series / generation gate ──────────────────────────────────
+    // If intent specifies a series (e.g. LC300), reject comps from other generations.
+    // This prevents LC70 contaminating LC300 valuations.
+    if (intent.series) {
+      filtered = filtered.filter((l: any) => {
+        const compSeries = extractSeries(l.make || "", l.model || "");
+        // If comp has a detectable series, it must match. If no series detected, allow through
+        // (could be generic "LandCruiser GXL" without series — let scoring handle it)
+        if (compSeries && compSeries !== intent.series) return false;
+        return true;
+      });
+    }
 
     // Badge/variant filtering — STRICT, no substring matching
     if (intent.badge) {

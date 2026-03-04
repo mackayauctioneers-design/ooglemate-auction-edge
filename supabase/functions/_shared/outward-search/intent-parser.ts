@@ -104,6 +104,7 @@ export function emptyIntent(): ParsedIntent {
     prefer_terms: [], must_have_terms: [], exclude_terms: [],
     condition: null, allowance_aud: null,
     accessory_terms: [], body_keywords: [],
+    series: null,
   };
 }
 

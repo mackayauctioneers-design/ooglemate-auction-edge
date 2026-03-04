@@ -27,6 +27,66 @@ export function derivePlatform(make: string, model: string): string {
 }
 
 /**
+ * GENERATION / SERIES EXTRACTOR — Sub-platform classifier
+ *
+ * Extracts the generation or series number from model text.
+ * Used by VALO to prevent cross-generation contamination
+ * (e.g. LC300 vs LC70 vs LC200).
+ *
+ * Returns null if no generation can be determined.
+ */
+export function extractSeries(make: string, model: string): string | null {
+  const m = (make || "").toUpperCase().trim();
+  const mo = (model || "").toUpperCase().trim();
+
+  if (m === "TOYOTA") {
+    // LandCruiser generations
+    if (mo.includes("LANDCRUISER") || mo.includes("LAND CRUISER")) {
+      if (mo.includes("300")) return "LC300";
+      if (mo.includes("200")) return "LC200";
+      if (mo.includes("79") || mo.includes("76") || mo.includes("78") || mo.includes("70")) return "LC70";
+      return null; // LandCruiser but unknown generation
+    }
+    // Prado generations
+    if (mo.includes("PRADO")) {
+      if (mo.includes("250")) return "PRADO_250";
+      if (mo.includes("150")) return "PRADO_150";
+      return null;
+    }
+    // Hilux generations
+    if (mo.includes("HILUX")) {
+      if (mo.includes("GUN") || mo.includes("N80")) return "HILUX_N80";
+      if (mo.includes("REVO")) return "HILUX_REVO";
+      return null;
+    }
+  }
+
+  if (m === "FORD") {
+    if (mo.includes("RANGER")) {
+      if (mo.includes("NEXT GEN") || mo.includes("NEXTGEN") || mo.includes("V6")) return "RANGER_PY";
+      return null;
+    }
+  }
+
+  if (m === "ISUZU") {
+    if (mo.includes("D-MAX") || mo.includes("DMAX")) {
+      if (mo.includes("RG")) return "DMAX_RG";
+      return null;
+    }
+  }
+
+  if (m === "NISSAN") {
+    if (mo.includes("PATROL")) {
+      if (mo.includes("Y62")) return "PATROL_Y62";
+      if (mo.includes("Y61") || mo.includes("GU")) return "PATROL_Y61";
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
  * CANONICAL BADGE EXTRACTOR — Single source of truth
  * 
  * Extracts the highest-priority variant badge from free text.
