@@ -121,61 +121,57 @@ function isAuctionResult(r: { source?: string; source_class?: string | null; auc
 
 function UnifiedResultCard({ result, isBestPrice, isOperator }: { result: UnifiedResult; isBestPrice?: boolean; isOperator?: boolean }) {
   return (
-    <div className={`flex items-start justify-between gap-4 p-3 rounded-lg border transition-colors ${
+    <div className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md border transition-colors ${
       isBestPrice
-        ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15 ring-1 ring-emerald-500/20"
+        ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15"
         : "border-border bg-card hover:bg-muted/30"
     }`}>
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex-1 min-w-0 space-y-0.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           {isBestPrice && (
-            <Badge className="text-[10px] px-1.5 py-0 bg-emerald-500 text-white border-emerald-600">
-              Best Price
+            <Badge className="text-[9px] px-1 py-0 bg-emerald-500 text-white border-emerald-600 leading-tight">
+              Best
             </Badge>
           )}
-          <span className="font-semibold text-sm text-foreground">{result.title}</span>
-          {result.variant && <span className="text-xs text-muted-foreground">{result.variant}</span>}
+          <span className="font-medium text-xs text-foreground truncate">{result.title}</span>
+          {result.variant && <span className="text-[10px] text-muted-foreground">{result.variant}</span>}
         </div>
-        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+        <div className="flex items-center gap-2.5 text-[10px] text-muted-foreground flex-wrap">
           {result.price != null && (
-            <span className="flex items-center gap-1 font-medium text-foreground">
-              <DollarSign className="h-3 w-3" />
+            <span className="font-medium text-foreground">
               {formatPrice(result.price)}
               {result.price_type === 'excl_govt' && (
-                <span className="text-[10px] text-muted-foreground font-normal">excl. govt charges</span>
+                <span className="text-[9px] text-muted-foreground font-normal ml-0.5">ex govt</span>
               )}
             </span>
           )}
           {result.km != null && (
-            <span className="flex items-center gap-1"><Gauge className="h-3 w-3" />{formatKm(result.km)}</span>
+            <span>{formatKm(result.km)}</span>
           )}
           {result.location && (
-            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{result.location}</span>
+            <span>{result.location}</span>
           )}
-          {result.days_listed != null && <span>{result.days_listed}d listed</span>}
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+          {result.days_listed != null && <span>{result.days_listed}d</span>}
           {result.dealer_name && (
-            <span className="flex items-center gap-1"><Building2 className="h-3 w-3" />{result.dealer_name}</span>
+            <span className="truncate max-w-[100px]">{result.dealer_name}</span>
           )}
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-            {result.is_discovery ? "AI Discovery" : (result.is_auction && result.auction_house ? result.auction_house : (result.source_class || result.source))}
+          <Badge variant="outline" className="text-[9px] px-1 py-0 leading-tight">
+            {result.is_discovery ? "AI" : (result.is_auction && result.auction_house ? result.auction_house : (result.source_class || result.source))}
           </Badge>
-          {isOperator && result.score != null && <span className="text-[10px]">Score: {result.score}</span>}
-          {isOperator && result.effective_price != null && <span className="text-[10px]">eff: {formatPrice(result.effective_price)}</span>}
+          {isOperator && result.score != null && <span className="text-[9px]">S:{result.score}</span>}
         </div>
         {isOperator && result.match_reason.length > 0 && (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-0.5">
             {result.match_reason.map((r, i) => (
-              <Badge key={i} variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground">{r}</Badge>
+              <Badge key={i} variant="outline" className="text-[8px] px-0.5 py-0 text-muted-foreground">{r}</Badge>
             ))}
           </div>
         )}
       </div>
       {result.url && (
         <a href={result.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-          <Button variant="ghost" size="iconSm" className="text-muted-foreground hover:text-primary">
-            <ExternalLink className="h-3.5 w-3.5" />
+          <Button variant="ghost" size="iconSm" className="h-6 w-6 text-muted-foreground hover:text-primary">
+            <ExternalLink className="h-3 w-3" />
           </Button>
         </a>
       )}
