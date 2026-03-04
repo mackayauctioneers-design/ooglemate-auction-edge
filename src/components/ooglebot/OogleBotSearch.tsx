@@ -220,11 +220,23 @@ function mergeAllResults(
   internalResults: InternalMatch[],
   scoredResults: OogleBotResult[],
   outwardResults: OutwardResult[],
+  badgeFilter?: string | null,
 ): UnifiedResult[] {
   const all: UnifiedResult[] = [];
 
+  // Client-side badge filter helper — checks if any variant field contains the badge as a whole token
+  const badgeUpper = badgeFilter?.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || null;
+  const badgeRe = badgeUpper ? new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i") : null;
+  const matchesBadge = (variant: string | null | undefined): boolean => {
+    if (!badgeUpper || !badgeRe) return true; // no filter
+    if (!variant) return false;
+    const vNorm = variant.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
+    return vNorm === badgeUpper || badgeRe.test(variant);
+  };
+
   // Internal results
   for (const m of internalResults) {
+    if (!matchesBadge(m.variant_raw)) continue;
     all.push({
       id: m.id,
       title: `${m.year ?? ""} ${m.make ?? ""} ${m.model ?? ""}`.trim(),
@@ -250,6 +262,7 @@ function mergeAllResults(
 
   // Scored / ooglebot-search results
   for (const r of scoredResults) {
+    if (!matchesBadge(r.variant)) continue;
     all.push({
       id: r.listing_id,
       title: `${r.year ?? ""} ${r.make ?? ""} ${r.model ?? ""}`.trim(),
@@ -275,6 +288,7 @@ function mergeAllResults(
 
   // Outward results
   for (const r of outwardResults) {
+    if (!matchesBadge(r.badge || r.title)) continue;
     const effPrice = r.price != null
       ? (r.price_type === 'excl_govt' ? r.price + EGC_ON_ROAD_ESTIMATE : r.price)
       : null;
@@ -426,8 +440,8 @@ export function OogleBotSearch() {
 
   // ── Unified result merge ──
   const allUnified = useMemo(
-    () => mergeAllResults(internalResults, externalResponse?.results ?? [], outwardResults),
-    [internalResults, externalResponse?.results, outwardResults],
+    () => mergeAllResults(internalResults, externalResponse?.results ?? [], outwardResults, badge),
+    [internalResults, externalResponse?.results, outwardResults, badge],
   );
   const marketResults = useMemo(() => allUnified.filter(r => !r.is_auction), [allUnified]);
   const auctionResults = useMemo(() => allUnified.filter(r => r.is_auction), [allUnified]);
