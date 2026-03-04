@@ -870,140 +870,78 @@ export default function ValoPage() {
                   const isExpanded = expandedComp === i;
                   const hasUrl = !!comp.url;
                   return (
-                    <Card key={i} className={`overflow-hidden ${isAnchor ? 'border-primary/50 ring-1 ring-primary/20' : ''}`}>
-                      {/* Listing image thumbnail */}
-                      {comp.image_url ? (
-                        <div className="relative w-full aspect-video bg-muted">
-                          <img
-                            src={comp.image_url}
-                            alt={comp.title || 'Vehicle listing'}
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              const target = e.currentTarget;
-                              target.style.display = 'none';
-                              const fallback = target.nextElementSibling as HTMLElement;
-                              if (fallback) fallback.style.display = 'flex';
-                            }}
-                          />
-                          <div className="hidden w-full h-full absolute inset-0 items-center justify-center bg-muted text-muted-foreground flex-col gap-1">
-                            <ImageIcon className="h-8 w-8" />
-                            <span className="text-xs">No photo available</span>
-                          </div>
+                    <div key={i} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md border transition-colors ${
+                      isAnchor ? 'border-primary/40 bg-primary/5' : 'border-border bg-card hover:bg-muted/30'
+                    }`}>
+                      <div className="flex-1 min-w-0 space-y-0.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge className={`text-[9px] px-1 py-0 leading-tight ${isAnchor ? 'bg-primary text-primary-foreground' : ''}`} variant={isAnchor ? 'default' : 'outline'}>
+                            {isAnchor ? 'ANCHOR' : 'BACKUP'}
+                          </Badge>
+                          <span className="font-medium text-xs text-foreground truncate">
+                            {comp.title || `${comp.year ?? ''} ${comp.make ?? ''} ${comp.model ?? ''} ${comp.variant ?? ''}`.trim()}
+                          </span>
+                          {comp.variant && !comp.title?.includes(comp.variant) && (
+                            <span className="text-[10px] text-muted-foreground">{comp.variant}</span>
+                          )}
                         </div>
-                      ) : (
-                        <div className="w-full aspect-video bg-muted flex items-center justify-center text-muted-foreground flex-col gap-1">
-                          <ImageIcon className="h-8 w-8" />
-                          <span className="text-xs">No photo available</span>
+                        <div className="flex items-center gap-2.5 text-[10px] text-muted-foreground flex-wrap">
+                          {(comp.price ?? comp.effective_cost) != null && (
+                            <span className="font-medium text-foreground">${(comp.price ?? comp.effective_cost).toLocaleString()}</span>
+                          )}
+                          {comp.km != null && <span>{comp.km.toLocaleString()} km</span>}
+                          {comp.state && comp.state !== 'null' && <span>{comp.state}</span>}
+                          {comp.source && (
+                            <Badge variant="outline" className="text-[9px] px-1 py-0 leading-tight">
+                              {comp.source === 'internal_db' ? 'Internal' : comp.source === 'drive' ? 'Drive' : comp.source === 'carsales' ? 'Carsales' : comp.source === 'perplexity' || comp.source === 'caroogleai' ? 'CaroogleAI' : comp.source}
+                            </Badge>
+                          )}
+                          {comp.valo_score != null && <span className="font-mono">S:{comp.valo_score}</span>}
                         </div>
-                      )}
-                      <div className="p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Badge className={isAnchor ? 'bg-primary text-primary-foreground text-[10px] px-1.5 py-0' : 'text-[10px] px-1.5 py-0'} variant={isAnchor ? 'default' : 'outline'}>
-                                {isAnchor ? 'ANCHOR' : 'BACKUP'}
+                        {comp.feature_hits?.length > 0 && (
+                          <div className="flex flex-wrap gap-0.5">
+                            {comp.feature_hits.map((hit: string) => (
+                              <Badge key={hit} variant="secondary" className="text-[9px] px-1 py-0 gap-0.5 leading-tight">
+                                <CheckCircle className="h-2 w-2 text-green-500" />{hit}
                               </Badge>
-                              {comp.source && (
-                                <span className="text-[10px] text-muted-foreground font-mono uppercase">
-                                  {comp.source === 'internal_db' ? 'Internal' : comp.source === 'drive' ? 'Drive' : comp.source === 'carsales' ? 'Carsales' : comp.source === 'perplexity' || comp.source === 'caroogleai' ? 'CaroogleAI' : comp.source}
-                                </span>
-                              )}
-                            </div>
-                            <p className="font-medium text-sm truncate">
-                              {comp.title || `${comp.year ?? ''} ${comp.make ?? ''} ${comp.model ?? ''} ${comp.variant ?? ''}`.trim()}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-muted-foreground">
-                              {comp.year && <span>{comp.year}</span>}
-                              {comp.km != null && <span>{comp.km.toLocaleString()} km</span>}
-                              {(comp.price ?? comp.effective_cost) != null && (
-                                <span className="font-semibold text-foreground">${(comp.price ?? comp.effective_cost).toLocaleString()}</span>
-                              )}
-                              {comp.state && comp.state !== 'null' && <span>{comp.state}</span>}
-                            </div>
-                            {comp.feature_hits?.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {comp.feature_hits.map((hit: string) => (
-                                  <Badge key={hit} variant="secondary" className="text-[10px] gap-1">
-                                    <CheckCircle className="h-2.5 w-2.5 text-green-500" />{hit}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-                            {comp.valo_score != null && (
-                              <div className="flex items-center gap-2 mt-2">
-                                <span className="text-[10px] font-mono text-muted-foreground">Score: {comp.valo_score}</span>
-                                {comp.valo_reasons?.slice(0, 3).map((r: string) => (
-                                  <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">{r}</span>
-                                ))}
-                              </div>
-                            )}
+                            ))}
                           </div>
-                          <div className="flex flex-col gap-1 shrink-0">
-                            {hasUrl ? (
-                              <a href={comp.url} target="_blank" rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                              >
-                                View listing <ExternalLink className="h-3 w-3" />
-                              </a>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs text-muted-foreground bg-muted cursor-not-allowed">
-                                Link unavailable
-                              </span>
-                            )}
-                            {comp.seller_name && comp.seller_name !== 'null' && (
-                              <span className="text-[10px] text-muted-foreground">
-                                Seller: {comp.seller_name}
-                              </span>
-                            )}
-                            <button
-                              onClick={() => setExpandedComp(isExpanded ? null : i)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted transition-colors"
-                            >
-                              {isExpanded ? 'Less' : 'Why this match?'}
-                              {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                            </button>
-                          </div>
-                        </div>
-
+                        )}
                         {isExpanded && (
-                          <div className="mt-3 pt-3 border-t border-border space-y-3">
-                            {/* Match reasons */}
+                          <div className="mt-1.5 pt-1.5 border-t border-border space-y-1.5 text-[10px]">
                             {comp.valo_reasons?.length > 0 && (
-                              <div>
-                                <p className="text-xs font-medium mb-1">Match Reasons</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {comp.valo_reasons.map((r: string) => (
-                                    <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">{r}</span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {/* Feature evidence */}
-                            {comp.feature_evidence?.length > 0 ? (
-                              <div>
-                                <p className="text-xs font-medium mb-1">Feature Evidence</p>
-                                {comp.feature_evidence.map((fe: any, j: number) => (
-                                  <div key={j} className="text-xs text-muted-foreground flex gap-2 py-0.5">
-                                    <Badge variant="outline" className="text-[10px] shrink-0">{fe.code}</Badge>
-                                    <span className="italic">…{fe.snippet}…</span>
-                                  </div>
+                              <div className="flex flex-wrap gap-0.5">
+                                {comp.valo_reasons.map((r: string) => (
+                                  <span key={r} className="px-1 py-0 rounded bg-muted font-mono text-[9px]">{r}</span>
                                 ))}
                               </div>
-                            ) : (
-                              <p className="text-xs text-muted-foreground italic">No feature evidence available for this listing.</p>
                             )}
-                            {comp.description && (
-                              <div>
-                                <p className="text-xs font-medium mb-1">Listing Description</p>
-                                <p className="text-xs text-muted-foreground line-clamp-4">{comp.description}</p>
+                            {comp.feature_evidence?.length > 0 && comp.feature_evidence.map((fe: any, j: number) => (
+                              <div key={j} className="flex gap-1.5 text-muted-foreground">
+                                <Badge variant="outline" className="text-[9px] shrink-0 px-1 py-0">{fe.code}</Badge>
+                                <span className="italic truncate">…{fe.snippet}…</span>
                               </div>
+                            ))}
+                            {comp.description && (
+                              <p className="text-muted-foreground line-clamp-2">{comp.description}</p>
                             )}
                           </div>
                         )}
                       </div>
-                    </Card>
+                      <div className="flex flex-col gap-0.5 shrink-0 items-end">
+                        {hasUrl && (
+                          <a href={comp.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+                        <button
+                          onClick={() => setExpandedComp(isExpanded ? null : i)}
+                          className="text-[9px] text-muted-foreground hover:text-foreground"
+                        >
+                          {isExpanded ? '▲' : '▼'}
+                        </button>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
