@@ -504,3 +504,6 @@ verify_jwt = false
 
 [functions.run-modo-evaluation]
 verify_jwt = false
+
+[functions.valo-perplexity-scan]
+verify_jwt = false
