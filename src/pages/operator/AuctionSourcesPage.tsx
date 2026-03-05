@@ -27,7 +27,7 @@ type Source = {
   notes: string | null;
 };
 
-const ADAPTER_OPTIONS = ["all", "manus", "firecrawl", "generic_scrape", "none"];
+const ADAPTER_OPTIONS = ["all", "firecrawl", "generic_scrape", "none"];
 const PRIORITY_OPTIONS = ["all", "critical", "high", "normal", "low"];
 
 export default function AuctionSourcesPage() {
