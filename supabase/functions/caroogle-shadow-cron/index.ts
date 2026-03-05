@@ -135,7 +135,16 @@ Deno.serve(async (req) => {
 
     // ── Fetch from Caroogle API ──
     console.log(`[${CRON_NAME}] Fetching from Caroogle API...`);
-    const resp = await fetch(CAROOGLE_API);
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), 30_000);
+    let resp: Response;
+    try {
+      resp = await fetch(CAROOGLE_API, { signal: ac.signal });
+    } catch (e) {
+      clearTimeout(timeout);
+      throw new Error(`Caroogle API fetch failed (likely timeout): ${e instanceof Error ? e.message : String(e)}`);
+    }
+    clearTimeout(timeout);
     if (!resp.ok) {
       throw new Error(`Caroogle API returned ${resp.status}: ${await resp.text()}`);
     }
