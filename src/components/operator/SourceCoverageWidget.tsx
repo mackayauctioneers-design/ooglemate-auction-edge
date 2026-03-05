@@ -7,7 +7,6 @@ import { Globe } from "lucide-react";
 type Stats = {
   total: number;
   active: number;
-  manus: number;
   firecrawl: number;
   none: number;
   recentActivity: number;
