@@ -385,6 +385,11 @@ serve(async (req) => {
       const lockUntil = new Date(Date.now() + LOCK_DURATION_MS).toISOString();
 
       // Atomic lock with token check
+      // Build lock filter: if current lock_token is null, use IS NULL; otherwise match existing token
+      const lockFilter = run.lock_token 
+        ? `lock_token.is.null,lock_token.eq.${run.lock_token}` 
+        : `lock_token.is.null`;
+
       const { data: locked, error: lockError } = await supabase
         .from("apify_runs_queue")
         .update({ 
@@ -393,7 +398,7 @@ serve(async (req) => {
           updated_at: now.toISOString()
         })
         .eq("id", run.id)
-        .or(`lock_token.is.null,lock_token.eq.${run.lock_token || 'null'}`)
+        .or(lockFilter)
         .select()
         .single();
 
