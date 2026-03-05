@@ -385,16 +385,29 @@ serve(async (req) => {
       const lockAttemptAtIso = new Date().toISOString();
       const lockUntil = new Date(Date.now() + LOCK_DURATION_MS).toISOString();
 
-      // Atomic lock claim: allow claim if unlocked OR stale lock expired
+      // If this row has an expired lock, clear it first so claim can proceed.
+      if (run.locked_until && new Date(run.locked_until).getTime() < Date.now()) {
+        await supabase
+          .from("apify_runs_queue")
+          .update({
+            lock_token: null,
+            locked_until: null,
+            updated_at: lockAttemptAtIso,
+          })
+          .eq("id", run.id)
+          .lt("locked_until", lockAttemptAtIso);
+      }
+
+      // Atomic lock claim
       const { data: locked, error: lockError } = await supabase
         .from("apify_runs_queue")
-        .update({ 
+        .update({
           lock_token: runLockToken,
           locked_until: lockUntil,
-          updated_at: lockAttemptAtIso
+          updated_at: lockAttemptAtIso,
         })
         .eq("id", run.id)
-        .or(`lock_token.is.null,locked_until.lt.${lockAttemptAtIso}`)
+        .is("lock_token", null)
         .select()
         .maybeSingle();
 
