@@ -439,7 +439,8 @@ serve(async (req) => {
               .eq("id", run.id);
 
             runResults.push({ run_id: run.run_id, source: runSource, status: "still_running" });
-            continue;
+            // Break out — don't re-poll the same still-running run in a tight loop
+            break;
           }
 
           if (apifyStatus === "FAILED" || apifyStatus === "ABORTED" || apifyStatus === "TIMED-OUT") {
