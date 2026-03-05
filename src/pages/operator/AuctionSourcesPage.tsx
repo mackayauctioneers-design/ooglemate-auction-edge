@@ -86,7 +86,6 @@ export default function AuctionSourcesPage() {
   const stats = useMemo(() => ({
     total: sources.length,
     active: sources.filter(s => s.enabled).length,
-    manus: sources.filter(s => s.adapter_type === "manus").length,
     recentCrawl: sources.filter(s => s.last_crawl_at && new Date(s.last_crawl_at) > new Date(Date.now() - 7 * 86400000)).length,
   }), [sources]);
 
