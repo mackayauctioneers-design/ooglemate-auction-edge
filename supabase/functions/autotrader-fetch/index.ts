@@ -508,7 +508,8 @@ serve(async (req) => {
 
         // Fetch dataset items with pagination
         let offset = run.items_fetched || 0;
-        const batchSize = 100;
+        // Carsales payloads can be very heavy (images/spec blobs) — keep batches small to avoid OOM.
+        const batchSize = runSource === "carsales" ? 20 : 100;
         
         let itemsFetchedThisRun = 0;
         let itemsUpsertedThisRun = 0;
@@ -520,9 +521,8 @@ serve(async (req) => {
         const effectiveDatasetId = run.dataset_id || datasetId;
 
         while (Date.now() - startTime < TIME_BUDGET_MS) {
-          const datasetResponse = await fetch(
-            `https://api.apify.com/v2/datasets/${effectiveDatasetId}/items?token=${apifyToken}&offset=${offset}&limit=${batchSize}`
-          );
+          const datasetUrl = `https://api.apify.com/v2/datasets/${effectiveDatasetId}/items?token=${apifyToken}&offset=${offset}&limit=${batchSize}&clean=true&skipHidden=true&format=json`;
+          const datasetResponse = await fetch(datasetUrl);
 
           if (!datasetResponse.ok) {
             throw new Error(`Failed to fetch dataset: ${datasetResponse.status}`);
