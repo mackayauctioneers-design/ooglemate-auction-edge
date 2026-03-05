@@ -294,6 +294,85 @@ function mapSlatteryItem(rawItem: Record<string, unknown>): MappedListing | null
   } catch { return null; }
 }
 
+/**
+ * thescrapelab/ultimate-car-listings-scraper-50-sites output:
+ * { source, source_site, listing_id, url, title, car_name,
+ *   price, year, brand, model, mileage_km, trim,
+ *   transmission, fuel, drivetrain, colour, condition,
+ *   dealer, dealer_key, location, image_url, country_code, currency_code }
+ */
+function mapUltimateCarItem(rawItem: Record<string, unknown>): MappedListing | null {
+  try {
+    const item = rawItem;
+
+    // Listing ID
+    const listingId = String(item.listing_id || item.stock_reference || "");
+    if (!listingId) return null;
+
+    // URL
+    const url = (item.url || "") as string;
+    if (!url) return null;
+
+    // Year
+    const year = Number(item.year || 0);
+    if (!year || year < 2000) return null;
+
+    // Make/Model — actor uses "brand" not "make"
+    const make = ((item.brand || "") as string).toUpperCase().trim();
+    const model = ((item.model || "") as string).toUpperCase().trim();
+    if (!make || !model) return null;
+
+    // Variant from trim field
+    const variant = ((item.trim || "") as string).toUpperCase().trim();
+
+    // Price
+    let price = 0;
+    if (typeof item.price === "number") {
+      price = item.price;
+    } else if (typeof item.price === "string") {
+      const m = (item.price as string).replace(/[^0-9]/g, "");
+      if (m) price = parseInt(m, 10);
+    }
+    if (!price || price < 1000 || price > 500000) return null;
+
+    // KM — actor uses mileage_km
+    let km: number | undefined;
+    const rawKm = item.mileage_km || item.mileage;
+    if (typeof rawKm === "number") km = rawKm;
+    else if (typeof rawKm === "string") {
+      const parsed = parseInt(rawKm.replace(/[^0-9]/g, ""), 10);
+      if (parsed > 0) km = parsed;
+    }
+
+    // Location / state — try to extract AU state from location string
+    const location = (item.location || "") as string;
+    let state: string | undefined;
+    const stateMatch = location.match(/\b(NSW|VIC|QLD|SA|WA|TAS|NT|ACT)\b/i);
+    if (stateMatch) state = stateMatch[1].toUpperCase();
+
+    // Determine the actual marketplace source from the actor's source field
+    // e.g. "carsguideau" → "carsguide", "driveau" → "drive"
+    const actorSource = ((item.source || item.source_site || "") as string).toLowerCase();
+    let mappedSource = "ultimate-car";
+    if (actorSource.startsWith("carsguide")) mappedSource = "carsguide";
+    else if (actorSource.startsWith("drive")) mappedSource = "drive";
+    else if (actorSource.startsWith("justcars")) mappedSource = "justcars";
+    else if (actorSource.startsWith("onlycars")) mappedSource = "onlycars";
+    else if (actorSource.startsWith("autotrader")) mappedSource = "autotrader-uc";
+
+    return {
+      source: mappedSource,
+      source_listing_id: listingId,
+      listing_url: url,
+      year, make, model,
+      variant_raw: variant || undefined,
+      km, asking_price: price,
+      state,
+      suburb: location || undefined,
+    };
+  } catch { return null; }
+}
+
 // ─── SOURCE ROUTER ─────────────────────────────────────────────
 
 function mapItemForSource(source: string, rawItem: Record<string, unknown>): MappedListing | null {
@@ -302,6 +381,7 @@ function mapItemForSource(source: string, rawItem: Record<string, unknown>): Map
     case "carsales": return mapCarsalesItem(rawItem);
     case "gumtree": return mapGumtreeItem(rawItem);
     case "slattery": return mapSlatteryItem(rawItem);
+    case "ultimate-car": return mapUltimateCarItem(rawItem);
     default: {
       // Fallback: try generic mapping for unknown sources
       console.warn(`[FETCH] Unknown source '${source}', attempting generic mapping`);
