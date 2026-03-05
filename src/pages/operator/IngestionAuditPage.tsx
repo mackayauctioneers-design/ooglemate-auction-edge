@@ -99,13 +99,38 @@ export default function IngestionAuditPage() {
   };
 
   const fetchFallback = async () => {
-    // Pull all listings with minimal fields
-    const { data: listings } = await supabase
-      .from("vehicle_listings")
-      .select("source, status, first_seen_at, last_seen_at")
-      .limit(10000);
+    // Pull from both vehicle_listings and retail_listings
+    const [{ data: vlData }, { data: rlData }] = await Promise.all([
+      supabase
+        .from("vehicle_listings")
+        .select("source, status, first_seen_at, last_seen_at")
+        .limit(10000),
+      supabase
+        .from("retail_listings")
+        .select("source, lifecycle_status, delisted_at, first_seen_at, last_seen_at")
+        .limit(10000),
+    ]);
 
-    if (!listings) { setLoading(false); return; }
+    const combined: { source: string; is_active: boolean; first_seen_at: string | null; last_seen_at: string | null }[] = [];
+
+    for (const l of vlData || []) {
+      combined.push({
+        source: l.source || "unknown",
+        is_active: l.status === "catalogue" || l.status === "listed",
+        first_seen_at: l.first_seen_at,
+        last_seen_at: l.last_seen_at,
+      });
+    }
+    for (const l of rlData || []) {
+      combined.push({
+        source: l.source || "unknown",
+        is_active: l.lifecycle_status === "active" || l.lifecycle_status === "listed" || !l.delisted_at,
+        first_seen_at: l.first_seen_at,
+        last_seen_at: l.last_seen_at,
+      });
+    }
+
+    if (combined.length === 0) { setLoading(false); return; }
 
     const now = Date.now();
     const day = 86400000;
@@ -114,12 +139,12 @@ export default function IngestionAuditPage() {
 
     const bySource: Record<string, { total: number; active: number; added_24h: number; updated_24h: number; older_30d: number; last_scrape: string | null }> = {};
 
-    for (const l of listings) {
-      const s = l.source || "unknown";
+    for (const l of combined) {
+      const s = l.source;
       if (!bySource[s]) bySource[s] = { total: 0, active: 0, added_24h: 0, updated_24h: 0, older_30d: 0, last_scrape: null };
       const b = bySource[s];
       b.total++;
-      if (l.status === "catalogue" || l.status === "listed") b.active++;
+      if (l.is_active) b.active++;
       if (l.first_seen_at && l.first_seen_at > cutoff24h) b.added_24h++;
       if (l.last_seen_at && l.last_seen_at > cutoff24h) b.updated_24h++;
       if (l.first_seen_at && l.first_seen_at < cutoff30d) b.older_30d++;
