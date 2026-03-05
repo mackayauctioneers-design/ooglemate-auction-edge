@@ -521,3 +521,10 @@ verify_jwt = false
 [functions.gumtree-scan-cron]
 verify_jwt = false
 schedule = "30 */2 * * *"
+
+[functions.ultimate-car-scan]
+verify_jwt = false
+
+[functions.ultimate-car-scan-cron]
+verify_jwt = false
+schedule = "15 */2 * * *"
