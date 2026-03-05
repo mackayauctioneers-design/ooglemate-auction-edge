@@ -11,7 +11,8 @@ const corsHeaders = {
 const TIME_BUDGET_MS = 25000;
 const LOCK_DURATION_MS = 60000; // 1 minute lock per run
 
-interface AutotraderListing {
+interface MappedListing {
+  source: string;
   source_listing_id: string;
   listing_url: string;
   year: number;
@@ -22,91 +23,305 @@ interface AutotraderListing {
   asking_price: number;
   state?: string;
   suburb?: string;
+  // Auction-specific fields
+  auction_house?: string;
+  auction_datetime?: string;
+  guide_price?: number;
+  sold?: boolean;
+  sold_price?: number;
 }
 
-// Map Apify dataset item to our canonical format
-// CRITICAL: Apify returns items nested under _source from ElasticSearch
-function mapApifyItem(rawItem: Record<string, unknown>): AutotraderListing | null {
+// ─── SOURCE-SPECIFIC MAPPERS ───────────────────────────────────
+
+function mapAutotraderItem(rawItem: Record<string, unknown>): MappedListing | null {
   try {
-    // Unwrap _source if present (Apify AutoTrader uses ES format)
     const item = (rawItem._source as Record<string, unknown>) || rawItem;
-    
-    // Extract listing ID - try multiple sources
     const sourceId = item.id as number | string;
     const urlPath = (item.url || "") as string;
     const idMatch = urlPath.match(/car\/(\d+)\//);
     const listingId = String(sourceId || idMatch?.[1] || "");
-    
-    if (!listingId) {
-      console.log("[AUTOTRADER MAP] Rejected: no listing ID", { rawKeys: Object.keys(rawItem).slice(0, 5) });
-      return null;
-    }
-    
-    // Year: field is manu_year, not year
+    if (!listingId) return null;
+
     const year = (item.manu_year || item.year) as number;
-    if (!year || year < 2000) {
-      console.log(`[AUTOTRADER MAP] Rejected ${listingId}: invalid year ${year}`);
-      return null;
-    }
-    
-    // Make/Model: can be at root or nested in vehicle object
+    if (!year || year < 2000) return null;
+
     const vehicle = (item.vehicle || {}) as Record<string, unknown>;
     const make = ((item.make || vehicle.make || "") as string).toUpperCase().trim();
     const model = ((item.model || vehicle.model || "") as string).toUpperCase().trim();
-    
-    if (!make || !model) {
-      console.log(`[AUTOTRADER MAP] Rejected ${listingId}: no make/model`);
-      return null;
-    }
-    
-    // Variant
+    if (!make || !model) return null;
+
     const variant = ((item.variant || vehicle.variant || "") as string).toUpperCase().trim();
-    
-    // Price: nested under price.advertised_price or price.driveaway_price
     const priceObj = (item.price || {}) as Record<string, unknown>;
     const price = (priceObj.advertised_price || priceObj.driveaway_price || item.price) as number;
-    
-    if (!price || price < 1000 || price > 500000) {
-      console.log(`[AUTOTRADER MAP] Rejected ${listingId}: invalid price ${price}`);
-      return null;
-    }
-    
-    // Odometer: field is odometer, not km
+    if (!price || price < 1000 || price > 500000) return null;
+
     const km = (item.odometer || item.km || item.mileage) as number | undefined;
-    
-    // Location: state can be at root or nested
     const state = ((item.location_state || item.state || "") as string).toUpperCase();
     const suburb = (item.location_city || item.suburb || item.location || "") as string;
-    
-    // Build full URL
+
     const baseUrl = "https://www.autotrader.com.au/";
     const fullUrl = urlPath.startsWith("http") ? urlPath : `${baseUrl}${urlPath}`;
-    
-    console.log(`[AUTOTRADER MAP] ✓ Mapped ${listingId}: ${year} ${make} ${model} $${price} ${km || "N/A"}km`);
-    
+
     return {
+      source: "autotrader",
       source_listing_id: listingId,
       listing_url: fullUrl,
-      year,
-      make,
-      model,
+      year, make, model,
       variant_raw: variant || undefined,
-      km,
-      asking_price: price,
+      km, asking_price: price,
       state: state || undefined,
       suburb: suburb || undefined,
     };
-  } catch (err) {
-    console.error("[AUTOTRADER MAP] Error mapping item:", err);
-    return null;
-  }
+  } catch { return null; }
 }
 
 /**
- * autotrader-fetch: WORKER FUNCTION
+ * Carsales Cheerio (memo23/carsales-cheerio) output:
+ * { title, make, model, year, networkId, name, price/prices, odometer, 
+ *   location, state, url/link, transmission, fuelType, drive, ... }
+ */
+function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null {
+  try {
+    const item = rawItem;
+    
+    // Listing ID: networkId or fallback to URL-based ID
+    const networkId = (item.networkId || item.id || "") as string;
+    const url = (item.url || item.link || item.detailUrl || "") as string;
+    const idMatch = url.match(/(\d{6,})/);
+    const listingId = networkId.replace(/^sse-ad-/, "") || idMatch?.[1] || "";
+    if (!listingId) return null;
+
+    // Year
+    const year = (item.year || 0) as number;
+    if (!year || year < 2000) return null;
+
+    // Make/Model - carsales uses lowercase
+    const make = ((item.make || "") as string).toUpperCase().trim();
+    const model = ((item.model || "") as string).toUpperCase().trim();
+    if (!make || !model) return null;
+
+    // Variant from title or badge field
+    const title = (item.title || item.name || "") as string;
+    const variant = ((item.badge || item.variant || "") as string).toUpperCase().trim() 
+      || title.toUpperCase();
+
+    // Price: can be nested object or flat
+    let price = 0;
+    if (typeof item.price === "number") {
+      price = item.price;
+    } else if (typeof item.price === "object" && item.price !== null) {
+      const p = item.price as Record<string, unknown>;
+      price = (p.value || p.advertised || p.driveaway || p.price || 0) as number;
+    } else if (item.prices && typeof item.prices === "object") {
+      const p = item.prices as Record<string, unknown>;
+      price = (p.advertised || p.driveaway || p.price || 0) as number;
+    }
+    // Try extracting from string like "$29,990"
+    if (!price && typeof item.price === "string") {
+      const m = (item.price as string).replace(/[^0-9]/g, "");
+      if (m) price = parseInt(m, 10);
+    }
+    if (!price || price < 1000 || price > 500000) return null;
+
+    // KM
+    let km: number | undefined;
+    const rawKm = item.odometer || item.km || item.mileage || item.kilometres;
+    if (typeof rawKm === "number") km = rawKm;
+    else if (typeof rawKm === "string") {
+      const parsed = parseInt(rawKm.replace(/[^0-9]/g, ""), 10);
+      if (parsed > 0) km = parsed;
+    }
+
+    // Location
+    const state = ((item.state || item.location_state || "") as string).toUpperCase().trim();
+    const suburb = (item.suburb || item.location || item.city || "") as string;
+
+    // URL
+    const fullUrl = url.startsWith("http") ? url 
+      : url ? `https://www.carsales.com.au${url}` : "";
+    if (!fullUrl) return null;
+
+    return {
+      source: "carsales",
+      source_listing_id: listingId,
+      listing_url: fullUrl,
+      year, make, model,
+      variant_raw: variant || undefined,
+      km, asking_price: price,
+      state: state || undefined,
+      suburb: suburb || undefined,
+    };
+  } catch { return null; }
+}
+
+/**
+ * Gumtree Cheerio (memo23/gumtree-cheerio) output:
+ * { title, price, url/link, location, attributes (array or object), 
+ *   description, seller, images, ... }
+ * Vehicle fields often in attributes: make, model, year, odometer/km
+ */
+function mapGumtreeItem(rawItem: Record<string, unknown>): MappedListing | null {
+  try {
+    const item = rawItem;
+    
+    // Listing ID from URL or id field
+    const url = (item.url || item.link || "") as string;
+    const rawId = (item.id || item.adId || "") as string;
+    const idMatch = url.match(/\/(\d{8,})/);
+    const listingId = String(rawId || idMatch?.[1] || "");
+    if (!listingId) return null;
+
+    // Attributes can be an object or array of {name, value}
+    const attrs: Record<string, string> = {};
+    if (Array.isArray(item.attributes)) {
+      for (const a of item.attributes as Array<{name?: string; key?: string; value?: string}>) {
+        const key = ((a.name || a.key || "") as string).toLowerCase();
+        attrs[key] = (a.value || "") as string;
+      }
+    } else if (item.attributes && typeof item.attributes === "object") {
+      for (const [k, v] of Object.entries(item.attributes as Record<string, unknown>)) {
+        attrs[k.toLowerCase()] = String(v || "");
+      }
+    }
+
+    // Year
+    const yearRaw = item.year || attrs.year || attrs.caryear || attrs["car year"];
+    const year = typeof yearRaw === "number" ? yearRaw : parseInt(String(yearRaw || "0"), 10);
+    if (!year || year < 2000) return null;
+
+    // Make/Model - try top-level then attributes
+    const make = ((item.make || attrs.make || attrs.carmake || "") as string).toUpperCase().trim();
+    const model = ((item.model || attrs.model || attrs.carmodel || "") as string).toUpperCase().trim();
+    
+    // If no structured make/model, try parsing from title
+    const title = (item.title || item.name || "") as string;
+    if (!make || !model) {
+      // Can't reliably map without make/model
+      return null;
+    }
+
+    // Price
+    let price = 0;
+    const rawPrice = item.price || item.amount;
+    if (typeof rawPrice === "number") price = rawPrice;
+    else if (typeof rawPrice === "string") {
+      const m = rawPrice.replace(/[^0-9]/g, "");
+      if (m) price = parseInt(m, 10);
+    } else if (rawPrice && typeof rawPrice === "object") {
+      const p = rawPrice as Record<string, unknown>;
+      price = (p.value || p.amount || 0) as number;
+    }
+    if (!price || price < 1000 || price > 500000) return null;
+
+    // KM
+    let km: number | undefined;
+    const rawKm = item.odometer || item.km || item.mileage || attrs.odometer || attrs.km || attrs.kilometres;
+    if (typeof rawKm === "number") km = rawKm;
+    else if (typeof rawKm === "string") {
+      const parsed = parseInt(rawKm.replace(/[^0-9]/g, ""), 10);
+      if (parsed > 0) km = parsed;
+    }
+
+    // Location
+    const location = (item.location || item.suburb || attrs.location || "") as string;
+    const stateMatch = location.match(/\b(NSW|VIC|QLD|WA|SA|TAS|NT|ACT)\b/i);
+    const state = stateMatch ? stateMatch[1].toUpperCase() : undefined;
+
+    const fullUrl = url.startsWith("http") ? url 
+      : url ? `https://www.gumtree.com.au${url}` : "";
+    if (!fullUrl) return null;
+
+    return {
+      source: "gumtree",
+      source_listing_id: listingId,
+      listing_url: fullUrl,
+      year, make, model,
+      variant_raw: title.toUpperCase() || undefined,
+      km, asking_price: price,
+      state, suburb: location || undefined,
+    };
+  } catch { return null; }
+}
+
+/**
+ * Slattery actor output (affectionate_yepsen/slatteryv6):
+ * The actor pushes data via webhooks to slattery-detail-ingest-webhook,
+ * but if it also stores to dataset, we handle it here.
+ * Fields: source_stock_id, detail_url, year, make, model, variant_raw,
+ *         km, current_bid, guide_price, sold_price, location, state, etc.
+ */
+function mapSlatteryItem(rawItem: Record<string, unknown>): MappedListing | null {
+  try {
+    const item = rawItem;
+    
+    const listingId = (item.source_stock_id || item.consignmentNo || item.id || "") as string;
+    if (!listingId) return null;
+
+    const year = (item.year || 0) as number;
+    if (!year || year < 2000) return null;
+
+    const make = ((item.make || "") as string).toUpperCase().trim();
+    const model = ((item.model || "") as string).toUpperCase().trim();
+    if (!make || !model) return null;
+
+    // Slattery is auction — use guide_price or current_bid as asking_price
+    const guidePrice = (item.guide_price || item.guidePrice || 0) as number;
+    const currentBid = (item.current_bid || item.currentBid || 0) as number;
+    const startingBid = (item.starting_bid || item.startingBid || 0) as number;
+    const price = guidePrice || currentBid || startingBid;
+    // Allow priceless auction listings through (they'll get auction-watch treatment)
+
+    const km = (item.km || item.odometer) as number | undefined;
+    const state = ((item.state || "") as string).toUpperCase();
+    const url = (item.detail_url || item.url || "") as string;
+    const fullUrl = url.startsWith("http") ? url : "";
+
+    return {
+      source: "slattery",
+      source_listing_id: listingId,
+      listing_url: fullUrl || `https://slatteryauctions.com.au/assets/${listingId}`,
+      year, make, model,
+      variant_raw: ((item.variant_raw || "") as string).toUpperCase() || undefined,
+      km,
+      asking_price: price || 0, // 0 = priceless auction
+      state: state || undefined,
+      auction_house: "slattery",
+      auction_datetime: (item.auction_datetime || null) as string | undefined,
+      guide_price: guidePrice || undefined,
+      sold: (item.sold || false) as boolean,
+      sold_price: (item.sold_price || item.soldPrice || undefined) as number | undefined,
+    };
+  } catch { return null; }
+}
+
+// ─── SOURCE ROUTER ─────────────────────────────────────────────
+
+function mapItemForSource(source: string, rawItem: Record<string, unknown>): MappedListing | null {
+  switch (source) {
+    case "autotrader": return mapAutotraderItem(rawItem);
+    case "carsales": return mapCarsalesItem(rawItem);
+    case "gumtree": return mapGumtreeItem(rawItem);
+    case "slattery": return mapSlatteryItem(rawItem);
+    default: {
+      // Fallback: try generic mapping for unknown sources
+      console.warn(`[FETCH] Unknown source '${source}', attempting generic mapping`);
+      return mapCarsalesItem(rawItem) || mapAutotraderItem(rawItem);
+    }
+  }
+}
+
+// Auction sources get upserted differently (vehicle_listings vs retail_listings)
+const AUCTION_SOURCES = new Set(["slattery"]);
+
+// ─── MAIN WORKER ───────────────────────────────────────────────
+
+/**
+ * autotrader-fetch: UNIVERSAL APIFY WORKER
  * 
- * Claims queued Apify runs, checks if complete, fetches datasets, upserts listings.
- * Runs repeatedly on schedule to drain the queue.
+ * Claims queued Apify runs from ANY source, checks if complete,
+ * fetches datasets, and upserts listings using source-specific mappers.
+ * 
+ * Supports: autotrader, carsales, gumtree, slattery
  * 
  * CRITICAL STATE MACHINE:
  * - queued → running (Apify still processing)
@@ -144,11 +359,11 @@ serve(async (req) => {
     let totalNew = 0;
     let totalUpdated = 0;
     let totalErrors = 0;
-    const runResults: Array<{ run_id: string; status: string; items?: number; reason?: string }> = [];
+    const runResults: Array<{ run_id: string; source: string; status: string; items?: number; reason?: string }> = [];
 
     // Process runs until time budget exhausted
     while (Date.now() - startTime < TIME_BUDGET_MS) {
-      // Claim next queued or running run
+      // Claim next queued or running run (ANY source)
       const { data: runs, error: fetchError } = await supabase
         .from("apify_runs_queue")
         .select("*")
@@ -163,119 +378,116 @@ serve(async (req) => {
       }
 
       const run = runs[0];
+      const runSource = (run.source || "autotrader") as string;
 
       // Generate PER-RUN lock token (not reused across loop iterations)
       const runLockToken = crypto.randomUUID();
       const lockUntil = new Date(Date.now() + LOCK_DURATION_MS).toISOString();
 
-      // Try to acquire lock for this specific run
-      const { error: lockError } = await supabase
+      // Atomic lock with token check
+      const { data: locked, error: lockError } = await supabase
         .from("apify_runs_queue")
         .update({ 
-          locked_until: lockUntil, 
           lock_token: runLockToken,
+          locked_until: lockUntil,
           updated_at: now.toISOString()
         })
         .eq("id", run.id)
-        .or(`locked_until.is.null,locked_until.lt.${now.toISOString()}`);
-
-      if (lockError) {
-        console.log(`Failed to lock run ${run.id}`);
-        continue;
-      }
-
-      // Verify lock acquisition
-      const { data: lockCheck } = await supabase
-        .from("apify_runs_queue")
-        .select("lock_token")
-        .eq("id", run.id)
+        .or(`lock_token.is.null,lock_token.eq.${run.lock_token || 'null'}`)
+        .select()
         .single();
 
-      if (lockCheck?.lock_token !== runLockToken) {
-        console.log(`Lost lock race for run ${run.id}`);
+      if (lockError || !locked) {
+        console.log(`Run ${run.run_id} already locked by another worker, skipping`);
         continue;
       }
 
-      console.log(`Processing run ${run.run_id} (status: ${run.status}, lock: ${runLockToken})`);
+      console.log(`[${runSource}] Processing run ${run.run_id} (status: ${run.status})`);
 
       try {
-        // Check Apify run status
-        const statusResponse = await fetch(
-          `https://api.apify.com/v2/actor-runs/${run.run_id}?token=${apifyToken}`
-        );
-        const statusData = await statusResponse.json();
-        const apifyStatus = statusData.data?.status;
-        const datasetId = statusData.data?.defaultDatasetId || run.dataset_id;
+        const datasetId = run.dataset_id || run.run_id;
 
-        console.log(`Apify run ${run.run_id} status: ${apifyStatus}`);
+        // Check Apify run status if not yet fetching
+        if (run.status !== "fetching") {
+          const statusResponse = await fetch(
+            `https://api.apify.com/v2/actor-runs/${run.run_id}?token=${apifyToken}`
+          );
 
-        if (apifyStatus === "RUNNING" || apifyStatus === "READY") {
-          // Still running, update status and release lock
+          if (!statusResponse.ok) {
+            throw new Error(`Failed to check run status: ${statusResponse.status}`);
+          }
+
+          const statusData = await statusResponse.json();
+          const apifyStatus = statusData.data?.status;
+          const actualDatasetId = statusData.data?.defaultDatasetId || datasetId;
+
+          console.log(`[${runSource}] Run ${run.run_id} Apify status: ${apifyStatus}`);
+
+          if (apifyStatus === "RUNNING" || apifyStatus === "READY") {
+            // Still running - update status and release lock
+            await supabase
+              .from("apify_runs_queue")
+              .update({ 
+                status: "running",
+                started_at: run.started_at || now.toISOString(),
+                locked_until: null,
+                lock_token: null,
+                updated_at: now.toISOString()
+              })
+              .eq("id", run.id);
+
+            runResults.push({ run_id: run.run_id, source: runSource, status: "still_running" });
+            continue;
+          }
+
+          if (apifyStatus === "FAILED" || apifyStatus === "ABORTED" || apifyStatus === "TIMED-OUT") {
+            await supabase
+              .from("apify_runs_queue")
+              .update({ 
+                status: "error",
+                last_error: `Apify run ${apifyStatus}`,
+                completed_at: now.toISOString(),
+                locked_until: null,
+                lock_token: null,
+                updated_at: now.toISOString()
+              })
+              .eq("id", run.id);
+
+            runResults.push({ run_id: run.run_id, source: runSource, status: `apify_${apifyStatus}` });
+            totalErrors++;
+            continue;
+          }
+
+          if (apifyStatus !== "SUCCEEDED") {
+            // Unknown status - release lock
+            await supabase
+              .from("apify_runs_queue")
+              .update({ 
+                locked_until: null,
+                lock_token: null,
+                updated_at: now.toISOString()
+              })
+              .eq("id", run.id);
+
+            runResults.push({ run_id: run.run_id, source: runSource, status: `unknown_${apifyStatus}` });
+            continue;
+          }
+
+          // Apify run succeeded - update to fetching status
           await supabase
             .from("apify_runs_queue")
             .update({ 
-              status: "running",
-              dataset_id: datasetId,
-              locked_until: null,
-              lock_token: null,
+              status: "fetching",
+              dataset_id: actualDatasetId,
               updated_at: now.toISOString()
             })
             .eq("id", run.id);
-
-          runResults.push({ run_id: run.run_id, status: "still_running" });
-          continue;
         }
-
-        if (apifyStatus === "FAILED" || apifyStatus === "ABORTED" || apifyStatus === "TIMED-OUT") {
-          // Failed, mark as error and release lock
-          await supabase
-            .from("apify_runs_queue")
-            .update({ 
-              status: "error",
-              last_error: `Apify run ${apifyStatus}`,
-              completed_at: now.toISOString(),
-              locked_until: null,
-              lock_token: null,
-              updated_at: now.toISOString()
-            })
-            .eq("id", run.id);
-
-          runResults.push({ run_id: run.run_id, status: "error", reason: apifyStatus });
-          totalErrors++;
-          continue;
-        }
-
-        if (apifyStatus !== "SUCCEEDED") {
-          // Unknown status, release lock and skip
-          await supabase
-            .from("apify_runs_queue")
-            .update({ 
-              locked_until: null,
-              lock_token: null,
-              updated_at: now.toISOString()
-            })
-            .eq("id", run.id);
-
-          runResults.push({ run_id: run.run_id, status: `unknown_${apifyStatus}` });
-          continue;
-        }
-
-        // Apify run succeeded - update to fetching status
-        await supabase
-          .from("apify_runs_queue")
-          .update({ 
-            status: "fetching",
-            dataset_id: datasetId,
-            updated_at: now.toISOString()
-          })
-          .eq("id", run.id);
 
         // Fetch dataset items with pagination
-        // Start from where we left off (items_fetched tracks progress)
         let offset = run.items_fetched || 0;
         const batchSize = 100;
         
-        // Track progress IN MEMORY for this run
         let itemsFetchedThisRun = 0;
         let itemsUpsertedThisRun = 0;
         let runNew = 0;
@@ -283,9 +495,11 @@ serve(async (req) => {
         let runErrors = 0;
         let isFinished = false;
 
+        const effectiveDatasetId = run.dataset_id || datasetId;
+
         while (Date.now() - startTime < TIME_BUDGET_MS) {
           const datasetResponse = await fetch(
-            `https://api.apify.com/v2/datasets/${datasetId}/items?token=${apifyToken}&offset=${offset}&limit=${batchSize}`
+            `https://api.apify.com/v2/datasets/${effectiveDatasetId}/items?token=${apifyToken}&offset=${offset}&limit=${batchSize}`
           );
 
           if (!datasetResponse.ok) {
@@ -294,78 +508,109 @@ serve(async (req) => {
 
           const items = await datasetResponse.json();
           
-          // Check if we've reached the end
           if (!items || items.length === 0) {
             isFinished = true;
-            console.log(`Run ${run.run_id}: no more items at offset ${offset}, marking done`);
+            console.log(`[${runSource}] Run ${run.run_id}: no more items at offset ${offset}, marking done`);
             break;
           }
 
-          console.log(`Fetched ${items.length} items from offset ${offset}`);
+          console.log(`[${runSource}] Fetched ${items.length} items from offset ${offset}`);
           itemsFetchedThisRun += items.length;
 
-          // Map and upsert listings
+          // Map items using source-specific mapper
           const listings = items
-            .map(mapApifyItem)
-            .filter((l: AutotraderListing | null): l is AutotraderListing => l !== null);
+            .map((item: Record<string, unknown>) => mapItemForSource(runSource, item))
+            .filter((l: MappedListing | null): l is MappedListing => l !== null);
 
-          console.log(`[AUTOTRADER UPSERT] Batch: ${items.length} raw → ${listings.length} mapped (${items.length - listings.length} rejected)`);
+          console.log(`[${runSource.toUpperCase()} UPSERT] Batch: ${items.length} raw → ${listings.length} mapped (${items.length - listings.length} rejected)`);
           
           if (listings.length > 0) {
-            console.log(`[AUTOTRADER UPSERT] First item: ${listings[0].year} ${listings[0].make} ${listings[0].model} $${listings[0].asking_price}`);
+            console.log(`[${runSource.toUpperCase()} UPSERT] First item: ${listings[0].year} ${listings[0].make} ${listings[0].model} $${listings[0].asking_price}`);
           }
 
           for (const listing of listings) {
             try {
-              // Extract badge/fuel/drivetrain before upsert
               const extracted = extractBadge(
                 listing.make || '',
                 listing.model || '',
                 listing.variant_raw,
               );
 
-              const { data, error } = await supabase.rpc("upsert_retail_listing", {
-                p_source: "autotrader",
-                p_source_listing_id: listing.source_listing_id,
-                p_listing_url: listing.listing_url,
-                p_year: listing.year,
-                p_make: listing.make,
-                p_model: listing.model,
-                p_variant_raw: listing.variant_raw || null,
-                p_variant_family: extracted.badge,
-                p_km: listing.km || null,
-                p_asking_price: listing.asking_price,
-                p_state: listing.state || null,
-                p_suburb: listing.suburb || null,
-              });
+              if (AUCTION_SOURCES.has(runSource)) {
+                // Auction source → vehicle_listings table
+                const { error } = await supabase
+                  .from("vehicle_listings")
+                  .upsert({
+                    listing_id: `${runSource}:${listing.source_listing_id}`,
+                    source: runSource,
+                    listing_url: listing.listing_url,
+                    year: listing.year,
+                    make: listing.make,
+                    model: listing.model,
+                    variant_raw: listing.variant_raw || null,
+                    badge: extracted.badge || null,
+                    km: listing.km || null,
+                    asking_price: listing.asking_price || null,
+                    state: listing.state || null,
+                    auction_house: listing.auction_house || runSource,
+                    auction_datetime: listing.auction_datetime || null,
+                    status: listing.sold ? "sold" : "listed",
+                    first_seen_at: new Date().toISOString(),
+                    last_seen_at: new Date().toISOString(),
+                  }, { onConflict: "listing_id" });
 
-              if (error) {
-                console.error(`[AUTOTRADER UPSERT] RPC error for ${listing.source_listing_id}:`, error.message);
-                runErrors++;
-                continue;
-              }
-
-              // Update structured fields
-              const resultRow = data?.[0] || data;
-              if (resultRow?.id && (extracted.badge || extracted.fuel_type || extracted.drivetrain || extracted.body_type)) {
-                const updateFields: Record<string, unknown> = {};
-                if (extracted.badge) updateFields.badge = extracted.badge;
-                if (extracted.fuel_type) updateFields.fuel_type = extracted.fuel_type;
-                if (extracted.drivetrain) updateFields.drivetrain = extracted.drivetrain;
-                if (extracted.body_type) updateFields.body_type = extracted.body_type;
-                updateFields.classified_at = new Date().toISOString();
-                updateFields.variant_source = 'extractBadge_v1';
-                await supabase.from("retail_listings").update(updateFields).eq("id", resultRow.id);
-              }
-
-              itemsUpsertedThisRun++;
-              if (resultRow?.is_new) {
-                runNew++;
+                if (error) {
+                  console.error(`[${runSource.toUpperCase()} UPSERT] Error for ${listing.source_listing_id}:`, error.message);
+                  runErrors++;
+                } else {
+                  itemsUpsertedThisRun++;
+                  runNew++; // Can't distinguish new vs updated with upsert
+                }
               } else {
-                runUpdated++;
+                // Retail source → retail_listings via RPC
+                const { data, error } = await supabase.rpc("upsert_retail_listing", {
+                  p_source: runSource,
+                  p_source_listing_id: listing.source_listing_id,
+                  p_listing_url: listing.listing_url,
+                  p_year: listing.year,
+                  p_make: listing.make,
+                  p_model: listing.model,
+                  p_variant_raw: listing.variant_raw || null,
+                  p_variant_family: extracted.badge,
+                  p_km: listing.km || null,
+                  p_asking_price: listing.asking_price,
+                  p_state: listing.state || null,
+                  p_suburb: listing.suburb || null,
+                });
+
+                if (error) {
+                  console.error(`[${runSource.toUpperCase()} UPSERT] RPC error for ${listing.source_listing_id}:`, error.message);
+                  runErrors++;
+                  continue;
+                }
+
+                // Update structured fields
+                const resultRow = data?.[0] || data;
+                if (resultRow?.id && (extracted.badge || extracted.fuel_type || extracted.drivetrain || extracted.body_type)) {
+                  const updateFields: Record<string, unknown> = {};
+                  if (extracted.badge) updateFields.badge = extracted.badge;
+                  if (extracted.fuel_type) updateFields.fuel_type = extracted.fuel_type;
+                  if (extracted.drivetrain) updateFields.drivetrain = extracted.drivetrain;
+                  if (extracted.body_type) updateFields.body_type = extracted.body_type;
+                  updateFields.classified_at = new Date().toISOString();
+                  updateFields.variant_source = 'extractBadge_v1';
+                  await supabase.from("retail_listings").update(updateFields).eq("id", resultRow.id);
+                }
+
+                itemsUpsertedThisRun++;
+                if (resultRow?.is_new) {
+                  runNew++;
+                } else {
+                  runUpdated++;
+                }
               }
             } catch (err) {
-              console.error(`[AUTOTRADER UPSERT] Exception for ${listing.source_listing_id}:`, err);
+              console.error(`[${runSource.toUpperCase()} UPSERT] Exception for ${listing.source_listing_id}:`, err);
               runErrors++;
             }
           }
@@ -375,21 +620,20 @@ serve(async (req) => {
           // Check if this was the last page
           if (items.length < batchSize) {
             isFinished = true;
-            console.log(`Run ${run.run_id}: last page (${items.length} < ${batchSize}), marking done`);
+            console.log(`[${runSource}] Run ${run.run_id}: last page (${items.length} < ${batchSize}), marking done`);
             break;
           }
 
-          // Save intermediate progress atomically (in case we hit time budget)
+          // Save intermediate progress atomically
           await supabase.rpc("increment_apify_run_progress", {
             p_id: run.id,
             p_items_fetched: offset,
             p_items_upserted_delta: itemsUpsertedThisRun,
           });
-          // Reset local counter since we've persisted it
           itemsUpsertedThisRun = 0;
         }
 
-        // Persist any remaining upserted items atomically
+        // Persist any remaining upserted items
         if (itemsUpsertedThisRun > 0) {
           await supabase.rpc("increment_apify_run_progress", {
             p_id: run.id,
@@ -398,9 +642,8 @@ serve(async (req) => {
           });
         }
 
-        // Update final state based on whether we finished
+        // Update final state
         if (isFinished) {
-          // COMPLETED: Mark as done
           await supabase
             .from("apify_runs_queue")
             .update({ 
@@ -414,25 +657,26 @@ serve(async (req) => {
             .eq("id", run.id);
 
           runResults.push({ 
-            run_id: run.run_id, 
+            run_id: run.run_id,
+            source: runSource,
             status: "done", 
             items: itemsFetchedThisRun 
           });
         } else {
-          // PARTIAL: Time budget exhausted, keep as fetching for next worker
           await supabase
             .from("apify_runs_queue")
             .update({ 
-              status: "fetching", // Stay in fetching state
+              status: "fetching",
               items_fetched: offset,
-              locked_until: null, // Release lock for next worker
+              locked_until: null,
               lock_token: null,
               updated_at: new Date().toISOString()
             })
             .eq("id", run.id);
 
           runResults.push({ 
-            run_id: run.run_id, 
+            run_id: run.run_id,
+            source: runSource,
             status: "partial", 
             items: itemsFetchedThisRun,
             reason: `time_budget_at_offset_${offset}`
@@ -446,21 +690,20 @@ serve(async (req) => {
 
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
-        console.error(`Error processing run ${run.run_id}:`, errorMsg);
+        console.error(`[${runSource}] Error processing run ${run.run_id}:`, errorMsg);
 
-        // Release lock but keep status so we can retry
         await supabase
           .from("apify_runs_queue")
           .update({ 
             last_error: errorMsg,
             locked_until: null,
             lock_token: null,
-            updated_at: new Date().toISOString()
+            updated_at: now.toISOString()
           })
           .eq("id", run.id);
 
         totalErrors++;
-        runResults.push({ run_id: run.run_id, status: "error", reason: errorMsg });
+        runResults.push({ run_id: run.run_id, source: runSource, status: "error", reason: errorMsg });
       }
     }
 
@@ -481,7 +724,7 @@ serve(async (req) => {
       run_date: now.toISOString().split("T")[0],
     });
 
-    console.log("Autotrader fetch complete:", results);
+    console.log("Apify fetch worker complete:", results);
 
     return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -489,7 +732,7 @@ serve(async (req) => {
 
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("Autotrader fetch error:", errorMsg);
+    console.error("Apify fetch worker error:", errorMsg);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
