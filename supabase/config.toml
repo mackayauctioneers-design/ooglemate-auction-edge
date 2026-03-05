@@ -510,3 +510,7 @@ verify_jwt = false
 
 [functions.carsales-scan]
 verify_jwt = false
+
+[functions.carsales-scan-cron]
+verify_jwt = false
+schedule = "0 */2 * * *"
