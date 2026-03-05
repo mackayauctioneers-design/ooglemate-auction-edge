@@ -7,57 +7,23 @@ const corsHeaders = {
 };
 
 /**
- * carsales-scan-cron: Mandate-driven Carsales market sweep.
+ * carsales-scan-cron: Broad market sweep across all states.
  *
- * Reads active_mandates, builds correctly-filtered Carsales URLs
- * using (And.Make.X._.Model.Y._.Year.range(..)...) syntax,
- * then dispatches to carsales-scan for Apify ingestion.
+ * Strategy: Ingest everything 2020+, <120k km, segmented by state.
+ * Sorting/scoring happens downstream — cast the widest net possible.
  *
  * Schedule: every 30 minutes
  */
 
-const YEAR_DEFAULT_MIN = 2020;
-const KM_DEFAULT_MAX = 150000;
+const YEAR_MIN = 2020;
+const KM_MAX = 120000;
 
-/** Carsales PascalCase slug: "Land Cruiser" → "LandCruiser" */
-function carsalesSlug(str: string): string {
-  return str
-    .trim()
-    .split(/\s+/)
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
-    .join("");
-}
+const STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
 
-function buildCarsalesUrl(
-  make: string,
-  model: string,
-  yearMin: number,
-  yearMax: number | null,
-  kmMax: number
-): string {
-  const parts = [
-    `Make.${carsalesSlug(make)}`,
-    `Model.${carsalesSlug(model)}`,
-    yearMax
-      ? `Year.range(${yearMin}..${yearMax})`
-      : `Year.range(${yearMin}..)`,
-    `Odometer.range(..${kmMax})`,
-  ];
-  const q = `(And.${parts.join("._.")})`;
+function buildBroadSweepUrl(state: string): string {
+  const q = `(And.Year.range(${YEAR_MIN}..)._.Odometer.range(..${KM_MAX})._.State.${state})`;
   return `https://www.carsales.com.au/cars/?q=${encodeURIComponent(q)}&sort=~Price`;
 }
-
-/**
- * Fallback searches if no mandates exist yet.
- * These are the high-volume models that matter most for arbitrage.
- */
-const FALLBACK_SEARCHES = [
-  { make: "Toyota", model: "LandCruiser", yearMin: 2020, kmMax: 150000 },
-  { make: "Toyota", model: "Hilux", yearMin: 2020, kmMax: 150000 },
-  { make: "Toyota", model: "Prado", yearMin: 2020, kmMax: 150000 },
-  { make: "Isuzu", model: "D-Max", yearMin: 2020, kmMax: 150000 },
-  { make: "Ford", model: "Ranger", yearMin: 2020, kmMax: 150000 },
-];
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -69,33 +35,12 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Try to pull from active_mandates where carsales is in source_mask
-    const { data: mandates } = await supabase
-      .from("active_mandates")
-      .select("make, model, year_min, year_max, km_max")
-      .eq("is_active", true)
-      .contains("source_mask", ["carsales"]);
+    // Build one URL per state — broad sweep, no make/model filter
+    const startUrls = STATES.map((state) => ({
+      url: buildBroadSweepUrl(state),
+    }));
 
-    let startUrls: { url: string }[];
-
-    if (mandates && mandates.length > 0) {
-      startUrls = mandates.map((m) => ({
-        url: buildCarsalesUrl(
-          m.make,
-          m.model,
-          m.year_min ?? YEAR_DEFAULT_MIN,
-          m.year_max,
-          m.km_max ?? KM_DEFAULT_MAX
-        ),
-      }));
-      console.log(`Carsales cron: ${startUrls.length} mandate-driven searches`);
-    } else {
-      // Use fallback high-value model searches
-      startUrls = FALLBACK_SEARCHES.map((s) => ({
-        url: buildCarsalesUrl(s.make, s.model, s.yearMin, null, s.kmMax),
-      }));
-      console.log(`Carsales cron: ${startUrls.length} fallback searches (no mandates)`);
-    }
+    console.log(`Carsales cron: ${startUrls.length} state sweeps (${YEAR_MIN}+, <${KM_MAX}km)`);
 
     // Dispatch to carsales-scan
     const scanResponse = await fetch(
@@ -127,7 +72,7 @@ serve(async (req) => {
           cron_name: "carsales-scan-cron",
           last_seen_at: new Date().toISOString(),
           last_ok: true,
-          note: `Dispatched ${startUrls.length} filtered searches`,
+          note: `Broad sweep: ${STATES.length} states, ${YEAR_MIN}+, <${KM_MAX}km`,
         },
         { onConflict: "cron_name" }
       );

@@ -1,0 +1,4 @@
+# Memory: strategy/ingestion/carsales-market-sweep-strategy
+Updated: now
+
+The Carsales ingestion strategy uses a 'Broad Market Sweep' (all makes, 2020+, <120k km) segmented by Australian state (NSW, VIC, QLD, WA, SA, TAS, ACT, NT). No make/model filtering at the actor level — everything gets ingested and sorted/scored downstream. Uses the 'memo23/carsales-cheerio' Apify actor with proper Carsales filter syntax: (And.Year.range(2020..)._.Odometer.range(..120000)._.State.X). One Apify run per sweep covering all 8 states.
