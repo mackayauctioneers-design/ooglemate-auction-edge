@@ -384,12 +384,8 @@ serve(async (req) => {
       const runLockToken = crypto.randomUUID();
       const lockUntil = new Date(Date.now() + LOCK_DURATION_MS).toISOString();
 
-      // Atomic lock with token check
-      // Build lock filter: if current lock_token is null, use IS NULL; otherwise match existing token
-      const lockFilter = run.lock_token 
-        ? `lock_token.is.null,lock_token.eq.${run.lock_token}` 
-        : `lock_token.is.null`;
-
+      // Atomic lock: use RPC or simple claim — just set lock if not already locked
+      // We already filtered for unlocked runs in the SELECT above, so just update directly
       const { data: locked, error: lockError } = await supabase
         .from("apify_runs_queue")
         .update({ 
@@ -398,13 +394,14 @@ serve(async (req) => {
           updated_at: now.toISOString()
         })
         .eq("id", run.id)
-        .or(lockFilter)
+        .is("lock_token", null)
         .select()
-        .single();
+        .maybeSingle();
 
       if (lockError || !locked) {
         console.log(`Run ${run.run_id} already locked by another worker, skipping`);
-        continue;
+        // Break instead of continue to avoid tight-looping on same run
+        break;
       }
 
       console.log(`[${runSource}] Processing run ${run.run_id} (status: ${run.status})`);
