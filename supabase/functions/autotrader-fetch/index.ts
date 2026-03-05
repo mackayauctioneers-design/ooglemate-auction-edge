@@ -382,16 +382,29 @@ serve(async (req) => {
 
       // Generate PER-RUN lock token (not reused across loop iterations)
       const runLockToken = crypto.randomUUID();
+      const lockAttemptAtIso = new Date().toISOString();
       const lockUntil = new Date(Date.now() + LOCK_DURATION_MS).toISOString();
 
-      // Atomic lock: use RPC or simple claim — just set lock if not already locked
-      // We already filtered for unlocked runs in the SELECT above, so just update directly
+      // If this row has an expired lock, clear it first so claim can proceed.
+      if (run.locked_until && new Date(run.locked_until).getTime() < Date.now()) {
+        await supabase
+          .from("apify_runs_queue")
+          .update({
+            lock_token: null,
+            locked_until: null,
+            updated_at: lockAttemptAtIso,
+          })
+          .eq("id", run.id)
+          .lt("locked_until", lockAttemptAtIso);
+      }
+
+      // Atomic lock claim
       const { data: locked, error: lockError } = await supabase
         .from("apify_runs_queue")
-        .update({ 
+        .update({
           lock_token: runLockToken,
           locked_until: lockUntil,
-          updated_at: now.toISOString()
+          updated_at: lockAttemptAtIso,
         })
         .eq("id", run.id)
         .is("lock_token", null)
@@ -495,7 +508,8 @@ serve(async (req) => {
 
         // Fetch dataset items with pagination
         let offset = run.items_fetched || 0;
-        const batchSize = 100;
+        // Carsales payloads can be very heavy (images/spec blobs) — keep batches small to avoid OOM.
+        const batchSize = runSource === "carsales" ? 20 : 100;
         
         let itemsFetchedThisRun = 0;
         let itemsUpsertedThisRun = 0;
@@ -507,9 +521,8 @@ serve(async (req) => {
         const effectiveDatasetId = run.dataset_id || datasetId;
 
         while (Date.now() - startTime < TIME_BUDGET_MS) {
-          const datasetResponse = await fetch(
-            `https://api.apify.com/v2/datasets/${effectiveDatasetId}/items?token=${apifyToken}&offset=${offset}&limit=${batchSize}`
-          );
+          const datasetUrl = `https://api.apify.com/v2/datasets/${effectiveDatasetId}/items?token=${apifyToken}&offset=${offset}&limit=${batchSize}&clean=true&skipHidden=true&format=json`;
+          const datasetResponse = await fetch(datasetUrl);
 
           if (!datasetResponse.ok) {
             throw new Error(`Failed to fetch dataset: ${datasetResponse.status}`);
@@ -590,6 +603,8 @@ serve(async (req) => {
                   p_asking_price: listing.asking_price,
                   p_state: listing.state || null,
                   p_suburb: listing.suburb || null,
+                  p_run_id: run.id,
+                  p_price_type: "ask",
                 });
 
                 if (error) {
