@@ -67,7 +67,6 @@ export function SourceCoverageWidget() {
           </div>
         </div>
         <div className="flex gap-2 mt-3 flex-wrap">
-          <Badge variant="default">{stats.manus} Manus</Badge>
           <Badge variant="secondary">{stats.firecrawl} Firecrawl</Badge>
           <Badge variant="outline">{stats.none} Blocked</Badge>
         </div>

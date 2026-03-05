@@ -169,7 +169,7 @@ export default function AuctionEnrichmentQueuePage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Auction Enrichment Queue</h1>
             <p className="text-muted-foreground text-sm">
-              Manus detail extraction pipeline — {stats.total.toLocaleString()} total items
+              Detail extraction pipeline — {stats.total.toLocaleString()} total items
             </p>
           </div>
           <div className="flex items-center gap-2">

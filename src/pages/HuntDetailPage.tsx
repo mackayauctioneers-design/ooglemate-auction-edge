@@ -419,22 +419,6 @@ export default function HuntDetailPage() {
           lastMatchAt={matches[0]?.matched_at}
         />
 
-        {/* Manus Task Status Bar — shows live progress when dealer site searches are running */}
-        {manusActive && huntId && (
-          <ManusTaskStatusBar
-            huntId={huntId}
-            onComplete={(totalResults) => {
-              setManusActive(false);
-              queryClient.invalidateQueries({ queryKey: ['unified-candidates', huntId] });
-              queryClient.invalidateQueries({ queryKey: ['candidate-counts', huntId] });
-              queryClient.invalidateQueries({ queryKey: ['live-matches', huntId] });
-              refetchLiveMatches();
-              if (totalResults > 0) {
-                toast.success(`Manus found ${totalResults} result${totalResults !== 1 ? 's' : ''} from dealer sites`);
-              }
-            }}
-          />
-        )}
 
         {/* Link to Hunt Alerts */}
         {alerts.length > 0 && (

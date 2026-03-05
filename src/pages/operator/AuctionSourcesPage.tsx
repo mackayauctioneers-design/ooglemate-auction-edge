@@ -188,7 +188,7 @@ export default function AuctionSourcesPage() {
                     </a>
                   </td>
                   <td className="p-3">
-                    <Badge variant={s.adapter_type === "manus" ? "default" : s.adapter_type === "firecrawl" ? "secondary" : "outline"}>
+                    <Badge variant={s.adapter_type === "firecrawl" ? "secondary" : "outline"}>
                       {s.adapter_type}
                     </Badge>
                   </td>
