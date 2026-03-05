@@ -35,34 +35,44 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Build one URL per state — broad sweep, no make/model filter
-    const startUrls = STATES.map((state) => ({
-      url: buildBroadSweepUrl(state),
-    }));
+    // Dispatch ONE run per state to avoid Apify timeouts on massive sweeps
+    const results = [];
+    for (const state of STATES) {
+      const stateUrl = buildBroadSweepUrl(state);
+      
+      try {
+        const scanResponse = await fetch(
+          `${supabaseUrl}/functions/v1/carsales-scan`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify({
+              startUrls: [{ url: stateUrl }],
+              limit: 500,
+            }),
+          }
+        );
 
-    console.log(`Carsales cron: ${startUrls.length} state sweeps (${YEAR_MIN}+, <${KM_MAX}km)`);
-
-    // Dispatch to carsales-scan
-    const scanResponse = await fetch(
-      `${supabaseUrl}/functions/v1/carsales-scan`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${supabaseKey}`,
-        },
-        body: JSON.stringify({
-          startUrls,
-          limit: 500,
-        }),
+        const result = await scanResponse.json();
+        if (!scanResponse.ok) {
+          console.error(`[${state}] carsales-scan error: ${JSON.stringify(result)}`);
+          results.push({ state, error: result.error });
+        } else {
+          console.log(`[${state}] queued: run ${result.apify_run_id}`);
+          results.push({ state, run_id: result.apify_run_id, queued: true });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[${state}] dispatch failed: ${msg}`);
+        results.push({ state, error: msg });
       }
-    );
-
-    const result = await scanResponse.json();
-
-    if (!scanResponse.ok) {
-      throw new Error(`carsales-scan returned ${scanResponse.status}: ${JSON.stringify(result)}`);
     }
+
+    const queued = results.filter(r => r.queued).length;
+    const failed = results.filter(r => r.error).length;
 
     // Log heartbeat
     await supabase
@@ -71,15 +81,15 @@ serve(async (req) => {
         {
           cron_name: "carsales-scan-cron",
           last_seen_at: new Date().toISOString(),
-          last_ok: true,
-          note: `Broad sweep: ${STATES.length} states, ${YEAR_MIN}+, <${KM_MAX}km`,
+          last_ok: failed === 0,
+          note: `${queued}/${STATES.length} states queued, ${failed} failed`,
         },
         { onConflict: "cron_name" }
       );
 
-    console.log("Carsales cron complete:", JSON.stringify(result));
+    console.log(`Carsales cron complete: ${queued} queued, ${failed} failed`);
 
-    return new Response(JSON.stringify({ success: true, ...result }), {
+    return new Response(JSON.stringify({ success: true, queued, failed, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

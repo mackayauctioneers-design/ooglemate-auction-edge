@@ -443,7 +443,7 @@ serve(async (req) => {
             break;
           }
 
-          if (apifyStatus === "FAILED" || apifyStatus === "ABORTED" || apifyStatus === "TIMED-OUT") {
+          if (apifyStatus === "FAILED" || apifyStatus === "ABORTED") {
             await supabase
               .from("apify_runs_queue")
               .update({ 
@@ -459,6 +459,12 @@ serve(async (req) => {
             runResults.push({ run_id: run.run_id, source: runSource, status: `apify_${apifyStatus}` });
             totalErrors++;
             continue;
+          }
+
+          // TIMED-OUT runs still have partial results in their dataset — treat as fetchable
+          if (apifyStatus === "TIMED-OUT") {
+            console.log(`[${runSource}] Run ${run.run_id} timed out but has partial results — fetching dataset`);
+            // Fall through to dataset fetch below
           }
 
           if (apifyStatus !== "SUCCEEDED") {
