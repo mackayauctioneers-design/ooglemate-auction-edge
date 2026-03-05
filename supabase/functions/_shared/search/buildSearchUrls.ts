@@ -40,17 +40,23 @@ function carsalesSlug(str: string): string {
 // Slugs are PascalCase, space-separated filter tokens.
 
 function buildCarsalesUrls(intent: ParsedIntent, maxPages: number): SearchTarget[] {
-  const filters: string[] = [];
+  // Carsales uses (And.Filter1._.Filter2.) query syntax
+  const parts: string[] = [];
 
-  if (intent.make) filters.push(`Make.${carsalesSlug(intent.make)}`);
-  if (intent.model) filters.push(`Model.${carsalesSlug(intent.model)}`);
-  if (intent.year_min) filters.push(`YearFrom.${intent.year_min}`);
-  if (intent.year_max) filters.push(`YearTo.${intent.year_max}`);
-  if (intent.max_km) filters.push(`OdometerTo.${intent.max_km}`);
-  if (intent.state) filters.push(`State.${intent.state.toUpperCase()}`);
+  if (intent.make) parts.push(`Make.${carsalesSlug(intent.make)}`);
+  if (intent.model) parts.push(`Model.${carsalesSlug(intent.model)}`);
+  if (intent.year_min && intent.year_max) {
+    parts.push(`Year.range(${intent.year_min}..${intent.year_max})`);
+  } else if (intent.year_min) {
+    parts.push(`Year.range(${intent.year_min}..)`);
+  } else if (intent.year_max) {
+    parts.push(`Year.range(..${intent.year_max})`);
+  }
+  if (intent.max_km) parts.push(`Odometer.range(..${intent.max_km})`);
+  if (intent.state) parts.push(`State.${intent.state.toUpperCase()}`);
 
-  const q = encodeURIComponent(filters.join(" "));
-  const base = `https://www.carsales.com.au/cars/used/?q=${q}&sort=Price`;
+  const q = `(And.${parts.join("._.")})`;
+  const base = `https://www.carsales.com.au/cars/?q=${encodeURIComponent(q)}&sort=~Price`;
 
   return Array.from({ length: maxPages }, (_, i) => ({
     source: "carsales" as const,
