@@ -392,7 +392,7 @@ function mapItemForSource(source: string, rawItem: Record<string, unknown>): Map
 }
 
 // Auction sources get upserted differently (vehicle_listings vs retail_listings)
-const AUCTION_SOURCES = new Set(["slattery"]);
+const AUCTION_SOURCES = new Set(["slattery", "pickles"]);
 
 // ─── MAIN WORKER ───────────────────────────────────────────────
 
