@@ -358,6 +358,7 @@ function mapUltimateCarItem(rawItem: Record<string, unknown>): MappedListing | n
     else if (actorSource.startsWith("drive")) mappedSource = "drive";
     else if (actorSource.startsWith("justcars")) mappedSource = "justcars";
     else if (actorSource.startsWith("onlycars")) mappedSource = "onlycars";
+    else if (actorSource.startsWith("pickles")) mappedSource = "pickles";
     else if (actorSource.startsWith("autotrader")) mappedSource = "autotrader-uc";
 
     return {
