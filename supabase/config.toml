@@ -507,3 +507,6 @@ verify_jwt = false
 
 [functions.valo-perplexity-scan]
 verify_jwt = false
+
+[functions.carsales-scan]
+verify_jwt = false
