@@ -603,6 +603,8 @@ serve(async (req) => {
                   p_asking_price: listing.asking_price,
                   p_state: listing.state || null,
                   p_suburb: listing.suburb || null,
+                  p_run_id: run.id,
+                  p_price_type: "ask",
                 });
 
                 if (error) {
