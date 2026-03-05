@@ -382,19 +382,19 @@ serve(async (req) => {
 
       // Generate PER-RUN lock token (not reused across loop iterations)
       const runLockToken = crypto.randomUUID();
+      const lockAttemptAtIso = new Date().toISOString();
       const lockUntil = new Date(Date.now() + LOCK_DURATION_MS).toISOString();
 
-      // Atomic lock: use RPC or simple claim — just set lock if not already locked
-      // We already filtered for unlocked runs in the SELECT above, so just update directly
+      // Atomic lock claim: allow claim if unlocked OR stale lock expired
       const { data: locked, error: lockError } = await supabase
         .from("apify_runs_queue")
         .update({ 
           lock_token: runLockToken,
           locked_until: lockUntil,
-          updated_at: now.toISOString()
+          updated_at: lockAttemptAtIso
         })
         .eq("id", run.id)
-        .is("lock_token", null)
+        .or(`lock_token.is.null,locked_until.lt.${lockAttemptAtIso}`)
         .select()
         .maybeSingle();
 
