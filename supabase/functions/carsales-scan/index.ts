@@ -57,8 +57,10 @@ serve(async (req) => {
     console.log(`Carsales scan: ${startUrls.length} URLs, limit=${limit}`);
 
     // Start Apify run (non-blocking)
+    // Apify API requires username~actor-name format (tilde separator)
+    const safeActorId = actorId.replace(/\//g, "~");
     const runResponse = await fetch(
-      `https://api.apify.com/v2/acts/${actorId}/runs?token=${apifyToken}&waitForFinish=0`,
+      `https://api.apify.com/v2/acts/${safeActorId}/runs?token=${apifyToken}&waitForFinish=0`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
