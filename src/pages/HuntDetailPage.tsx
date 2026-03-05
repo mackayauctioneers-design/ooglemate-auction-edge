@@ -38,7 +38,7 @@ export default function HuntDetailPage() {
   const [proofModalOpen, setProofModalOpen] = useState(false);
   const [selectedStrike, setSelectedStrike] = useState<HuntAlert | null>(null);
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
-  const [manusActive, setManusActive] = useState(false);
+  
 
   const { data: hunt, isLoading: huntLoading } = useQuery({
     queryKey: ['hunt', huntId],
