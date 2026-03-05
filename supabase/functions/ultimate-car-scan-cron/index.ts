@@ -28,7 +28,7 @@ serve(async (req) => {
         Authorization: `Bearer ${serviceKey}`,
       },
       body: JSON.stringify({
-        websites: ["carsguideau", "driveau", "justcarsau", "onlycarsau"],
+        websites: ["picklesau", "carsguideau", "driveau", "justcarsau", "onlycarsau"],
         pagesPerRun: 5,
         maxListings: 200,
       }),
