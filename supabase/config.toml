@@ -514,3 +514,10 @@ verify_jwt = false
 [functions.carsales-scan-cron]
 verify_jwt = false
 schedule = "0 */2 * * *"
+
+[functions.gumtree-scan]
+verify_jwt = false
+
+[functions.gumtree-scan-cron]
+verify_jwt = false
+schedule = "30 */2 * * *"
