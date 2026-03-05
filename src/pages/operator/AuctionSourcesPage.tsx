@@ -102,7 +102,7 @@ export default function AuctionSourcesPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Auction Sources</h1>
           <p className="text-sm text-muted-foreground">
-            {stats.total} sources · {stats.active} active · {stats.manus} Manus-driven · {stats.recentCrawl} crawled this week
+            {stats.total} sources · {stats.active} active · {stats.recentCrawl} crawled this week
           </p>
         </div>
         <div className="ml-auto">
