@@ -15,7 +15,7 @@ import { CarsalesIdKitModal } from "@/components/hunts/CarsalesIdKitModal";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { HuntHeader } from "@/components/hunts/HuntHeader";
-import { ManusTaskStatusBar } from "@/components/hunts/ManusTaskStatusBar";
+
 import { HuntKPICards } from "@/components/hunts/HuntKPICards";
 import { HuntAlertCardEnhanced } from "@/components/hunts/HuntAlertCardEnhanced";
 import { ProofOfHuntModal } from "@/components/hunts/ProofOfHuntModal";
