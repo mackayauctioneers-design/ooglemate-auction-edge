@@ -7,32 +7,57 @@ const corsHeaders = {
 };
 
 /**
- * carsales-scan-cron: Broad market sweep via Carsales.
+ * carsales-scan-cron: Mandate-driven Carsales market sweep.
  *
- * Runs on schedule. Builds wide search URLs (2016+, <200k km)
- * segmented by state to keep result counts manageable,
- * then calls carsales-scan to dispatch Apify runs.
+ * Reads active_mandates, builds correctly-filtered Carsales URLs
+ * using (And.Make.X._.Model.Y._.Year.range(..)...) syntax,
+ * then dispatches to carsales-scan for Apify ingestion.
  *
- * Schedule: every 2 hours during business hours
+ * Schedule: every 30 minutes
  */
 
-const STATES = ["nsw", "vic", "qld", "wa", "sa"];
-const YEAR_MIN = 2016;
-const YEAR_MAX = 2026;
-const KM_MAX = 200000;
+const YEAR_DEFAULT_MIN = 2020;
+const KM_DEFAULT_MAX = 150000;
 
-function buildCarsalesUrl(state: string): string {
-  // Carsales query syntax — broad sweep per state
-  const stateMap: Record<string, string> = {
-    nsw: "New South Wales",
-    vic: "Victoria",
-    qld: "Queensland",
-    wa: "Western Australia",
-    sa: "South Australia",
-  };
-  const stateName = stateMap[state] || state;
-  return `https://www.carsales.com.au/cars/?q=(And.Service.carsales._.CarAll.year.range(${YEAR_MIN}..${YEAR_MAX})._.CarAll.odometer.range(..${KM_MAX})._.State.${encodeURIComponent(stateName)}.)&sort=~Price`;
+/** Carsales PascalCase slug: "Land Cruiser" → "LandCruiser" */
+function carsalesSlug(str: string): string {
+  return str
+    .trim()
+    .split(/\s+/)
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
+    .join("");
 }
+
+function buildCarsalesUrl(
+  make: string,
+  model: string,
+  yearMin: number,
+  yearMax: number | null,
+  kmMax: number
+): string {
+  const parts = [
+    `Make.${carsalesSlug(make)}`,
+    `Model.${carsalesSlug(model)}`,
+    yearMax
+      ? `Year.range(${yearMin}..${yearMax})`
+      : `Year.range(${yearMin}..)`,
+    `Odometer.range(..${kmMax})`,
+  ];
+  const q = `(And.${parts.join("._.")})`;
+  return `https://www.carsales.com.au/cars/?q=${encodeURIComponent(q)}&sort=~Price`;
+}
+
+/**
+ * Fallback searches if no mandates exist yet.
+ * These are the high-volume models that matter most for arbitrage.
+ */
+const FALLBACK_SEARCHES = [
+  { make: "Toyota", model: "LandCruiser", yearMin: 2020, kmMax: 150000 },
+  { make: "Toyota", model: "Hilux", yearMin: 2020, kmMax: 150000 },
+  { make: "Toyota", model: "Prado", yearMin: 2020, kmMax: 150000 },
+  { make: "Isuzu", model: "D-Max", yearMin: 2020, kmMax: 150000 },
+  { make: "Ford", model: "Ranger", yearMin: 2020, kmMax: 150000 },
+];
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -42,20 +67,44 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Build URLs for each state
-    const startUrls = STATES.map((s) => ({ url: buildCarsalesUrl(s) }));
+    // Try to pull from active_mandates where carsales is in source_mask
+    const { data: mandates } = await supabase
+      .from("active_mandates")
+      .select("make, model, year_min, year_max, km_max")
+      .eq("is_active", true)
+      .contains("source_mask", ["carsales"]);
 
-    console.log(`Carsales cron: dispatching ${startUrls.length} state sweeps`);
+    let startUrls: { url: string }[];
 
-    // Call carsales-scan edge function internally
+    if (mandates && mandates.length > 0) {
+      startUrls = mandates.map((m) => ({
+        url: buildCarsalesUrl(
+          m.make,
+          m.model,
+          m.year_min ?? YEAR_DEFAULT_MIN,
+          m.year_max,
+          m.km_max ?? KM_DEFAULT_MAX
+        ),
+      }));
+      console.log(`Carsales cron: ${startUrls.length} mandate-driven searches`);
+    } else {
+      // Use fallback high-value model searches
+      startUrls = FALLBACK_SEARCHES.map((s) => ({
+        url: buildCarsalesUrl(s.make, s.model, s.yearMin, null, s.kmMax),
+      }));
+      console.log(`Carsales cron: ${startUrls.length} fallback searches (no mandates)`);
+    }
+
+    // Dispatch to carsales-scan
     const scanResponse = await fetch(
       `${supabaseUrl}/functions/v1/carsales-scan`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${supabaseKey}`,
+          Authorization: `Bearer ${supabaseKey}`,
         },
         body: JSON.stringify({
           startUrls,
@@ -71,27 +120,27 @@ serve(async (req) => {
     }
 
     // Log heartbeat
-    const supabase = createClient(supabaseUrl, supabaseKey);
     await supabase
       .from("cron_heartbeat")
-      .upsert({
-        cron_name: "carsales-scan-cron",
-        last_seen_at: new Date().toISOString(),
-        last_ok: true,
-        note: `Dispatched ${startUrls.length} state sweeps`,
-      }, { onConflict: "cron_name" });
+      .upsert(
+        {
+          cron_name: "carsales-scan-cron",
+          last_seen_at: new Date().toISOString(),
+          last_ok: true,
+          note: `Dispatched ${startUrls.length} filtered searches`,
+        },
+        { onConflict: "cron_name" }
+      );
 
     console.log("Carsales cron complete:", JSON.stringify(result));
 
     return new Response(JSON.stringify({ success: true, ...result }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("Carsales cron error:", errorMsg);
 
-    // Try to log failure heartbeat
     try {
       const supabase = createClient(
         Deno.env.get("SUPABASE_URL") ?? "",
@@ -99,13 +148,18 @@ serve(async (req) => {
       );
       await supabase
         .from("cron_heartbeat")
-        .upsert({
-          cron_name: "carsales-scan-cron",
-          last_seen_at: new Date().toISOString(),
-          last_ok: false,
-          note: errorMsg.slice(0, 200),
-        }, { onConflict: "cron_name" });
-    } catch (_) { /* best effort */ }
+        .upsert(
+          {
+            cron_name: "carsales-scan-cron",
+            last_seen_at: new Date().toISOString(),
+            last_ok: false,
+            note: errorMsg.slice(0, 200),
+          },
+          { onConflict: "cron_name" }
+        );
+    } catch (_) {
+      /* best effort */
+    }
 
     return new Response(JSON.stringify({ error: errorMsg }), {
       status: 500,
