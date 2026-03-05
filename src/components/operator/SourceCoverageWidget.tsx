@@ -7,7 +7,6 @@ import { Globe } from "lucide-react";
 type Stats = {
   total: number;
   active: number;
-  manus: number;
   firecrawl: number;
   none: number;
   recentActivity: number;
@@ -30,7 +29,6 @@ export function SourceCoverageWidget() {
       setStats({
         total: data.length,
         active: data.filter(d => d.enabled).length,
-        manus: data.filter(d => d.adapter_type === "manus").length,
         firecrawl: data.filter(d => d.adapter_type === "firecrawl").length,
         none: data.filter(d => d.adapter_type === "none").length,
         recentActivity: data.filter(d => d.last_crawl_at && new Date(d.last_crawl_at).getTime() > now - week).length,
@@ -69,7 +67,6 @@ export function SourceCoverageWidget() {
           </div>
         </div>
         <div className="flex gap-2 mt-3 flex-wrap">
-          <Badge variant="default">{stats.manus} Manus</Badge>
           <Badge variant="secondary">{stats.firecrawl} Firecrawl</Badge>
           <Badge variant="outline">{stats.none} Blocked</Badge>
         </div>

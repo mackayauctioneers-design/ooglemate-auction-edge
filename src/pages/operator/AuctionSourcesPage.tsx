@@ -27,7 +27,7 @@ type Source = {
   notes: string | null;
 };
 
-const ADAPTER_OPTIONS = ["all", "manus", "firecrawl", "generic_scrape", "none"];
+const ADAPTER_OPTIONS = ["all", "firecrawl", "generic_scrape", "none"];
 const PRIORITY_OPTIONS = ["all", "critical", "high", "normal", "low"];
 
 export default function AuctionSourcesPage() {
@@ -67,15 +67,7 @@ export default function AuctionSourcesPage() {
 
   async function testScrape(source: Source) {
     toast.info(`Testing ${source.dealer_name}…`);
-    try {
-      const { data, error } = await supabase.functions.invoke("trigger-manus-search", {
-        body: { filters: { make: "Toyota", model: "HiLux" } },
-      });
-      if (error) throw error;
-      toast.success(`Test dispatched — ${data?.tasks_created ?? 0} tasks created`);
-    } catch (e: unknown) {
-      toast.error(`Test failed: ${e instanceof Error ? e.message : "unknown"}`);
-    }
+    toast.success("Test scrape not available — Manus adapter removed");
   }
 
   const filtered = useMemo(() => {
@@ -94,7 +86,6 @@ export default function AuctionSourcesPage() {
   const stats = useMemo(() => ({
     total: sources.length,
     active: sources.filter(s => s.enabled).length,
-    manus: sources.filter(s => s.adapter_type === "manus").length,
     recentCrawl: sources.filter(s => s.last_crawl_at && new Date(s.last_crawl_at) > new Date(Date.now() - 7 * 86400000)).length,
   }), [sources]);
 
@@ -111,7 +102,7 @@ export default function AuctionSourcesPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Auction Sources</h1>
           <p className="text-sm text-muted-foreground">
-            {stats.total} sources · {stats.active} active · {stats.manus} Manus-driven · {stats.recentCrawl} crawled this week
+            {stats.total} sources · {stats.active} active · {stats.recentCrawl} crawled this week
           </p>
         </div>
         <div className="ml-auto">
@@ -197,7 +188,7 @@ export default function AuctionSourcesPage() {
                     </a>
                   </td>
                   <td className="p-3">
-                    <Badge variant={s.adapter_type === "manus" ? "default" : s.adapter_type === "firecrawl" ? "secondary" : "outline"}>
+                    <Badge variant={s.adapter_type === "firecrawl" ? "secondary" : "outline"}>
                       {s.adapter_type}
                     </Badge>
                   </td>

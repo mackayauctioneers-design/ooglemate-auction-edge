@@ -15,7 +15,7 @@ import { CarsalesIdKitModal } from "@/components/hunts/CarsalesIdKitModal";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { HuntHeader } from "@/components/hunts/HuntHeader";
-import { ManusTaskStatusBar } from "@/components/hunts/ManusTaskStatusBar";
+
 import { HuntKPICards } from "@/components/hunts/HuntKPICards";
 import { HuntAlertCardEnhanced } from "@/components/hunts/HuntAlertCardEnhanced";
 import { ProofOfHuntModal } from "@/components/hunts/ProofOfHuntModal";
@@ -38,7 +38,7 @@ export default function HuntDetailPage() {
   const [proofModalOpen, setProofModalOpen] = useState(false);
   const [selectedStrike, setSelectedStrike] = useState<HuntAlert | null>(null);
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
-  const [manusActive, setManusActive] = useState(false);
+  
 
   const { data: hunt, isLoading: huntLoading } = useQuery({
     queryKey: ['hunt', huntId],
@@ -191,55 +191,33 @@ export default function HuntDetailPage() {
     }
   });
 
-  // Outward hunt mutation — runs Firecrawl + Manus in parallel
+  // Outward hunt mutation — runs Firecrawl search
   const runOutwardMutation = useMutation({
     mutationFn: async () => {
-      // Fire both Firecrawl (outward-hunt) and Manus searches in parallel
-      const [firecrawlResult, manusResult] = await Promise.allSettled([
-        // Firecrawl sources (immediate results)
-        supabase.functions.invoke('outward-hunt', {
-          body: { hunt_id: huntId }
-        }).then(async ({ data, error }) => {
-          if (error) throw error;
-          // Also kick off scrape worker
-          toast.info('Verifying listings...');
-          try {
-            await supabase.functions.invoke('outward-scrape-worker', {
-              body: { batch_size: 20 }
-            });
-          } catch (verifyErr) {
-            console.warn('Scrape worker failed:', verifyErr);
-          }
-          return data;
-        }),
-        // Manus sources (async, results arrive via webhook in 2-5 min)
-        supabase.functions.invoke('trigger-manus-search', {
-          body: { hunt_id: huntId }
-        }).then(({ data, error }) => {
-          if (error) throw error;
-          return data;
-        }),
-      ]);
-
-      const firecrawlData = firecrawlResult.status === 'fulfilled' ? firecrawlResult.value : null;
-      const manusData = manusResult.status === 'fulfilled' ? manusResult.value : null;
-
-      return { firecrawlData, manusData };
+      const { data, error } = await supabase.functions.invoke('outward-hunt', {
+        body: { hunt_id: huntId }
+      });
+      if (error) throw error;
+      // Also kick off scrape worker
+      toast.info('Verifying listings...');
+      try {
+        await supabase.functions.invoke('outward-scrape-worker', {
+          body: { batch_size: 20 }
+        });
+      } catch (verifyErr) {
+        console.warn('Scrape worker failed:', verifyErr);
+      }
+      return data;
     },
-    onSuccess: ({ firecrawlData, manusData }) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['hunt-alerts', huntId] });
       queryClient.invalidateQueries({ queryKey: ['unified-candidates', huntId] });
       queryClient.invalidateQueries({ queryKey: ['candidate-counts', huntId] });
 
-      const fcCandidates = firecrawlData?.candidates_found || 0;
-      const fcAlerts = firecrawlData?.alerts_emitted || 0;
-      const manusTasks = manusData?.tasks_created || 0;
+      const fcCandidates = data?.candidates_found || 0;
+      const fcAlerts = data?.alerts_emitted || 0;
 
       toast.success(`Web search: ${fcCandidates} candidates, ${fcAlerts} alerts`);
-      if (manusTasks > 0) {
-        setManusActive(true);
-        toast.info(`${manusTasks} dealer site searches started — watch the status bar below`, { duration: 4000 });
-      }
     },
     onError: (error) => {
       toast.error(`Web search failed: ${error.message}`);
@@ -441,22 +419,6 @@ export default function HuntDetailPage() {
           lastMatchAt={matches[0]?.matched_at}
         />
 
-        {/* Manus Task Status Bar — shows live progress when dealer site searches are running */}
-        {manusActive && huntId && (
-          <ManusTaskStatusBar
-            huntId={huntId}
-            onComplete={(totalResults) => {
-              setManusActive(false);
-              queryClient.invalidateQueries({ queryKey: ['unified-candidates', huntId] });
-              queryClient.invalidateQueries({ queryKey: ['candidate-counts', huntId] });
-              queryClient.invalidateQueries({ queryKey: ['live-matches', huntId] });
-              refetchLiveMatches();
-              if (totalResults > 0) {
-                toast.success(`Manus found ${totalResults} result${totalResults !== 1 ? 's' : ''} from dealer sites`);
-              }
-            }}
-          />
-        )}
 
         {/* Link to Hunt Alerts */}
         {alerts.length > 0 && (
