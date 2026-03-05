@@ -467,7 +467,7 @@ serve(async (req) => {
             // Fall through to dataset fetch below
           }
 
-          if (apifyStatus !== "SUCCEEDED") {
+          if (apifyStatus !== "SUCCEEDED" && apifyStatus !== "TIMED-OUT") {
             // Unknown status - release lock
             await supabase
               .from("apify_runs_queue")
