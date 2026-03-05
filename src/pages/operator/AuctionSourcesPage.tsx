@@ -67,15 +67,7 @@ export default function AuctionSourcesPage() {
 
   async function testScrape(source: Source) {
     toast.info(`Testing ${source.dealer_name}…`);
-    try {
-      const { data, error } = await supabase.functions.invoke("trigger-manus-search", {
-        body: { filters: { make: "Toyota", model: "HiLux" } },
-      });
-      if (error) throw error;
-      toast.success(`Test dispatched — ${data?.tasks_created ?? 0} tasks created`);
-    } catch (e: unknown) {
-      toast.error(`Test failed: ${e instanceof Error ? e.message : "unknown"}`);
-    }
+    toast.success("Test scrape not available — Manus adapter removed");
   }
 
   const filtered = useMemo(() => {
