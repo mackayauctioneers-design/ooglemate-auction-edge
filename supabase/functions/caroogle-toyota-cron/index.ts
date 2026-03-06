@@ -16,7 +16,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const CAROOGLE_API = "https://backend.caroogle.codesorbit.net/api/ads?source=toyota&limit=5000";
+const CAROOGLE_API_BASE = "https://backend.caroogle.codesorbit.net/api/ads";
+const PAGE_SIZE = 1000;
 const CRON_NAME = "caroogle-toyota-ingest";
 const SOURCE = "toyota";
 const SOURCE_CLASS = "oem_used";
