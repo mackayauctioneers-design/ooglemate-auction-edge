@@ -57,9 +57,11 @@ function parseCarsalesMarkdown(md: string): DetailResult {
 
   const clean = cleanMarkdown(md);
 
-  // Dealer name
-  const dealerMatch = clean.match(/(?:Sold by|Dealer|Selling dealer)[:\s]*([A-Z][A-Za-z\s&'.-]{2,40})/i);
-  if (dealerMatch) result.dealer_name = dealerMatch[1].trim();
+  // Dealer name - look for structured dealer field, exclude nav noise
+  const dealerMatch = clean.match(/(?:Sold by|Selling dealer|Dealer Name)[:\s]*([A-Z][A-Za-z0-9\s&'.-]{2,40})(?:\s|$)/i);
+  if (dealerMatch && !/About|Drive|Offers|Journey/i.test(dealerMatch[1])) {
+    result.dealer_name = dealerMatch[1].trim();
+  }
 
   // Fuel type - look for keyword patterns
   if (/\bdiesel\b/i.test(clean)) result.fuel_type = 'DIESEL';
