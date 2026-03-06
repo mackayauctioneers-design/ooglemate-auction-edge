@@ -287,7 +287,7 @@ Deno.serve(async (req) => {
 
     if (fetchErr) throw new Error(`Query failed: ${fetchErr.message}`);
 
-    if (!listings || listings.length === 0) {
+    if (!filteredListings || filteredListings.length === 0) {
       return new Response(
         JSON.stringify({ success: true, message: 'No listings to enrich', processed: 0 }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
