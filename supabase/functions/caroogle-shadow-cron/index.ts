@@ -18,7 +18,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const CAROOGLE_API = "https://backend.caroogle.codesorbit.net/api/ads?source=pickles&limit=5000";
+const CAROOGLE_API_BASE = "https://backend.caroogle.codesorbit.net/api/ads";
+const PAGE_SIZE = 1000;
 const CRON_NAME = "caroogle-pickles-ingest";
 const SOURCE = "pickles";
 const SOURCE_CLASS = "auction";
@@ -133,25 +134,49 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // ── Fetch from Caroogle API ──
-    console.log(`[${CRON_NAME}] Fetching from Caroogle API...`);
-    const ac = new AbortController();
-    const timeout = setTimeout(() => ac.abort(), 30_000);
-    let resp: Response;
-    try {
-      resp = await fetch(CAROOGLE_API, { signal: ac.signal });
-    } catch (e) {
+    // ── Fetch from Caroogle API (paginated) ──
+    console.log(`[${CRON_NAME}] Fetching from Caroogle API (paginated, pageSize=${PAGE_SIZE})...`);
+    const ads: any[] = [];
+    let currentPage = 1;
+    let totalPages = 1;
+
+    while (currentPage <= totalPages) {
+      const pageUrl = `${CAROOGLE_API_BASE}?source=pickles&limit=${PAGE_SIZE}&page=${currentPage}`;
+      console.log(`[${CRON_NAME}] Fetching page ${currentPage}/${totalPages}...`);
+      const ac = new AbortController();
+      const timeout = setTimeout(() => ac.abort(), 30_000);
+      let resp: Response;
+      try {
+        resp = await fetch(pageUrl, { signal: ac.signal });
+      } catch (e) {
+        clearTimeout(timeout);
+        throw new Error(`Caroogle API fetch failed on page ${currentPage}: ${e instanceof Error ? e.message : String(e)}`);
+      }
       clearTimeout(timeout);
-      throw new Error(`Caroogle API fetch failed (likely timeout): ${e instanceof Error ? e.message : String(e)}`);
-    }
-    clearTimeout(timeout);
-    if (!resp.ok) {
-      throw new Error(`Caroogle API returned ${resp.status}: ${await resp.text()}`);
+      if (!resp.ok) {
+        throw new Error(`Caroogle API returned ${resp.status} on page ${currentPage}: ${await resp.text()}`);
+      }
+
+      const payload = await resp.json();
+      const pageAds: any[] = Array.isArray(payload) ? payload : (payload.data || payload.ads || payload.results || []);
+      
+      // Read total_pages from response if provided
+      if (payload.total_pages && typeof payload.total_pages === "number") {
+        totalPages = payload.total_pages;
+      } else if (payload.totalPages && typeof payload.totalPages === "number") {
+        totalPages = payload.totalPages;
+      }
+
+      ads.push(...pageAds);
+      console.log(`[${CRON_NAME}] Page ${currentPage}: got ${pageAds.length} records (total so far: ${ads.length})`);
+
+      // If API doesn't support pagination yet, we got everything in one shot
+      if (pageAds.length < PAGE_SIZE && currentPage === 1 && totalPages === 1) break;
+      
+      currentPage++;
     }
 
-    const payload = await resp.json();
-    const ads: any[] = Array.isArray(payload) ? payload : (payload.data || payload.ads || payload.results || []);
-    console.log(`[${CRON_NAME}] Received ${ads.length} records from API`);
+    console.log(`[${CRON_NAME}] Received ${ads.length} total records from API across ${currentPage} page(s)`);
 
     if (ads.length === 0) {
       throw new Error("Caroogle API returned 0 records — possible schema change or downtime");
