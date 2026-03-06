@@ -275,7 +275,7 @@ Deno.serve(async (req) => {
 
     console.log(`Detail-enrich: processing ${filteredListings.length} listings`);
 
-    const stats = { processed: 0, succeeded: 0, failed: 0, skipped: 0, blocked: blockedListings.length, errors: [] as string[] };
+    const stats = { processed: 0, succeeded: 0, failed: 0, skipped: 0, errors: [] as string[] };
 
     // Process in parallel chunks
     for (let i = 0; i < filteredListings.length; i += PARALLEL_SIZE) {
