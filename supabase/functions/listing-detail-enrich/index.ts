@@ -294,18 +294,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Detail-enrich: processing ${listings.length} listings`);
+    console.log(`Detail-enrich: processing ${filteredListings.length} listings`);
 
-    const stats = { processed: 0, succeeded: 0, failed: 0, skipped: 0, errors: [] as string[] };
+    const stats = { processed: 0, succeeded: 0, failed: 0, skipped: 0, blocked: blockedListings.length, errors: [] as string[] };
 
     // Process in parallel chunks
-    for (let i = 0; i < listings.length; i += PARALLEL_SIZE) {
+    for (let i = 0; i < filteredListings.length; i += PARALLEL_SIZE) {
       if (Date.now() - startTime > TIME_BUDGET_MS) {
         console.log(`Time budget hit after ${stats.processed} items`);
         break;
       }
 
-      const chunk = listings.slice(i, i + PARALLEL_SIZE);
+      const chunk = filteredListings.slice(i, i + PARALLEL_SIZE);
 
       await Promise.allSettled(chunk.map(async (listing: any) => {
         if (!listing.listing_url) {
