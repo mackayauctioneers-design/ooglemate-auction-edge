@@ -18,7 +18,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const CAROOGLE_API = "https://backend.caroogle.codesorbit.net/api/ads?source=pickles&limit=5000";
+const CAROOGLE_API_BASE = "https://backend.caroogle.codesorbit.net/api/ads";
+const PAGE_SIZE = 1000;
 const CRON_NAME = "caroogle-pickles-ingest";
 const SOURCE = "pickles";
 const SOURCE_CLASS = "auction";
