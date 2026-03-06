@@ -39,6 +39,14 @@ interface DetailResult {
 
 // ─── Source-specific parsers ───────────────────────────────────
 
+// Clean markdown of image/link artifacts before parsing
+function cleanMarkdown(md: string): string {
+  return md
+    .replace(/!\[.*?\]\([^)]+\)/g, '')  // Remove image markdown
+    .replace(/\[([^\]]*)\]\([^)]+\)/g, '$1')  // Convert links to text
+    .replace(/\s+/g, ' ');
+}
+
 function parseCarsalesMarkdown(md: string): DetailResult {
   const result: DetailResult = {
     dealer_name: null, fuel_type: null, transmission: null,
@@ -47,57 +55,67 @@ function parseCarsalesMarkdown(md: string): DetailResult {
     engine_size_l: null, engine_family: null, cylinders: null,
   };
 
-  // Dealer name - often in "Sold by" or dealer card
-  const dealerMatch = md.match(/(?:Sold by|Dealer|Selling dealer)[:\s]*([^\n|]+)/i);
+  const clean = cleanMarkdown(md);
+
+  // Dealer name
+  const dealerMatch = clean.match(/(?:Sold by|Dealer|Selling dealer)[:\s]*([A-Z][A-Za-z\s&'.-]{2,40})/i);
   if (dealerMatch) result.dealer_name = dealerMatch[1].trim();
 
-  // Fuel type
-  const fuelMatch = md.match(/(?:Fuel Type|Fuel)[:\s|]*([^\n|,]+)/i);
-  if (fuelMatch) result.fuel_type = normFuel(fuelMatch[1].trim());
+  // Fuel type - look for keyword patterns
+  if (/\bdiesel\b/i.test(clean)) result.fuel_type = 'DIESEL';
+  else if (/\bpetrol\b|\bunleaded\b/i.test(clean)) result.fuel_type = 'PETROL';
+  else if (/\bhybrid\b/i.test(clean)) result.fuel_type = 'HYBRID';
+  else if (/\belectric\b|\bev\b|\bbev\b/i.test(clean)) result.fuel_type = 'ELECTRIC';
 
   // Transmission
-  const transMatch = md.match(/(?:Transmission)[:\s|]*([^\n|,]+)/i);
-  if (transMatch) result.transmission = normTransmission(transMatch[1].trim());
+  if (/\bautomatic\b|\bauto\b|\bcvt\b|\bdct\b/i.test(clean)) result.transmission = 'AUTOMATIC';
+  else if (/\bmanual\b/i.test(clean)) result.transmission = 'MANUAL';
 
   // Drivetrain
-  const driveMatch = md.match(/(?:Drive Type|Drivetrain|Drive)[:\s|]*([^\n|,]+)/i);
-  if (driveMatch) result.drivetrain = normDrivetrain(driveMatch[1].trim());
+  if (/\b4x4\b|\b4wd\b|\bawd\b|\ball.wheel/i.test(clean)) result.drivetrain = '4WD';
+  else if (/\b2wd\b|\brwd\b|\brear.wheel/i.test(clean)) result.drivetrain = 'RWD';
+  else if (/\bfwd\b|\bfront.wheel/i.test(clean)) result.drivetrain = 'FWD';
 
-  // Body type
-  const bodyMatch = md.match(/(?:Body Type|Body Style|Body)[:\s|]*([^\n|,]+)/i);
-  if (bodyMatch) result.body_type = normBodyType(bodyMatch[1].trim());
+  // Body type - from structured field or text
+  const bodyMatch = clean.match(/(?:Body Type|Body Style)[:\s]*(\w+)/i);
+  if (bodyMatch) result.body_type = normBodyType(bodyMatch[1]);
+  else if (/\bute\b|\bpickup\b/i.test(clean)) result.body_type = 'UTE';
+  else if (/\bsuv\b/i.test(clean)) result.body_type = 'SUV';
+  else if (/\bwagon\b/i.test(clean)) result.body_type = 'WAGON';
+  else if (/\bsedan\b/i.test(clean)) result.body_type = 'SEDAN';
+  else if (/\bhatch\b/i.test(clean)) result.body_type = 'HATCH';
 
-  // Colour
-  const colourMatch = md.match(/(?:Colour|Color|Ext(?:erior)?\s*Colour)[:\s|]*([^\n|,]+)/i);
-  if (colourMatch) result.colour = colourMatch[1].trim().toUpperCase();
+  // Colour - from structured field
+  const colourMatch = clean.match(/(?:Colour|Color|Ext(?:erior)?\s*Colour)[:\s]*([A-Za-z]+)/i);
+  if (colourMatch && colourMatch[1].length > 2 && colourMatch[1].length < 20) {
+    result.colour = colourMatch[1].trim().toUpperCase();
+  }
 
   // Engine
-  const engineMatch = md.match(/(?:Engine)[:\s|]*([^\n|]+)/i);
-  if (engineMatch) {
-    const eng = engineMatch[1];
-    const litreMatch = eng.match(/(\d+\.?\d*)\s*L/i);
-    if (litreMatch) result.engine_size_l = parseFloat(litreMatch[1]);
-    const cylMatch = eng.match(/(\d+)\s*cyl/i);
-    if (cylMatch) result.cylinders = parseInt(cylMatch[1]);
+  const engineMatch = clean.match(/(\d+\.?\d*)\s*L(?:itre)?/i);
+  if (engineMatch) result.engine_size_l = parseFloat(engineMatch[1]);
+  const cylMatch = clean.match(/(\d+)\s*cyl/i);
+  if (cylMatch) result.cylinders = parseInt(cylMatch[1]);
+
+  // Description - longest clean paragraph
+  const rawParagraphs = md.split('\n\n');
+  const cleanParas = rawParagraphs
+    .map(p => p.replace(/!\[.*?\]\([^)]+\)/g, '').replace(/\[([^\]]*)\]\([^)]+\)/g, '$1').trim())
+    .filter(p => p.length > 100 && !p.startsWith('#') && !p.startsWith('|') && !p.includes('!['));
+  if (cleanParas.length > 0) {
+    result.description = cleanParas.reduce((a, b) => a.length > b.length ? a : b).slice(0, 5000);
   }
 
-  // Description - take largest paragraph block
-  const paragraphs = md.split('\n\n').filter(p => p.length > 80 && !p.startsWith('#') && !p.startsWith('|'));
-  if (paragraphs.length > 0) {
-    const longest = paragraphs.reduce((a, b) => a.length > b.length ? a : b);
-    result.description = longest.trim().slice(0, 5000);
-  }
-
-  // Image URLs
-  const imgMatches = [...md.matchAll(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/g)];
+  // Image URLs from original markdown
+  const imgMatches = [...md.matchAll(/!\[.*?\]\((https?:\/\/[^\s)]+(?:\.jpg|\.jpeg|\.png|\.webp)[^\s)]*)\)/gi)];
   if (imgMatches.length > 0) {
     result.image_urls = imgMatches.map(m => m[1]).slice(0, 20);
   }
 
   // Seller type
-  if (md.match(/dealer|dealership/i) && !md.match(/private\s*seller/i)) {
+  if (/\bdealer\b|\bdealership\b/i.test(clean) && !/private\s*seller/i.test(clean)) {
     result.seller_type = 'dealer';
-  } else if (md.match(/private\s*seller/i)) {
+  } else if (/private\s*seller/i.test(clean)) {
     result.seller_type = 'private';
   }
 
