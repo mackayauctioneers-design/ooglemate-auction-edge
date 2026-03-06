@@ -7258,12 +7258,17 @@ export type Database = {
           cab_source: string | null
           cab_type: string | null
           classified_at: string | null
+          colour: string | null
           created_at: string
           cross_post_confidence: number | null
           cross_post_linked_at: string | null
           cylinders: number | null
           delisted_at: string | null
           description: string | null
+          details_attempts: number
+          details_failed: boolean
+          details_scraped: boolean
+          details_scraped_at: string | null
           drivetrain: string | null
           engine_code: string | null
           engine_family: string | null
@@ -7282,6 +7287,7 @@ export type Database = {
           identity_id: string | null
           identity_key: string | null
           identity_mapped_at: string | null
+          image_urls: Json | null
           km: number | null
           last_evaluated_at: string | null
           last_evaluation_result: string | null
@@ -7351,12 +7357,17 @@ export type Database = {
           cab_source?: string | null
           cab_type?: string | null
           classified_at?: string | null
+          colour?: string | null
           created_at?: string
           cross_post_confidence?: number | null
           cross_post_linked_at?: string | null
           cylinders?: number | null
           delisted_at?: string | null
           description?: string | null
+          details_attempts?: number
+          details_failed?: boolean
+          details_scraped?: boolean
+          details_scraped_at?: string | null
           drivetrain?: string | null
           engine_code?: string | null
           engine_family?: string | null
@@ -7375,6 +7386,7 @@ export type Database = {
           identity_id?: string | null
           identity_key?: string | null
           identity_mapped_at?: string | null
+          image_urls?: Json | null
           km?: number | null
           last_evaluated_at?: string | null
           last_evaluation_result?: string | null
@@ -7444,12 +7456,17 @@ export type Database = {
           cab_source?: string | null
           cab_type?: string | null
           classified_at?: string | null
+          colour?: string | null
           created_at?: string
           cross_post_confidence?: number | null
           cross_post_linked_at?: string | null
           cylinders?: number | null
           delisted_at?: string | null
           description?: string | null
+          details_attempts?: number
+          details_failed?: boolean
+          details_scraped?: boolean
+          details_scraped_at?: string | null
           drivetrain?: string | null
           engine_code?: string | null
           engine_family?: string | null
@@ -7468,6 +7485,7 @@ export type Database = {
           identity_id?: string | null
           identity_key?: string | null
           identity_mapped_at?: string | null
+          image_urls?: Json | null
           km?: number | null
           last_evaluated_at?: string | null
           last_evaluation_result?: string | null
