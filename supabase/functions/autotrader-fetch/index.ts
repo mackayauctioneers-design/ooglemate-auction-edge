@@ -450,7 +450,9 @@ serve(async (req) => {
         .select("*")
         .in("status", ["queued", "running", "fetching"])
         .or(`locked_until.is.null,locked_until.lt.${now.toISOString()}`)
-        .order("created_at", { ascending: true })
+        // Order by updated_at ASC so least-recently-touched runs get priority
+        // This prevents a single long-running "fetching" source from starving others
+        .order("updated_at", { ascending: true })
         .limit(1);
 
       if (fetchError || !runs || runs.length === 0) {
