@@ -249,7 +249,10 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const batchSize = body.batch_size || BATCH_SIZE;
 
-    // Fetch listings needing detail enrichment
+    // Firecrawl blocks autotrader.com.au — skip those domains
+    const BLOCKED_DOMAINS = ['autotrader.com.au'];
+
+    // Fetch listings needing detail enrichment (skip blocked domains)
     const { data: listings, error: fetchErr } = await supabase
       .from('retail_listings')
       .select('id, listing_url, source, details_attempts')
@@ -258,7 +261,29 @@ Deno.serve(async (req) => {
       .lt('details_attempts', MAX_ATTEMPTS)
       .not('listing_url', 'is', null)
       .order('created_at', { ascending: true })
-      .limit(batchSize);
+      .limit(batchSize * 2); // Over-fetch to filter
+
+    // Filter out blocked domains
+    const filteredListings = (listings || []).filter((l: any) => {
+      if (!l.listing_url) return false;
+      return !BLOCKED_DOMAINS.some(d => l.listing_url.includes(d));
+    }).slice(0, batchSize);
+
+    // Auto-fail blocked domain listings so they don't clog the queue
+    const blockedListings = (listings || []).filter((l: any) =>
+      l.listing_url && BLOCKED_DOMAINS.some(d => l.listing_url.includes(d))
+    );
+    if (blockedListings.length > 0) {
+      const blockedIds = blockedListings.map((l: any) => l.id);
+      await supabase
+        .from('retail_listings')
+        .update({
+          details_failed: true,
+          enrichment_errors: 'Domain blocked by Firecrawl',
+        })
+        .in('id', blockedIds);
+      console.log(`Marked ${blockedIds.length} blocked-domain listings as failed`);
+    }
 
     if (fetchErr) throw new Error(`Query failed: ${fetchErr.message}`);
 
