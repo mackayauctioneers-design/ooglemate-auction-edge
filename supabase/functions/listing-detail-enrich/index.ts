@@ -281,6 +281,7 @@ Deno.serve(async (req) => {
       .lt('details_attempts', MAX_ATTEMPTS)
       .not('listing_url', 'is', null)
       .neq('source', 'autotrader')
+      .order('source', { ascending: true })  // 'carsales' < 'drive' < 'gumtree' alphabetically — carsales first
       .order('created_at', { ascending: true })
       .limit(batchSize);
 
