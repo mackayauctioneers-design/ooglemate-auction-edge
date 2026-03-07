@@ -249,6 +249,41 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Stale sweep: mark Toyota listings NOT in this feed as sold ──
+    const currentListingIds = rows.map(r => r.listing_id as string);
+    let staleSweepCount = 0;
+
+    if (currentListingIds.length > 100) {
+      // Find toyota listings that are still "listed" but weren't in this feed
+      const { data: staleListings, error: staleErr } = await sb
+        .from("vehicle_listings")
+        .select("id, listing_id")
+        .eq("source", SOURCE)
+        .eq("status", "listed")
+        .not("listing_id", "in", `(${currentListingIds.join(",")})`)
+        .limit(5000);
+
+      if (staleErr) {
+        console.error(`[${CRON_NAME}] Stale sweep query error: ${staleErr.message}`);
+      } else if (staleListings && staleListings.length > 0) {
+        const staleIds = staleListings.map(s => s.id);
+        // Batch update in groups of 500
+        for (let j = 0; j < staleIds.length; j += 500) {
+          const batch = staleIds.slice(j, j + 500);
+          const { error: updateErr } = await sb
+            .from("vehicle_listings")
+            .update({ status: "sold", updated_at: new Date().toISOString() })
+            .in("id", batch);
+          if (updateErr) {
+            console.error(`[${CRON_NAME}] Stale sweep update error: ${updateErr.message}`);
+          } else {
+            staleSweepCount += batch.length;
+          }
+        }
+        console.log(`[${CRON_NAME}] Stale sweep: marked ${staleSweepCount} Toyota listings as sold`);
+      }
+    }
+
     const runtimeMs = Date.now() - startTime;
     const result = {
       listings_received: ads.length,
@@ -259,6 +294,7 @@ Deno.serve(async (req) => {
       total_updated: 0,
       with_price: withPriceCount,
       zero_price: zeroPriceCount,
+      stale_swept: staleSweepCount,
       errors,
       runtime_ms: runtimeMs,
     };
