@@ -162,9 +162,7 @@ Citations: ${JSON.stringify(citations)}
 If a field is unknown, use null. Price and km must be integers.
 
 Text:
-${content}
-
-Citations: ${JSON.stringify(citations)}`,
+${content}`,
           },
         ],
         tools: [
