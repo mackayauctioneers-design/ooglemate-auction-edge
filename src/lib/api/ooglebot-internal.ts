@@ -261,9 +261,7 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
   }
 
   if (parsed.model) {
-    if (isToyotaPrado) {
-      q = q.or(`model.ilike.%prado%,and(model.ilike.%landcruiser%,variant_raw.ilike.%prado%)`);
-    } else if (isToyotaLandCruiserNotPrado(parsed)) {
+    if (isToyotaLandCruiserNotPrado(parsed)) {
       q = q.ilike("model", `%${parsed.model}%`).not("model", "ilike", "%prado%");
     } else {
       q = q.ilike("model", `%${parsed.model}%`);
