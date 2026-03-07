@@ -308,6 +308,12 @@ function isToyotaPradoSearch(parsed: ParsedIntent): boolean {
   return make === "toyota" && (model.includes("prado") || model === "landcruiser prado");
 }
 
+function isToyotaLandCruiserNotPrado(parsed: ParsedIntent): boolean {
+  const make = (parsed.make || "").toLowerCase();
+  const model = (parsed.model || "").toLowerCase();
+  return make === "toyota" && model.includes("landcruiser") && !model.includes("prado");
+}
+
 // ─── Legacy API (backwards-compatible) ───────────────────────────────────────
 
 /**
