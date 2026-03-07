@@ -81,8 +81,7 @@ export class InternalDbAdapter implements OutwardSearchAdapter {
       .limit(200);
 
     if (intent.model) {
-      const modelCore = intent.model.split(/\s+/)[0];
-      query = query.ilike("model", `%${modelCore}%`);
+      query = query.ilike("model", `%${intent.model}%`);
       // Exclude Prado when searching for LandCruiser (not Prado)
       const modelLower = intent.model.toLowerCase();
       if (intent.make?.toLowerCase() === "toyota" && modelLower.includes("landcruiser") && !modelLower.includes("prado")) {

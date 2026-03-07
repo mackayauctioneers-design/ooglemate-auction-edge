@@ -283,12 +283,6 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function isToyotaPradoSearch(parsed: ParsedIntent): boolean {
-  const make = (parsed.make || "").toLowerCase();
-  const model = (parsed.model || "").toLowerCase();
-  return make === "toyota" && (model.includes("prado") || model === "landcruiser prado");
-}
-
 function isToyotaLandCruiserNotPrado(parsed: ParsedIntent): boolean {
   const make = (parsed.make || "").toLowerCase();
   const model = (parsed.model || "").toLowerCase();
