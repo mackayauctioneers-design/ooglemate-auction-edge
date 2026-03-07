@@ -203,7 +203,6 @@ export async function searchTiered(query: string, structuredOverride?: Partial<P
 
 async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]> {
   const recencyCutoff = new Date(Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const isToyotaPrado = isToyotaPradoSearch(parsed);
 
   let q = supabase
     .from("vehicle_listings")
