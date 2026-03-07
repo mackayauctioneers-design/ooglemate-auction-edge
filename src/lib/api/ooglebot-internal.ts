@@ -240,7 +240,7 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
 
 async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalMatch[]> {
   const recencyCutoff = new Date(Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const isToyotaPrado = isToyotaPradoSearch(parsed);
+  
 
   // Blocklist filter: not in auction allowlist AND not in blocklist
   const allExcluded = [...AUCTION_SOURCE_ALLOWLIST, ...SOURCE_BLOCKLIST];
