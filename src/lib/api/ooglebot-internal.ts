@@ -65,19 +65,6 @@ export interface ParsedIntent {
   priceMax: number | null;
 }
 
-// ─── Toyota Prado Special-Case Models ────────────────────────────────────────
-
-/** Models where the user intent (e.g. "Prado") may be split across model + variant_raw */
-const TOYOTA_MODEL_SPLITS: Record<string, { modelPatterns: string[]; variantFallback: string }> = {
-  prado: {
-    modelPatterns: ["%prado%"],
-    variantFallback: "%prado%",
-  },
-  "landcruiser prado": {
-    modelPatterns: ["%prado%"],
-    variantFallback: "%prado%",
-  },
-};
 
 // ─── Query Parser ────────────────────────────────────────────────────────────
 
