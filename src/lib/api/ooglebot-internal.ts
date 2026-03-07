@@ -215,13 +215,9 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
     .order("asking_price", { ascending: true, nullsFirst: false })
     .limit(TIER0_LIMIT);
 
-  // Model matching — with Toyota Prado special case and LandCruiser exclusion
+  // Model matching — with LandCruiser/Prado exclusion
   if (parsed.model) {
-    if (isToyotaPrado) {
-      // Prado split: model contains "prado" OR (model contains "landcruiser" AND variant_raw contains "prado")
-      q = q.or(`model.ilike.%prado%,and(model.ilike.%landcruiser%,variant_raw.ilike.%prado%)`);
-    } else if (isToyotaLandCruiserNotPrado(parsed)) {
-      // LandCruiser (non-Prado): must contain "landcruiser" but NOT "prado"
+    if (isToyotaLandCruiserNotPrado(parsed)) {
       q = q.ilike("model", `%${parsed.model}%`).not("model", "ilike", "%prado%");
     } else {
       q = q.ilike("model", `%${parsed.model}%`);
