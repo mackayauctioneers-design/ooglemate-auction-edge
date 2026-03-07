@@ -65,19 +65,6 @@ export interface ParsedIntent {
   priceMax: number | null;
 }
 
-// ─── Toyota Prado Special-Case Models ────────────────────────────────────────
-
-/** Models where the user intent (e.g. "Prado") may be split across model + variant_raw */
-const TOYOTA_MODEL_SPLITS: Record<string, { modelPatterns: string[]; variantFallback: string }> = {
-  prado: {
-    modelPatterns: ["%prado%"],
-    variantFallback: "%prado%",
-  },
-  "landcruiser prado": {
-    modelPatterns: ["%prado%"],
-    variantFallback: "%prado%",
-  },
-};
 
 // ─── Query Parser ────────────────────────────────────────────────────────────
 
@@ -216,7 +203,6 @@ export async function searchTiered(query: string, structuredOverride?: Partial<P
 
 async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]> {
   const recencyCutoff = new Date(Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const isToyotaPrado = isToyotaPradoSearch(parsed);
 
   let q = supabase
     .from("vehicle_listings")
@@ -228,13 +214,9 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
     .order("asking_price", { ascending: true, nullsFirst: false })
     .limit(TIER0_LIMIT);
 
-  // Model matching — with Toyota Prado special case and LandCruiser exclusion
+  // Model matching — with LandCruiser/Prado exclusion
   if (parsed.model) {
-    if (isToyotaPrado) {
-      // Prado split: model contains "prado" OR (model contains "landcruiser" AND variant_raw contains "prado")
-      q = q.or(`model.ilike.%prado%,and(model.ilike.%landcruiser%,variant_raw.ilike.%prado%)`);
-    } else if (isToyotaLandCruiserNotPrado(parsed)) {
-      // LandCruiser (non-Prado): must contain "landcruiser" but NOT "prado"
+    if (isToyotaLandCruiserNotPrado(parsed)) {
       q = q.ilike("model", `%${parsed.model}%`).not("model", "ilike", "%prado%");
     } else {
       q = q.ilike("model", `%${parsed.model}%`);
@@ -258,7 +240,7 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
 
 async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalMatch[]> {
   const recencyCutoff = new Date(Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const isToyotaPrado = isToyotaPradoSearch(parsed);
+  
 
   // Blocklist filter: not in auction allowlist AND not in blocklist
   const allExcluded = [...AUCTION_SOURCE_ALLOWLIST, ...SOURCE_BLOCKLIST];
@@ -278,9 +260,7 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
   }
 
   if (parsed.model) {
-    if (isToyotaPrado) {
-      q = q.or(`model.ilike.%prado%,and(model.ilike.%landcruiser%,variant_raw.ilike.%prado%)`);
-    } else if (isToyotaLandCruiserNotPrado(parsed)) {
+    if (isToyotaLandCruiserNotPrado(parsed)) {
       q = q.ilike("model", `%${parsed.model}%`).not("model", "ilike", "%prado%");
     } else {
       q = q.ilike("model", `%${parsed.model}%`);
@@ -301,12 +281,6 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function isToyotaPradoSearch(parsed: ParsedIntent): boolean {
-  const make = (parsed.make || "").toLowerCase();
-  const model = (parsed.model || "").toLowerCase();
-  return make === "toyota" && (model.includes("prado") || model === "landcruiser prado");
-}
 
 function isToyotaLandCruiserNotPrado(parsed: ParsedIntent): boolean {
   const make = (parsed.make || "").toLowerCase();
