@@ -120,6 +120,7 @@ function isAuctionResult(r: { source?: string; source_class?: string | null; auc
 // ── Unified Result Card ──
 
 function UnifiedResultCard({ result, isBestPrice, isOperator }: { result: UnifiedResult; isBestPrice?: boolean; isOperator?: boolean }) {
+  const hasUrl = !!result.url;
   return (
     <div className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md border transition-colors ${
       isBestPrice
@@ -168,13 +169,15 @@ function UnifiedResultCard({ result, isBestPrice, isOperator }: { result: Unifie
           </div>
         )}
       </div>
-      {result.url && (
-        <a href={result.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+      {hasUrl ? (
+        <a href={result.url!} target="_blank" rel="noopener noreferrer" className="shrink-0">
           <Button variant="ghost" size="iconSm" className="h-6 w-6 text-muted-foreground hover:text-primary">
             <ExternalLink className="h-3 w-3" />
           </Button>
         </a>
-      )}
+      ) : result.is_discovery ? (
+        <span className="text-[9px] text-muted-foreground shrink-0 italic">AI est.</span>
+      ) : null}
     </div>
   );
 }

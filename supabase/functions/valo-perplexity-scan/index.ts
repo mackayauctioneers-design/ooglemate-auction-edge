@@ -153,14 +153,16 @@ RULES:
           },
           {
             role: "user",
-            content: `Extract all vehicle listings from this market research into a JSON array. Each object must have: price (number), km (number), year (number), variant (string or null), dealer (string or null), state (string or null, abbreviated), url (string or null), source (string like "carsales", "drive", "carsguide", "autotrader", "dealer").
+            content: `Extract all vehicle listings from this market research into a JSON array. Each object must have: price (number), km (number), year (number), variant (string or null), dealer (string or null), state (string or null, abbreviated), url (string or null — MUST be the full listing URL from the source, e.g. "https://www.carsales.com.au/cars/details/..."), source (string like "carsales", "drive", "carsguide", "autotrader", "dealer").
+
+IMPORTANT: The url field is critical. Extract the actual listing URL from the citations or text. If a citation URL corresponds to a listing, use it. Do NOT leave url as null if there is a source URL available in the citations.
+
+Citations: ${JSON.stringify(citations)}
 
 If a field is unknown, use null. Price and km must be integers.
 
 Text:
-${content}
-
-Citations: ${JSON.stringify(citations)}`,
+${content}`,
           },
         ],
         tools: [

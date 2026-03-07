@@ -228,11 +228,14 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
     .order("asking_price", { ascending: true, nullsFirst: false })
     .limit(TIER0_LIMIT);
 
-  // Model matching — with Toyota Prado special case
+  // Model matching — with Toyota Prado special case and LandCruiser exclusion
   if (parsed.model) {
     if (isToyotaPrado) {
       // Prado split: model contains "prado" OR (model contains "landcruiser" AND variant_raw contains "prado")
       q = q.or(`model.ilike.%prado%,and(model.ilike.%landcruiser%,variant_raw.ilike.%prado%)`);
+    } else if (isToyotaLandCruiserNotPrado(parsed)) {
+      // LandCruiser (non-Prado): must contain "landcruiser" but NOT "prado"
+      q = q.ilike("model", `%${parsed.model}%`).not("model", "ilike", "%prado%");
     } else {
       q = q.ilike("model", `%${parsed.model}%`);
     }
@@ -277,6 +280,8 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
   if (parsed.model) {
     if (isToyotaPrado) {
       q = q.or(`model.ilike.%prado%,and(model.ilike.%landcruiser%,variant_raw.ilike.%prado%)`);
+    } else if (isToyotaLandCruiserNotPrado(parsed)) {
+      q = q.ilike("model", `%${parsed.model}%`).not("model", "ilike", "%prado%");
     } else {
       q = q.ilike("model", `%${parsed.model}%`);
     }
@@ -301,6 +306,12 @@ function isToyotaPradoSearch(parsed: ParsedIntent): boolean {
   const make = (parsed.make || "").toLowerCase();
   const model = (parsed.model || "").toLowerCase();
   return make === "toyota" && (model.includes("prado") || model === "landcruiser prado");
+}
+
+function isToyotaLandCruiserNotPrado(parsed: ParsedIntent): boolean {
+  const make = (parsed.make || "").toLowerCase();
+  const model = (parsed.model || "").toLowerCase();
+  return make === "toyota" && model.includes("landcruiser") && !model.includes("prado");
 }
 
 // ─── Legacy API (backwards-compatible) ───────────────────────────────────────
