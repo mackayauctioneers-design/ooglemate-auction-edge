@@ -54,13 +54,7 @@ Deno.serve(async (req) => {
     console.log(`[nightly-demand-recon] ${dueDemands.length} of ${demands?.length} demands due for search`);
 
     if (demErr) throw new Error(demErr.message);
-    if (!demands || demands.length === 0) {
-      return new Response(JSON.stringify({ success: true, processed: 0, message: "No open demands" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    console.log(`[nightly-demand-recon] Processing ${demands.length} open demands`);
+    // (filtered above)
 
     let processed = 0;
     let totalMatches = 0;
