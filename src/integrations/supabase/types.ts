@@ -881,12 +881,19 @@ export type Database = {
       }
       dealer_demands: {
         Row: {
+          auction_only: boolean | null
+          body_type: string | null
           buyer_name: string | null
           colour: string | null
           created_at: string
           dealer_name: string
+          dealer_only: boolean | null
+          drivetrain: string | null
           engine: string | null
+          ex_fleet_allowed: boolean | null
+          fuel: string | null
           id: string
+          keywords: string | null
           km_max: number | null
           last_searched_at: string | null
           make: string
@@ -895,19 +902,29 @@ export type Database = {
           notes: string | null
           price_max: number | null
           search_interval_minutes: number | null
+          series: string | null
           status: string
+          transmission: string | null
           updated_at: string
           urgency: string
+          variant: string | null
           year_max: number | null
           year_min: number | null
         }
         Insert: {
+          auction_only?: boolean | null
+          body_type?: string | null
           buyer_name?: string | null
           colour?: string | null
           created_at?: string
           dealer_name: string
+          dealer_only?: boolean | null
+          drivetrain?: string | null
           engine?: string | null
+          ex_fleet_allowed?: boolean | null
+          fuel?: string | null
           id?: string
+          keywords?: string | null
           km_max?: number | null
           last_searched_at?: string | null
           make: string
@@ -916,19 +933,29 @@ export type Database = {
           notes?: string | null
           price_max?: number | null
           search_interval_minutes?: number | null
+          series?: string | null
           status?: string
+          transmission?: string | null
           updated_at?: string
           urgency?: string
+          variant?: string | null
           year_max?: number | null
           year_min?: number | null
         }
         Update: {
+          auction_only?: boolean | null
+          body_type?: string | null
           buyer_name?: string | null
           colour?: string | null
           created_at?: string
           dealer_name?: string
+          dealer_only?: boolean | null
+          drivetrain?: string | null
           engine?: string | null
+          ex_fleet_allowed?: boolean | null
+          fuel?: string | null
           id?: string
+          keywords?: string | null
           km_max?: number | null
           last_searched_at?: string | null
           make?: string
@@ -937,9 +964,12 @@ export type Database = {
           notes?: string | null
           price_max?: number | null
           search_interval_minutes?: number | null
+          series?: string | null
           status?: string
+          transmission?: string | null
           updated_at?: string
           urgency?: string
+          variant?: string | null
           year_max?: number | null
           year_min?: number | null
         }
