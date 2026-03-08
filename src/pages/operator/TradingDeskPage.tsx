@@ -611,6 +611,7 @@ export default function TradingDeskPage() {
                     <TableHead className="w-[80px] px-2">Source</TableHead>
                     <TableHead className="w-[46px] text-right cursor-pointer px-1" onClick={() => handleSort('year')}>Year <SortIcon field="year" /></TableHead>
                     <TableHead className="w-[42px] text-right px-1">KM</TableHead>
+                    <TableHead className="w-[42px] text-right px-1">Age</TableHead>
                     <TableHead className="w-[70px] px-2">Status</TableHead>
                     <TableHead className="w-[120px] text-right px-2">Actions</TableHead>
                   </TableRow>
@@ -755,6 +756,14 @@ export default function TradingDeskPage() {
                             <TableCell className="text-[11px] text-muted-foreground px-2 truncate">{opp.listing_source}</TableCell>
                             <TableCell className="text-right font-mono text-sm px-1">{opp.year}</TableCell>
                             <TableCell className="text-right font-mono text-sm text-muted-foreground px-1">{fmtKm(opp.km)}</TableCell>
+                            {/* Age */}
+                            <TableCell className="text-right font-mono text-sm px-1">
+                              {opp.days_listed != null ? (
+                                <span className={opp.days_listed >= 20 ? 'text-amber-600 dark:text-amber-400 font-semibold' : opp.days_listed >= 10 ? 'text-muted-foreground' : 'text-muted-foreground/60'}>
+                                  {opp.days_listed}d
+                                </span>
+                              ) : '-'}
+                            </TableCell>
                             {/* Status */}
                             <TableCell className="px-2">
                               <Badge variant={opp.status === 'new' ? 'default' : 'outline'} className="text-xs">
@@ -802,7 +811,7 @@ export default function TradingDeskPage() {
                           {/* Anchor Sale Collapsible Row */}
                           <CollapsibleContent asChild>
                             <TableRow className={`border-b border-border ${opp.tier === 'CODE_RED' || opp.tier === 'HIGH' ? 'bg-primary/5' : 'bg-muted/30'}`}>
-                              <TableCell colSpan={14} className="py-3 px-6">
+                              <TableCell colSpan={16} className="py-3 px-6">
                                 <div className="flex items-start gap-6">
                                   <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
                                     <Anchor className="h-3.5 w-3.5" />

@@ -91,6 +91,30 @@ function trimAllowed(platformClass: string, listingTrim: string, saleTrim: strin
   return listingRank === saleRank + 1;
 }
 
+// ── LISTING AGE SCORING ──────────────────────────────────────────────────────
+
+function scoreListingAge(daysListed: number, priceDrops: number): { score: number; reason: string } {
+  // Safety: listings > 90 days without recent price drops are stale, not negotiable
+  if (daysListed > 90 && priceDrops === 0) {
+    return { score: 0, reason: `Age ${daysListed}d >90d with no price drop (+0)` };
+  }
+
+  let score = 0;
+  if (daysListed <= 3) score = 0;
+  else if (daysListed <= 10) score = 3;
+  else if (daysListed <= 20) score = 6;
+  else if (daysListed <= 30) score = 8;
+  else score = 10;
+
+  // Price drop bonus: +2 if listing is 10+ days old AND had a recent price drop
+  if (daysListed > 10 && priceDrops > 0) {
+    score = Math.min(score + 2, 10);
+  }
+
+  const reason = `Age ${daysListed}d → +${score}${priceDrops > 0 && daysListed > 10 ? ` (incl price-drop bonus, ${priceDrops} drops)` : ''}`;
+  return { score, reason };
+}
+
 // ── INTERFACES ───────────────────────────────────────────────────────────────
 
 interface CandidateListing {
@@ -312,7 +336,10 @@ function scoreListingAgainstAccounts(
     if (motivationSignal && tier === "WATCH" && best.under_buy >= -500) tier = "BUY";
   }
 
-  return { best, alts, tier };
+  // Listing age score
+  const ageResult = scoreListingAge(listing.days_listed, listing.price_drops);
+
+  return { best, alts, tier, listing_age_score: ageResult.score, listing_age_reason: ageResult.reason };
 }
 
 // ── TIER SCORE (for ranking) ─────────────────────────────────────────────────
@@ -548,7 +575,7 @@ Deno.serve(async (req) => {
       if (!match) { results.discarded++; continue; }
       results.scored++;
 
-      const { best, alts, tier } = match;
+      const { best, alts, tier, listing_age_score, listing_age_reason } = match;
       const isRetail = listing.source_type === "retail";
 
       // Motivation signal
@@ -642,7 +669,7 @@ Deno.serve(async (req) => {
         status: "new",
       };
 
-      const compositeScore = tierScore(tier) + Math.min(best.expected_margin / 100, 50);
+      const compositeScore = tierScore(tier) + Math.min(best.expected_margin / 100, 50) + (listing_age_score || 0);
       scoredCandidates.push({
         row,
         score: compositeScore,
