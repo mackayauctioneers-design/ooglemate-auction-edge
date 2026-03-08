@@ -336,7 +336,10 @@ function scoreListingAgainstAccounts(
     if (motivationSignal && tier === "WATCH" && best.under_buy >= -500) tier = "BUY";
   }
 
-  return { best, alts, tier };
+  // Listing age score
+  const ageResult = scoreListingAge(listing.days_listed, listing.price_drops);
+
+  return { best, alts, tier, listing_age_score: ageResult.score, listing_age_reason: ageResult.reason };
 }
 
 // ── TIER SCORE (for ranking) ─────────────────────────────────────────────────

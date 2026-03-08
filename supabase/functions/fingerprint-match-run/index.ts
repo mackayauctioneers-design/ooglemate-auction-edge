@@ -92,6 +92,22 @@ interface VehicleListing {
   listing_url: string | null;
   source: string | null;
   platform_class: string | null;
+  first_seen_at: string | null;
+}
+
+// ── Listing Age Scoring ──
+
+function scoreListingAge(firstSeenAt: string | null): { score: number; reason: string } {
+  if (!firstSeenAt) return { score: 0, reason: "first_seen_at missing (+0)" };
+  const daysListed = Math.floor((Date.now() - new Date(firstSeenAt).getTime()) / 86400000);
+  if (daysListed > 90) return { score: 0, reason: `Age ${daysListed}d >90d stale (+0)` };
+  let score = 0;
+  if (daysListed <= 3) score = 0;
+  else if (daysListed <= 10) score = 3;
+  else if (daysListed <= 20) score = 6;
+  else if (daysListed <= 30) score = 8;
+  else score = 10;
+  return { score, reason: `Age ${daysListed}d → +${score}` };
 }
 
 // ── Scoring helpers ──
