@@ -418,6 +418,15 @@ Deno.serve(async (req) => {
       const decayMultiplier = computeDecayMultiplier(fp.avg_decay_factor);
       let finalScore = Math.min(Math.round(baseScore * decayMultiplier), 100);
 
+      // ── Fingerprint accuracy modifier (secondary, never overrides gates) ──
+      const platformKey2 = fp.platform_class || `${(fp.make || "").toUpperCase()}:${(fp.model || "").toUpperCase()}`;
+      const fpAccuracy = fpAccuracyMap.get(platformKey2) ?? 50;
+      if (fpAccuracy >= 70) finalScore = Math.min(finalScore + 3, 100);
+      else if (fpAccuracy < 30) finalScore = Math.max(finalScore - 3, 0);
+      if (fpAccuracy < 30 || fpAccuracy >= 70) {
+        reasons.accuracy = `fp_accuracy=${fpAccuracy} → ${fpAccuracy >= 70 ? "+3" : "-3"}`;
+      }
+
       // ── Watch-only fingerprints: cap score and flag ──
       const isWatch = fp.fingerprint_status === 'watch';
       if (isWatch) {
