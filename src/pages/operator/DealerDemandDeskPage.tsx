@@ -604,7 +604,10 @@ export default function DealerDemandDeskPage() {
       </div>
 
       {/* Demand Form */}
-      <DemandForm onCreated={loadDemands} />
+      <DemandForm
+        onCreated={(demandId) => { setSearching(demandId); loadDemands(); }}
+        onSearchDone={() => { setSearching(null); loadDemands(); }}
+      />
 
       {/* Demands List */}
       <Card>
