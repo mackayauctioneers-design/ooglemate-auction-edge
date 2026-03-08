@@ -2623,6 +2623,78 @@ export type Database = {
         }
         Relationships: []
       }
+      fingerprint_performance_metrics: {
+        Row: {
+          account_id: string | null
+          approval_rate: number | null
+          avg_days_to_sell: number | null
+          avg_expected_margin: number | null
+          avg_realized_margin: number | null
+          created_at: string
+          false_signal_rate: number | null
+          fingerprint_accuracy_score: number | null
+          governance_status: string
+          id: string
+          last_recomputed_at: string | null
+          matches_approved: number
+          matches_closed: number
+          matches_detected: number
+          matches_lossmaking: number
+          matches_profitable: number
+          matches_purchased: number
+          matches_reviewed: number
+          platform_class: string
+          profit_hit_rate: number | null
+          purchase_rate: number | null
+        }
+        Insert: {
+          account_id?: string | null
+          approval_rate?: number | null
+          avg_days_to_sell?: number | null
+          avg_expected_margin?: number | null
+          avg_realized_margin?: number | null
+          created_at?: string
+          false_signal_rate?: number | null
+          fingerprint_accuracy_score?: number | null
+          governance_status?: string
+          id?: string
+          last_recomputed_at?: string | null
+          matches_approved?: number
+          matches_closed?: number
+          matches_detected?: number
+          matches_lossmaking?: number
+          matches_profitable?: number
+          matches_purchased?: number
+          matches_reviewed?: number
+          platform_class: string
+          profit_hit_rate?: number | null
+          purchase_rate?: number | null
+        }
+        Update: {
+          account_id?: string | null
+          approval_rate?: number | null
+          avg_days_to_sell?: number | null
+          avg_expected_margin?: number | null
+          avg_realized_margin?: number | null
+          created_at?: string
+          false_signal_rate?: number | null
+          fingerprint_accuracy_score?: number | null
+          governance_status?: string
+          id?: string
+          last_recomputed_at?: string | null
+          matches_approved?: number
+          matches_closed?: number
+          matches_detected?: number
+          matches_lossmaking?: number
+          matches_profitable?: number
+          matches_purchased?: number
+          matches_reviewed?: number
+          platform_class?: string
+          profit_hit_rate?: number | null
+          purchase_rate?: number | null
+        }
+        Relationships: []
+      }
       fingerprint_profit_stats: {
         Row: {
           avg_days_to_exit: number | null
