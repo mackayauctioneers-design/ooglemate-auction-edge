@@ -1,0 +1,259 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+};
+
+/**
+ * check-internal-demand v1.0
+ *
+ * Given a demand_id, searches vehicle_listings for matches,
+ * scores them, inserts into demand_opportunities, and optionally
+ * falls back to OpenClaw if < 3 internal matches found.
+ * Sends Slack alert for any high-scoring matches.
+ */
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const sb = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  try {
+    const { demand_id } = await req.json();
+    if (!demand_id) {
+      return new Response(JSON.stringify({ error: "demand_id required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Load demand
+    const { data: demand, error: demandErr } = await sb
+      .from("dealer_demands")
+      .select("*")
+      .eq("id", demand_id)
+      .single();
+
+    if (demandErr || !demand) {
+      return new Response(JSON.stringify({ error: "Demand not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.log(`[check-demand] Searching for: ${demand.make} ${demand.model} (${demand.dealer_name})`);
+
+    // ── Internal search against vehicle_listings ──
+    let query = sb
+      .from("vehicle_listings")
+      .select("id, listing_id, make, model, year, km, asking_price, state, variant_raw, listing_url, source, first_seen_at, transmission, fuel, drivetrain")
+      .in("status", ["listed", "catalogue"])
+      .ilike("make", `%${demand.make}%`)
+      .ilike("model", `%${demand.model}%`);
+
+    if (demand.km_max) query = query.lte("km", demand.km_max);
+    if (demand.price_max) query = query.lte("asking_price", demand.price_max);
+    if (demand.year_min) query = query.gte("year", demand.year_min);
+    if (demand.year_max) query = query.lte("year", demand.year_max);
+
+    const { data: listings, error: listErr } = await query.order("asking_price", { ascending: true }).limit(50);
+
+    if (listErr) {
+      console.error("[check-demand] Listing search error:", listErr);
+      return new Response(JSON.stringify({ error: listErr.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.log(`[check-demand] Found ${listings?.length || 0} internal matches`);
+
+    // ── Score and insert opportunities ──
+    const opps: any[] = [];
+    for (const l of listings || []) {
+      let score = 50; // Base: make+model match
+
+      // KM scoring
+      if (l.km && demand.km_max) {
+        const kmPct = l.km / demand.km_max;
+        if (kmPct <= 0.5) score += 15;
+        else if (kmPct <= 0.8) score += 10;
+        else if (kmPct <= 1.0) score += 5;
+      }
+
+      // Price scoring
+      if (l.asking_price && demand.price_max) {
+        const pricePct = l.asking_price / demand.price_max;
+        if (pricePct <= 0.8) score += 20;
+        else if (pricePct <= 0.95) score += 10;
+        else if (pricePct <= 1.0) score += 5;
+      }
+
+      // Year match
+      if (l.year) {
+        if (demand.year_min && demand.year_max) {
+          const midYear = (demand.year_min + demand.year_max) / 2;
+          if (Math.abs(l.year - midYear) <= 1) score += 10;
+          else if (Math.abs(l.year - midYear) <= 2) score += 5;
+        } else {
+          score += 5;
+        }
+      }
+
+      // Colour match (if specified)
+      if (demand.colour && l.variant_raw) {
+        if (l.variant_raw.toLowerCase().includes(demand.colour.toLowerCase())) {
+          score += 5;
+        }
+      }
+
+      opps.push({
+        demand_id,
+        source: l.source || "internal",
+        make: l.make,
+        model: l.model,
+        year: l.year,
+        km: l.km,
+        price: l.asking_price ? Math.round(Number(l.asking_price)) : null,
+        colour: null,
+        location: l.state,
+        listing_url: l.listing_url,
+        listing_id: l.id,
+        score: Math.min(score, 100),
+        status: "new",
+      });
+    }
+
+    // ── Insert opportunities ──
+    let inserted = 0;
+    if (opps.length > 0) {
+      const { error: insErr } = await sb
+        .from("demand_opportunities")
+        .upsert(opps, { onConflict: "demand_id,listing_url", ignoreDuplicates: true });
+
+      if (insErr) {
+        console.error("[check-demand] Insert error:", insErr.message);
+      } else {
+        inserted = opps.length;
+      }
+    }
+
+    // Update demand record
+    await sb.from("dealer_demands").update({
+      matches_found: inserted,
+      last_searched_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", demand_id);
+
+    // ── Slack alert for top matches ──
+    const slackWebhook = Deno.env.get("SLACK_WEBHOOK_URL");
+    const topMatches = opps.filter(o => o.score >= 70).slice(0, 5);
+
+    if (slackWebhook && topMatches.length > 0) {
+      const lines = topMatches.map(m =>
+        `• ${m.year || "?"} ${m.make} ${m.model} — ${m.km ? m.km.toLocaleString() + "km" : "?"} — $${m.price ? m.price.toLocaleString() : "?"} — ${m.location || "?"}\n  ${m.listing_url || ""}`
+      ).join("\n");
+
+      try {
+        await fetch(slackWebhook, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: `🚨 *Demand Match: ${demand.dealer_name}*\n_${demand.make} ${demand.model}${demand.engine ? " " + demand.engine : ""}${demand.colour ? " " + demand.colour : ""}_\n\n${lines}\n\n${topMatches.length} of ${inserted} total matches`,
+          }),
+        });
+        console.log("[check-demand] Slack alert sent");
+      } catch (e) {
+        console.warn("[check-demand] Slack alert failed:", e);
+      }
+    }
+
+    // ── OpenClaw fallback if < 3 internal matches ──
+    let openclawResults = 0;
+    if (inserted < 3) {
+      const openclawKey = Deno.env.get("OPENCLAW_API_KEY");
+      if (openclawKey) {
+        console.log("[check-demand] < 3 internal matches, triggering OpenClaw recon");
+        try {
+          const searchQuery = [
+            demand.make,
+            demand.model,
+            demand.engine,
+            demand.colour,
+            demand.km_max ? `under ${demand.km_max}km` : "",
+            "Australia",
+          ].filter(Boolean).join(" ");
+
+          const resp = await fetch("https://api.openclaw.ai/run", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${openclawKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ query: searchQuery }),
+          });
+
+          if (resp.ok) {
+            const result = await resp.json();
+            const clawListings = result.listings || result.results || result.data || [];
+
+            const clawOpps = clawListings.map((cl: any) => ({
+              demand_id,
+              source: "openclaw",
+              make: cl.make || demand.make,
+              model: cl.model || demand.model,
+              year: cl.year,
+              km: cl.km || cl.odometer,
+              price: cl.price || cl.asking_price,
+              colour: cl.colour || cl.color,
+              location: cl.location || cl.state,
+              listing_url: cl.url || cl.listing_url,
+              score: 60, // OpenClaw results get baseline score
+              status: "new",
+            }));
+
+            if (clawOpps.length > 0) {
+              const { error: clawErr } = await sb
+                .from("demand_opportunities")
+                .upsert(clawOpps, { onConflict: "demand_id,listing_url", ignoreDuplicates: true });
+
+              if (!clawErr) openclawResults = clawOpps.length;
+            }
+            console.log(`[check-demand] OpenClaw returned ${clawOpps.length} results`);
+          } else {
+            const errText = await resp.text();
+            console.warn(`[check-demand] OpenClaw error ${resp.status}: ${errText}`);
+          }
+        } catch (e) {
+          console.warn("[check-demand] OpenClaw call failed:", e);
+        }
+      }
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      demand_id,
+      internal_matches: inserted,
+      openclaw_matches: openclawResults,
+      total: inserted + openclawResults,
+      slack_alerted: topMatches.length > 0,
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[check-demand] Error:", msg);
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
