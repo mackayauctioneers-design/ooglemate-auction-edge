@@ -75,6 +75,30 @@ Deno.serve(async (req) => {
 
     console.log(`[check-demand] Found ${listings?.length || 0} internal matches`);
 
+    // ── Helper: listing hash for cross-demand dedup ──
+    function listingHash(url: string | null, price: number | null, km: number | null): string {
+      const u = (url || "").replace(/\?.*$/, "").toLowerCase();
+      const p = price ? Math.round(price / 500) * 500 : 0;
+      const k = km ? Math.round(km / 5000) * 5000 : 0;
+      return `${u}|${p}|${k}`;
+    }
+
+    // ── Helper: estimate margin from dealer_profit_patterns ──
+    let marginMap: Map<string, number> = new Map();
+    try {
+      const { data: patterns } = await sb
+        .from("dealer_profit_patterns")
+        .select("make, model, median_profit, median_sell_price")
+        .ilike("make", `%${demand.make}%`)
+        .ilike("model", `%${demand.model}%`)
+        .limit(10);
+      if (patterns) {
+        for (const p of patterns) {
+          if (p.median_profit) marginMap.set(`${p.make}|${p.model}`, Number(p.median_profit));
+        }
+      }
+    } catch { /* non-critical */ }
+
     // ── Score and insert opportunities ──
     const opps: any[] = [];
     for (const l of listings || []) {
@@ -114,6 +138,17 @@ Deno.serve(async (req) => {
         }
       }
 
+      const price = l.asking_price ? Math.round(Number(l.asking_price)) : null;
+      const marginKey = `${l.make}|${l.model}`;
+      const patternMargin = marginMap.get(marginKey);
+      let marginEstimate: number | null = null;
+      if (patternMargin) {
+        marginEstimate = Math.round(patternMargin);
+      } else if (price && demand.price_max) {
+        // Rough estimate: budget headroom
+        marginEstimate = Math.max(0, Math.round((demand.price_max - price) * 0.6));
+      }
+
       opps.push({
         demand_id,
         source: l.source || "internal",
@@ -121,11 +156,13 @@ Deno.serve(async (req) => {
         model: l.model,
         year: l.year,
         km: l.km,
-        price: l.asking_price ? Math.round(Number(l.asking_price)) : null,
+        price,
         colour: null,
         location: l.state,
         listing_url: l.listing_url,
         listing_id: l.id,
+        listing_hash: listingHash(l.listing_url, price, l.km),
+        margin_estimate: marginEstimate,
         score: Math.min(score, 100),
         status: "new",
       });
