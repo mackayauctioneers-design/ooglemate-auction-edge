@@ -9,6 +9,7 @@ import CronAuditPage from '@/pages/operator/CronAuditPage';
 import JobQueuePage from '@/pages/operator/JobQueuePage';
 import AuctionEnrichmentQueuePage from '@/pages/operator/AuctionEnrichmentQueuePage';
 import CrossSafeMonitorPage from '@/pages/operator/CrossSafeMonitorPage';
+import ApifyRunsPage from '@/pages/operator/ApifyRunsPage';
 import { SourceCoverageWidget } from '@/components/operator/SourceCoverageWidget';
 
 export default function PipelineHealthPage() {
@@ -35,6 +36,7 @@ export default function PipelineHealthPage() {
             <TabsTrigger value="audit">Audit</TabsTrigger>
             <TabsTrigger value="cron">Cron</TabsTrigger>
             <TabsTrigger value="jobs">Jobs</TabsTrigger>
+            <TabsTrigger value="apify">Apify Runs</TabsTrigger>
             <TabsTrigger value="auction-queue">Auction Queue</TabsTrigger>
             <TabsTrigger value="crosssafe">CrossSafe</TabsTrigger>
           </TabsList>
@@ -51,6 +53,9 @@ export default function PipelineHealthPage() {
             </TabsContent>
             <TabsContent value="jobs">
               <JobQueuePage />
+            </TabsContent>
+            <TabsContent value="apify">
+              <ApifyRunsPage />
             </TabsContent>
             <TabsContent value="auction-queue">
               <AuctionEnrichmentQueuePage />
