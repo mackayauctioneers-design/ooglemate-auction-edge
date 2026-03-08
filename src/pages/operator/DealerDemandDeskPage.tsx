@@ -622,7 +622,7 @@ export default function DealerDemandDeskPage() {
                     <TableHead className="py-2 hidden md:table-cell">Spec</TableHead>
                     <TableHead className="py-2 hidden md:table-cell">Budget</TableHead>
                     <TableHead className="py-2">Urgency</TableHead>
-                    <TableHead className="py-2">Matches</TableHead>
+                    <TableHead className="py-2">Search Status</TableHead>
                     <TableHead className="py-2 w-[80px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -651,17 +651,15 @@ export default function DealerDemandDeskPage() {
                       </TableCell>
                       <TableCell className="py-2">{urgencyBadge(d.urgency)}</TableCell>
                       <TableCell className="py-2">
-                        <span className={d.matches_found > 0 ? "text-emerald-400 font-bold" : "text-muted-foreground"}>
-                          {d.matches_found}
-                        </span>
+                        <SearchStatusBadge demand={d} searching={searching === d.id} />
                       </TableCell>
                       <TableCell className="py-2" onClick={e => e.stopPropagation()}>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => reSearch(d.id)} disabled={searching === d.id} className="h-6 w-6 p-0">
+                          <Button variant="ghost" size="sm" onClick={() => reSearch(d.id)} disabled={searching === d.id} className="h-6 w-6 p-0" title="Re-search">
                             <RefreshCw className={`h-3 w-3 ${searching === d.id ? "animate-spin" : ""}`} />
                           </Button>
                           {d.status === "open" && (
-                            <Button variant="ghost" size="sm" onClick={() => closeDemand(d.id)} className="h-6 w-6 p-0">
+                            <Button variant="ghost" size="sm" onClick={() => closeDemand(d.id)} className="h-6 w-6 p-0" title="Mark fulfilled">
                               <CheckCircle className="h-3 w-3" />
                             </Button>
                           )}
