@@ -669,7 +669,10 @@ Deno.serve(async (req) => {
         status: "new",
       };
 
-      const compositeScore = tierScore(tier) + Math.min(best.expected_margin / 100, 50) + (listing_age_score || 0);
+      // Fingerprint accuracy modifier: ≤30 → -3, 30-70 → 0, ≥70 → +3
+      const fpAccuracy = fpAccuracyMap.get(listing.platform_class) ?? 50;
+      const accuracyMod = fpAccuracy >= 70 ? 3 : fpAccuracy < 30 ? -3 : 0;
+      const compositeScore = tierScore(tier) + Math.min(best.expected_margin / 100, 50) + (listing_age_score || 0) + accuracyMod;
       scoredCandidates.push({
         row,
         score: compositeScore,

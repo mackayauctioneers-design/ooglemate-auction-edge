@@ -216,6 +216,7 @@ const App = () => (
               <Route path="/operator/sources" element={<OperatorGuard><DataSourcesPage /></OperatorGuard>} />
               <Route path="/operator/auction-sources" element={<OperatorGuard><AuctionSourcesPage /></OperatorGuard>} />
               <Route path="/operator/morning-brief" element={<OperatorGuard><MorningBriefPage /></OperatorGuard>} />
+              <Route path="/operator/fingerprint-performance" element={<OperatorGuard><FingerprintPerformancePage /></OperatorGuard>} />
 
               {/* Fleet Enterprise */}
               <Route path="/fleet/buyer-terminal" element={<RequireAuth><BuyerTerminalPage /></RequireAuth>} />
