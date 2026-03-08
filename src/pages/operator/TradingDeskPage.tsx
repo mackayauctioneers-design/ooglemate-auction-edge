@@ -811,7 +811,7 @@ export default function TradingDeskPage() {
                           {/* Anchor Sale Collapsible Row */}
                           <CollapsibleContent asChild>
                             <TableRow className={`border-b border-border ${opp.tier === 'CODE_RED' || opp.tier === 'HIGH' ? 'bg-primary/5' : 'bg-muted/30'}`}>
-                              <TableCell colSpan={14} className="py-3 px-6">
+                              <TableCell colSpan={16} className="py-3 px-6">
                                 <div className="flex items-start gap-6">
                                   <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
                                     <Anchor className="h-3.5 w-3.5" />
