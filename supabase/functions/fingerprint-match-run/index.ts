@@ -282,7 +282,7 @@ Deno.serve(async (req) => {
     // ── Step 3: Load active vehicle_listings ──
     const { data: listings, error: listErr } = await supabase
       .from("vehicle_listings")
-      .select("id, listing_id, make, model, year, km, asking_price, price_type, state, variant_raw, transmission, fuel, drivetrain, listing_url, source, platform_class")
+      .select("id, listing_id, make, model, year, km, asking_price, price_type, state, variant_raw, transmission, fuel, drivetrain, listing_url, source, platform_class, first_seen_at")
       .in("status", ["listed", "catalogue"])
       .order("last_seen_at", { ascending: false })
       .limit(batchSize);
