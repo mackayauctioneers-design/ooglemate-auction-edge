@@ -311,6 +311,21 @@ Deno.serve(async (req) => {
 
     console.log(`[fingerprint-match-run] Scoring ${listings.length} active listings against ${fpMap.size} usable fingerprints`);
 
+    // ── Step 3b: Load fingerprint accuracy scores ──
+    const fpAccuracyMap = new Map<string, number>();
+    try {
+      const { data: fpMetrics } = await supabase
+        .from("fingerprint_performance_metrics")
+        .select("platform_class, fingerprint_accuracy_score")
+        .is("account_id", null);
+      for (const m of fpMetrics || []) {
+        fpAccuracyMap.set(m.platform_class, Number(m.fingerprint_accuracy_score));
+      }
+      console.log(`[fingerprint-match-run] Loaded ${fpAccuracyMap.size} accuracy scores`);
+    } catch (e) {
+      console.warn("[fingerprint-match-run] Accuracy scores unavailable (non-fatal)");
+    }
+
     // ── Step 4: Score each listing ──
     const opportunities: Array<Record<string, unknown>> = [];
     let skipped = 0;
