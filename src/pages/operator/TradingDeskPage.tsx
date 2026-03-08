@@ -756,6 +756,14 @@ export default function TradingDeskPage() {
                             <TableCell className="text-[11px] text-muted-foreground px-2 truncate">{opp.listing_source}</TableCell>
                             <TableCell className="text-right font-mono text-sm px-1">{opp.year}</TableCell>
                             <TableCell className="text-right font-mono text-sm text-muted-foreground px-1">{fmtKm(opp.km)}</TableCell>
+                            {/* Age */}
+                            <TableCell className="text-right font-mono text-sm px-1">
+                              {opp.days_listed != null ? (
+                                <span className={opp.days_listed >= 20 ? 'text-amber-600 dark:text-amber-400 font-semibold' : opp.days_listed >= 10 ? 'text-muted-foreground' : 'text-muted-foreground/60'}>
+                                  {opp.days_listed}d
+                                </span>
+                              ) : '-'}
+                            </TableCell>
                             {/* Status */}
                             <TableCell className="px-2">
                               <Badge variant={opp.status === 'new' ? 'default' : 'outline'} className="text-xs">
