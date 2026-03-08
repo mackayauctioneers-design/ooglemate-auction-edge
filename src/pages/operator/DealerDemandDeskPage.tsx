@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Plus, Search, ExternalLink, Send, X, RefreshCw, CheckCircle, MapPin, Gauge, DollarSign, Car, Flame, ChevronDown, ChevronRight, ShoppingCart, Wrench, SlidersHorizontal } from "lucide-react";
+import { Plus, Search, ExternalLink, Send, X, RefreshCw, CheckCircle, MapPin, Gauge, DollarSign, Car, Flame, ChevronDown, ChevronRight, ShoppingCart, Wrench, SlidersHorizontal, Clock, Loader2, AlertCircle, Gavel, Store, Globe } from "lucide-react";
 
 // ── Types ──
 
@@ -377,6 +377,67 @@ function sourceBadge(s: string) {
   return <Badge variant="outline" className={`text-xs ${colors[s] || ""}`}>{s}</Badge>;
 }
 
+// ── Search Status Badge ──
+
+function SearchStatusBadge({ demand, searching }: { demand: DealerDemand; searching: boolean }) {
+  // Currently searching
+  if (searching) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs">
+        <Loader2 className="h-3 w-3 animate-spin text-primary" />
+        <span className="text-muted-foreground">Searching...</span>
+      </div>
+    );
+  }
+
+  // Never searched
+  if (!demand.last_searched_at) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Clock className="h-3 w-3" />
+        <span>Pending</span>
+      </div>
+    );
+  }
+
+  // Calculate time since last search
+  const lastSearched = new Date(demand.last_searched_at);
+  const now = new Date();
+  const diffMs = now.getTime() - lastSearched.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHrs = Math.floor(diffMins / 60);
+  
+  let timeAgo = "";
+  if (diffMins < 1) timeAgo = "just now";
+  else if (diffMins < 60) timeAgo = `${diffMins}m ago`;
+  else if (diffHrs < 24) timeAgo = `${diffHrs}h ago`;
+  else timeAgo = `${Math.floor(diffHrs / 24)}d ago`;
+
+  // Has matches
+  if (demand.matches_found > 0) {
+    return (
+      <div className="space-y-0.5">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+          <CheckCircle className="h-3 w-3" />
+          <span>{demand.matches_found} found</span>
+        </div>
+        <div className="text-[10px] text-muted-foreground pl-4">{timeAgo}</div>
+      </div>
+    );
+  }
+
+  // Searched but no matches
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <AlertCircle className="h-3 w-3" />
+        <span>No results</span>
+      </div>
+      <div className="text-[10px] text-muted-foreground pl-4">{timeAgo}</div>
+    </div>
+  );
+}
+
 // ── Opportunity Card (mobile-first) ──
 
 function OpportunityCard({ opp, onAction }: { opp: DemandOpportunity; onAction: (id: string, status: string) => void }) {
@@ -561,7 +622,7 @@ export default function DealerDemandDeskPage() {
                     <TableHead className="py-2 hidden md:table-cell">Spec</TableHead>
                     <TableHead className="py-2 hidden md:table-cell">Budget</TableHead>
                     <TableHead className="py-2">Urgency</TableHead>
-                    <TableHead className="py-2">Matches</TableHead>
+                    <TableHead className="py-2">Search Status</TableHead>
                     <TableHead className="py-2 w-[80px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -590,17 +651,15 @@ export default function DealerDemandDeskPage() {
                       </TableCell>
                       <TableCell className="py-2">{urgencyBadge(d.urgency)}</TableCell>
                       <TableCell className="py-2">
-                        <span className={d.matches_found > 0 ? "text-emerald-400 font-bold" : "text-muted-foreground"}>
-                          {d.matches_found}
-                        </span>
+                        <SearchStatusBadge demand={d} searching={searching === d.id} />
                       </TableCell>
                       <TableCell className="py-2" onClick={e => e.stopPropagation()}>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => reSearch(d.id)} disabled={searching === d.id} className="h-6 w-6 p-0">
+                          <Button variant="ghost" size="sm" onClick={() => reSearch(d.id)} disabled={searching === d.id} className="h-6 w-6 p-0" title="Re-search">
                             <RefreshCw className={`h-3 w-3 ${searching === d.id ? "animate-spin" : ""}`} />
                           </Button>
                           {d.status === "open" && (
-                            <Button variant="ghost" size="sm" onClick={() => closeDemand(d.id)} className="h-6 w-6 p-0">
+                            <Button variant="ghost" size="sm" onClick={() => closeDemand(d.id)} className="h-6 w-6 p-0" title="Mark fulfilled">
                               <CheckCircle className="h-3 w-3" />
                             </Button>
                           )}
