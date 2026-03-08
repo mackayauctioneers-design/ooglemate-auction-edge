@@ -283,9 +283,9 @@ Deno.serve(async (req) => {
         console.warn("[check-demand] Outward search call failed:", e);
       }
 
-      // Phase B: OpenClaw recon (supplementary)
+      // Phase B: OpenClaw recon (supplementary) — skip for low-urgency demands
       const openclawKey = Deno.env.get("OPENCLAW_API_KEY");
-      if (openclawKey && (inserted + outwardResults) < 3) {
+      if (openclawKey && (inserted + outwardResults) < 3 && demand.urgency !== "low") {
         console.log("[check-demand] Still < 3 matches, triggering OpenClaw recon");
         try {
           const searchQuery = [

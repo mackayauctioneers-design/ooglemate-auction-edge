@@ -248,7 +248,7 @@ function OpportunityCard({ opp, onAction }: { opp: DemandOpportunity; onAction: 
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
+        <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
           <div className="flex items-center gap-1 text-muted-foreground">
             <Gauge className="h-3 w-3" />
             {opp.km ? `${opp.km.toLocaleString()} km` : "—"}
@@ -261,6 +261,14 @@ function OpportunityCard({ opp, onAction }: { opp: DemandOpportunity; onAction: 
             <MapPin className="h-3 w-3" />
             {opp.location || "—"}
           </div>
+          {opp.margin_estimate && opp.margin_estimate > 0 ? (
+            <div className="flex items-center gap-1 font-semibold text-emerald-400">
+              <DollarSign className="h-3 w-3" />
+              ~${opp.margin_estimate.toLocaleString()} margin
+            </div>
+          ) : (
+            <div className="text-muted-foreground">—</div>
+          )}
         </div>
 
         <div className="flex items-center justify-between">
