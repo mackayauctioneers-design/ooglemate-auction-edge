@@ -24,7 +24,7 @@ export default function DealerHomePage() {
       .select('plan_id, status')
       .eq('user_id', user.id)
       .limit(1)
-      .single()
+      .maybeSingle()
       .then(({ data }) => { if (data) setSub(data); });
 
     // Fetch hunt count
