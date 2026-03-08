@@ -107,12 +107,12 @@ function DemandForm({ onCreated }: { onCreated: () => void }) {
           make: form.make,
           model: form.model,
           series: form.series || null,
-          body_type: form.body_type || null,
+          body_type: form.body_type && form.body_type !== "any" ? form.body_type : null,
           variant: form.variant || null,
           engine: form.engine || null,
-          fuel: form.fuel || null,
-          transmission: form.transmission || null,
-          drivetrain: form.drivetrain || null,
+          fuel: form.fuel && form.fuel !== "any" ? form.fuel : null,
+          transmission: form.transmission && form.transmission !== "any" ? form.transmission : null,
+          drivetrain: form.drivetrain && form.drivetrain !== "any" ? form.drivetrain : null,
           colour: form.colour || null,
           year_min: form.year_min ? parseInt(form.year_min) : null,
           year_max: form.year_max ? parseInt(form.year_max) : null,
@@ -202,7 +202,7 @@ function DemandForm({ onCreated }: { onCreated: () => void }) {
                 <Select value={form.body_type} onValueChange={v => set("body_type", v)}>
                   <SelectTrigger className="h-9"><SelectValue placeholder="Any" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Any</SelectItem>
+                    <SelectItem value="any">Any</SelectItem>
                     <SelectItem value="dual_cab">Dual Cab</SelectItem>
                     <SelectItem value="single_cab">Single Cab</SelectItem>
                     <SelectItem value="cab_chassis">Cab Chassis</SelectItem>
@@ -233,7 +233,7 @@ function DemandForm({ onCreated }: { onCreated: () => void }) {
                   <Select value={form.fuel} onValueChange={v => set("fuel", v)}>
                     <SelectTrigger className="h-9"><SelectValue placeholder="Any" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any</SelectItem>
+                      <SelectItem value="any">Any</SelectItem>
                       <SelectItem value="diesel">Diesel</SelectItem>
                       <SelectItem value="petrol">Petrol</SelectItem>
                       <SelectItem value="hybrid">Hybrid</SelectItem>
@@ -250,7 +250,7 @@ function DemandForm({ onCreated }: { onCreated: () => void }) {
                   <Select value={form.transmission} onValueChange={v => set("transmission", v)}>
                     <SelectTrigger className="h-9"><SelectValue placeholder="Any" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any</SelectItem>
+                      <SelectItem value="any">Any</SelectItem>
                       <SelectItem value="manual">Manual</SelectItem>
                       <SelectItem value="automatic">Automatic</SelectItem>
                     </SelectContent>
@@ -261,7 +261,7 @@ function DemandForm({ onCreated }: { onCreated: () => void }) {
                   <Select value={form.drivetrain} onValueChange={v => set("drivetrain", v)}>
                     <SelectTrigger className="h-9"><SelectValue placeholder="Any" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any</SelectItem>
+                      <SelectItem value="any">Any</SelectItem>
                       <SelectItem value="4x4">4x4</SelectItem>
                       <SelectItem value="4x2">4x2</SelectItem>
                       <SelectItem value="awd">AWD</SelectItem>
