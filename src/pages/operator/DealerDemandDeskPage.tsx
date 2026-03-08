@@ -377,6 +377,67 @@ function sourceBadge(s: string) {
   return <Badge variant="outline" className={`text-xs ${colors[s] || ""}`}>{s}</Badge>;
 }
 
+// ── Search Status Badge ──
+
+function SearchStatusBadge({ demand, searching }: { demand: DealerDemand; searching: boolean }) {
+  // Currently searching
+  if (searching) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs">
+        <Loader2 className="h-3 w-3 animate-spin text-primary" />
+        <span className="text-muted-foreground">Searching...</span>
+      </div>
+    );
+  }
+
+  // Never searched
+  if (!demand.last_searched_at) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Clock className="h-3 w-3" />
+        <span>Pending</span>
+      </div>
+    );
+  }
+
+  // Calculate time since last search
+  const lastSearched = new Date(demand.last_searched_at);
+  const now = new Date();
+  const diffMs = now.getTime() - lastSearched.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHrs = Math.floor(diffMins / 60);
+  
+  let timeAgo = "";
+  if (diffMins < 1) timeAgo = "just now";
+  else if (diffMins < 60) timeAgo = `${diffMins}m ago`;
+  else if (diffHrs < 24) timeAgo = `${diffHrs}h ago`;
+  else timeAgo = `${Math.floor(diffHrs / 24)}d ago`;
+
+  // Has matches
+  if (demand.matches_found > 0) {
+    return (
+      <div className="space-y-0.5">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+          <CheckCircle className="h-3 w-3" />
+          <span>{demand.matches_found} found</span>
+        </div>
+        <div className="text-[10px] text-muted-foreground pl-4">{timeAgo}</div>
+      </div>
+    );
+  }
+
+  // Searched but no matches
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <AlertCircle className="h-3 w-3" />
+        <span>No results</span>
+      </div>
+      <div className="text-[10px] text-muted-foreground pl-4">{timeAgo}</div>
+    </div>
+  );
+}
+
 // ── Opportunity Card (mobile-first) ──
 
 function OpportunityCard({ opp, onAction }: { opp: DemandOpportunity; onAction: (id: string, status: string) => void }) {
