@@ -480,7 +480,8 @@ export default function DealerDemandDeskPage() {
                     <TableHead className="py-2">KM</TableHead>
                     <TableHead className="py-2">Price</TableHead>
                     <TableHead className="py-2">Location</TableHead>
-                    <TableHead className="py-2">Source</TableHead>
+                     <TableHead className="py-2">Margin</TableHead>
+                     <TableHead className="py-2">Source</TableHead>
                     <TableHead className="py-2">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
