@@ -101,6 +101,7 @@ import DataSourcesPage from "./pages/operator/DataSourcesPage";
 import AuctionSourcesPage from "./pages/operator/AuctionSourcesPage";
 import MorningBriefPage from "./pages/operator/MorningBriefPage";
 import FingerprintPerformancePage from "./pages/operator/FingerprintPerformancePage";
+import DealerDemandDeskPage from "./pages/operator/DealerDemandDeskPage";
 import BuyerTerminalPage from "./pages/fleet/BuyerTerminalPage";
 import FleetDashboardPage from "./pages/fleet/FleetDashboardPage";
 
