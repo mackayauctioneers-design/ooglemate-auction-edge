@@ -31,8 +31,27 @@ Deno.serve(async (req) => {
     // Load all open demands
     const { data: demands, error: demErr } = await sb
       .from("dealer_demands")
-      .select("id, dealer_name, make, model")
+      .select("id, dealer_name, make, model, urgency, search_interval_minutes, last_searched_at")
       .eq("status", "open");
+
+    if (demErr) throw new Error(demErr.message);
+
+    // Filter demands that are due for search based on their interval
+    const now = Date.now();
+    const dueDemands = (demands || []).filter((d: any) => {
+      if (!d.last_searched_at) return true;
+      const interval = d.search_interval_minutes || 1440;
+      const lastSearch = new Date(d.last_searched_at).getTime();
+      return (now - lastSearch) >= interval * 60 * 1000;
+    });
+
+    if (dueDemands.length === 0) {
+      return new Response(JSON.stringify({ success: true, processed: 0, message: "No demands due for search" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.log(`[nightly-demand-recon] ${dueDemands.length} of ${demands?.length} demands due for search`);
 
     if (demErr) throw new Error(demErr.message);
     if (!demands || demands.length === 0) {
