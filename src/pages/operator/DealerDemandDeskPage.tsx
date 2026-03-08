@@ -250,7 +250,7 @@ function DemandForm({ onCreated }: { onCreated: () => void }) {
                   <Select value={form.transmission} onValueChange={v => set("transmission", v)}>
                     <SelectTrigger className="h-9"><SelectValue placeholder="Any" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any</SelectItem>
+                      <SelectItem value="any">Any</SelectItem>
                       <SelectItem value="manual">Manual</SelectItem>
                       <SelectItem value="automatic">Automatic</SelectItem>
                     </SelectContent>
