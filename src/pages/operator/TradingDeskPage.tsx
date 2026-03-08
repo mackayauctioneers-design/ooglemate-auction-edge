@@ -611,6 +611,7 @@ export default function TradingDeskPage() {
                     <TableHead className="w-[80px] px-2">Source</TableHead>
                     <TableHead className="w-[46px] text-right cursor-pointer px-1" onClick={() => handleSort('year')}>Year <SortIcon field="year" /></TableHead>
                     <TableHead className="w-[42px] text-right px-1">KM</TableHead>
+                    <TableHead className="w-[42px] text-right px-1">Age</TableHead>
                     <TableHead className="w-[70px] px-2">Status</TableHead>
                     <TableHead className="w-[120px] text-right px-2">Actions</TableHead>
                   </TableRow>
