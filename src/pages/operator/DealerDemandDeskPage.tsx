@@ -76,7 +76,7 @@ function SectionHeader({ icon: Icon, title, open, onToggle }: { icon: any; title
 
 // ── Demand Form ──
 
-function DemandForm({ onCreated }: { onCreated: () => void }) {
+function DemandForm({ onCreated, onSearchDone }: { onCreated: (demandId: string) => void; onSearchDone: () => void }) {
   const [form, setForm] = useState({
     dealer_name: "", buyer_name: "", make: "", model: "",
     series: "", body_type: "", variant: "",
@@ -131,16 +131,20 @@ function DemandForm({ onCreated }: { onCreated: () => void }) {
       if (error) throw error;
       toast.success("Demand created — searching...");
 
+      // Immediately surface the new row so the spinner is visible
+      const newDemandId = (demand as any).id;
+      onCreated(newDemandId);
+
       supabase.functions.invoke("check-internal-demand", {
-        body: { demand_id: (demand as any).id },
+        body: { demand_id: newDemandId },
       }).then(({ data }) => {
         if (data?.total > 0) {
           toast.success(`Found ${data.total} matches (${data.internal_auction || 0} auction, ${data.internal_matches} internal${data.outward_matches ? `, ${data.outward_matches} outward` : ""})`);
         } else {
           toast.info("No matches yet — outward search dispatched");
         }
-        onCreated();
-      }).catch(() => onCreated());
+        onSearchDone();
+      }).catch(() => onSearchDone());
 
       setForm({
         dealer_name: "", buyer_name: "", make: "", model: "",
@@ -600,7 +604,10 @@ export default function DealerDemandDeskPage() {
       </div>
 
       {/* Demand Form */}
-      <DemandForm onCreated={loadDemands} />
+      <DemandForm
+        onCreated={(demandId) => { setSearching(demandId); loadDemands(); }}
+        onSearchDone={() => { setSearching(null); loadDemands(); }}
+      />
 
       {/* Demands List */}
       <Card>
