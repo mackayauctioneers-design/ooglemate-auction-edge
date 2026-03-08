@@ -894,6 +894,7 @@ export type Database = {
           model: string
           notes: string | null
           price_max: number | null
+          search_interval_minutes: number | null
           status: string
           updated_at: string
           urgency: string
@@ -914,6 +915,7 @@ export type Database = {
           model: string
           notes?: string | null
           price_max?: number | null
+          search_interval_minutes?: number | null
           status?: string
           updated_at?: string
           urgency?: string
@@ -934,6 +936,7 @@ export type Database = {
           model?: string
           notes?: string | null
           price_max?: number | null
+          search_interval_minutes?: number | null
           status?: string
           updated_at?: string
           urgency?: string
@@ -2455,6 +2458,7 @@ export type Database = {
           demand_id: string
           id: string
           km: number | null
+          listing_hash: string | null
           listing_id: string | null
           listing_url: string | null
           location: string | null
@@ -2473,6 +2477,7 @@ export type Database = {
           demand_id: string
           id?: string
           km?: number | null
+          listing_hash?: string | null
           listing_id?: string | null
           listing_url?: string | null
           location?: string | null
@@ -2491,6 +2496,7 @@ export type Database = {
           demand_id?: string
           id?: string
           km?: number | null
+          listing_hash?: string | null
           listing_id?: string | null
           listing_url?: string | null
           location?: string | null

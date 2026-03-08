@@ -248,7 +248,7 @@ function OpportunityCard({ opp, onAction }: { opp: DemandOpportunity; onAction: 
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
+        <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
           <div className="flex items-center gap-1 text-muted-foreground">
             <Gauge className="h-3 w-3" />
             {opp.km ? `${opp.km.toLocaleString()} km` : "—"}
@@ -261,6 +261,14 @@ function OpportunityCard({ opp, onAction }: { opp: DemandOpportunity; onAction: 
             <MapPin className="h-3 w-3" />
             {opp.location || "—"}
           </div>
+          {opp.margin_estimate && opp.margin_estimate > 0 ? (
+            <div className="flex items-center gap-1 font-semibold text-emerald-400">
+              <DollarSign className="h-3 w-3" />
+              ~${opp.margin_estimate.toLocaleString()} margin
+            </div>
+          ) : (
+            <div className="text-muted-foreground">—</div>
+          )}
         </div>
 
         <div className="flex items-center justify-between">
@@ -472,7 +480,8 @@ export default function DealerDemandDeskPage() {
                     <TableHead className="py-2">KM</TableHead>
                     <TableHead className="py-2">Price</TableHead>
                     <TableHead className="py-2">Location</TableHead>
-                    <TableHead className="py-2">Source</TableHead>
+                     <TableHead className="py-2">Margin</TableHead>
+                     <TableHead className="py-2">Source</TableHead>
                     <TableHead className="py-2">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -484,6 +493,7 @@ export default function DealerDemandDeskPage() {
                       <TableCell className="py-2">{o.km ? o.km.toLocaleString() : "—"}</TableCell>
                       <TableCell className="py-2 font-mono">{o.price ? `$${o.price.toLocaleString()}` : "—"}</TableCell>
                       <TableCell className="py-2">{o.location || "—"}</TableCell>
+                      <TableCell className="py-2 font-mono text-emerald-400">{o.margin_estimate ? `~$${o.margin_estimate.toLocaleString()}` : "—"}</TableCell>
                       <TableCell className="py-2">{sourceBadge(o.source)}</TableCell>
                       <TableCell className="py-2">
                         <div className="flex gap-1">
