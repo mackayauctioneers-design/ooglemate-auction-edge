@@ -43,7 +43,15 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
+    // ── Emergency kill switch ──
+    const crawlMode = Deno.env.get("CRAWL_MODE") || "normal";
+    if (crawlMode === "disabled") {
+      console.log("Carsales cron: CRAWL_MODE=disabled, skipping");
+      return new Response(JSON.stringify({ success: true, message: "crawl disabled via CRAWL_MODE" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseKey);
