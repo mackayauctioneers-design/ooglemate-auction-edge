@@ -313,8 +313,9 @@ Deno.serve(async (req) => {
       success: true,
       demand_id,
       internal_matches: inserted,
+      outward_matches: outwardResults,
       openclaw_matches: openclawResults,
-      total: inserted + openclawResults,
+      total: totalMatches,
       slack_alerted: topMatches.length > 0,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
