@@ -76,7 +76,7 @@ function SectionHeader({ icon: Icon, title, open, onToggle }: { icon: any; title
 
 // ── Demand Form ──
 
-function DemandForm({ onCreated }: { onCreated: () => void }) {
+function DemandForm({ onCreated, onSearchDone }: { onCreated: (demandId: string) => void; onSearchDone: () => void }) {
   const [form, setForm] = useState({
     dealer_name: "", buyer_name: "", make: "", model: "",
     series: "", body_type: "", variant: "",
