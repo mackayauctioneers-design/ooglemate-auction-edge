@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
     let totalMatches = 0;
 
     // Process sequentially to avoid overloading
-    for (const demand of demands) {
+    for (const demand of dueDemands) {
       try {
         const resp = await fetch(`${sbUrl}/functions/v1/check-internal-demand`, {
           method: "POST",

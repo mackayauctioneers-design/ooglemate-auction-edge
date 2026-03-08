@@ -493,6 +493,7 @@ export default function DealerDemandDeskPage() {
                       <TableCell className="py-2">{o.km ? o.km.toLocaleString() : "—"}</TableCell>
                       <TableCell className="py-2 font-mono">{o.price ? `$${o.price.toLocaleString()}` : "—"}</TableCell>
                       <TableCell className="py-2">{o.location || "—"}</TableCell>
+                      <TableCell className="py-2 font-mono text-emerald-400">{o.margin_estimate ? `~$${o.margin_estimate.toLocaleString()}` : "—"}</TableCell>
                       <TableCell className="py-2">{sourceBadge(o.source)}</TableCell>
                       <TableCell className="py-2">
                         <div className="flex gap-1">
