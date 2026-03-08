@@ -879,6 +879,69 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_demands: {
+        Row: {
+          buyer_name: string | null
+          colour: string | null
+          created_at: string
+          dealer_name: string
+          engine: string | null
+          id: string
+          km_max: number | null
+          last_searched_at: string | null
+          make: string
+          matches_found: number
+          model: string
+          notes: string | null
+          price_max: number | null
+          status: string
+          updated_at: string
+          urgency: string
+          year_max: number | null
+          year_min: number | null
+        }
+        Insert: {
+          buyer_name?: string | null
+          colour?: string | null
+          created_at?: string
+          dealer_name: string
+          engine?: string | null
+          id?: string
+          km_max?: number | null
+          last_searched_at?: string | null
+          make: string
+          matches_found?: number
+          model: string
+          notes?: string | null
+          price_max?: number | null
+          status?: string
+          updated_at?: string
+          urgency?: string
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          buyer_name?: string | null
+          colour?: string | null
+          created_at?: string
+          dealer_name?: string
+          engine?: string | null
+          id?: string
+          km_max?: number | null
+          last_searched_at?: string | null
+          make?: string
+          matches_found?: number
+          model?: string
+          notes?: string | null
+          price_max?: number | null
+          status?: string
+          updated_at?: string
+          urgency?: string
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Relationships: []
+      }
       dealer_entitlements: {
         Row: {
           account_id: string
@@ -2384,6 +2447,71 @@ export type Database = {
           urls_queued_scrape?: number | null
         }
         Relationships: []
+      }
+      demand_opportunities: {
+        Row: {
+          colour: string | null
+          created_at: string
+          demand_id: string
+          id: string
+          km: number | null
+          listing_id: string | null
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          margin_estimate: number | null
+          model: string | null
+          price: number | null
+          score: number | null
+          source: string
+          status: string
+          year: number | null
+        }
+        Insert: {
+          colour?: string | null
+          created_at?: string
+          demand_id: string
+          id?: string
+          km?: number | null
+          listing_id?: string | null
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          margin_estimate?: number | null
+          model?: string | null
+          price?: number | null
+          score?: number | null
+          source: string
+          status?: string
+          year?: number | null
+        }
+        Update: {
+          colour?: string | null
+          created_at?: string
+          demand_id?: string
+          id?: string
+          km?: number | null
+          listing_id?: string | null
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          margin_estimate?: number | null
+          model?: string | null
+          price?: number | null
+          score?: number | null
+          source?: string
+          status?: string
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "demand_opportunities_demand_id_fkey"
+            columns: ["demand_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_demands"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       detail_ingest_queue: {
         Row: {
