@@ -311,6 +311,21 @@ Deno.serve(async (req) => {
 
     console.log(`[fingerprint-match-run] Scoring ${listings.length} active listings against ${fpMap.size} usable fingerprints`);
 
+    // ── Step 3b: Load fingerprint accuracy scores ──
+    const fpAccuracyMap = new Map<string, number>();
+    try {
+      const { data: fpMetrics } = await supabase
+        .from("fingerprint_performance_metrics")
+        .select("platform_class, fingerprint_accuracy_score")
+        .is("account_id", null);
+      for (const m of fpMetrics || []) {
+        fpAccuracyMap.set(m.platform_class, Number(m.fingerprint_accuracy_score));
+      }
+      console.log(`[fingerprint-match-run] Loaded ${fpAccuracyMap.size} accuracy scores`);
+    } catch (e) {
+      console.warn("[fingerprint-match-run] Accuracy scores unavailable (non-fatal)");
+    }
+
     // ── Step 4: Score each listing ──
     const opportunities: Array<Record<string, unknown>> = [];
     let skipped = 0;
@@ -402,6 +417,15 @@ Deno.serve(async (req) => {
       // ── Apply time-decay multiplier ──
       const decayMultiplier = computeDecayMultiplier(fp.avg_decay_factor);
       let finalScore = Math.min(Math.round(baseScore * decayMultiplier), 100);
+
+      // ── Fingerprint accuracy modifier (secondary, never overrides gates) ──
+      const platformKey2 = fp.platform_class || `${(fp.make || "").toUpperCase()}:${(fp.model || "").toUpperCase()}`;
+      const fpAccuracy = fpAccuracyMap.get(platformKey2) ?? 50;
+      if (fpAccuracy >= 70) finalScore = Math.min(finalScore + 3, 100);
+      else if (fpAccuracy < 30) finalScore = Math.max(finalScore - 3, 0);
+      if (fpAccuracy < 30 || fpAccuracy >= 70) {
+        reasons.accuracy = `fp_accuracy=${fpAccuracy} → ${fpAccuracy >= 70 ? "+3" : "-3"}`;
+      }
 
       // ── Watch-only fingerprints: cap score and flag ──
       const isWatch = fp.fingerprint_status === 'watch';
