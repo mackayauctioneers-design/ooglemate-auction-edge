@@ -5,11 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Search, ExternalLink, Phone, ShoppingCart, Send, X, RefreshCw, Clock, CheckCircle } from "lucide-react";
+import { Plus, Search, ExternalLink, Phone, ShoppingCart, Send, X, RefreshCw, CheckCircle, MapPin, Gauge, DollarSign, Car, Flame } from "lucide-react";
 
 // ── Types ──
 
@@ -55,20 +54,11 @@ interface DemandOpportunity {
 
 function DemandForm({ onCreated }: { onCreated: () => void }) {
   const [form, setForm] = useState({
-    dealer_name: "",
-    buyer_name: "",
-    make: "",
-    model: "",
-    engine: "",
-    colour: "",
-    year_min: "",
-    year_max: "",
-    km_max: "",
-    price_max: "",
-    urgency: "normal",
-    notes: "",
+    dealer_name: "", buyer_name: "", make: "", model: "", engine: "", colour: "",
+    year_min: "", year_max: "", km_max: "", price_max: "", urgency: "normal", notes: "",
   });
   const [submitting, setSubmitting] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -76,7 +66,6 @@ function DemandForm({ onCreated }: { onCreated: () => void }) {
       toast.error("Dealer, Make, and Model are required");
       return;
     }
-
     setSubmitting(true);
     try {
       const { data: demand, error } = await supabase
@@ -99,24 +88,21 @@ function DemandForm({ onCreated }: { onCreated: () => void }) {
         .single();
 
       if (error) throw error;
+      toast.success("Demand created — searching...");
 
-      toast.success("Demand created — searching now...");
-
-      // Trigger search immediately
       supabase.functions.invoke("check-internal-demand", {
         body: { demand_id: (demand as any).id },
       }).then(({ data }) => {
         if (data?.total > 0) {
-          toast.success(`Found ${data.total} matches (${data.internal_matches} internal, ${data.openclaw_matches} OpenClaw)`);
+          toast.success(`Found ${data.total} matches (${data.internal_matches} internal${data.outward_matches ? `, ${data.outward_matches} outward` : ""}${data.openclaw_matches ? `, ${data.openclaw_matches} recon` : ""})`);
         } else {
-          toast.info("No matches found yet — will keep searching");
+          toast.info("No matches yet — outward search dispatched");
         }
         onCreated();
-      }).catch(() => {
-        onCreated();
-      });
+      }).catch(() => onCreated());
 
       setForm({ dealer_name: "", buyer_name: "", make: "", model: "", engine: "", colour: "", year_min: "", year_max: "", km_max: "", price_max: "", urgency: "normal", notes: "" });
+      setExpanded(false);
     } catch (err: any) {
       toast.error(err.message || "Failed to create demand");
     }
@@ -124,96 +110,183 @@ function DemandForm({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Plus className="h-4 w-4" /> New Demand
-        </CardTitle>
+    <Card className="border-primary/20">
+      <CardHeader className="pb-2 pt-4 px-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Plus className="h-4 w-4 text-primary" /> New Demand
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)} className="text-xs h-7">
+            {expanded ? "Collapse" : "Expand"}
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div>
-            <Label className="text-xs">Dealer *</Label>
-            <Input value={form.dealer_name} onChange={e => setForm(f => ({ ...f, dealer_name: e.target.value }))} placeholder="Westside Wholesale" className="h-8 text-sm" />
+      <CardContent className="px-4 pb-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {/* Core fields — always visible */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs text-muted-foreground">Dealer *</Label>
+              <Input value={form.dealer_name} onChange={e => setForm(f => ({ ...f, dealer_name: e.target.value }))} placeholder="Westside Wholesale" className="h-9" />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Buyer</Label>
+              <Input value={form.buyer_name} onChange={e => setForm(f => ({ ...f, buyer_name: e.target.value }))} placeholder="Mike" className="h-9" />
+            </div>
           </div>
-          <div>
-            <Label className="text-xs">Buyer</Label>
-            <Input value={form.buyer_name} onChange={e => setForm(f => ({ ...f, buyer_name: e.target.value }))} placeholder="Mike" className="h-8 text-sm" />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs text-muted-foreground">Make *</Label>
+              <Input value={form.make} onChange={e => setForm(f => ({ ...f, make: e.target.value }))} placeholder="Toyota" className="h-9" />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Model *</Label>
+              <Input value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} placeholder="LandCruiser" className="h-9" />
+            </div>
           </div>
-          <div>
-            <Label className="text-xs">Make *</Label>
-            <Input value={form.make} onChange={e => setForm(f => ({ ...f, make: e.target.value }))} placeholder="Toyota" className="h-8 text-sm" />
-          </div>
-          <div>
-            <Label className="text-xs">Model *</Label>
-            <Input value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} placeholder="LandCruiser" className="h-8 text-sm" />
-          </div>
-          <div>
-            <Label className="text-xs">Engine</Label>
-            <Input value={form.engine} onChange={e => setForm(f => ({ ...f, engine: e.target.value }))} placeholder="4 cylinder" className="h-8 text-sm" />
-          </div>
-          <div>
-            <Label className="text-xs">Colour</Label>
-            <Input value={form.colour} onChange={e => setForm(f => ({ ...f, colour: e.target.value }))} placeholder="White" className="h-8 text-sm" />
-          </div>
-          <div>
-            <Label className="text-xs">Year Min</Label>
-            <Input type="number" value={form.year_min} onChange={e => setForm(f => ({ ...f, year_min: e.target.value }))} placeholder="2018" className="h-8 text-sm" />
-          </div>
-          <div>
-            <Label className="text-xs">Year Max</Label>
-            <Input type="number" value={form.year_max} onChange={e => setForm(f => ({ ...f, year_max: e.target.value }))} placeholder="2024" className="h-8 text-sm" />
-          </div>
-          <div>
-            <Label className="text-xs">KM Max</Label>
-            <Input type="number" value={form.km_max} onChange={e => setForm(f => ({ ...f, km_max: e.target.value }))} placeholder="80000" className="h-8 text-sm" />
-          </div>
-          <div>
-            <Label className="text-xs">Price Max</Label>
-            <Input type="number" value={form.price_max} onChange={e => setForm(f => ({ ...f, price_max: e.target.value }))} placeholder="75000" className="h-8 text-sm" />
-          </div>
-          <div>
-            <Label className="text-xs">Urgency</Label>
-            <Select value={form.urgency} onValueChange={v => setForm(f => ({ ...f, urgency: v }))}>
-              <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="normal">Normal</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="urgent">🔥 Urgent</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Notes</Label>
-            <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="4WD only, no salvage" className="h-8 text-sm" />
-          </div>
-          <div className="col-span-2 md:col-span-4 flex justify-end">
-            <Button type="submit" disabled={submitting} size="sm">
-              <Search className="h-4 w-4 mr-1" />
-              {submitting ? "Searching..." : "Create & Search"}
-            </Button>
-          </div>
+
+          {/* Expanded fields */}
+          {expanded && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Engine</Label>
+                  <Input value={form.engine} onChange={e => setForm(f => ({ ...f, engine: e.target.value }))} placeholder="4 cylinder" className="h-9" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Colour</Label>
+                  <Input value={form.colour} onChange={e => setForm(f => ({ ...f, colour: e.target.value }))} placeholder="White" className="h-9" />
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Year Min</Label>
+                  <Input type="number" value={form.year_min} onChange={e => setForm(f => ({ ...f, year_min: e.target.value }))} placeholder="2018" className="h-9" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Year Max</Label>
+                  <Input type="number" value={form.year_max} onChange={e => setForm(f => ({ ...f, year_max: e.target.value }))} placeholder="2024" className="h-9" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">KM Max</Label>
+                  <Input type="number" value={form.km_max} onChange={e => setForm(f => ({ ...f, km_max: e.target.value }))} placeholder="80000" className="h-9" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Price Max</Label>
+                  <Input type="number" value={form.price_max} onChange={e => setForm(f => ({ ...f, price_max: e.target.value }))} placeholder="75000" className="h-9" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Urgency</Label>
+                  <Select value={form.urgency} onValueChange={v => setForm(f => ({ ...f, urgency: v }))}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="urgent">🔥 Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Notes</Label>
+                  <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="4WD only, no salvage" className="h-9" />
+                </div>
+              </div>
+            </>
+          )}
+
+          <Button type="submit" disabled={submitting} className="w-full h-10">
+            <Search className="h-4 w-4 mr-2" />
+            {submitting ? "Searching internal + outward…" : "Create & Search"}
+          </Button>
         </form>
       </CardContent>
     </Card>
   );
 }
 
-// ── Urgency Badge ──
+// ── Badges ──
 
 function urgencyBadge(u: string) {
-  if (u === "urgent") return <Badge variant="destructive" className="text-xs">🔥 Urgent</Badge>;
+  if (u === "urgent") return <Badge variant="destructive" className="text-xs"><Flame className="h-3 w-3 mr-0.5" />Urgent</Badge>;
   if (u === "high") return <Badge className="bg-amber-600 text-xs">High</Badge>;
   if (u === "low") return <Badge variant="secondary" className="text-xs">Low</Badge>;
   return <Badge variant="outline" className="text-xs">Normal</Badge>;
 }
 
-function statusBadge(s: string) {
-  if (s === "open") return <Badge variant="outline" className="text-xs border-emerald-500 text-emerald-400">Open</Badge>;
-  if (s === "filled") return <Badge className="bg-emerald-600 text-xs">Filled</Badge>;
-  if (s === "closed") return <Badge variant="secondary" className="text-xs">Closed</Badge>;
-  return <Badge variant="outline" className="text-xs">{s}</Badge>;
+function sourceBadge(s: string) {
+  const colors: Record<string, string> = {
+    internal: "bg-primary/20 text-primary",
+    outward_search: "bg-blue-500/20 text-blue-400",
+    openclaw: "bg-purple-500/20 text-purple-400",
+    carsales: "bg-emerald-500/20 text-emerald-400",
+    autotrader: "bg-amber-500/20 text-amber-400",
+  };
+  return <Badge variant="outline" className={`text-xs ${colors[s] || ""}`}>{s}</Badge>;
+}
+
+// ── Opportunity Card (mobile-first) ──
+
+function OpportunityCard({ opp, onAction }: { opp: DemandOpportunity; onAction: (id: string, status: string) => void }) {
+  return (
+    <Card className={`${opp.score && opp.score >= 70 ? "border-emerald-500/30 bg-emerald-500/5" : "border-border"}`}>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between mb-2">
+          <div>
+            <div className="font-bold text-sm">
+              {opp.year || "?"} {opp.make} {opp.model}
+            </div>
+            {opp.colour && <span className="text-xs text-muted-foreground">{opp.colour}</span>}
+          </div>
+          <div className="text-right">
+            <div className={`text-lg font-bold ${opp.score && opp.score >= 80 ? "text-emerald-400" : opp.score && opp.score >= 60 ? "text-foreground" : "text-muted-foreground"}`}>
+              {opp.score || 0}
+            </div>
+            <div className="text-xs text-muted-foreground">score</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
+          <div className="flex items-center gap-1 text-muted-foreground">
+            <Gauge className="h-3 w-3" />
+            {opp.km ? `${opp.km.toLocaleString()} km` : "—"}
+          </div>
+          <div className="flex items-center gap-1 text-muted-foreground">
+            <DollarSign className="h-3 w-3" />
+            {opp.price ? `$${opp.price.toLocaleString()}` : "—"}
+          </div>
+          <div className="flex items-center gap-1 text-muted-foreground">
+            <MapPin className="h-3 w-3" />
+            {opp.location || "—"}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          {sourceBadge(opp.source)}
+          <div className="flex gap-1">
+            {opp.listing_url && (
+              <Button variant="outline" size="sm" asChild className="h-7 px-2 text-xs">
+                <a href={opp.listing_url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-3 w-3 mr-1" /> View
+                </a>
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => onAction(opp.id, "sent")} className="h-7 px-2 text-xs">
+              <Send className="h-3 w-3 mr-1" /> Send
+            </Button>
+            <Button variant="default" size="sm" onClick={() => onAction(opp.id, "bought")} className="h-7 px-2 text-xs">
+              <ShoppingCart className="h-3 w-3 mr-1" /> Buy
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => onAction(opp.id, "ignored")} className="h-7 px-1 text-xs text-muted-foreground">
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 // ── Main Page ──
@@ -224,6 +297,7 @@ export default function DealerDemandDeskPage() {
   const [selectedDemand, setSelectedDemand] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState<string | null>(null);
+  const [view, setView] = useState<"cards" | "table">("cards");
 
   async function loadDemands() {
     const { data } = await supabase
@@ -241,6 +315,7 @@ export default function DealerDemandDeskPage() {
       .from("demand_opportunities")
       .select("*")
       .eq("demand_id", demandId)
+      .neq("status", "ignored")
       .order("score", { ascending: false })
       .limit(100);
     setOpps((data || []) as unknown as DemandOpportunity[]);
@@ -264,164 +339,171 @@ export default function DealerDemandDeskPage() {
   async function updateOppStatus(oppId: string, status: string) {
     await supabase.from("demand_opportunities").update({ status } as any).eq("id", oppId);
     if (selectedDemand) await loadOpps(selectedDemand);
+    if (status === "bought") toast.success("Marked as bought ✓");
+    if (status === "sent") toast.success("Sent to dealer ✓");
   }
 
   async function closeDemand(demandId: string) {
     await supabase.from("dealer_demands").update({ status: "closed", updated_at: new Date().toISOString() } as any).eq("id", demandId);
     await loadDemands();
+    toast.success("Demand closed");
   }
 
   useEffect(() => { loadDemands(); }, []);
 
+  const selectedDemandObj = demands.find(d => d.id === selectedDemand);
+
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-[1600px] mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Dealer Demand Desk</h1>
-        <p className="text-sm text-muted-foreground">Capture dealer requests → auto-search inventory → find matches → close deals</p>
+    <div className="p-3 md:p-6 space-y-4 max-w-[1400px] mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-foreground flex items-center gap-2">
+            <Car className="h-5 w-5 text-primary" /> Dealer Demand Desk
+          </h1>
+          <p className="text-xs md:text-sm text-muted-foreground">Enter request → auto-search internal + outward → surface opportunities</p>
+        </div>
       </div>
 
+      {/* Demand Form */}
       <DemandForm onCreated={loadDemands} />
 
-      {/* Active Demands */}
+      {/* Demands List */}
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Active Demands</CardTitle>
+        <CardHeader className="pb-2 px-4 pt-4">
+          <CardTitle className="text-base">Active Demands ({demands.filter(d => d.status === "open").length})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
             <div className="text-center py-8 text-muted-foreground">Loading…</div>
           ) : demands.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No demands yet. Create one above.</div>
+            <div className="text-center py-8 text-muted-foreground">No demands yet.</div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30">
-                  <TableHead>Dealer</TableHead>
-                  <TableHead>Vehicle</TableHead>
-                  <TableHead>Spec</TableHead>
-                  <TableHead>Budget</TableHead>
-                  <TableHead>Urgency</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Matches</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {demands.map(d => (
-                  <TableRow
-                    key={d.id}
-                    className={`cursor-pointer ${selectedDemand === d.id ? "bg-primary/10" : ""}`}
-                    onClick={() => loadOpps(d.id)}
-                  >
-                    <TableCell>
-                      <div className="font-medium text-sm">{d.dealer_name}</div>
-                      {d.buyer_name && <div className="text-xs text-muted-foreground">{d.buyer_name}</div>}
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{d.make} {d.model}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {[d.engine, d.colour, d.year_min && d.year_max ? `${d.year_min}–${d.year_max}` : d.year_min || d.year_max, d.km_max ? `≤${(d.km_max / 1000).toFixed(0)}k km` : ""].filter(Boolean).join(" · ")}
-                    </TableCell>
-                    <TableCell>{d.price_max ? `$${d.price_max.toLocaleString()}` : "—"}</TableCell>
-                    <TableCell>{urgencyBadge(d.urgency)}</TableCell>
-                    <TableCell>{statusBadge(d.status)}</TableCell>
-                    <TableCell>
-                      <span className={d.matches_found > 0 ? "text-emerald-400 font-bold" : "text-muted-foreground"}>
-                        {d.matches_found}
-                      </span>
-                    </TableCell>
-                    <TableCell onClick={e => e.stopPropagation()}>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => reSearch(d.id)} disabled={searching === d.id} className="h-7 px-2">
-                          <RefreshCw className={`h-3 w-3 ${searching === d.id ? "animate-spin" : ""}`} />
-                        </Button>
-                        {d.status === "open" && (
-                          <Button variant="ghost" size="sm" onClick={() => closeDemand(d.id)} className="h-7 px-2">
-                            <CheckCircle className="h-3 w-3" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Opportunity Results */}
-      {selectedDemand && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">
-              Matches for: {demands.find(d => d.id === selectedDemand)?.make} {demands.find(d => d.id === selectedDemand)?.model}
-              <span className="text-sm font-normal text-muted-foreground ml-2">
-                ({demands.find(d => d.id === selectedDemand)?.dealer_name})
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {opps.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">No matches found. Try re-searching or broadening criteria.</div>
-            ) : (
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/30">
-                    <TableHead>Score</TableHead>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead>KM</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
+                  <TableRow className="bg-muted/30 text-xs">
+                    <TableHead className="py-2">Dealer</TableHead>
+                    <TableHead className="py-2">Vehicle</TableHead>
+                    <TableHead className="py-2 hidden md:table-cell">Spec</TableHead>
+                    <TableHead className="py-2 hidden md:table-cell">Budget</TableHead>
+                    <TableHead className="py-2">Urgency</TableHead>
+                    <TableHead className="py-2">Matches</TableHead>
+                    <TableHead className="py-2 w-[80px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {opps.map(o => (
-                    <TableRow key={o.id} className={o.score && o.score >= 70 ? "bg-emerald-500/5" : ""}>
-                      <TableCell>
-                        <span className={`font-bold ${o.score && o.score >= 80 ? "text-emerald-400" : o.score && o.score >= 60 ? "text-foreground" : "text-muted-foreground"}`}>
-                          {o.score || 0}
+                  {demands.map(d => (
+                    <TableRow
+                      key={d.id}
+                      className={`cursor-pointer text-xs ${selectedDemand === d.id ? "bg-primary/10" : ""} ${d.status !== "open" ? "opacity-50" : ""}`}
+                      onClick={() => loadOpps(d.id)}
+                    >
+                      <TableCell className="py-2">
+                        <div className="font-medium">{d.dealer_name}</div>
+                        {d.buyer_name && <div className="text-muted-foreground">{d.buyer_name}</div>}
+                      </TableCell>
+                      <TableCell className="py-2 font-mono">{d.make} {d.model}</TableCell>
+                      <TableCell className="py-2 hidden md:table-cell text-muted-foreground">
+                        {[d.engine, d.colour, d.km_max ? `≤${Math.round(d.km_max / 1000)}k km` : ""].filter(Boolean).join(" · ") || "—"}
+                      </TableCell>
+                      <TableCell className="py-2 hidden md:table-cell">
+                        {d.price_max ? `$${d.price_max.toLocaleString()}` : "—"}
+                      </TableCell>
+                      <TableCell className="py-2">{urgencyBadge(d.urgency)}</TableCell>
+                      <TableCell className="py-2">
+                        <span className={d.matches_found > 0 ? "text-emerald-400 font-bold" : "text-muted-foreground"}>
+                          {d.matches_found}
                         </span>
                       </TableCell>
-                      <TableCell>
-                        <div className="font-medium text-sm">{o.year || "?"} {o.make} {o.model}</div>
-                        {o.colour && <div className="text-xs text-muted-foreground">{o.colour}</div>}
-                      </TableCell>
-                      <TableCell className="text-sm">{o.km ? `${o.km.toLocaleString()} km` : "—"}</TableCell>
-                      <TableCell className="font-mono text-sm">{o.price ? `$${o.price.toLocaleString()}` : "—"}</TableCell>
-                      <TableCell className="text-sm">{o.location || "—"}</TableCell>
-                      <TableCell><Badge variant="outline" className="text-xs">{o.source}</Badge></TableCell>
-                      <TableCell><Badge variant={o.status === "sent" ? "default" : "outline"} className="text-xs">{o.status}</Badge></TableCell>
-                      <TableCell>
+                      <TableCell className="py-2" onClick={e => e.stopPropagation()}>
                         <div className="flex gap-1">
-                          {o.listing_url && (
-                            <Button variant="ghost" size="sm" asChild className="h-7 px-2">
-                              <a href={o.listing_url} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3 w-3" /></a>
+                          <Button variant="ghost" size="sm" onClick={() => reSearch(d.id)} disabled={searching === d.id} className="h-6 w-6 p-0">
+                            <RefreshCw className={`h-3 w-3 ${searching === d.id ? "animate-spin" : ""}`} />
+                          </Button>
+                          {d.status === "open" && (
+                            <Button variant="ghost" size="sm" onClick={() => closeDemand(d.id)} className="h-6 w-6 p-0">
+                              <CheckCircle className="h-3 w-3" />
                             </Button>
                           )}
-                          <Button variant="ghost" size="sm" onClick={() => updateOppStatus(o.id, "called")} className="h-7 px-2" title="Mark as called">
-                            <Phone className="h-3 w-3" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => updateOppStatus(o.id, "sent")} className="h-7 px-2" title="Send to dealer">
-                            <Send className="h-3 w-3" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => updateOppStatus(o.id, "bought")} className="h-7 px-2 text-emerald-400" title="Mark as bought">
-                            <ShoppingCart className="h-3 w-3" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => updateOppStatus(o.id, "ignored")} className="h-7 px-2 text-muted-foreground" title="Ignore">
-                            <X className="h-3 w-3" />
-                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Opportunities */}
+      {selectedDemand && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-bold">
+              {selectedDemandObj?.make} {selectedDemandObj?.model}
+              <span className="font-normal text-muted-foreground ml-2 text-sm">
+                — {selectedDemandObj?.dealer_name}
+                {selectedDemandObj?.buyer_name ? ` (${selectedDemandObj.buyer_name})` : ""}
+              </span>
+            </h2>
+            <div className="flex gap-1">
+              <Button variant={view === "cards" ? "default" : "outline"} size="sm" onClick={() => setView("cards")} className="h-7 text-xs">Cards</Button>
+              <Button variant={view === "table" ? "default" : "outline"} size="sm" onClick={() => setView("table")} className="h-7 text-xs">Table</Button>
+            </div>
+          </div>
+
+          {opps.length === 0 ? (
+            <Card><CardContent className="text-center py-8 text-muted-foreground">No matches found. Try re-searching or broadening criteria.</CardContent></Card>
+          ) : view === "cards" ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {opps.map(o => (
+                <OpportunityCard key={o.id} opp={o} onAction={updateOppStatus} />
+              ))}
+            </div>
+          ) : (
+            <Card className="overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30 text-xs">
+                    <TableHead className="py-2">Score</TableHead>
+                    <TableHead className="py-2">Vehicle</TableHead>
+                    <TableHead className="py-2">KM</TableHead>
+                    <TableHead className="py-2">Price</TableHead>
+                    <TableHead className="py-2">Location</TableHead>
+                    <TableHead className="py-2">Source</TableHead>
+                    <TableHead className="py-2">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {opps.map(o => (
+                    <TableRow key={o.id} className="text-xs">
+                      <TableCell className={`py-2 font-bold ${o.score && o.score >= 80 ? "text-emerald-400" : ""}`}>{o.score || 0}</TableCell>
+                      <TableCell className="py-2">{o.year || "?"} {o.make} {o.model}</TableCell>
+                      <TableCell className="py-2">{o.km ? o.km.toLocaleString() : "—"}</TableCell>
+                      <TableCell className="py-2 font-mono">{o.price ? `$${o.price.toLocaleString()}` : "—"}</TableCell>
+                      <TableCell className="py-2">{o.location || "—"}</TableCell>
+                      <TableCell className="py-2">{sourceBadge(o.source)}</TableCell>
+                      <TableCell className="py-2">
+                        <div className="flex gap-1">
+                          {o.listing_url && (
+                            <Button variant="ghost" size="sm" asChild className="h-6 w-6 p-0">
+                              <a href={o.listing_url} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3 w-3" /></a>
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" onClick={() => updateOppStatus(o.id, "sent")} className="h-6 w-6 p-0"><Send className="h-3 w-3" /></Button>
+                          <Button variant="ghost" size="sm" onClick={() => updateOppStatus(o.id, "bought")} className="h-6 w-6 p-0 text-emerald-400"><ShoppingCart className="h-3 w-3" /></Button>
+                          <Button variant="ghost" size="sm" onClick={() => updateOppStatus(o.id, "ignored")} className="h-6 w-6 p-0 text-muted-foreground"><X className="h-3 w-3" /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          )}
+        </div>
       )}
     </div>
   );
