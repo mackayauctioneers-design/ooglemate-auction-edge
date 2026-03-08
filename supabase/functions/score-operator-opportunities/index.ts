@@ -575,7 +575,7 @@ Deno.serve(async (req) => {
       if (!match) { results.discarded++; continue; }
       results.scored++;
 
-      const { best, alts, tier } = match;
+      const { best, alts, tier, listing_age_score, listing_age_reason } = match;
       const isRetail = listing.source_type === "retail";
 
       // Motivation signal
