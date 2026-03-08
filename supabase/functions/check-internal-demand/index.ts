@@ -175,20 +175,85 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── OpenClaw fallback if < 3 internal matches ──
+    // ── Outward search fallback if < 3 internal matches ──
+    let outwardResults = 0;
     let openclawResults = 0;
+
     if (inserted < 3) {
+      console.log(`[check-demand] < 3 internal matches (${inserted}), triggering outward recon`);
+
+      // Phase A: Trigger run-outward-search-v2 (internal DB + Lindy discovery)
+      const sbUrl = Deno.env.get("SUPABASE_URL")!;
+      const sbKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      try {
+        const instruction = [
+          demand.year_min || demand.year_max ? `${demand.year_min || ""}${demand.year_min && demand.year_max ? "-" : ""}${demand.year_max || ""}` : "",
+          demand.make,
+          demand.model,
+          demand.engine,
+          demand.colour,
+          demand.km_max ? `under ${demand.km_max}km` : "",
+          demand.price_max ? `under $${demand.price_max}` : "",
+          "Australia",
+        ].filter(Boolean).join(" ");
+
+        console.log(`[check-demand] Outward search instruction: "${instruction}"`);
+
+        const outwardResp = await fetch(`${sbUrl}/functions/v1/run-outward-search-v2`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${sbKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            instruction,
+            full_market_scan: true,
+            is_operator: true,
+          }),
+        });
+
+        if (outwardResp.ok) {
+          const outwardData = await outwardResp.json();
+          const results = outwardData.results || [];
+          console.log(`[check-demand] Outward search returned ${results.length} results`);
+
+          const outwardOpps = results.map((r: any) => ({
+            demand_id,
+            source: r.source || "outward_search",
+            make: r.make || demand.make,
+            model: r.model || demand.model,
+            year: r.year,
+            km: r.km || r.odometer,
+            price: r.price || r.asking_price,
+            colour: r.colour || r.color || null,
+            location: r.location || r.state || null,
+            listing_url: r.listing_url || r.url || null,
+            score: r.score || 55,
+            status: "new",
+          })).filter((o: any) => o.listing_url);
+
+          if (outwardOpps.length > 0) {
+            const { error: outErr } = await sb
+              .from("demand_opportunities")
+              .upsert(outwardOpps, { onConflict: "demand_id,listing_url", ignoreDuplicates: true });
+            if (!outErr) outwardResults = outwardOpps.length;
+          }
+        } else {
+          const errText = await outwardResp.text();
+          console.warn(`[check-demand] Outward search error ${outwardResp.status}: ${errText}`);
+        }
+      } catch (e) {
+        console.warn("[check-demand] Outward search call failed:", e);
+      }
+
+      // Phase B: OpenClaw recon (supplementary)
       const openclawKey = Deno.env.get("OPENCLAW_API_KEY");
-      if (openclawKey) {
-        console.log("[check-demand] < 3 internal matches, triggering OpenClaw recon");
+      if (openclawKey && (inserted + outwardResults) < 3) {
+        console.log("[check-demand] Still < 3 matches, triggering OpenClaw recon");
         try {
           const searchQuery = [
-            demand.make,
-            demand.model,
-            demand.engine,
-            demand.colour,
-            demand.km_max ? `under ${demand.km_max}km` : "",
-            "Australia",
+            demand.make, demand.model, demand.engine, demand.colour,
+            demand.km_max ? `under ${demand.km_max}km` : "", "Australia",
           ].filter(Boolean).join(" ");
 
           const resp = await fetch("https://api.openclaw.ai/run", {
@@ -215,15 +280,14 @@ Deno.serve(async (req) => {
               colour: cl.colour || cl.color,
               location: cl.location || cl.state,
               listing_url: cl.url || cl.listing_url,
-              score: 60, // OpenClaw results get baseline score
+              score: 60,
               status: "new",
-            }));
+            })).filter((o: any) => o.listing_url);
 
             if (clawOpps.length > 0) {
               const { error: clawErr } = await sb
                 .from("demand_opportunities")
                 .upsert(clawOpps, { onConflict: "demand_id,listing_url", ignoreDuplicates: true });
-
               if (!clawErr) openclawResults = clawOpps.length;
             }
             console.log(`[check-demand] OpenClaw returned ${clawOpps.length} results`);
@@ -236,6 +300,14 @@ Deno.serve(async (req) => {
         }
       }
     }
+
+    // Update demand with total match count
+    const totalMatches = inserted + outwardResults + openclawResults;
+    await sb.from("dealer_demands").update({
+      matches_found: totalMatches,
+      last_searched_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", demand_id);
 
     return new Response(JSON.stringify({
       success: true,
