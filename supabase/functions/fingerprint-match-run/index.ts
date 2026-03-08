@@ -394,9 +394,14 @@ Deno.serve(async (req) => {
       baseScore += driveResult.score;
       if (driveResult.score > 0) reasons.drivetrain = driveResult.reason;
 
+      // ── Listing age score ──
+      const ageResult = scoreListingAge(listing.first_seen_at);
+      baseScore += ageResult.score;
+      if (ageResult.score > 0) reasons.listing_age = ageResult.reason;
+
       // ── Apply time-decay multiplier ──
       const decayMultiplier = computeDecayMultiplier(fp.avg_decay_factor);
-      let finalScore = Math.round(baseScore * decayMultiplier);
+      let finalScore = Math.min(Math.round(baseScore * decayMultiplier), 100);
 
       // ── Watch-only fingerprints: cap score and flag ──
       const isWatch = fp.fingerprint_status === 'watch';
