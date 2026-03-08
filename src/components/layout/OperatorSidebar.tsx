@@ -25,6 +25,7 @@ import {
   Building2,
   Users,
   Sparkles,
+  Car,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -66,6 +67,7 @@ const operatorSections: NavSection[] = [
   {
     title: 'Trading',
     items: [
+      { path: '/operator/demand-desk', label: 'Demand Desk', icon: Car },
       { path: '/operator/morning-brief', label: "Tomorrow's Targets", icon: Target },
       { path: '/operator/trading-desk', label: 'Trading Desk', icon: DollarSign },
       { path: '/today', label: 'Today', icon: Calendar },
