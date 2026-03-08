@@ -669,7 +669,7 @@ Deno.serve(async (req) => {
         status: "new",
       };
 
-      const compositeScore = tierScore(tier) + Math.min(best.expected_margin / 100, 50);
+      const compositeScore = tierScore(tier) + Math.min(best.expected_margin / 100, 50) + (listing_age_score || 0);
       scoredCandidates.push({
         row,
         score: compositeScore,
