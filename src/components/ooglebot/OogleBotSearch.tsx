@@ -215,12 +215,22 @@ const REASSURANCE_MESSAGES = [
 const OUTWARD_TIMEOUT_MS = 5 * 60 * 1000;
 const TERMINAL_STATUSES = new Set(["complete", "failed", "timeout"]);
 
+/** Detect which LC series a result belongs to (for series gate) */
+function detectSeriesFromText(text: string): string | null {
+  const t = text.toUpperCase();
+  if (/\b7[0689]\b/.test(t) || /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]/.test(t) || /\bWORKMATE\b/.test(t)) return "LC70";
+  if (/\b300\b/.test(t) || /GR[\-_\s]?SPORT|GR[\-_\s]?S\b|LC300/.test(t)) return "LC300";
+  if (/\b200\b/.test(t) || /LC200/.test(t)) return "LC200";
+  return null;
+}
+
 /** Convert all result types into UnifiedResult[] */
 function mergeAllResults(
   internalResults: InternalMatch[],
   scoredResults: OogleBotResult[],
   outwardResults: OutwardResult[],
   badgeFilter?: string | null,
+  intentSeries?: string | null,
 ): UnifiedResult[] {
   const all: UnifiedResult[] = [];
 
@@ -232,6 +242,14 @@ function mergeAllResults(
     if (!variant) return false;
     const vNorm = variant.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
     return vNorm === badgeUpper || badgeRe.test(variant);
+  };
+
+  // Series gate helper — reject cross-generation results
+  const matchesSeries = (r: { title?: string; variant?: string | null; id?: string; url?: string | null }): boolean => {
+    if (!intentSeries) return true;
+    const text = [r.title, r.variant, r.id, r.url].filter(Boolean).join(" ");
+    const ls = detectSeriesFromText(text);
+    return ls === null || ls === intentSeries;
   };
 
   // Internal results
