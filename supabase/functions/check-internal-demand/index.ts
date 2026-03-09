@@ -178,8 +178,9 @@ Deno.serve(async (req) => {
       query = query.in("source", Array.from(AUCTION_SOURCES));
     }
 
+    // Pull a wide candidate pool — filtering happens post-query
     const { data: listings, error: listErr } = await query
-      .order("asking_price", { ascending: true, nullsFirst: true }).limit(100);
+      .order("asking_price", { ascending: true, nullsFirst: true }).limit(500);
 
     if (listErr) {
       console.error("[check-demand] Search error:", listErr);
@@ -188,19 +189,23 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Partition: auction first
+    // Partition by source priority: auction (3) → dealer (2) → classified (1)
     const auctionListings: any[] = [];
-    const otherListings: any[] = [];
+    const dealerListings: any[] = [];
+    const classifiedListings: any[] = [];
     for (const l of listings || []) {
       if (isAuctionSource(l.source, l.source_class, l.auction_house)) {
         auctionListings.push(l);
+      } else if (DEALER_SITE_SOURCES.has((l.source || "").toLowerCase())) {
+        dealerListings.push(l);
       } else {
-        otherListings.push(l);
+        classifiedListings.push(l);
       }
     }
-    const sorted = [...auctionListings, ...otherListings];
+    // Source-priority ordering: auctions first, then dealers, then classifieds
+    const sorted = [...auctionListings, ...dealerListings, ...classifiedListings];
 
-    console.log(`[check-demand] Found ${sorted.length} internal (${auctionListings.length} auction, ${otherListings.length} other)`);
+    console.log(`[check-demand] Candidates pulled: ${sorted.length} | Auction: ${auctionListings.length} | Dealer: ${dealerListings.length} | Classified: ${classifiedListings.length}`);
 
     // ── Post-query filters (series, variant, body_type, keywords) ──
     const filtered = sorted.filter(l => {
@@ -217,7 +222,6 @@ Deno.serve(async (req) => {
           modelStr.includes("landcruiser");
 
         if (is70Series) {
-          // Accept if listing mentions "70" or the specific series number anywhere
           const found70 = v.includes("70") || v.includes(series) ||
             modelStr.includes("70") || modelStr.includes(series) ||
             listingUrl.includes("70-series") || listingUrl.includes(`-${series}`) ||
@@ -249,15 +253,20 @@ Deno.serve(async (req) => {
       return true;
     });
 
-    console.log(`[check-demand] After filters: ${filtered.length} (from ${sorted.length})`);
+    // Count filtered by source type for diagnostics
+    const filteredAuction = filtered.filter(l => isAuctionSource(l.source, l.source_class, l.auction_house)).length;
+    const filteredDealer = filtered.filter(l => DEALER_SITE_SOURCES.has((l.source || "").toLowerCase())).length;
+    const filteredClassified = filtered.length - filteredAuction - filteredDealer;
 
-    // ── Score & build opportunities ──
-    const opps: any[] = [];
+    console.log(`[check-demand] After filters: ${filtered.length} | Auction: ${filteredAuction} | Dealer: ${filteredDealer} | Classified: ${filteredClassified}`);
+
+    // ── Score, rank, and cap at top 50 ──
+    const allScored: any[] = [];
     for (const l of filtered) {
       const { score, marginEstimate } = scoreListing(l, demand, patternMargin);
       const price = l.asking_price ? Math.round(Number(l.asking_price)) : null;
 
-      opps.push({
+      allScored.push({
         demand_id,
         source: l.source || "internal",
         make: l.make, model: l.model, year: l.year, km: l.km,
@@ -268,6 +277,12 @@ Deno.serve(async (req) => {
         score, status: "new",
       });
     }
+
+    // Sort by score descending, then take top 50
+    allScored.sort((a, b) => b.score - a.score);
+    const opps = allScored.slice(0, 50);
+
+    console.log(`[check-demand] Scored: ${allScored.length} | Returning top: ${opps.length}`);
 
     // Insert
     let inserted = 0;
@@ -289,7 +304,7 @@ Deno.serve(async (req) => {
     const slackWebhook = Deno.env.get("SLACK_WEBHOOK_URL");
     // Only alert on listings with a known price — priceless auction lots are stored but not alerted
     const topMatches = opps.filter(o => o.score >= 70 && o.price != null && o.price > 0).slice(0, 5);
-    const auctionCount = filtered.filter(l => isAuctionSource(l.source, l.source_class, l.auction_house)).length;
+    const auctionCount = filteredAuction;
 
     if (slackWebhook && topMatches.length > 0) {
       const lines = topMatches.map(m => {
