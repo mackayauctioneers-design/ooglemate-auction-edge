@@ -150,16 +150,15 @@ Deno.serve(async (req) => {
     const patternMargin = marginMap.get(`${demand.make}|${demand.model}`);
 
     // ══════════════════════════════════════════════════════
-    // PHASE 1: Internal DB — structured filters
+    // PHASE 1: Unified market search (vehicle_listings + retail_listings)
     // ══════════════════════════════════════════════════════
 
-    // 14-day recency gate — prevents stale/sold auction lots from surfacing
+    // 14-day recency gate — prevents stale/sold lots from surfacing
     const recencyCutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
     let query = sb
-      .from("vehicle_listings")
-      .select("id, listing_id, make, model, year, km, asking_price, state, variant_raw, listing_url, source, source_class, auction_house, transmission, fuel, drivetrain, last_seen_at")
-      .in("status", ["listed", "catalogue"])
+      .from("market_listings")
+      .select("id, make, model, year, km, asking_price, location, variant_raw, listing_url, source, source_class, auction_house, transmission, fuel, drivetrain, last_seen_at, listing_type")
       .gte("last_seen_at", recencyCutoff)
       .ilike("make", `%${demand.make}%`)
       .ilike("model", `%${demand.model}%`);
@@ -192,20 +191,20 @@ Deno.serve(async (req) => {
     // Partition by source priority: auction (3) → dealer (2) → classified (1)
     const auctionListings: any[] = [];
     const dealerListings: any[] = [];
-    const classifiedListings: any[] = [];
+    const retailListings: any[] = [];
     for (const l of listings || []) {
       if (isAuctionSource(l.source, l.source_class, l.auction_house)) {
         auctionListings.push(l);
-      } else if (DEALER_SITE_SOURCES.has((l.source || "").toLowerCase())) {
+      } else if (l.listing_type === 'inventory') {
         dealerListings.push(l);
       } else {
-        classifiedListings.push(l);
+        retailListings.push(l);
       }
     }
-    // Source-priority ordering: auctions first, then dealers, then classifieds
-    const sorted = [...auctionListings, ...dealerListings, ...classifiedListings];
+    // Source-priority ordering: auctions first, then dealer inventory, then retail classifieds
+    const sorted = [...auctionListings, ...dealerListings, ...retailListings];
 
-    console.log(`[check-demand] Candidates pulled: ${sorted.length} | Auction: ${auctionListings.length} | Dealer: ${dealerListings.length} | Classified: ${classifiedListings.length}`);
+    console.log(`[check-demand] Candidates pulled: ${sorted.length} | Auction: ${auctionListings.length} | Inventory: ${dealerListings.length} | Retail: ${retailListings.length}`);
 
     // ── Post-query filters (series, variant, body_type, keywords) ──
     const filtered = sorted.filter(l => {
@@ -255,10 +254,10 @@ Deno.serve(async (req) => {
 
     // Count filtered by source type for diagnostics
     const filteredAuction = filtered.filter(l => isAuctionSource(l.source, l.source_class, l.auction_house)).length;
-    const filteredDealer = filtered.filter(l => DEALER_SITE_SOURCES.has((l.source || "").toLowerCase())).length;
-    const filteredClassified = filtered.length - filteredAuction - filteredDealer;
+    const filteredInventory = filtered.filter(l => l.listing_type === 'inventory' && !isAuctionSource(l.source, l.source_class, l.auction_house)).length;
+    const filteredRetail = filtered.length - filteredAuction - filteredInventory;
 
-    console.log(`[check-demand] After filters: ${filtered.length} | Auction: ${filteredAuction} | Dealer: ${filteredDealer} | Classified: ${filteredClassified}`);
+    console.log(`[check-demand] After filters: ${filtered.length} | Auction: ${filteredAuction} | Inventory: ${filteredInventory} | Retail: ${filteredRetail}`);
 
     // ── Score, rank, and cap at top 50 ──
     const allScored: any[] = [];
@@ -270,7 +269,7 @@ Deno.serve(async (req) => {
         demand_id,
         source: l.source || "internal",
         make: l.make, model: l.model, year: l.year, km: l.km,
-        price, colour: null, location: l.state,
+        price, colour: null, location: l.location,
         listing_url: l.listing_url, listing_id: l.id,
         listing_hash: listingHash(l.listing_url, price, l.km),
         margin_estimate: marginEstimate,

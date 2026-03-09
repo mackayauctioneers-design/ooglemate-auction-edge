@@ -12276,6 +12276,28 @@ export type Database = {
         }
         Relationships: []
       }
+      market_listings: {
+        Row: {
+          asking_price: number | null
+          auction_house: string | null
+          drivetrain: string | null
+          fuel: string | null
+          id: string | null
+          km: number | null
+          last_seen_at: string | null
+          listing_type: string | null
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          model: string | null
+          source: string | null
+          source_class: string | null
+          transmission: string | null
+          variant_raw: string | null
+          year: number | null
+        }
+        Relationships: []
+      }
       missed_buy_window: {
         Row: {
           asking_price: number | null
