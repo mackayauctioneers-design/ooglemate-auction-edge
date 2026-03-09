@@ -249,38 +249,115 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── URL Validation: rotating batch to detect sold/removed listings ──
+    // Toyota's Caroogle API does NOT remove sold vehicles from its feed.
+    // We must validate listing URLs directly against toyota.com.au to detect sold stock.
+    const VAL_BATCH = 50;          // listings validated per cron run
+    const VAL_CONCURRENCY = 8;     // concurrent HEAD requests
+    const hourSlot = Math.floor(Date.now() / 3_600_000); // changes every hour
+    const totalSlots = Math.ceil(rows.length / VAL_BATCH) || 1;
+    const rotationOffset = (hourSlot % totalSlots) * VAL_BATCH;
+
+    let urlValidationChecked = 0;
+    let urlValidationDeadCount = 0;
+
+    const { data: toValidate, error: valQueryErr } = await sb
+      .from("vehicle_listings")
+      .select("id, listing_url")
+      .eq("source", SOURCE)
+      .eq("status", "listed")
+      .ilike("listing_url", "%/vehicle-listing/%")
+      .order("listing_id", { ascending: true })
+      .range(rotationOffset, rotationOffset + VAL_BATCH - 1);
+
+    if (valQueryErr) {
+      console.error(`[${CRON_NAME}] URL validation query error: ${valQueryErr.message}`);
+    } else if (toValidate && toValidate.length > 0) {
+      urlValidationChecked = toValidate.length;
+      const deadIds: string[] = [];
+
+      // Process in concurrent batches
+      for (let i = 0; i < toValidate.length; i += VAL_CONCURRENCY) {
+        const batch = toValidate.slice(i, i + VAL_CONCURRENCY);
+        const checks = await Promise.allSettled(
+          batch.map(async (listing) => {
+            if (!listing.listing_url) return null;
+            try {
+              const resp = await fetch(listing.listing_url, {
+                method: "HEAD",
+                redirect: "follow",
+                signal: AbortSignal.timeout(6000),
+              });
+              // Mark DEAD if: 404/410, or redirected away from a specific vehicle-listing path
+              const isDead =
+                resp.status === 404 ||
+                resp.status === 410 ||
+                (resp.status >= 200 && resp.status < 400 && !resp.url.includes("/vehicle-listing/"));
+              return isDead ? listing.id : null;
+            } catch (_) {
+              return null; // timeout or network error: leave as-is
+            }
+          })
+        );
+
+        for (const result of checks) {
+          if (result.status === "fulfilled" && result.value) {
+            deadIds.push(result.value);
+          }
+        }
+      }
+
+      if (deadIds.length > 0) {
+        for (let k = 0; k < deadIds.length; k += 100) {
+          const deadBatch = deadIds.slice(k, k + 100);
+          await sb
+            .from("vehicle_listings")
+            .update({
+              lifecycle_state: "DEAD",
+              status: "sold",
+              updated_at: new Date().toISOString(),
+            })
+            .in("id", deadBatch);
+        }
+        urlValidationDeadCount = deadIds.length;
+        console.log(`[${CRON_NAME}] URL validation: slot=${rotationOffset}, checked=${urlValidationChecked}, dead=${urlValidationDeadCount}`);
+      } else {
+        console.log(`[${CRON_NAME}] URL validation: slot=${rotationOffset}, checked=${urlValidationChecked}, all live`);
+      }
+    }
+
     // ── Stale sweep: mark Toyota listings NOT in this feed as sold ──
-    const currentListingIds = rows.map(r => r.listing_id as string);
+    // Uses RPC-style query: fetch all listed IDs, diff against current feed.
+    // Note: The Caroogle Toyota API often returns the same 3700+ records each run,
+    // so stale_swept may be 0 if the API itself is stale. URL validation is the primary defence.
     let staleSweepCount = 0;
 
     if (currentListingIds.length > 100) {
-      // Find toyota listings that are still "listed" but weren't in this feed
-      const { data: staleListings, error: staleErr } = await sb
+      // Fetch current listed IDs for this source in batches and diff client-side
+      const { data: allListed } = await sb
         .from("vehicle_listings")
         .select("id, listing_id")
         .eq("source", SOURCE)
         .eq("status", "listed")
-        .not("listing_id", "in", `(${currentListingIds.join(",")})`)
-        .limit(5000);
+        .limit(6000);
 
-      if (staleErr) {
-        console.error(`[${CRON_NAME}] Stale sweep query error: ${staleErr.message}`);
-      } else if (staleListings && staleListings.length > 0) {
-        const staleIds = staleListings.map(s => s.id);
-        // Batch update in groups of 500
+      if (allListed && allListed.length > 0) {
+        const currentSet = new Set(currentListingIds);
+        const staleIds = allListed
+          .filter(r => !currentSet.has(r.listing_id))
+          .map(r => r.id);
+
         for (let j = 0; j < staleIds.length; j += 500) {
           const batch = staleIds.slice(j, j + 500);
           const { error: updateErr } = await sb
             .from("vehicle_listings")
-            .update({ status: "sold", updated_at: new Date().toISOString() })
+            .update({ status: "sold", lifecycle_state: "DEAD", updated_at: new Date().toISOString() })
             .in("id", batch);
-          if (updateErr) {
-            console.error(`[${CRON_NAME}] Stale sweep update error: ${updateErr.message}`);
-          } else {
-            staleSweepCount += batch.length;
-          }
+          if (!updateErr) staleSweepCount += batch.length;
         }
-        console.log(`[${CRON_NAME}] Stale sweep: marked ${staleSweepCount} Toyota listings as sold`);
+        if (staleSweepCount > 0) {
+          console.log(`[${CRON_NAME}] Stale sweep: marked ${staleSweepCount} Toyota listings as sold`);
+        }
       }
     }
 
