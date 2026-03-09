@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { extractSeries } from "../_shared/taxonomy/derivePlatform.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,6 +15,28 @@ const AUCTION_PREMIUM = 500;
 const FREIGHT_FLAT = 800;
 const MAX_LIMIT = 50;
 const EXCLUDED_LIFECYCLE = ["STALE", "DEAD", "stale", "dead"];
+
+/** Detect which LC series (LC70/LC200/LC300) a listing belongs to, based on variant+URL signals */
+function detectListingSeriesLC(l: {
+  variant_raw?: string | null; variant_family?: string | null; variant_used?: string | null;
+  listing_id?: string; listing_url?: string | null;
+}): string | null {
+  const text = [l.variant_raw, l.variant_family, l.variant_used, l.listing_id, l.listing_url]
+    .filter(Boolean).join(" ").toUpperCase();
+  // LC70 signals: 70/76/78/79 as tokens, 70SERIES in URL, WORKMATE badge
+  if (/\b7[0689]\b/.test(text) || /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]/.test(text) || /\bWORKMATE\b/.test(text)) return "LC70";
+  // LC300 signals: 300 as token, GR-SPORT/GR-S badges unique to 300
+  if (/\b300\b/.test(text) || /GR[\-_\s]?SPORT|GR[\-_\s]?S\b|LC300/.test(text)) return "LC300";
+  // LC200 signals
+  if (/\b200\b/.test(text) || /LC200/.test(text)) return "LC200";
+  return null;
+}
+
+/** Strip LC series numbers from model string so DB query fetches all generations */
+function normalizeModelForQuery(model: string, intentSeries: string | null): string {
+  if (!intentSeries?.startsWith("LC")) return model;
+  return model.replace(/\b(7[0689]|200|300)\b/gi, "").replace(/\s+/g, " ").trim();
+}
 
 interface SearchInput {
   make: string;
