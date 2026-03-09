@@ -242,6 +242,24 @@ export default function PKFPortalPage() {
           </div>
         )}
       </div>
+
+      {/* Footer CTA */}
+      <div className="max-w-5xl mx-auto px-6 pb-8">
+        <Button
+          variant="outline"
+          size="lg"
+          className="w-full"
+          onClick={() => {
+            toast({
+              title: "Valuation requested",
+              description: "Your request has been sent. We'll be in touch shortly.",
+            });
+          }}
+        >
+          <Car className="h-4 w-4 mr-2" />
+          Send for Official Valuation
+        </Button>
+      </div>
     </div>
   );
 }
