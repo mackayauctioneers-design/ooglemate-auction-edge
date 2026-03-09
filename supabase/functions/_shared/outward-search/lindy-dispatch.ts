@@ -167,6 +167,7 @@ export async function dispatchLindyJobs(
   sourceKeys: string[],
 ): Promise<DispatchResult[]> {
   const resendApiKey = Deno.env.get("RESEND_API_KEY");
+  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "onboarding@resend.dev";
 
   if (!resendApiKey) {
     console.warn("[lindy-dispatch] RESEND_API_KEY not configured — cannot send dispatch email");
