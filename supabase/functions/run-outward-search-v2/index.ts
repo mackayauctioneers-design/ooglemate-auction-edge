@@ -14,7 +14,6 @@ import { MAX_RESULTS } from "../_shared/outward-search/types.ts";
 import { emptyIntent, parseIntentLLM, parseIntentRegex } from "../_shared/outward-search/intent-parser.ts";
 import { checkQuota, incrementUsage, checkGlobalCap, incrementGlobalCap } from "../_shared/outward-search/quota.ts";
 import { InternalDbAdapter } from "../_shared/outward-search/adapters/internal-db.ts";
-import { dispatchLindyJobs } from "../_shared/outward-search/lindy-dispatch.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -302,79 +301,29 @@ Deno.serve(async (req) => {
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  // ── Create search run record first (needed for job FK) ──
-  let searchRunId: string | null = null;
-  try {
-    const { data: runRow } = await sb.from("outward_search_runs").insert({
-      account_id: accountId, initiated_by: initiatedBy, instruction,
-      parsed_intent: intent, sources_queried: ["internal_db", "caroogleai", ...outwardSources.map(s => s.source)],
-      total_results: phase1Results.length,
-      results_by_source: { internal_db: internalResults.length, caroogleai: caroogleaiResults.length },
-      cache_hit: false, status: "processing", duration_ms: 0,
-      quota_snapshot: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
-    }).select("id").single();
-    searchRunId = runRow?.id ?? null;
-  } catch (err) {
-    console.error("Failed to create search run:", err);
-  }
-
-  if (!searchRunId) {
-    return new Response(JSON.stringify({
-      status: "error", error: "Failed to create search run record",
-      results: phase1Results.slice(0, MAX_RESULTS),
-      internal_count: phase1Results.length,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-
-  // ── Dispatch Lindy Computer jobs (async — returns immediately) ──
-  // Filter to non-internal outward sources that have URL builders
-  const lindySourceKeys = outwardSources
-    .filter(s => s.adapter_type !== "internal_db")
-    .map(s => s.source);
-
-  let dispatchResults: Awaited<ReturnType<typeof dispatchLindyJobs>> = [];
-  if (lindySourceKeys.length > 0) {
-    dispatchResults = await dispatchLindyJobs(sb, searchRunId, intent, lindySourceKeys);
-  }
-
-  // Increment usage (outward was dispatched)
-  if (accountId && initiatedBy === "user" && lindySourceKeys.length > 0) {
-    await incrementUsage(accountId);
-  }
-  if (lindySourceKeys.length > 0) {
-    await incrementGlobalCap(sb);
-  }
-
+  // ── Outward browser automation disabled (Lindy no longer used) ──
+  // Just return Phase 1 results
   const durationMs = Date.now() - startMs;
 
-  // Update search run with dispatch info
   try {
-    await sb.from("outward_search_runs").update({
-      duration_ms: durationMs,
-      results_by_source: {
-        internal_db: internalResults.length,
-        caroogleai: caroogleaiResults.length,
-        ...Object.fromEntries(dispatchResults.map(d => [d.source, d.status === "dispatched" ? -1 : 0])),
-      },
-    }).eq("id", searchRunId);
+    await sb.from("outward_search_runs").insert({
+      account_id: accountId, initiated_by: initiatedBy, instruction,
+      parsed_intent: intent, sources_queried: ["internal_db", "caroogleai"],
+      total_results: phase1Results.length,
+      results_by_source: { internal_db: internalResults.length, caroogleai: caroogleaiResults.length },
+      cache_hit: false, status: "completed", duration_ms: durationMs,
+      completed_at: new Date().toISOString(),
+    });
   } catch (_) { /* swallow */ }
 
-  // Return immediately with phase1 results + job references for polling
   return new Response(JSON.stringify({
     status: "ok",
-    phase: lindySourceKeys.length > 0 ? "internal+outward_dispatched" : "internal_only",
-    search_run_id: searchRunId,
+    phase: "internal_only",
     intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
     results: phase1Results.slice(0, MAX_RESULTS),
     internal_count: phase1Results.length,
-    outward_jobs: dispatchResults.map(d => ({
-      source: d.source,
-      job_id: d.job_id,
-      status: d.status,
-      reason: d.reason,
-    })),
     duration_ms: durationMs,
-    quota: quota.entitlement ? { used: (quota.entitlement.searches_used_today || 0) + 1, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
+    quota: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
   }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });
 
