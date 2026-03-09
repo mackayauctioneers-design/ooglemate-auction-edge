@@ -160,9 +160,9 @@ Deno.serve(async (req) => {
       .ilike("make", `%${demand.make}%`)
       .ilike("model", `%${demand.model}%`);
 
-    // Structured filters
-    if (demand.km_max) query = query.lte("km", demand.km_max);
-    if (demand.price_max) query = query.lte("asking_price", demand.price_max);
+    // Structured filters — allow NULLs through for auction listings (no set price/km)
+    if (demand.km_max) query = query.or(`km.lte.${demand.km_max},km.is.null`);
+    if (demand.price_max) query = query.or(`asking_price.lte.${demand.price_max},asking_price.is.null`);
     if (demand.year_min) query = query.gte("year", demand.year_min);
     if (demand.year_max) query = query.lte("year", demand.year_max);
     if (demand.fuel) query = query.ilike("fuel", `%${demand.fuel}%`);
@@ -202,11 +202,27 @@ Deno.serve(async (req) => {
     const filtered = sorted.filter(l => {
       const v = (l.variant_raw || "").toLowerCase();
 
-      // Series filter (check variant_raw for series string)
+      // Series filter — smart matching for known series aliases
       if (demand.series) {
         const series = demand.series.toLowerCase();
-        if (!v.includes(series) && !(l.model || "").toLowerCase().includes(series)) {
-          return false;
+        const modelStr = (l.model || "").toLowerCase();
+        const listingUrl = (l.listing_url || "").toLowerCase();
+
+        // LandCruiser 70-series special handling: "79", "76", "78" all map to "70 series"
+        const is70Series = ["70", "76", "78", "79"].includes(series) &&
+          modelStr.includes("landcruiser");
+
+        if (is70Series) {
+          // Accept if listing mentions "70" or the specific series number anywhere
+          const found70 = v.includes("70") || v.includes(series) ||
+            modelStr.includes("70") || modelStr.includes(series) ||
+            listingUrl.includes("70-series") || listingUrl.includes(`-${series}`) ||
+            listingUrl.includes(series);
+          if (!found70) return false;
+        } else {
+          if (!v.includes(series) && !modelStr.includes(series) && !listingUrl.includes(series)) {
+            return false;
+          }
         }
       }
       // Variant/badge strict match
