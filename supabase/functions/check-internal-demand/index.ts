@@ -191,20 +191,20 @@ Deno.serve(async (req) => {
     // Partition by source priority: auction (3) → dealer (2) → classified (1)
     const auctionListings: any[] = [];
     const dealerListings: any[] = [];
-    const classifiedListings: any[] = [];
+    const retailListings: any[] = [];
     for (const l of listings || []) {
       if (isAuctionSource(l.source, l.source_class, l.auction_house)) {
         auctionListings.push(l);
-      } else if (DEALER_SITE_SOURCES.has((l.source || "").toLowerCase())) {
+      } else if (l.listing_type === 'inventory') {
         dealerListings.push(l);
       } else {
-        classifiedListings.push(l);
+        retailListings.push(l);
       }
     }
-    // Source-priority ordering: auctions first, then dealers, then classifieds
-    const sorted = [...auctionListings, ...dealerListings, ...classifiedListings];
+    // Source-priority ordering: auctions first, then dealer inventory, then retail classifieds
+    const sorted = [...auctionListings, ...dealerListings, ...retailListings];
 
-    console.log(`[check-demand] Candidates pulled: ${sorted.length} | Auction: ${auctionListings.length} | Dealer: ${dealerListings.length} | Classified: ${classifiedListings.length}`);
+    console.log(`[check-demand] Candidates pulled: ${sorted.length} | Auction: ${auctionListings.length} | Inventory: ${dealerListings.length} | Retail: ${retailListings.length}`);
 
     // ── Post-query filters (series, variant, body_type, keywords) ──
     const filtered = sorted.filter(l => {
