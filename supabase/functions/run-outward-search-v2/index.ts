@@ -14,7 +14,6 @@ import { MAX_RESULTS } from "../_shared/outward-search/types.ts";
 import { emptyIntent, parseIntentLLM, parseIntentRegex } from "../_shared/outward-search/intent-parser.ts";
 import { checkQuota, incrementUsage, checkGlobalCap, incrementGlobalCap } from "../_shared/outward-search/quota.ts";
 import { InternalDbAdapter } from "../_shared/outward-search/adapters/internal-db.ts";
-import { dispatchLindyJobs } from "../_shared/outward-search/lindy-dispatch.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
