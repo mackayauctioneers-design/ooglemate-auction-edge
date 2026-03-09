@@ -163,4 +163,11 @@ export const MAX_RESULTS = 30;
 
 // Listings in these lifecycle states should never be shown to users.
 // Keep in sync with other search surfaces (e.g. ooglebot-search).
-export const EXCLUDED_LIFECYCLE = ["STALE", "DEAD", "RETURNED", "INVALID", "DELISTED", "SOLD"];
+export const EXCLUDED_LIFECYCLE = [
+  "STALE", "stale",
+  "DEAD", "dead",
+  "RETURNED", "returned",
+  "INVALID", "invalid",
+  "DELISTED", "delisted",
+  "SOLD", "sold",
+];
