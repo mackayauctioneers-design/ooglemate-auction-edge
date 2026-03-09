@@ -178,8 +178,9 @@ Deno.serve(async (req) => {
       query = query.in("source", Array.from(AUCTION_SOURCES));
     }
 
+    // Pull a wide candidate pool — filtering happens post-query
     const { data: listings, error: listErr } = await query
-      .order("asking_price", { ascending: true, nullsFirst: true }).limit(100);
+      .order("asking_price", { ascending: true, nullsFirst: true }).limit(500);
 
     if (listErr) {
       console.error("[check-demand] Search error:", listErr);
