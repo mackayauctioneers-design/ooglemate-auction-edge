@@ -43,6 +43,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  try {
     // ── Emergency kill switch ──
     const crawlMode = Deno.env.get("CRAWL_MODE") || "normal";
     if (crawlMode === "disabled") {
