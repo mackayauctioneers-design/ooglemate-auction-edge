@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { searchOogleBot, searchOogleBotDirect, type OogleBotResponse, type OogleBotResult } from "@/lib/api/ooglebot";
 import { searchTiered, searchDealerSpecs, parseSearchQuery, type InternalMatch, type TieredSearchResult } from "@/lib/api/ooglebot-internal";
+import { extractSeries } from "@/utils/derivePlatform";
 import { supabase } from "@/integrations/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -214,12 +215,22 @@ const REASSURANCE_MESSAGES = [
 const OUTWARD_TIMEOUT_MS = 5 * 60 * 1000;
 const TERMINAL_STATUSES = new Set(["complete", "failed", "timeout"]);
 
+/** Detect which LC series a result belongs to (for series gate) */
+function detectSeriesFromText(text: string): string | null {
+  const t = text.toUpperCase();
+  if (/\b7[0689]\b/.test(t) || /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]/.test(t) || /\bWORKMATE\b/.test(t)) return "LC70";
+  if (/\b300\b/.test(t) || /GR[\-_\s]?SPORT|GR[\-_\s]?S\b|LC300/.test(t)) return "LC300";
+  if (/\b200\b/.test(t) || /LC200/.test(t)) return "LC200";
+  return null;
+}
+
 /** Convert all result types into UnifiedResult[] */
 function mergeAllResults(
   internalResults: InternalMatch[],
   scoredResults: OogleBotResult[],
   outwardResults: OutwardResult[],
   badgeFilter?: string | null,
+  intentSeries?: string | null,
 ): UnifiedResult[] {
   const all: UnifiedResult[] = [];
 
@@ -231,6 +242,14 @@ function mergeAllResults(
     if (!variant) return false;
     const vNorm = variant.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
     return vNorm === badgeUpper || badgeRe.test(variant);
+  };
+
+  // Series gate helper — reject cross-generation results
+  const matchesSeries = (r: { title?: string; variant?: string | null; id?: string; url?: string | null }): boolean => {
+    if (!intentSeries) return true;
+    const text = [r.title, r.variant, r.id, r.url].filter(Boolean).join(" ");
+    const ls = detectSeriesFromText(text);
+    return ls === null || ls === intentSeries;
   };
 
   // Internal results
@@ -324,9 +343,10 @@ function mergeAllResults(
     }
   }
 
-  return Array.from(map.values()).sort(
-    (a, b) => numericOrInfinity(a.effective_price) - numericOrInfinity(b.effective_price)
-  );
+  // Apply series gate as final safety net, then sort
+  return Array.from(map.values())
+    .filter(r => matchesSeries(r))
+    .sort((a, b) => numericOrInfinity(a.effective_price) - numericOrInfinity(b.effective_price));
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -438,9 +458,11 @@ export function OogleBotSearch() {
   const badgeMissing = canSearch && !badge.trim();
 
   // ── Unified result merge ──
+  // Extract intent series from make + model for LC generation gating
+  const intentSeries = useMemo(() => extractSeries(make, model), [make, model]);
   const allUnified = useMemo(
-    () => mergeAllResults(internalResults, externalResponse?.results ?? [], outwardResults, badge),
-    [internalResults, externalResponse?.results, outwardResults, badge],
+    () => mergeAllResults(internalResults, externalResponse?.results ?? [], outwardResults, badge, intentSeries),
+    [internalResults, externalResponse?.results, outwardResults, badge, intentSeries],
   );
   const marketResults = useMemo(() => allUnified.filter(r => !r.is_auction), [allUnified]);
   const auctionResults = useMemo(() => allUnified.filter(r => r.is_auction), [allUnified]);

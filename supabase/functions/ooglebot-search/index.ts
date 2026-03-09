@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { extractSeries } from "../_shared/taxonomy/derivePlatform.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,6 +15,28 @@ const AUCTION_PREMIUM = 500;
 const FREIGHT_FLAT = 800;
 const MAX_LIMIT = 50;
 const EXCLUDED_LIFECYCLE = ["STALE", "DEAD", "stale", "dead"];
+
+/** Detect which LC series (LC70/LC200/LC300) a listing belongs to, based on variant+URL signals */
+function detectListingSeriesLC(l: {
+  variant_raw?: string | null; variant_family?: string | null; variant_used?: string | null;
+  listing_id?: string; listing_url?: string | null;
+}): string | null {
+  const text = [l.variant_raw, l.variant_family, l.variant_used, l.listing_id, l.listing_url]
+    .filter(Boolean).join(" ").toUpperCase();
+  // LC70 signals: 70/76/78/79 as tokens, 70SERIES in URL, WORKMATE badge
+  if (/\b7[0689]\b/.test(text) || /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]/.test(text) || /\bWORKMATE\b/.test(text)) return "LC70";
+  // LC300 signals: 300 as token, GR-SPORT/GR-S badges unique to 300
+  if (/\b300\b/.test(text) || /GR[\-_\s]?SPORT|GR[\-_\s]?S\b|LC300/.test(text)) return "LC300";
+  // LC200 signals
+  if (/\b200\b/.test(text) || /LC200/.test(text)) return "LC200";
+  return null;
+}
+
+/** Strip LC series numbers from model string so DB query fetches all generations */
+function normalizeModelForQuery(model: string, intentSeries: string | null): string {
+  if (!intentSeries?.startsWith("LC")) return model;
+  return model.replace(/\b(7[0689]|200|300)\b/gi, "").replace(/\s+/g, " ").trim();
+}
 
 interface SearchInput {
   make: string;
@@ -70,6 +93,11 @@ Deno.serve(async (req) => {
     }
     const { input } = validation;
 
+    // Derive intent series from make + model (e.g. "LandCruiser 79" → LC70)
+    const intentSeries = extractSeries(input.make, input.model);
+    // Normalize model for DB query: "LandCruiser 79" → "LandCruiser" to avoid missing GXL-only variants
+    const queryModel = normalizeModelForQuery(input.model, intentSeries);
+
     // --- 1. Query vehicle_listings ---
     let query = sb
       .from("vehicle_listings")
@@ -88,18 +116,18 @@ Deno.serve(async (req) => {
       .order("asking_price", { ascending: false, nullsFirst: false })
       .limit(input.limit! * 3); // over-fetch for scoring/filtering
 
-    // Model matching: check model field OR variant fields for multi-word models like "LANDCRUISER PRADO"
-    const modelParts = input.model.split(/\s+/);
+    // Model matching: use normalized model (series stripped) for LC queries
+    const modelParts = queryModel.split(/\s+/);
     if (modelParts.length > 1) {
       const modelFilter = [
-        `model.ilike.%${input.model}%`,
+        `model.ilike.%${queryModel}%`,
         `variant_raw.ilike.%${modelParts.slice(1).join(" ")}%`,
         `variant_family.ilike.%${modelParts.slice(1).join(" ")}%`,
         `variant_used.ilike.%${modelParts.slice(1).join(" ")}%`,
       ].join(",");
       query = query.or(modelFilter);
     } else {
-      query = query.ilike("model", `%${input.model}%`);
+      query = query.ilike("model", `%${queryModel}%`);
     }
 
     if (input.year_min) query = query.gte("year", input.year_min);
@@ -127,6 +155,16 @@ Deno.serve(async (req) => {
         });
       });
       console.log(`Badge filter (exact) "${input.badge}": ${(listings || []).length} → ${filtered.length}`);
+    }
+
+    // --- 1c. Series gate: reject cross-generation comps (e.g. LC300 when searching LC70) ---
+    if (intentSeries) {
+      const beforeSeries = filtered.length;
+      filtered = filtered.filter((l: any) => {
+        const ls = detectListingSeriesLC(l);
+        return ls === null || ls === intentSeries;
+      });
+      console.log(`Series gate (${intentSeries}): ${beforeSeries} → ${filtered.length}`);
     }
 
     // --- 2. Load fingerprint data for scoring ---

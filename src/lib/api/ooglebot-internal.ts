@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { extractSeries } from "@/utils/derivePlatform";
 
 // ─── Source Allowlist & Config ───────────────────────────────────────────────
 
@@ -214,12 +215,13 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
     .order("asking_price", { ascending: true, nullsFirst: false })
     .limit(TIER0_LIMIT);
 
-  // Model matching — with LandCruiser/Prado exclusion
+  // Model matching — use normalized model (series stripped) for LC queries
   if (parsed.model) {
+    const queryModel = normalizeModelForQuery(parsed.make || "", parsed.model);
     if (isToyotaLandCruiserNotPrado(parsed)) {
-      q = q.ilike("model", `%${parsed.model}%`).not("model", "ilike", "%prado%");
+      q = q.ilike("model", `%${queryModel}%`).not("model", "ilike", "%prado%");
     } else {
-      q = q.ilike("model", `%${parsed.model}%`);
+      q = q.ilike("model", `%${queryModel}%`);
     }
   }
 
@@ -233,7 +235,8 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
     console.error("Tier 0 auction search error:", error);
     return [];
   }
-  return (data || []) as InternalMatch[];
+  // Apply series gate post-filter
+  return applySeriesGate((data || []) as InternalMatch[], parsed);
 }
 
 // ─── Tier 1: Internal Retail / Other ─────────────────────────────────────────
@@ -241,7 +244,6 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
 async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalMatch[]> {
   const recencyCutoff = new Date(Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000).toISOString();
   
-
   // Blocklist filter: not in auction allowlist AND not in blocklist
   const allExcluded = [...AUCTION_SOURCE_ALLOWLIST, ...SOURCE_BLOCKLIST];
 
@@ -259,11 +261,13 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
     q = q.not("source", "eq", src);
   }
 
+  // Model matching — use normalized model (series stripped) for LC queries
   if (parsed.model) {
+    const queryModel = normalizeModelForQuery(parsed.make || "", parsed.model);
     if (isToyotaLandCruiserNotPrado(parsed)) {
-      q = q.ilike("model", `%${parsed.model}%`).not("model", "ilike", "%prado%");
+      q = q.ilike("model", `%${queryModel}%`).not("model", "ilike", "%prado%");
     } else {
-      q = q.ilike("model", `%${parsed.model}%`);
+      q = q.ilike("model", `%${queryModel}%`);
     }
   }
 
@@ -277,7 +281,8 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
     console.error("Tier 1 internal search error:", error);
     return [];
   }
-  return (data || []) as InternalMatch[];
+  // Apply series gate post-filter
+  return applySeriesGate((data || []) as InternalMatch[], parsed);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -286,6 +291,36 @@ function isToyotaLandCruiserNotPrado(parsed: ParsedIntent): boolean {
   const make = (parsed.make || "").toLowerCase();
   const model = (parsed.model || "").toLowerCase();
   return make === "toyota" && model.includes("landcruiser") && !model.includes("prado");
+}
+
+/** Detect which LC series (LC70/LC200/LC300) a listing belongs to */
+function detectListingSeriesLC(l: InternalMatch): string | null {
+  const text = [l.variant_raw, l.id, l.listing_url]
+    .filter(Boolean).join(" ").toUpperCase();
+  // LC70 signals: 70/76/78/79 as tokens, 70SERIES in URL, WORKMATE badge
+  if (/\b7[0689]\b/.test(text) || /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]/.test(text) || /\bWORKMATE\b/.test(text)) return "LC70";
+  // LC300 signals
+  if (/\b300\b/.test(text) || /GR[\-_\s]?SPORT|GR[\-_\s]?S\b|LC300/.test(text)) return "LC300";
+  // LC200 signals
+  if (/\b200\b/.test(text) || /LC200/.test(text)) return "LC200";
+  return null;
+}
+
+/** Strip LC series numbers from model string so DB query fetches all generations */
+function normalizeModelForQuery(make: string, model: string): string {
+  const intentSeries = extractSeries(make, model);
+  if (!intentSeries?.startsWith("LC")) return model;
+  return model.replace(/\b(7[0689]|200|300)\b/gi, "").replace(/\s+/g, " ").trim();
+}
+
+/** Apply series gate post-filter */
+function applySeriesGate(results: InternalMatch[], parsed: ParsedIntent): InternalMatch[] {
+  const intentSeries = extractSeries(parsed.make || "", parsed.model || "");
+  if (!intentSeries) return results;
+  return results.filter(l => {
+    const ls = detectListingSeriesLC(l);
+    return ls === null || ls === intentSeries;
+  });
 }
 
 // ─── Legacy API (backwards-compatible) ───────────────────────────────────────
