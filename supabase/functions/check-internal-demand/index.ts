@@ -160,9 +160,9 @@ Deno.serve(async (req) => {
       .ilike("make", `%${demand.make}%`)
       .ilike("model", `%${demand.model}%`);
 
-    // Structured filters
-    if (demand.km_max) query = query.lte("km", demand.km_max);
-    if (demand.price_max) query = query.lte("asking_price", demand.price_max);
+    // Structured filters — allow NULLs through for auction listings (no set price/km)
+    if (demand.km_max) query = query.or(`km.lte.${demand.km_max},km.is.null`);
+    if (demand.price_max) query = query.or(`asking_price.lte.${demand.price_max},asking_price.is.null`);
     if (demand.year_min) query = query.gte("year", demand.year_min);
     if (demand.year_max) query = query.lte("year", demand.year_max);
     if (demand.fuel) query = query.ilike("fuel", `%${demand.fuel}%`);
