@@ -269,7 +269,7 @@ Deno.serve(async (req) => {
         demand_id,
         source: l.source || "internal",
         make: l.make, model: l.model, year: l.year, km: l.km,
-        price, colour: null, location: l.state,
+        price, colour: null, location: l.location,
         listing_url: l.listing_url, listing_id: l.id,
         listing_hash: listingHash(l.listing_url, price, l.km),
         margin_estimate: marginEstimate,
