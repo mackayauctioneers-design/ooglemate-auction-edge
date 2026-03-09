@@ -189,19 +189,23 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Partition: auction first
+    // Partition by source priority: auction (3) → dealer (2) → classified (1)
     const auctionListings: any[] = [];
-    const otherListings: any[] = [];
+    const dealerListings: any[] = [];
+    const classifiedListings: any[] = [];
     for (const l of listings || []) {
       if (isAuctionSource(l.source, l.source_class, l.auction_house)) {
         auctionListings.push(l);
+      } else if (DEALER_SITE_SOURCES.has((l.source || "").toLowerCase())) {
+        dealerListings.push(l);
       } else {
-        otherListings.push(l);
+        classifiedListings.push(l);
       }
     }
-    const sorted = [...auctionListings, ...otherListings];
+    // Source-priority ordering: auctions first, then dealers, then classifieds
+    const sorted = [...auctionListings, ...dealerListings, ...classifiedListings];
 
-    console.log(`[check-demand] Found ${sorted.length} internal (${auctionListings.length} auction, ${otherListings.length} other)`);
+    console.log(`[check-demand] Candidates pulled: ${sorted.length} | Auction: ${auctionListings.length} | Dealer: ${dealerListings.length} | Classified: ${classifiedListings.length}`);
 
     // ── Post-query filters (series, variant, body_type, keywords) ──
     const filtered = sorted.filter(l => {
@@ -218,7 +222,6 @@ Deno.serve(async (req) => {
           modelStr.includes("landcruiser");
 
         if (is70Series) {
-          // Accept if listing mentions "70" or the specific series number anywhere
           const found70 = v.includes("70") || v.includes(series) ||
             modelStr.includes("70") || modelStr.includes(series) ||
             listingUrl.includes("70-series") || listingUrl.includes(`-${series}`) ||
@@ -250,7 +253,12 @@ Deno.serve(async (req) => {
       return true;
     });
 
-    console.log(`[check-demand] After filters: ${filtered.length} (from ${sorted.length})`);
+    // Count filtered by source type for diagnostics
+    const filteredAuction = filtered.filter(l => isAuctionSource(l.source, l.source_class, l.auction_house)).length;
+    const filteredDealer = filtered.filter(l => DEALER_SITE_SOURCES.has((l.source || "").toLowerCase())).length;
+    const filteredClassified = filtered.length - filteredAuction - filteredDealer;
+
+    console.log(`[check-demand] After filters: ${filtered.length} | Auction: ${filteredAuction} | Dealer: ${filteredDealer} | Classified: ${filteredClassified}`);
 
     // ── Score & build opportunities ──
     const opps: any[] = [];
