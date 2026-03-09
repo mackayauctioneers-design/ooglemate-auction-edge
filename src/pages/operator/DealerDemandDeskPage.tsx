@@ -97,33 +97,35 @@ function DemandForm({ onCreated, onSearchDone }: { onCreated: (demandId: string)
       toast.error("Dealer, Make, and Model are required");
       return;
     }
+    // Snapshot form values before any async work or state changes
+    const snapshot = { ...form };
     setSubmitting(true);
     try {
       const { data: demand, error } = await supabase
         .from("dealer_demands")
         .insert({
-          dealer_name: form.dealer_name,
-          buyer_name: form.buyer_name || null,
-          make: form.make,
-          model: form.model,
-          series: form.series || null,
-          body_type: form.body_type && form.body_type !== "any" ? form.body_type : null,
-          variant: form.variant || null,
-          engine: form.engine || null,
-          fuel: form.fuel && form.fuel !== "any" ? form.fuel : null,
-          transmission: form.transmission && form.transmission !== "any" ? form.transmission : null,
-          drivetrain: form.drivetrain && form.drivetrain !== "any" ? form.drivetrain : null,
-          colour: form.colour || null,
-          year_min: form.year_min ? parseInt(form.year_min) : null,
-          year_max: form.year_max ? parseInt(form.year_max) : null,
-          km_max: form.km_max ? parseInt(form.km_max) : null,
-          price_max: form.price_max ? parseInt(form.price_max) : null,
-          keywords: form.keywords || null,
-          urgency: form.urgency,
-          notes: form.notes || null,
-          auction_only: form.auction_only,
-          dealer_only: form.dealer_only,
-          ex_fleet_allowed: form.ex_fleet_allowed,
+          dealer_name: snapshot.dealer_name,
+          buyer_name: snapshot.buyer_name || null,
+          make: snapshot.make,
+          model: snapshot.model,
+          series: snapshot.series || null,
+          body_type: snapshot.body_type && snapshot.body_type !== "any" ? snapshot.body_type : null,
+          variant: snapshot.variant || null,
+          engine: snapshot.engine || null,
+          fuel: snapshot.fuel && snapshot.fuel !== "any" ? snapshot.fuel : null,
+          transmission: snapshot.transmission && snapshot.transmission !== "any" ? snapshot.transmission : null,
+          drivetrain: snapshot.drivetrain && snapshot.drivetrain !== "any" ? snapshot.drivetrain : null,
+          colour: snapshot.colour || null,
+          year_min: snapshot.year_min ? parseInt(snapshot.year_min) : null,
+          year_max: snapshot.year_max ? parseInt(snapshot.year_max) : null,
+          km_max: snapshot.km_max ? parseInt(snapshot.km_max) : null,
+          price_max: snapshot.price_max ? parseInt(snapshot.price_max) : null,
+          keywords: snapshot.keywords || null,
+          urgency: snapshot.urgency,
+          notes: snapshot.notes || null,
+          auction_only: snapshot.auction_only,
+          dealer_only: snapshot.dealer_only,
+          ex_fleet_allowed: snapshot.ex_fleet_allowed,
         } as any)
         .select()
         .single();
@@ -309,16 +311,16 @@ function DemandForm({ onCreated, onSearchDone }: { onCreated: (demandId: string)
                 {/* Source preferences */}
                 <div className="flex flex-wrap gap-4 pt-1">
                   <div className="flex items-center gap-2">
-                    <Switch checked={form.auction_only} onCheckedChange={v => set("auction_only", v)} />
-                    <Label className="text-xs">Auction only</Label>
+                    <Switch id="sw-auction" checked={form.auction_only} onCheckedChange={v => set("auction_only", v)} />
+                    <Label htmlFor="sw-auction" className="text-xs">Auction only</Label>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Switch checked={form.dealer_only} onCheckedChange={v => set("dealer_only", v)} />
-                    <Label className="text-xs">Dealer only</Label>
+                    <Switch id="sw-dealer" checked={form.dealer_only} onCheckedChange={v => set("dealer_only", v)} />
+                    <Label htmlFor="sw-dealer" className="text-xs">Dealer only</Label>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Switch checked={form.ex_fleet_allowed} onCheckedChange={v => set("ex_fleet_allowed", v)} />
-                    <Label className="text-xs">Ex-fleet OK</Label>
+                    <Switch id="sw-fleet" checked={form.ex_fleet_allowed} onCheckedChange={v => set("ex_fleet_allowed", v)} />
+                    <Label htmlFor="sw-fleet" className="text-xs">Ex-fleet OK</Label>
                   </div>
                 </div>
 
