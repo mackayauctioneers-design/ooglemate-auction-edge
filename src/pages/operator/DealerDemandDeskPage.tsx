@@ -686,6 +686,9 @@ export default function DealerDemandDeskPage() {
                               <CheckCircle className="h-3 w-3" />
                             </Button>
                           )}
+                          <Button variant="ghost" size="sm" onClick={() => { if (confirm(`Delete demand "${d.make} ${d.model}" for ${d.dealer_name}?`)) deleteDemand(d.id); }} className="h-6 w-6 p-0 text-destructive hover:text-destructive" title="Delete">
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
