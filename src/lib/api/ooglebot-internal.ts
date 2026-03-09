@@ -215,12 +215,13 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
     .order("asking_price", { ascending: true, nullsFirst: false })
     .limit(TIER0_LIMIT);
 
-  // Model matching — with LandCruiser/Prado exclusion
+  // Model matching — use normalized model (series stripped) for LC queries
   if (parsed.model) {
+    const queryModel = normalizeModelForQuery(parsed.make || "", parsed.model);
     if (isToyotaLandCruiserNotPrado(parsed)) {
-      q = q.ilike("model", `%${parsed.model}%`).not("model", "ilike", "%prado%");
+      q = q.ilike("model", `%${queryModel}%`).not("model", "ilike", "%prado%");
     } else {
-      q = q.ilike("model", `%${parsed.model}%`);
+      q = q.ilike("model", `%${queryModel}%`);
     }
   }
 
@@ -234,7 +235,8 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
     console.error("Tier 0 auction search error:", error);
     return [];
   }
-  return (data || []) as InternalMatch[];
+  // Apply series gate post-filter
+  return applySeriesGate((data || []) as InternalMatch[], parsed);
 }
 
 // ─── Tier 1: Internal Retail / Other ─────────────────────────────────────────
