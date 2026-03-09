@@ -93,6 +93,11 @@ Deno.serve(async (req) => {
     }
     const { input } = validation;
 
+    // Derive intent series from make + model (e.g. "LandCruiser 79" → LC70)
+    const intentSeries = extractSeries(input.make, input.model);
+    // Normalize model for DB query: "LandCruiser 79" → "LandCruiser" to avoid missing GXL-only variants
+    const queryModel = normalizeModelForQuery(input.model, intentSeries);
+
     // --- 1. Query vehicle_listings ---
     let query = sb
       .from("vehicle_listings")
