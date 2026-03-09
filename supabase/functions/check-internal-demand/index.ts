@@ -304,7 +304,7 @@ Deno.serve(async (req) => {
     const slackWebhook = Deno.env.get("SLACK_WEBHOOK_URL");
     // Only alert on listings with a known price — priceless auction lots are stored but not alerted
     const topMatches = opps.filter(o => o.score >= 70 && o.price != null && o.price > 0).slice(0, 5);
-    const auctionCount = filtered.filter(l => isAuctionSource(l.source, l.source_class, l.auction_house)).length;
+    const auctionCount = filteredAuction;
 
     if (slackWebhook && topMatches.length > 0) {
       const lines = topMatches.map(m => {
