@@ -116,18 +116,18 @@ Deno.serve(async (req) => {
       .order("asking_price", { ascending: false, nullsFirst: false })
       .limit(input.limit! * 3); // over-fetch for scoring/filtering
 
-    // Model matching: check model field OR variant fields for multi-word models like "LANDCRUISER PRADO"
-    const modelParts = input.model.split(/\s+/);
+    // Model matching: use normalized model (series stripped) for LC queries
+    const modelParts = queryModel.split(/\s+/);
     if (modelParts.length > 1) {
       const modelFilter = [
-        `model.ilike.%${input.model}%`,
+        `model.ilike.%${queryModel}%`,
         `variant_raw.ilike.%${modelParts.slice(1).join(" ")}%`,
         `variant_family.ilike.%${modelParts.slice(1).join(" ")}%`,
         `variant_used.ilike.%${modelParts.slice(1).join(" ")}%`,
       ].join(",");
       query = query.or(modelFilter);
     } else {
-      query = query.ilike("model", `%${input.model}%`);
+      query = query.ilike("model", `%${queryModel}%`);
     }
 
     if (input.year_min) query = query.gte("year", input.year_min);
