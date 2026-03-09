@@ -564,6 +564,19 @@ Deno.serve(async (req) => {
 
     console.log(`[SCORE-V2] Candidates: ${candidates.length} priced, ${pricelessCandidates.length} priceless`);
 
+    // ── 4b. Load fingerprint accuracy scores ──
+    const fpAccuracyMap = new Map<string, number>();
+    const { data: fpMetrics } = await sb
+      .from("fingerprint_performance_metrics")
+      .select("platform_class, fingerprint_accuracy_score")
+      .not("platform_class", "is", null);
+    for (const m of fpMetrics || []) {
+      if (m.platform_class && m.fingerprint_accuracy_score != null) {
+        fpAccuracyMap.set(m.platform_class, m.fingerprint_accuracy_score);
+      }
+    }
+    console.log(`[SCORE-V2] Loaded ${fpAccuracyMap.size} fingerprint accuracy scores`);
+
     // ── 5. Score all priced candidates in memory ──
     const scoredCandidates: ScoredCandidate[] = [];
     const medianCache = new Map<string, any>();
