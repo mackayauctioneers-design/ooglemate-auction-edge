@@ -157,6 +157,16 @@ Deno.serve(async (req) => {
       console.log(`Badge filter (exact) "${input.badge}": ${(listings || []).length} → ${filtered.length}`);
     }
 
+    // --- 1c. Series gate: reject cross-generation comps (e.g. LC300 when searching LC70) ---
+    if (intentSeries) {
+      const beforeSeries = filtered.length;
+      filtered = filtered.filter((l: any) => {
+        const ls = detectListingSeriesLC(l);
+        return ls === null || ls === intentSeries;
+      });
+      console.log(`Series gate (${intentSeries}): ${beforeSeries} → ${filtered.length}`);
+    }
+
     // --- 2. Load fingerprint data for scoring ---
     const { data: fingerprints } = await sb
       .from("dealer_sales_fingerprints")

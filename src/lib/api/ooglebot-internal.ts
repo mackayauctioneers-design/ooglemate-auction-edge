@@ -244,7 +244,6 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
 async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalMatch[]> {
   const recencyCutoff = new Date(Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000).toISOString();
   
-
   // Blocklist filter: not in auction allowlist AND not in blocklist
   const allExcluded = [...AUCTION_SOURCE_ALLOWLIST, ...SOURCE_BLOCKLIST];
 
@@ -262,11 +261,13 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
     q = q.not("source", "eq", src);
   }
 
+  // Model matching — use normalized model (series stripped) for LC queries
   if (parsed.model) {
+    const queryModel = normalizeModelForQuery(parsed.make || "", parsed.model);
     if (isToyotaLandCruiserNotPrado(parsed)) {
-      q = q.ilike("model", `%${parsed.model}%`).not("model", "ilike", "%prado%");
+      q = q.ilike("model", `%${queryModel}%`).not("model", "ilike", "%prado%");
     } else {
-      q = q.ilike("model", `%${parsed.model}%`);
+      q = q.ilike("model", `%${queryModel}%`);
     }
   }
 
@@ -280,7 +281,8 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
     console.error("Tier 1 internal search error:", error);
     return [];
   }
-  return (data || []) as InternalMatch[];
+  // Apply series gate post-filter
+  return applySeriesGate((data || []) as InternalMatch[], parsed);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

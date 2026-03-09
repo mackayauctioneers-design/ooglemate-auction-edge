@@ -458,9 +458,11 @@ export function OogleBotSearch() {
   const badgeMissing = canSearch && !badge.trim();
 
   // ── Unified result merge ──
+  // Extract intent series from make + model for LC generation gating
+  const intentSeries = useMemo(() => extractSeries(make, model), [make, model]);
   const allUnified = useMemo(
-    () => mergeAllResults(internalResults, externalResponse?.results ?? [], outwardResults, badge),
-    [internalResults, externalResponse?.results, outwardResults, badge],
+    () => mergeAllResults(internalResults, externalResponse?.results ?? [], outwardResults, badge, intentSeries),
+    [internalResults, externalResponse?.results, outwardResults, badge, intentSeries],
   );
   const marketResults = useMemo(() => allUnified.filter(r => !r.is_auction), [allUnified]);
   const auctionResults = useMemo(() => allUnified.filter(r => r.is_auction), [allUnified]);
