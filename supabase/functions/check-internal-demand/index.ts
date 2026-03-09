@@ -179,7 +179,7 @@ Deno.serve(async (req) => {
     }
 
     const { data: listings, error: listErr } = await query
-      .order("asking_price", { ascending: true }).limit(50);
+      .order("asking_price", { ascending: true, nullsFirst: true }).limit(100);
 
     if (listErr) {
       console.error("[check-demand] Search error:", listErr);
