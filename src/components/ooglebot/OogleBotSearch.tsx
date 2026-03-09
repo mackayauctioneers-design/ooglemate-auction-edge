@@ -343,9 +343,10 @@ function mergeAllResults(
     }
   }
 
-  return Array.from(map.values()).sort(
-    (a, b) => numericOrInfinity(a.effective_price) - numericOrInfinity(b.effective_price)
-  );
+  // Apply series gate as final safety net, then sort
+  return Array.from(map.values())
+    .filter(r => matchesSeries(r))
+    .sort((a, b) => numericOrInfinity(a.effective_price) - numericOrInfinity(b.effective_price));
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
