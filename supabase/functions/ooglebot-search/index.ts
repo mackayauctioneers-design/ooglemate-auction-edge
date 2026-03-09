@@ -14,7 +14,9 @@ const AUCTION_SOURCES = new Set([
 const AUCTION_PREMIUM = 500;
 const FREIGHT_FLAT = 800;
 const MAX_LIMIT = 50;
-const EXCLUDED_LIFECYCLE = ["STALE", "DEAD", "stale", "dead"];
+
+// These lifecycle states mean the listing should never be shown to users.
+const EXCLUDED_LIFECYCLE = ["STALE", "DEAD", "RETURNED", "INVALID", "DELISTED", "SOLD"];
 
 /** Detect which LC series (LC70/LC200/LC300) a listing belongs to, based on variant+URL signals */
 function detectListingSeriesLC(l: {
