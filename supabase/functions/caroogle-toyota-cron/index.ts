@@ -249,6 +249,8 @@ Deno.serve(async (req) => {
       }
     }
 
+    const currentListingIds = rows.map(r => r.listing_id as string);
+
     // ── URL Validation: rotating batch to detect sold/removed listings ──
     // Toyota's Caroogle API does NOT remove sold vehicles from its feed.
     // We must validate listing URLs directly against toyota.com.au to detect sold stock.
