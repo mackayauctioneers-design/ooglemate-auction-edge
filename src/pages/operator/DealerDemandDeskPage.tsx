@@ -309,16 +309,16 @@ function DemandForm({ onCreated, onSearchDone }: { onCreated: (demandId: string)
                 {/* Source preferences */}
                 <div className="flex flex-wrap gap-4 pt-1">
                   <div className="flex items-center gap-2">
-                    <Switch checked={form.auction_only} onCheckedChange={v => set("auction_only", v)} />
-                    <Label className="text-xs">Auction only</Label>
+                    <Switch id="sw-auction" checked={form.auction_only} onCheckedChange={v => set("auction_only", v)} />
+                    <Label htmlFor="sw-auction" className="text-xs">Auction only</Label>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Switch checked={form.dealer_only} onCheckedChange={v => set("dealer_only", v)} />
-                    <Label className="text-xs">Dealer only</Label>
+                    <Switch id="sw-dealer" checked={form.dealer_only} onCheckedChange={v => set("dealer_only", v)} />
+                    <Label htmlFor="sw-dealer" className="text-xs">Dealer only</Label>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Switch checked={form.ex_fleet_allowed} onCheckedChange={v => set("ex_fleet_allowed", v)} />
-                    <Label className="text-xs">Ex-fleet OK</Label>
+                    <Switch id="sw-fleet" checked={form.ex_fleet_allowed} onCheckedChange={v => set("ex_fleet_allowed", v)} />
+                    <Label htmlFor="sw-fleet" className="text-xs">Ex-fleet OK</Label>
                   </div>
                 </div>
 
