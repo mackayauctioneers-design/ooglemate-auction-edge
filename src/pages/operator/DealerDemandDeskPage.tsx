@@ -90,6 +90,14 @@ function DemandForm({ onCreated, onSearchDone }: { onCreated: (demandId: string)
   const [filtersOpen, setFiltersOpen] = useState(true);
 
   const set = (key: string, val: any) => setForm(f => ({ ...f, [key]: val }));
+  const sourceScope = form.auction_only ? "auction" : form.dealer_only ? "dealer" : "all";
+  const setSourceScope = (scope: "all" | "auction" | "dealer") => {
+    setForm(f => ({
+      ...f,
+      auction_only: scope === "auction",
+      dealer_only: scope === "dealer",
+    }));
+  };
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
