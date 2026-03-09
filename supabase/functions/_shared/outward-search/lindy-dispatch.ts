@@ -289,7 +289,7 @@ export async function dispatchLindyJobs(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "onboarding@resend.dev",
+          from: resendFromEmail,
           to: LINDY_TRIGGER_EMAIL,
           subject: LINDY_SUBJECT,
           text: emailBody,
