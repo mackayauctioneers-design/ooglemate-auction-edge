@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { extractSeries } from "@/utils/derivePlatform";
 
 // ─── Source Allowlist & Config ───────────────────────────────────────────────
 
