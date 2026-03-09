@@ -317,18 +317,25 @@ function DemandForm({ onCreated, onSearchDone }: { onCreated: (demandId: string)
                 </div>
 
                 {/* Source preferences */}
-                <div className="flex flex-wrap gap-4 pt-1">
-                  <div className="flex items-center gap-2">
-                    <Switch checked={form.auction_only} disabled={submitting} onCheckedChange={v => set("auction_only", v)} />
-                    <Label className="text-xs select-none">Auction only</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Source scope</Label>
+                    <Select value={sourceScope} onValueChange={(v: "all" | "auction" | "dealer") => setSourceScope(v)} disabled={submitting}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All sources</SelectItem>
+                        <SelectItem value="auction">Auction only</SelectItem>
+                        <SelectItem value="dealer">Dealer only</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Switch checked={form.dealer_only} disabled={submitting} onCheckedChange={v => set("dealer_only", v)} />
-                    <Label className="text-xs select-none">Dealer only</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch checked={form.ex_fleet_allowed} disabled={submitting} onCheckedChange={v => set("ex_fleet_allowed", v)} />
-                    <Label className="text-xs select-none">Ex-fleet OK</Label>
+                  <div className="flex items-end pb-1">
+                    <div className="flex items-center gap-2">
+                      <Switch checked={form.ex_fleet_allowed} disabled={submitting} onCheckedChange={v => set("ex_fleet_allowed", v)} />
+                      <Label className="text-xs select-none">Ex-fleet OK</Label>
+                    </div>
                   </div>
                 </div>
 
