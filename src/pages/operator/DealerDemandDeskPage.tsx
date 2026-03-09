@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Plus, Search, ExternalLink, Send, X, RefreshCw, CheckCircle, MapPin, Gauge, DollarSign, Car, Flame, ChevronDown, ChevronRight, ShoppingCart, Wrench, SlidersHorizontal, Clock, Loader2, AlertCircle, Gavel, Store, Globe } from "lucide-react";
+import { Plus, Search, ExternalLink, Send, X, RefreshCw, CheckCircle, MapPin, Gauge, DollarSign, Car, Flame, ChevronDown, ChevronRight, ShoppingCart, Wrench, SlidersHorizontal, Clock, Loader2, AlertCircle, Gavel, Store, Globe, Trash2 } from "lucide-react";
 
 // ── Types ──
 
@@ -572,6 +572,22 @@ export default function DealerDemandDeskPage() {
     toast.success("Demand closed");
   }
 
+  async function deleteDemand(demandId: string) {
+    // Delete related opportunities first, then the demand
+    await supabase.from("demand_opportunities").delete().eq("demand_id", demandId);
+    const { error } = await supabase.from("dealer_demands").delete().eq("id", demandId);
+    if (error) {
+      toast.error("Delete failed: " + error.message);
+      return;
+    }
+    if (selectedDemand === demandId) {
+      setSelectedDemand(null);
+      setOpps([]);
+    }
+    await loadDemands();
+    toast.success("Demand deleted");
+  }
+
   useEffect(() => { loadDemands(); }, []);
 
   const selectedDemandObj = demands.find(d => d.id === selectedDemand);
@@ -670,6 +686,9 @@ export default function DealerDemandDeskPage() {
                               <CheckCircle className="h-3 w-3" />
                             </Button>
                           )}
+                          <Button variant="ghost" size="sm" onClick={() => { if (confirm(`Delete demand "${d.make} ${d.model}" for ${d.dealer_name}?`)) deleteDemand(d.id); }} className="h-6 w-6 p-0 text-destructive hover:text-destructive" title="Delete">
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
