@@ -83,6 +83,7 @@ Deno.serve(async (req) => {
         is_dealer_grade, watch_status
       `)
       .ilike("make", input.make)
+      .neq("status", "sold")
       .not("lifecycle_state", "in", `(${EXCLUDED_LIFECYCLE.join(",")})`)
       .order("asking_price", { ascending: false, nullsFirst: false })
       .limit(input.limit! * 3); // over-fetch for scoring/filtering

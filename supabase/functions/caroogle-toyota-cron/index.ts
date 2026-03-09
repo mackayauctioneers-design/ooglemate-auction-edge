@@ -374,6 +374,8 @@ Deno.serve(async (req) => {
       with_price: withPriceCount,
       zero_price: zeroPriceCount,
       stale_swept: staleSweepCount,
+      val_checked: urlValidationChecked,
+      val_dead: urlValidationDeadCount,
       errors,
       runtime_ms: runtimeMs,
     };
