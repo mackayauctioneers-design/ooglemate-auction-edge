@@ -254,10 +254,10 @@ Deno.serve(async (req) => {
 
     // Count filtered by source type for diagnostics
     const filteredAuction = filtered.filter(l => isAuctionSource(l.source, l.source_class, l.auction_house)).length;
-    const filteredDealer = filtered.filter(l => DEALER_SITE_SOURCES.has((l.source || "").toLowerCase())).length;
-    const filteredClassified = filtered.length - filteredAuction - filteredDealer;
+    const filteredInventory = filtered.filter(l => l.listing_type === 'inventory' && !isAuctionSource(l.source, l.source_class, l.auction_house)).length;
+    const filteredRetail = filtered.length - filteredAuction - filteredInventory;
 
-    console.log(`[check-demand] After filters: ${filtered.length} | Auction: ${filteredAuction} | Dealer: ${filteredDealer} | Classified: ${filteredClassified}`);
+    console.log(`[check-demand] After filters: ${filtered.length} | Auction: ${filteredAuction} | Inventory: ${filteredInventory} | Retail: ${filteredRetail}`);
 
     // ── Score, rank, and cap at top 50 ──
     const allScored: any[] = [];
