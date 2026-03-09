@@ -260,13 +260,13 @@ Deno.serve(async (req) => {
 
     console.log(`[check-demand] After filters: ${filtered.length} | Auction: ${filteredAuction} | Dealer: ${filteredDealer} | Classified: ${filteredClassified}`);
 
-    // ── Score & build opportunities ──
-    const opps: any[] = [];
+    // ── Score, rank, and cap at top 50 ──
+    const allScored: any[] = [];
     for (const l of filtered) {
       const { score, marginEstimate } = scoreListing(l, demand, patternMargin);
       const price = l.asking_price ? Math.round(Number(l.asking_price)) : null;
 
-      opps.push({
+      allScored.push({
         demand_id,
         source: l.source || "internal",
         make: l.make, model: l.model, year: l.year, km: l.km,
@@ -277,6 +277,12 @@ Deno.serve(async (req) => {
         score, status: "new",
       });
     }
+
+    // Sort by score descending, then take top 50
+    allScored.sort((a, b) => b.score - a.score);
+    const opps = allScored.slice(0, 50);
+
+    console.log(`[check-demand] Scored: ${allScored.length} | Returning top: ${opps.length}`);
 
     // Insert
     let inserted = 0;
