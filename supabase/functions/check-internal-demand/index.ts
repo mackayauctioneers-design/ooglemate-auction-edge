@@ -153,12 +153,24 @@ Deno.serve(async (req) => {
     // PHASE 1: Internal DB — structured filters
     // ══════════════════════════════════════════════════════
 
+    // Build model search term — include series if provided (e.g. "landcruiser 79")
+    const modelSearch = demand.series
+      ? `%${demand.model}%${demand.series}%`
+      : `%${demand.model}%`;
+
     let query = sb
       .from("vehicle_listings")
       .select("id, listing_id, make, model, year, km, asking_price, state, variant_raw, listing_url, source, source_class, auction_house, transmission, fuel, drivetrain")
       .in("status", ["listed", "catalogue"])
-      .ilike("make", `%${demand.make}%`)
-      .ilike("model", `%${demand.model}%`);
+      .ilike("make", `%${demand.make}%`);
+
+    // Try model+series first; if series provided, also accept series in variant_raw via OR
+    if (demand.series) {
+      // Use or filter: model contains series OR variant_raw contains series
+      query = query.or(`model.ilike.${modelSearch},model.ilike.%${demand.model}%`);
+    } else {
+      query = query.ilike("model", `%${demand.model}%`);
+    }
 
     // Structured filters
     if (demand.km_max) query = query.lte("km", demand.km_max);
