@@ -256,7 +256,9 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
     .from("vehicle_listings")
     .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, state, auction_house, status, last_seen_at")
     .gte("last_seen_at", recencyCutoff)
-    .not("status", "eq", "sold")
+    .not("status", "ilike", "sold")
+    .not("status", "ilike", "inactive")
+    .not("status", "ilike", "dead")
     .ilike("make", `%${parsed.make}%`)
     .order("asking_price", { ascending: true, nullsFirst: false })
     .limit(TIER1_LIMIT);
