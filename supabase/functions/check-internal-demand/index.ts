@@ -153,10 +153,14 @@ Deno.serve(async (req) => {
     // PHASE 1: Internal DB — structured filters
     // ══════════════════════════════════════════════════════
 
+    // 14-day recency gate — prevents stale/sold auction lots from surfacing
+    const recencyCutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
     let query = sb
       .from("vehicle_listings")
-      .select("id, listing_id, make, model, year, km, asking_price, state, variant_raw, listing_url, source, source_class, auction_house, transmission, fuel, drivetrain")
+      .select("id, listing_id, make, model, year, km, asking_price, state, variant_raw, listing_url, source, source_class, auction_house, transmission, fuel, drivetrain, last_seen_at")
       .in("status", ["listed", "catalogue"])
+      .gte("last_seen_at", recencyCutoff)
       .ilike("make", `%${demand.make}%`)
       .ilike("model", `%${demand.model}%`);
 
