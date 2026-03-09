@@ -150,16 +150,15 @@ Deno.serve(async (req) => {
     const patternMargin = marginMap.get(`${demand.make}|${demand.model}`);
 
     // ══════════════════════════════════════════════════════
-    // PHASE 1: Internal DB — structured filters
+    // PHASE 1: Unified market search (vehicle_listings + retail_listings)
     // ══════════════════════════════════════════════════════
 
-    // 14-day recency gate — prevents stale/sold auction lots from surfacing
+    // 14-day recency gate — prevents stale/sold lots from surfacing
     const recencyCutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
     let query = sb
-      .from("vehicle_listings")
-      .select("id, listing_id, make, model, year, km, asking_price, state, variant_raw, listing_url, source, source_class, auction_house, transmission, fuel, drivetrain, last_seen_at")
-      .in("status", ["listed", "catalogue"])
+      .from("market_listings")
+      .select("id, make, model, year, km, asking_price, location, variant_raw, listing_url, source, source_class, auction_house, transmission, fuel, drivetrain, last_seen_at, listing_type")
       .gte("last_seen_at", recencyCutoff)
       .ilike("make", `%${demand.make}%`)
       .ilike("model", `%${demand.model}%`);
