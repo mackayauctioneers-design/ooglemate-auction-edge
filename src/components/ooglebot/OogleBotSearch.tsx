@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { searchOogleBot, searchOogleBotDirect, type OogleBotResponse, type OogleBotResult } from "@/lib/api/ooglebot";
 import { searchTiered, searchDealerSpecs, parseSearchQuery, type InternalMatch, type TieredSearchResult } from "@/lib/api/ooglebot-internal";
+import { extractSeries } from "@/utils/derivePlatform";
 import { supabase } from "@/integrations/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
