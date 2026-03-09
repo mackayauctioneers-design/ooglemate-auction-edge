@@ -1,11 +1,16 @@
 /**
  * run-outward-search-v2
  *
- * Two-phase orchestrator:
- *   PHASE 1: Internal DB search (always, free, no quota cost)
- *   PHASE 2: Outward registry sources (gated by entitlement + quota)
+ * Two-tier Ooglebot architecture:
+ *   LAYER 1: Internal "Sales Truth" Match (always, free, no quota cost)
+ *            - Auctions, dealer sites, VA uploads, prior scraped listings
+ *            - If matches ≥3 → return results, STOP
+ *   LAYER 2: Outward Market Recon (only when internal < 3)
+ *            - CaroogleAI discovery
+ *            - Priority: Auctions → Dealer websites → FB Marketplace → Gumtree → Carsales
  *
  * With: quota enforcement, cache (tier-aware), telemetry, global system cap.
+ * Score filter: Only return results with score ≥70
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -20,6 +25,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+/** Minimum internal matches before triggering outward search */
+const INTERNAL_MATCH_THRESHOLD = 3;
+
+/** Minimum score to include in results */
+const MIN_SCORE_THRESHOLD = 70;
 
 /** Cache key includes tier to prevent cross-tier pollution */
 function buildCacheKey(intent: ParsedIntent, tier: string, sourceKeys: string[]): string {
@@ -36,10 +47,21 @@ function buildCacheKey(intent: ParsedIntent, tier: string, sourceKeys: string[])
   ].join("|");
 }
 
-// Outward adapter registry — internal_db is NOT here (it's Phase 1)
-const ADAPTERS: Record<string, () => { search: (intent: ParsedIntent, config: Record<string, unknown>, signal?: AbortSignal) => Promise<AdapterResult[]> }> = {
-  // manus: () => new ManusAdapter(),  — future
-};
+/** Filter results by minimum score threshold */
+function filterByScore(results: AdapterResult[], minScore: number): AdapterResult[] {
+  return results.filter(r => (r.score ?? 0) >= minScore);
+}
+
+/** Sort results by score desc, then price asc */
+function sortResults(results: AdapterResult[]): AdapterResult[] {
+  return [...results].sort((a, b) => {
+    // Score descending
+    const scoreDiff = (b.score ?? 0) - (a.score ?? 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    // Price ascending (cheapest first for same score)
+    return (a.effective_cost ?? a.price ?? Infinity) - (b.effective_cost ?? b.price ?? Infinity);
+  });
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -93,12 +115,12 @@ Deno.serve(async (req) => {
       .maybeSingle();
     isPrivileged = ent?.plan_tier === "enterprise" || ent?.plan_tier === "premium";
   }
-  const urgency = body.urgency ?? (isPrivileged ? "high" : "normal");
 
-  // ── Parse intent ──
+  // ── Parse intent (NLP extraction → structured parameters) ──
   let intent: ParsedIntent = emptyIntent();
   const provided = body.filters;
   if (provided?.make) {
+    // Structured filters override NLP
     intent = {
       make: String(provided.make).toUpperCase(),
       model: provided.model ? String(provided.model).toUpperCase() : null,
@@ -110,6 +132,7 @@ Deno.serve(async (req) => {
       state: typeof provided.state === "string" ? provided.state.toUpperCase() : null,
     };
   } else {
+    // NLP extraction fallback
     intent = await parseIntentLLM(instruction, apiKey);
     if (!intent.make) {
       intent = parseIntentRegex(instruction);
@@ -123,101 +146,73 @@ Deno.serve(async (req) => {
   }
 
   // ══════════════════════════════════════════════════════════
-  // PHASE 1: Internal DB + CaroogleAI (always runs, no quota cost)
+  // LAYER 1: Internal "Sales Truth" Match
+  // Sources: auctions, dealer sites, VA uploads, prior scraped listings
+  // If matches ≥3 → return results, STOP
   // ══════════════════════════════════════════════════════════
   const internalAdapter = new InternalDbAdapter();
   let internalResults: AdapterResult[] = [];
-  let caroogleaiResults: AdapterResult[] = [];
 
-  // Run internal DB and CaroogleAI in parallel
-  const sbUrl = Deno.env.get("SUPABASE_URL")!;
-  const sbServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-  const [internalSettled, caroogleaiSettled] = await Promise.allSettled([
-    internalAdapter.search(intent, {}),
-    (async () => {
-      try {
-        const resp = await fetch(`${sbUrl}/functions/v1/valo-perplexity-scan`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${sbServiceKey}`,
-          },
-          body: JSON.stringify({ intent }),
-        });
-        if (!resp.ok) {
-          console.error("CaroogleAI scan HTTP error:", resp.status);
-          return [];
-        }
-        const pData = await resp.json();
-        return (pData.results ?? []) as AdapterResult[];
-      } catch (err) {
-        console.error("CaroogleAI scan error:", err);
-        return [];
-      }
-    })(),
-  ]);
-
-  if (internalSettled.status === "fulfilled") {
-    internalResults = internalSettled.value;
-  } else {
-    console.error("Phase 1 internal search error:", internalSettled.reason);
+  try {
+    internalResults = await internalAdapter.search(intent, {});
+  } catch (err) {
+    console.error("Layer 1 internal search error:", err);
   }
 
-  if (caroogleaiSettled.status === "fulfilled") {
-    caroogleaiResults = caroogleaiSettled.value;
-    if (caroogleaiResults.length > 0) {
-      console.log(`Phase 1 CaroogleAI: ${caroogleaiResults.length} results`);
-    }
-  }
+  // Apply score filter and sort
+  const scoredInternal = filterByScore(internalResults, MIN_SCORE_THRESHOLD);
+  const sortedInternal = sortResults(scoredInternal);
 
-  // Merge internal + caroogleai for Phase 1
-  const phase1Results = deduplicateResults([...internalResults, ...caroogleaiResults]);
+  console.log(`[Layer 1] Internal: ${internalResults.length} raw → ${scoredInternal.length} scored ≥${MIN_SCORE_THRESHOLD}`);
 
-  const internalCount = body.internal_count ?? phase1Results.length;
-
-  // ── Demand gating: skip outward if plenty of internal results ──
-  // Enterprise + operator always bypass this gate (isPrivileged = true)
-  if (!isPrivileged && internalCount >= 5) {
+  // ── Demand gating: if ≥3 internal matches, return and STOP ──
+  // Enterprise/operator can bypass this gate with full_market_scan
+  if (!isPrivileged && scoredInternal.length >= INTERNAL_MATCH_THRESHOLD) {
     const durationMs = Date.now() - startMs;
     try {
       await sb.from("outward_search_runs").insert({
         account_id: accountId, initiated_by: initiatedBy, instruction,
         parsed_intent: intent,
-        sources_queried: ["internal_db", "caroogleai"],
-        total_results: phase1Results.length,
-        results_by_source: { internal_db: internalResults.length, caroogleai: caroogleaiResults.length },
+        sources_queried: ["internal_db"],
+        total_results: sortedInternal.length,
+        results_by_source: { internal_db: sortedInternal.length },
         gated: true,
-        gate_reason: `${internalCount} phase 1 results — outward search skipped`,
+        gate_reason: `${scoredInternal.length} internal matches (≥${INTERNAL_MATCH_THRESHOLD}) — outward skipped`,
         status: "gated", duration_ms: durationMs,
       });
     } catch (_) { /* swallow */ }
 
     return new Response(JSON.stringify({
       status: "ok", gated: true,
-      reason: `${internalCount} results found — outward search skipped`,
+      reason: `${scoredInternal.length} internal matches found — outward search skipped`,
       phase: "internal_only",
       intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
-      results: phase1Results.slice(0, MAX_RESULTS),
-      internal_count: phase1Results.length,
+      results: sortedInternal.slice(0, MAX_RESULTS),
+      internal_count: sortedInternal.length,
+      score_threshold: MIN_SCORE_THRESHOLD,
+      duration_ms: durationMs,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   // ══════════════════════════════════════════════════════════
-  // PHASE 2: Outward registry sources (quota-gated)
+  // LAYER 2: Outward Market Recon (internal < 3)
+  // Trigger CaroogleAI discovery + external sources
+  // Priority: Auctions → Dealer websites → FB Marketplace → Gumtree → Carsales
   // ══════════════════════════════════════════════════════════
+
+  console.log(`[Layer 2] Internal matches (${scoredInternal.length}) < ${INTERNAL_MATCH_THRESHOLD}, triggering outward recon`);
 
   // Quota check
   const quota = await checkQuota(accountId, initiatedBy);
   if (!quota.allowed) {
-    // Return phase1 results even when quota blocks outward
+    // Return internal results even when quota blocks outward
     const durationMs = Date.now() - startMs;
     try {
       await sb.from("outward_search_runs").insert({
         account_id: accountId, initiated_by: initiatedBy, instruction,
-        parsed_intent: intent, sources_queried: ["internal_db", "caroogleai"],
-        total_results: phase1Results.length,
-        results_by_source: { internal_db: internalResults.length, caroogleai: caroogleaiResults.length },
+        parsed_intent: intent, sources_queried: ["internal_db"],
+        total_results: sortedInternal.length,
+        results_by_source: { internal_db: sortedInternal.length },
         gated: true, gate_reason: quota.reason,
         quota_snapshot: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
         status: "gated", duration_ms: durationMs,
@@ -228,8 +223,8 @@ Deno.serve(async (req) => {
       status: "ok", gated: true,
       reason: quota.reason, phase: "internal_only",
       intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
-      results: phase1Results.slice(0, MAX_RESULTS),
-      internal_count: phase1Results.length,
+      results: sortedInternal.slice(0, MAX_RESULTS),
+      internal_count: sortedInternal.length,
       quota: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
@@ -241,9 +236,9 @@ Deno.serve(async (req) => {
     try {
       await sb.from("outward_search_runs").insert({
         account_id: accountId, initiated_by: initiatedBy, instruction,
-        parsed_intent: intent, sources_queried: ["internal_db", "caroogleai"],
-        total_results: phase1Results.length,
-        results_by_source: { internal_db: internalResults.length, caroogleai: caroogleaiResults.length },
+        parsed_intent: intent, sources_queried: ["internal_db"],
+        total_results: sortedInternal.length,
+        results_by_source: { internal_db: sortedInternal.length },
         gated: true, gate_reason: "Global daily outward search limit reached",
         status: "gated", duration_ms: durationMs,
       });
@@ -252,65 +247,58 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       status: "ok", gated: true,
       reason: "Global daily outward search limit reached", phase: "internal_only",
-      results: phase1Results.slice(0, MAX_RESULTS),
-      internal_count: phase1Results.length,
+      results: sortedInternal.slice(0, MAX_RESULTS),
+      internal_count: sortedInternal.length,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  // Filter eligible outward sources (exclude internal_db — it's Phase 1)
-  const outwardSources = quota.eligible_sources.filter(s => s.adapter_type !== "internal_db");
+  // ── CaroogleAI Discovery (Layer 2 external recon) ──
+  const sbUrl = Deno.env.get("SUPABASE_URL")!;
+  const sbServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  let caroogleaiResults: AdapterResult[] = [];
 
-  // Cache check (tier-aware key)
-  const tier = quota.entitlement?.plan_tier ?? "free";
-  const outwardSourceKeys = outwardSources.map(s => s.source);
-  const cacheKey = buildCacheKey(intent, tier, outwardSourceKeys);
-
-  const { data: cached } = await sb
-    .from("search_cache")
-    .select("*")
-    .eq("cache_key", cacheKey)
-    .eq("source", "outward_v2")
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
-
-  if (cached) {
-    await sb.from("search_cache").update({ hits: (cached.hits || 0) + 1 }).eq("id", cached.id);
-    const cachedOutward = (cached.results as AdapterResult[]) || [];
-    // Merge internal + cached outward, dedup, sort
-    const merged = deduplicateResults([...phase1Results, ...cachedOutward]);
-    merged.sort((a, b) => b.score - a.score || (a.effective_cost ?? Infinity) - (b.effective_cost ?? Infinity));
-    const topResults = merged.slice(0, MAX_RESULTS);
-
-    try {
-      await sb.from("outward_search_runs").insert({
-        account_id: accountId, initiated_by: initiatedBy, instruction,
-        parsed_intent: intent, sources_queried: ["internal_db", "caroogleai"],
-        total_results: topResults.length, cache_hit: true,
-        status: "completed", duration_ms: Date.now() - startMs,
-        completed_at: new Date().toISOString(),
-      });
-    } catch (_) { /* swallow */ }
-
-    return new Response(JSON.stringify({
-      status: "ok", gated: false, cached: true, phase: "internal+outward_cached",
-      intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
-      results: topResults,
-      internal_count: phase1Results.length,
-      total_filtered: topResults.length,
-      duration_ms: Date.now() - startMs,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  try {
+    const resp = await fetch(`${sbUrl}/functions/v1/valo-perplexity-scan`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sbServiceKey}`,
+      },
+      body: JSON.stringify({ intent }),
+    });
+    if (resp.ok) {
+      const pData = await resp.json();
+      caroogleaiResults = (pData.results ?? []) as AdapterResult[];
+      console.log(`[Layer 2] CaroogleAI: ${caroogleaiResults.length} results`);
+    } else {
+      console.error("CaroogleAI scan HTTP error:", resp.status);
+    }
+  } catch (err) {
+    console.error("CaroogleAI scan error:", err);
   }
 
-  // ── Outward browser automation disabled (Lindy no longer used) ──
-  // Just return Phase 1 results
+  // Increment usage (outward search was triggered)
+  if (accountId && initiatedBy === "user") {
+    await incrementUsage(accountId);
+  }
+  await incrementGlobalCap(sb);
+
+  // Merge internal + caroogleai, apply score filter, deduplicate, sort
+  const allResults = deduplicateResults([...internalResults, ...caroogleaiResults]);
+  const scoredResults = filterByScore(allResults, MIN_SCORE_THRESHOLD);
+  const finalResults = sortResults(scoredResults);
+
+  console.log(`[Layer 2] Merged: ${allResults.length} raw → ${scoredResults.length} scored ≥${MIN_SCORE_THRESHOLD}`);
+
   const durationMs = Date.now() - startMs;
 
   try {
     await sb.from("outward_search_runs").insert({
       account_id: accountId, initiated_by: initiatedBy, instruction,
-      parsed_intent: intent, sources_queried: ["internal_db", "caroogleai"],
-      total_results: phase1Results.length,
-      results_by_source: { internal_db: internalResults.length, caroogleai: caroogleaiResults.length },
+      parsed_intent: intent, 
+      sources_queried: ["internal_db", "caroogleai"],
+      total_results: finalResults.length,
+      results_by_source: { internal_db: scoredInternal.length, caroogleai: filterByScore(caroogleaiResults, MIN_SCORE_THRESHOLD).length },
       cache_hit: false, status: "completed", duration_ms: durationMs,
       completed_at: new Date().toISOString(),
     });
@@ -318,18 +306,20 @@ Deno.serve(async (req) => {
 
   return new Response(JSON.stringify({
     status: "ok",
-    phase: "internal_only",
+    phase: "internal+outward",
     intent: { make: intent.make, model_keywords: intent.model ? [intent.model] : [], badge: intent.badge, year: intent.year_min, max_km: intent.max_km, price_max: intent.price_max },
-    results: phase1Results.slice(0, MAX_RESULTS),
-    internal_count: phase1Results.length,
+    results: finalResults.slice(0, MAX_RESULTS),
+    internal_count: scoredInternal.length,
+    outward_count: filterByScore(caroogleaiResults, MIN_SCORE_THRESHOLD).length,
+    score_threshold: MIN_SCORE_THRESHOLD,
     duration_ms: durationMs,
-    quota: quota.entitlement ? { used: quota.entitlement.searches_used_today, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
+    quota: quota.entitlement ? { used: (quota.entitlement.searches_used_today || 0) + 1, max: quota.entitlement.max_searches_per_day, tier: quota.entitlement.plan_tier } : null,
   }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });
 
 /**
  * Deduplicate results across sources.
- * Uses a composite key of: year + make + model + km-band + price-band + state
+ * Uses a composite key of: year + title prefix + km-band + price-band + state
  * This catches the same vehicle listed on multiple platforms.
  */
 function deduplicateResults(results: AdapterResult[]): AdapterResult[] {
@@ -346,7 +336,7 @@ function deduplicateResults(results: AdapterResult[]): AdapterResult[] {
     ].join("|");
 
     const existing = seen.get(key);
-    if (!existing || r.score > existing.score) {
+    if (!existing || (r.score ?? 0) > (existing.score ?? 0)) {
       seen.set(key, r);
     }
   }
