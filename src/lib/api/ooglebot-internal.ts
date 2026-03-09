@@ -289,6 +289,36 @@ function isToyotaLandCruiserNotPrado(parsed: ParsedIntent): boolean {
   return make === "toyota" && model.includes("landcruiser") && !model.includes("prado");
 }
 
+/** Detect which LC series (LC70/LC200/LC300) a listing belongs to */
+function detectListingSeriesLC(l: InternalMatch): string | null {
+  const text = [l.variant_raw, l.id, l.listing_url]
+    .filter(Boolean).join(" ").toUpperCase();
+  // LC70 signals: 70/76/78/79 as tokens, 70SERIES in URL, WORKMATE badge
+  if (/\b7[0689]\b/.test(text) || /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]/.test(text) || /\bWORKMATE\b/.test(text)) return "LC70";
+  // LC300 signals
+  if (/\b300\b/.test(text) || /GR[\-_\s]?SPORT|GR[\-_\s]?S\b|LC300/.test(text)) return "LC300";
+  // LC200 signals
+  if (/\b200\b/.test(text) || /LC200/.test(text)) return "LC200";
+  return null;
+}
+
+/** Strip LC series numbers from model string so DB query fetches all generations */
+function normalizeModelForQuery(make: string, model: string): string {
+  const intentSeries = extractSeries(make, model);
+  if (!intentSeries?.startsWith("LC")) return model;
+  return model.replace(/\b(7[0689]|200|300)\b/gi, "").replace(/\s+/g, " ").trim();
+}
+
+/** Apply series gate post-filter */
+function applySeriesGate(results: InternalMatch[], parsed: ParsedIntent): InternalMatch[] {
+  const intentSeries = extractSeries(parsed.make || "", parsed.model || "");
+  if (!intentSeries) return results;
+  return results.filter(l => {
+    const ls = detectListingSeriesLC(l);
+    return ls === null || ls === intentSeries;
+  });
+}
+
 // ─── Legacy API (backwards-compatible) ───────────────────────────────────────
 
 /**
