@@ -160,4 +160,14 @@ export const AUCTION_SOURCES = new Set([
 export const AUCTION_PREMIUM = 500;
 export const FREIGHT_FLAT = 800;
 export const MAX_RESULTS = 30;
-export const EXCLUDED_LIFECYCLE = ["STALE", "DEAD", "stale", "dead"];
+
+// Listings in these lifecycle states should never be shown to users.
+// Keep in sync with other search surfaces (e.g. ooglebot-search).
+export const EXCLUDED_LIFECYCLE = [
+  "STALE", "stale",
+  "DEAD", "dead",
+  "RETURNED", "returned",
+  "INVALID", "invalid",
+  "DELISTED", "delisted",
+  "SOLD", "sold",
+];
