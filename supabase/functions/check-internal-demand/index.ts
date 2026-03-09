@@ -214,13 +214,27 @@ Deno.serve(async (req) => {
     const filtered = sorted.filter(l => {
       const v = (l.variant_raw || "").toLowerCase();
 
-      // Series filter — check variant_raw, model, AND listing_url for series string
+      // Series filter — smart matching for known series aliases
       if (demand.series) {
         const series = demand.series.toLowerCase();
         const modelStr = (l.model || "").toLowerCase();
         const listingUrl = (l.listing_url || "").toLowerCase();
-        if (!v.includes(series) && !modelStr.includes(series) && !listingUrl.includes(series)) {
-          return false;
+
+        // LandCruiser 70-series special handling: "79", "76", "78" all map to "70 series"
+        const is70Series = ["70", "76", "78", "79"].includes(series) &&
+          modelStr.includes("landcruiser");
+
+        if (is70Series) {
+          // Accept if listing mentions "70" or the specific series number anywhere
+          const found70 = v.includes("70") || v.includes(series) ||
+            modelStr.includes("70") || modelStr.includes(series) ||
+            listingUrl.includes("70-series") || listingUrl.includes(`-${series}`) ||
+            listingUrl.includes(series);
+          if (!found70) return false;
+        } else {
+          if (!v.includes(series) && !modelStr.includes(series) && !listingUrl.includes(series)) {
+            return false;
+          }
         }
       }
       // Variant/badge strict match
