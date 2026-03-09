@@ -86,6 +86,10 @@ export class InternalDbAdapter implements OutwardSearchAdapter {
       const modelLower = intent.model.toLowerCase();
       if (intent.make?.toLowerCase() === "toyota" && modelLower.includes("landcruiser") && !modelLower.includes("prado")) {
         query = query.not("model", "ilike", "%prado%");
+        // Also exclude Prado variants stored under LandCruiser model
+        query = query.not("variant_raw", "ilike", "%prado%");
+        query = query.not("variant_family", "ilike", "%prado%");
+        query = query.not("variant_used", "ilike", "%prado%");
       }
     }
     if (intent.year_min) query = query.gte("year", intent.year_min);
