@@ -385,7 +385,7 @@ function sourceBadge(s: string) {
 
 // ── Search Status Badge ──
 
-function SearchStatusBadge({ demand, searching }: { demand: DealerDemand; searching: boolean }) {
+function searchStatusBadge(demand: DealerDemand, searching: boolean) {
   // Currently searching
   if (searching) {
     return (
