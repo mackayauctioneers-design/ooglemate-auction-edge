@@ -572,6 +572,22 @@ export default function DealerDemandDeskPage() {
     toast.success("Demand closed");
   }
 
+  async function deleteDemand(demandId: string) {
+    // Delete related opportunities first, then the demand
+    await supabase.from("demand_opportunities").delete().eq("demand_id", demandId);
+    const { error } = await supabase.from("dealer_demands").delete().eq("id", demandId);
+    if (error) {
+      toast.error("Delete failed: " + error.message);
+      return;
+    }
+    if (selectedDemand === demandId) {
+      setSelectedDemand(null);
+      setOpps([]);
+    }
+    await loadDemands();
+    toast.success("Demand deleted");
+  }
+
   useEffect(() => { loadDemands(); }, []);
 
   const selectedDemandObj = demands.find(d => d.id === selectedDemand);
