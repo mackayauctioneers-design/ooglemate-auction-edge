@@ -214,10 +214,12 @@ Deno.serve(async (req) => {
     const filtered = sorted.filter(l => {
       const v = (l.variant_raw || "").toLowerCase();
 
-      // Series filter (check variant_raw for series string)
+      // Series filter — check variant_raw, model, AND listing_url for series string
       if (demand.series) {
         const series = demand.series.toLowerCase();
-        if (!v.includes(series) && !(l.model || "").toLowerCase().includes(series)) {
+        const modelStr = (l.model || "").toLowerCase();
+        const listingUrl = (l.listing_url || "").toLowerCase();
+        if (!v.includes(series) && !modelStr.includes(series) && !listingUrl.includes(series)) {
           return false;
         }
       }
