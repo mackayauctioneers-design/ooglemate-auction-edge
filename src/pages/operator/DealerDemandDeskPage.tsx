@@ -676,7 +676,7 @@ export default function DealerDemandDeskPage() {
                       </TableCell>
                       <TableCell className="py-2">{urgencyBadge(d.urgency)}</TableCell>
                       <TableCell className="py-2">
-                        <SearchStatusBadge demand={d} searching={searching === d.id} />
+                        {searchStatusBadge(d, searching === d.id)}
                       </TableCell>
                       <TableCell className="py-2" onClick={e => e.stopPropagation()}>
                         <div className="flex gap-1">
