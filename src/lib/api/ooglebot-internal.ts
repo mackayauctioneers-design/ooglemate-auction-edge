@@ -246,12 +246,9 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
   const allExcluded = [...AUCTION_SOURCE_ALLOWLIST, ...SOURCE_BLOCKLIST];
 
   let q = supabase
-    .from("vehicle_listings")
-    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, state, auction_house, status, last_seen_at")
+    .from("market_listings")
+    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, auction_house, listing_type, last_seen_at")
     .gte("last_seen_at", recencyCutoff)
-    .not("status", "ilike", "sold")
-    .not("status", "ilike", "inactive")
-    .not("status", "ilike", "dead")
     .ilike("make", `%${parsed.make}%`)
     .order("asking_price", { ascending: true, nullsFirst: false })
     .limit(TIER1_LIMIT);
