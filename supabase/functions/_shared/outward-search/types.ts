@@ -106,6 +106,8 @@ export interface AdapterResult {
   is_dealer_grade: boolean | null;
   description?: string | null;
 }
+
+// ─── Adapter Interface ──────────────────────────────────────────
 export interface OutwardSearchAdapter {
   /** Unique source key matching source_registry.source */
   readonly sourceKey: string;
