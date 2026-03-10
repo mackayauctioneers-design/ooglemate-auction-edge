@@ -400,8 +400,21 @@ Deno.serve(async (req) => {
         reasons.push("DEALER_GRADE");
       }
 
-      // Price badge bonus (retail listings with "Well Below Market" etc.)
-      if (l.price_badge && /well\s+below|below\s+market|great\s+price/i.test(l.price_badge)) {
+      // Market delta scoring (numeric, much stronger than badge-only)
+      if (l.price_difference_percent !== null && l.price_difference_percent !== undefined) {
+        const pct = Math.abs(l.price_difference_percent);
+        if (l.price_difference_percent < -10) {
+          score += 20;
+          reasons.push(`MARKET_DELTA_${pct.toFixed(0)}PCT_UNDER`);
+        } else if (l.price_difference_percent < -6) {
+          score += 12;
+          reasons.push(`MARKET_DELTA_${pct.toFixed(0)}PCT_UNDER`);
+        } else if (l.price_difference_percent < -3) {
+          score += 8;
+          reasons.push(`MARKET_DELTA_${pct.toFixed(0)}PCT_UNDER`);
+        }
+      } else if (l.price_badge && /well\s+below|below\s+market|great\s+price/i.test(l.price_badge)) {
+        // Fallback to badge-only scoring if no numeric data
         score += 8;
         reasons.push("PRICE_BADGE_HOT");
       }
