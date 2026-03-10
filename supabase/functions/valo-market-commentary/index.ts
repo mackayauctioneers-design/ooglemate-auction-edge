@@ -9,7 +9,7 @@
  * - Output is plain text market analysis, 2-4 sentences max
  */
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
