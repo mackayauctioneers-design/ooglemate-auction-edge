@@ -19,7 +19,7 @@ import {
   Flame,
   Brain,
   Bot,
-  Briefcase,
+  } from 'lucide-react';
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
