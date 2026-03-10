@@ -198,7 +198,9 @@ Deno.serve(async (req) => {
     prompt: prompt,
     callback_url: CALLBACK_URL,
     callback_headers: {
-      "x-lindy-signature": Deno.env.get("LINDY_WEBHOOK_SECRET") || "",
+      ...(Deno.env.get("LINDY_WEBHOOK_SECRET")
+        ? { "x-lindy-signature": Deno.env.get("LINDY_WEBHOOK_SECRET")! }
+        : {}),
       "Content-Type": "application/json",
     },
   };
