@@ -14601,6 +14601,7 @@ export type Database = {
           created_count: number
         }[]
       }
+      take_market_snapshot: { Args: never; Returns: number }
       try_acquire_pipeline_lock: { Args: never; Returns: boolean }
       update_auction_attempts: {
         Args: never
