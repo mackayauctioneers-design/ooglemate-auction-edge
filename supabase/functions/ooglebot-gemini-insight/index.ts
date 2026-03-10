@@ -9,7 +9,7 @@
  * - Output is structured bullet points, max 5 lines
  */
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
