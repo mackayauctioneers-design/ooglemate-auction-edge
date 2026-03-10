@@ -54,6 +54,7 @@ function parseCarsalesMarkdown(md: string): DetailResult {
     drivetrain: null, body_type: null, colour: null,
     description: null, image_urls: null, seller_type: null,
     engine_size_l: null, engine_family: null, cylinders: null,
+    price_badge: null,
   };
 
   const clean = cleanMarkdown(md);
