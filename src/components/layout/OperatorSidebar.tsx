@@ -70,6 +70,7 @@ const operatorSections: NavSection[] = [
       { path: '/operator/demand-desk', label: 'Demand Desk', icon: Car },
       { path: '/operator/morning-brief', label: "Tomorrow's Targets", icon: Target },
       { path: '/operator/trading-desk', label: 'Trading Desk', icon: DollarSign },
+      { path: '/operator/car-sales-watch', label: 'Car Sales Watch', icon: TrendingDown },
       { path: '/today', label: 'Today', icon: Calendar },
       { path: '/dealer-dashboard', label: 'Dealer Dashboard', icon: BarChart3 },
     ],
