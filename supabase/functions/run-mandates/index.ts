@@ -217,6 +217,149 @@ const ADAPTERS: Record<string, (m: Mandate) => Promise<NormalizedListing[]>> = {
   toyota: fetchToyota,
 };
 
+// ─── Lindy Discovery Dispatch ───────────────────────────────────────────────
+
+const MIN_RESULTS_THRESHOLD = 5;
+const LINDY_COOLDOWN_HOURS = 6;
+const LINDY_SOURCES: Array<{ key: string; builder: (m: Mandate) => string | null }> = [
+  {
+    key: "carsales",
+    builder: (m) => {
+      const params = new URLSearchParams();
+      params.set("q", `(And.Service.carsales._(C.Make.${m.make}._.Model.${m.model || ""}.))` );
+      if (m.year_min) params.set("yearFrom", String(m.year_min));
+      if (m.year_max) params.set("yearTo", String(m.year_max));
+      if (m.km_max) params.set("odometersMax", String(m.km_max));
+      if (m.price_max) params.set("priceTo", String(m.price_max));
+      return `https://www.carsales.com.au/cars/?${params}`;
+    },
+  },
+  {
+    key: "gumtree",
+    builder: (m) => {
+      const q = [m.make, m.model, m.variant_family].filter(Boolean).join(" ");
+      const params = new URLSearchParams({ search_query: q });
+      if (m.price_max) params.set("price_max", String(m.price_max));
+      return `https://www.gumtree.com.au/s-cars-vans-utes/c18320?${params}`;
+    },
+  },
+  {
+    key: "drive",
+    builder: (m) => {
+      const params = new URLSearchParams({ make: m.make.toLowerCase(), sort: "price" });
+      if (m.model) params.set("model", m.model.toLowerCase());
+      if (m.year_min) params.set("year_from", String(m.year_min));
+      if (m.year_max) params.set("year_to", String(m.year_max));
+      if (m.km_max) params.set("max_km", String(m.km_max));
+      return `https://www.drive.com.au/cars-for-sale/?${params}`;
+    },
+  },
+];
+
+function buildLindyPrompt(source: string, url: string, mandate: Mandate): string {
+  const ctx = [
+    `Target make: ${mandate.make}`,
+    mandate.model && `Target model: ${mandate.model}`,
+    mandate.variant_family && `Target variant: ${mandate.variant_family}`,
+    mandate.year_min && mandate.year_max
+      ? `Target year range: ${mandate.year_min}–${mandate.year_max}`
+      : mandate.year_min ? `Target year from: ${mandate.year_min}` : null,
+    mandate.km_max && `Max odometer: ${mandate.km_max.toLocaleString()} km`,
+    mandate.price_max && `Max price: $${mandate.price_max.toLocaleString()}`,
+  ].filter(Boolean).join("\n");
+
+  return `Browse this URL and extract all used car listings:\n${url}\n\nSearch context:\n${ctx}\n\nFor each listing return a JSON object with: make, model, year, variant, odometer_km, price_asking, listing_url, listing_id, image_url, seller_name.\nReturn a JSON array of listings. If no listings found, return [].\nExtract ONLY listings visible on this page. Do NOT follow pagination.\nStrip "$", ",", "AUD" from prices — digits only. Same for odometer — digits only.\nIf price is "POA" or missing, use null. If odometer missing, use null.`;
+}
+
+async function dispatchLindyForMandate(
+  sb: ReturnType<typeof createClient>,
+  mandate: Mandate,
+): Promise<{ dispatched: number; skipped: string[] }> {
+  const LINDY_URL = Deno.env.get("LINDY_HTTP_WEBHOOK_URL");
+  if (!LINDY_URL) {
+    console.warn("[run-mandates] LINDY_HTTP_WEBHOOK_URL not configured — skipping Lindy dispatch");
+    return { dispatched: 0, skipped: ["no_webhook_url"] };
+  }
+
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/lindy-results-webhook`;
+
+  // Check cooldown: skip if Lindy was dispatched for this mandate within LINDY_COOLDOWN_HOURS
+  const cooldownCutoff = new Date(Date.now() - LINDY_COOLDOWN_HOURS * 60 * 60 * 1000).toISOString();
+  const { count: recentJobs } = await sb
+    .from("outward_jobs")
+    .select("id", { count: "exact", head: true })
+    .like("search_url", `%${mandate.make}%`)
+    .gte("dispatched_at", cooldownCutoff)
+    .in("status", ["dispatched", "complete"]);
+
+  if ((recentJobs ?? 0) > 0) {
+    console.log(`[run-mandates] Lindy cooldown active for "${mandate.name}" — skipping`);
+    return { dispatched: 0, skipped: ["cooldown"] };
+  }
+
+  const searchRunId = crypto.randomUUID();
+  let dispatched = 0;
+  const skipped: string[] = [];
+
+  for (const { key, builder } of LINDY_SOURCES) {
+    const searchUrl = builder(mandate);
+    if (!searchUrl) { skipped.push(`${key}:no_url`); continue; }
+
+    const jobId = crypto.randomUUID();
+    const { error: jobErr } = await sb.from("outward_jobs").insert({
+      id: jobId,
+      search_run_id: searchRunId,
+      source_key: key,
+      search_url: searchUrl,
+      status: "dispatched",
+      dispatched_at: new Date().toISOString(),
+    });
+    if (jobErr) { skipped.push(`${key}:job_err`); continue; }
+
+    const prompt = buildLindyPrompt(key, searchUrl, mandate);
+    try {
+      const resp = await fetch(LINDY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          job_id: jobId,
+          search_run_id: searchRunId,
+          source: key,
+          url: searchUrl,
+          prompt,
+          callback_url: CALLBACK_URL,
+          callback_headers: {
+            ...(Deno.env.get("LINDY_WEBHOOK_SECRET")
+              ? { "x-lindy-signature": Deno.env.get("LINDY_WEBHOOK_SECRET")! }
+              : {}),
+            "Content-Type": "application/json",
+          },
+          mandate_id: mandate.id,
+          mandate_name: mandate.name,
+        }),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        console.error(`[run-mandates] Lindy ${key} dispatch failed: ${resp.status} ${errText.slice(0, 200)}`);
+        await sb.from("outward_jobs").update({ status: "failed", error: `HTTP ${resp.status}` }).eq("id", jobId);
+        skipped.push(`${key}:http_${resp.status}`);
+        continue;
+      }
+      await resp.text(); // consume
+      dispatched++;
+      console.log(`[run-mandates] Lindy dispatched: ${key} for "${mandate.name}"`);
+    } catch (err) {
+      console.error(`[run-mandates] Lindy ${key} error:`, err);
+      await sb.from("outward_jobs").update({ status: "failed", error: String(err) }).eq("id", jobId);
+      skipped.push(`${key}:fetch_err`);
+    }
+  }
+
+  return { dispatched, skipped };
+}
+
 // ─── Feed upsert ─────────────────────────────────────────────────────────────
 
 async function upsertFeedItems(
@@ -498,6 +641,7 @@ Deno.serve(async (req) => {
     let totalFetched = 0;
     let totalUpserted = 0;
     let totalCodeRed = 0;
+    let totalLindyDispatched = 0;
     const runErrors: any[] = [];
     let mandatesExecuted = 0;
 
@@ -537,6 +681,22 @@ Deno.serve(async (req) => {
       totalFetched += mandateFetched;
       totalUpserted += mandateUpserted;
       mandatesExecuted++;
+
+      // 3b. Lindy outward discovery if internal results insufficient
+      if (mandateFetched < MIN_RESULTS_THRESHOLD) {
+        console.log(`[run-mandates] "${mandate.name}" has ${mandateFetched} results (< ${MIN_RESULTS_THRESHOLD}) — triggering Lindy discovery`);
+        try {
+          const { dispatched, skipped } = await dispatchLindyForMandate(sb, mandate);
+          totalLindyDispatched += dispatched;
+          if (skipped.length > 0) {
+            console.log(`[run-mandates] Lindy skipped for "${mandate.name}": ${skipped.join(", ")}`);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[run-mandates] Lindy dispatch failed for "${mandate.name}": ${msg}`);
+          runErrors.push({ mandate: mandate.name, source: "lindy", error: msg });
+        }
+      }
 
       // 4. Evaluate Code Red alerts for this mandate
       try {
@@ -579,7 +739,7 @@ Deno.serve(async (req) => {
       cron_name: CRON_NAME,
       last_seen_at: new Date().toISOString(),
       last_ok: true,
-      note: `due=${mandates.length} exec=${mandatesExecuted} fetched=${totalFetched} upserted=${totalUpserted} code_red=${totalCodeRed} errors=${runErrors.length}`,
+      note: `due=${mandates.length} exec=${mandatesExecuted} fetched=${totalFetched} upserted=${totalUpserted} code_red=${totalCodeRed} lindy=${totalLindyDispatched} errors=${runErrors.length}`,
     }, { onConflict: "cron_name" });
 
     const result = {
@@ -588,6 +748,7 @@ Deno.serve(async (req) => {
       listings_fetched: totalFetched,
       listings_upserted: totalUpserted,
       code_red_count: totalCodeRed,
+      lindy_dispatched: totalLindyDispatched,
       errors: runErrors,
       runtime_ms: Date.now() - startTime,
     };
