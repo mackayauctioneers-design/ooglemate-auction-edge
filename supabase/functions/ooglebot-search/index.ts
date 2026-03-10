@@ -254,21 +254,42 @@ Deno.serve(async (req) => {
     console.log(`ooglebot-search: ${vlListings.length} vehicle_listings, ${rlListings.length} retail_listings`);
 
     // --- 2. Normalize retail_listings into the same shape ---
-    const normalizedRetail = rlListings.map((r: any) => ({
-      ...r,
-      listing_id: r.id,
-      source_class: "retail",
-      variant_used: r.badge || null,
-      location: r.region_raw || r.state || null,
-      auction_house: null,
-      lifecycle_state: r.lifecycle_status || "ACTIVE",
-      fingerprint: null,
-      fingerprint_confidence: 0,
-      is_dealer_grade: false,
-      fuel: r.fuel_type || null,
-      watch_status: null,
-      price_badge: r.price_badge || null,
-    }));
+    // Extract badge from Carsales URL when variant_raw is missing it
+    function extractBadgeFromUrl(url: string | null): string | null {
+      if (!url) return null;
+      // Carsales URLs: /2024-ford-ranger-xlt-auto-4x4-my24/
+      const m = url.match(/\d{4}-[a-z]+-[a-z]+-([a-z\-]+?)-(auto|manual|my\d)/i);
+      if (m) {
+        return m[1].replace(/-/g, " ").toUpperCase().trim();
+      }
+      return null;
+    }
+
+    const normalizedRetail = rlListings.map((r: any) => {
+      // Try to derive badge from URL if not in badge/variant_raw fields
+      const urlBadge = extractBadgeFromUrl(r.listing_url);
+      const derivedVariant = r.badge || urlBadge || null;
+
+      return {
+        ...r,
+        listing_id: r.id,
+        source_class: "retail",
+        variant_used: derivedVariant,
+        // Also populate variant_raw if it's just "YEAR MAKE MODEL" with no badge
+        variant_raw: r.variant_raw && !/^\d{4}\s+\w+\s+\w+$/.test(r.variant_raw.trim())
+          ? r.variant_raw
+          : (derivedVariant ? `${r.year} ${r.make} ${r.model} ${derivedVariant}` : r.variant_raw),
+        location: r.region_raw || r.state || null,
+        auction_house: null,
+        lifecycle_state: r.lifecycle_status || "ACTIVE",
+        fingerprint: null,
+        fingerprint_confidence: 0,
+        is_dealer_grade: false,
+        fuel: r.fuel_type || null,
+        watch_status: null,
+        price_badge: r.price_badge || null,
+      };
+    });
 
     // Merge both sets
     const allListings = [
