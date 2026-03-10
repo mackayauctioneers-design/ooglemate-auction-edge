@@ -722,7 +722,7 @@ export default function ValoPage() {
               title={!authReady ? 'Loading dealer profile…' : !canRunValo ? 'Fill in Make, Model, Year and KM' : undefined}
             >
               {isProcessing ? (
-                <><Loader2 className="h-4 w-4 animate-spin" /> Running Valuation…</>
+                <><Loader2 className="h-4 w-4 animate-spin" /> {valoPhase || 'Running Valuation…'}</>
               ) : (
                 <><Sparkles className="h-4 w-4" /> Run VALO</>
               )}
