@@ -2,9 +2,10 @@
  * Badge extraction from variant_raw strings.
  * Used by all retail ingest edge functions.
  * 
- * Extracts canonical badge, fuel_type, drivetrain from variant_raw text.
- * Uses the same patterns as variantFamilyExtractor.ts but in Deno-compatible form.
+ * Extracts canonical badge, fuel_type, drivetrain, body_type, and engine_type
+ * from variant_raw text. Engine extraction delegated to extractEngine module.
  */
+import { extractEngine, type EngineExtraction } from "./extractEngine.ts";
 
 // Variant families by make/model — longest patterns first per model
 const VARIANT_FAMILIES: Record<string, Record<string, string[]>> = {
@@ -116,6 +117,8 @@ export interface BadgeExtraction {
   fuel_type: string | null;
   drivetrain: string | null;
   body_type: string | null;
+  engine_type: string | null;
+  engine_confidence: "HIGH" | "MEDIUM" | "LOW";
 }
 
 /**
@@ -132,6 +135,8 @@ export function extractBadge(
     fuel_type: null,
     drivetrain: null,
     body_type: null,
+    engine_type: null,
+    engine_confidence: "LOW",
   };
 
   const text = [variantRaw, titleText].filter(Boolean).join(' ').toUpperCase();
@@ -139,6 +144,14 @@ export function extractBadge(
 
   const makeUpper = (make || '').toUpperCase().trim();
   const modelUpper = (model || '').toUpperCase().trim();
+
+  // --- Extract engine (first-class attribute) ---
+  const eng = extractEngine(make, model, variantRaw, titleText);
+  result.engine_type = eng.engine_type;
+  result.engine_confidence = eng.engine_confidence;
+  if (eng.fuel_type_hint && !result.fuel_type) {
+    result.fuel_type = eng.fuel_type_hint;
+  }
 
   // --- Extract fuel type ---
   if (/\bHYBRID\b/i.test(text) || /\bPHEV\b/i.test(text) || /\bHEV\b/i.test(text)) {

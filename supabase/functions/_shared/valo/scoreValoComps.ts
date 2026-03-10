@@ -82,6 +82,22 @@ export function scoreValoComp(
     reasons.push("EXACT_VARIANT");
   }
 
+  // Engine match (critical for pricing accuracy)
+  if (intent.engine_type && comp.engine_type) {
+    if (comp.engine_type.toUpperCase() === intent.engine_type.toUpperCase()) {
+      score += 15;
+      reasons.push("ENGINE_MATCH");
+    } else {
+      // Engine mismatch is a significant pricing signal — penalize
+      score -= 10;
+      reasons.push("ENGINE_MISMATCH");
+    }
+  } else if (intent.engine_type && !comp.engine_type) {
+    // Comp has unknown engine — slight penalty
+    score -= 3;
+    reasons.push("ENGINE_UNKNOWN");
+  }
+
   // Year closeness
   const yearScore = scoreYear(intent.year_min, comp.year);
   if (yearScore > 0) {

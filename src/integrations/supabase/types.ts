@@ -2724,6 +2724,36 @@ export type Database = {
           },
         ]
       }
+      engine_aliases: {
+        Row: {
+          alias: string
+          created_at: string
+          engine_type: string
+          fuel_type: string | null
+          id: string
+          make: string
+          model: string
+        }
+        Insert: {
+          alias: string
+          created_at?: string
+          engine_type: string
+          fuel_type?: string | null
+          id?: string
+          make?: string
+          model?: string
+        }
+        Update: {
+          alias?: string
+          created_at?: string
+          engine_type?: string
+          fuel_type?: string | null
+          id?: string
+          make?: string
+          model?: string
+        }
+        Relationships: []
+      }
       feeding_mode_reports: {
         Row: {
           created_at: string
@@ -7594,9 +7624,11 @@ export type Database = {
           details_scraped_at: string | null
           drivetrain: string | null
           engine_code: string | null
+          engine_confidence: string | null
           engine_family: string | null
           engine_litres: number | null
           engine_size_l: number | null
+          engine_type: string | null
           enriched_at: string | null
           enrichment_errors: string | null
           enrichment_source: string | null
@@ -7699,9 +7731,11 @@ export type Database = {
           details_scraped_at?: string | null
           drivetrain?: string | null
           engine_code?: string | null
+          engine_confidence?: string | null
           engine_family?: string | null
           engine_litres?: number | null
           engine_size_l?: number | null
+          engine_type?: string | null
           enriched_at?: string | null
           enrichment_errors?: string | null
           enrichment_source?: string | null
@@ -7804,9 +7838,11 @@ export type Database = {
           details_scraped_at?: string | null
           drivetrain?: string | null
           engine_code?: string | null
+          engine_confidence?: string | null
           engine_family?: string | null
           engine_litres?: number | null
           engine_size_l?: number | null
+          engine_type?: string | null
           enriched_at?: string | null
           enrichment_errors?: string | null
           enrichment_source?: string | null
@@ -11243,6 +11279,8 @@ export type Database = {
           dealer_url: string | null
           delisted_at: string | null
           drivetrain: string | null
+          engine_confidence: string | null
+          engine_type: string | null
           event_id: string | null
           exclude_from_alerts: boolean | null
           excluded_keyword: string | null
@@ -11349,6 +11387,8 @@ export type Database = {
           dealer_url?: string | null
           delisted_at?: string | null
           drivetrain?: string | null
+          engine_confidence?: string | null
+          engine_type?: string | null
           event_id?: string | null
           exclude_from_alerts?: boolean | null
           excluded_keyword?: string | null
@@ -11455,6 +11495,8 @@ export type Database = {
           dealer_url?: string | null
           delisted_at?: string | null
           drivetrain?: string | null
+          engine_confidence?: string | null
+          engine_type?: string | null
           event_id?: string | null
           exclude_from_alerts?: boolean | null
           excluded_keyword?: string | null

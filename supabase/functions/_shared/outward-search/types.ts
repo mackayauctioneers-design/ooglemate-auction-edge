@@ -14,6 +14,8 @@ export interface ParsedIntent {
   make: string | null;
   model: string | null;
   badge: string | null;
+  engine_type: string | null;
+  engine_confidence: "HIGH" | "MEDIUM" | "LOW" | null;
   year_min: number | null;
   year_max: number | null;
   max_km: number | null;
@@ -88,6 +90,8 @@ export interface AdapterResult {
   location: string | null;
   state: string | null;
   variant: string | null;
+  engine_type: string | null;
+  engine_confidence: "HIGH" | "MEDIUM" | "LOW" | null;
   url: string | null;
   image_url: string | null;
   seller_name: string | null;
@@ -100,6 +104,7 @@ export interface AdapterResult {
   transmission: string | null;
   days_listed: number | null;
   is_dealer_grade: boolean | null;
+  description?: string | null;
 }
 
 // ─── Adapter Interface ──────────────────────────────────────────

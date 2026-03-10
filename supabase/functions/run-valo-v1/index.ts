@@ -20,6 +20,7 @@ import type { ParsedIntent, AdapterResult } from "../_shared/outward-search/type
 import { parseIntentLLM, parseIntentRegex } from "../_shared/outward-search/intent-parser.ts";
 import { InternalDbAdapter } from "../_shared/outward-search/adapters/internal-db.ts";
 import { extractSeries } from "../_shared/taxonomy/derivePlatform.ts";
+import { extractEngine } from "../_shared/taxonomy/extractEngine.ts";
 import {
   runValoScoring,
   computeConfidence,
@@ -126,6 +127,16 @@ Deno.serve(async (req) => {
       intent.series = extractSeries(intent.make, intent.model);
       if (intent.series) {
         console.log(`VALO series derived: ${intent.series}`);
+      }
+    }
+
+    // ── 2d. Extract engine type from instruction text ──
+    if (!intent.engine_type && intent.make && intent.model) {
+      const eng = extractEngine(intent.make, intent.model, instruction, intent.badge);
+      if (eng.engine_type) {
+        intent.engine_type = eng.engine_type;
+        intent.engine_confidence = eng.engine_confidence;
+        console.log(`VALO engine detected: ${eng.engine_type} (${eng.engine_confidence})`);
       }
     }
 
