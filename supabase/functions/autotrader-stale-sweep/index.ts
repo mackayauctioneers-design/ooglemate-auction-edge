@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // Run daily at 2am AEST to mark stale listings as delisted
 // Uses the new lifecycle-aware mark_listings_delisted RPC
-serve(async (req) => {
+Deno.serve(async (req) => {
   console.log("STALE SWEEP autotrader", new Date().toISOString());
   
   if (req.method === "OPTIONS") {

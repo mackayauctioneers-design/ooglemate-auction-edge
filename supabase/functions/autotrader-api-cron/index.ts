@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -17,7 +17,7 @@ const BATCHES_PER_RUN = 1;
 const PAGES_PER_BATCH = 3;
 const TIME_BUDGET_MS = 20000; // 20s safety margin
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   console.log("CRON TICK autotrader-api-cron", new Date().toISOString());
   
   if (req.method === "OPTIONS") {
