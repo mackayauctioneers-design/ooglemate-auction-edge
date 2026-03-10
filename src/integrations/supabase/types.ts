@@ -2549,6 +2549,48 @@ export type Database = {
           },
         ]
       }
+      demand_velocity_daily: {
+        Row: {
+          current_count: number | null
+          id: number
+          make: string
+          model: string
+          prev_count: number | null
+          region: string | null
+          sell_through_pct: number | null
+          snapshot_date: string
+          variant_resolved: string | null
+          velocity: number | null
+          velocity_score: number | null
+        }
+        Insert: {
+          current_count?: number | null
+          id?: never
+          make: string
+          model: string
+          prev_count?: number | null
+          region?: string | null
+          sell_through_pct?: number | null
+          snapshot_date: string
+          variant_resolved?: string | null
+          velocity?: number | null
+          velocity_score?: number | null
+        }
+        Update: {
+          current_count?: number | null
+          id?: never
+          make?: string
+          model?: string
+          prev_count?: number | null
+          region?: string | null
+          sell_through_pct?: number | null
+          snapshot_date?: string
+          variant_resolved?: string | null
+          velocity?: number | null
+          velocity_score?: number | null
+        }
+        Relationships: []
+      }
       detail_ingest_queue: {
         Row: {
           account_id: string
@@ -5755,6 +5797,45 @@ export type Database = {
           transmission?: string | null
           url_canonical?: string
           year?: number | null
+        }
+        Relationships: []
+      }
+      model_market_snapshot: {
+        Row: {
+          active_listing_count: number
+          avg_days_on_market: number | null
+          avg_km: number | null
+          avg_price: number | null
+          id: number
+          make: string
+          model: string
+          observed_at: string
+          region: string | null
+          variant_resolved: string | null
+        }
+        Insert: {
+          active_listing_count: number
+          avg_days_on_market?: number | null
+          avg_km?: number | null
+          avg_price?: number | null
+          id?: never
+          make: string
+          model: string
+          observed_at?: string
+          region?: string | null
+          variant_resolved?: string | null
+        }
+        Update: {
+          active_listing_count?: number
+          avg_days_on_market?: number | null
+          avg_km?: number | null
+          avg_price?: number | null
+          id?: never
+          make?: string
+          model?: string
+          observed_at?: string
+          region?: string | null
+          variant_resolved?: string | null
         }
         Relationships: []
       }
@@ -13208,6 +13289,7 @@ export type Database = {
             }
             Returns: boolean
           }
+      compute_demand_velocity: { Args: { p_date?: string }; Returns: number }
       compute_identity_hash: {
         Args: {
           p_drivetrain: string
@@ -14519,6 +14601,7 @@ export type Database = {
           created_count: number
         }[]
       }
+      take_market_snapshot: { Args: never; Returns: number }
       try_acquire_pipeline_lock: { Args: never; Returns: boolean }
       update_auction_attempts: {
         Args: never
