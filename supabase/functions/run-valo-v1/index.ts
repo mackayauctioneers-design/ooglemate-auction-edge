@@ -159,8 +159,8 @@ Deno.serve(async (req) => {
       console.error("VALO market_listing_history persist error:", err);
     }
 
-    // If still insufficient and full_market_scan requested, try outward search
-    if (allComps.length < 8 && fullMarketScan) {
+    // Always run outward search on every VALO for maximum market coverage
+    {
       try {
         const outwardResp = await fetch(`${sbUrl}/functions/v1/run-outward-search-v2`, {
           method: "POST",
