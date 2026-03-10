@@ -134,8 +134,22 @@ const PIPELINE_STEPS: StepConfig[] = [
     },
   },
   {
-    name: "slack_summary",
+    name: "market_velocity_snapshot",
     order: 7,
+    handler: async (supabase, _stepId) => {
+      // Call snapshot-market-velocity function
+      const { data, error } = await supabase.functions.invoke("snapshot-market-velocity");
+      if (error) throw new Error(`snapshot-market-velocity: ${error.message}`);
+      return {
+        recordsProcessed: data?.velocity_rows ?? 0,
+        recordsCreated: data?.snapshot ?? 0,
+        metadata: data,
+      };
+    },
+  },
+  {
+    name: "slack_summary",
+    order: 8,
     handler: async (supabase, _stepId) => {
       // Call buy-window-slack function
       const { data, error } = await supabase.functions.invoke("buy-window-slack");
