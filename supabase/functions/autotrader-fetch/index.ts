@@ -872,12 +872,16 @@ Deno.serve(async (req) => {
 
                 // Update structured fields
                 const resultRow = data?.[0] || data;
-                if (resultRow?.id && (extracted.badge || extracted.fuel_type || extracted.drivetrain || extracted.body_type || listing.price_badge || listing.fuel_type || listing.transmission || listing.body_type)) {
+                if (resultRow?.id && (extracted.badge || extracted.fuel_type || extracted.drivetrain || extracted.body_type || extracted.engine_type || listing.price_badge || listing.fuel_type || listing.transmission || listing.body_type)) {
                   const updateFields: Record<string, unknown> = {};
                   if (extracted.badge) updateFields.badge = extracted.badge;
                   if (extracted.fuel_type || listing.fuel_type) updateFields.fuel_type = extracted.fuel_type || listing.fuel_type;
                   if (extracted.drivetrain) updateFields.drivetrain = extracted.drivetrain;
                   if (extracted.body_type || listing.body_type) updateFields.body_type = extracted.body_type || listing.body_type;
+                  if (extracted.engine_type) {
+                    updateFields.engine_type = extracted.engine_type;
+                    updateFields.engine_confidence = extracted.engine_confidence;
+                  }
                   if (listing.transmission) updateFields.transmission = listing.transmission;
                   if (listing.price_badge) updateFields.price_badge = listing.price_badge;
                   if (listing.market_price) updateFields.market_price = listing.market_price;
@@ -885,7 +889,7 @@ Deno.serve(async (req) => {
                   if (listing.price_difference_percent !== undefined) updateFields.price_difference_percent = listing.price_difference_percent;
                   if (listing.market_price_source) updateFields.market_price_source = listing.market_price_source;
                   updateFields.classified_at = new Date().toISOString();
-                  updateFields.variant_source = 'extractBadge_v1';
+                  updateFields.variant_source = 'extractBadge_v2';
                   await supabase.from("retail_listings").update(updateFields).eq("id", resultRow.id);
                 }
 
