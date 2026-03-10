@@ -117,6 +117,8 @@ export interface BadgeExtraction {
   fuel_type: string | null;
   drivetrain: string | null;
   body_type: string | null;
+  engine_type: string | null;
+  engine_confidence: "HIGH" | "MEDIUM" | "LOW";
 }
 
 /**
