@@ -131,6 +131,9 @@ interface ScoredResult {
   days_listed: number | null;
   is_dealer_grade: boolean | null;
   price_badge: string | null;
+  market_price: number | null;
+  price_difference: number | null;
+  price_difference_percent: number | null;
 }
 
 Deno.serve(async (req) => {
