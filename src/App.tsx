@@ -58,6 +58,7 @@ import MandateFeedPage from "./pages/MandateFeedPage";
 
 // Carbitrage legacy pages kept for operator access
 import JoshInboxPage from "./pages/carbitrage/JoshInboxPage";
+import JoshDealDeskPage from "./pages/carbitrage/JoshDealDeskPage";
 import WatchlistPage from "./pages/carbitrage/WatchlistPage";
 import DaveInboxPage from "./pages/carbitrage/DaveInboxPage";
 import DealerUrlBankPage from "./pages/carbitrage/DealerUrlBankPage";
