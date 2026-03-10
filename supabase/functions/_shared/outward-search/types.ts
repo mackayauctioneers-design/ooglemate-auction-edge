@@ -90,6 +90,8 @@ export interface AdapterResult {
   location: string | null;
   state: string | null;
   variant: string | null;
+  engine_type: string | null;
+  engine_confidence: "HIGH" | "MEDIUM" | "LOW" | null;
   url: string | null;
   image_url: string | null;
   seller_name: string | null;
@@ -102,9 +104,8 @@ export interface AdapterResult {
   transmission: string | null;
   days_listed: number | null;
   is_dealer_grade: boolean | null;
+  description?: string | null;
 }
-
-// ─── Adapter Interface ──────────────────────────────────────────
 export interface OutwardSearchAdapter {
   /** Unique source key matching source_registry.source */
   readonly sourceKey: string;
