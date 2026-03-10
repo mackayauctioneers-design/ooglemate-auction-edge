@@ -60,13 +60,13 @@ const CHECKS: QualityCheck[] = [
     description: "Listings with very high price (>$500k)",
   },
   {
-    name: "duplicate_rate",
+    name: "duplicate_rate_pct",
     source: null,
     severity: "warning",
-    query: `WITH dupes AS (SELECT fingerprint_hash, COUNT(*) as cnt FROM market_listings WHERE fingerprint_hash IS NOT NULL GROUP BY fingerprint_hash HAVING COUNT(*) > 1) SELECT COALESCE(SUM(cnt - 1), 0) as metric FROM dupes`,
-    threshold: 100,
+    query: `WITH dupes AS (SELECT fingerprint_hash, COUNT(*) as cnt FROM market_listings WHERE fingerprint_hash IS NOT NULL GROUP BY fingerprint_hash HAVING COUNT(*) > 1) SELECT ROUND(100.0 * COALESCE(SUM(cnt - 1), 0) / NULLIF((SELECT COUNT(*) FROM market_listings WHERE fingerprint_hash IS NOT NULL), 0), 2) as metric FROM dupes`,
+    threshold: 7,
     direction: "above",
-    description: "Cross-source duplicate listings (same fingerprint_hash)",
+    description: "Cross-source duplicate rate (% of total listings)",
   },
   {
     name: "stale_ingestion_carsales",
