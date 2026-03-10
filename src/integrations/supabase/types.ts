@@ -11260,6 +11260,7 @@ export type Database = {
           highest_bid: number | null
           id: string
           is_dealer_grade: boolean | null
+          is_historical_result: boolean
           keys_present: boolean | null
           km: number | null
           last_attempt_at: string | null
@@ -11365,6 +11366,7 @@ export type Database = {
           highest_bid?: number | null
           id?: string
           is_dealer_grade?: boolean | null
+          is_historical_result?: boolean
           keys_present?: boolean | null
           km?: number | null
           last_attempt_at?: string | null
@@ -11470,6 +11472,7 @@ export type Database = {
           highest_bid?: number | null
           id?: string
           is_dealer_grade?: boolean | null
+          is_historical_result?: boolean
           keys_present?: boolean | null
           km?: number | null
           last_attempt_at?: string | null
@@ -11833,25 +11836,6 @@ export type Database = {
       }
     }
     Views: {
-      cross_source_price_mismatches: {
-        Row: {
-          cheapest_source: string | null
-          cheapest_url: string | null
-          fingerprint_hash: string | null
-          highest_price: number | null
-          lowest_price: number | null
-          make: string | null
-          model: string | null
-          price_spread: number | null
-          seller_name: string | null
-          source_count: number | null
-          sources: string[] | null
-          spread_pct: number | null
-          variant_resolved: string | null
-          year: number | null
-        }
-        Relationships: []
-      }
       dealer_crawl_jobs: {
         Row: {
           attempts: number | null
@@ -12433,6 +12417,7 @@ export type Database = {
           guide_price: number | null
           id: string | null
           is_dealer_grade: boolean | null
+          is_historical_result: boolean | null
           kilometres: number | null
           km: number | null
           last_seen_at: string | null

@@ -3,6 +3,9 @@ import { extractSeries } from "@/utils/derivePlatform";
 
 // ─── Source Allowlist & Config ───────────────────────────────────────────────
 
+/** Only these lifecycle states are considered live inventory */
+const ACTIVE_LIFECYCLE = ["NEW", "ACTIVE", "WATCH", "BUY", "RELISTED"];
+
 /** Only these sources are considered valid auction inventory */
 const AUCTION_SOURCE_ALLOWLIST = [
   "pickles",
@@ -206,8 +209,10 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
 
   let q = supabase
     .from("market_listings")
-    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, auction_house, listing_type, last_seen_at")
+    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, auction_house, listing_type, last_seen_at, lifecycle_status, is_historical_result")
     .in("source", AUCTION_SOURCE_ALLOWLIST)
+    .in("lifecycle_status", ACTIVE_LIFECYCLE)
+    .eq("is_historical_result", false)
     .gte("last_seen_at", recencyCutoff)
     .ilike("make", `%${parsed.make}%`)
     .order("asking_price", { ascending: true, nullsFirst: false })
@@ -247,7 +252,8 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
 
   let q = supabase
     .from("market_listings")
-    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, auction_house, listing_type, last_seen_at")
+    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, auction_house, listing_type, last_seen_at, lifecycle_status")
+    .in("lifecycle_status", ACTIVE_LIFECYCLE)
     .gte("last_seen_at", recencyCutoff)
     .ilike("make", `%${parsed.make}%`)
     .order("asking_price", { ascending: true, nullsFirst: false })
