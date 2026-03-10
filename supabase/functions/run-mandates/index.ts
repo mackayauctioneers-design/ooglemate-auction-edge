@@ -682,6 +682,22 @@ Deno.serve(async (req) => {
       totalUpserted += mandateUpserted;
       mandatesExecuted++;
 
+      // 3b. Lindy outward discovery if internal results insufficient
+      if (mandateFetched < MIN_RESULTS_THRESHOLD) {
+        console.log(`[run-mandates] "${mandate.name}" has ${mandateFetched} results (< ${MIN_RESULTS_THRESHOLD}) — triggering Lindy discovery`);
+        try {
+          const { dispatched, skipped } = await dispatchLindyForMandate(sb, mandate);
+          totalLindyDispatched += dispatched;
+          if (skipped.length > 0) {
+            console.log(`[run-mandates] Lindy skipped for "${mandate.name}": ${skipped.join(", ")}`);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[run-mandates] Lindy dispatch failed for "${mandate.name}": ${msg}`);
+          runErrors.push({ mandate: mandate.name, source: "lindy", error: msg });
+        }
+      }
+
       // 4. Evaluate Code Red alerts for this mandate
       try {
         const codeReds = await evaluateCodeRedAlerts(sb, mandate, runStartedAt, SLACK_WEBHOOK);
