@@ -36,6 +36,9 @@ interface DetailResult {
   engine_family: string | null;
   cylinders: number | null;
   price_badge: string | null;
+  market_price: number | null;
+  price_difference: number | null;
+  price_difference_percent: number | null;
 }
 
 // ─── Source-specific parsers ───────────────────────────────────
