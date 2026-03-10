@@ -24,6 +24,9 @@ interface MappedListing {
   state?: string;
   suburb?: string;
   price_badge?: string;
+  fuel_type?: string;
+  transmission?: string;
+  body_type?: string;
   // Auction-specific fields
   auction_house?: string;
   auction_datetime?: string;
