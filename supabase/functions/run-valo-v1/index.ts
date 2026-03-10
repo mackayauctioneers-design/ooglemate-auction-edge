@@ -20,6 +20,7 @@ import type { ParsedIntent, AdapterResult } from "../_shared/outward-search/type
 import { parseIntentLLM, parseIntentRegex } from "../_shared/outward-search/intent-parser.ts";
 import { InternalDbAdapter } from "../_shared/outward-search/adapters/internal-db.ts";
 import { extractSeries } from "../_shared/taxonomy/derivePlatform.ts";
+import { extractEngine } from "../_shared/taxonomy/extractEngine.ts";
 import {
   runValoScoring,
   computeConfidence,
