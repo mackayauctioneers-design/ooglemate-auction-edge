@@ -641,6 +641,7 @@ Deno.serve(async (req) => {
     let totalFetched = 0;
     let totalUpserted = 0;
     let totalCodeRed = 0;
+    let totalLindyDispatched = 0;
     const runErrors: any[] = [];
     let mandatesExecuted = 0;
 
