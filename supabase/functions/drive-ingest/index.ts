@@ -30,7 +30,7 @@ const DRIVE_QUERY = `query DEALER_LISTINGS($where: WhereOptionsDealerListing = {
   }
 }`;
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

@@ -168,7 +168,7 @@ function parseHit(hit: AutotraderHit): ParsedListing | null {
   }
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: internalHeaders });
   }

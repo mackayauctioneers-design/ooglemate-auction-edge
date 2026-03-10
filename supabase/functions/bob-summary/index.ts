@@ -52,7 +52,7 @@ const PRESET_INSTRUCTIONS: Record<PresetKey, string> = {
   strongest_margin: "Show the highest expected_margin_aud opportunities. Lead with dollar margin and ROI %. Pure profit ranking.",
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {

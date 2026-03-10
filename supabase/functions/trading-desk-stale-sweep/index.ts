@@ -145,7 +145,7 @@ async function runPool<T, R>(items: T[], concurrency: number, fn: (item: T) => P
   return results;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

@@ -436,7 +436,7 @@ function parseMakeModel(title: string): { make?: string; model?: string } {
   return {};
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

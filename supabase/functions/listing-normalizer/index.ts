@@ -165,7 +165,7 @@ function calculateConfidence(extracted: Record<string, unknown>): string {
   return 'low';
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }

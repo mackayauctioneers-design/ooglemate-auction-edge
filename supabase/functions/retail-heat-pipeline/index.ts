@@ -16,7 +16,7 @@ const corsHeaders = {
  * Schedule: Daily at 3:00am AEST (17:00 UTC previous day)
  */
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

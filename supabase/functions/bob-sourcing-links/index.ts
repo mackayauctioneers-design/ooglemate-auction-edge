@@ -96,7 +96,7 @@ function scoreMatch(listing: any, mention: VehicleMention): "exact" | "close" | 
   return "loose";
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS")
     return new Response(null, { headers: corsHeaders });
 

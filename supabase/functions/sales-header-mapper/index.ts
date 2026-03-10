@@ -30,7 +30,7 @@ const CANONICAL_FIELDS = [
   { name: "stock_no", description: "Stock number / dealer reference. Optional." },
 ];
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
