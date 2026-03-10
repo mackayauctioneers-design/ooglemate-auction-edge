@@ -176,6 +176,7 @@ const App = () => (
 
               {/* === OPERATOR-ONLY ROUTES (original) === */}
               <Route path="/josh" element={<OperatorGuard><JoshInboxPage /></OperatorGuard>} />
+              <Route path="/josh-desk" element={<OperatorGuard><JoshDealDeskPage /></OperatorGuard>} />
               <Route path="/watchlist" element={<OperatorGuard><WatchlistPage /></OperatorGuard>} />
               <Route path="/dave" element={<OperatorGuard><DaveInboxPage /></OperatorGuard>} />
               <Route path="/dealer-urls" element={<OperatorGuard><DealerUrlBankPage /></OperatorGuard>} />
