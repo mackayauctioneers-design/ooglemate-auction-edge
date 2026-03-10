@@ -535,6 +535,7 @@ export type Database = {
       cheap_car_queue: {
         Row: {
           condition_notes: string | null
+          deal_score: number | null
           deal_tag: string | null
           detected_at: string
           discount_pct: number | null
@@ -543,6 +544,7 @@ export type Database = {
           flag_km_issue: boolean | null
           flag_sold: boolean | null
           flag_wrong_variant: boolean | null
+          freshness_score: number | null
           fuel_type: string | null
           id: string
           image_url: string | null
@@ -559,7 +561,10 @@ export type Database = {
           price_badge: string | null
           seller_type: string | null
           source: string
+          source_type: string
+          source_weight: number | null
           status: string
+          submitted_by: string | null
           transmission: string | null
           variant: string | null
           verified_at: string | null
@@ -567,6 +572,7 @@ export type Database = {
         }
         Insert: {
           condition_notes?: string | null
+          deal_score?: number | null
           deal_tag?: string | null
           detected_at?: string
           discount_pct?: number | null
@@ -575,6 +581,7 @@ export type Database = {
           flag_km_issue?: boolean | null
           flag_sold?: boolean | null
           flag_wrong_variant?: boolean | null
+          freshness_score?: number | null
           fuel_type?: string | null
           id?: string
           image_url?: string | null
@@ -591,7 +598,10 @@ export type Database = {
           price_badge?: string | null
           seller_type?: string | null
           source?: string
+          source_type?: string
+          source_weight?: number | null
           status?: string
+          submitted_by?: string | null
           transmission?: string | null
           variant?: string | null
           verified_at?: string | null
@@ -599,6 +609,7 @@ export type Database = {
         }
         Update: {
           condition_notes?: string | null
+          deal_score?: number | null
           deal_tag?: string | null
           detected_at?: string
           discount_pct?: number | null
@@ -607,6 +618,7 @@ export type Database = {
           flag_km_issue?: boolean | null
           flag_sold?: boolean | null
           flag_wrong_variant?: boolean | null
+          freshness_score?: number | null
           fuel_type?: string | null
           id?: string
           image_url?: string | null
@@ -623,7 +635,10 @@ export type Database = {
           price_badge?: string | null
           seller_type?: string | null
           source?: string
+          source_type?: string
+          source_weight?: number | null
           status?: string
+          submitted_by?: string | null
           transmission?: string | null
           variant?: string | null
           verified_at?: string | null
@@ -13455,6 +13470,15 @@ export type Database = {
           source_listing_id: string
           stub_anchor_id: string
         }[]
+      }
+      compute_deal_score: {
+        Args: {
+          p_detected_at: string
+          p_discount_pct: number
+          p_source: string
+          p_source_type?: string
+        }
+        Returns: number
       }
       compute_dealer_grade:
         | {

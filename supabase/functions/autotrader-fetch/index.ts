@@ -924,9 +924,22 @@ Deno.serve(async (req) => {
                   const kmOk = !listing.km || listing.km <= 120000;
                   if (isCheap && yearOk && kmOk) {
                     const delta = estimateMarketDelta(listing.price_badge, listing.asking_price);
+                    const discPct = delta.price_difference_percent || listing.price_difference_percent || null;
+                    // Compute deal score inline
+                    let dealScore: number | null = null;
+                    if (discPct != null) {
+                      let ps = 0;
+                      if (discPct <= -20) ps = 10;
+                      else if (discPct <= -16) ps = 8;
+                      else if (discPct <= -12) ps = 6;
+                      else if (discPct <= -8) ps = 4;
+                      else if (discPct <= -5) ps = 2;
+                      dealScore = ps + 1 + 3; // source=carsales(1) + freshness=new(3)
+                    }
                     supabase.from("cheap_car_queue").upsert({
                       listing_id: listing.source_listing_id,
                       source: "carsales",
+                      source_type: "system",
                       make: listing.make,
                       model: listing.model,
                       variant: listing.variant_raw || null,
@@ -934,7 +947,7 @@ Deno.serve(async (req) => {
                       km: listing.km || null,
                       price: listing.asking_price,
                       market_price: delta.market_price || listing.market_price || null,
-                      discount_pct: delta.price_difference_percent || listing.price_difference_percent || null,
+                      discount_pct: discPct,
                       deal_tag: listing.price_badge,
                       location: listing.state || null,
                       listing_url: listing.listing_url,
@@ -942,6 +955,7 @@ Deno.serve(async (req) => {
                       engine_type: extracted.engine_type || null,
                       fuel_type: extracted.fuel_type || listing.fuel_type || null,
                       transmission: listing.transmission || null,
+                      deal_score: dealScore,
                       status: "NEW",
                       josh_verified: false,
                     }, { onConflict: "listing_id" }).then(() => {}).catch((e: unknown) => {

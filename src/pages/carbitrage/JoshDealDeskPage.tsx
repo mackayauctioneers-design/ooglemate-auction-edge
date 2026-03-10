@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -34,10 +35,11 @@ import {
   CheckCircle,
   XCircle,
   ExternalLink,
-  Tag,
   AlertTriangle,
   Ban,
-  Phone,
+  Plus,
+  Loader2,
+  Zap,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -71,11 +73,14 @@ interface CheapCar {
   verified_at: string | null;
   engine_type: string | null;
   price_badge: string | null;
+  deal_score: number | null;
+  source_type: string | null;
 }
 
 export default function JoshDealDeskPage() {
   const queryClient = useQueryClient();
   const [reviewCar, setReviewCar] = useState<CheapCar | null>(null);
+  const [manualUrl, setManualUrl] = useState("");
 
   // Review form state
   const [variantOk, setVariantOk] = useState(true);
@@ -97,6 +102,7 @@ export default function JoshDealDeskPage() {
         .select("*")
         .eq("status", "NEW")
         .eq("josh_verified", false)
+        .order("deal_score", { ascending: false, nullsFirst: false })
         .order("discount_pct", { ascending: true })
         .limit(50);
       if (error) throw error;
@@ -104,7 +110,6 @@ export default function JoshDealDeskPage() {
     },
   });
 
-  // Stats query
   const { data: stats } = useQuery({
     queryKey: ["cheap-car-stats"],
     queryFn: async () => {
@@ -123,6 +128,29 @@ export default function JoshDealDeskPage() {
     },
   });
 
+  // Manual link submission
+  const submitMutation = useMutation({
+    mutationFn: async (url: string) => {
+      const { data, error } = await supabase.functions.invoke("josh-scrape-listing", {
+        body: { url, submitted_by: "josh" },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Scrape failed");
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["cheap-car-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["cheap-car-stats"] });
+      setManualUrl("");
+      const ext = data.extracted;
+      toast.success(
+        `Added: ${ext.year || "?"} ${ext.make || "?"} ${ext.model || "?"} — ${ext.source}`,
+        { description: ext.discount_pct ? `Market delta: ${ext.discount_pct.toFixed(1)}%` : undefined }
+      );
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const updateMutation = useMutation({
     mutationFn: async ({
       id,
@@ -137,7 +165,6 @@ export default function JoshDealDeskPage() {
         .eq("id", id);
       if (error) throw error;
 
-      // If verified with score >= 4, insert into verified_deals and send alert
       if (updates.status === "VERIFIED" && (updates.josh_score as number) >= 4) {
         const car = reviewCar!;
         await supabase.from("verified_deals").insert({
@@ -158,7 +185,6 @@ export default function JoshDealDeskPage() {
           engine_type: car.engine_type,
         });
 
-        // Fire alert to Dave
         try {
           await supabase.functions.invoke("josh-deal-alert", {
             body: {
@@ -254,17 +280,24 @@ export default function JoshDealDeskPage() {
   const fmtDiscount = (v: number | null) =>
     v ? `${v > 0 ? "-" : ""}${Math.abs(v).toFixed(0)}%` : "—";
 
+  const sourceLabel = (s: string | null) => {
+    if (!s || s === "system") return null;
+    if (s === "manual") return "Manual";
+    return null;
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
-        {/* Header + Stats */}
+        {/* Header */}
         <div>
           <h1 className="text-2xl font-bold">Josh Deal Desk</h1>
           <p className="text-muted-foreground">
-            Verify cheap Carsales listings before they go to Dave
+            Verify cheap listings before they go to Dave
           </p>
         </div>
 
+        {/* Stats */}
         {stats && (
           <div className="grid grid-cols-4 gap-3">
             {[
@@ -282,6 +315,40 @@ export default function JoshDealDeskPage() {
             ))}
           </div>
         )}
+
+        {/* Manual Link Submission */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <Plus className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="text-sm font-semibold shrink-0">Add Listing</span>
+              <Input
+                value={manualUrl}
+                onChange={(e) => setManualUrl(e.target.value)}
+                placeholder="Paste listing URL (Carsales, Autotrader, dealer site...)"
+                className="flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && manualUrl.trim()) {
+                    submitMutation.mutate(manualUrl.trim());
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                disabled={!manualUrl.trim() || submitMutation.isPending}
+                onClick={() => submitMutation.mutate(manualUrl.trim())}
+                className="gap-1"
+              >
+                {submitMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Zap className="h-4 w-4" />
+                )}
+                {submitMutation.isPending ? "Scraping…" : "Scrape & Add"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Queue Table */}
         {isLoading ? (
@@ -303,19 +370,38 @@ export default function JoshDealDeskPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Score</TableHead>
                   <TableHead>Discount</TableHead>
                   <TableHead>Car</TableHead>
                   <TableHead>Price</TableHead>
                   <TableHead>Market</TableHead>
                   <TableHead>KM</TableHead>
+                  <TableHead>Source</TableHead>
                   <TableHead>Location</TableHead>
-                  <TableHead>Seller</TableHead>
                   <TableHead className="w-[100px]">Review</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {cars.map((car) => (
                   <TableRow key={car.id} className="cursor-pointer hover:bg-accent/50" onClick={() => openReview(car)}>
+                    <TableCell>
+                      {car.deal_score != null ? (
+                        <Badge
+                          variant={car.deal_score >= 10 ? "default" : "secondary"}
+                          className={
+                            car.deal_score >= 12
+                              ? "bg-emerald-500/20 text-emerald-600 border-emerald-500/30 font-mono"
+                              : car.deal_score >= 8
+                              ? "bg-blue-500/20 text-blue-600 border-blue-500/30 font-mono"
+                              : "font-mono"
+                          }
+                        >
+                          {car.deal_score}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-mono">
                         {fmtDiscount(car.discount_pct)}
@@ -328,8 +414,15 @@ export default function JoshDealDeskPage() {
                     <TableCell className="font-mono">{fmtPrice(car.price)}</TableCell>
                     <TableCell className="font-mono text-muted-foreground">{fmtPrice(car.market_price)}</TableCell>
                     <TableCell>{fmtKm(car.km)}</TableCell>
+                    <TableCell className="text-sm">
+                      <span className="capitalize">{car.source || "—"}</span>
+                      {sourceLabel(car.source_type) && (
+                        <Badge variant="outline" className="ml-1 text-[10px] py-0 px-1">
+                          {sourceLabel(car.source_type)}
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm">{car.location || "—"}</TableCell>
-                    <TableCell className="text-sm">{car.seller_type || "—"}</TableCell>
                     <TableCell>
                       <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); openReview(car); }}>
                         Review
@@ -359,9 +452,15 @@ export default function JoshDealDeskPage() {
                 <div><span className="text-muted-foreground">Price:</span> <span className="font-mono font-semibold">{fmtPrice(reviewCar.price)}</span></div>
                 <div><span className="text-muted-foreground">Market:</span> <span className="font-mono">{fmtPrice(reviewCar.market_price)}</span></div>
                 <div><span className="text-muted-foreground">Discount:</span> <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">{fmtDiscount(reviewCar.discount_pct)}</Badge></div>
+                <div><span className="text-muted-foreground">Deal Score:</span>{" "}
+                  <Badge variant={reviewCar.deal_score && reviewCar.deal_score >= 10 ? "default" : "secondary"} className="font-mono">
+                    {reviewCar.deal_score ?? "—"}
+                  </Badge>
+                </div>
                 <div><span className="text-muted-foreground">KM:</span> {fmtKm(reviewCar.km)}</div>
                 <div><span className="text-muted-foreground">Location:</span> {reviewCar.location || "—"}</div>
                 <div><span className="text-muted-foreground">Engine:</span> {reviewCar.engine_type || "—"}</div>
+                <div><span className="text-muted-foreground">Source:</span> <span className="capitalize">{reviewCar.source}</span>{sourceLabel(reviewCar.source_type) && ` (${sourceLabel(reviewCar.source_type)})`}</div>
                 <div><span className="text-muted-foreground">Badge:</span> {reviewCar.price_badge || "—"}</div>
                 <div><span className="text-muted-foreground">Detected:</span> {formatDistanceToNow(new Date(reviewCar.detected_at), { addSuffix: true })}</div>
               </div>
@@ -374,7 +473,7 @@ export default function JoshDealDeskPage() {
                   className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                 >
                   <ExternalLink className="h-4 w-4" />
-                  View on Carsales
+                  View Listing
                 </a>
               )}
 
