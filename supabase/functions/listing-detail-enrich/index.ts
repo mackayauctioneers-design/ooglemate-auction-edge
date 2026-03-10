@@ -35,6 +35,7 @@ interface DetailResult {
   engine_size_l: number | null;
   engine_family: string | null;
   cylinders: number | null;
+  price_badge: string | null;
 }
 
 // ─── Source-specific parsers ───────────────────────────────────
@@ -53,6 +54,7 @@ function parseCarsalesMarkdown(md: string): DetailResult {
     drivetrain: null, body_type: null, colour: null,
     description: null, image_urls: null, seller_type: null,
     engine_size_l: null, engine_family: null, cylinders: null,
+    price_badge: null,
   };
 
   const clean = cleanMarkdown(md);
@@ -119,6 +121,25 @@ function parseCarsalesMarkdown(md: string): DetailResult {
     result.seller_type = 'dealer';
   } else if (/private\s*seller/i.test(clean)) {
     result.seller_type = 'private';
+  }
+
+  // Price badge — Carsales shows "Great Price", "Well Below Market", "Below Market", "Fair Price", etc.
+  const badgePatterns = [
+    /\b(well\s+below\s+market)\b/i,
+    /\b(below\s+market)\b/i,
+    /\b(great\s+price)\b/i,
+    /\b(good\s+price)\b/i,
+    /\b(fair\s+price)\b/i,
+    /\b(above\s+market)\b/i,
+    /\b(well\s+above\s+market)\b/i,
+    /\b(low\s+price)\b/i,
+  ];
+  for (const pat of badgePatterns) {
+    const bm = clean.match(pat);
+    if (bm) {
+      result.price_badge = bm[1].replace(/\s+/g, ' ').trim();
+      break;
+    }
   }
 
   // Derive engine family
@@ -275,7 +296,7 @@ Deno.serve(async (req) => {
     // Fetch listings needing detail enrichment
     const { data: filteredListings, error: fetchErr } = await supabase
       .from('retail_listings')
-      .select('id, listing_url, source, details_attempts')
+      .select('id, listing_url, source, details_attempts, make, model, variant_raw, year, asking_price, km, state')
       .eq('details_scraped', false)
       .eq('details_failed', false)
       .lt('details_attempts', MAX_ATTEMPTS)
@@ -297,6 +318,7 @@ Deno.serve(async (req) => {
     console.log(`Detail-enrich: processing ${filteredListings.length} listings`);
 
     const stats = { processed: 0, succeeded: 0, failed: 0, skipped: 0, errors: [] as string[] };
+    const priceBadgeHits: { listing: any; badge: string }[] = [];
 
     // Process in parallel chunks
     for (let i = 0; i < filteredListings.length; i += PARALLEL_SIZE) {
@@ -335,6 +357,7 @@ Deno.serve(async (req) => {
           if (detail.engine_size_l) update.engine_size_l = detail.engine_size_l;
           if (detail.engine_family) update.engine_family = detail.engine_family;
           if (detail.cylinders) update.cylinders = detail.cylinders;
+          if (detail.price_badge) update.price_badge = detail.price_badge;
 
           const { error: updateErr } = await supabase
             .from('retail_listings')
@@ -343,6 +366,11 @@ Deno.serve(async (req) => {
 
           if (updateErr) {
             throw new Error(`Update failed: ${updateErr.message}`);
+          }
+
+          // Track high-value price badges for notification
+          if (detail.price_badge && /well\s+below|below\s+market|great\s+price/i.test(detail.price_badge)) {
+            priceBadgeHits.push({ listing, badge: detail.price_badge });
           }
 
           stats.succeeded++;
@@ -376,6 +404,31 @@ Deno.serve(async (req) => {
     });
 
     console.log('Detail-enrich complete:', stats);
+
+    // Send Slack alert for high-value price badges
+    if (priceBadgeHits.length > 0) {
+      const slackUrl = Deno.env.get('SLACK_WEBHOOK_URL');
+      if (slackUrl) {
+        const items = priceBadgeHits.slice(0, 10);
+        const lines = items.map(({ listing: l, badge }) =>
+          `• *${badge}* — ${l.year || '?'} ${l.make || '?'} ${l.model || '?'} ${l.variant_raw || ''} | $${(l.asking_price || 0).toLocaleString()} | ${l.km ? l.km.toLocaleString() + 'km' : '?'} | ${l.state || '?'}\n  <${l.listing_url}|View Listing>`
+        );
+        try {
+          await fetch(slackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              blocks: [
+                { type: 'header', text: { type: 'plain_text', text: `🏷️ ${priceBadgeHits.length} Price Badge Alert${priceBadgeHits.length > 1 ? 's' : ''}` } },
+                { type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } },
+              ],
+            }),
+          });
+        } catch (e) {
+          console.error('Slack price badge alert error:', e);
+        }
+      }
+    }
 
     return new Response(
       JSON.stringify({ success: true, stats }),
