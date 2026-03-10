@@ -312,6 +312,7 @@ export default function ValoPage() {
       toast.error(err instanceof Error ? err.message : 'Valuation failed');
     } finally {
       setIsProcessing(false);
+      setValoPhase('');
     }
   };
 
