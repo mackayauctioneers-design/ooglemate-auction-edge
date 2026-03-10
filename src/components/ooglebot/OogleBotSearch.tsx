@@ -243,20 +243,21 @@ function mergeAllResults(
   const SUB_BADGE_QUALIFIERS = ["HI-RIDER", "HIRIDER", "HI RIDER", "WILDTRAK", "RAPTOR", "SPORT"];
   const badgeHasQualifier = (q: string) => badgeUpper ? badgeUpper.includes(q.replace(/[\s\-]/g, "")) : false;
 
-  const matchesBadge = (variant: string | null | undefined): boolean => {
+  const matchesBadge = (variant: string | null | undefined, ...extraFields: (string | null | undefined)[]): boolean => {
     if (!badgeUpper || !badgeRe) return true; // no filter
     if (!variant) return false;
-    const vUpper = variant.toUpperCase();
-    const vNorm = vUpper.replace(/[^A-Z0-9\s\-\/,]/g, "");
-    if (!(vNorm === badgeUpper || badgeRe.test(variant))) return false;
 
-    // Reject if variant has a sub-badge qualifier the user didn't specify
+    // Check ALL text fields for sub-badge qualifiers the user didn't specify
+    const allText = [variant, ...extraFields].filter(Boolean).join(" ").toUpperCase().replace(/[\s\-]/g, "");
     for (const qual of SUB_BADGE_QUALIFIERS) {
       const qualNorm = qual.replace(/[\s\-]/g, "");
-      if (vUpper.replace(/[\s\-]/g, "").includes(qualNorm) && !badgeHasQualifier(qual)) {
+      if (allText.includes(qualNorm) && !badgeHasQualifier(qual)) {
         return false;
       }
     }
+
+    const vNorm = variant.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
+    if (!(vNorm === badgeUpper || badgeRe.test(variant))) return false;
     return true;
   };
 
@@ -296,7 +297,7 @@ function mergeAllResults(
 
   // Scored / ooglebot-search results
   for (const r of scoredResults) {
-    if (!matchesBadge(r.variant)) continue;
+    if (!matchesBadge(r.variant, r.listing_url)) continue;
     all.push({
       id: r.listing_id,
       title: `${r.year ?? ""} ${r.make ?? ""} ${r.model ?? ""}`.trim(),
