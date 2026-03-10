@@ -228,7 +228,7 @@ Deno.serve(async (req) => {
       .gte("last_seen_at", recencyCutoff)
       .not("lifecycle_status", "in", '("DELISTED","SOLD","DEAD")')
       .order("asking_price", { ascending: true, nullsFirst: false })
-      .limit(input.limit! * 3);
+      .limit(input.limit! * RETAIL_FETCH_MULTIPLIER);
 
     // Model matching for retail_listings
     if (modelParts.length > 1) {
