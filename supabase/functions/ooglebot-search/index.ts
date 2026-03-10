@@ -493,7 +493,25 @@ Deno.serve(async (req) => {
 
     // Sort by score descending, then effective_cost ascending
     results.sort((a, b) => b.score - a.score || (a.effective_cost ?? Infinity) - (b.effective_cost ?? Infinity));
-    const topResults = results.slice(0, input.limit!);
+
+    // Source diversity: ensure carsales/retail results appear alongside OEM/dealer results
+    // Take top results but guarantee at least some retail marketplace results
+    const retailResults = results.filter(r => ["carsales", "autotrader", "gumtree", "carsguide.com.au", "carsales.com.au"].includes(r.source.toLowerCase()));
+    const otherResults = results.filter(r => !["carsales", "autotrader", "gumtree", "carsguide.com.au", "carsales.com.au"].includes(r.source.toLowerCase()));
+
+    let topResults: ScoredResult[];
+    if (retailResults.length > 0 && otherResults.length > 0) {
+      // Reserve slots for retail marketplace results (at least 30% or 3, whichever is larger)
+      const retailSlots = Math.max(3, Math.ceil(input.limit! * 0.3));
+      const otherSlots = input.limit! - Math.min(retailSlots, retailResults.length);
+      topResults = [
+        ...otherResults.slice(0, otherSlots),
+        ...retailResults.slice(0, retailSlots),
+      ].sort((a, b) => b.score - a.score || (a.effective_cost ?? Infinity) - (b.effective_cost ?? Infinity))
+       .slice(0, input.limit!);
+    } else {
+      topResults = results.slice(0, input.limit!);
+    }
 
     // --- 6. Log the request ---
     await sb.from("cron_audit_log").insert({
