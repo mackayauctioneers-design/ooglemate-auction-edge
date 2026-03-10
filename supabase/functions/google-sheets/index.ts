@@ -357,7 +357,7 @@ function objectToRow(obj: any, headers: string[]): any[] {
   return headers.map(header => obj[header] ?? '');
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

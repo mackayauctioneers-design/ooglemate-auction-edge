@@ -9,7 +9,7 @@ const corsHeaders = {
  * Debug function to fetch raw Apify dataset content
  * Call with ?dataset_id=XXX or ?run_id=XXX
  */
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
