@@ -238,6 +238,13 @@ export default function ValoPage() {
         filters.accessory_terms = selectedAccessories.map(a => a.toUpperCase());
       }
 
+      setValoPhase('Searching internal database…');
+      
+      // Simulate phase progression with timers since backend is a single call
+      const phaseTimer1 = setTimeout(() => setValoPhase('Running AI market discovery (Perplexity + Gemini)…'), 3000);
+      const phaseTimer2 = setTimeout(() => setValoPhase('Running outward market search…'), 12000);
+      const phaseTimer3 = setTimeout(() => setValoPhase('Scoring comparables & computing valuation…'), 22000);
+
       // Run VALO — skip valo-parse, go direct to run-valo-v1
       const { data: valoData, error: valoError } = await supabase.functions.invoke('run-valo-v1', {
         body: {
@@ -249,6 +256,12 @@ export default function ValoPage() {
           filters,
         }
       });
+
+      // Clear phase timers
+      clearTimeout(phaseTimer1);
+      clearTimeout(phaseTimer2);
+      clearTimeout(phaseTimer3);
+      setValoPhase('Finalising results…');
 
       if (valoError) throw new Error(valoError.message);
       if (valoData?.status === 'missing_required_fields') {
