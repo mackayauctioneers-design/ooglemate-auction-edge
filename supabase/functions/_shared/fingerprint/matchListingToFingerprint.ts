@@ -17,6 +17,7 @@ export type StagedListing = {
   make_norm: string | null;
   model_norm: string | null;
   variant_family: string | null;
+  engine_type: string | null;
   year: number | null;
   odometer_km: number | null;
   price_aud: number | null;
