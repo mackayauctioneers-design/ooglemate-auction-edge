@@ -7521,6 +7521,7 @@ export type Database = {
           enrichment_source: string | null
           enrichment_status: string | null
           exclude_from_alerts: boolean
+          fingerprint_hash: string | null
           first_seen_at: string
           fuel_type: string | null
           id: string
@@ -7625,6 +7626,7 @@ export type Database = {
           enrichment_source?: string | null
           enrichment_status?: string | null
           exclude_from_alerts?: boolean
+          fingerprint_hash?: string | null
           first_seen_at?: string
           fuel_type?: string | null
           id?: string
@@ -7729,6 +7731,7 @@ export type Database = {
           enrichment_source?: string | null
           enrichment_status?: string | null
           exclude_from_alerts?: boolean
+          fingerprint_hash?: string | null
           first_seen_at?: string
           fuel_type?: string | null
           id?: string
@@ -11166,6 +11169,7 @@ export type Database = {
           external_id: string | null
           fingerprint: string | null
           fingerprint_confidence: number
+          fingerprint_hash: string | null
           fingerprint_version: number
           first_seen_at: string
           fuel: string | null
@@ -11270,6 +11274,7 @@ export type Database = {
           external_id?: string | null
           fingerprint?: string | null
           fingerprint_confidence?: number
+          fingerprint_hash?: string | null
           fingerprint_version?: number
           first_seen_at?: string
           fuel?: string | null
@@ -11374,6 +11379,7 @@ export type Database = {
           external_id?: string | null
           fingerprint?: string | null
           fingerprint_confidence?: number
+          fingerprint_hash?: string | null
           fingerprint_version?: number
           first_seen_at?: string
           fuel?: string | null
@@ -12300,22 +12306,53 @@ export type Database = {
       market_listings: {
         Row: {
           asking_price: number | null
+          auction_datetime: string | null
           auction_house: string | null
+          body_type: string | null
+          colour: string | null
+          created_at: string | null
           drivetrain: string | null
-          fuel: string | null
+          exclude_from_alerts: boolean | null
+          fingerprint: string | null
+          fingerprint_confidence: number | null
+          fingerprint_hash: string | null
+          first_seen_at: string | null
+          fuel_type: string | null
+          guide_price: number | null
           id: string | null
+          is_dealer_grade: boolean | null
+          kilometres: number | null
           km: number | null
           last_seen_at: string | null
+          lifecycle_status: string | null
           listing_type: string | null
           listing_url: string | null
           location: string | null
           make: string | null
+          market_price: number | null
+          market_price_source: string | null
           model: string | null
+          postcode: string | null
+          price: number | null
           price_badge: string | null
+          price_difference: number | null
+          price_difference_percent: number | null
+          region_raw: string | null
+          risk_flags: string[] | null
+          seller_name: string | null
+          seller_type: string | null
+          sold_price: number | null
           source: string | null
           source_class: string | null
+          source_listing_id: string | null
+          state: string | null
+          status: string | null
+          suburb: string | null
           transmission: string | null
+          variant_family: string | null
           variant_raw: string | null
+          variant_resolved: string | null
+          watch_status: string | null
           year: number | null
         }
         Relationships: []
