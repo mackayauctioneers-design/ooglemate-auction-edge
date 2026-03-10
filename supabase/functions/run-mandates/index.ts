@@ -310,7 +310,7 @@ async function dispatchDealerSiteJobs(
   today: string,
   lindyUrl: string,
   callbackUrl: string,
-): Promise<{ dispatched: number; skipped: string[] }> {
+): Promise<{ dispatched: number; skipped: string[]; prefiltered: number }> {
   // Query enabled dealer sites, optionally filtered by brands matching the mandate make
   const { data: dealerSources, error: dsErr } = await sb
     .from("dealer_outbound_sources")
@@ -320,7 +320,7 @@ async function dispatchDealerSiteJobs(
 
   if (dsErr || !dealerSources || dealerSources.length === 0) {
     if (dsErr) console.error("[run-mandates] Failed to load dealer_outbound_sources:", dsErr.message);
-    return { dispatched: 0, skipped: ["dealer_sites:no_sources"] };
+    return { dispatched: 0, skipped: ["dealer_sites:no_sources"], prefiltered: 0 };
   }
 
   // Filter: only dealers whose brands array includes the mandate make (case-insensitive),
@@ -332,7 +332,7 @@ async function dispatchDealerSiteJobs(
   });
 
   if (relevant.length === 0) {
-    return { dispatched: 0, skipped: ["dealer_sites:no_relevant_dealers"] };
+    return { dispatched: 0, skipped: ["dealer_sites:no_relevant_dealers"], prefiltered: 0 };
   }
 
   // Prioritise: franchise first, then regional, then others. Limit to MAX_DEALER_JOBS_PER_RUN.
@@ -341,11 +341,64 @@ async function dispatchDealerSiteJobs(
   const batch = sorted.slice(0, MAX_DEALER_JOBS_PER_RUN);
 
   let dispatched = 0;
+  let prefiltered = 0;
   const skipped: string[] = [];
+
+  // Build search terms for HTML pre-filter from mandate context
+  const searchTerms = [
+    mandate.make,
+    mandate.model,
+    mandate.variant_family,
+  ].filter(Boolean).map((t) => t!.toLowerCase());
+
+  // Inventory card CSS class patterns — if none found, page likely isn't an inventory page
+  const cardPatterns = ["vehicle", "stock-item", "inventory", "listing-card", "product-card", "car-card", "vdp-link"];
 
   for (const dealer of batch) {
     const inventoryUrl = `https://${dealer.dealer_domain}${dealer.inventory_path}`;
     const sourceKey = `dealer_site:${dealer.dealer_slug}`;
+
+    // ─── HTML pre-filter: quick fetch + keyword scan before launching Lindy ─────
+    try {
+      const preflight = await fetch(inventoryUrl, {
+        method: "GET",
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; CarbitrageBot/1.0)" },
+        signal: AbortSignal.timeout(8000), // 8s timeout
+      });
+
+      if (!preflight.ok) {
+        prefiltered++;
+        skipped.push(`${sourceKey}:http_${preflight.status}`);
+        await preflight.text().catch(() => {}); // consume body
+        continue;
+      }
+
+      const html = await preflight.text();
+      const htmlLower = html.toLowerCase();
+
+      // Check 1: does the page contain inventory card patterns?
+      const hasInventoryCards = cardPatterns.some((p) => htmlLower.includes(p));
+      if (!hasInventoryCards) {
+        prefiltered++;
+        skipped.push(`${sourceKey}:no_inventory_cards`);
+        continue;
+      }
+
+      // Check 2: does the page mention the mandate's make/model?
+      const hasRelevantVehicles = searchTerms.some((term) => htmlLower.includes(term));
+      if (!hasRelevantVehicles) {
+        prefiltered++;
+        skipped.push(`${sourceKey}:no_keyword_match`);
+        continue;
+      }
+    } catch (err) {
+      // Timeout or network error — skip this dealer site
+      prefiltered++;
+      skipped.push(`${sourceKey}:preflight_err`);
+      continue;
+    }
+
+    // ─── Pre-filter passed — dispatch Lindy ─────────────────────────────────────
     const jobId = crypto.randomUUID();
 
     // Insert job row — unique constraint prevents duplicate dispatch per mandate+source+day
@@ -422,7 +475,11 @@ async function dispatchDealerSiteJobs(
     }
   }
 
-  return { dispatched, skipped };
+  if (prefiltered > 0) {
+    console.log(`[run-mandates] Dealer pre-filter: ${prefiltered}/${batch.length} sites skipped (no relevant content) for "${mandate.name}"`);
+  }
+
+  return { dispatched, skipped, prefiltered };
 }
 
 async function dispatchLindyForMandate(
@@ -531,8 +588,8 @@ async function dispatchLindyForMandate(
     );
     dispatched += dealerResult.dispatched;
     skipped.push(...dealerResult.skipped);
-    if (dealerResult.dispatched > 0) {
-      console.log(`[run-mandates] Dealer sites: ${dealerResult.dispatched} dispatched for "${mandate.name}"`);
+    if (dealerResult.dispatched > 0 || dealerResult.prefiltered > 0) {
+      console.log(`[run-mandates] Dealer sites: ${dealerResult.dispatched} dispatched, ${dealerResult.prefiltered} pre-filtered for "${mandate.name}"`);
     }
   } catch (err) {
     console.error(`[run-mandates] Dealer site dispatch error for "${mandate.name}":`, err);
