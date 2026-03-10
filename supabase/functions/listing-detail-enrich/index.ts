@@ -356,6 +356,7 @@ Deno.serve(async (req) => {
           if (detail.engine_size_l) update.engine_size_l = detail.engine_size_l;
           if (detail.engine_family) update.engine_family = detail.engine_family;
           if (detail.cylinders) update.cylinders = detail.cylinders;
+          if (detail.price_badge) update.price_badge = detail.price_badge;
 
           const { error: updateErr } = await supabase
             .from('retail_listings')
