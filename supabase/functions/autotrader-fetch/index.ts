@@ -908,6 +908,18 @@ Deno.serve(async (req) => {
                   }
                 }
 
+                // ── Record price history snapshot ──
+                if (listing.asking_price && listing.source_listing_id) {
+                  supabase.from("listing_price_history").insert({
+                    listing_id: listing.source_listing_id,
+                    source: runSource,
+                    price: listing.asking_price,
+                    price_badge: listing.price_badge || null,
+                    market_price: listing.market_price || null,
+                    price_difference_percent: listing.price_difference_percent || null,
+                  }).then(() => {}).catch(() => {});
+                }
+
                 itemsUpsertedThisRun++;
                 if (resultRow?.is_new) {
                   runNew++;
