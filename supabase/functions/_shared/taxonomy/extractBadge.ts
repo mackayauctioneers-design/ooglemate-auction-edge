@@ -2,9 +2,10 @@
  * Badge extraction from variant_raw strings.
  * Used by all retail ingest edge functions.
  * 
- * Extracts canonical badge, fuel_type, drivetrain from variant_raw text.
- * Uses the same patterns as variantFamilyExtractor.ts but in Deno-compatible form.
+ * Extracts canonical badge, fuel_type, drivetrain, body_type, and engine_type
+ * from variant_raw text. Engine extraction delegated to extractEngine module.
  */
+import { extractEngine, type EngineExtraction } from "./extractEngine.ts";
 
 // Variant families by make/model — longest patterns first per model
 const VARIANT_FAMILIES: Record<string, Record<string, string[]>> = {
