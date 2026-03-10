@@ -524,6 +524,21 @@ async function dispatchLindyForMandate(
     }
   }
 
+  // ─── Dealer site dispatch (first-class Lindy source) ────────────────────────
+  try {
+    const dealerResult = await dispatchDealerSiteJobs(
+      sb, mandate, searchRunId, today, LINDY_URL, CALLBACK_URL,
+    );
+    dispatched += dealerResult.dispatched;
+    skipped.push(...dealerResult.skipped);
+    if (dealerResult.dispatched > 0) {
+      console.log(`[run-mandates] Dealer sites: ${dealerResult.dispatched} dispatched for "${mandate.name}"`);
+    }
+  } catch (err) {
+    console.error(`[run-mandates] Dealer site dispatch error for "${mandate.name}":`, err);
+    skipped.push("dealer_sites:error");
+  }
+
   return { dispatched, skipped };
 }
 
