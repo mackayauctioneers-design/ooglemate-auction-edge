@@ -607,6 +607,7 @@ Deno.serve(async (req) => {
         let runUpdated = 0;
         let runErrors = 0;
         let isFinished = false;
+        const priceBadgeAlerts: Array<{ badge: string; make: string; model: string; variant: string; year: number; price: number; km?: number; url: string; state: string }> = [];
 
         const effectiveDatasetId = run.dataset_id || datasetId;
 
