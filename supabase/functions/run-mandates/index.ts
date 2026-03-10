@@ -739,7 +739,7 @@ Deno.serve(async (req) => {
       cron_name: CRON_NAME,
       last_seen_at: new Date().toISOString(),
       last_ok: true,
-      note: `due=${mandates.length} exec=${mandatesExecuted} fetched=${totalFetched} upserted=${totalUpserted} code_red=${totalCodeRed} errors=${runErrors.length}`,
+      note: `due=${mandates.length} exec=${mandatesExecuted} fetched=${totalFetched} upserted=${totalUpserted} code_red=${totalCodeRed} lindy=${totalLindyDispatched} errors=${runErrors.length}`,
     }, { onConflict: "cron_name" });
 
     const result = {
@@ -748,6 +748,7 @@ Deno.serve(async (req) => {
       listings_fetched: totalFetched,
       listings_upserted: totalUpserted,
       code_red_count: totalCodeRed,
+      lindy_dispatched: totalLindyDispatched,
       errors: runErrors,
       runtime_ms: Date.now() - startTime,
     };
