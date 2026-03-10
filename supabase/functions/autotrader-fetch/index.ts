@@ -260,6 +260,46 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
       (item.priceBadge || item.priceRating || item.dealRating || item.priceLabel || "") as string
     ).trim() || merlin.priceBadge || undefined;
 
+    // Try to extract structured pricing data from raw payload
+    let marketPrice: number | undefined;
+    let priceDiff: number | undefined;
+    let priceDiffPct: number | undefined;
+    let marketPriceSource: string | undefined;
+
+    // Check for structured pricing objects (Carsales __NEXT_DATA__ or similar)
+    const pricing = (item.vehiclePricing || item.priceInsights || item.pricing || item.dealRating) as Record<string, unknown> | undefined;
+    if (pricing && typeof pricing === 'object') {
+      const mp = (pricing.marketAverage || pricing.marketPrice || pricing.estimatedValue || pricing.average) as number;
+      const diff = (pricing.difference || pricing.priceDifference) as number;
+      const diffPct = (pricing.differencePercent || pricing.priceDifferencePercent) as number;
+      if (mp && mp > 1000) {
+        marketPrice = Math.round(mp);
+        priceDiff = diff || (price - mp);
+        priceDiffPct = diffPct || parseFloat(((price - mp) / mp * 100).toFixed(2));
+        marketPriceSource = 'carsales_structured';
+      }
+    }
+    // Also check flat fields
+    if (!marketPrice) {
+      const flatMarket = (item.marketPrice || item.market_price || item.estimatedValue) as number;
+      if (flatMarket && flatMarket > 1000) {
+        marketPrice = Math.round(flatMarket);
+        priceDiff = price - flatMarket;
+        priceDiffPct = parseFloat(((price - flatMarket) / flatMarket * 100).toFixed(2));
+        marketPriceSource = 'carsales_flat';
+      }
+    }
+    // Tier 1 fallback: estimate from badge
+    if (!marketPrice && priceBadge) {
+      const est = estimateMarketDelta(priceBadge, price);
+      if (est.market_price) {
+        marketPrice = est.market_price;
+        priceDiff = est.price_difference;
+        priceDiffPct = est.price_difference_percent;
+        marketPriceSource = 'badge_estimate';
+      }
+    }
+
     // URL
     const fullUrl = url.startsWith("http") ? url 
       : url ? `https://www.carsales.com.au${url}` : "";
@@ -275,6 +315,10 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
       state: state || undefined,
       suburb: suburb || undefined,
       price_badge: priceBadge,
+      market_price: marketPrice,
+      price_difference: priceDiff,
+      price_difference_percent: priceDiffPct,
+      market_price_source: marketPriceSource,
       // Pass through Merlin-extracted fields for downstream enrichment
       ...(merlin.fuel ? { fuel_type: merlin.fuel } : {}),
       ...(merlin.transmission ? { transmission: merlin.transmission } : {}),
