@@ -234,14 +234,30 @@ function mergeAllResults(
 ): UnifiedResult[] {
   const all: UnifiedResult[] = [];
 
-  // Client-side badge filter helper — checks if any variant field contains the badge as a whole token
-  const badgeUpper = badgeFilter?.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || null;
+  // Client-side badge filter helper — checks if variant contains the badge as a whole token
+  // AND excludes variants with sub-badge qualifiers (e.g. "XLT" should NOT match "XLT HI-RIDER")
+  const badgeUpper = badgeFilter?.trim().toUpperCase().replace(/[^A-Z0-9\s\-]/g, "").replace(/\s+/g, " ") || null;
   const badgeRe = badgeUpper ? new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i") : null;
+
+  // Known sub-badge qualifiers that create distinct trims when appended to a base badge
+  const SUB_BADGE_QUALIFIERS = ["HI-RIDER", "HIRIDER", "HI RIDER", "WILDTRAK", "RAPTOR", "SPORT"];
+  const badgeHasQualifier = (q: string) => badgeUpper ? badgeUpper.includes(q.replace(/[\s\-]/g, "")) : false;
+
   const matchesBadge = (variant: string | null | undefined): boolean => {
     if (!badgeUpper || !badgeRe) return true; // no filter
     if (!variant) return false;
-    const vNorm = variant.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
-    return vNorm === badgeUpper || badgeRe.test(variant);
+    const vUpper = variant.toUpperCase();
+    const vNorm = vUpper.replace(/[^A-Z0-9\s\-\/,]/g, "");
+    if (!(vNorm === badgeUpper || badgeRe.test(variant))) return false;
+
+    // Reject if variant has a sub-badge qualifier the user didn't specify
+    for (const qual of SUB_BADGE_QUALIFIERS) {
+      const qualNorm = qual.replace(/[\s\-]/g, "");
+      if (vUpper.replace(/[\s\-]/g, "").includes(qualNorm) && !badgeHasQualifier(qual)) {
+        return false;
+      }
+    }
+    return true;
   };
 
   // Series gate helper — reject cross-generation results
