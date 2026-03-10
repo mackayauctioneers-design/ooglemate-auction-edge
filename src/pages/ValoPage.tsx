@@ -120,6 +120,7 @@ export default function ValoPage() {
 
   // Processing
   const [isProcessing, setIsProcessing] = useState(false);
+  const [valoPhase, setValoPhase] = useState<string>('');
   const [parsed, setParsed] = useState<ValoParsedVehicle | null>(null);
   const [result, setResult] = useState<ValoResult | null>(null);
   const [valoComps, setValoComps] = useState<any[]>([]);
