@@ -221,6 +221,8 @@ const ADAPTERS: Record<string, (m: Mandate) => Promise<NormalizedListing[]>> = {
 
 const MIN_RESULTS_THRESHOLD = 5;
 const LINDY_COOLDOWN_HOURS = 6;
+const MAX_DEALER_JOBS_PER_RUN = 20;
+
 const LINDY_SOURCES: Array<{ key: string; builder: (m: Mandate) => string | null }> = [
   {
     key: "carsales",
@@ -268,7 +270,159 @@ function buildLindyPrompt(source: string, url: string, mandate: Mandate): string
     mandate.price_max && `Max price: $${mandate.price_max.toLocaleString()}`,
   ].filter(Boolean).join("\n");
 
+  if (source === "dealer_site") {
+    return buildDealerSitePrompt(url, mandate, ctx);
+  }
+
   return `Browse this URL and extract all used car listings:\n${url}\n\nSearch context:\n${ctx}\n\nFor each listing return a JSON object with: make, model, year, variant, odometer_km, price_asking, listing_url, listing_id, image_url, seller_name.\nReturn a JSON array of listings. If no listings found, return [].\nExtract ONLY listings visible on this page. Do NOT follow pagination.\nStrip "$", ",", "AUD" from prices — digits only. Same for odometer — digits only.\nIf price is "POA" or missing, use null. If odometer missing, use null.`;
+}
+
+function buildDealerSitePrompt(url: string, mandate: Mandate, ctx: string): string {
+  return `Browse this dealer inventory page and extract all used vehicle listings that match the search criteria.
+
+URL: ${url}
+
+Search criteria:
+${ctx}
+
+RULES:
+- Extract ONLY vehicles visible on this page. Do NOT follow pagination or "load more" links.
+- Only return vehicles matching the target Make and Model. Skip everything else.
+- For each matching vehicle, return a JSON object with:
+  { "make": string, "model": string, "year": string, "variant": string|null, "odometer_km": string|null, "price_asking": string|null, "listing_url": string, "listing_id": string, "image_url": string|null, "seller_name": string|null }
+- For listing_url: use the full absolute URL to the vehicle detail page. Prepend the site domain if the href is relative.
+- For listing_id: use the stock number, VIN, or any unique identifier visible on the listing card. If none, use a slug from the URL.
+- For price: digits only — strip "$", ",", "AUD", spaces. If "POA" or missing, use null.
+- For odometer: digits only — strip "km", ",", spaces. If missing, use null.
+- For image_url: extract the primary vehicle photo URL (not dealer logos or banners). Use null if unclear.
+- For seller_name: use the dealer name shown on the page.
+- Return a JSON array. If no matching vehicles found, return [].`;
+}
+
+/**
+ * Load dealer sites relevant to a mandate's make and dispatch Lindy jobs for each.
+ * Returns count of dispatched jobs and skipped reasons.
+ */
+async function dispatchDealerSiteJobs(
+  sb: ReturnType<typeof createClient>,
+  mandate: Mandate,
+  searchRunId: string,
+  today: string,
+  lindyUrl: string,
+  callbackUrl: string,
+): Promise<{ dispatched: number; skipped: string[] }> {
+  // Query enabled dealer sites, optionally filtered by brands matching the mandate make
+  const { data: dealerSources, error: dsErr } = await sb
+    .from("dealer_outbound_sources")
+    .select("id, dealer_name, dealer_domain, inventory_path, brands, priority, dealer_slug")
+    .eq("enabled", true)
+    .limit(200);
+
+  if (dsErr || !dealerSources || dealerSources.length === 0) {
+    if (dsErr) console.error("[run-mandates] Failed to load dealer_outbound_sources:", dsErr.message);
+    return { dispatched: 0, skipped: ["dealer_sites:no_sources"] };
+  }
+
+  // Filter: only dealers whose brands array includes the mandate make (case-insensitive),
+  // or dealers with no brands specified (generic inventory pages)
+  const mandateMakeLower = mandate.make.toLowerCase();
+  const relevant = dealerSources.filter((d) => {
+    if (!d.brands || d.brands.length === 0) return true;
+    return d.brands.some((b: string) => b.toLowerCase() === mandateMakeLower);
+  });
+
+  if (relevant.length === 0) {
+    return { dispatched: 0, skipped: ["dealer_sites:no_relevant_dealers"] };
+  }
+
+  // Prioritise: franchise first, then regional, then others. Limit to MAX_DEALER_JOBS_PER_RUN.
+  const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+  const sorted = relevant.sort((a, b) => (priorityOrder[a.priority] ?? 1) - (priorityOrder[b.priority] ?? 1));
+  const batch = sorted.slice(0, MAX_DEALER_JOBS_PER_RUN);
+
+  let dispatched = 0;
+  const skipped: string[] = [];
+
+  for (const dealer of batch) {
+    const inventoryUrl = `https://${dealer.dealer_domain}${dealer.inventory_path}`;
+    const sourceKey = `dealer_site:${dealer.dealer_slug}`;
+    const jobId = crypto.randomUUID();
+
+    // Insert job row — unique constraint prevents duplicate dispatch per mandate+source+day
+    const { error: jobErr } = await sb.from("outward_jobs").insert({
+      id: jobId,
+      search_run_id: searchRunId,
+      source_key: sourceKey,
+      search_url: inventoryUrl,
+      status: "dispatched",
+      dispatched_at: new Date().toISOString(),
+      mandate_id: mandate.id,
+      dispatch_date: today,
+    });
+
+    if (jobErr) {
+      if (jobErr.code === "23505") {
+        skipped.push(`${sourceKey}:already_today`);
+      } else {
+        console.error(`[run-mandates] Dealer job insert failed for ${dealer.dealer_name}:`, jobErr.message);
+        skipped.push(`${sourceKey}:job_err`);
+      }
+      continue;
+    }
+
+    const prompt = buildDealerSitePrompt(inventoryUrl, mandate, [
+      `Target make: ${mandate.make}`,
+      mandate.model && `Target model: ${mandate.model}`,
+      mandate.variant_family && `Target variant: ${mandate.variant_family}`,
+      mandate.year_min && mandate.year_max
+        ? `Target year range: ${mandate.year_min}–${mandate.year_max}`
+        : mandate.year_min ? `Target year from: ${mandate.year_min}` : null,
+      mandate.km_max && `Max odometer: ${mandate.km_max.toLocaleString()} km`,
+      mandate.price_max && `Max price: $${mandate.price_max.toLocaleString()}`,
+    ].filter(Boolean).join("\n"));
+
+    try {
+      const resp = await fetch(lindyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          job_id: jobId,
+          search_run_id: searchRunId,
+          source: "dealer_site",
+          url: inventoryUrl,
+          prompt,
+          callback_url: callbackUrl,
+          callback_headers: {
+            ...(Deno.env.get("LINDY_WEBHOOK_SECRET")
+              ? { "x-lindy-signature": Deno.env.get("LINDY_WEBHOOK_SECRET")! }
+              : {}),
+            "Content-Type": "application/json",
+          },
+          mandate_id: mandate.id,
+          mandate_name: mandate.name,
+          dealer_slug: dealer.dealer_slug,
+          dealer_name: dealer.dealer_name,
+        }),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        console.error(`[run-mandates] Dealer site ${dealer.dealer_name} dispatch failed: ${resp.status} ${errText.slice(0, 200)}`);
+        await sb.from("outward_jobs").update({ status: "failed", error: `HTTP ${resp.status}` }).eq("id", jobId);
+        skipped.push(`${sourceKey}:http_${resp.status}`);
+        continue;
+      }
+      await resp.text(); // consume body
+      dispatched++;
+      console.log(`[run-mandates] Dealer site dispatched: ${dealer.dealer_name} for "${mandate.name}"`);
+    } catch (err) {
+      console.error(`[run-mandates] Dealer site ${dealer.dealer_name} error:`, err);
+      await sb.from("outward_jobs").update({ status: "failed", error: String(err) }).eq("id", jobId);
+      skipped.push(`${sourceKey}:fetch_err`);
+    }
+  }
+
+  return { dispatched, skipped };
 }
 
 async function dispatchLindyForMandate(
@@ -368,6 +522,21 @@ async function dispatchLindyForMandate(
       await sb.from("outward_jobs").update({ status: "failed", error: String(err) }).eq("id", jobId);
       skipped.push(`${key}:fetch_err`);
     }
+  }
+
+  // ─── Dealer site dispatch (first-class Lindy source) ────────────────────────
+  try {
+    const dealerResult = await dispatchDealerSiteJobs(
+      sb, mandate, searchRunId, today, LINDY_URL, CALLBACK_URL,
+    );
+    dispatched += dealerResult.dispatched;
+    skipped.push(...dealerResult.skipped);
+    if (dealerResult.dispatched > 0) {
+      console.log(`[run-mandates] Dealer sites: ${dealerResult.dispatched} dispatched for "${mandate.name}"`);
+    }
+  } catch (err) {
+    console.error(`[run-mandates] Dealer site dispatch error for "${mandate.name}":`, err);
+    skipped.push("dealer_sites:error");
   }
 
   return { dispatched, skipped };
