@@ -11752,6 +11752,25 @@ export type Database = {
       }
     }
     Views: {
+      cross_source_price_mismatches: {
+        Row: {
+          cheapest_source: string | null
+          cheapest_url: string | null
+          fingerprint_hash: string | null
+          highest_price: number | null
+          lowest_price: number | null
+          make: string | null
+          model: string | null
+          price_spread: number | null
+          seller_name: string | null
+          source_count: number | null
+          sources: string[] | null
+          spread_pct: number | null
+          variant_resolved: string | null
+          year: number | null
+        }
+        Relationships: []
+      }
       dealer_crawl_jobs: {
         Row: {
           attempts: number | null
@@ -11854,6 +11873,18 @@ export type Database = {
           model: string | null
           opportunity_label: string | null
           region_id: string | null
+        }
+        Relationships: []
+      }
+      dealer_pressure_scores: {
+        Row: {
+          avg_days_on_market: number | null
+          avg_price: number | null
+          listing_count: number | null
+          seller_name: string | null
+          source: string | null
+          stale_count: number | null
+          stale_pct: number | null
         }
         Relationships: []
       }
