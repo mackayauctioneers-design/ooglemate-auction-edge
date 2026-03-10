@@ -35,6 +35,7 @@ interface DetailResult {
   engine_size_l: number | null;
   engine_family: string | null;
   cylinders: number | null;
+  price_badge: string | null;
 }
 
 // ─── Source-specific parsers ───────────────────────────────────
