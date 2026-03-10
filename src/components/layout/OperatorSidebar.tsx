@@ -27,6 +27,7 @@ import {
   Sparkles,
   Car,
   TrendingDown,
+  Tag,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -68,6 +69,7 @@ const operatorSections: NavSection[] = [
   {
     title: 'Trading',
     items: [
+      { path: '/josh-desk', label: 'Josh Deal Desk', icon: Tag },
       { path: '/operator/demand-desk', label: 'Demand Desk', icon: Car },
       { path: '/operator/morning-brief', label: "Tomorrow's Targets", icon: Target },
       { path: '/operator/trading-desk', label: 'Trading Desk', icon: DollarSign },
