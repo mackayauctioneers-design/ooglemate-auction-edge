@@ -68,8 +68,14 @@ Deno.serve(async (req) => {
     console.log(`Carsales light scan: ${statesToScan.length} states, ${ITEMS_PER_STATE} items each (${isEvenCycle ? "full" : "primary only"})`);
 
     const results = [];
-    for (const state of statesToScan) {
+    for (let i = 0; i < statesToScan.length; i++) {
+      const state = statesToScan[i];
       const stateUrl = buildNewestUrl(state);
+
+      // Stagger launches: 5s delay between each state to reduce Apify contention
+      if (i > 0) {
+        await new Promise(r => setTimeout(r, 5000));
+      }
 
       try {
         const scanResponse = await fetch(
@@ -99,6 +105,46 @@ Deno.serve(async (req) => {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[${state}] dispatch failed: ${msg}`);
         results.push({ state, error: msg });
+      }
+    }
+
+    // Auto-retry failed states once with extra delay
+    const failedStates = results.filter(r => r.error).map(r => r.state);
+    if (failedStates.length > 0 && failedStates.length <= 4) {
+      console.log(`Retrying ${failedStates.length} failed states: ${failedStates.join(", ")}`);
+      await new Promise(r => setTimeout(r, 10000));
+
+      for (const state of failedStates) {
+        const stateUrl = buildNewestUrl(state);
+        try {
+          const retryResp = await fetch(
+            `${supabaseUrl}/functions/v1/carsales-scan`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify({
+                startUrls: [{ url: stateUrl }],
+                limit: ITEMS_PER_STATE,
+              }),
+            }
+          );
+          const retryResult = await retryResp.json();
+          if (retryResp.ok) {
+            // Update the result entry from error to success
+            const idx = results.findIndex(r => r.state === state && r.error);
+            if (idx >= 0) {
+              results[idx] = { state, run_id: retryResult.apify_run_id, queued: true, retried: true };
+            }
+            console.log(`[${state}] RETRY OK: run ${retryResult.apify_run_id}`);
+          } else {
+            console.error(`[${state}] RETRY failed: ${JSON.stringify(retryResult)}`);
+          }
+        } catch (_) { /* best effort retry */ }
+
+        await new Promise(r => setTimeout(r, 5000));
       }
     }
 
