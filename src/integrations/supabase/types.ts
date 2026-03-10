@@ -6482,10 +6482,12 @@ export type Database = {
           account_id: string | null
           completed_at: string | null
           created_at: string | null
+          dispatch_date: string | null
           dispatched_at: string | null
           error: string | null
           id: string
           intent: Json
+          mandate_id: string | null
           result_count: number | null
           search_run_id: string
           search_url: string
@@ -6496,10 +6498,12 @@ export type Database = {
           account_id?: string | null
           completed_at?: string | null
           created_at?: string | null
+          dispatch_date?: string | null
           dispatched_at?: string | null
           error?: string | null
           id?: string
           intent?: Json
+          mandate_id?: string | null
           result_count?: number | null
           search_run_id: string
           search_url: string
@@ -6510,10 +6514,12 @@ export type Database = {
           account_id?: string | null
           completed_at?: string | null
           created_at?: string | null
+          dispatch_date?: string | null
           dispatched_at?: string | null
           error?: string | null
           id?: string
           intent?: Json
+          mandate_id?: string | null
           result_count?: number | null
           search_run_id?: string
           search_url?: string

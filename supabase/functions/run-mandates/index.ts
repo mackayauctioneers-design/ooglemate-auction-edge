@@ -289,7 +289,7 @@ async function dispatchLindyForMandate(
   const { count: recentJobs } = await sb
     .from("outward_jobs")
     .select("id", { count: "exact", head: true })
-    .like("search_url", `%${mandate.make}%`)
+    .eq("mandate_id", mandate.id)
     .gte("dispatched_at", cooldownCutoff)
     .in("status", ["dispatched", "complete"]);
 
@@ -297,6 +297,8 @@ async function dispatchLindyForMandate(
     console.log(`[run-mandates] Lindy cooldown active for "${mandate.name}" — skipping`);
     return { dispatched: 0, skipped: ["cooldown"] };
   }
+
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD for dispatch_date
 
   const searchRunId = crypto.randomUUID();
   let dispatched = 0;
@@ -314,8 +316,19 @@ async function dispatchLindyForMandate(
       search_url: searchUrl,
       status: "dispatched",
       dispatched_at: new Date().toISOString(),
+      mandate_id: mandate.id,
+      dispatch_date: today,
     });
-    if (jobErr) { skipped.push(`${key}:job_err`); continue; }
+    if (jobErr) {
+      // Unique constraint violation = already dispatched today for this mandate+source
+      if (jobErr.code === "23505") {
+        console.log(`[run-mandates] Lindy already dispatched today for "${mandate.name}" on ${key} — skipping`);
+        skipped.push(`${key}:already_today`);
+        continue;
+      }
+      skipped.push(`${key}:job_err`);
+      continue;
+    }
 
     const prompt = buildLindyPrompt(key, searchUrl, mandate);
     try {
