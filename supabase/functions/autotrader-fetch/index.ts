@@ -24,6 +24,10 @@ interface MappedListing {
   state?: string;
   suburb?: string;
   price_badge?: string;
+  market_price?: number;
+  price_difference?: number;
+  price_difference_percent?: number;
+  market_price_source?: string;
   fuel_type?: string;
   transmission?: string;
   body_type?: string;
@@ -33,6 +37,41 @@ interface MappedListing {
   guide_price?: number;
   sold?: boolean;
   sold_price?: number;
+}
+
+// Badge-to-discount estimation table (Tier 1 fast scoring)
+const BADGE_DISCOUNT_MAP: Record<string, { low: number; high: number; mid: number }> = {
+  'well below market': { low: 0.10, high: 0.20, mid: 0.13 },
+  'below market':      { low: 0.06, high: 0.12, mid: 0.08 },
+  'great price':       { low: 0.05, high: 0.10, mid: 0.07 },
+  'good price':        { low: 0.03, high: 0.06, mid: 0.04 },
+  'fair price':        { low: 0.00, high: 0.03, mid: 0.01 },
+  'around market':     { low: -0.02, high: 0.02, mid: 0.00 },
+  'above market':      { low: -0.08, high: -0.03, mid: -0.05 },
+  'well above market': { low: -0.15, high: -0.08, mid: -0.12 },
+};
+
+function estimateMarketDelta(badge: string | undefined, askingPrice: number): {
+  market_price?: number;
+  price_difference?: number;
+  price_difference_percent?: number;
+} {
+  if (!badge || !askingPrice) return {};
+  const key = badge.toLowerCase().replace(/\s+price$/i, '').trim();
+  // Try exact match first, then partial
+  let discount = BADGE_DISCOUNT_MAP[key];
+  if (!discount) {
+    for (const [k, v] of Object.entries(BADGE_DISCOUNT_MAP)) {
+      if (key.includes(k) || k.includes(key)) { discount = v; break; }
+    }
+  }
+  if (!discount) return {};
+  const estimatedMarket = Math.round(askingPrice / (1 - discount.mid));
+  return {
+    market_price: estimatedMarket,
+    price_difference: askingPrice - estimatedMarket,
+    price_difference_percent: parseFloat((-(discount.mid * 100)).toFixed(2)),
+  };
 }
 
 // ─── SOURCE-SPECIFIC MAPPERS ───────────────────────────────────
