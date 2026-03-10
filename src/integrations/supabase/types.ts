@@ -532,6 +532,105 @@ export type Database = {
         }
         Relationships: []
       }
+      cheap_car_queue: {
+        Row: {
+          condition_notes: string | null
+          deal_tag: string | null
+          detected_at: string
+          discount_pct: number | null
+          engine_type: string | null
+          flag_damage: boolean | null
+          flag_km_issue: boolean | null
+          flag_sold: boolean | null
+          flag_wrong_variant: boolean | null
+          fuel_type: string | null
+          id: string
+          image_url: string | null
+          josh_score: number | null
+          josh_verified: boolean
+          km: number | null
+          listing_id: string
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          market_price: number | null
+          model: string | null
+          price: number | null
+          price_badge: string | null
+          seller_type: string | null
+          source: string
+          status: string
+          transmission: string | null
+          variant: string | null
+          verified_at: string | null
+          year: number | null
+        }
+        Insert: {
+          condition_notes?: string | null
+          deal_tag?: string | null
+          detected_at?: string
+          discount_pct?: number | null
+          engine_type?: string | null
+          flag_damage?: boolean | null
+          flag_km_issue?: boolean | null
+          flag_sold?: boolean | null
+          flag_wrong_variant?: boolean | null
+          fuel_type?: string | null
+          id?: string
+          image_url?: string | null
+          josh_score?: number | null
+          josh_verified?: boolean
+          km?: number | null
+          listing_id: string
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          market_price?: number | null
+          model?: string | null
+          price?: number | null
+          price_badge?: string | null
+          seller_type?: string | null
+          source?: string
+          status?: string
+          transmission?: string | null
+          variant?: string | null
+          verified_at?: string | null
+          year?: number | null
+        }
+        Update: {
+          condition_notes?: string | null
+          deal_tag?: string | null
+          detected_at?: string
+          discount_pct?: number | null
+          engine_type?: string | null
+          flag_damage?: boolean | null
+          flag_km_issue?: boolean | null
+          flag_sold?: boolean | null
+          flag_wrong_variant?: boolean | null
+          fuel_type?: string | null
+          id?: string
+          image_url?: string | null
+          josh_score?: number | null
+          josh_verified?: boolean
+          km?: number | null
+          listing_id?: string
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          market_price?: number | null
+          model?: string | null
+          price?: number | null
+          price_badge?: string | null
+          seller_type?: string | null
+          source?: string
+          status?: string
+          transmission?: string | null
+          variant?: string | null
+          verified_at?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       clearance_events: {
         Row: {
           clearance_type: string
@@ -11764,6 +11863,83 @@ export type Database = {
           year?: number | null
         }
         Relationships: []
+      }
+      verified_deals: {
+        Row: {
+          cheap_car_queue_id: string | null
+          condition_notes: string | null
+          created_at: string
+          discount_pct: number | null
+          engine_type: string | null
+          id: string
+          josh_score: number | null
+          km: number | null
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          market_price: number | null
+          matched_dealer_id: string | null
+          model: string | null
+          price: number | null
+          seller_type: string | null
+          status: string
+          variant: string | null
+          verified_at: string
+          year: number | null
+        }
+        Insert: {
+          cheap_car_queue_id?: string | null
+          condition_notes?: string | null
+          created_at?: string
+          discount_pct?: number | null
+          engine_type?: string | null
+          id?: string
+          josh_score?: number | null
+          km?: number | null
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          market_price?: number | null
+          matched_dealer_id?: string | null
+          model?: string | null
+          price?: number | null
+          seller_type?: string | null
+          status?: string
+          variant?: string | null
+          verified_at?: string
+          year?: number | null
+        }
+        Update: {
+          cheap_car_queue_id?: string | null
+          condition_notes?: string | null
+          created_at?: string
+          discount_pct?: number | null
+          engine_type?: string | null
+          id?: string
+          josh_score?: number | null
+          km?: number | null
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          market_price?: number | null
+          matched_dealer_id?: string | null
+          model?: string | null
+          price?: number | null
+          seller_type?: string | null
+          status?: string
+          variant?: string | null
+          verified_at?: string
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "verified_deals_cheap_car_queue_id_fkey"
+            columns: ["cheap_car_queue_id"]
+            isOneToOne: false
+            referencedRelation: "cheap_car_queue"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       watch_events: {
         Row: {
