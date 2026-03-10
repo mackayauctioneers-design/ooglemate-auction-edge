@@ -23,6 +23,7 @@ interface MappedListing {
   asking_price: number;
   state?: string;
   suburb?: string;
+  price_badge?: string;
   // Auction-specific fields
   auction_house?: string;
   auction_datetime?: string;
