@@ -405,6 +405,31 @@ Deno.serve(async (req) => {
 
     console.log('Detail-enrich complete:', stats);
 
+    // Send Slack alert for high-value price badges
+    if (priceBadgeHits.length > 0) {
+      const slackUrl = Deno.env.get('SLACK_WEBHOOK_URL');
+      if (slackUrl) {
+        const items = priceBadgeHits.slice(0, 10);
+        const lines = items.map(({ listing: l, badge }) =>
+          `• *${badge}* — ${l.year || '?'} ${l.make || '?'} ${l.model || '?'} ${l.variant_raw || ''} | $${(l.asking_price || 0).toLocaleString()} | ${l.km ? l.km.toLocaleString() + 'km' : '?'} | ${l.state || '?'}\n  <${l.listing_url}|View Listing>`
+        );
+        try {
+          await fetch(slackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              blocks: [
+                { type: 'header', text: { type: 'plain_text', text: `🏷️ ${priceBadgeHits.length} Price Badge Alert${priceBadgeHits.length > 1 ? 's' : ''}` } },
+                { type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } },
+              ],
+            }),
+          });
+        } catch (e) {
+          console.error('Slack price badge alert error:', e);
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({ success: true, stats }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
