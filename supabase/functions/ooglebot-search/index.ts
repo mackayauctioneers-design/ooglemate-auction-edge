@@ -203,6 +203,7 @@ Deno.serve(async (req) => {
       `)
       .ilike("make", input.make)
       .gte("last_seen_at", recencyCutoff)
+      .not("lifecycle_status", "in", '("DELISTED","SOLD","DEAD")')
       .order("asking_price", { ascending: true, nullsFirst: false })
       .limit(input.limit! * 3);
 
