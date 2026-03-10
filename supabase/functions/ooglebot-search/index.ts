@@ -201,7 +201,7 @@ Deno.serve(async (req) => {
 
     if (input.year_min) vlQuery = vlQuery.gte("year", input.year_min);
     if (input.year_max) vlQuery = vlQuery.lte("year", input.year_max);
-    if (input.max_km) vlQuery = vlQuery.lte("km", input.max_km);
+    if (input.max_km) vlQuery = vlQuery.or(`km.lte.${input.max_km},km.is.null`);
     if (input.price_max) {
       vlQuery = vlQuery.or(`asking_price.lte.${input.price_max},asking_price.is.null`);
     }
