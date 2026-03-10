@@ -18,7 +18,7 @@ const corsHeaders = {
  *   batchSize  — items per POST batch (default 50)
  */
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

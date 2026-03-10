@@ -23,7 +23,7 @@ const SEARCHES = [
   { label: "Adelaide", url: "https://www.gumtree.com.au/s-cars-vans-utes/adelaide/c18320l3006753?sort=date&carmileageinkms_max=200000&caryear_min=2016" },
 ];
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
