@@ -7552,6 +7552,7 @@ export type Database = {
           model_root: string | null
           origin_entity: string | null
           postcode: string | null
+          price_badge: string | null
           price_change_count: number | null
           price_changed_at: string | null
           price_history: Json | null
@@ -7651,6 +7652,7 @@ export type Database = {
           model_root?: string | null
           origin_entity?: string | null
           postcode?: string | null
+          price_badge?: string | null
           price_change_count?: number | null
           price_changed_at?: string | null
           price_history?: Json | null
@@ -7750,6 +7752,7 @@ export type Database = {
           model_root?: string | null
           origin_entity?: string | null
           postcode?: string | null
+          price_badge?: string | null
           price_change_count?: number | null
           price_changed_at?: string | null
           price_history?: Json | null
@@ -12296,6 +12299,7 @@ export type Database = {
           location: string | null
           make: string | null
           model: string | null
+          price_badge: string | null
           source: string | null
           source_class: string | null
           transmission: string | null
