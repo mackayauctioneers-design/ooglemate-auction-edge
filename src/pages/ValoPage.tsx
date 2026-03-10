@@ -195,6 +195,7 @@ export default function ValoPage() {
     setCommentaryOpen(false);
     setCommentaryText(null);
     setIsProcessing(true);
+    setValoPhase('Parsing vehicle identity…');
 
     try {
       // Build structured identity — no LLM parsing needed
