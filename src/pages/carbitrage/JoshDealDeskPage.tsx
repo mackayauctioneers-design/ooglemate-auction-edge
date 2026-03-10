@@ -1,0 +1,503 @@
+import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { AppLayout } from "@/components/layout/AppLayout";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  CheckCircle,
+  XCircle,
+  ExternalLink,
+  Tag,
+  AlertTriangle,
+  Ban,
+  Phone,
+} from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
+
+interface CheapCar {
+  id: string;
+  source: string;
+  listing_id: string;
+  make: string | null;
+  model: string | null;
+  variant: string | null;
+  year: number | null;
+  km: number | null;
+  price: number | null;
+  market_price: number | null;
+  discount_pct: number | null;
+  deal_tag: string | null;
+  location: string | null;
+  seller_type: string | null;
+  listing_url: string | null;
+  image_url: string | null;
+  detected_at: string;
+  status: string;
+  josh_verified: boolean;
+  josh_score: number | null;
+  condition_notes: string | null;
+  flag_damage: boolean | null;
+  flag_wrong_variant: boolean | null;
+  flag_km_issue: boolean | null;
+  flag_sold: boolean | null;
+  verified_at: string | null;
+  engine_type: string | null;
+  price_badge: string | null;
+}
+
+export default function JoshDealDeskPage() {
+  const queryClient = useQueryClient();
+  const [reviewCar, setReviewCar] = useState<CheapCar | null>(null);
+
+  // Review form state
+  const [variantOk, setVariantOk] = useState(true);
+  const [kmOk, setKmOk] = useState(true);
+  const [photosOk, setPhotosOk] = useState(true);
+  const [stillActive, setStillActive] = useState(true);
+  const [flagDamage, setFlagDamage] = useState(false);
+  const [flagWrongVariant, setFlagWrongVariant] = useState(false);
+  const [flagKmIssue, setFlagKmIssue] = useState(false);
+  const [sellerType, setSellerType] = useState("Unknown");
+  const [score, setScore] = useState(3);
+  const [notes, setNotes] = useState("");
+
+  const { data: cars, isLoading } = useQuery({
+    queryKey: ["cheap-car-queue"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("cheap_car_queue")
+        .select("*")
+        .eq("status", "NEW")
+        .eq("josh_verified", false)
+        .order("discount_pct", { ascending: true })
+        .limit(50);
+      if (error) throw error;
+      return data as CheapCar[];
+    },
+  });
+
+  // Stats query
+  const { data: stats } = useQuery({
+    queryKey: ["cheap-car-stats"],
+    queryFn: async () => {
+      const [detected, reviewed, verified, rejected] = await Promise.all([
+        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }),
+        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).neq("status", "NEW"),
+        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).eq("status", "VERIFIED"),
+        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).eq("status", "REJECTED"),
+      ]);
+      return {
+        detected: detected.count || 0,
+        reviewed: reviewed.count || 0,
+        verified: verified.count || 0,
+        rejected: rejected.count || 0,
+      };
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      id,
+      updates,
+    }: {
+      id: string;
+      updates: Record<string, unknown>;
+    }) => {
+      const { error } = await supabase
+        .from("cheap_car_queue")
+        .update(updates)
+        .eq("id", id);
+      if (error) throw error;
+
+      // If verified with score >= 4, insert into verified_deals and send alert
+      if (updates.status === "VERIFIED" && (updates.josh_score as number) >= 4) {
+        const car = reviewCar!;
+        await supabase.from("verified_deals").insert({
+          cheap_car_queue_id: id,
+          make: car.make,
+          model: car.model,
+          variant: car.variant,
+          year: car.year,
+          km: car.km,
+          price: car.price,
+          market_price: car.market_price,
+          discount_pct: car.discount_pct,
+          listing_url: car.listing_url,
+          location: car.location,
+          seller_type: updates.seller_type as string || car.seller_type,
+          josh_score: updates.josh_score as number,
+          condition_notes: updates.condition_notes as string,
+          engine_type: car.engine_type,
+        });
+
+        // Fire alert to Dave
+        try {
+          await supabase.functions.invoke("josh-deal-alert", {
+            body: {
+              year: car.year,
+              make: car.make,
+              model: car.model,
+              variant: car.variant,
+              price: car.price,
+              market_price: car.market_price,
+              discount_pct: car.discount_pct,
+              km: car.km,
+              location: car.location,
+              seller_type: updates.seller_type || car.seller_type,
+              score: updates.josh_score,
+              listing_url: car.listing_url,
+            },
+          });
+        } catch (e) {
+          console.error("Alert send failed:", e);
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cheap-car-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["cheap-car-stats"] });
+      toast.success("Updated");
+      closeReview();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const openReview = (car: CheapCar) => {
+    setReviewCar(car);
+    setVariantOk(true);
+    setKmOk(true);
+    setPhotosOk(true);
+    setStillActive(true);
+    setFlagDamage(false);
+    setFlagWrongVariant(false);
+    setFlagKmIssue(false);
+    setSellerType(car.seller_type || "Unknown");
+    setScore(3);
+    setNotes("");
+  };
+
+  const closeReview = () => setReviewCar(null);
+
+  const handleVerify = () => {
+    if (!reviewCar) return;
+    updateMutation.mutate({
+      id: reviewCar.id,
+      updates: {
+        status: "VERIFIED",
+        josh_verified: true,
+        josh_score: score,
+        condition_notes: notes || null,
+        flag_damage: flagDamage,
+        flag_wrong_variant: flagWrongVariant,
+        flag_km_issue: flagKmIssue,
+        seller_type: sellerType,
+        verified_at: new Date().toISOString(),
+      },
+    });
+  };
+
+  const handleReject = () => {
+    if (!reviewCar) return;
+    updateMutation.mutate({
+      id: reviewCar.id,
+      updates: {
+        status: "REJECTED",
+        josh_verified: false,
+        condition_notes: notes || null,
+        flag_damage: flagDamage,
+        flag_wrong_variant: flagWrongVariant,
+        flag_km_issue: flagKmIssue,
+      },
+    });
+  };
+
+  const handleMarkSold = () => {
+    if (!reviewCar) return;
+    updateMutation.mutate({
+      id: reviewCar.id,
+      updates: { status: "SOLD", flag_sold: true },
+    });
+  };
+
+  const fmtPrice = (v: number | null) =>
+    v ? `$${v.toLocaleString()}` : "—";
+  const fmtKm = (v: number | null) =>
+    v ? `${(v / 1000).toFixed(0)}k` : "—";
+  const fmtDiscount = (v: number | null) =>
+    v ? `${v > 0 ? "-" : ""}${Math.abs(v).toFixed(0)}%` : "—";
+
+  return (
+    <AppLayout>
+      <div className="space-y-6">
+        {/* Header + Stats */}
+        <div>
+          <h1 className="text-2xl font-bold">Josh Deal Desk</h1>
+          <p className="text-muted-foreground">
+            Verify cheap Carsales listings before they go to Dave
+          </p>
+        </div>
+
+        {stats && (
+          <div className="grid grid-cols-4 gap-3">
+            {[
+              { label: "Detected", value: stats.detected, color: "text-foreground" },
+              { label: "Reviewed", value: stats.reviewed, color: "text-blue-500" },
+              { label: "Verified", value: stats.verified, color: "text-emerald-500" },
+              { label: "Rejected", value: stats.rejected, color: "text-destructive" },
+            ].map((s) => (
+              <Card key={s.label}>
+                <CardContent className="p-4 text-center">
+                  <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+                  <div className="text-xs text-muted-foreground">{s.label}</div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Queue Table */}
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        ) : !cars?.length ? (
+          <Card className="py-12">
+            <CardContent className="flex flex-col items-center justify-center text-center">
+              <CheckCircle className="h-12 w-12 text-emerald-500 mb-4" />
+              <h3 className="text-lg font-medium">Queue Clear</h3>
+              <p className="text-muted-foreground">No new cheap listings to review.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Discount</TableHead>
+                  <TableHead>Car</TableHead>
+                  <TableHead>Price</TableHead>
+                  <TableHead>Market</TableHead>
+                  <TableHead>KM</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Seller</TableHead>
+                  <TableHead className="w-[100px]">Review</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cars.map((car) => (
+                  <TableRow key={car.id} className="cursor-pointer hover:bg-accent/50" onClick={() => openReview(car)}>
+                    <TableCell>
+                      <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-mono">
+                        {fmtDiscount(car.discount_pct)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {car.year} {car.make} {car.model}
+                      {car.variant && <span className="text-muted-foreground ml-1 text-xs">{car.variant}</span>}
+                    </TableCell>
+                    <TableCell className="font-mono">{fmtPrice(car.price)}</TableCell>
+                    <TableCell className="font-mono text-muted-foreground">{fmtPrice(car.market_price)}</TableCell>
+                    <TableCell>{fmtKm(car.km)}</TableCell>
+                    <TableCell className="text-sm">{car.location || "—"}</TableCell>
+                    <TableCell className="text-sm">{car.seller_type || "—"}</TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); openReview(car); }}>
+                        Review
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      {/* Review Modal */}
+      <Dialog open={!!reviewCar} onOpenChange={() => closeReview()}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Review: {reviewCar?.year} {reviewCar?.make} {reviewCar?.model} {reviewCar?.variant}
+            </DialogTitle>
+          </DialogHeader>
+
+          {reviewCar && (
+            <div className="space-y-5">
+              {/* Vehicle Summary */}
+              <div className="grid grid-cols-2 gap-3 p-4 bg-muted rounded-lg text-sm">
+                <div><span className="text-muted-foreground">Price:</span> <span className="font-mono font-semibold">{fmtPrice(reviewCar.price)}</span></div>
+                <div><span className="text-muted-foreground">Market:</span> <span className="font-mono">{fmtPrice(reviewCar.market_price)}</span></div>
+                <div><span className="text-muted-foreground">Discount:</span> <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">{fmtDiscount(reviewCar.discount_pct)}</Badge></div>
+                <div><span className="text-muted-foreground">KM:</span> {fmtKm(reviewCar.km)}</div>
+                <div><span className="text-muted-foreground">Location:</span> {reviewCar.location || "—"}</div>
+                <div><span className="text-muted-foreground">Engine:</span> {reviewCar.engine_type || "—"}</div>
+                <div><span className="text-muted-foreground">Badge:</span> {reviewCar.price_badge || "—"}</div>
+                <div><span className="text-muted-foreground">Detected:</span> {formatDistanceToNow(new Date(reviewCar.detected_at), { addSuffix: true })}</div>
+              </div>
+
+              {reviewCar.listing_url && (
+                <a
+                  href={reviewCar.listing_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View on Carsales
+                </a>
+              )}
+
+              {/* Checklist */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold">Verification Checklist</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={variantOk} onCheckedChange={(c) => setVariantOk(!!c)} />
+                    Variant looks correct
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={kmOk} onCheckedChange={(c) => setKmOk(!!c)} />
+                    KM looks reasonable
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={photosOk} onCheckedChange={(c) => setPhotosOk(!!c)} />
+                    Photos look clean
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={stillActive} onCheckedChange={(c) => setStillActive(!!c)} />
+                    Listing still active
+                  </label>
+                </div>
+              </div>
+
+              {/* Flags */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold flex items-center gap-1">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" /> Flags
+                </h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={flagDamage} onCheckedChange={(c) => setFlagDamage(!!c)} />
+                    Possible damage
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={flagWrongVariant} onCheckedChange={(c) => setFlagWrongVariant(!!c)} />
+                    Wrong variant
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={flagKmIssue} onCheckedChange={(c) => setFlagKmIssue(!!c)} />
+                    KM problem
+                  </label>
+                </div>
+              </div>
+
+              {/* Seller + Score */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-semibold">Seller Type</label>
+                  <Select value={sellerType} onValueChange={setSellerType}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Dealer">Dealer</SelectItem>
+                      <SelectItem value="Private">Private</SelectItem>
+                      <SelectItem value="Unknown">Unknown</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold">Confidence Score</label>
+                  <Select value={String(score)} onValueChange={(v) => setScore(Number(v))}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 — Junk</SelectItem>
+                      <SelectItem value="2">2 — Weak</SelectItem>
+                      <SelectItem value="3">3 — Maybe</SelectItem>
+                      <SelectItem value="4">4 — Strong deal</SelectItem>
+                      <SelectItem value="5">5 — Call immediately</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-sm font-semibold">Notes</label>
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Any additional observations..."
+                  className="mt-1"
+                  rows={2}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button
+              variant="destructive"
+              onClick={handleMarkSold}
+              disabled={updateMutation.isPending}
+              className="gap-1"
+            >
+              <Ban className="h-4 w-4" />
+              Sold
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleReject}
+              disabled={updateMutation.isPending}
+              className="gap-1"
+            >
+              <XCircle className="h-4 w-4" />
+              Reject
+            </Button>
+            <Button
+              onClick={handleVerify}
+              disabled={updateMutation.isPending}
+              className="gap-1"
+            >
+              <CheckCircle className="h-4 w-4" />
+              {score >= 4 ? "Verify & Alert Dave" : "Verify"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </AppLayout>
+  );
+}
