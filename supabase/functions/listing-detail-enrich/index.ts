@@ -36,6 +36,9 @@ interface DetailResult {
   engine_family: string | null;
   cylinders: number | null;
   price_badge: string | null;
+  market_price: number | null;
+  price_difference: number | null;
+  price_difference_percent: number | null;
 }
 
 // ─── Source-specific parsers ───────────────────────────────────
@@ -54,7 +57,8 @@ function parseCarsalesMarkdown(md: string): DetailResult {
     drivetrain: null, body_type: null, colour: null,
     description: null, image_urls: null, seller_type: null,
     engine_size_l: null, engine_family: null, cylinders: null,
-    price_badge: null,
+    price_badge: null, market_price: null, price_difference: null,
+    price_difference_percent: null,
   };
 
   const clean = cleanMarkdown(md);
@@ -139,6 +143,37 @@ function parseCarsalesMarkdown(md: string): DetailResult {
     if (bm) {
       result.price_badge = bm[1].replace(/\s+/g, ' ').trim();
       break;
+    }
+  }
+
+  // Extract structured market pricing from __NEXT_DATA__ or inline JSON
+  // Carsales embeds pricing data like: "marketPrice":74200, "priceDifference":-5300
+  const marketPriceMatch = clean.match(/market\s*(?:price|average|value)[:\s]*\$?([\d,]+)/i) 
+    || md.match(/"(?:marketPrice|marketAverage|estimatedValue)"[:\s]*(\d+)/);
+  if (marketPriceMatch) {
+    result.market_price = parseInt(marketPriceMatch[1].replace(/,/g, ''), 10);
+  }
+
+  const priceDiffMatch = md.match(/"(?:priceDifference|difference)"[:\s]*(-?\d+)/);
+  if (priceDiffMatch) {
+    result.price_difference = parseInt(priceDiffMatch[1], 10);
+  }
+
+  const priceDiffPctMatch = md.match(/"(?:priceDifferencePercent|differencePercent)"[:\s]*(-?\d+\.?\d*)/);
+  if (priceDiffPctMatch) {
+    result.price_difference_percent = parseFloat(priceDiffPctMatch[1]);
+  }
+
+  // If we got market_price but not difference, calculate from listing price in text
+  if (result.market_price && !result.price_difference) {
+    const priceMatch = clean.match(/\$\s*([\d,]+)\s*(?:drive\s*away|exc|plus)/i)
+      || clean.match(/\$\s*([\d,]+)/);
+    if (priceMatch) {
+      const listingPrice = parseInt(priceMatch[1].replace(/,/g, ''), 10);
+      if (listingPrice > 1000 && listingPrice < 500000) {
+        result.price_difference = listingPrice - result.market_price;
+        result.price_difference_percent = parseFloat(((listingPrice - result.market_price) / result.market_price * 100).toFixed(2));
+      }
     }
   }
 
@@ -358,6 +393,12 @@ Deno.serve(async (req) => {
           if (detail.engine_family) update.engine_family = detail.engine_family;
           if (detail.cylinders) update.cylinders = detail.cylinders;
           if (detail.price_badge) update.price_badge = detail.price_badge;
+          if (detail.market_price) {
+            update.market_price = detail.market_price;
+            update.market_price_source = 'detail_page';
+          }
+          if (detail.price_difference !== null) update.price_difference = detail.price_difference;
+          if (detail.price_difference_percent !== null) update.price_difference_percent = detail.price_difference_percent;
 
           const { error: updateErr } = await supabase
             .from('retail_listings')

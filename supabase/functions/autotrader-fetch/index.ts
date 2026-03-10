@@ -24,6 +24,10 @@ interface MappedListing {
   state?: string;
   suburb?: string;
   price_badge?: string;
+  market_price?: number;
+  price_difference?: number;
+  price_difference_percent?: number;
+  market_price_source?: string;
   fuel_type?: string;
   transmission?: string;
   body_type?: string;
@@ -33,6 +37,41 @@ interface MappedListing {
   guide_price?: number;
   sold?: boolean;
   sold_price?: number;
+}
+
+// Badge-to-discount estimation table (Tier 1 fast scoring)
+const BADGE_DISCOUNT_MAP: Record<string, { low: number; high: number; mid: number }> = {
+  'well below market': { low: 0.10, high: 0.20, mid: 0.13 },
+  'below market':      { low: 0.06, high: 0.12, mid: 0.08 },
+  'great price':       { low: 0.05, high: 0.10, mid: 0.07 },
+  'good price':        { low: 0.03, high: 0.06, mid: 0.04 },
+  'fair price':        { low: 0.00, high: 0.03, mid: 0.01 },
+  'around market':     { low: -0.02, high: 0.02, mid: 0.00 },
+  'above market':      { low: -0.08, high: -0.03, mid: -0.05 },
+  'well above market': { low: -0.15, high: -0.08, mid: -0.12 },
+};
+
+function estimateMarketDelta(badge: string | undefined, askingPrice: number): {
+  market_price?: number;
+  price_difference?: number;
+  price_difference_percent?: number;
+} {
+  if (!badge || !askingPrice) return {};
+  const key = badge.toLowerCase().replace(/\s+price$/i, '').trim();
+  // Try exact match first, then partial
+  let discount = BADGE_DISCOUNT_MAP[key];
+  if (!discount) {
+    for (const [k, v] of Object.entries(BADGE_DISCOUNT_MAP)) {
+      if (key.includes(k) || k.includes(key)) { discount = v; break; }
+    }
+  }
+  if (!discount) return {};
+  const estimatedMarket = Math.round(askingPrice / (1 - discount.mid));
+  return {
+    market_price: estimatedMarket,
+    price_difference: askingPrice - estimatedMarket,
+    price_difference_percent: parseFloat((-(discount.mid * 100)).toFixed(2)),
+  };
 }
 
 // ─── SOURCE-SPECIFIC MAPPERS ───────────────────────────────────
@@ -221,6 +260,46 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
       (item.priceBadge || item.priceRating || item.dealRating || item.priceLabel || "") as string
     ).trim() || merlin.priceBadge || undefined;
 
+    // Try to extract structured pricing data from raw payload
+    let marketPrice: number | undefined;
+    let priceDiff: number | undefined;
+    let priceDiffPct: number | undefined;
+    let marketPriceSource: string | undefined;
+
+    // Check for structured pricing objects (Carsales __NEXT_DATA__ or similar)
+    const pricing = (item.vehiclePricing || item.priceInsights || item.pricing || item.dealRating) as Record<string, unknown> | undefined;
+    if (pricing && typeof pricing === 'object') {
+      const mp = (pricing.marketAverage || pricing.marketPrice || pricing.estimatedValue || pricing.average) as number;
+      const diff = (pricing.difference || pricing.priceDifference) as number;
+      const diffPct = (pricing.differencePercent || pricing.priceDifferencePercent) as number;
+      if (mp && mp > 1000) {
+        marketPrice = Math.round(mp);
+        priceDiff = diff || (price - mp);
+        priceDiffPct = diffPct || parseFloat(((price - mp) / mp * 100).toFixed(2));
+        marketPriceSource = 'carsales_structured';
+      }
+    }
+    // Also check flat fields
+    if (!marketPrice) {
+      const flatMarket = (item.marketPrice || item.market_price || item.estimatedValue) as number;
+      if (flatMarket && flatMarket > 1000) {
+        marketPrice = Math.round(flatMarket);
+        priceDiff = price - flatMarket;
+        priceDiffPct = parseFloat(((price - flatMarket) / flatMarket * 100).toFixed(2));
+        marketPriceSource = 'carsales_flat';
+      }
+    }
+    // Tier 1 fallback: estimate from badge
+    if (!marketPrice && priceBadge) {
+      const est = estimateMarketDelta(priceBadge, price);
+      if (est.market_price) {
+        marketPrice = est.market_price;
+        priceDiff = est.price_difference;
+        priceDiffPct = est.price_difference_percent;
+        marketPriceSource = 'badge_estimate';
+      }
+    }
+
     // URL
     const fullUrl = url.startsWith("http") ? url 
       : url ? `https://www.carsales.com.au${url}` : "";
@@ -236,6 +315,10 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
       state: state || undefined,
       suburb: suburb || undefined,
       price_badge: priceBadge,
+      market_price: marketPrice,
+      price_difference: priceDiff,
+      price_difference_percent: priceDiffPct,
+      market_price_source: marketPriceSource,
       // Pass through Merlin-extracted fields for downstream enrichment
       ...(merlin.fuel ? { fuel_type: merlin.fuel } : {}),
       ...(merlin.transmission ? { transmission: merlin.transmission } : {}),
@@ -797,6 +880,10 @@ Deno.serve(async (req) => {
                   if (extracted.body_type || listing.body_type) updateFields.body_type = extracted.body_type || listing.body_type;
                   if (listing.transmission) updateFields.transmission = listing.transmission;
                   if (listing.price_badge) updateFields.price_badge = listing.price_badge;
+                  if (listing.market_price) updateFields.market_price = listing.market_price;
+                  if (listing.price_difference !== undefined) updateFields.price_difference = listing.price_difference;
+                  if (listing.price_difference_percent !== undefined) updateFields.price_difference_percent = listing.price_difference_percent;
+                  if (listing.market_price_source) updateFields.market_price_source = listing.market_price_source;
                   updateFields.classified_at = new Date().toISOString();
                   updateFields.variant_source = 'extractBadge_v1';
                   await supabase.from("retail_listings").update(updateFields).eq("id", resultRow.id);

@@ -131,6 +131,9 @@ interface ScoredResult {
   days_listed: number | null;
   is_dealer_grade: boolean | null;
   price_badge: string | null;
+  market_price: number | null;
+  price_difference: number | null;
+  price_difference_percent: number | null;
 }
 
 Deno.serve(async (req) => {
@@ -215,6 +218,7 @@ Deno.serve(async (req) => {
         asking_price, state, listing_url,
         drivetrain, fuel_type, transmission, seller_type,
         first_seen_at, last_seen_at, price_badge,
+        market_price, price_difference, price_difference_percent,
         lifecycle_status, region_raw
       `)
       .ilike("make", input.make)
@@ -288,12 +292,15 @@ Deno.serve(async (req) => {
         fuel: r.fuel_type || null,
         watch_status: null,
         price_badge: r.price_badge || null,
+        market_price: r.market_price || null,
+        price_difference: r.price_difference || null,
+        price_difference_percent: r.price_difference_percent || null,
       };
     });
 
     // Merge both sets
     const allListings = [
-      ...vlListings.map((v: any) => ({ ...v, price_badge: null })),
+      ...vlListings.map((v: any) => ({ ...v, price_badge: null, market_price: null, price_difference: null, price_difference_percent: null })),
       ...normalizedRetail,
     ];
 
@@ -396,8 +403,21 @@ Deno.serve(async (req) => {
         reasons.push("DEALER_GRADE");
       }
 
-      // Price badge bonus (retail listings with "Well Below Market" etc.)
-      if (l.price_badge && /well\s+below|below\s+market|great\s+price/i.test(l.price_badge)) {
+      // Market delta scoring (numeric, much stronger than badge-only)
+      if (l.price_difference_percent !== null && l.price_difference_percent !== undefined) {
+        const pct = Math.abs(l.price_difference_percent);
+        if (l.price_difference_percent < -10) {
+          score += 20;
+          reasons.push(`MARKET_DELTA_${pct.toFixed(0)}PCT_UNDER`);
+        } else if (l.price_difference_percent < -6) {
+          score += 12;
+          reasons.push(`MARKET_DELTA_${pct.toFixed(0)}PCT_UNDER`);
+        } else if (l.price_difference_percent < -3) {
+          score += 8;
+          reasons.push(`MARKET_DELTA_${pct.toFixed(0)}PCT_UNDER`);
+        }
+      } else if (l.price_badge && /well\s+below|below\s+market|great\s+price/i.test(l.price_badge)) {
+        // Fallback to badge-only scoring if no numeric data
         score += 8;
         reasons.push("PRICE_BADGE_HOT");
       }
@@ -462,6 +482,9 @@ Deno.serve(async (req) => {
         days_listed: daysListed,
         is_dealer_grade: l.is_dealer_grade,
         price_badge: l.price_badge || null,
+        market_price: l.market_price || null,
+        price_difference: l.price_difference || null,
+        price_difference_percent: l.price_difference_percent || null,
       });
     }
 
