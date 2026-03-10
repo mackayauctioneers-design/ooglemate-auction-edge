@@ -588,8 +588,8 @@ async function dispatchLindyForMandate(
     );
     dispatched += dealerResult.dispatched;
     skipped.push(...dealerResult.skipped);
-    if (dealerResult.dispatched > 0) {
-      console.log(`[run-mandates] Dealer sites: ${dealerResult.dispatched} dispatched for "${mandate.name}"`);
+    if (dealerResult.dispatched > 0 || dealerResult.prefiltered > 0) {
+      console.log(`[run-mandates] Dealer sites: ${dealerResult.dispatched} dispatched, ${dealerResult.prefiltered} pre-filtered for "${mandate.name}"`);
     }
   } catch (err) {
     console.error(`[run-mandates] Dealer site dispatch error for "${mandate.name}":`, err);
