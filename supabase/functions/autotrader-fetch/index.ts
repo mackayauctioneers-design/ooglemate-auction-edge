@@ -916,6 +916,39 @@ Deno.serve(async (req) => {
                   }
                 }
 
+                // ── Insert into cheap_car_queue for Josh verification ──
+                if (listing.price_badge && resultRow?.is_new && runSource === "carsales") {
+                  const badgeLower = listing.price_badge.toLowerCase();
+                  const isCheap = badgeLower.includes("well below") || badgeLower.includes("below market");
+                  const yearOk = listing.year && listing.year >= 2020;
+                  const kmOk = !listing.km || listing.km <= 120000;
+                  if (isCheap && yearOk && kmOk) {
+                    const delta = estimateMarketDelta(listing.price_badge, listing.asking_price);
+                    supabase.from("cheap_car_queue").upsert({
+                      listing_id: listing.source_listing_id,
+                      source: "carsales",
+                      make: listing.make,
+                      model: listing.model,
+                      variant: listing.variant_raw || null,
+                      year: listing.year,
+                      km: listing.km || null,
+                      price: listing.asking_price,
+                      market_price: delta.market_price || listing.market_price || null,
+                      discount_pct: delta.price_difference_percent || listing.price_difference_percent || null,
+                      deal_tag: listing.price_badge,
+                      location: listing.state || null,
+                      listing_url: listing.listing_url,
+                      price_badge: listing.price_badge,
+                      engine_type: extracted.engine_type || null,
+                      fuel_type: extracted.fuel_type || listing.fuel_type || null,
+                      transmission: listing.transmission || null,
+                      status: "NEW",
+                      josh_verified: false,
+                    }, { onConflict: "listing_id" }).then(() => {}).catch((e: unknown) => {
+                      console.error("[CHEAP CAR QUEUE] Insert failed:", e);
+                    });
+                  }
+                }
                 // ── Record price history snapshot ──
                 if (listing.asking_price && listing.source_listing_id) {
                   supabase.from("listing_price_history").insert({
