@@ -146,6 +146,37 @@ function parseCarsalesMarkdown(md: string): DetailResult {
     }
   }
 
+  // Extract structured market pricing from __NEXT_DATA__ or inline JSON
+  // Carsales embeds pricing data like: "marketPrice":74200, "priceDifference":-5300
+  const marketPriceMatch = clean.match(/market\s*(?:price|average|value)[:\s]*\$?([\d,]+)/i) 
+    || md.match(/"(?:marketPrice|marketAverage|estimatedValue)"[:\s]*(\d+)/);
+  if (marketPriceMatch) {
+    result.market_price = parseInt(marketPriceMatch[1].replace(/,/g, ''), 10);
+  }
+
+  const priceDiffMatch = md.match(/"(?:priceDifference|difference)"[:\s]*(-?\d+)/);
+  if (priceDiffMatch) {
+    result.price_difference = parseInt(priceDiffMatch[1], 10);
+  }
+
+  const priceDiffPctMatch = md.match(/"(?:priceDifferencePercent|differencePercent)"[:\s]*(-?\d+\.?\d*)/);
+  if (priceDiffPctMatch) {
+    result.price_difference_percent = parseFloat(priceDiffPctMatch[1]);
+  }
+
+  // If we got market_price but not difference, calculate from listing price in text
+  if (result.market_price && !result.price_difference) {
+    const priceMatch = clean.match(/\$\s*([\d,]+)\s*(?:drive\s*away|exc|plus)/i)
+      || clean.match(/\$\s*([\d,]+)/);
+    if (priceMatch) {
+      const listingPrice = parseInt(priceMatch[1].replace(/,/g, ''), 10);
+      if (listingPrice > 1000 && listingPrice < 500000) {
+        result.price_difference = listingPrice - result.market_price;
+        result.price_difference_percent = parseFloat(((listingPrice - result.market_price) / result.market_price * 100).toFixed(2));
+      }
+    }
+  }
+
   // Derive engine family
   if (result.engine_size_l) {
     result.engine_family = deriveEngineFamily(result.engine_size_l, result.cylinders);
