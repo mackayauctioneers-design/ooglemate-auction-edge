@@ -1301,20 +1301,23 @@ export function OogleBotSearch() {
             )}
             {/* Results list */}
             {(() => {
-              const displayed = showAllMarket ? marketResults : marketResults.slice(0, 10);
+              const INITIAL_SHOW = 5;
+              const displayed = showAllMarket ? marketResults : marketResults.slice(0, INITIAL_SHOW);
               return (
                 <>
-                  {displayed.map((result, i) => (
-                    <UnifiedResultCard key={result.id} result={result} isBestPrice={i === 0 && marketResults.length > 1} isOperator={isAdmin} />
-                  ))}
-                  {marketResults.length > 10 && !showAllMarket && (
+                  <div className={!showAllMarket && marketResults.length > INITIAL_SHOW ? "max-h-[420px] overflow-y-auto space-y-1.5 pr-1" : "space-y-1.5"}>
+                    {displayed.map((result, i) => (
+                      <UnifiedResultCard key={result.id} result={result} isBestPrice={i === 0 && marketResults.length > 1} isOperator={isAdmin} />
+                    ))}
+                  </div>
+                  {marketResults.length > INITIAL_SHOW && !showAllMarket && (
                     <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => setShowAllMarket(true)}>
                       Show all {marketResults.length} results
                     </Button>
                   )}
-                  {showAllMarket && marketResults.length > 10 && (
+                  {showAllMarket && marketResults.length > INITIAL_SHOW && (
                     <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => setShowAllMarket(false)}>
-                      Show top 10 only
+                      Show top {INITIAL_SHOW} only
                     </Button>
                   )}
                 </>
