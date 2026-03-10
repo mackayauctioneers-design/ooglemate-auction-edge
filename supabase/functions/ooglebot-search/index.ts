@@ -72,17 +72,33 @@ function validate(body: unknown): { ok: true; input: SearchInput } | { ok: false
 
 // ─── Badge matching helpers ──────────────────────────────────────────────────
 
+// Sub-badge qualifiers that create distinct trims — must be explicitly requested
+const SUB_BADGE_QUALIFIERS = ["HI-RIDER", "HIRIDER", "HI RIDER", "WILDTRAK", "RAPTOR", "SPORT"];
+
 function buildBadgeRegex(badge: string): RegExp {
   const badgeUpper = badge.toUpperCase().replace(/[^A-Z0-9]/g, "");
   return new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
 }
 
-function matchesBadge(variants: (string | null | undefined)[], badge: string): "exact" | "none" {
+function matchesBadge(variants: (string | null | undefined)[], badge: string): "exact" | "rejected" | "none" {
   const badgeUpper = badge.toUpperCase().replace(/[^A-Z0-9]/g, "");
   const badgeRegex = buildBadgeRegex(badge);
+  const badgeNormForQual = badgeUpper.replace(/[\s\-]/g, "");
+
   for (const v of variants.filter(Boolean) as string[]) {
     const vNorm = v.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
-    if (vNorm === badgeUpper || badgeRegex.test(v)) return "exact";
+    const vNormStripped = vNorm.replace(/[\s\-]/g, "");
+
+    if (vNorm === badgeUpper || badgeRegex.test(v)) {
+      // Check sub-badge qualifiers: reject if variant has a qualifier the user didn't specify
+      for (const qual of SUB_BADGE_QUALIFIERS) {
+        const qualNorm = qual.replace(/[\s\-]/g, "");
+        if (vNormStripped.includes(qualNorm) && !badgeNormForQual.includes(qualNorm)) {
+          return "rejected";
+        }
+      }
+      return "exact";
+    }
   }
   return "none";
 }
