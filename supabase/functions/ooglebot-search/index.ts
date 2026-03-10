@@ -280,10 +280,19 @@ Deno.serve(async (req) => {
     let filtered = allListings;
     if (input.badge) {
       filtered = allListings.filter((l: any) => {
-        const variants = [l.variant_raw, l.variant_family, l.variant_used].filter(Boolean);
-        return matchesBadge(variants, input.badge!) === "exact";
+        // Check variant fields AND model field (Carsales often puts badge in model e.g. "RANGER XLT")
+        const variants = [l.variant_raw, l.variant_family, l.variant_used, l.model].filter(Boolean);
+        const result = matchesBadge(variants, input.badge!);
+        if (result === "exact") return true;
+        if (result === "rejected") return false;
+        // "none" — no badge info available. Include if variant fields are empty/generic
+        // (allows Carsales listings with sparse data through, scored lower)
+        const hasVariantInfo = [l.variant_raw, l.variant_family, l.variant_used]
+          .filter(Boolean)
+          .some((v: string) => !/^\d{4}\s/.test(v) && v.length > 3);
+        return !hasVariantInfo; // include only if no variant info to filter on
       });
-      console.log(`Badge filter (exact) "${input.badge}": ${allListings.length} → ${filtered.length}`);
+      console.log(`Badge filter "${input.badge}": ${allListings.length} → ${filtered.length}`);
     }
 
     // --- 3b. Series gate ---
