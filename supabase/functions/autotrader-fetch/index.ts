@@ -24,6 +24,9 @@ interface MappedListing {
   state?: string;
   suburb?: string;
   price_badge?: string;
+  fuel_type?: string;
+  transmission?: string;
+  body_type?: string;
   // Auction-specific fields
   auction_house?: string;
   auction_datetime?: string;
@@ -81,6 +84,76 @@ function mapAutotraderItem(rawItem: Record<string, unknown>): MappedListing | nu
  * { title, make, model, year, networkId, name, price/prices, odometer, 
  *   location, state, url/link, transmission, fuelType, drive, ... }
  */
+/**
+ * Deep-scan the Carsales Merlin UI component tree to extract structured fields.
+ * The Apify actor returns a server-driven UI payload with vehicle data buried in
+ * nested GridItem > Stack > Icon(title="Odometer") + Text(value="32km") patterns.
+ */
+function extractFromMerlinTree(node: unknown): {
+  km?: number; bodyType?: string; fuel?: string; transmission?: string; priceBadge?: string;
+} {
+  const result: { km?: number; bodyType?: string; fuel?: string; transmission?: string; priceBadge?: string } = {};
+  if (!node || typeof node !== "object") return result;
+  const n = node as Record<string, unknown>;
+
+  // Check if this is a Stack with Icon+Text children (key-details pattern)
+  if (Array.isArray(n.children)) {
+    const children = n.children as Record<string, unknown>[];
+    // Look for Icon with title + sibling Text with value
+    const icon = children.find((c) => c?.type === "Icon" && typeof c.title === "string");
+    const text = children.find((c) => c?.type === "Text" && typeof c.value === "string");
+    if (icon && text) {
+      const title = (icon.title as string).toLowerCase();
+      const value = (text.value as string).trim();
+      if (title === "odometer" || title === "kms") {
+        const parsed = parseInt(value.replace(/[^0-9]/g, ""), 10);
+        if (parsed >= 0) result.km = parsed;
+      } else if (title === "body type") {
+        result.bodyType = value;
+      } else if (title === "fuel") {
+        result.fuel = value;
+      } else if (title === "transmission") {
+        result.transmission = value;
+      }
+    }
+
+    // Check for price badge: Badge with label like "Well Below Market Price"
+    for (const c of children) {
+      if (c?.type === "Tooltip") {
+        const badge = (c as Record<string, unknown>).child as Record<string, unknown> | undefined;
+        if (badge?.type === "Badge" && typeof badge.label === "string") {
+          result.priceBadge = badge.label as string;
+        }
+      }
+      if (c?.type === "Badge" && typeof c.label === "string") {
+        result.priceBadge = c.label as string;
+      }
+    }
+
+    // Recurse into children
+    for (const c of children) {
+      const sub = extractFromMerlinTree(c);
+      if (sub.km !== undefined && result.km === undefined) result.km = sub.km;
+      if (sub.bodyType && !result.bodyType) result.bodyType = sub.bodyType;
+      if (sub.fuel && !result.fuel) result.fuel = sub.fuel;
+      if (sub.transmission && !result.transmission) result.transmission = sub.transmission;
+      if (sub.priceBadge && !result.priceBadge) result.priceBadge = sub.priceBadge;
+    }
+  }
+
+  // Recurse into child (single child node)
+  if (n.child) {
+    const sub = extractFromMerlinTree(n.child);
+    if (sub.km !== undefined && result.km === undefined) result.km = sub.km;
+    if (sub.bodyType && !result.bodyType) result.bodyType = sub.bodyType;
+    if (sub.fuel && !result.fuel) result.fuel = sub.fuel;
+    if (sub.transmission && !result.transmission) result.transmission = sub.transmission;
+    if (sub.priceBadge && !result.priceBadge) result.priceBadge = sub.priceBadge;
+  }
+
+  return result;
+}
+
 function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null {
   try {
     const item = rawItem;
@@ -93,7 +166,9 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
     if (!listingId) return null;
 
     // Year
-    const year = (item.year || 0) as number;
+    let year = 0;
+    if (typeof item.year === "number") year = item.year;
+    else if (typeof item.year === "string") year = parseInt(item.year, 10) || 0;
     if (!year || year < 2000) return null;
 
     // Make/Model - carsales uses lowercase
@@ -124,7 +199,10 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
     }
     if (!price || price < 1000 || price > 500000) return null;
 
-    // KM
+    // Extract fields from Merlin UI tree if present
+    const merlin = item.root ? extractFromMerlinTree(item.root) : {};
+
+    // KM: try flat fields first, then Merlin tree
     let km: number | undefined;
     const rawKm = item.odometer || item.km || item.mileage || item.kilometres;
     if (typeof rawKm === "number") km = rawKm;
@@ -132,15 +210,16 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
       const parsed = parseInt(rawKm.replace(/[^0-9]/g, ""), 10);
       if (parsed > 0) km = parsed;
     }
+    if (km === undefined && merlin.km !== undefined) km = merlin.km;
 
     // Location
     const state = ((item.state || item.location_state || "") as string).toUpperCase().trim();
     const suburb = (item.suburb || item.location || item.city || "") as string;
 
-    // Price badge: Carsales "Great Price", "Well Below Market", etc.
+    // Price badge: flat fields first, then Merlin tree
     const priceBadge = (
       (item.priceBadge || item.priceRating || item.dealRating || item.priceLabel || "") as string
-    ).trim() || undefined;
+    ).trim() || merlin.priceBadge || undefined;
 
     // URL
     const fullUrl = url.startsWith("http") ? url 
@@ -157,6 +236,10 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
       state: state || undefined,
       suburb: suburb || undefined,
       price_badge: priceBadge,
+      // Pass through Merlin-extracted fields for downstream enrichment
+      ...(merlin.fuel ? { fuel_type: merlin.fuel } : {}),
+      ...(merlin.transmission ? { transmission: merlin.transmission } : {}),
+      ...(merlin.bodyType ? { body_type: merlin.bodyType } : {}),
     };
   } catch { return null; }
 }
@@ -706,12 +789,13 @@ Deno.serve(async (req) => {
 
                 // Update structured fields
                 const resultRow = data?.[0] || data;
-                if (resultRow?.id && (extracted.badge || extracted.fuel_type || extracted.drivetrain || extracted.body_type || listing.price_badge)) {
+                if (resultRow?.id && (extracted.badge || extracted.fuel_type || extracted.drivetrain || extracted.body_type || listing.price_badge || listing.fuel_type || listing.transmission || listing.body_type)) {
                   const updateFields: Record<string, unknown> = {};
                   if (extracted.badge) updateFields.badge = extracted.badge;
-                  if (extracted.fuel_type) updateFields.fuel_type = extracted.fuel_type;
+                  if (extracted.fuel_type || listing.fuel_type) updateFields.fuel_type = extracted.fuel_type || listing.fuel_type;
                   if (extracted.drivetrain) updateFields.drivetrain = extracted.drivetrain;
-                  if (extracted.body_type) updateFields.body_type = extracted.body_type;
+                  if (extracted.body_type || listing.body_type) updateFields.body_type = extracted.body_type || listing.body_type;
+                  if (listing.transmission) updateFields.transmission = listing.transmission;
                   if (listing.price_badge) updateFields.price_badge = listing.price_badge;
                   updateFields.classified_at = new Date().toISOString();
                   updateFields.variant_source = 'extractBadge_v1';
