@@ -7521,6 +7521,7 @@ export type Database = {
           enrichment_source: string | null
           enrichment_status: string | null
           exclude_from_alerts: boolean
+          fingerprint_hash: string | null
           first_seen_at: string
           fuel_type: string | null
           id: string
@@ -7625,6 +7626,7 @@ export type Database = {
           enrichment_source?: string | null
           enrichment_status?: string | null
           exclude_from_alerts?: boolean
+          fingerprint_hash?: string | null
           first_seen_at?: string
           fuel_type?: string | null
           id?: string
@@ -7729,6 +7731,7 @@ export type Database = {
           enrichment_source?: string | null
           enrichment_status?: string | null
           exclude_from_alerts?: boolean
+          fingerprint_hash?: string | null
           first_seen_at?: string
           fuel_type?: string | null
           id?: string
@@ -11166,6 +11169,7 @@ export type Database = {
           external_id: string | null
           fingerprint: string | null
           fingerprint_confidence: number
+          fingerprint_hash: string | null
           fingerprint_version: number
           first_seen_at: string
           fuel: string | null
@@ -11270,6 +11274,7 @@ export type Database = {
           external_id?: string | null
           fingerprint?: string | null
           fingerprint_confidence?: number
+          fingerprint_hash?: string | null
           fingerprint_version?: number
           first_seen_at?: string
           fuel?: string | null
@@ -11374,6 +11379,7 @@ export type Database = {
           external_id?: string | null
           fingerprint?: string | null
           fingerprint_confidence?: number
+          fingerprint_hash?: string | null
           fingerprint_version?: number
           first_seen_at?: string
           fuel?: string | null
