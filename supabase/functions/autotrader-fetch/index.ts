@@ -899,7 +899,9 @@ Deno.serve(async (req) => {
                 if (listing.price_badge && resultRow?.is_new) {
                   const badgeLower = listing.price_badge.toLowerCase();
                   const isHighValue = badgeLower.includes("well below") || badgeLower.includes("great price") || badgeLower.includes("below market");
-                  if (isHighValue) {
+                  const meetsYearThreshold = listing.year && listing.year >= 2020;
+                  const meetsKmThreshold = !listing.km || listing.km <= 120000;
+                  if (isHighValue && meetsYearThreshold && meetsKmThreshold) {
                     priceBadgeAlerts.push({
                       badge: listing.price_badge,
                       make: listing.make,
