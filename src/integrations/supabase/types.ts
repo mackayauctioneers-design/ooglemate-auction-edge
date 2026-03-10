@@ -12305,6 +12305,7 @@ export type Database = {
       }
       market_listings: {
         Row: {
+          asking_price: number | null
           auction_datetime: string | null
           auction_house: string | null
           body_type: string | null
@@ -12321,9 +12322,12 @@ export type Database = {
           id: string | null
           is_dealer_grade: boolean | null
           kilometres: number | null
+          km: number | null
           last_seen_at: string | null
           lifecycle_status: string | null
+          listing_type: string | null
           listing_url: string | null
+          location: string | null
           make: string | null
           market_price: number | null
           market_price_source: string | null
