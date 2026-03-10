@@ -368,6 +368,11 @@ Deno.serve(async (req) => {
             throw new Error(`Update failed: ${updateErr.message}`);
           }
 
+          // Track high-value price badges for notification
+          if (detail.price_badge && /well\s+below|below\s+market|great\s+price/i.test(detail.price_badge)) {
+            priceBadgeHits.push({ listing, badge: detail.price_badge });
+          }
+
           stats.succeeded++;
           stats.processed++;
         } catch (e: unknown) {
