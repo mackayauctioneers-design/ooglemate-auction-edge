@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
 
     if (input.year_min) rlQuery = rlQuery.gte("year", input.year_min);
     if (input.year_max) rlQuery = rlQuery.lte("year", input.year_max);
-    if (input.max_km) rlQuery = rlQuery.lte("km", input.max_km);
+    if (input.max_km) rlQuery = rlQuery.or(`km.lte.${input.max_km},km.is.null`);
     if (input.price_max) {
       rlQuery = rlQuery.or(`asking_price.lte.${input.price_max},asking_price.is.null`);
     }
