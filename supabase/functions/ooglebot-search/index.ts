@@ -85,18 +85,20 @@ function matchesBadge(variants: (string | null | undefined)[], badge: string): "
   const badgeRegex = buildBadgeRegex(badge);
   const badgeNormForQual = badgeUpper.replace(/[\s\-]/g, "");
 
+  // First: check ALL variant strings for sub-badge qualifiers.
+  // If ANY variant field contains a qualifier the user didn't specify, reject.
+  const allText = variants.filter(Boolean).map(v => (v as string).toUpperCase().replace(/[\s\-]/g, "")).join(" ");
+  for (const qual of SUB_BADGE_QUALIFIERS) {
+    const qualNorm = qual.replace(/[\s\-]/g, "");
+    if (allText.includes(qualNorm) && !badgeNormForQual.includes(qualNorm)) {
+      return "rejected";
+    }
+  }
+
+  // Then check if badge actually matches any variant
   for (const v of variants.filter(Boolean) as string[]) {
     const vNorm = v.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
-    const vNormStripped = vNorm.replace(/[\s\-]/g, "");
-
     if (vNorm === badgeUpper || badgeRegex.test(v)) {
-      // Check sub-badge qualifiers: reject if variant has a qualifier the user didn't specify
-      for (const qual of SUB_BADGE_QUALIFIERS) {
-        const qualNorm = qual.replace(/[\s\-]/g, "");
-        if (vNormStripped.includes(qualNorm) && !badgeNormForQual.includes(qualNorm)) {
-          return "rejected";
-        }
-      }
       return "exact";
     }
   }
