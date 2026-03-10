@@ -145,6 +145,14 @@ export function extractBadge(
   const makeUpper = (make || '').toUpperCase().trim();
   const modelUpper = (model || '').toUpperCase().trim();
 
+  // --- Extract engine (first-class attribute) ---
+  const eng = extractEngine(make, model, variantRaw, titleText);
+  result.engine_type = eng.engine_type;
+  result.engine_confidence = eng.engine_confidence;
+  if (eng.fuel_type_hint && !result.fuel_type) {
+    result.fuel_type = eng.fuel_type_hint;
+  }
+
   // --- Extract fuel type ---
   if (/\bHYBRID\b/i.test(text) || /\bPHEV\b/i.test(text) || /\bHEV\b/i.test(text)) {
     result.fuel_type = 'HYBRID';
