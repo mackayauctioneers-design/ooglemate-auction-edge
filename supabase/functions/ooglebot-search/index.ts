@@ -292,12 +292,15 @@ Deno.serve(async (req) => {
         fuel: r.fuel_type || null,
         watch_status: null,
         price_badge: r.price_badge || null,
+        market_price: r.market_price || null,
+        price_difference: r.price_difference || null,
+        price_difference_percent: r.price_difference_percent || null,
       };
     });
 
     // Merge both sets
     const allListings = [
-      ...vlListings.map((v: any) => ({ ...v, price_badge: null })),
+      ...vlListings.map((v: any) => ({ ...v, price_badge: null, market_price: null, price_difference: null, price_difference_percent: null })),
       ...normalizedRetail,
     ];
 
