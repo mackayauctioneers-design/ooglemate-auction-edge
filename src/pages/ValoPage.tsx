@@ -120,6 +120,7 @@ export default function ValoPage() {
 
   // Processing
   const [isProcessing, setIsProcessing] = useState(false);
+  const [valoPhase, setValoPhase] = useState<string>('');
   const [parsed, setParsed] = useState<ValoParsedVehicle | null>(null);
   const [result, setResult] = useState<ValoResult | null>(null);
   const [valoComps, setValoComps] = useState<any[]>([]);
@@ -194,6 +195,7 @@ export default function ValoPage() {
     setCommentaryOpen(false);
     setCommentaryText(null);
     setIsProcessing(true);
+    setValoPhase('Parsing vehicle identity…');
 
     try {
       // Build structured identity — no LLM parsing needed
@@ -237,6 +239,13 @@ export default function ValoPage() {
         filters.accessory_terms = selectedAccessories.map(a => a.toUpperCase());
       }
 
+      setValoPhase('Searching internal database…');
+      
+      // Simulate phase progression with timers since backend is a single call
+      const phaseTimer1 = setTimeout(() => setValoPhase('Running AI market discovery (Perplexity + Gemini)…'), 3000);
+      const phaseTimer2 = setTimeout(() => setValoPhase('Running outward market search…'), 12000);
+      const phaseTimer3 = setTimeout(() => setValoPhase('Scoring comparables & computing valuation…'), 22000);
+
       // Run VALO — skip valo-parse, go direct to run-valo-v1
       const { data: valoData, error: valoError } = await supabase.functions.invoke('run-valo-v1', {
         body: {
@@ -248,6 +257,12 @@ export default function ValoPage() {
           filters,
         }
       });
+
+      // Clear phase timers
+      clearTimeout(phaseTimer1);
+      clearTimeout(phaseTimer2);
+      clearTimeout(phaseTimer3);
+      setValoPhase('Finalising results…');
 
       if (valoError) throw new Error(valoError.message);
       if (valoData?.status === 'missing_required_fields') {
@@ -297,6 +312,7 @@ export default function ValoPage() {
       toast.error(err instanceof Error ? err.message : 'Valuation failed');
     } finally {
       setIsProcessing(false);
+      setValoPhase('');
     }
   };
 
@@ -706,7 +722,7 @@ export default function ValoPage() {
               title={!authReady ? 'Loading dealer profile…' : !canRunValo ? 'Fill in Make, Model, Year and KM' : undefined}
             >
               {isProcessing ? (
-                <><Loader2 className="h-4 w-4 animate-spin" /> Running Valuation…</>
+                <><Loader2 className="h-4 w-4 animate-spin" /> {valoPhase || 'Running Valuation…'}</>
               ) : (
                 <><Sparkles className="h-4 w-4" /> Run VALO</>
               )}
