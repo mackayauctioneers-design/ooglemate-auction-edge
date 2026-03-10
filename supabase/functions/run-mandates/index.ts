@@ -289,7 +289,7 @@ async function dispatchLindyForMandate(
   const { count: recentJobs } = await sb
     .from("outward_jobs")
     .select("id", { count: "exact", head: true })
-    .like("search_url", `%${mandate.make}%`)
+    .eq("mandate_id", mandate.id)
     .gte("dispatched_at", cooldownCutoff)
     .in("status", ["dispatched", "complete"]);
 
@@ -297,6 +297,8 @@ async function dispatchLindyForMandate(
     console.log(`[run-mandates] Lindy cooldown active for "${mandate.name}" — skipping`);
     return { dispatched: 0, skipped: ["cooldown"] };
   }
+
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD for dispatch_date
 
   const searchRunId = crypto.randomUUID();
   let dispatched = 0;
