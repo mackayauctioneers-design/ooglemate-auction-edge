@@ -123,6 +123,25 @@ function parseCarsalesMarkdown(md: string): DetailResult {
     result.seller_type = 'private';
   }
 
+  // Price badge — Carsales shows "Great Price", "Well Below Market", "Below Market", "Fair Price", etc.
+  const badgePatterns = [
+    /\b(well\s+below\s+market)\b/i,
+    /\b(below\s+market)\b/i,
+    /\b(great\s+price)\b/i,
+    /\b(good\s+price)\b/i,
+    /\b(fair\s+price)\b/i,
+    /\b(above\s+market)\b/i,
+    /\b(well\s+above\s+market)\b/i,
+    /\b(low\s+price)\b/i,
+  ];
+  for (const pat of badgePatterns) {
+    const bm = clean.match(pat);
+    if (bm) {
+      result.price_badge = bm[1].replace(/\s+/g, ' ').trim();
+      break;
+    }
+  }
+
   // Derive engine family
   if (result.engine_size_l) {
     result.engine_family = deriveEngineFamily(result.engine_size_l, result.cylinders);
