@@ -221,6 +221,8 @@ const ADAPTERS: Record<string, (m: Mandate) => Promise<NormalizedListing[]>> = {
 
 const MIN_RESULTS_THRESHOLD = 5;
 const LINDY_COOLDOWN_HOURS = 6;
+const MAX_DEALER_JOBS_PER_RUN = 20;
+
 const LINDY_SOURCES: Array<{ key: string; builder: (m: Mandate) => string | null }> = [
   {
     key: "carsales",
