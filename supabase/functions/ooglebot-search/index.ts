@@ -201,7 +201,7 @@ Deno.serve(async (req) => {
 
     if (input.year_min) vlQuery = vlQuery.gte("year", input.year_min);
     if (input.year_max) vlQuery = vlQuery.lte("year", input.year_max);
-    if (input.max_km) vlQuery = vlQuery.lte("km", input.max_km);
+    if (input.max_km) vlQuery = vlQuery.or(`km.lte.${input.max_km},km.is.null`);
     if (input.price_max) {
       vlQuery = vlQuery.or(`asking_price.lte.${input.price_max},asking_price.is.null`);
     }
@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
 
     if (input.year_min) rlQuery = rlQuery.gte("year", input.year_min);
     if (input.year_max) rlQuery = rlQuery.lte("year", input.year_max);
-    if (input.max_km) rlQuery = rlQuery.lte("km", input.max_km);
+    if (input.max_km) rlQuery = rlQuery.or(`km.lte.${input.max_km},km.is.null`);
     if (input.price_max) {
       rlQuery = rlQuery.or(`asking_price.lte.${input.price_max},asking_price.is.null`);
     }
@@ -254,21 +254,42 @@ Deno.serve(async (req) => {
     console.log(`ooglebot-search: ${vlListings.length} vehicle_listings, ${rlListings.length} retail_listings`);
 
     // --- 2. Normalize retail_listings into the same shape ---
-    const normalizedRetail = rlListings.map((r: any) => ({
-      ...r,
-      listing_id: r.id,
-      source_class: "retail",
-      variant_used: r.badge || null,
-      location: r.region_raw || r.state || null,
-      auction_house: null,
-      lifecycle_state: r.lifecycle_status || "ACTIVE",
-      fingerprint: null,
-      fingerprint_confidence: 0,
-      is_dealer_grade: false,
-      fuel: r.fuel_type || null,
-      watch_status: null,
-      price_badge: r.price_badge || null,
-    }));
+    // Extract badge from Carsales URL when variant_raw is missing it
+    function extractBadgeFromUrl(url: string | null): string | null {
+      if (!url) return null;
+      // Carsales URLs: /2024-ford-ranger-xlt-auto-4x4-my24/
+      const m = url.match(/\d{4}-[a-z]+-[a-z]+-([a-z\-]+?)-(auto|manual|my\d)/i);
+      if (m) {
+        return m[1].replace(/-/g, " ").toUpperCase().trim();
+      }
+      return null;
+    }
+
+    const normalizedRetail = rlListings.map((r: any) => {
+      // Try to derive badge from URL if not in badge/variant_raw fields
+      const urlBadge = extractBadgeFromUrl(r.listing_url);
+      const derivedVariant = r.badge || urlBadge || null;
+
+      return {
+        ...r,
+        listing_id: r.id,
+        source_class: "retail",
+        variant_used: derivedVariant,
+        // Also populate variant_raw if it's just "YEAR MAKE MODEL" with no badge
+        variant_raw: r.variant_raw && !/^\d{4}\s+\w+\s+\w+$/.test(r.variant_raw.trim())
+          ? r.variant_raw
+          : (derivedVariant ? `${r.year} ${r.make} ${r.model} ${derivedVariant}` : r.variant_raw),
+        location: r.region_raw || r.state || null,
+        auction_house: null,
+        lifecycle_state: r.lifecycle_status || "ACTIVE",
+        fingerprint: null,
+        fingerprint_confidence: 0,
+        is_dealer_grade: false,
+        fuel: r.fuel_type || null,
+        watch_status: null,
+        price_badge: r.price_badge || null,
+      };
+    });
 
     // Merge both sets
     const allListings = [
@@ -280,10 +301,19 @@ Deno.serve(async (req) => {
     let filtered = allListings;
     if (input.badge) {
       filtered = allListings.filter((l: any) => {
-        const variants = [l.variant_raw, l.variant_family, l.variant_used].filter(Boolean);
-        return matchesBadge(variants, input.badge!) === "exact";
+        // Check variant fields AND model field (Carsales often puts badge in model e.g. "RANGER XLT")
+        const variants = [l.variant_raw, l.variant_family, l.variant_used, l.model].filter(Boolean);
+        const result = matchesBadge(variants, input.badge!);
+        if (result === "exact") return true;
+        if (result === "rejected") return false;
+        // "none" — no badge info available. Include if variant fields are empty/generic
+        // (allows Carsales listings with sparse data through, scored lower)
+        const hasVariantInfo = [l.variant_raw, l.variant_family, l.variant_used]
+          .filter(Boolean)
+          .some((v: string) => !/^\d{4}\s/.test(v) && v.length > 3);
+        return !hasVariantInfo; // include only if no variant info to filter on
       });
-      console.log(`Badge filter (exact) "${input.badge}": ${allListings.length} → ${filtered.length}`);
+      console.log(`Badge filter "${input.badge}": ${allListings.length} → ${filtered.length}`);
     }
 
     // --- 3b. Series gate ---
@@ -323,14 +353,12 @@ Deno.serve(async (req) => {
         reasons.push("EXACT_MAKE");
       }
 
-      // Badge match (already filtered, but score bonus)
+      // Badge match scoring
       if (input.badge) {
-        const variants = [l.variant_raw, l.variant_family, l.variant_used].filter(Boolean);
+        const variants = [l.variant_raw, l.variant_family, l.variant_used, l.model].filter(Boolean);
         const badgeResult = matchesBadge(variants, input.badge);
         if (badgeResult === "exact") {
           score += 10;
-
-          // Check if badge is a canonical match (exact token in variant_raw)
           const badgeUpper = input.badge.toUpperCase().replace(/[^A-Z0-9]/g, "");
           const rawVariant = (l.variant_raw || "").toUpperCase();
           if (rawVariant.includes(badgeUpper)) {
@@ -338,8 +366,12 @@ Deno.serve(async (req) => {
           } else {
             reasons.push("EXACT_BADGE_CANONICAL");
           }
+        } else if (badgeResult === "rejected") {
+          continue;
         } else {
-          continue; // skip — shouldn't happen after filter, but safety net
+          // No badge info — penalize score but still include
+          score -= 5;
+          reasons.push("BADGE_UNVERIFIED");
         }
       }
 
