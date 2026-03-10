@@ -14,6 +14,8 @@ export interface ParsedIntent {
   make: string | null;
   model: string | null;
   badge: string | null;
+  engine_type: string | null;
+  engine_confidence: "HIGH" | "MEDIUM" | "LOW" | null;
   year_min: number | null;
   year_max: number | null;
   max_km: number | null;
