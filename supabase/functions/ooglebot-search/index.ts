@@ -215,6 +215,7 @@ Deno.serve(async (req) => {
         asking_price, state, listing_url,
         drivetrain, fuel_type, transmission, seller_type,
         first_seen_at, last_seen_at, price_badge,
+        market_price, price_difference, price_difference_percent,
         lifecycle_status, region_raw
       `)
       .ilike("make", input.make)
