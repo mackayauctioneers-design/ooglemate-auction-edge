@@ -137,6 +137,11 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
     const state = ((item.state || item.location_state || "") as string).toUpperCase().trim();
     const suburb = (item.suburb || item.location || item.city || "") as string;
 
+    // Price badge: Carsales "Great Price", "Well Below Market", etc.
+    const priceBadge = (
+      (item.priceBadge || item.priceRating || item.dealRating || item.priceLabel || "") as string
+    ).trim() || undefined;
+
     // URL
     const fullUrl = url.startsWith("http") ? url 
       : url ? `https://www.carsales.com.au${url}` : "";
@@ -151,6 +156,7 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
       km, asking_price: price,
       state: state || undefined,
       suburb: suburb || undefined,
+      price_badge: priceBadge,
     };
   } catch { return null; }
 }
