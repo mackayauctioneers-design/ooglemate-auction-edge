@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // Run daily at 2am AEST to mark stale listings as delisted
 // Uses the new lifecycle-aware mark_listings_delisted RPC
-serve(async (req) => {
+Deno.serve(async (req) => {
   console.log("STALE SWEEP autotrader", new Date().toISOString());
   
   if (req.method === "OPTIONS") {

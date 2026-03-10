@@ -13,7 +13,7 @@ const corsHeaders = {
  * 
  * Processes in batches of 500. Call repeatedly until done.
  */
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

@@ -38,7 +38,7 @@ async function sendPush(endpoint: string, p256dh: string, auth: string, payload:
   }
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
