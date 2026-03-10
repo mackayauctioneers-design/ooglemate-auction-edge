@@ -205,16 +205,10 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
   const recencyCutoff = new Date(Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
   let q = supabase
-    .from("vehicle_listings")
-    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, state, auction_house, status, last_seen_at")
+    .from("market_listings")
+    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, auction_house, listing_type, last_seen_at")
     .in("source", AUCTION_SOURCE_ALLOWLIST)
     .gte("last_seen_at", recencyCutoff)
-    // Exclude sold/closed inventory (auction sources often use 'inactive' instead of 'sold')
-    .not("status", "ilike", "sold")
-    .not("status", "ilike", "inactive")
-    .not("status", "ilike", "dead")
-    // Exclude lifecycle states that indicate the lot is no longer buyable
-    .not("lifecycle_state", "in", '("STALE","DEAD","RETURNED","INVALID","DELISTED","SOLD")')
     .ilike("make", `%${parsed.make}%`)
     .order("asking_price", { ascending: true, nullsFirst: false })
     .limit(TIER0_LIMIT);
