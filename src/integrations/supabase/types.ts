@@ -14263,6 +14263,8 @@ export type Database = {
         Args: { p_reason?: string; p_source_key: string }
         Returns: undefined
       }
+      refresh_dealer_pressure: { Args: never; Returns: undefined }
+      refresh_price_summaries: { Args: never; Returns: undefined }
       refresh_sales_fingerprints: { Args: never; Returns: undefined }
       refresh_watch_statuses: {
         Args: never
