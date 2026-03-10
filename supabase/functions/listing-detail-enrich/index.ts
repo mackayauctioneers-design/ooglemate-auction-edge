@@ -296,7 +296,7 @@ Deno.serve(async (req) => {
     // Fetch listings needing detail enrichment
     const { data: filteredListings, error: fetchErr } = await supabase
       .from('retail_listings')
-      .select('id, listing_url, source, details_attempts')
+      .select('id, listing_url, source, details_attempts, make, model, variant_raw, year, asking_price, km, state')
       .eq('details_scraped', false)
       .eq('details_failed', false)
       .lt('details_attempts', MAX_ATTEMPTS)
