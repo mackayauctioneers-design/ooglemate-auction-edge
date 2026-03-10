@@ -416,7 +416,7 @@ const AUCTION_SOURCES = new Set(["slattery", "pickles"]);
  * - items.length < batchSize (last page)
  */
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

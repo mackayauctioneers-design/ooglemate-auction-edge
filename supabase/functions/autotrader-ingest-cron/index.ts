@@ -11,7 +11,7 @@ const MAKES_TO_CRAWL = ["Toyota", "Mazda", "Honda", "Hyundai", "Kia", "Mitsubish
 const STATES = ["nsw", "vic", "qld", "sa", "wa"];
 const BATCHES_PER_RUN = 3;
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 import { validateModoResponse } from "../_shared/valo/modoTypes.ts";
 import type { ModoInput } from "../_shared/valo/modoTypes.ts";
 
@@ -58,7 +58,7 @@ Fair → 2500–4000
 Poor → 4000–8000
 Never exceed 15000.`;
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
