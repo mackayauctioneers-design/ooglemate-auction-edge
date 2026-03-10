@@ -316,8 +316,19 @@ async function dispatchLindyForMandate(
       search_url: searchUrl,
       status: "dispatched",
       dispatched_at: new Date().toISOString(),
+      mandate_id: mandate.id,
+      dispatch_date: today,
     });
-    if (jobErr) { skipped.push(`${key}:job_err`); continue; }
+    if (jobErr) {
+      // Unique constraint violation = already dispatched today for this mandate+source
+      if (jobErr.code === "23505") {
+        console.log(`[run-mandates] Lindy already dispatched today for "${mandate.name}" on ${key} — skipping`);
+        skipped.push(`${key}:already_today`);
+        continue;
+      }
+      skipped.push(`${key}:job_err`);
+      continue;
+    }
 
     const prompt = buildLindyPrompt(key, searchUrl, mandate);
     try {
