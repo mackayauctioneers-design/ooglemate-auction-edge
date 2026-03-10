@@ -3,6 +3,9 @@ import { extractSeries } from "@/utils/derivePlatform";
 
 // ─── Source Allowlist & Config ───────────────────────────────────────────────
 
+/** Only these lifecycle states are considered live inventory */
+const ACTIVE_LIFECYCLE = ["NEW", "ACTIVE", "WATCH", "BUY", "RELISTED"];
+
 /** Only these sources are considered valid auction inventory */
 const AUCTION_SOURCE_ALLOWLIST = [
   "pickles",
