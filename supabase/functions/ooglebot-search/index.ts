@@ -332,14 +332,12 @@ Deno.serve(async (req) => {
         reasons.push("EXACT_MAKE");
       }
 
-      // Badge match (already filtered, but score bonus)
+      // Badge match scoring
       if (input.badge) {
-        const variants = [l.variant_raw, l.variant_family, l.variant_used].filter(Boolean);
+        const variants = [l.variant_raw, l.variant_family, l.variant_used, l.model].filter(Boolean);
         const badgeResult = matchesBadge(variants, input.badge);
         if (badgeResult === "exact") {
           score += 10;
-
-          // Check if badge is a canonical match (exact token in variant_raw)
           const badgeUpper = input.badge.toUpperCase().replace(/[^A-Z0-9]/g, "");
           const rawVariant = (l.variant_raw || "").toUpperCase();
           if (rawVariant.includes(badgeUpper)) {
@@ -347,8 +345,12 @@ Deno.serve(async (req) => {
           } else {
             reasons.push("EXACT_BADGE_CANONICAL");
           }
+        } else if (badgeResult === "rejected") {
+          continue;
         } else {
-          continue; // skip — shouldn't happen after filter, but safety net
+          // No badge info — penalize score but still include
+          score -= 5;
+          reasons.push("BADGE_UNVERIFIED");
         }
       }
 
