@@ -263,7 +263,7 @@ function mergeAllResults(
       effective_price: m.asking_price ?? null,
       price_type: null,
       km: m.km ?? null,
-      location: m.location || m.state || null,
+      location: m.location || null,
       source: m.source || "internal",
       source_class: m.source_class || null,
       auction_house: m.auction_house || null,
