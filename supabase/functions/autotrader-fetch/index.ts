@@ -705,12 +705,13 @@ Deno.serve(async (req) => {
 
                 // Update structured fields
                 const resultRow = data?.[0] || data;
-                if (resultRow?.id && (extracted.badge || extracted.fuel_type || extracted.drivetrain || extracted.body_type)) {
+                if (resultRow?.id && (extracted.badge || extracted.fuel_type || extracted.drivetrain || extracted.body_type || listing.price_badge)) {
                   const updateFields: Record<string, unknown> = {};
                   if (extracted.badge) updateFields.badge = extracted.badge;
                   if (extracted.fuel_type) updateFields.fuel_type = extracted.fuel_type;
                   if (extracted.drivetrain) updateFields.drivetrain = extracted.drivetrain;
                   if (extracted.body_type) updateFields.body_type = extracted.body_type;
+                  if (listing.price_badge) updateFields.price_badge = listing.price_badge;
                   updateFields.classified_at = new Date().toISOString();
                   updateFields.variant_source = 'extractBadge_v1';
                   await supabase.from("retail_listings").update(updateFields).eq("id", resultRow.id);
