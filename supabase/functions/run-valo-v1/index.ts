@@ -130,6 +130,16 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── 2d. Extract engine type from instruction text ──
+    if (!intent.engine_type && intent.make && intent.model) {
+      const eng = extractEngine(intent.make, intent.model, instruction, intent.badge);
+      if (eng.engine_type) {
+        intent.engine_type = eng.engine_type;
+        intent.engine_confidence = eng.engine_confidence;
+        console.log(`VALO engine detected: ${eng.engine_type} (${eng.engine_confidence})`);
+      }
+    }
+
     // ── 3. Fetch comparables ──
     const internalAdapter = new InternalDbAdapter();
     let internalResults: AdapterResult[] = [];
