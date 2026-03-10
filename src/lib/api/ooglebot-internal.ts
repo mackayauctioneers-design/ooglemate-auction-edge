@@ -42,9 +42,8 @@ export interface InternalMatch {
   source_class: string | null;
   listing_url: string | null;
   location: string | null;
-  state: string | null;
   auction_house: string | null;
-  status: string | null;
+  listing_type: string | null;
   last_seen_at: string | null;
 }
 
