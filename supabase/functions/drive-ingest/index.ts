@@ -174,17 +174,21 @@ Deno.serve(async (req) => {
           });
 
           // Update structured fields not in upsert RPC
-          if (!upsertError && extracted.badge) {
+          if (!upsertError) {
             const updateFields: Record<string, unknown> = {};
             if (extracted.badge) updateFields.badge = extracted.badge;
             if (extracted.fuel_type) updateFields.fuel_type = extracted.fuel_type;
             if (extracted.drivetrain) updateFields.drivetrain = extracted.drivetrain;
             if (extracted.body_type) updateFields.body_type = extracted.body_type;
+            if (extracted.engine_type) {
+              updateFields.engine_type = extracted.engine_type;
+              updateFields.engine_confidence = extracted.engine_confidence;
+            }
             updateFields.classified_at = new Date().toISOString();
-            updateFields.variant_source = 'extractBadge_v1';
+            updateFields.variant_source = 'extractBadge_v2';
             
             const resultRow = upsertResult?.[0] || upsertResult;
-            if (resultRow?.id) {
+            if (resultRow?.id && Object.keys(updateFields).length > 2) {
               await supabase.from("retail_listings").update(updateFields).eq("id", resultRow.id);
             }
           }

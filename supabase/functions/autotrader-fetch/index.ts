@@ -828,6 +828,8 @@ Deno.serve(async (req) => {
                     model: listing.model,
                     variant_raw: listing.variant_raw || null,
                     badge: extracted.badge || null,
+                    engine_type: extracted.engine_type || null,
+                    engine_confidence: extracted.engine_confidence || 'LOW',
                     km: listing.km || null,
                     asking_price: listing.asking_price || null,
                     state: listing.state || null,
