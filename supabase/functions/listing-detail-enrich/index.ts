@@ -393,6 +393,12 @@ Deno.serve(async (req) => {
           if (detail.engine_family) update.engine_family = detail.engine_family;
           if (detail.cylinders) update.cylinders = detail.cylinders;
           if (detail.price_badge) update.price_badge = detail.price_badge;
+          if (detail.market_price) {
+            update.market_price = detail.market_price;
+            update.market_price_source = 'detail_page';
+          }
+          if (detail.price_difference !== null) update.price_difference = detail.price_difference;
+          if (detail.price_difference_percent !== null) update.price_difference_percent = detail.price_difference_percent;
 
           const { error: updateErr } = await supabase
             .from('retail_listings')

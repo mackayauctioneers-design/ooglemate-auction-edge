@@ -479,6 +479,9 @@ Deno.serve(async (req) => {
         days_listed: daysListed,
         is_dealer_grade: l.is_dealer_grade,
         price_badge: l.price_badge || null,
+        market_price: l.market_price || null,
+        price_difference: l.price_difference || null,
+        price_difference_percent: l.price_difference_percent || null,
       });
     }
 

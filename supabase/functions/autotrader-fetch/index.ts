@@ -880,6 +880,10 @@ Deno.serve(async (req) => {
                   if (extracted.body_type || listing.body_type) updateFields.body_type = extracted.body_type || listing.body_type;
                   if (listing.transmission) updateFields.transmission = listing.transmission;
                   if (listing.price_badge) updateFields.price_badge = listing.price_badge;
+                  if (listing.market_price) updateFields.market_price = listing.market_price;
+                  if (listing.price_difference !== undefined) updateFields.price_difference = listing.price_difference;
+                  if (listing.price_difference_percent !== undefined) updateFields.price_difference_percent = listing.price_difference_percent;
+                  if (listing.market_price_source) updateFields.market_price_source = listing.market_price_source;
                   updateFields.classified_at = new Date().toISOString();
                   updateFields.variant_source = 'extractBadge_v1';
                   await supabase.from("retail_listings").update(updateFields).eq("id", resultRow.id);
