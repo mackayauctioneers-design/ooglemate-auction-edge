@@ -717,6 +717,25 @@ Deno.serve(async (req) => {
                   await supabase.from("retail_listings").update(updateFields).eq("id", resultRow.id);
                 }
 
+                // ── Price badge Slack alert for high-value signals ──
+                if (listing.price_badge && resultRow?.is_new) {
+                  const badgeLower = listing.price_badge.toLowerCase();
+                  const isHighValue = badgeLower.includes("well below") || badgeLower.includes("great price") || badgeLower.includes("below market");
+                  if (isHighValue) {
+                    priceBadgeAlerts.push({
+                      badge: listing.price_badge,
+                      make: listing.make,
+                      model: listing.model,
+                      variant: listing.variant_raw || "",
+                      year: listing.year,
+                      price: listing.asking_price,
+                      km: listing.km,
+                      url: listing.listing_url,
+                      state: listing.state || "",
+                    });
+                  }
+                }
+
                 itemsUpsertedThisRun++;
                 if (resultRow?.is_new) {
                   runNew++;
