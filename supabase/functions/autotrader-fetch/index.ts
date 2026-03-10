@@ -607,6 +607,7 @@ Deno.serve(async (req) => {
         let runUpdated = 0;
         let runErrors = 0;
         let isFinished = false;
+        const priceBadgeAlerts: Array<{ badge: string; make: string; model: string; variant: string; year: number; price: number; km?: number; url: string; state: string }> = [];
 
         const effectiveDatasetId = run.dataset_id || datasetId;
 
@@ -717,6 +718,25 @@ Deno.serve(async (req) => {
                   await supabase.from("retail_listings").update(updateFields).eq("id", resultRow.id);
                 }
 
+                // ── Price badge Slack alert for high-value signals ──
+                if (listing.price_badge && resultRow?.is_new) {
+                  const badgeLower = listing.price_badge.toLowerCase();
+                  const isHighValue = badgeLower.includes("well below") || badgeLower.includes("great price") || badgeLower.includes("below market");
+                  if (isHighValue) {
+                    priceBadgeAlerts.push({
+                      badge: listing.price_badge,
+                      make: listing.make,
+                      model: listing.model,
+                      variant: listing.variant_raw || "",
+                      year: listing.year,
+                      price: listing.asking_price,
+                      km: listing.km,
+                      url: listing.listing_url,
+                      state: listing.state || "",
+                    });
+                  }
+                }
+
                 itemsUpsertedThisRun++;
                 if (resultRow?.is_new) {
                   runNew++;
@@ -755,6 +775,37 @@ Deno.serve(async (req) => {
             p_items_fetched: offset,
             p_items_upserted_delta: itemsUpsertedThisRun,
           });
+        }
+
+        // ── Send Slack alert for price badge hits ──
+        const SLACK_WEBHOOK_URL = Deno.env.get("SLACK_WEBHOOK_URL");
+        if (priceBadgeAlerts.length > 0 && SLACK_WEBHOOK_URL) {
+          try {
+            const blocks: Record<string, unknown>[] = [
+              { type: "header", text: { type: "plain_text", text: `🏷️ ${priceBadgeAlerts.length} Under-Market Badge${priceBadgeAlerts.length > 1 ? "s" : ""} Detected`, emoji: true } },
+            ];
+            for (const a of priceBadgeAlerts.slice(0, 10)) {
+              const kmStr = a.km ? `${(a.km / 1000).toFixed(0)}k km` : "? km";
+              blocks.push({
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `*${a.badge}* — ${a.year} ${a.make} ${a.model} ${a.variant}\n$${a.price.toLocaleString()} · ${kmStr} · ${a.state}\n<${a.url}|View on Carsales>`,
+                },
+              });
+            }
+            if (priceBadgeAlerts.length > 10) {
+              blocks.push({ type: "section", text: { type: "mrkdwn", text: `_...and ${priceBadgeAlerts.length - 10} more_` } });
+            }
+            await fetch(SLACK_WEBHOOK_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ blocks }),
+            });
+            console.log(`[PRICE BADGE] Sent Slack alert for ${priceBadgeAlerts.length} under-market listings`);
+          } catch (slackErr) {
+            console.error("[PRICE BADGE] Slack alert failed:", slackErr);
+          }
         }
 
         // Update final state
