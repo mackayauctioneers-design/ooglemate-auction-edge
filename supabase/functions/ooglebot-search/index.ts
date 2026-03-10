@@ -14,6 +14,7 @@ const AUCTION_SOURCES = new Set([
 const AUCTION_PREMIUM = 500;
 const FREIGHT_FLAT = 800;
 const MAX_LIMIT = 50;
+const RETAIL_FETCH_MULTIPLIER = 6; // Fetch more retail listings to ensure carsales coverage
 
 // These lifecycle states mean the listing should never be shown to users.
 const EXCLUDED_LIFECYCLE = ["STALE", "DEAD", "RETURNED", "INVALID", "DELISTED", "SOLD"];
@@ -226,8 +227,8 @@ Deno.serve(async (req) => {
       .ilike("make", input.make)
       .gte("last_seen_at", recencyCutoff)
       .not("lifecycle_status", "in", '("DELISTED","SOLD","DEAD")')
-      .order("asking_price", { ascending: true, nullsFirst: false })
-      .limit(input.limit! * 3);
+      .order("last_seen_at", { ascending: false })
+      .limit(input.limit! * RETAIL_FETCH_MULTIPLIER);
 
     // Model matching for retail_listings
     if (modelParts.length > 1) {
@@ -492,7 +493,25 @@ Deno.serve(async (req) => {
 
     // Sort by score descending, then effective_cost ascending
     results.sort((a, b) => b.score - a.score || (a.effective_cost ?? Infinity) - (b.effective_cost ?? Infinity));
-    const topResults = results.slice(0, input.limit!);
+
+    // Source diversity: ensure carsales/retail results appear alongside OEM/dealer results
+    // Take top results but guarantee at least some retail marketplace results
+    const retailResults = results.filter(r => ["carsales", "autotrader", "gumtree", "carsguide.com.au", "carsales.com.au"].includes(r.source.toLowerCase()));
+    const otherResults = results.filter(r => !["carsales", "autotrader", "gumtree", "carsguide.com.au", "carsales.com.au"].includes(r.source.toLowerCase()));
+
+    let topResults: ScoredResult[];
+    if (retailResults.length > 0 && otherResults.length > 0) {
+      // Reserve slots for retail marketplace results (at least 30% or 3, whichever is larger)
+      const retailSlots = Math.max(3, Math.ceil(input.limit! * 0.3));
+      const otherSlots = input.limit! - Math.min(retailSlots, retailResults.length);
+      topResults = [
+        ...otherResults.slice(0, otherSlots),
+        ...retailResults.slice(0, retailSlots),
+      ].sort((a, b) => b.score - a.score || (a.effective_cost ?? Infinity) - (b.effective_cost ?? Infinity))
+       .slice(0, input.limit!);
+    } else {
+      topResults = results.slice(0, input.limit!);
+    }
 
     // --- 6. Log the request ---
     await sb.from("cron_audit_log").insert({
