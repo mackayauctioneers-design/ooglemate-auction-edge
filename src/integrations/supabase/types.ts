@@ -7548,6 +7548,8 @@ export type Database = {
           lng: number | null
           make: string
           manus_task_id: string | null
+          market_price: number | null
+          market_price_source: string | null
           model: string
           model_root: string | null
           origin_entity: string | null
@@ -7555,6 +7557,8 @@ export type Database = {
           price_badge: string | null
           price_change_count: number | null
           price_changed_at: string | null
+          price_difference: number | null
+          price_difference_percent: number | null
           price_history: Json | null
           price_type: string | null
           region_id: string | null
@@ -7648,6 +7652,8 @@ export type Database = {
           lng?: number | null
           make: string
           manus_task_id?: string | null
+          market_price?: number | null
+          market_price_source?: string | null
           model: string
           model_root?: string | null
           origin_entity?: string | null
@@ -7655,6 +7661,8 @@ export type Database = {
           price_badge?: string | null
           price_change_count?: number | null
           price_changed_at?: string | null
+          price_difference?: number | null
+          price_difference_percent?: number | null
           price_history?: Json | null
           price_type?: string | null
           region_id?: string | null
@@ -7748,6 +7756,8 @@ export type Database = {
           lng?: number | null
           make?: string
           manus_task_id?: string | null
+          market_price?: number | null
+          market_price_source?: string | null
           model?: string
           model_root?: string | null
           origin_entity?: string | null
@@ -7755,6 +7765,8 @@ export type Database = {
           price_badge?: string | null
           price_change_count?: number | null
           price_changed_at?: string | null
+          price_difference?: number | null
+          price_difference_percent?: number | null
           price_history?: Json | null
           price_type?: string | null
           region_id?: string | null
