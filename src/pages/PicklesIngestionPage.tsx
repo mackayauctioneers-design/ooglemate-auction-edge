@@ -133,8 +133,8 @@ export default function PicklesIngestionPage() {
       startTime: autoContinue ? (crawlProgress?.startTime || Date.now()) : Date.now() 
     });
     
-    let pollIntervalId: NodeJS.Timeout | null = null;
-    let timeoutId: NodeJS.Timeout | null = null;
+    let pollIntervalId: ReturnType<typeof setInterval> | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let lastKnownLotsFound = 0;
     
     const cleanup = () => {
