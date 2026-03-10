@@ -135,6 +135,8 @@ export function extractBadge(
     fuel_type: null,
     drivetrain: null,
     body_type: null,
+    engine_type: null,
+    engine_confidence: "LOW",
   };
 
   const text = [variantRaw, titleText].filter(Boolean).join(' ').toUpperCase();
