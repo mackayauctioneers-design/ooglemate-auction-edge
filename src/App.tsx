@@ -236,8 +236,6 @@ const App = () => (
               {/* Mandate Feed */}
               <Route path="/mandate-feed" element={<RequireAuth><MandateFeedPage /></RequireAuth>} />
 
-              {/* Partner Portals */}
-              <Route path="/pkf" element={<RequireAuth><PKFPortalPage /></RequireAuth>} />
 
               {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
