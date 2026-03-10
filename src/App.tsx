@@ -25,7 +25,7 @@ import NotFound from "./pages/NotFound";
 import ArchitectureOverviewPage from "./pages/ArchitectureOverviewPage";
 import ValoPage from "./pages/ValoPage";
 import ScanGuidePage from "./pages/ScanGuidePage";
-import PKFPortalPage from "./pages/PKFPortalPage";
+
 
 // Operator pages
 import OperatorDashboardPage from "./pages/operator/OperatorDashboardPage";
@@ -236,8 +236,6 @@ const App = () => (
               {/* Mandate Feed */}
               <Route path="/mandate-feed" element={<RequireAuth><MandateFeedPage /></RequireAuth>} />
 
-              {/* Partner Portals */}
-              <Route path="/pkf" element={<RequireAuth><PKFPortalPage /></RequireAuth>} />
 
               {/* Catch-all */}
               <Route path="*" element={<NotFound />} />

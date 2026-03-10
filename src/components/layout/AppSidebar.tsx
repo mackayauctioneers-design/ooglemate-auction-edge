@@ -19,7 +19,6 @@ import {
   Flame,
   Brain,
   Bot,
-  Briefcase,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -48,7 +47,7 @@ const dealerNavItems = [
   { path: '/my-hunts', label: 'My Hunts', icon: Crosshair, authOnly: true },
   { path: '/sales-upload', label: 'My Sales', icon: BarChart3, authOnly: true },
   { path: '/settings', label: 'Settings', icon: Settings, authOnly: true },
-  { path: '/pkf', label: 'PKF Portal', icon: Briefcase, authOnly: true },
+  
 ];
 
 export function AppSidebar() {
