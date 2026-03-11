@@ -450,11 +450,9 @@ export default function TradingDeskPage() {
           <div className={`rounded-lg border px-4 py-2.5 text-sm font-medium flex items-center gap-2 ${
             signalStrip.type === 'strong'
               ? 'border-primary/30 bg-primary/5 text-foreground'
-              : signalStrip.type === 'thin'
-                ? 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400'
-                : 'border-border bg-muted/30 text-muted-foreground'
+              : 'border-border bg-muted/30 text-muted-foreground'
           }`}>
-            <span>{signalStrip.type === 'strong' ? '🔥' : signalStrip.type === 'thin' ? '⚠️' : '—'}</span>
+            <span>{signalStrip.type === 'strong' ? '🔥' : '—'}</span>
             <span>
               {signalStrip.text}
               {signalStrip.type === 'strong' && signalStrip.detail && (
