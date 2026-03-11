@@ -268,9 +268,6 @@ export default function TradingDeskPage() {
           <Button variant={sourceFilter === "auction" ? "default" : "outline"} size="sm" onClick={() => setSourceFilter("auction")}>Auctions Only</Button>
         </div>
 
-        {/* Ask Bob */}
-        {accountId && <AskBobPanel accountId={accountId} />}
-
         {/* Table */}
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
