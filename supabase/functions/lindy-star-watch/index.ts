@@ -1,15 +1,9 @@
 /**
- * lindy-star-watch — When a user stars a vehicle, trigger Lindy via Gmail SMTP relay.
+ * lindy-star-watch — Trigger Lindy via Gmail SMTP relay when a user stars a vehicle.
  *
  * POST { listing_id: uuid }
  *
- * Flow:
- *   1. Look up vehicle details from vehicle_listings
- *   2. Send email via Gmail SMTP (STARTTLS) to LindyMail trigger
- *   3. Log the dispatch in outward_jobs for tracking
- *
- * Required secrets:
- *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
+ * Secrets: SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -21,38 +15,33 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const LINDY_TRIGGER_EMAIL = "carbitrage-dispatch-mackayauctioneers@lindymail.ai";
-const LINDY_SUBJECT_PREFIX = "carbitrage-batch";
+const LINDY_EMAIL = "carbitrage-dispatch-mackayauctioneers@lindymail.ai";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // ── Load SMTP config from secrets ──
   const smtpHost = Deno.env.get("SMTP_HOST");
-  const smtpPortRaw = Deno.env.get("SMTP_PORT");
-  const smtpUser = Deno.env.get("SMTP_USER");
-  const smtpPass = Deno.env.get("SMTP_PASS");
+  const smtpPort = parseInt(Deno.env.get("SMTP_PORT") || "587", 10);
+  const smtpUser = Deno.env.get("SMTP_USERNAME");
+  const smtpPass = Deno.env.get("SMTP_PASSWORD");
   const smtpFrom = Deno.env.get("SMTP_FROM");
 
   const missing = [
     !smtpHost && "SMTP_HOST",
-    !smtpPortRaw && "SMTP_PORT",
-    !smtpUser && "SMTP_USER",
-    !smtpPass && "SMTP_PASS",
+    !smtpUser && "SMTP_USERNAME",
+    !smtpPass && "SMTP_PASSWORD",
     !smtpFrom && "SMTP_FROM",
   ].filter(Boolean);
 
-  if (missing.length > 0) {
-    console.error(`[lindy-star-watch] Missing secrets: ${missing.join(", ")}`);
+  if (missing.length) {
+    console.error(`[lindy] Missing secrets: ${missing.join(", ")}`);
     return new Response(
-      JSON.stringify({ status: "email_failed", error: `Missing SMTP secrets: ${missing.join(", ")}` }),
+      JSON.stringify({ status: "email_failed", error: `Missing: ${missing.join(", ")}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
-
-  const smtpPort = parseInt(smtpPortRaw!, 10);
 
   const sb = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -68,7 +57,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── Look up vehicle listing ──
     const { data: listing, error: listErr } = await sb
       .from("vehicle_listings")
       .select("id, listing_id, listing_url, make, model, year, variant_used, km, source, auction_house, auction_datetime")
@@ -82,24 +70,21 @@ Deno.serve(async (req) => {
       );
     }
 
-    const listingUrl = listing.listing_url;
-    if (!listingUrl) {
+    if (!listing.listing_url) {
       return new Response(
-        JSON.stringify({ error: "Listing has no URL to watch" }),
+        JSON.stringify({ error: "Listing has no URL" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const vehicleDesc = [listing.year, listing.make, listing.model, listing.variant_used]
+    const vehicle = [listing.year, listing.make, listing.model, listing.variant_used]
       .filter(Boolean).join(" ");
-
     const jobId = crypto.randomUUID();
-    const queueId = crypto.randomUUID();
 
     const prompt = `WATCH ALERT — Browse this listing and extract current status:
-${listingUrl}
+${listing.listing_url}
 
-Vehicle: ${vehicleDesc}
+Vehicle: ${vehicle}
 ${listing.km ? `Odometer: ${listing.km.toLocaleString()} km` : ""}
 ${listing.auction_house ? `Auction house: ${listing.auction_house}` : ""}
 ${listing.auction_datetime ? `Auction date: ${listing.auction_datetime}` : ""}
@@ -109,59 +94,43 @@ Return as JSON with fields: listing_url, vehicle, current_status, current_price,
 
     const emailBody = JSON.stringify({
       rows: [{
-        id: queueId,
+        id: crypto.randomUUID(),
         source: "star_watch",
         page: 1,
-        url: listingUrl,
+        url: listing.listing_url,
         prompt,
         job_id: jobId,
         search_run_id: jobId,
       }],
     });
 
-    const subject = `${LINDY_SUBJECT_PREFIX}: star-watch`;
+    const subject = "carbitrage-batch: star-watch";
 
-    // ── Send via Gmail SMTP (STARTTLS on port 587) ──
-    console.log(`[lindy-star-watch] SMTP connecting to ${smtpHost}:${smtpPort} as ${smtpUser}`);
-    console.log(`[lindy-star-watch] Sending to: ${LINDY_TRIGGER_EMAIL}`);
-    console.log(`[lindy-star-watch] Subject: ${subject}`);
-    console.log(`[lindy-star-watch] Vehicle: ${vehicleDesc} → ${listingUrl}`);
+    // ── Gmail SMTP ──
+    console.log(`[lindy] SMTP → ${smtpHost}:${smtpPort} as ${smtpUser}`);
+    console.log(`[lindy] To: ${LINDY_EMAIL} | Subject: ${subject}`);
+    console.log(`[lindy] Vehicle: ${vehicle} → ${listing.listing_url}`);
 
-    let client: SMTPClient;
-    try {
-      // Port 587 = STARTTLS, Port 465 = implicit TLS
-      const useTls = smtpPort === 465;
-      client = new SMTPClient({
-        connection: {
-          hostname: smtpHost!,
-          port: smtpPort,
-          tls: useTls,
-          auth: {
-            username: smtpUser!,
-            password: smtpPass!,
-          },
-        },
-      });
-    } catch (connErr) {
-      const msg = connErr instanceof Error ? connErr.message : String(connErr);
-      console.error(`[lindy-star-watch] SMTP connection failed: ${msg}`);
-      return new Response(
-        JSON.stringify({ status: "email_failed", error: `SMTP connection failed: ${msg}` }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+    const client = new SMTPClient({
+      connection: {
+        hostname: smtpHost!,
+        port: smtpPort,
+        tls: smtpPort === 465,
+        auth: { username: smtpUser!, password: smtpPass! },
+      },
+    });
 
     try {
       await client.send({
         from: smtpFrom!,
-        to: LINDY_TRIGGER_EMAIL,
+        to: LINDY_EMAIL,
         subject,
         content: emailBody,
       });
-      console.log(`[lindy-star-watch] ✅ Email sent successfully via ${smtpHost}`);
+      console.log(`[lindy] ✅ Email sent via ${smtpHost}`);
     } catch (sendErr) {
       const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
-      console.error(`[lindy-star-watch] ❌ Email send failed: ${msg}`);
+      console.error(`[lindy] ❌ Send failed: ${msg}`);
       await client.close().catch(() => {});
       return new Response(
         JSON.stringify({ status: "email_failed", error: msg }),
@@ -171,33 +140,33 @@ Return as JSON with fields: listing_url, vehicle, current_status, current_price,
 
     await client.close().catch(() => {});
 
-    // ── Audit log ──
+    // Audit log
     await sb.from("outward_jobs").insert({
       id: jobId,
       search_run_id: jobId,
       source_key: "star_watch",
-      search_url: listingUrl,
+      search_url: listing.listing_url,
       status: "dispatched",
       dispatched_at: new Date().toISOString(),
-    }).then(({ error: insErr }) => {
-      if (insErr) console.warn("[lindy-star-watch] Audit log insert failed:", insErr.message);
+    }).then(({ error }) => {
+      if (error) console.warn("[lindy] Audit insert failed:", error.message);
     });
 
     return new Response(
       JSON.stringify({
         success: true,
         job_id: jobId,
-        vehicle: vehicleDesc,
-        url: listingUrl,
+        vehicle,
+        url: listing.listing_url,
         smtp_relay: smtpHost,
-        destination: LINDY_TRIGGER_EMAIL,
-        message: `Watch dispatched via Gmail SMTP for: ${vehicleDesc}`,
+        destination: LINDY_EMAIL,
+        message: `Watch dispatched for: ${vehicle}`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[lindy-star-watch] Unhandled error:", msg);
+    console.error("[lindy] Error:", msg);
     return new Response(
       JSON.stringify({ status: "email_failed", error: msg }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
