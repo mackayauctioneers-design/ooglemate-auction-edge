@@ -103,8 +103,9 @@ function extractVariantRaw(ad: any): string | null {
   const fromNotes = extractBadgeFromSellerNotes(ad.sellerNotes || ad.seller_notes);
   if (fromNotes) return fromNotes;
 
-  // 2. Try explicit badge/variant/grade fields
+  // 2. Try explicit badge/variant/grade fields (including 'badge' from Caroogle API)
   const explicitSources = [
+    ad.badge,
     ad.badgeDescription,
     ad.badge_description,
     ad.grade,
