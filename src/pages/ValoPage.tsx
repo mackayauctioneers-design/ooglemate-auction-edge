@@ -858,7 +858,7 @@ export default function ValoPage() {
               )}
             </div>
 
-            {/* ── Market Commentary (collapsible, lazy Gemini) ── */}
+            {/* ── Market Commentary (collapsible, CaroogleAI) ── */}
             <div className="border border-border rounded-lg overflow-hidden">
               <button
                 onClick={handleCommentaryToggle}
