@@ -140,11 +140,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── 3. Fetch comparables ──
+    // ── 3. Fetch comparables (internal DB with relaxed year range) ──
     const internalAdapter = new InternalDbAdapter();
     let internalResults: AdapterResult[] = [];
     try {
-      internalResults = await internalAdapter.search(intent, {});
+      // Widen year range for internal DB to find more comps
+      // VALO needs volume — exact year filtering happens in scoring
+      const internalIntent = { ...intent };
+      if (internalIntent.year_min) internalIntent.year_min = internalIntent.year_min - 3;
+      if (internalIntent.year_max) internalIntent.year_max = internalIntent.year_max + 3;
+      // Remove max_km constraint for internal — let scoring penalise high-km comps
+      delete internalIntent.max_km;
+      internalResults = await internalAdapter.search(internalIntent, {});
+      console.log(`VALO internal DB: ${internalResults.length} comps found`);
     } catch (err) {
       console.error("VALO internal search error:", err);
     }
