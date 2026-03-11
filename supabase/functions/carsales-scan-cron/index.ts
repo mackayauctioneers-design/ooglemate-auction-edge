@@ -6,34 +6,23 @@ const corsHeaders = {
 };
 
 /**
- * carsales-scan-cron v2.0 — Light monitoring mode
+ * carsales-scan-cron v3.0 — Full depth restored
  *
- * Strategy shift: Carsales = reference pricing, not primary sourcing.
- * Sort by NEWEST → only grab fresh listings → dedup downstream.
- *
- * Changes from v1:
- *  - Sort by ~DateAdded (newest first) instead of ~Price
- *  - Limit 50 items per state (was 500) — catches new listings only
- *  - Only scan 4 high-volume states (NSW, VIC, QLD, WA) — covers ~85% of market
- *  - SA, TAS, ACT, NT run on alternate cycles (odd/even hour)
- *
- * Cost impact: ~200 items/run vs ~4000 = 95% reduction
- * Schedule: every 2 hours (unchanged)
+ * Scans all 8 AU states with 500 items per state.
+ * Sort by ~DateAdded (newest first) for freshness.
+ * Target: ~3,000–6,000 listings per cycle.
+ * Schedule: every 2 hours.
  */
 
 const YEAR_MIN = 2020;
 const KM_MAX = 120000;
 
-// Primary states — every run
-const PRIMARY_STATES = ["NSW", "VIC", "QLD", "WA"];
-// Secondary states — alternate runs only
-const SECONDARY_STATES = ["SA", "TAS", "ACT", "NT"];
+const ALL_STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
 
-const ITEMS_PER_STATE = 50; // Only newest 50
+const ITEMS_PER_STATE = 500;
 
 function buildNewestUrl(state: string): string {
   const q = `(And.Year.range(${YEAR_MIN}..)._.Odometer.range(..${KM_MAX})._.State.${state})`;
-  // Sort by ~DateAdded = newest first (was ~Price)
   return `https://www.carsales.com.au/cars/?q=${encodeURIComponent(q)}&sort=~DateAdded`;
 }
 
@@ -43,7 +32,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // ── Emergency kill switch ──
     const crawlMode = Deno.env.get("CRAWL_MODE") || "normal";
     if (crawlMode === "disabled") {
       console.log("Carsales cron: CRAWL_MODE=disabled, skipping");
@@ -56,20 +44,11 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Determine if this is an odd or even hour cycle
-    const currentHour = new Date().getUTCHours();
-    const isEvenCycle = currentHour % 4 === 0; // every other 2h cycle
-
-    // Primary states always run; secondary only on even cycles
-    const statesToScan = isEvenCycle
-      ? [...PRIMARY_STATES, ...SECONDARY_STATES]
-      : PRIMARY_STATES;
-
-    console.log(`Carsales light scan: ${statesToScan.length} states, ${ITEMS_PER_STATE} items each (${isEvenCycle ? "full" : "primary only"})`);
+    console.log(`Carsales full scan: ${ALL_STATES.length} states, ${ITEMS_PER_STATE} items each`);
 
     const results = [];
-    for (let i = 0; i < statesToScan.length; i++) {
-      const state = statesToScan[i];
+    for (let i = 0; i < ALL_STATES.length; i++) {
+      const state = ALL_STATES[i];
       const stateUrl = buildNewestUrl(state);
 
       // Stagger launches: 5s delay between each state to reduce Apify contention
@@ -133,7 +112,6 @@ Deno.serve(async (req) => {
           );
           const retryResult = await retryResp.json();
           if (retryResp.ok) {
-            // Update the result entry from error to success
             const idx = results.findIndex(r => r.state === state && r.error);
             if (idx >= 0) {
               results[idx] = { state, run_id: retryResult.apify_run_id, queued: true, retried: true };
@@ -159,7 +137,7 @@ Deno.serve(async (req) => {
           cron_name: "carsales-scan-cron",
           last_seen_at: new Date().toISOString(),
           last_ok: failed === 0,
-          note: `v2 light: ${queued}/${statesToScan.length} states, ~${estItems} items (was ~4000)`,
+          note: `v3 full: ${queued}/${ALL_STATES.length} states, ~${estItems} items`,
         },
         { onConflict: "cron_name" }
       );
