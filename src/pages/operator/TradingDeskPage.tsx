@@ -651,7 +651,7 @@ export default function TradingDeskPage() {
                                 variant="ghost"
                                 size="sm"
                                 className="h-6 w-6 p-0"
-                                onClick={() => toggleStar(opp.id, opp.is_starred)}
+                                onClick={() => toggleStar(opp.id, opp.is_starred, opp.listing_id)}
                               >
                                 <Star className={`h-3.5 w-3.5 transition-colors ${opp.is_starred ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'}`} />
                               </Button>
