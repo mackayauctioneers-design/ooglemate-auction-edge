@@ -108,6 +108,7 @@ export default function JoshDealDeskPage() {
       if (error) throw error;
       return data as CheapCar[];
     },
+    refetchInterval: 30_000,
   });
 
   const { data: stats } = useQuery({
