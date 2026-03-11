@@ -1127,6 +1127,21 @@ Deno.serve(async (req) => {
       run_date: now.toISOString().split("T")[0],
     });
 
+    // Update heartbeat with explicit monitoring fields
+    await supabase
+      .from("cron_heartbeat")
+      .upsert(
+        {
+          cron_name: "autotrader-fetch",
+          last_seen_at: new Date().toISOString(),
+          last_ok: totalErrors === 0,
+          note: `${runsProcessed} runs: ${totalNew} new, ${totalUpdated} updated, ${totalErrors} errors`,
+          rows_inserted: totalNew,
+          unique_urls: totalNew + totalUpdated,
+        },
+        { onConflict: "cron_name" }
+      );
+
     console.log("Apify fetch worker complete:", results);
 
     return new Response(JSON.stringify(results), {
