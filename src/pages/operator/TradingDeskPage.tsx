@@ -334,7 +334,13 @@ export default function TradingDeskPage() {
     return true;
   });
 
+  const AUCTION_SOURCES = new Set(["pickles","grays","manheim","slattery","f3","auto_auctions","vma","bidsonline","caroogle_shadow"]);
   const sorted = [...filtered].sort((a, b) => {
+    // Primary: auction sources always above retail
+    const aIsAuction = AUCTION_SOURCES.has(a.listing_source || "");
+    const bIsAuction = AUCTION_SOURCES.has(b.listing_source || "");
+    if (aIsAuction !== bIsAuction) return aIsAuction ? -1 : 1;
+
     let aVal: number, bVal: number;
     if (sortField === 'tier') { aVal = tierOrder[a.tier] ?? 99; bVal = tierOrder[b.tier] ?? 99; }
     else if (sortField === 'created_at') { aVal = new Date(a.created_at).getTime(); bVal = new Date(b.created_at).getTime(); }
