@@ -151,41 +151,46 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Use Gemini to extract structured data
-    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    // Use Lovable AI gateway to extract structured data
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     let extracted: Record<string, unknown> = {};
 
-    if (geminiKey) {
+    if (LOVABLE_API_KEY) {
       try {
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{
-                parts: [
-                  { text: EXTRACTION_PROMPT },
-                  { text: `\n\nWebpage content:\n${markdown.slice(0, 8000)}` },
-                ],
-              }],
-              generationConfig: { temperature: 0.1 },
-            }),
-          }
-        );
+        const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              { role: "system", content: EXTRACTION_PROMPT },
+              { role: "user", content: `Webpage content:\n${markdown.slice(0, 8000)}` },
+            ],
+            temperature: 0.1,
+          }),
+        });
 
-        if (geminiRes.ok) {
-          const geminiData = await geminiRes.json();
-          const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          const text = aiData?.choices?.[0]?.message?.content || "";
+          console.log("[JOSH SCRAPE] AI extraction response:", text.slice(0, 500));
           // Extract JSON from response
           const jsonMatch = text.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
             extracted = JSON.parse(jsonMatch[0]);
           }
+        } else {
+          const errText = await aiRes.text();
+          console.error("[JOSH SCRAPE] AI gateway error:", aiRes.status, errText);
         }
       } catch (e) {
-        console.error("[JOSH SCRAPE] Gemini extraction failed:", e);
+        console.error("[JOSH SCRAPE] AI extraction failed:", e);
       }
+    } else {
+      console.error("[JOSH SCRAPE] LOVABLE_API_KEY not configured");
     }
 
     // Compute market comparison against Carsales baseline
