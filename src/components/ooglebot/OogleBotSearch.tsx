@@ -511,7 +511,7 @@ export function OogleBotSearch() {
     return () => clearInterval(interval);
   }, [outwardPending]);
 
-  // ── Auto-fire Gemini insight when top 3 have listing age data ──
+  // ── Auto-fire CaroogleAI insight when top 3 have listing age data ──
   useEffect(() => {
     if (marketResults.length < 3) return;
     const top3 = marketResults.slice(0, 3);
