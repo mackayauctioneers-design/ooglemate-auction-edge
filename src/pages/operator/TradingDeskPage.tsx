@@ -289,19 +289,17 @@ export default function TradingDeskPage() {
   };
 
   const deleteAnchor = async (oppId: string, anchorSaleId: string) => {
-    if (!confirm('Delete this anchor sale from sales truth? This cannot be undone.')) return;
-    // 1. Delete from vehicle_sales_truth
-    const { error: delErr } = await supabase.from('vehicle_sales_truth').delete().eq('id', anchorSaleId);
-    if (delErr) { toast.error(delErr.message); return; }
-    // 2. Get current dismissed list
+    if (!confirm('Remove this anchor? The pipeline will not re-attach any anchor to this opportunity.')) return;
+    // Get current dismissed list
     const { data: existing } = await supabase.from('operator_opportunities').select('dismissed_anchor_ids').eq('id', oppId).single();
     const dismissed: string[] = (existing?.dismissed_anchor_ids as string[] || []);
     if (!dismissed.includes(anchorSaleId)) dismissed.push(anchorSaleId);
-    // 3. Clear anchor reference + add to dismissed blocklist so it won't come back
+    // Clear anchor + set suppress_anchor so no future anchor can be attached by pipeline
     const { error: updErr } = await supabase.from('operator_opportunities').update({
       anchor_sale_id: null, anchor_sale_buy_price: null, anchor_sale_sell_price: null,
       anchor_sale_profit: null, anchor_sale_sold_at: null, anchor_sale_km: null,
       anchor_sale_trim_class: null, dismissed_anchor_ids: dismissed,
+      suppress_anchor: true,
       updated_at: new Date().toISOString(),
     }).eq('id', oppId);
     if (updErr) { toast.error(updErr.message); return; }
@@ -309,7 +307,7 @@ export default function TradingDeskPage() {
       ...o, anchor_sale_id: null, anchor_sale_buy_price: null, anchor_sale_sell_price: null,
       anchor_sale_profit: null, anchor_sale_sold_at: null, anchor_sale_km: null, anchor_sale_trim_class: null,
     } : o));
-    toast.success('Anchor sale deleted permanently');
+    toast.success('Anchor removed — pipeline will not re-attach');
   };
 
   const toggleRow = (id: string) => {
