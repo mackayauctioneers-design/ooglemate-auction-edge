@@ -186,6 +186,26 @@ export default function JoshDealDeskPage() {
           engine_type: car.engine_type,
         });
 
+        // Surface on Trading Desk as CODE_RED
+        const listingId = car.listing_id || `josh-${id}`;
+        await supabase.from("operator_opportunities").upsert({
+          listing_id: listingId,
+          listing_source: car.source || "josh_verified",
+          source_url: car.listing_url,
+          make: car.make,
+          model: car.model,
+          variant: car.variant,
+          year: car.year,
+          km: car.km,
+          asking_price: car.price,
+          tier: "CODE_RED",
+          status: "new",
+          best_under_buy: car.market_price && car.price ? car.market_price - car.price : null,
+          best_expected_margin: car.market_price && car.price ? car.market_price - car.price : null,
+          is_starred: true,
+          motivation_signal: `Josh verified (score ${updates.josh_score}/5)`,
+        }, { onConflict: "listing_id" });
+
         try {
           await supabase.functions.invoke("josh-deal-alert", {
             body: {
