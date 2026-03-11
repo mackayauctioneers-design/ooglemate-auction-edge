@@ -18,7 +18,6 @@ import {
   AlertTriangle, ChevronDown, ChevronUp, DollarSign, Download,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AskBobPanel } from "@/components/operator/AskBobPanel";
 
 interface Opportunity {
   id: string;
@@ -267,9 +266,6 @@ export default function TradingDeskPage() {
           <Button variant={sourceFilter === "all" ? "default" : "outline"} size="sm" onClick={() => setSourceFilter("all")}>All Sources</Button>
           <Button variant={sourceFilter === "auction" ? "default" : "outline"} size="sm" onClick={() => setSourceFilter("auction")}>Auctions Only</Button>
         </div>
-
-        {/* Ask Bob */}
-        {accountId && <AskBobPanel accountId={accountId} />}
 
         {/* Table */}
         {loading ? (
