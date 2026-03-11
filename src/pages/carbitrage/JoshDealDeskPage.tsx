@@ -176,65 +176,72 @@ export default function JoshDealDeskPage() {
         .eq("id", id);
       if (error) throw error;
 
-      if (updates.status === "VERIFIED" && (updates.josh_score as number) >= 4) {
+      if (updates.status === "VERIFIED") {
         const car = reviewCar!;
-        await supabase.from("verified_deals").insert({
-          cheap_car_queue_id: id,
-          make: car.make,
-          model: car.model,
-          variant: car.variant,
-          year: car.year,
-          km: car.km,
-          price: car.price,
-          market_price: car.market_price,
-          discount_pct: car.discount_pct,
-          listing_url: car.listing_url,
-          location: car.location,
-          seller_type: updates.seller_type as string || car.seller_type,
-          josh_score: updates.josh_score as number,
-          condition_notes: updates.condition_notes as string,
-          engine_type: car.engine_type,
-        });
+        const joshScore = updates.josh_score as number;
+        const isWellBelowMarket = car.price_badge?.toLowerCase().includes("well below");
+        const shouldPromote = joshScore >= 4 || isWellBelowMarket;
 
-        // Surface on Trading Desk as CODE_RED
-        const listingId = car.listing_id || `josh-${id}`;
-        await supabase.from("operator_opportunities").upsert({
-          listing_id: listingId,
-          listing_source: car.source || "josh_verified",
-          source_url: car.listing_url,
-          make: car.make,
-          model: car.model,
-          variant: car.variant,
-          year: car.year,
-          km: car.km,
-          asking_price: car.price,
-          tier: "CODE_RED",
-          status: "new",
-          best_under_buy: car.market_price && car.price ? car.market_price - car.price : null,
-          best_expected_margin: car.market_price && car.price ? car.market_price - car.price : null,
-          is_starred: true,
-          motivation_signal: `Josh verified (score ${updates.josh_score}/5)`,
-        }, { onConflict: "listing_id" });
-
-        try {
-          await supabase.functions.invoke("josh-deal-alert", {
-            body: {
-              year: car.year,
-              make: car.make,
-              model: car.model,
-              variant: car.variant,
-              price: car.price,
-              market_price: car.market_price,
-              discount_pct: car.discount_pct,
-              km: car.km,
-              location: car.location,
-              seller_type: updates.seller_type || car.seller_type,
-              score: updates.josh_score,
-              listing_url: car.listing_url,
-            },
+        if (shouldPromote) {
+          await supabase.from("verified_deals").insert({
+            cheap_car_queue_id: id,
+            make: car.make,
+            model: car.model,
+            variant: car.variant,
+            year: car.year,
+            km: car.km,
+            price: car.price,
+            market_price: car.market_price,
+            discount_pct: car.discount_pct,
+            listing_url: car.listing_url,
+            location: car.location,
+            seller_type: updates.seller_type as string || car.seller_type,
+            josh_score: joshScore,
+            condition_notes: updates.condition_notes as string,
+            engine_type: car.engine_type,
           });
-        } catch (e) {
-          console.error("Alert send failed:", e);
+
+          // Surface on Trading Desk — Well Below Market always CODE_RED, others HIGH
+          const tier = isWellBelowMarket ? "CODE_RED" : "HIGH";
+          const listingId = car.listing_id || `josh-${id}`;
+          await supabase.from("operator_opportunities").upsert({
+            listing_id: listingId,
+            listing_source: car.source || "josh_verified",
+            source_url: car.listing_url,
+            make: car.make,
+            model: car.model,
+            variant: car.variant,
+            year: car.year,
+            km: car.km,
+            asking_price: car.price,
+            tier,
+            status: "new",
+            best_under_buy: car.market_price && car.price ? car.market_price - car.price : null,
+            best_expected_margin: car.market_price && car.price ? car.market_price - car.price : null,
+            is_starred: true,
+            motivation_signal: `Josh verified (score ${joshScore}/5)${isWellBelowMarket ? " · Well Below Market" : ""}`,
+          }, { onConflict: "listing_id" });
+
+          try {
+            await supabase.functions.invoke("josh-deal-alert", {
+              body: {
+                year: car.year,
+                make: car.make,
+                model: car.model,
+                variant: car.variant,
+                price: car.price,
+                market_price: car.market_price,
+                discount_pct: car.discount_pct,
+                km: car.km,
+                location: car.location,
+                seller_type: updates.seller_type || car.seller_type,
+                score: updates.josh_score,
+                listing_url: car.listing_url,
+              },
+            });
+          } catch (e) {
+            console.error("Alert send failed:", e);
+          }
         }
       }
     },
@@ -423,8 +430,14 @@ export default function JoshDealDeskPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {cars.map((car) => (
-                  <TableRow key={car.id} className="cursor-pointer hover:bg-accent/50" onClick={() => openReview(car)}>
+                {cars.map((car) => {
+                  const isWellBelow = car.price_badge?.toLowerCase().includes("well below");
+                  return (
+                  <TableRow
+                    key={car.id}
+                    className={`cursor-pointer hover:bg-accent/50 ${isWellBelow ? "bg-red-500/5 border-l-2 border-l-red-500" : ""}`}
+                    onClick={() => openReview(car)}
+                  >
                     <TableCell>
                       {car.deal_score != null ? (
                         <Badge
@@ -451,6 +464,16 @@ export default function JoshDealDeskPage() {
                     <TableCell className="font-medium">
                       {car.year} {car.make} {car.model}
                       {car.variant && <span className="text-muted-foreground ml-1 text-xs">{car.variant}</span>}
+                      {isWellBelow && (
+                        <Badge className="ml-2 bg-destructive/15 text-destructive border-destructive/30 text-[10px] py-0">
+                          🔴 Well Below Market
+                        </Badge>
+                      )}
+                      {!isWellBelow && car.price_badge && (
+                        <Badge variant="outline" className="ml-2 text-[10px] py-0">
+                          {car.price_badge}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="font-mono">{fmtPrice(car.price)}</TableCell>
                     <TableCell className="font-mono text-muted-foreground">{fmtPrice(car.market_price)}</TableCell>
@@ -470,7 +493,8 @@ export default function JoshDealDeskPage() {
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
