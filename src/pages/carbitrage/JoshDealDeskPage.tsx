@@ -476,7 +476,8 @@ export default function JoshDealDeskPage() {
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
