@@ -410,7 +410,8 @@ Deno.serve(async (req) => {
           }
 
           // Track high-value price badges for notification (2020+ and ≤120k km only)
-          if (detail.price_badge && /well\s+below|below\s+market|great\s+price/i.test(detail.price_badge)) {
+          // Only "Well Below Market" — skip "Below Market" and "Great Price" to reduce noise
+          if (detail.price_badge && /well\s+below\s+market/i.test(detail.price_badge)) {
             const meetsYear = listing.year && listing.year >= 2020;
             const meetsKm = !listing.km || listing.km <= 120000;
             if (meetsYear && meetsKm) {
