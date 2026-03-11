@@ -138,6 +138,7 @@ Deno.serve(async (req) => {
           last_seen_at: new Date().toISOString(),
           last_ok: failed === 0,
           note: `v3 full: ${queued}/${ALL_STATES.length} states, ~${estItems} items`,
+          states_failed: failed,
         },
         { onConflict: "cron_name" }
       );
