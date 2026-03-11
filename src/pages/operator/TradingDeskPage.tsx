@@ -575,10 +575,6 @@ export default function TradingDeskPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="w-28">
-            <label className="text-xs text-muted-foreground mb-1 block">Min Margin $</label>
-            <Input type="number" value={filterMinMargin} onChange={e => setFilterMinMargin(e.target.value)} placeholder="0" />
-          </div>
           <div className="w-48">
             <label className="text-xs text-muted-foreground mb-1 block">Search Dealer</label>
             <Input value={filterDealerSearch} onChange={e => setFilterDealerSearch(e.target.value)} placeholder="Type dealer name…" />
