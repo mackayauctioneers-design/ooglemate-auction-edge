@@ -740,6 +740,30 @@ Deno.serve(async (req) => {
       const daysSince = Math.floor((Date.now() - new Date(listing.first_seen_at).getTime()) / 86400000);
       const freshness = daysSince <= 1 ? "today" : daysSince <= 7 ? "this_week" : "older";
 
+      // Build pricing guide from all matched sales for this account
+      const acctSales = salesByAccount[bestMatch.account_id] || [];
+      const relevantSales = acctSales.filter((s: any) => {
+        if (s.platform_class !== listing.platform_class) return false;
+        if (Math.abs(s.year - listing.year) > 2) return false;
+        const profit = s.sale_price - Number(s.buy_price);
+        return profit > 0;
+      });
+      const buyPrices = relevantSales.map((s: any) => Number(s.buy_price)).sort((a: number, b: number) => a - b);
+      const sellPrices = relevantSales.map((s: any) => Number(s.sale_price)).sort((a: number, b: number) => a - b);
+      const medianBuy = buyPrices.length > 0 ? buyPrices[Math.floor(buyPrices.length / 2)] : null;
+      const medianSell = sellPrices.length > 0 ? sellPrices[Math.floor(sellPrices.length / 2)] : null;
+
+      const pricingGuide = medianBuy ? {
+        target_buy_price: bestMatch.target_price,
+        max_bid_ceiling: Math.round(Number(bestMatch.anchor.buy_price) * 0.95),
+        historical_buy_median: medianBuy,
+        historical_sell_median: medianSell,
+        historical_profit_median: medianSell && medianBuy ? medianSell - medianBuy : null,
+        sample_size: relevantSales.length,
+        confidence: relevantSales.length >= 10 ? "HIGH" : relevantSales.length >= 5 ? "MEDIUM" : "LOW",
+        guidance: `Target: $${bestMatch.target_price.toLocaleString()}. Historical buy median: $${medianBuy.toLocaleString()}${medianSell ? `, sell: $${medianSell.toLocaleString()}` : ""} (${relevantSales.length} trades).`,
+      } : null;
+
       const row = {
         listing_id: listing.listing_id,
         listing_source: listing.source,
@@ -761,6 +785,7 @@ Deno.serve(async (req) => {
         days_listed: daysSince, freshness, pass_count: 0, motivation_signal: null,
         auction_house: listing.auction_house, auction_datetime: listing.auction_datetime,
         auction_status: "UPCOMING", auction_target_price: bestMatch.target_price,
+        pricing_guide: pricingGuide,
         status: "new",
       };
 
