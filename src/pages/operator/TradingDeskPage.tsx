@@ -205,7 +205,7 @@ export default function TradingDeskPage() {
   const [filterAccount, setFilterAccount] = useState<string>('all');
   const [filterTier, setFilterTier] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
-  const [filterMinMargin, setFilterMinMargin] = useState<string>('');
+  
   const [filterStatus, setFilterStatus] = useState<string>('active');
   const [filterDealerSearch, setFilterDealerSearch] = useState<string>('');
 
