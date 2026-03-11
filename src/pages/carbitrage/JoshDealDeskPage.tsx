@@ -457,7 +457,16 @@ export default function JoshDealDeskPage() {
                     <TableCell className="font-medium">
                       {car.year} {car.make} {car.model}
                       {car.variant && <span className="text-muted-foreground ml-1 text-xs">{car.variant}</span>}
-                    </TableCell>
+                      {isWellBelow && (
+                        <Badge className="ml-2 bg-destructive/15 text-destructive border-destructive/30 text-[10px] py-0">
+                          🔴 Well Below Market
+                        </Badge>
+                      )}
+                      {!isWellBelow && car.price_badge && (
+                        <Badge variant="outline" className="ml-2 text-[10px] py-0">
+                          {car.price_badge}
+                        </Badge>
+                      )}
                     <TableCell className="font-mono">{fmtPrice(car.price)}</TableCell>
                     <TableCell className="font-mono text-muted-foreground">{fmtPrice(car.market_price)}</TableCell>
                     <TableCell>{fmtKm(car.km)}</TableCell>
