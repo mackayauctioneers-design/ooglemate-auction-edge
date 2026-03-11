@@ -674,10 +674,9 @@ export default function TradingDeskPage() {
                                 )}
                                 {altExpandedRows.has(opp.id) && hasAlts && (
                                   <div className="mt-1 space-y-0.5 border-l-2 border-muted pl-2">
-                                    {alts.sort((a: any, b: any) => (b.expected_margin || 0) - (a.expected_margin || 0)).map((m: any, i: number) => (
+                                    {alts.sort((a: any, b: any) => (b.under_buy || 0) - (a.under_buy || 0)).map((m: any, i: number) => (
                                       <div key={i} className="text-xs text-muted-foreground flex items-center gap-1">
                                         <span className="font-medium">{m.account_name}</span>
-                                        <span className="font-mono">{fmt(m.expected_margin)}</span>
                                       </div>
                                     ))}
                                   </div>
