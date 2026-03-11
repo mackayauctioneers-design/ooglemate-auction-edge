@@ -5,11 +5,12 @@
  *
  * Flow:
  *   1. Look up vehicle details from vehicle_listings
- *   2. Send batch email to LindyMail trigger via Resend
+ *   2. Send email to LindyMail trigger via Hostinger SMTP
  *   3. Log the dispatch in outward_jobs for tracking
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,12 +26,12 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const resendApiKey = Deno.env.get("RESEND_API_KEY");
-  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "onboarding@resend.dev";
+  const smtpUsername = Deno.env.get("SMTP_USERNAME");
+  const smtpPassword = Deno.env.get("SMTP_PASSWORD");
 
-  if (!resendApiKey) {
+  if (!smtpUsername || !smtpPassword) {
     return new Response(
-      JSON.stringify({ error: "RESEND_API_KEY not configured" }),
+      JSON.stringify({ error: "SMTP credentials not configured" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
@@ -104,31 +105,31 @@ Return as JSON with fields: listing_url, vehicle, current_status, current_price,
       }],
     });
 
-    console.log(`[lindy-star-watch] Dispatching watch via Resend email for ${vehicleDesc} → ${listingUrl}`);
+    console.log(`[lindy-star-watch] Dispatching watch via SMTP for ${vehicleDesc} → ${listingUrl}`);
 
-    const resp = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
+    // Send via Hostinger SMTP
+    const client = new SMTPClient({
+      connection: {
+        hostname: "smtp.hostinger.com",
+        port: 465,
+        tls: true,
+        auth: {
+          username: smtpUsername,
+          password: smtpPassword,
+        },
       },
-      body: JSON.stringify({
-        from: resendFromEmail,
-        to: LINDY_TRIGGER_EMAIL,
-        subject: LINDY_SUBJECT,
-        text: emailBody,
-      }),
     });
 
-    const respText = await resp.text();
-    console.log(`[lindy-star-watch] Resend response: ${resp.status} — ${respText.slice(0, 300)}`);
+    await client.send({
+      from: smtpUsername,
+      to: LINDY_TRIGGER_EMAIL,
+      subject: LINDY_SUBJECT,
+      content: emailBody,
+    });
 
-    if (!resp.ok) {
-      return new Response(
-        JSON.stringify({ error: "Resend dispatch failed", status: resp.status, detail: respText.slice(0, 300) }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+    await client.close();
+
+    console.log(`[lindy-star-watch] SMTP send successful`);
 
     // Log dispatch in outward_jobs for audit trail
     await sb.from("outward_jobs").insert({
@@ -148,7 +149,7 @@ Return as JSON with fields: listing_url, vehicle, current_status, current_price,
         job_id: jobId,
         vehicle: vehicleDesc,
         url: listingUrl,
-        message: `Watch dispatched via email for: ${vehicleDesc}`,
+        message: `Watch dispatched via SMTP for: ${vehicleDesc}`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
