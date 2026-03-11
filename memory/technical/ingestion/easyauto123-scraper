@@ -1,0 +1,32 @@
+# Memory: technical/ingestion/easyauto123-scraper
+Updated: 2026-03-11
+
+## EasyAuto123 Scraper — Status & Architecture
+
+### Current State: STUB ONLY — Edge Function Not Yet Created
+
+The UI references `easyauto-scrape` edge function (via `TrapCrawlPreviewDrawer` with `parserMode: 'easyauto_scrape'`), but **no such function exists** in `supabase/functions/`. Invoking it will 404.
+
+### What Exists:
+1. **Trap Registry Entry**: `easyauto123-national` registered in `auction_sources` (slug: `easyauto123-national`, URL: `https://www.easyauto123.com.au/used-cars`, parser_profile: `auto`, enabled: `true`)
+2. **`retail_source_listings` table**: Created with `source` defaulting to `'easyauto123'` — designed to hold raw scraped retail listings before normalization
+3. **UI wiring**: `TrapCrawlPreviewDrawer` routes `easyauto_scrape` parser mode to `supabase.functions.invoke('easyauto-scrape')` with `{ maxPages: 2 }`
+4. **Whitelisted domain**: `easyauto123.com.au` in `submit-dealer-urls` allowed domains list
+5. **Demand check inclusion**: `check-internal-demand` treats `easyauto123` as a dealer-site-class source
+
+### Site Characteristics:
+- **Operator**: AP Eagers (Australia's largest automotive retail group)
+- **Coverage**: National — vehicles across QLD, NSW, VIC, SA, WA
+- **URL pattern**: `https://www.easyauto123.com.au/used-cars` (main listing page)
+- **Pagination**: JS-rendered, likely React/Next.js SPA — requires Firecrawl or Manus for extraction
+- **Volume**: High — typically 500-1500+ vehicles nationally
+
+### Recommended Implementation Path:
+- Use Manus task (consistent with outward search migration) or Firecrawl scrape
+- Ingest to `retail_source_listings` → normalize via `listing-normalizer` → route to `retail_listings`
+- Edge function name must be `easyauto-scrape` to match existing UI wiring
+- Should accept `{ maxPages: number }` and return `{ totalFound, ingested, dropped, error }`
+
+### Related Memory:
+- `memory/logic/sourcing/mega-dealer-aggregator-strategy` — EasyAuto123 classified as high-priority mega-dealer
+- `memory/technical/ingestion/manus-api-hybrid-integration-v1` — Manus now handles outward search (preferred over Firecrawl for JS-heavy sites)
