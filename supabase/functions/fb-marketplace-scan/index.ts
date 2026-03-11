@@ -49,7 +49,16 @@ Deno.serve(async (req) => {
       startUrls: startUrls.map((u: string | { url: string }) =>
         typeof u === "string" ? { url: u } : u
       ),
-      maxItems: Math.min(limit, 250), // Hard cap to prevent OOM
+      maxItems: Math.min(limit, 250),
+      includeSeller: false,       // Skip seller detail pages to save memory
+      monitoringMode: true,       // Dedup across runs
+      minDelay: 5,
+      maxDelay: 10,
+      maxConcurrency: 5,          // Lower concurrency = less memory
+      proxyConfiguration: {
+        useApifyProxy: true,
+        apifyProxyGroups: ["RESIDENTIAL"],
+      },
     };
 
     console.log(`FB Marketplace scan: ${startUrls.length} URLs, limit=${Math.min(limit, 250)}`);

@@ -548,32 +548,50 @@ function mapUltimateCarItem(rawItem: Record<string, unknown>): MappedListing | n
 }
 
 // ─── FB MARKETPLACE MAPPER ─────────────────────────────────────
+// Actor: memo23/facebook-marketplace-cheerio
+// Key fields: id, listingUrl, marketplace_listing_title, listing_price,
+//   location.reverse_geocode, moreDetails.attribute_data[], primary_listing_photo
 function mapFbMarketplaceItem(rawItem: Record<string, unknown>): MappedListing | null {
   try {
     const item = rawItem;
 
-    const listingId = String(item.id || item.listing_id || item.marketplace_listing_id || "");
+    const listingId = String(item.id || "");
     if (!listingId) return null;
 
-    const title = ((item.title || item.name || "") as string).trim();
+    // Title: marketplace_listing_title or moreDetails.marketplace_listing_title
+    const moreDetails = (item.moreDetails || {}) as Record<string, unknown>;
+    const title = (
+      (item.marketplace_listing_title as string) ||
+      (moreDetails.marketplace_listing_title as string) ||
+      (moreDetails.base_marketplace_listing_title as string) ||
+      ""
+    ).trim();
 
-    // Year extraction from title (e.g. "2021 Toyota HiLux SR5")
+    // Extract vehicle attributes from moreDetails.attribute_data[]
+    const attrData = (moreDetails.attribute_data || []) as Array<Record<string, unknown>>;
+    const attrs: Record<string, string> = {};
+    for (const attr of attrData) {
+      const name = ((attr.attribute_name || "") as string).toLowerCase();
+      const label = ((attr.label || attr.value || "") as string);
+      if (name && label) attrs[name] = label;
+    }
+
+    // Year — from attributes or title
     let year = 0;
-    if (typeof item.year === "number") year = item.year;
-    else if (typeof item.year === "string") year = parseInt(item.year, 10) || 0;
+    if (attrs.year) year = parseInt(attrs.year, 10) || 0;
     if (!year) {
       const ym = title.match(/\b(20[0-2]\d)\b/);
       if (ym) year = parseInt(ym[1], 10);
     }
     if (!year || year < 2000) return null;
 
-    // Make/Model — FB often only has title, try structured fields first
-    let make = ((item.make || item.vehicle_make || "") as string).toUpperCase().trim();
-    let model = ((item.model || item.vehicle_model || "") as string).toUpperCase().trim();
+    // Make/Model — from attributes or title parse
+    let make = (attrs.make || attrs.manufacturer || "").toUpperCase().trim();
+    let model = (attrs.model || "").toUpperCase().trim();
 
-    // Fallback: parse from title "2021 Toyota HiLux SR5"
     if (!make || !model) {
-      const parts = title.replace(/^\d{4}\s+/, "").split(/\s+/);
+      const titleNoYear = title.replace(/^\d{4}\s+/, "").trim();
+      const parts = titleNoYear.split(/\s+/);
       if (parts.length >= 2) {
         if (!make) make = (parts[0] || "").toUpperCase();
         if (!model) model = (parts[1] || "").toUpperCase();
@@ -581,42 +599,81 @@ function mapFbMarketplaceItem(rawItem: Record<string, unknown>): MappedListing |
     }
     if (!make || !model) return null;
 
-    // Variant from remaining title parts
+    // Variant from remaining title
     const titleAfterMakeModel = title
       .replace(/^\d{4}\s+/i, "")
       .replace(new RegExp(`^${make}\\s+${model}\\s*`, "i"), "")
       .trim()
       .toUpperCase();
-    const variant = ((item.variant || item.trim || "") as string).toUpperCase().trim() || titleAfterMakeModel || undefined;
+    const variant = (attrs.trim || attrs.variant || "").toUpperCase().trim() || titleAfterMakeModel || undefined;
 
-    // Price
+    // Price — from listing_price object
     let price = 0;
-    if (typeof item.price === "number") price = item.price;
-    else if (typeof item.price === "string") {
-      const m = (item.price as string).replace(/[^0-9]/g, "");
-      if (m) price = parseInt(m, 10);
-    } else if (typeof item.price === "object" && item.price !== null) {
-      const p = item.price as Record<string, unknown>;
-      price = (p.amount || p.value || 0) as number;
+    const listingPrice = (item.listing_price || moreDetails.listing_price) as Record<string, unknown> | undefined;
+    if (listingPrice) {
+      const amt = listingPrice.amount;
+      if (typeof amt === "number") price = amt;
+      else if (typeof amt === "string") price = parseFloat(amt.replace(/[^0-9.]/g, "")) || 0;
+    }
+    // Fallback: flat price field
+    if (!price && typeof item.price === "number") price = item.price;
+    if (!price && typeof item.price === "string") {
+      price = parseInt((item.price as string).replace(/[^0-9]/g, ""), 10) || 0;
     }
     if (!price || price < 1000 || price > 500000) return null;
 
-    // KM
+    // KM — from attributes
     let km: number | undefined;
-    const rawKm = item.mileage || item.odometer || item.km || item.kilometres;
-    if (typeof rawKm === "number") km = rawKm;
-    else if (typeof rawKm === "string") {
-      const parsed = parseInt((rawKm as string).replace(/[^0-9]/g, ""), 10);
+    const rawKm = attrs.mileage || attrs.odometer || attrs.kilometres || attrs.km;
+    if (rawKm) {
+      const parsed = parseInt(rawKm.replace(/[^0-9]/g, ""), 10);
       if (parsed > 0) km = parsed;
     }
 
-    // Location
-    const location = ((item.location || item.city || item.suburb || "") as string).trim();
-    const state = ((item.state || "") as string).toUpperCase().trim();
+    // Location — from location.reverse_geocode
+    let suburb = "";
+    let state = "";
+    const loc = item.location as Record<string, unknown> | undefined;
+    if (loc) {
+      const rg = loc.reverse_geocode as Record<string, unknown> | undefined;
+      if (rg) {
+        state = ((rg.state || "") as string).toUpperCase().trim();
+        const cityPage = rg.city_page as Record<string, unknown> | undefined;
+        suburb = ((rg.city || cityPage?.display_name || "") as string).trim();
+      }
+    }
+    // Fallback from moreDetails.location_text
+    if (!suburb) {
+      suburb = ((moreDetails.location_text || "") as string).trim();
+    }
 
-    const url = (item.url || item.link || "") as string;
-    const imageUrl = (item.image || item.imageUrl || item.primary_photo_url || item.thumbnail || "") as string;
-    const seller = ((item.seller_name || item.seller || item.dealer || "") as string).trim();
+    // Map AU state codes (FB uses ISO like "AU-NSW")
+    if (state.startsWith("AU-")) state = state.replace("AU-", "");
+
+    // URL
+    const url = ((item.listingUrl || item.url || "") as string).trim()
+      || `https://www.facebook.com/marketplace/item/${listingId}/`;
+
+    // Image
+    let imageUrl = "";
+    const photo = item.primary_listing_photo as Record<string, unknown> | undefined;
+    if (photo) {
+      imageUrl = ((photo.photo_image_url || photo.uri || "") as string);
+    }
+    if (!imageUrl) {
+      const photos = moreDetails.listing_photos as Array<Record<string, unknown>> | undefined;
+      if (photos?.[0]) {
+        const img = photos[0].image as Record<string, unknown> | undefined;
+        imageUrl = ((img?.uri || "") as string);
+      }
+    }
+
+    // Sold check
+    const isSold = (item.is_sold || moreDetails.is_sold) as boolean;
+    if (isSold) return null;
+
+    // Transmission from attributes
+    const transmission = (attrs.transmission || "").toUpperCase().trim() || undefined;
 
     return {
       source_listing_id: `fbm-${listingId}`,
@@ -629,11 +686,11 @@ function mapFbMarketplaceItem(rawItem: Record<string, unknown>): MappedListing |
       price,
       km,
       state: state || undefined,
-      suburb: location || undefined,
-      url: url || undefined,
+      suburb: suburb || undefined,
+      url,
       image_url: imageUrl || undefined,
-      seller_type: seller ? "private" : undefined,
-      dealer: seller || undefined,
+      seller_type: "private",
+      transmission,
     };
   } catch { return null; }
 }

@@ -31,8 +31,8 @@ const AU_CITIES = [
 ];
 
 function buildFbMarketplaceUrl(citySlug: string): string {
-  // FB Marketplace vehicles category with location
-  return `https://www.facebook.com/marketplace/${citySlug}/vehicles/?sortBy=creation_time_descend&exact=false`;
+  // FB Marketplace vehicles search — sorted newest, AU radius, price filter for real cars
+  return `https://www.facebook.com/marketplace/${citySlug}/vehicles/?sortBy=creation_time_descend&minPrice=5000&maxPrice=150000&exact=false`;
 }
 
 Deno.serve(async (req) => {
