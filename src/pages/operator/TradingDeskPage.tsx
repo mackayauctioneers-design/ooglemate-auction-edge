@@ -604,7 +604,7 @@ export default function TradingDeskPage() {
                     <TableHead className="px-2">Vehicle</TableHead>
                     <TableHead className="w-[76px] text-right cursor-pointer px-2" onClick={() => handleSort('asking_price')}>Ask <SortIcon field="asking_price" /></TableHead>
                     <TableHead className="w-[110px] px-2">Best Fit</TableHead>
-                    <TableHead className="w-[80px] text-right cursor-pointer px-2" onClick={() => handleSort('best_expected_margin')}>Margin <SortIcon field="best_expected_margin" /></TableHead>
+                    <TableHead className="w-[85px] text-right cursor-pointer px-2" onClick={() => handleSort('best_under_buy')}>Under-Buy <SortIcon field="best_under_buy" /></TableHead>
                     <TableHead className="w-[85px] text-right cursor-pointer px-2" onClick={() => handleSort('best_under_buy')}>Under-Buy <SortIcon field="best_under_buy" /></TableHead>
                     <TableHead className="w-[90px] text-right px-2">Mkt Median</TableHead>
                     <TableHead className="w-[90px] cursor-pointer px-2" onClick={() => handleSort('auction_datetime')}>Auction <SortIcon field="auction_datetime" /></TableHead>
