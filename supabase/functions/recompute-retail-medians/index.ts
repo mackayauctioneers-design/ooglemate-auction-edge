@@ -17,9 +17,16 @@ Deno.serve(async (req) => {
   );
 
   try {
-    console.log("[recompute-retail-medians] Starting real comparable median recomputation...");
+    // Accept optional limit param (default 200 to stay within timeout)
+    let limit = 200;
+    try {
+      const body = await req.json();
+      if (body?.limit) limit = Math.min(body.limit, 500);
+    } catch { /* no body is fine */ }
 
-    // Fetch all active retail listings that have asking_price
+    console.log(`[recompute-retail-medians] Starting (limit=${limit})...`);
+
+    // Prioritise listings that still have badge_estimate or no market price
     const { data: listings, error: fetchErr } = await supabase
       .from("retail_listings")
       .select("id, make, model, year, km, asking_price")
@@ -28,12 +35,13 @@ Deno.serve(async (req) => {
       .not("make", "is", null)
       .not("model", "is", null)
       .not("year", "is", null)
+      .or("market_price_source.eq.badge_estimate,market_price_source.is.null")
       .order("asking_price", { ascending: true })
-      .limit(1000);
+      .limit(limit);
 
     if (fetchErr) throw fetchErr;
     if (!listings || listings.length === 0) {
-      return new Response(JSON.stringify({ success: true, processed: 0, message: "No listings to process" }), {
+      return new Response(JSON.stringify({ success: true, processed: 0, message: "No listings to recompute" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -42,82 +50,53 @@ Deno.serve(async (req) => {
 
     let updated = 0;
     let skipped = 0;
-    const batchSize = 50;
 
-    for (let i = 0; i < listings.length; i += batchSize) {
-      const batch = listings.slice(i, i + batchSize);
-
-      const updates = await Promise.all(
-        batch.map(async (l: any) => {
-          const { data: result, error: rpcErr } = await supabase.rpc(
-            "compute_comparable_median",
-            {
-              p_listing_id: l.id,
-              p_make: l.make,
-              p_model: l.model,
-              p_year: l.year,
-              p_km: l.km || null,
-              p_asking_price: l.asking_price,
-            },
-          );
-
-          if (rpcErr || !result || result.length === 0) {
-            return null;
-          }
-
-          const r = result[0];
-
-          // Skip if insufficient comps
-          if (r.confidence === "INSUFFICIENT" || !r.median_price || r.comp_count < 3) {
-            return null;
-          }
-
-          const medianPrice = Math.round(r.median_price);
-          const priceDiff = l.asking_price - medianPrice;
-          const priceDiffPct = parseFloat(((priceDiff / medianPrice) * 100).toFixed(2));
-
-          return {
-            id: l.id,
-            market_price: medianPrice,
-            price_difference: priceDiff,
-            price_difference_percent: priceDiffPct,
-            market_price_source: "comparable_median",
-            comp_count: r.comp_count,
-            market_confidence: r.confidence,
-          };
-        }),
+    // Process sequentially to avoid overloading DB
+    for (const l of listings as any[]) {
+      const { data: result, error: rpcErr } = await supabase.rpc(
+        "compute_comparable_median",
+        {
+          p_listing_id: l.id,
+          p_make: l.make,
+          p_model: l.model,
+          p_year: l.year,
+          p_km: l.km || null,
+          p_asking_price: l.asking_price,
+        },
       );
 
-      const validUpdates = updates.filter(Boolean);
-      skipped += batch.length - validUpdates.length;
-
-      // Batch upsert
-      for (const u of validUpdates) {
-        const { error: upErr } = await supabase
-          .from("retail_listings")
-          .update({
-            market_price: u!.market_price,
-            price_difference: u!.price_difference,
-            price_difference_percent: u!.price_difference_percent,
-            market_price_source: u!.market_price_source,
-            comp_count: u!.comp_count,
-            market_confidence: u!.market_confidence,
-          })
-          .eq("id", u!.id);
-
-        if (upErr) {
-          console.error(`[recompute-retail-medians] Update error for ${u!.id}:`, upErr);
-        } else {
-          updated++;
-        }
+      if (rpcErr || !result || result.length === 0 || result[0].confidence === "INSUFFICIENT" || !result[0].median_price || result[0].comp_count < 3) {
+        skipped++;
+        continue;
       }
 
-      console.log(`[recompute-retail-medians] Batch ${Math.floor(i / batchSize) + 1}: ${validUpdates.length} updated, ${batch.length - validUpdates.length} skipped`);
+      const r = result[0];
+      const medianPrice = Math.round(r.median_price);
+      const priceDiff = l.asking_price - medianPrice;
+      const priceDiffPct = parseFloat(((priceDiff / medianPrice) * 100).toFixed(2));
+
+      const { error: upErr } = await supabase
+        .from("retail_listings")
+        .update({
+          market_price: medianPrice,
+          price_difference: priceDiff,
+          price_difference_percent: priceDiffPct,
+          market_price_source: "comparable_median",
+          comp_count: r.comp_count,
+          market_confidence: r.confidence,
+        })
+        .eq("id", l.id);
+
+      if (upErr) {
+        console.error(`[recompute-retail-medians] Update error for ${l.id}:`, upErr);
+        skipped++;
+      } else {
+        updated++;
+      }
     }
 
     console.log(`[recompute-retail-medians] Done. Updated: ${updated}, Skipped: ${skipped}`);
 
-    // Audit log
     const today = new Date().toISOString().slice(0, 10);
     await supabase.from("cron_audit_log").upsert({
       cron_name: "recompute-retail-medians",
