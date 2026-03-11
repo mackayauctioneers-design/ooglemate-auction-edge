@@ -6195,6 +6195,7 @@ export type Database = {
           motivation_signal: string | null
           pass_count: number | null
           platform_class: string | null
+          pricing_guide: Json | null
           reminder_at: string | null
           retail_median: number | null
           retail_median_confidence: string | null
@@ -6249,6 +6250,7 @@ export type Database = {
           motivation_signal?: string | null
           pass_count?: number | null
           platform_class?: string | null
+          pricing_guide?: Json | null
           reminder_at?: string | null
           retail_median?: number | null
           retail_median_confidence?: string | null
@@ -6303,6 +6305,7 @@ export type Database = {
           motivation_signal?: string | null
           pass_count?: number | null
           platform_class?: string | null
+          pricing_guide?: Json | null
           reminder_at?: string | null
           retail_median?: number | null
           retail_median_confidence?: string | null
