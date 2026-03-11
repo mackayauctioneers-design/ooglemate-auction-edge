@@ -293,18 +293,23 @@ export default function TradingDeskPage() {
     // 1. Delete from vehicle_sales_truth
     const { error: delErr } = await supabase.from('vehicle_sales_truth').delete().eq('id', anchorSaleId);
     if (delErr) { toast.error(delErr.message); return; }
-    // 2. Clear anchor reference on the opportunity
+    // 2. Get current dismissed list
+    const { data: existing } = await supabase.from('operator_opportunities').select('dismissed_anchor_ids').eq('id', oppId).single();
+    const dismissed: string[] = (existing?.dismissed_anchor_ids as string[] || []);
+    if (!dismissed.includes(anchorSaleId)) dismissed.push(anchorSaleId);
+    // 3. Clear anchor reference + add to dismissed blocklist so it won't come back
     const { error: updErr } = await supabase.from('operator_opportunities').update({
       anchor_sale_id: null, anchor_sale_buy_price: null, anchor_sale_sell_price: null,
       anchor_sale_profit: null, anchor_sale_sold_at: null, anchor_sale_km: null,
-      anchor_sale_trim_class: null, updated_at: new Date().toISOString(),
+      anchor_sale_trim_class: null, dismissed_anchor_ids: dismissed,
+      updated_at: new Date().toISOString(),
     }).eq('id', oppId);
     if (updErr) { toast.error(updErr.message); return; }
     setOpportunities(prev => prev.map(o => o.id === oppId ? {
       ...o, anchor_sale_id: null, anchor_sale_buy_price: null, anchor_sale_sell_price: null,
       anchor_sale_profit: null, anchor_sale_sold_at: null, anchor_sale_km: null, anchor_sale_trim_class: null,
     } : o));
-    toast.success('Anchor sale deleted');
+    toast.success('Anchor sale deleted permanently');
   };
 
   const toggleRow = (id: string) => {

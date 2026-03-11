@@ -6181,6 +6181,7 @@ export type Database = {
           best_under_buy: number | null
           created_at: string
           days_listed: number | null
+          dismissed_anchor_ids: string[] | null
           drivetrain_bucket: string | null
           freshness: string | null
           id: string
@@ -6233,6 +6234,7 @@ export type Database = {
           best_under_buy?: number | null
           created_at?: string
           days_listed?: number | null
+          dismissed_anchor_ids?: string[] | null
           drivetrain_bucket?: string | null
           freshness?: string | null
           id?: string
@@ -6285,6 +6287,7 @@ export type Database = {
           best_under_buy?: number | null
           created_at?: string
           days_listed?: number | null
+          dismissed_anchor_ids?: string[] | null
           drivetrain_bucket?: string | null
           freshness?: string | null
           id?: string
