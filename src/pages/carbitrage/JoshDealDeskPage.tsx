@@ -331,13 +331,17 @@ export default function JoshDealDeskPage() {
         {/* Stats */}
         {stats && (
           <div className="grid grid-cols-4 gap-3">
-            {[
-              { label: "Detected", value: stats.detected, color: "text-foreground" },
-              { label: "Reviewed", value: stats.reviewed, color: "text-blue-500" },
-              { label: "Verified", value: stats.verified, color: "text-emerald-500" },
-              { label: "Rejected", value: stats.rejected, color: "text-destructive" },
-            ].map((s) => (
-              <Card key={s.label}>
+            {([
+              { label: "Detected", value: stats.detected, color: "text-foreground", filter: "ALL" as const },
+              { label: "Reviewed", value: stats.reviewed, color: "text-blue-500", filter: "ALL" as const },
+              { label: "Verified", value: stats.verified, color: "text-emerald-500", filter: "VERIFIED" as const },
+              { label: "Rejected", value: stats.rejected, color: "text-destructive", filter: "REJECTED" as const },
+            ] as const).map((s) => (
+              <Card
+                key={s.label}
+                className={`cursor-pointer transition-all hover:ring-2 hover:ring-primary/40 ${queueFilter === s.filter && s.filter !== "ALL" ? "ring-2 ring-primary" : ""}`}
+                onClick={() => setQueueFilter(s.filter)}
+              >
                 <CardContent className="p-4 text-center">
                   <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
                   <div className="text-xs text-muted-foreground">{s.label}</div>
