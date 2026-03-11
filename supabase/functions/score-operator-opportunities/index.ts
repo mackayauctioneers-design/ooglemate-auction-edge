@@ -436,7 +436,7 @@ Deno.serve(async (req) => {
       sb, "vehicle_listings",
       "id, listing_id, source, make, model, year, km, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, auction_datetime, last_seen_at",
       cutoff,
-      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING"]).in("source", AUCTION_SOURCES).or("asking_price.is.null,asking_price.eq.0"),
+      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).or("asking_price.is.null,asking_price.eq.0"),
       MAX_LISTINGS_PER_RUN,
     );
     results.fetched_priceless = pricelessListings.length;
