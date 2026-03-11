@@ -423,8 +423,14 @@ export default function JoshDealDeskPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {cars.map((car) => (
-                  <TableRow key={car.id} className="cursor-pointer hover:bg-accent/50" onClick={() => openReview(car)}>
+                {cars.map((car) => {
+                  const isWellBelow = car.price_badge?.toLowerCase().includes("well below");
+                  return (
+                  <TableRow
+                    key={car.id}
+                    className={`cursor-pointer hover:bg-accent/50 ${isWellBelow ? "bg-red-500/5 border-l-2 border-l-red-500" : ""}`}
+                    onClick={() => openReview(car)}
+                  >
                     <TableCell>
                       {car.deal_score != null ? (
                         <Badge
