@@ -322,10 +322,6 @@ export default function TradingDeskPage() {
     if (filterAccount !== 'all' && o.best_account_id !== filterAccount) return false;
     if (filterTier !== 'all' && o.tier !== filterTier) return false;
     if (filterSource !== 'all' && o.listing_source !== filterSource) return false;
-    if (filterMinMargin) {
-      const min = Number(filterMinMargin);
-      if (!isNaN(min) && (o.best_expected_margin || 0) < min) return false;
-    }
     if (filterDealerSearch) {
       const q = filterDealerSearch.toLowerCase();
       const nameMatch = o.best_account_name?.toLowerCase().includes(q);
