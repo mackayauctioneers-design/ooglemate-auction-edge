@@ -1,4 +1,10 @@
 # Memory: strategy/ingestion/carsales-market-sweep-strategy
 Updated: now
 
-The Carsales ingestion strategy uses a 'Broad Market Sweep' (all makes, 2020+, <120k km) segmented by Australian state (NSW, VIC, QLD, WA, SA, TAS, ACT, NT). No make/model filtering at the actor level — everything gets ingested and sorted/scored downstream. Uses the 'memo23/carsales-cheerio' Apify actor with proper Carsales filter syntax: (And.Year.range(2020..)._.Odometer.range(..120000)._.State.X). One Apify run per sweep covering all 8 states.
+The Carsales ingestion now follows a two-tier architecture to prevent Apify actor OOM crashes:
+
+**Tier 1 — Shallow Sweep (every 2h):** `carsales-scan-cron` scans all 8 AU states with 200 items per state (down from 500), sorted by ~DateAdded. This catches fresh inventory entering the market. ~1,200-1,600 listings per cycle. The `carsales-scan` actor cap is hard-limited to 250 maxItems to stay within actor memory.
+
+**Tier 2 — Deep Market Pricing (once daily):** `carsales-deep-scan-cron` scrapes 25 specific make/model buckets (HiLux, Ranger, Prado, RAV4, etc.) with 150 items per bucket, sorted by ~Price (ascending). This builds the true comparable dataset for median-based market delta calculations. ~3,750 listings per daily run.
+
+Both tiers use the 'memo23/carsales-cheerio' Apify actor with Carsales filter syntax: (And.Make.X._.Model.Y._.Year.range(2020..)._.Odometer.range(..120000)). The deep scan staggers 8s between buckets to avoid Apify contention.

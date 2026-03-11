@@ -6,11 +6,12 @@ const corsHeaders = {
 };
 
 /**
- * carsales-scan-cron v3.0 — Full depth restored
+ * carsales-scan-cron v4.0 — OOM-safe shallow sweep
  *
- * Scans all 8 AU states with 500 items per state.
- * Sort by ~DateAdded (newest first) for freshness.
- * Target: ~3,000–6,000 listings per cycle.
+ * Scans all 8 AU states with 200 items per state (down from 500).
+ * Reduced depth prevents Apify actor OOM crashes.
+ * Sort by ~DateAdded (newest first) to catch fresh inventory.
+ * Target: ~1,200–1,600 listings per cycle.
  * Schedule: every 2 hours.
  */
 
@@ -19,7 +20,7 @@ const KM_MAX = 120000;
 
 const ALL_STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
 
-const ITEMS_PER_STATE = 500;
+const ITEMS_PER_STATE = 200;
 
 function buildNewestUrl(state: string): string {
   const q = `(And.Year.range(${YEAR_MIN}..)._.Odometer.range(..${KM_MAX})._.State.${state})`;
