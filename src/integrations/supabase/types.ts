@@ -6204,6 +6204,7 @@ export type Database = {
           retail_vs_ask_pct: number | null
           source_url: string | null
           status: string
+          suppress_anchor: boolean
           tier: string
           trim_class: string | null
           updated_at: string
@@ -6257,6 +6258,7 @@ export type Database = {
           retail_vs_ask_pct?: number | null
           source_url?: string | null
           status?: string
+          suppress_anchor?: boolean
           tier?: string
           trim_class?: string | null
           updated_at?: string
@@ -6310,6 +6312,7 @@ export type Database = {
           retail_vs_ask_pct?: number | null
           source_url?: string | null
           status?: string
+          suppress_anchor?: boolean
           tier?: string
           trim_class?: string | null
           updated_at?: string
