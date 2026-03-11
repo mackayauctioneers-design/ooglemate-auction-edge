@@ -513,8 +513,6 @@ export default function TradingDeskPage() {
           })}
         </div>
 
-        {/* Ask Bob Panel */}
-        <AskBobPanel accountId={filterAccount === 'all' ? accounts[0]?.id || '' : filterAccount} />
 
         {/* Filters */}
         <div className="flex flex-wrap gap-2 items-end">
