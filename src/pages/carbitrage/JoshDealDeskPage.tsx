@@ -81,6 +81,7 @@ export default function JoshDealDeskPage() {
   const queryClient = useQueryClient();
   const [reviewCar, setReviewCar] = useState<CheapCar | null>(null);
   const [manualUrl, setManualUrl] = useState("");
+  const [queueFilter, setQueueFilter] = useState<"NEW" | "VERIFIED" | "REJECTED" | "ALL">("NEW");
 
   // Review form state
   const [variantOk, setVariantOk] = useState(true);
@@ -95,20 +96,29 @@ export default function JoshDealDeskPage() {
   const [notes, setNotes] = useState("");
 
   const { data: cars, isLoading } = useQuery({
-    queryKey: ["cheap-car-queue"],
+    queryKey: ["cheap-car-queue", queueFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("cheap_car_queue")
         .select("*")
-        .eq("status", "NEW")
-        .eq("josh_verified", false)
         .order("deal_score", { ascending: false, nullsFirst: false })
         .order("discount_pct", { ascending: true })
         .limit(50);
+
+      if (queueFilter === "NEW") {
+        q = q.eq("status", "NEW").eq("josh_verified", false);
+      } else if (queueFilter === "VERIFIED") {
+        q = q.eq("status", "VERIFIED");
+      } else if (queueFilter === "REJECTED") {
+        q = q.eq("status", "REJECTED");
+      }
+      // ALL → no status filter
+
+      const { data, error } = await q;
       if (error) throw error;
       return data as CheapCar[];
     },
-    refetchInterval: 30_000,
+    refetchInterval: queueFilter === "NEW" ? 30_000 : false,
   });
 
   const { data: stats } = useQuery({
@@ -321,13 +331,17 @@ export default function JoshDealDeskPage() {
         {/* Stats */}
         {stats && (
           <div className="grid grid-cols-4 gap-3">
-            {[
-              { label: "Detected", value: stats.detected, color: "text-foreground" },
-              { label: "Reviewed", value: stats.reviewed, color: "text-blue-500" },
-              { label: "Verified", value: stats.verified, color: "text-emerald-500" },
-              { label: "Rejected", value: stats.rejected, color: "text-destructive" },
-            ].map((s) => (
-              <Card key={s.label}>
+            {([
+              { label: "Detected", value: stats.detected, color: "text-foreground", filter: "ALL" as const },
+              { label: "Reviewed", value: stats.reviewed, color: "text-blue-500", filter: "ALL" as const },
+              { label: "Verified", value: stats.verified, color: "text-emerald-500", filter: "VERIFIED" as const },
+              { label: "Rejected", value: stats.rejected, color: "text-destructive", filter: "REJECTED" as const },
+            ] as const).map((s) => (
+              <Card
+                key={s.label}
+                className={`cursor-pointer transition-all hover:ring-2 hover:ring-primary/40 ${queueFilter === s.filter && s.filter !== "ALL" ? "ring-2 ring-primary" : ""}`}
+                onClick={() => setQueueFilter(s.filter)}
+              >
                 <CardContent className="p-4 text-center">
                   <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
                   <div className="text-xs text-muted-foreground">{s.label}</div>
