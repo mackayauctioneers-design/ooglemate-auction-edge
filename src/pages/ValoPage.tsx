@@ -838,7 +838,8 @@ export default function ValoPage() {
                   <BarChart3 className="h-4 w-4" /> Gross Band
                 </div>
                 <div className={`text-lg font-semibold ${
-                  result.expected_gross_band && result.expected_gross_band.min > 0 ? 'text-green-600' : ''
+                  result.expected_gross_band && result.expected_gross_band.min > 0 ? 'text-green-600' :
+                  result.expected_gross_band && result.expected_gross_band.max < 0 ? 'text-destructive' : ''
                 }`}>
                   {result.expected_gross_band
                     ? `${formatCurrency(result.expected_gross_band.min)} – ${formatCurrency(result.expected_gross_band.max)}`
