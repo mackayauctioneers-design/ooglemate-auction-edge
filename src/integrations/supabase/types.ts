@@ -13480,6 +13480,23 @@ export type Database = {
           stub_anchor_id: string
         }[]
       }
+      compute_comparable_median: {
+        Args: {
+          p_asking_price: number
+          p_km: number
+          p_listing_id: string
+          p_make: string
+          p_model: string
+          p_year: number
+        }
+        Returns: {
+          comp_count: number
+          confidence: string
+          median_price: number
+          p25_price: number
+          p75_price: number
+        }[]
+      }
       compute_deal_score: {
         Args: {
           p_detected_at: string
