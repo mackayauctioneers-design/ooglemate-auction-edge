@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
       listing.year,
       listing.make,
       listing.model,
-      listing.variant,
+      listing.variant_used,
     ].filter(Boolean).join(" ");
 
     const prompt = `Set up a WATCH ALERT for this vehicle listing:
