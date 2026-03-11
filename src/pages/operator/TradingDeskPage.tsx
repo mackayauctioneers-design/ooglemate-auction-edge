@@ -688,10 +688,6 @@ export default function TradingDeskPage() {
                                 )}
                               </div>
                             </TableCell>
-                            {/* Margin */}
-                            <TableCell className="text-right px-2">
-                              <span className="font-mono font-semibold text-sm text-primary">{fmt(opp.best_expected_margin)}</span>
-                            </TableCell>
                             {/* Under-Buy */}
                             <TableCell className="text-right px-2">
                               <span className={`font-mono text-sm ${(opp.best_under_buy || 0) >= 1500 ? 'text-primary' : 'text-muted-foreground'}`}>
