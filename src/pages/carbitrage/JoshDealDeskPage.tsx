@@ -96,20 +96,29 @@ export default function JoshDealDeskPage() {
   const [notes, setNotes] = useState("");
 
   const { data: cars, isLoading } = useQuery({
-    queryKey: ["cheap-car-queue"],
+    queryKey: ["cheap-car-queue", queueFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("cheap_car_queue")
         .select("*")
-        .eq("status", "NEW")
-        .eq("josh_verified", false)
         .order("deal_score", { ascending: false, nullsFirst: false })
         .order("discount_pct", { ascending: true })
         .limit(50);
+
+      if (queueFilter === "NEW") {
+        q = q.eq("status", "NEW").eq("josh_verified", false);
+      } else if (queueFilter === "VERIFIED") {
+        q = q.eq("status", "VERIFIED");
+      } else if (queueFilter === "REJECTED") {
+        q = q.eq("status", "REJECTED");
+      }
+      // ALL → no status filter
+
+      const { data, error } = await q;
       if (error) throw error;
       return data as CheapCar[];
     },
-    refetchInterval: 30_000,
+    refetchInterval: queueFilter === "NEW" ? 30_000 : false,
   });
 
   const { data: stats } = useQuery({
