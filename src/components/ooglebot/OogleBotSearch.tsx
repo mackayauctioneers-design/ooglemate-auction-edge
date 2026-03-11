@@ -605,7 +605,7 @@ export function OogleBotSearch() {
           dealer_name: null,
           url: r.listing_url,
           badge: r.variant_family || null,
-          source: r.source_key || "lindy",
+          source: r.source_key || "caroogleai",
           colour: null,
           stock_no: null,
         }));
