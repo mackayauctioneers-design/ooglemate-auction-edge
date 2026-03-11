@@ -467,6 +467,7 @@ export default function JoshDealDeskPage() {
                           {car.price_badge}
                         </Badge>
                       )}
+                    </TableCell>
                     <TableCell className="font-mono">{fmtPrice(car.price)}</TableCell>
                     <TableCell className="font-mono text-muted-foreground">{fmtPrice(car.market_price)}</TableCell>
                     <TableCell>{fmtKm(car.km)}</TableCell>
