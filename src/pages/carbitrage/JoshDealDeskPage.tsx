@@ -242,6 +242,8 @@ export default function JoshDealDeskPage() {
         } catch (e) {
           console.error("Alert send failed:", e);
         }
+        }
+        }
       }
     },
     onSuccess: () => {
