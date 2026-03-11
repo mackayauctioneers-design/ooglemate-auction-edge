@@ -757,7 +757,7 @@ export function OogleBotSearch() {
         });
       }
 
-      // If Lindy jobs were dispatched, start polling
+      // If CaroogleAI jobs were dispatched, start polling
       if (data?.search_run_id && data?.outward_jobs?.length > 0) {
         const dispatchedJobs = data.outward_jobs.filter((j: any) => !TERMINAL_STATUSES.has(j.status));
         if (dispatchedJobs.length > 0) {
