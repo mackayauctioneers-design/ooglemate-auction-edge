@@ -426,7 +426,7 @@ Deno.serve(async (req) => {
 
     const { error: insertErr } = await sb
       .from("outward_search_results")
-      .upsert(rows, { onConflict: "listing_url", ignoreDuplicates: true });
+      .upsert(rows, { onConflict: "listing_url,job_id", ignoreDuplicates: true });
 
     if (insertErr) {
       console.error("[lindy-webhook] Insert error:", insertErr);
