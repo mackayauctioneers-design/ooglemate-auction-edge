@@ -222,27 +222,26 @@ export default function JoshDealDeskPage() {
             motivation_signal: `Josh verified (score ${joshScore}/5)${isWellBelowMarket ? " · Well Below Market" : ""}`,
           }, { onConflict: "listing_id" });
 
-        try {
-          await supabase.functions.invoke("josh-deal-alert", {
-            body: {
-              year: car.year,
-              make: car.make,
-              model: car.model,
-              variant: car.variant,
-              price: car.price,
-              market_price: car.market_price,
-              discount_pct: car.discount_pct,
-              km: car.km,
-              location: car.location,
-              seller_type: updates.seller_type || car.seller_type,
-              score: updates.josh_score,
-              listing_url: car.listing_url,
-            },
-          });
-        } catch (e) {
-          console.error("Alert send failed:", e);
-        }
-        }
+          try {
+            await supabase.functions.invoke("josh-deal-alert", {
+              body: {
+                year: car.year,
+                make: car.make,
+                model: car.model,
+                variant: car.variant,
+                price: car.price,
+                market_price: car.market_price,
+                discount_pct: car.discount_pct,
+                km: car.km,
+                location: car.location,
+                seller_type: updates.seller_type || car.seller_type,
+                score: updates.josh_score,
+                listing_url: car.listing_url,
+              },
+            });
+          } catch (e) {
+            console.error("Alert send failed:", e);
+          }
         }
       }
     },
