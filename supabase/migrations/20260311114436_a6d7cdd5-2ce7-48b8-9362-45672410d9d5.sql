@@ -1,0 +1,1 @@
+ALTER TABLE public.vehicle_listings ADD COLUMN IF NOT EXISTS image_url text;
