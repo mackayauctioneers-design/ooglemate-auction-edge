@@ -262,15 +262,25 @@ export default function TradingDeskPage() {
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, ...update } : o));
   };
 
-  const toggleStar = async (id: string, current: boolean) => {
+  const toggleStar = async (id: string, current: boolean, listingId?: string) => {
     const newVal = !current;
     const { error } = await supabase.from('operator_opportunities').update({ is_starred: newVal, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) { toast.error(error.message); return; }
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, is_starred: newVal } : o));
     toast.success(newVal ? 'Added to watchlist ⭐' : 'Removed from watchlist');
+
+    // Dispatch star-watch when starring ON
+    if (newVal && listingId) {
+      supabase.functions.invoke('lindy-star-watch', {
+        body: { listing_id: listingId },
+      }).then(({ error: watchErr }) => {
+        if (watchErr) console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
+        else console.log('Star-watch dispatched for', listingId);
+      });
+    }
   };
 
-  const setReminder = async (id: string, auctionDatetime: string | null) => {
+  const setReminder = async (id: string, auctionDatetime: string | null, listingId?: string) => {
     if (!auctionDatetime) { toast.error('No auction date set'); return; }
     // Set reminder 1 hour before auction
     const auctionDt = new Date(auctionDatetime);
@@ -279,6 +289,15 @@ export default function TradingDeskPage() {
     if (error) { toast.error(error.message); return; }
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, reminder_at: reminderDt.toISOString(), is_starred: true } : o));
     toast.success(`Reminder set for ${format(reminderDt, 'd MMM h:mm a')}`);
+
+    // Also dispatch star-watch for reminder (implies starring)
+    if (listingId) {
+      supabase.functions.invoke('lindy-star-watch', {
+        body: { listing_id: listingId },
+      }).then(({ error: watchErr }) => {
+        if (watchErr) console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
+      });
+    }
   };
 
   const clearReminder = async (id: string) => {
@@ -632,7 +651,7 @@ export default function TradingDeskPage() {
                                 variant="ghost"
                                 size="sm"
                                 className="h-6 w-6 p-0"
-                                onClick={() => toggleStar(opp.id, opp.is_starred)}
+                                onClick={() => toggleStar(opp.id, opp.is_starred, opp.listing_id)}
                               >
                                 <Star className={`h-3.5 w-3.5 transition-colors ${opp.is_starred ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'}`} />
                               </Button>
@@ -728,7 +747,7 @@ export default function TradingDeskPage() {
                                     </button>
                                   ) : (
                                     <button
-                                      onClick={() => setReminder(opp.id, opp.auction_datetime)}
+                                      onClick={() => setReminder(opp.id, opp.auction_datetime, opp.listing_id)}
                                       className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary transition-colors"
                                     >
                                       <BellOff className="h-3 w-3" />

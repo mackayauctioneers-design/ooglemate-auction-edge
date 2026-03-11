@@ -357,7 +357,16 @@ function DrawerListingCard({ listing, accountId }: { listing: ScoredListing; acc
       originating_insight: `Drill-down listing: ${listing.year} ${listing.make} ${listing.model}`,
     });
     if (error) { toast.error("Failed to save"); console.error(error); }
-    else { setSaved(true); toast.success("Added to watchlist"); }
+    else {
+      setSaved(true);
+      toast.success("Added to watchlist");
+      // Dispatch star-watch
+      supabase.functions.invoke('lindy-star-watch', {
+        body: { listing_id: listing.id },
+      }).then(({ error: watchErr }) => {
+        if (watchErr) console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
+      });
+    }
   };
 
   return (
