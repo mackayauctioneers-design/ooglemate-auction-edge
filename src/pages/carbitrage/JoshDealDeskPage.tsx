@@ -81,6 +81,7 @@ export default function JoshDealDeskPage() {
   const queryClient = useQueryClient();
   const [reviewCar, setReviewCar] = useState<CheapCar | null>(null);
   const [manualUrl, setManualUrl] = useState("");
+  const [queueFilter, setQueueFilter] = useState<"NEW" | "VERIFIED" | "REJECTED" | "ALL">("NEW");
 
   // Review form state
   const [variantOk, setVariantOk] = useState(true);
