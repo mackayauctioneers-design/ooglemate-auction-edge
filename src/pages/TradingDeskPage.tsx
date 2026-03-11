@@ -18,7 +18,6 @@ import {
   AlertTriangle, ChevronDown, ChevronUp, DollarSign, Download,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AskBobPanel } from "@/components/operator/AskBobPanel";
 
 interface Opportunity {
   id: string;
