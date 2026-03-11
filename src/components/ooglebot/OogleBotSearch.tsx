@@ -492,7 +492,7 @@ export function OogleBotSearch() {
   const prevOutwardCountRef = useRef(0);
   const [jobStatuses, setJobStatuses] = useState<Array<{ source_key: string; status: string; result_count: number }>>([]);
 
-  // ── Gemini Market Insight (auto, top 3 only) ──
+  // ── CaroogleAI Market Insight (auto, top 3 only) ──
   const [insightText, setInsightText] = useState<string | null>(null);
   const [insightLoading, setInsightLoading] = useState(false);
   const insightFiredRef = useRef<string | null>(null); // track which search triggered insight
@@ -511,7 +511,7 @@ export function OogleBotSearch() {
     return () => clearInterval(interval);
   }, [outwardPending]);
 
-  // ── Auto-fire Gemini insight when top 3 have listing age data ──
+  // ── Auto-fire CaroogleAI insight when top 3 have listing age data ──
   useEffect(() => {
     if (marketResults.length < 3) return;
     const top3 = marketResults.slice(0, 3);
@@ -547,13 +547,13 @@ export function OogleBotSearch() {
       },
     }).then(({ data, error }) => {
       if (error) {
-        console.error("Gemini insight error:", error);
+        console.error("CaroogleAI insight error:", error);
         setInsightText(null);
       } else {
         setInsightText(data?.insight || null);
       }
     }).catch((err) => {
-      console.error("Gemini insight error:", err);
+      console.error("CaroogleAI insight error:", err);
       setInsightText(null);
     }).finally(() => {
       setInsightLoading(false);
@@ -605,7 +605,7 @@ export function OogleBotSearch() {
           dealer_name: null,
           url: r.listing_url,
           badge: r.variant_family || null,
-          source: r.source_key || "lindy",
+          source: r.source_key || "caroogleai",
           colour: null,
           stock_no: null,
         }));
@@ -757,7 +757,7 @@ export function OogleBotSearch() {
         });
       }
 
-      // If Lindy jobs were dispatched, start polling
+      // If CaroogleAI jobs were dispatched, start polling
       if (data?.search_run_id && data?.outward_jobs?.length > 0) {
         const dispatchedJobs = data.outward_jobs.filter((j: any) => !TERMINAL_STATUSES.has(j.status));
         if (dispatchedJobs.length > 0) {
@@ -1247,7 +1247,7 @@ export function OogleBotSearch() {
                   </div>
                 </div>
 
-                {/* Gemini insight */}
+                {/* CaroogleAI insight */}
                 {insightLoading && (
                   <div className="space-y-1.5 pt-2 border-t border-border">
                     <p className="text-xs text-muted-foreground animate-pulse">Analysing market structure…</p>
