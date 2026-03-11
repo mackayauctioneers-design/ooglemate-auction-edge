@@ -272,7 +272,7 @@ export default function ArchitectureOverviewPage() {
             <li><strong>Frontend</strong> — React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui, TanStack Query, Recharts</li>
             <li><strong>Backend</strong> — Supabase (PostgreSQL, Edge Functions via Deno, RLS, RPC)</li>
             <li><strong>Scraping</strong> — Firecrawl (structured extraction with JSON schemas), direct HTML parsing</li>
-            <li><strong>AI</strong> — Gemini/GPT via Lovable AI integration for Bob reasoning layer</li>
+            <li><strong>AI</strong> — CaroogleAI (multi-model reasoning layer for discovery, valuation, and market insight)</li>
             <li><strong>Notifications</strong> — Slack webhooks for real-time alerts</li>
             <li><strong>Job Queue</strong> — Custom CrossSafe engine (PostgreSQL-based, FOR UPDATE SKIP LOCKED)</li>
           </ul>

@@ -75,15 +75,15 @@ export function useTrapWatchlist(listingId: string | null) {
     } else {
       setIsWatching(newValue);
       
-      // Dispatch to Lindy when starring ON (not when un-starring)
+      // Dispatch CaroogleAI watch when starring ON (not when un-starring)
       if (newValue) {
         supabase.functions.invoke('lindy-star-watch', {
           body: { listing_id: listingId },
-        }).then(({ error: lindyErr }) => {
-          if (lindyErr) {
-            console.warn('Lindy star-watch dispatch failed (non-blocking):', lindyErr);
+        }).then(({ error: watchErr }) => {
+          if (watchErr) {
+            console.warn('CaroogleAI star-watch dispatch failed (non-blocking):', watchErr);
           } else {
-            console.log('Lindy star-watch dispatched for', listingId);
+            console.log('CaroogleAI star-watch dispatched for', listingId);
           }
         });
       }

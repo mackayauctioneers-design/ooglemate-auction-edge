@@ -1247,7 +1247,7 @@ export function OogleBotSearch() {
                   </div>
                 </div>
 
-                {/* Gemini insight */}
+                {/* CaroogleAI insight */}
                 {insightLoading && (
                   <div className="space-y-1.5 pt-2 border-t border-border">
                     <p className="text-xs text-muted-foreground animate-pulse">Analysing market structure…</p>

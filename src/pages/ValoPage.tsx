@@ -128,7 +128,7 @@ export default function ValoPage() {
   const [showDebug, setShowDebug] = useState(false);
   const [expandedComp, setExpandedComp] = useState<number | null>(null);
 
-  // Market Commentary (lazy Gemini layer)
+  // Market Commentary (lazy CaroogleAI layer)
   const [commentaryOpen, setCommentaryOpen] = useState(false);
   const [commentaryText, setCommentaryText] = useState<string | null>(null);
   const [commentaryLoading, setCommentaryLoading] = useState(false);
