@@ -242,7 +242,7 @@ export default function ValoPage() {
       setValoPhase('Searching internal database…');
       
       // Simulate phase progression with timers since backend is a single call
-      const phaseTimer1 = setTimeout(() => setValoPhase('Running AI market discovery (Perplexity + Gemini)…'), 3000);
+      const phaseTimer1 = setTimeout(() => setValoPhase('Running CaroogleAI market discovery…'), 3000);
       const phaseTimer2 = setTimeout(() => setValoPhase('Running outward market search…'), 12000);
       const phaseTimer3 = setTimeout(() => setValoPhase('Scoring comparables & computing valuation…'), 22000);
 
