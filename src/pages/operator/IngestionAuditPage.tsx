@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, CheckCircle, Clock, Database, Zap, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle, Clock, Database, Zap, RefreshCw, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -27,9 +27,18 @@ interface CreditRow {
   avg_per_call: number;
 }
 
+interface HeartbeatRow {
+  cron_name: string;
+  last_seen_at: string;
+  last_ok: boolean;
+  note: string | null;
+  states_failed: number | null;
+}
+
 export default function IngestionAuditPage() {
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [credits, setCredits] = useState<CreditRow[]>([]);
+  const [heartbeats, setHeartbeats] = useState<HeartbeatRow[]>([]);
   const [totals, setTotals] = useState({ total: 0, active: 0, added_24h: 0, updated_24h: 0, older_30d: 0, credits_7d: 0 });
   const [loading, setLoading] = useState(true);
 
@@ -40,9 +49,18 @@ export default function IngestionAuditPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // Fetch heartbeats in parallel with source data
+      const heartbeatPromise = supabase
+        .from("cron_heartbeat")
+        .select("cron_name, last_seen_at, last_ok, note, states_failed")
+        .order("last_seen_at", { ascending: false });
+
       // Server-side aggregation — no row limit issues
       const { data: raw, error } = await supabase.rpc("rpc_ingestion_audit_sources" as any);
       
+      const { data: hbData } = await heartbeatPromise;
+      if (hbData) setHeartbeats(hbData as HeartbeatRow[]);
+
       if (error || !raw) {
         console.error("RPC failed, falling back:", error);
         await fetchFallback();
@@ -99,7 +117,6 @@ export default function IngestionAuditPage() {
   };
 
   const fetchFallback = async () => {
-    // Pull from both vehicle_listings and retail_listings
     const [{ data: vlData }, { data: rlData }] = await Promise.all([
       supabase
         .from("vehicle_listings")
@@ -170,11 +187,11 @@ export default function IngestionAuditPage() {
       credits_7d: 0,
     });
 
-    // Firecrawl credit log
+    const now2 = Date.now();
     const { data: creditData } = await supabase
       .from("firecrawl_credit_log")
       .select("function_name, estimated_credits, created_at")
-      .gte("created_at", new Date(now - 7 * day).toISOString());
+      .gte("created_at", new Date(now2 - 7 * 86400000).toISOString());
 
     if (creditData) {
       const byFn: Record<string, { total: number; calls: number }> = {};
@@ -212,6 +229,22 @@ export default function IngestionAuditPage() {
     return <Badge variant="destructive">Dead</Badge>;
   };
 
+  const heartbeatStatusBadge = (hb: HeartbeatRow) => {
+    const hours = (Date.now() - new Date(hb.last_seen_at).getTime()) / 3600000;
+    if (!hb.last_ok) return <Badge variant="destructive">Failed</Badge>;
+    if (hours > 24) return <Badge variant="destructive">Dead</Badge>;
+    if (hours > 6) return <Badge className="bg-orange-500 text-white">Stale</Badge>;
+    return <Badge className="bg-green-600 text-white">OK</Badge>;
+  };
+
+  // Categorize heartbeats for readability
+  const ingestionHeartbeats = heartbeats.filter(h =>
+    /carsales|autotrader|gumtree|pickles|toyota|manheim|slattery|fb-marketplace|ultimate-car|f3-crawl|auto-auctions|caroogle/.test(h.cron_name)
+  );
+  const otherHeartbeats = heartbeats.filter(h =>
+    !/carsales|autotrader|gumtree|pickles|toyota|manheim|slattery|fb-marketplace|ultimate-car|f3-crawl|auto-auctions|caroogle/.test(h.cron_name)
+  );
+
   return (
     <OperatorLayout>
       <div className="space-y-6 p-4 md:p-6">
@@ -235,6 +268,59 @@ export default function IngestionAuditPage() {
           <SummaryCard icon={AlertTriangle} label="Stale (14d+)" value={totals.older_30d} loading={loading} color="text-red-500" />
           <SummaryCard icon={Zap} label="Credits 7d" value={totals.credits_7d} loading={loading} color="text-amber-500" />
         </div>
+
+        {/* ── PIPELINE HEARTBEATS ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Activity className="h-5 w-5" />
+              Pipeline Heartbeats
+            </CardTitle>
+            <CardDescription>Real-time health of all ingestion pipelines</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+            ) : ingestionHeartbeats.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No heartbeat data available.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Pipeline</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Last Beat</TableHead>
+                    <TableHead>Failures</TableHead>
+                    <TableHead className="max-w-xs">Note</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ingestionHeartbeats.map(hb => (
+                    <TableRow key={hb.cron_name}>
+                      <TableCell className="font-mono text-xs">{hb.cron_name}</TableCell>
+                      <TableCell>{heartbeatStatusBadge(hb)}</TableCell>
+                      <TableCell className="text-xs">
+                        <span title={format(new Date(hb.last_seen_at), "PPpp")}>
+                          {formatDistanceToNow(new Date(hb.last_seen_at), { addSuffix: true })}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {hb.states_failed ? (
+                          <span className="text-red-500 font-semibold">{hb.states_failed}</span>
+                        ) : (
+                          <span className="text-muted-foreground">0</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-xs truncate" title={hb.note || ""}>
+                        {hb.note ? (hb.note.length > 80 ? hb.note.slice(0, 80) + "…" : hb.note) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
 
         {/* ── PER-SOURCE TABLE ── */}
         <Card>
@@ -264,8 +350,8 @@ export default function IngestionAuditPage() {
                   {sources.map(s => (
                     <TableRow key={s.source}>
                       <TableCell className="font-mono text-xs">{s.source}</TableCell>
-                      <TableCell className="text-right">{s.total}</TableCell>
-                      <TableCell className="text-right">{s.active}</TableCell>
+                      <TableCell className="text-right">{s.total.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">{s.active.toLocaleString()}</TableCell>
                       <TableCell className="text-right">{s.added_24h}</TableCell>
                       <TableCell className="text-right">{s.updated_24h}</TableCell>
                       <TableCell className="text-right">{s.older_30d}</TableCell>
@@ -287,6 +373,44 @@ export default function IngestionAuditPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* ── OTHER HEARTBEATS ── */}
+        {otherHeartbeats.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Other Pipeline Heartbeats</CardTitle>
+              <CardDescription>Scoring, enrichment, and maintenance jobs</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Job</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Last Beat</TableHead>
+                    <TableHead className="max-w-xs">Note</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {otherHeartbeats.map(hb => (
+                    <TableRow key={hb.cron_name}>
+                      <TableCell className="font-mono text-xs">{hb.cron_name}</TableCell>
+                      <TableCell>{heartbeatStatusBadge(hb)}</TableCell>
+                      <TableCell className="text-xs">
+                        <span title={format(new Date(hb.last_seen_at), "PPpp")}>
+                          {formatDistanceToNow(new Date(hb.last_seen_at), { addSuffix: true })}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-xs truncate" title={hb.note || ""}>
+                        {hb.note ? (hb.note.length > 80 ? hb.note.slice(0, 80) + "…" : hb.note) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── FIRECRAWL CREDIT USAGE ── */}
         <Card>
