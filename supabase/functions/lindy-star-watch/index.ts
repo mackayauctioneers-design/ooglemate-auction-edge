@@ -145,10 +145,13 @@ Return your findings as JSON:
     // Log dispatch in outward_jobs for audit trail
     await sb.from("outward_jobs").insert({
       id: jobId,
+      search_run_id: jobId,
       source_key: "star_watch",
       search_url: listingUrl,
       status: "dispatched",
       dispatched_at: new Date().toISOString(),
+    }).then(({ error: insErr }) => {
+      if (insErr) console.warn("[lindy-star-watch] Audit log insert failed:", insErr.message);
     });
 
     return new Response(
