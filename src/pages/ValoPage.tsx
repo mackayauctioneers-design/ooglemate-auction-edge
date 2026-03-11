@@ -289,12 +289,22 @@ export default function ValoPage() {
       const offer = valoData.trade_in_offer;
       const market = valoData.market;
 
+      // Buy Range = trade-in offer (what dealer pays to acquire)
+      const buyMin = offer ? offer.low : null;
+      const buyMax = offer ? offer.high : null;
+      // Sell Range = market asking prices (what dealer can list for)
+      const sellMin = market ? market.p25 : null;
+      const sellMax = market ? market.p75 : null;
+      // Gross Band = sell - buy (expected profit margin)
+      const grossMin = (sellMin != null && buyMax != null) ? sellMin - buyMax : null;
+      const grossMax = (sellMax != null && buyMin != null) ? sellMax - buyMin : null;
+
       setResult({
         parsed: parsedVehicle,
-        suggested_buy_range: offer ? { min: offer.low, max: offer.high } : null,
-        suggested_sell_range: market ? { min: market.p25, max: market.p75 } : null,
-        expected_gross_band: market && offer
-          ? { min: market.p25 - offer.high, max: market.p75 - offer.low }
+        suggested_buy_range: buyMin != null && buyMax != null ? { min: buyMin, max: buyMax } : null,
+        suggested_sell_range: sellMin != null && sellMax != null ? { min: sellMin, max: sellMax } : null,
+        expected_gross_band: grossMin != null && grossMax != null
+          ? { min: grossMin, max: grossMax }
           : null,
         typical_days_to_sell: null,
         confidence: valoData.confidence === 'HIGH' ? 'HIGH' : valoData.confidence === 'MED' ? 'MEDIUM' : 'LOW',
@@ -828,7 +838,8 @@ export default function ValoPage() {
                   <BarChart3 className="h-4 w-4" /> Gross Band
                 </div>
                 <div className={`text-lg font-semibold ${
-                  result.expected_gross_band && result.expected_gross_band.min > 0 ? 'text-green-600' : ''
+                  result.expected_gross_band && result.expected_gross_band.min > 0 ? 'text-green-600' :
+                  result.expected_gross_band && result.expected_gross_band.max < 0 ? 'text-destructive' : ''
                 }`}>
                   {result.expected_gross_band
                     ? `${formatCurrency(result.expected_gross_band.min)} – ${formatCurrency(result.expected_gross_band.max)}`
