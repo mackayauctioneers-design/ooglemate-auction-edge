@@ -190,7 +190,7 @@ const App = () => (
               <Route path="/valuation" element={<OperatorGuard><ValuationPage /></OperatorGuard>} />
 
               {/* === OPERATOR ROUTES: Admin/Internal only === */}
-              <Route path="/operator" element={<OperatorGuard><OperatorDashboardPage /></OperatorGuard>} />
+              <Route path="/operator" element={<OperatorGuard><Navigate to="/operator/trading-desk" replace /></OperatorGuard>} />
               <Route path="/operator/ingestion-health" element={<OperatorGuard><OperatorIngestionHealthPage /></OperatorGuard>} />
               <Route path="/operator/ingestion-audit" element={<OperatorGuard><IngestionAuditPage /></OperatorGuard>} />
               <Route path="/operator/cron-audit" element={<OperatorGuard><CronAuditPage /></OperatorGuard>} />

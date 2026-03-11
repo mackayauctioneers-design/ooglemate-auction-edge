@@ -205,11 +205,11 @@ export default function TradingDeskPage() {
   const [filterAccount, setFilterAccount] = useState<string>('all');
   const [filterTier, setFilterTier] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
-  const [filterMinMargin, setFilterMinMargin] = useState<string>('');
+  
   const [filterStatus, setFilterStatus] = useState<string>('active');
   const [filterDealerSearch, setFilterDealerSearch] = useState<string>('');
 
-  const [sortField, setSortField] = useState<SortField>('best_expected_margin');
+  const [sortField, setSortField] = useState<SortField>('best_under_buy');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => { document.title = 'Trading Desk | Operator'; }, []);
@@ -322,10 +322,6 @@ export default function TradingDeskPage() {
     if (filterAccount !== 'all' && o.best_account_id !== filterAccount) return false;
     if (filterTier !== 'all' && o.tier !== filterTier) return false;
     if (filterSource !== 'all' && o.listing_source !== filterSource) return false;
-    if (filterMinMargin) {
-      const min = Number(filterMinMargin);
-      if (!isNaN(min) && (o.best_expected_margin || 0) < min) return false;
-    }
     if (filterDealerSearch) {
       const q = filterDealerSearch.toLowerCase();
       const nameMatch = o.best_account_name?.toLowerCase().includes(q);
@@ -391,13 +387,13 @@ export default function TradingDeskPage() {
       : opportunities;
 
     const strong = scoped.filter(o =>
-      (o.best_expected_margin || 0) >= 3000 &&
+      (o.best_under_buy || 0) >= 1500 &&
       ['new', 'reviewed'].includes(o.status)
     );
 
     // Explicit sort — never assume UI sort equals data truth
     const strongSorted = [...strong].sort(
-      (a, b) => (b.best_expected_margin || 0) - (a.best_expected_margin || 0)
+      (a, b) => (b.best_under_buy || 0) - (a.best_under_buy || 0)
     );
 
     const urgent = strongSorted.filter(o => {
@@ -418,15 +414,10 @@ export default function TradingDeskPage() {
     const topOpp = strongSorted[0];
 
     if (strongSorted.length === 0) {
-      const bestMargin = Math.max(0, ...scoped.map(o => o.best_expected_margin || 0));
-      if (bestMargin > 0) {
-        return { type: 'thin' as const, text: `Light day. Best margin available: $${bestMargin.toLocaleString()}.` };
-      }
       return { type: 'empty' as const, text: 'No aligned inventory today.' };
     }
 
     const vehicle = topOpp ? `${topOpp.year || ''} ${topOpp.make || ''} ${topOpp.model || ''}`.trim() : '';
-    const margin = topOpp?.best_expected_margin || 0;
     const urgentText = urgentSorted.length > 0
       ? ` ${urgentSorted.length} closing in ${closestUrgentHours != null && closestUrgentHours < 48 ? closestUrgentHours + 'h' : '48h'}.`
       : '';
@@ -434,7 +425,7 @@ export default function TradingDeskPage() {
     return {
       type: 'strong' as const,
       text: `${strongSorted.length} strong opportunit${strongSorted.length === 1 ? 'y' : 'ies'} today.${urgentText}`,
-      detail: `Top: ${vehicle} – $${margin.toLocaleString()} expected.`,
+      detail: `Top: ${vehicle}`,
       isUrgent: closestUrgentHours != null && closestUrgentHours < 24,
     };
   })();
@@ -459,11 +450,9 @@ export default function TradingDeskPage() {
           <div className={`rounded-lg border px-4 py-2.5 text-sm font-medium flex items-center gap-2 ${
             signalStrip.type === 'strong'
               ? 'border-primary/30 bg-primary/5 text-foreground'
-              : signalStrip.type === 'thin'
-                ? 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400'
-                : 'border-border bg-muted/30 text-muted-foreground'
+              : 'border-border bg-muted/30 text-muted-foreground'
           }`}>
-            <span>{signalStrip.type === 'strong' ? '🔥' : signalStrip.type === 'thin' ? '⚠️' : '—'}</span>
+            <span>{signalStrip.type === 'strong' ? '🔥' : '—'}</span>
             <span>
               {signalStrip.text}
               {signalStrip.type === 'strong' && signalStrip.detail && (
@@ -575,10 +564,6 @@ export default function TradingDeskPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="w-28">
-            <label className="text-xs text-muted-foreground mb-1 block">Min Margin $</label>
-            <Input type="number" value={filterMinMargin} onChange={e => setFilterMinMargin(e.target.value)} placeholder="0" />
-          </div>
           <div className="w-48">
             <label className="text-xs text-muted-foreground mb-1 block">Search Dealer</label>
             <Input value={filterDealerSearch} onChange={e => setFilterDealerSearch(e.target.value)} placeholder="Type dealer name…" />
@@ -604,7 +589,6 @@ export default function TradingDeskPage() {
                     <TableHead className="px-2">Vehicle</TableHead>
                     <TableHead className="w-[76px] text-right cursor-pointer px-2" onClick={() => handleSort('asking_price')}>Ask <SortIcon field="asking_price" /></TableHead>
                     <TableHead className="w-[110px] px-2">Best Fit</TableHead>
-                    <TableHead className="w-[80px] text-right cursor-pointer px-2" onClick={() => handleSort('best_expected_margin')}>Margin <SortIcon field="best_expected_margin" /></TableHead>
                     <TableHead className="w-[85px] text-right cursor-pointer px-2" onClick={() => handleSort('best_under_buy')}>Under-Buy <SortIcon field="best_under_buy" /></TableHead>
                     <TableHead className="w-[90px] text-right px-2">Mkt Median</TableHead>
                     <TableHead className="w-[90px] cursor-pointer px-2" onClick={() => handleSort('auction_datetime')}>Auction <SortIcon field="auction_datetime" /></TableHead>
@@ -679,19 +663,14 @@ export default function TradingDeskPage() {
                                 )}
                                 {altExpandedRows.has(opp.id) && hasAlts && (
                                   <div className="mt-1 space-y-0.5 border-l-2 border-muted pl-2">
-                                    {alts.sort((a: any, b: any) => (b.expected_margin || 0) - (a.expected_margin || 0)).map((m: any, i: number) => (
+                                    {alts.sort((a: any, b: any) => (b.under_buy || 0) - (a.under_buy || 0)).map((m: any, i: number) => (
                                       <div key={i} className="text-xs text-muted-foreground flex items-center gap-1">
                                         <span className="font-medium">{m.account_name}</span>
-                                        <span className="font-mono">{fmt(m.expected_margin)}</span>
                                       </div>
                                     ))}
                                   </div>
                                 )}
                               </div>
-                            </TableCell>
-                            {/* Margin */}
-                            <TableCell className="text-right px-2">
-                              <span className="font-mono font-semibold text-sm text-primary">{fmt(opp.best_expected_margin)}</span>
                             </TableCell>
                             {/* Under-Buy */}
                             <TableCell className="text-right px-2">
