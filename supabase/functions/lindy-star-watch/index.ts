@@ -105,7 +105,7 @@ Return as JSON with fields: listing_url, vehicle, current_status, current_price,
       }],
     });
 
-    const subject = "carbitrage-batch: star-watch";
+    const subject = "carbitrage-batch";
 
     // ── Gmail SMTP via nodemailer ──
     console.log(`[lindy] SMTP → ${smtpHost}:${smtpPort} as ${smtpUser}`);
