@@ -134,7 +134,7 @@ export function AppSidebar() {
           {/* Operator Mode link for admins */}
           {isAdmin && (
             <div className="pt-4 mt-4 border-t border-sidebar-border">
-              <Link to="/operator/ingestion-health">
+              <Link to="/operator/trading-desk">
                 <Button
                   variant="nav"
                   className={cn(
