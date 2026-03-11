@@ -7735,6 +7735,7 @@ export type Database = {
           cab_type: string | null
           classified_at: string | null
           colour: string | null
+          comp_count: number | null
           created_at: string
           cross_post_confidence: number | null
           cross_post_linked_at: string | null
@@ -7785,6 +7786,7 @@ export type Database = {
           lng: number | null
           make: string
           manus_task_id: string | null
+          market_confidence: string | null
           market_price: number | null
           market_price_source: string | null
           model: string
@@ -7842,6 +7844,7 @@ export type Database = {
           cab_type?: string | null
           classified_at?: string | null
           colour?: string | null
+          comp_count?: number | null
           created_at?: string
           cross_post_confidence?: number | null
           cross_post_linked_at?: string | null
@@ -7892,6 +7895,7 @@ export type Database = {
           lng?: number | null
           make: string
           manus_task_id?: string | null
+          market_confidence?: string | null
           market_price?: number | null
           market_price_source?: string | null
           model: string
@@ -7949,6 +7953,7 @@ export type Database = {
           cab_type?: string | null
           classified_at?: string | null
           colour?: string | null
+          comp_count?: number | null
           created_at?: string
           cross_post_confidence?: number | null
           cross_post_linked_at?: string | null
@@ -7999,6 +8004,7 @@ export type Database = {
           lng?: number | null
           make?: string
           manus_task_id?: string | null
+          market_confidence?: string | null
           market_price?: number | null
           market_price_source?: string | null
           model?: string
@@ -13478,6 +13484,23 @@ export type Database = {
           retry_count: number
           source_listing_id: string
           stub_anchor_id: string
+        }[]
+      }
+      compute_comparable_median: {
+        Args: {
+          p_asking_price: number
+          p_km: number
+          p_listing_id: string
+          p_make: string
+          p_model: string
+          p_year: number
+        }
+        Returns: {
+          comp_count: number
+          confidence: string
+          median_price: number
+          p25_price: number
+          p75_price: number
         }[]
       }
       compute_deal_score: {
