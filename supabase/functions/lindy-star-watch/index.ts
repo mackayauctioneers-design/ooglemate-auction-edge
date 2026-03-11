@@ -18,7 +18,7 @@ const corsHeaders = {
 };
 
 const LINDY_TRIGGER_EMAIL = "carbitrage-dispatch-mackayauctioneers@lindymail.ai";
-const LINDY_SUBJECT = "carbitrage-batch";
+const LINDY_SUBJECT = "carbitrage-batch: star-watch";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
