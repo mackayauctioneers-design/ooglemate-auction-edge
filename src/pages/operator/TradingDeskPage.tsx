@@ -280,7 +280,7 @@ export default function TradingDeskPage() {
     }
   };
 
-  const setReminder = async (id: string, auctionDatetime: string | null) => {
+  const setReminder = async (id: string, auctionDatetime: string | null, listingId?: string) => {
     if (!auctionDatetime) { toast.error('No auction date set'); return; }
     // Set reminder 1 hour before auction
     const auctionDt = new Date(auctionDatetime);
