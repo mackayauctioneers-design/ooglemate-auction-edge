@@ -409,9 +409,13 @@ Deno.serve(async (req) => {
             throw new Error(`Update failed: ${updateErr.message}`);
           }
 
-          // Track high-value price badges for notification
+          // Track high-value price badges for notification (2020+ and ≤120k km only)
           if (detail.price_badge && /well\s+below|below\s+market|great\s+price/i.test(detail.price_badge)) {
-            priceBadgeHits.push({ listing, badge: detail.price_badge });
+            const meetsYear = listing.year && listing.year >= 2020;
+            const meetsKm = !listing.km || listing.km <= 120000;
+            if (meetsYear && meetsKm) {
+              priceBadgeHits.push({ listing, badge: detail.price_badge });
+            }
           }
 
           stats.succeeded++;
