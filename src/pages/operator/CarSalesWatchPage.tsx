@@ -157,14 +157,15 @@ export default function CarSalesWatchPage() {
         supabase
           .from('retail_listings')
           .select('id, make, model, variant_raw, year, asking_price, market_price, km, price_badge, price_difference, price_difference_percent, listing_url, source, seller_type, region_id, first_seen_at, last_seen_at, lifecycle_status')
-          .eq('price_badge', 'Well Below Market')
+          .ilike('price_badge', 'well below market%')
           .in('lifecycle_status', ['ACTIVE', 'NEW'])
           .order('price_difference_percent', { ascending: true })
           .limit(200),
         supabase
           .from('retail_listings')
           .select('id, make, model, variant_raw, year, asking_price, market_price, km, price_badge, price_difference, price_difference_percent, listing_url, source, seller_type, region_id, first_seen_at, last_seen_at, lifecycle_status')
-          .eq('price_badge', 'Below Market')
+          .ilike('price_badge', 'below market%')
+          .not('price_badge', 'ilike', 'well below%')
           .in('lifecycle_status', ['ACTIVE', 'NEW'])
           .order('price_difference_percent', { ascending: true })
           .limit(200),
