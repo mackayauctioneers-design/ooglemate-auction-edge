@@ -747,7 +747,7 @@ export default function TradingDeskPage() {
                                     </button>
                                   ) : (
                                     <button
-                                      onClick={() => setReminder(opp.id, opp.auction_datetime)}
+                                      onClick={() => setReminder(opp.id, opp.auction_datetime, opp.listing_id)}
                                       className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary transition-colors"
                                     >
                                       <BellOff className="h-3 w-3" />
