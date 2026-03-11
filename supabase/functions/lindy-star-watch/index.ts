@@ -7,7 +7,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import nodemailer from "npm:nodemailer@6.9.12";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,14 +22,13 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const smtpHost = Deno.env.get("SMTP_HOST");
+  const smtpHost = Deno.env.get("SMTP_HOST") || "smtp.gmail.com";
   const smtpPort = parseInt(Deno.env.get("SMTP_PORT") || "587", 10);
   const smtpUser = Deno.env.get("SMTP_USERNAME");
   const smtpPass = Deno.env.get("SMTP_PASSWORD");
   const smtpFrom = Deno.env.get("SMTP_FROM");
 
   const missing = [
-    !smtpHost && "SMTP_HOST",
     !smtpUser && "SMTP_USERNAME",
     !smtpPass && "SMTP_PASSWORD",
     !smtpFrom && "SMTP_FROM",
@@ -106,39 +105,34 @@ Return as JSON with fields: listing_url, vehicle, current_status, current_price,
 
     const subject = "carbitrage-batch: star-watch";
 
-    // ── Gmail SMTP ──
+    // ── Gmail SMTP via nodemailer ──
     console.log(`[lindy] SMTP → ${smtpHost}:${smtpPort} as ${smtpUser}`);
     console.log(`[lindy] To: ${LINDY_EMAIL} | Subject: ${subject}`);
     console.log(`[lindy] Vehicle: ${vehicle} → ${listing.listing_url}`);
 
-    const client = new SMTPClient({
-      connection: {
-        hostname: smtpHost!,
-        port: smtpPort,
-        tls: smtpPort === 465,
-        auth: { username: smtpUser!, password: smtpPass! },
-      },
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: { user: smtpUser, pass: smtpPass },
     });
 
     try {
-      await client.send({
-        from: smtpFrom!,
+      const info = await transporter.sendMail({
+        from: smtpFrom,
         to: LINDY_EMAIL,
         subject,
-        content: emailBody,
+        text: emailBody,
       });
-      console.log(`[lindy] ✅ Email sent via ${smtpHost}`);
-    } catch (sendErr) {
+      console.log(`[lindy] ✅ Email sent — messageId: ${info.messageId}`);
+    } catch (sendErr: unknown) {
       const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
       console.error(`[lindy] ❌ Send failed: ${msg}`);
-      await client.close().catch(() => {});
       return new Response(
         JSON.stringify({ status: "email_failed", error: msg }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-
-    await client.close().catch(() => {});
 
     // Audit log
     await sb.from("outward_jobs").insert({
