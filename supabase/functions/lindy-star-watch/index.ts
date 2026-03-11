@@ -1,11 +1,11 @@
 /**
- * lindy-star-watch — When a user stars a vehicle, dispatch to Lindy via LindyMail email trigger.
+ * lindy-star-watch — When a user stars a vehicle, dispatch to Lindy via HTTP webhook.
  *
  * POST { listing_id: uuid }
  *
  * Flow:
  *   1. Look up vehicle details from vehicle_listings
- *   2. Send email to LindyMail trigger with browse queue row format
+ *   2. POST payload to Lindy HTTP webhook with browse queue row format
  *   3. Log the dispatch in outward_jobs for tracking
  */
 
@@ -17,20 +17,15 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const LINDY_TRIGGER_EMAIL = "carbitrage-dispatch-mackayauctioneers@lindymail.ai";
-const LINDY_SUBJECT = "carbitrage-batch: star-watch";
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const resendApiKey = Deno.env.get("RESEND_API_KEY");
-  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "onboarding@resend.dev";
-
-  if (!resendApiKey) {
+  const lindyWebhookUrl = Deno.env.get("LINDY_HTTP_WEBHOOK_URL");
+  if (!lindyWebhookUrl) {
     return new Response(
-      JSON.stringify({ error: "RESEND_API_KEY not configured" }),
+      JSON.stringify({ error: "LINDY_HTTP_WEBHOOK_URL not configured" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
@@ -92,8 +87,7 @@ ${listing.auction_datetime ? `Auction date: ${listing.auction_datetime}` : ""}
 Extract: current status (active/upcoming/sold/removed), current price, auction date, and any notes.
 Return as JSON with fields: listing_url, vehicle, current_status, current_price, auction_date, notes, watch_established.`;
 
-    // Build the same batch format Lindy expects from outward search dispatch
-    const emailBody = JSON.stringify({
+    const payload = {
       rows: [{
         id: queueId,
         source: "star_watch",
@@ -103,30 +97,22 @@ Return as JSON with fields: listing_url, vehicle, current_status, current_price,
         job_id: jobId,
         search_run_id: jobId,
       }],
-    });
+    };
 
-    console.log(`[lindy-star-watch] Dispatching watch via email for ${vehicleDesc} → ${listingUrl}`);
+    console.log(`[lindy-star-watch] Dispatching watch via HTTP for ${vehicleDesc} → ${listingUrl}`);
 
-    const resp = await fetch("https://api.resend.com/emails", {
+    const resp = await fetch(lindyWebhookUrl, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: resendFromEmail,
-        to: LINDY_TRIGGER_EMAIL,
-        subject: LINDY_SUBJECT,
-        text: emailBody,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
     const respText = await resp.text();
-    console.log(`[lindy-star-watch] Resend response: ${resp.status} — ${respText.slice(0, 300)}`);
+    console.log(`[lindy-star-watch] Lindy response: ${resp.status} — ${respText.slice(0, 300)}`);
 
     if (!resp.ok) {
       return new Response(
-        JSON.stringify({ error: "Email dispatch failed", status: resp.status, detail: respText.slice(0, 300) }),
+        JSON.stringify({ error: "Lindy dispatch failed", status: resp.status, detail: respText.slice(0, 300) }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -149,7 +135,7 @@ Return as JSON with fields: listing_url, vehicle, current_status, current_price,
         job_id: jobId,
         vehicle: vehicleDesc,
         url: listingUrl,
-        message: `Watch dispatched via email for: ${vehicleDesc}`,
+        message: `Watch dispatched via HTTP for: ${vehicleDesc}`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
