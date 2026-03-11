@@ -1,12 +1,12 @@
 /**
- * lindy-star-watch — When a user stars a vehicle, dispatch to Lindy to set up a watch alert.
+ * lindy-star-watch — When a user stars a vehicle, dispatch to Lindy via LindyMail email trigger.
  *
  * POST { listing_id: uuid }
  *
  * Flow:
  *   1. Look up vehicle details from vehicle_listings
- *   2. POST to Lindy HTTP Webhook with the listing URL + watch instructions
- *   3. Log the dispatch in url_watchlist for tracking
+ *   2. Send email to LindyMail trigger with browse queue row format
+ *   3. Log the dispatch in outward_jobs for tracking
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -17,15 +17,20 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const LINDY_TRIGGER_EMAIL = "carbitrage-dispatch-mackayauctioneers@lindymail.ai";
+const LINDY_SUBJECT = "carbitrage-batch";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const LINDY_URL = Deno.env.get("LINDY_HTTP_WEBHOOK_URL");
-  if (!LINDY_URL) {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY");
+  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "onboarding@resend.dev";
+
+  if (!resendApiKey) {
     return new Response(
-      JSON.stringify({ error: "LINDY_HTTP_WEBHOOK_URL not configured" }),
+      JSON.stringify({ error: "RESEND_API_KEY not configured" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
@@ -66,10 +71,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Build the Lindy watch task
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/lindy-results-webhook`;
-
     const vehicleDesc = [
       listing.year,
       listing.make,
@@ -77,7 +78,10 @@ Deno.serve(async (req) => {
       listing.variant_used,
     ].filter(Boolean).join(" ");
 
-    const prompt = `Set up a WATCH ALERT for this vehicle listing:
+    const jobId = crypto.randomUUID();
+    const queueId = crypto.randomUUID();
+
+    const prompt = `WATCH ALERT — Browse this listing and extract current status:
 ${listingUrl}
 
 Vehicle: ${vehicleDesc}
@@ -85,59 +89,44 @@ ${listing.km ? `Odometer: ${listing.km.toLocaleString()} km` : ""}
 ${listing.auction_house ? `Auction house: ${listing.auction_house}` : ""}
 ${listing.auction_datetime ? `Auction date: ${listing.auction_datetime}` : ""}
 
-INSTRUCTIONS:
-1. Browse this URL and note the current status (active, upcoming auction, sold, etc.)
-2. Note the current asking price or guide price if shown
-3. Set up monitoring — check this listing periodically (every 4 hours)
-4. Alert me if:
-   - The price changes (drops or increases)
-   - The listing is marked as SOLD or removed
-   - The auction date is approaching (within 24 hours)
-   - Any new information appears (inspection reports, reserve price, etc.)
+Extract: current status (active/upcoming/sold/removed), current price, auction date, and any notes.
+Return as JSON with fields: listing_url, vehicle, current_status, current_price, auction_date, notes, watch_established.`;
 
-Return your findings as JSON:
-{
-  "listing_url": "${listingUrl}",
-  "vehicle": "${vehicleDesc}",
-  "current_status": "active|upcoming|sold|removed",
-  "current_price": <number or null>,
-  "auction_date": "<ISO date or null>",
-  "notes": "<any relevant observations>",
-  "watch_established": true
-}`;
+    // Build the same batch format Lindy expects from outward search dispatch
+    const emailBody = JSON.stringify({
+      rows: [{
+        id: queueId,
+        source: "star_watch",
+        page: 1,
+        url: listingUrl,
+        prompt,
+        job_id: jobId,
+        search_run_id: jobId,
+      }],
+    });
 
-    const jobId = crypto.randomUUID();
+    console.log(`[lindy-star-watch] Dispatching watch via email for ${vehicleDesc} → ${listingUrl}`);
 
-    const lindyPayload = {
-      job_id: jobId,
-      task_type: "star_watch",
-      listing_id: listing.id,
-      source_listing_id: listing.listing_id,
-      url: listingUrl,
-      prompt,
-      callback_url: CALLBACK_URL,
-      callback_headers: {
-        ...(Deno.env.get("LINDY_WEBHOOK_SECRET")
-          ? { "x-lindy-signature": Deno.env.get("LINDY_WEBHOOK_SECRET")! }
-          : {}),
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${resendApiKey}`,
         "Content-Type": "application/json",
       },
-    };
-
-    console.log(`[lindy-star-watch] Dispatching watch for ${vehicleDesc} → ${listingUrl}`);
-
-    const resp = await fetch(LINDY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(lindyPayload),
+      body: JSON.stringify({
+        from: resendFromEmail,
+        to: LINDY_TRIGGER_EMAIL,
+        subject: LINDY_SUBJECT,
+        text: emailBody,
+      }),
     });
 
     const respText = await resp.text();
-    console.log(`[lindy-star-watch] Lindy response: ${resp.status} — ${respText.slice(0, 300)}`);
+    console.log(`[lindy-star-watch] Resend response: ${resp.status} — ${respText.slice(0, 300)}`);
 
     if (!resp.ok) {
       return new Response(
-        JSON.stringify({ error: "Lindy dispatch failed", status: resp.status, detail: respText.slice(0, 300) }),
+        JSON.stringify({ error: "Email dispatch failed", status: resp.status, detail: respText.slice(0, 300) }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -160,7 +149,7 @@ Return your findings as JSON:
         job_id: jobId,
         vehicle: vehicleDesc,
         url: listingUrl,
-        message: `Lindy is now watching: ${vehicleDesc}`,
+        message: `Watch dispatched via email for: ${vehicleDesc}`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
