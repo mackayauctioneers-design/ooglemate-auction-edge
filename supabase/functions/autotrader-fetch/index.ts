@@ -764,8 +764,7 @@ Deno.serve(async (req) => {
 
         // Fetch dataset items with pagination
         let offset = run.items_fetched || 0;
-        // Carsales payloads can be very heavy (images/spec blobs) — keep batches small to avoid OOM.
-        const batchSize = runSource === "carsales" ? 20 : 100;
+        const batchSize = 100;
         
         let itemsFetchedThisRun = 0;
         let itemsUpsertedThisRun = 0;
