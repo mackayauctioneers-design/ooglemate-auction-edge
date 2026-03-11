@@ -11435,6 +11435,7 @@ export type Database = {
           guide_price: number | null
           highest_bid: number | null
           id: string
+          image_url: string | null
           is_dealer_grade: boolean | null
           is_historical_result: boolean
           keys_present: boolean | null
@@ -11543,6 +11544,7 @@ export type Database = {
           guide_price?: number | null
           highest_bid?: number | null
           id?: string
+          image_url?: string | null
           is_dealer_grade?: boolean | null
           is_historical_result?: boolean
           keys_present?: boolean | null
@@ -11651,6 +11653,7 @@ export type Database = {
           guide_price?: number | null
           highest_bid?: number | null
           id?: string
+          image_url?: string | null
           is_dealer_grade?: boolean | null
           is_historical_result?: boolean
           keys_present?: boolean | null

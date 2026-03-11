@@ -103,8 +103,9 @@ function extractVariantRaw(ad: any): string | null {
   const fromNotes = extractBadgeFromSellerNotes(ad.sellerNotes || ad.seller_notes);
   if (fromNotes) return fromNotes;
 
-  // 2. Try explicit badge/variant/grade fields
+  // 2. Try explicit badge/variant/grade fields (including 'badge' from Caroogle API)
   const explicitSources = [
+    ad.badge,
     ad.badgeDescription,
     ad.badge_description,
     ad.grade,
@@ -246,6 +247,17 @@ Deno.serve(async (req) => {
       // ── Extract badge/variant from all available text fields ──
       const variantRaw = extractVariantRaw(ad);
 
+      // ── Extract image URL from images array ──
+      const imageUrl = Array.isArray(ad.images) && ad.images.length > 0
+        ? String(ad.images[0])
+        : null;
+
+      // ── Extract auction date ──
+      const auctionDatetime = ad.auctionDate || ad.auction_date || null;
+
+      // ── Extract state for region ──
+      const adState = ad.state ? String(ad.state).toUpperCase().trim() : null;
+
       const now = new Date().toISOString();
 
       rows.push({
@@ -263,9 +275,12 @@ Deno.serve(async (req) => {
         variant_family: variantRaw,  // badge IS the family for auction
         drivetrain: normalizeDrivetrain(ad.driveType || ad.drivetrain || ad.drive_type),
         location: ad.location || ad.suburb || null,
+        state: adState,
         status: ad.status || "listed",
         seller_type: "auction",
-        listing_url: (() => { const rawUrl = ad.url || ad.listing_url || ad.link || null; if (rawUrl && !/\/used\/search\?/i.test(rawUrl)) return rawUrl; return lotId ? `https://www.pickles.com.au/used/details/cars/${lotId}` : "https://www.pickles.com.au/used"; })(),
+        auction_datetime: auctionDatetime,
+        image_url: imageUrl,
+        listing_url: (() => { const rawUrl = ad.url || ad.listingUrl || ad.listing_url || ad.link || null; if (rawUrl && !/\/used\/search\?/i.test(rawUrl)) return rawUrl; return lotId ? `https://www.pickles.com.au/used/details/cars/${lotId}` : "https://www.pickles.com.au/used"; })(),
         first_seen_at: ad.scrapedAt || ad.scraped_at || now,
         last_seen_at: now,
         updated_at: now,
