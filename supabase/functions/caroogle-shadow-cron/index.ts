@@ -196,7 +196,7 @@ Deno.serve(async (req) => {
     console.log(`[${CRON_NAME}] Received ${ads.length} total records from API across ${currentPage} page(s)`);
 
     if (ads.length === 0) {
-      throw new Error("Caroogle API returned 0 records — possible schema change or downtime");
+      throw new Error("Caroogle API returned 0 records across all pages — possible schema change or downtime");
     }
 
     // ── Build rows for vehicle_listings ──
