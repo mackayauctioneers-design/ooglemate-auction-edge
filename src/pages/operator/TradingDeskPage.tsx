@@ -387,13 +387,13 @@ export default function TradingDeskPage() {
       : opportunities;
 
     const strong = scoped.filter(o =>
-      (o.best_expected_margin || 0) >= 3000 &&
+      (o.best_under_buy || 0) >= 1500 &&
       ['new', 'reviewed'].includes(o.status)
     );
 
     // Explicit sort — never assume UI sort equals data truth
     const strongSorted = [...strong].sort(
-      (a, b) => (b.best_expected_margin || 0) - (a.best_expected_margin || 0)
+      (a, b) => (b.best_under_buy || 0) - (a.best_under_buy || 0)
     );
 
     const urgent = strongSorted.filter(o => {
@@ -414,15 +414,10 @@ export default function TradingDeskPage() {
     const topOpp = strongSorted[0];
 
     if (strongSorted.length === 0) {
-      const bestMargin = Math.max(0, ...scoped.map(o => o.best_expected_margin || 0));
-      if (bestMargin > 0) {
-        return { type: 'thin' as const, text: `Light day. Best margin available: $${bestMargin.toLocaleString()}.` };
-      }
       return { type: 'empty' as const, text: 'No aligned inventory today.' };
     }
 
     const vehicle = topOpp ? `${topOpp.year || ''} ${topOpp.make || ''} ${topOpp.model || ''}`.trim() : '';
-    const margin = topOpp?.best_expected_margin || 0;
     const urgentText = urgentSorted.length > 0
       ? ` ${urgentSorted.length} closing in ${closestUrgentHours != null && closestUrgentHours < 48 ? closestUrgentHours + 'h' : '48h'}.`
       : '';
@@ -430,7 +425,7 @@ export default function TradingDeskPage() {
     return {
       type: 'strong' as const,
       text: `${strongSorted.length} strong opportunit${strongSorted.length === 1 ? 'y' : 'ies'} today.${urgentText}`,
-      detail: `Top: ${vehicle} – $${margin.toLocaleString()} expected.`,
+      detail: `Top: ${vehicle}`,
       isUrgent: closestUrgentHours != null && closestUrgentHours < 24,
     };
   })();
