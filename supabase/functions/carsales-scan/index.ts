@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
       startUrls: startUrls.map((u: string | { url: string }) =>
         typeof u === "string" ? { url: u } : u
       ),
-      maxItems: Math.min(limit, 500), // Restored to full depth
+      maxItems: Math.min(limit, 250), // Capped at 250 to prevent actor OOM
     };
 
     console.log(`Carsales scan: ${startUrls.length} URLs, limit=${limit}`);

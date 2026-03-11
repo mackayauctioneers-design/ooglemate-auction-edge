@@ -20,7 +20,7 @@ const KM_MAX = 120000;
 
 const ALL_STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
 
-const ITEMS_PER_STATE = 500;
+const ITEMS_PER_STATE = 200;
 
 function buildNewestUrl(state: string): string {
   const q = `(And.Year.range(${YEAR_MIN}..)._.Odometer.range(..${KM_MAX})._.State.${state})`;
