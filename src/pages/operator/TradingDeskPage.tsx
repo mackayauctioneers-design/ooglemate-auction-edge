@@ -262,12 +262,22 @@ export default function TradingDeskPage() {
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, ...update } : o));
   };
 
-  const toggleStar = async (id: string, current: boolean) => {
+  const toggleStar = async (id: string, current: boolean, listingId?: string) => {
     const newVal = !current;
     const { error } = await supabase.from('operator_opportunities').update({ is_starred: newVal, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) { toast.error(error.message); return; }
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, is_starred: newVal } : o));
     toast.success(newVal ? 'Added to watchlist ⭐' : 'Removed from watchlist');
+
+    // Dispatch star-watch when starring ON
+    if (newVal && listingId) {
+      supabase.functions.invoke('lindy-star-watch', {
+        body: { listing_id: listingId },
+      }).then(({ error: watchErr }) => {
+        if (watchErr) console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
+        else console.log('Star-watch dispatched for', listingId);
+      });
+    }
   };
 
   const setReminder = async (id: string, auctionDatetime: string | null) => {
