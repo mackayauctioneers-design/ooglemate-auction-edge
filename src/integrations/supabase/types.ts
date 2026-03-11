@@ -759,18 +759,27 @@ export type Database = {
           last_ok: boolean
           last_seen_at: string
           note: string | null
+          rows_inserted: number | null
+          states_failed: number | null
+          unique_urls: number | null
         }
         Insert: {
           cron_name: string
           last_ok?: boolean
           last_seen_at?: string
           note?: string | null
+          rows_inserted?: number | null
+          states_failed?: number | null
+          unique_urls?: number | null
         }
         Update: {
           cron_name?: string
           last_ok?: boolean
           last_seen_at?: string
           note?: string | null
+          rows_inserted?: number | null
+          states_failed?: number | null
+          unique_urls?: number | null
         }
         Relationships: []
       }
