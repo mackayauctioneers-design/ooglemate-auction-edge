@@ -56,10 +56,12 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Try UUID lookup first, then fall back to listing_id (source-specific ID like "auto_auctions:623744")
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(listing_id);
     const { data: listing, error: listErr } = await sb
       .from("vehicle_listings")
       .select("id, listing_id, listing_url, make, model, year, variant_used, km, source, auction_house, auction_datetime")
-      .eq("id", listing_id)
+      .eq(isUuid ? "id" : "listing_id", listing_id)
       .single();
 
     if (listErr || !listing) {
