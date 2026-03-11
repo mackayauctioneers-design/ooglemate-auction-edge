@@ -74,6 +74,19 @@ export function useTrapWatchlist(listingId: string | null) {
       console.error('Error updating watch status:', error);
     } else {
       setIsWatching(newValue);
+      
+      // Dispatch to Lindy when starring ON (not when un-starring)
+      if (newValue) {
+        supabase.functions.invoke('lindy-star-watch', {
+          body: { listing_id: listingId },
+        }).then(({ error: lindyErr }) => {
+          if (lindyErr) {
+            console.warn('Lindy star-watch dispatch failed (non-blocking):', lindyErr);
+          } else {
+            console.log('Lindy star-watch dispatched for', listingId);
+          }
+        });
+      }
     }
     setLoading(false);
   }, [listingId, user, isWatching, isPinned]);
