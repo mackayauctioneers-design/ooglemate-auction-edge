@@ -317,15 +317,22 @@ export default function JoshDealDeskPage() {
         )}
 
         {/* Manual Link Submission */}
-        <Card>
+        <Card className="border-2 border-dashed border-primary/30 bg-primary/5">
           <CardContent className="p-4">
+            <div className="mb-2">
+              <h3 className="text-sm font-bold flex items-center gap-2">
+                <Plus className="h-4 w-4 text-primary" />
+                Add a Listing Manually
+              </h3>
+              <p className="text-xs text-muted-foreground ml-6">
+                Paste any listing URL — Carsales, Autotrader, dealer site, Marketplace, auction
+              </p>
+            </div>
             <div className="flex items-center gap-2">
-              <Plus className="h-4 w-4 text-muted-foreground shrink-0" />
-              <span className="text-sm font-semibold shrink-0">Add Listing</span>
               <Input
                 value={manualUrl}
                 onChange={(e) => setManualUrl(e.target.value)}
-                placeholder="Paste listing URL (Carsales, Autotrader, dealer site...)"
+                placeholder="https://www.autotrader.com.au/car/..."
                 className="flex-1"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && manualUrl.trim()) {
@@ -334,7 +341,6 @@ export default function JoshDealDeskPage() {
                 }}
               />
               <Button
-                size="sm"
                 disabled={!manualUrl.trim() || submitMutation.isPending}
                 onClick={() => submitMutation.mutate(manualUrl.trim())}
                 className="gap-1"
