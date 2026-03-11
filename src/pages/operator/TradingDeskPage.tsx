@@ -289,6 +289,15 @@ export default function TradingDeskPage() {
     if (error) { toast.error(error.message); return; }
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, reminder_at: reminderDt.toISOString(), is_starred: true } : o));
     toast.success(`Reminder set for ${format(reminderDt, 'd MMM h:mm a')}`);
+
+    // Also dispatch star-watch for reminder (implies starring)
+    if (listingId) {
+      supabase.functions.invoke('lindy-star-watch', {
+        body: { listing_id: listingId },
+      }).then(({ error: watchErr }) => {
+        if (watchErr) console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
+      });
+    }
   };
 
   const clearReminder = async (id: string) => {
