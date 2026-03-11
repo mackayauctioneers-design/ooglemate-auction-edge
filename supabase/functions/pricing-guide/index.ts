@@ -82,14 +82,14 @@ Deno.serve(async (req) => {
     const { data: sales, error: salesErr } = await q;
     if (salesErr) throw new Error(`Sales query failed: ${salesErr.message}`);
 
-    // Filter by KM proximity if provided (±30%)
+    // Filter by KM proximity if provided (±20%)
     let comps = (sales || []).filter((s: any) => {
       const profit = Number(s.sale_price) - Number(s.buy_price);
       if (profit <= 0) return false; // only profitable trades
       if (trim && s.trim_class && s.trim_class !== "UNKNOWN" && s.trim_class !== trim) return false;
       if (km && s.km) {
         const kmDiff = Math.abs(s.km - km);
-        if (kmDiff > km * 0.3 && kmDiff > 30000) return false;
+        if (kmDiff > km * 0.2) return false;
       }
       return true;
     });
