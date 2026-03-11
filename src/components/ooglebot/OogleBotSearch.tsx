@@ -492,7 +492,7 @@ export function OogleBotSearch() {
   const prevOutwardCountRef = useRef(0);
   const [jobStatuses, setJobStatuses] = useState<Array<{ source_key: string; status: string; result_count: number }>>([]);
 
-  // ── Gemini Market Insight (auto, top 3 only) ──
+  // ── CaroogleAI Market Insight (auto, top 3 only) ──
   const [insightText, setInsightText] = useState<string | null>(null);
   const [insightLoading, setInsightLoading] = useState(false);
   const insightFiredRef = useRef<string | null>(null); // track which search triggered insight
