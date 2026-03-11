@@ -547,13 +547,13 @@ export function OogleBotSearch() {
       },
     }).then(({ data, error }) => {
       if (error) {
-        console.error("Gemini insight error:", error);
+        console.error("CaroogleAI insight error:", error);
         setInsightText(null);
       } else {
         setInsightText(data?.insight || null);
       }
     }).catch((err) => {
-      console.error("Gemini insight error:", err);
+      console.error("CaroogleAI insight error:", err);
       setInsightText(null);
     }).finally(() => {
       setInsightLoading(false);
