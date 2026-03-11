@@ -547,6 +547,97 @@ function mapUltimateCarItem(rawItem: Record<string, unknown>): MappedListing | n
   } catch { return null; }
 }
 
+// ─── FB MARKETPLACE MAPPER ─────────────────────────────────────
+function mapFbMarketplaceItem(rawItem: Record<string, unknown>): MappedListing | null {
+  try {
+    const item = rawItem;
+
+    const listingId = String(item.id || item.listing_id || item.marketplace_listing_id || "");
+    if (!listingId) return null;
+
+    const title = ((item.title || item.name || "") as string).trim();
+
+    // Year extraction from title (e.g. "2021 Toyota HiLux SR5")
+    let year = 0;
+    if (typeof item.year === "number") year = item.year;
+    else if (typeof item.year === "string") year = parseInt(item.year, 10) || 0;
+    if (!year) {
+      const ym = title.match(/\b(20[0-2]\d)\b/);
+      if (ym) year = parseInt(ym[1], 10);
+    }
+    if (!year || year < 2000) return null;
+
+    // Make/Model — FB often only has title, try structured fields first
+    let make = ((item.make || item.vehicle_make || "") as string).toUpperCase().trim();
+    let model = ((item.model || item.vehicle_model || "") as string).toUpperCase().trim();
+
+    // Fallback: parse from title "2021 Toyota HiLux SR5"
+    if (!make || !model) {
+      const parts = title.replace(/^\d{4}\s+/, "").split(/\s+/);
+      if (parts.length >= 2) {
+        if (!make) make = (parts[0] || "").toUpperCase();
+        if (!model) model = (parts[1] || "").toUpperCase();
+      }
+    }
+    if (!make || !model) return null;
+
+    // Variant from remaining title parts
+    const titleAfterMakeModel = title
+      .replace(/^\d{4}\s+/i, "")
+      .replace(new RegExp(`^${make}\\s+${model}\\s*`, "i"), "")
+      .trim()
+      .toUpperCase();
+    const variant = ((item.variant || item.trim || "") as string).toUpperCase().trim() || titleAfterMakeModel || undefined;
+
+    // Price
+    let price = 0;
+    if (typeof item.price === "number") price = item.price;
+    else if (typeof item.price === "string") {
+      const m = (item.price as string).replace(/[^0-9]/g, "");
+      if (m) price = parseInt(m, 10);
+    } else if (typeof item.price === "object" && item.price !== null) {
+      const p = item.price as Record<string, unknown>;
+      price = (p.amount || p.value || 0) as number;
+    }
+    if (!price || price < 1000 || price > 500000) return null;
+
+    // KM
+    let km: number | undefined;
+    const rawKm = item.mileage || item.odometer || item.km || item.kilometres;
+    if (typeof rawKm === "number") km = rawKm;
+    else if (typeof rawKm === "string") {
+      const parsed = parseInt((rawKm as string).replace(/[^0-9]/g, ""), 10);
+      if (parsed > 0) km = parsed;
+    }
+
+    // Location
+    const location = ((item.location || item.city || item.suburb || "") as string).trim();
+    const state = ((item.state || "") as string).toUpperCase().trim();
+
+    const url = (item.url || item.link || "") as string;
+    const imageUrl = (item.image || item.imageUrl || item.primary_photo_url || item.thumbnail || "") as string;
+    const seller = ((item.seller_name || item.seller || item.dealer || "") as string).trim();
+
+    return {
+      source_listing_id: `fbm-${listingId}`,
+      source: "fb-marketplace",
+      title: title || `${year} ${make} ${model}`,
+      make,
+      model,
+      variant: variant || undefined,
+      year,
+      price,
+      km,
+      state: state || undefined,
+      suburb: location || undefined,
+      url: url || undefined,
+      image_url: imageUrl || undefined,
+      seller_type: seller ? "private" : undefined,
+      dealer: seller || undefined,
+    };
+  } catch { return null; }
+}
+
 // ─── SOURCE ROUTER ─────────────────────────────────────────────
 
 function mapItemForSource(source: string, rawItem: Record<string, unknown>): MappedListing | null {
@@ -556,8 +647,8 @@ function mapItemForSource(source: string, rawItem: Record<string, unknown>): Map
     case "gumtree": return mapGumtreeItem(rawItem);
     case "slattery": return mapSlatteryItem(rawItem);
     case "ultimate-car": return mapUltimateCarItem(rawItem);
+    case "fb-marketplace": return mapFbMarketplaceItem(rawItem);
     default: {
-      // Fallback: try generic mapping for unknown sources
       console.warn(`[FETCH] Unknown source '${source}', attempting generic mapping`);
       return mapCarsalesItem(rawItem) || mapAutotraderItem(rawItem);
     }
