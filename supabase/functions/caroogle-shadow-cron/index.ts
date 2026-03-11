@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
     let currentPage = 1;
     let totalPages = 1;
 
-    while (currentPage <= totalPages) {
+    while (currentPage <= totalPages && currentPage <= 10) {
       const pageUrl = `${CAROOGLE_API_BASE}?source=pickles&limit=${PAGE_SIZE}&page=${currentPage}`;
       console.log(`[${CRON_NAME}] Fetching page ${currentPage}/${totalPages}...`);
       const ac = new AbortController();
@@ -150,11 +150,22 @@ Deno.serve(async (req) => {
         resp = await fetch(pageUrl, { signal: ac.signal });
       } catch (e) {
         clearTimeout(timeout);
-        throw new Error(`Caroogle API fetch failed on page ${currentPage}: ${e instanceof Error ? e.message : String(e)}`);
+        console.error(`[${CRON_NAME}] Fetch failed on page ${currentPage}: ${e instanceof Error ? e.message : String(e)}`);
+        // Process whatever we've collected so far instead of crashing
+        break;
       }
       clearTimeout(timeout);
+
       if (!resp.ok) {
-        throw new Error(`Caroogle API returned ${resp.status} on page ${currentPage}: ${await resp.text()}`);
+        const bodyText = await resp.text().catch(() => "");
+        console.error(`[${CRON_NAME}] API returned ${resp.status} on page ${currentPage}: ${bodyText.slice(0, 200)}`);
+        // 500 errors on later pages = stop paginating, process what we have
+        if (resp.status >= 500) {
+          console.log(`[${CRON_NAME}] Server error on page ${currentPage} — stopping pagination, processing ${ads.length} records collected so far`);
+          break;
+        }
+        // 4xx = likely bad request, also stop
+        break;
       }
 
       const payload = await resp.json();
@@ -173,13 +184,19 @@ Deno.serve(async (req) => {
       // If API doesn't support pagination yet, we got everything in one shot
       if (pageAds.length < PAGE_SIZE && currentPage === 1 && totalPages === 1) break;
       
+      // If page returned 0 results, we've exhausted the data
+      if (pageAds.length === 0) {
+        console.log(`[${CRON_NAME}] Empty page ${currentPage} — pagination complete`);
+        break;
+      }
+
       currentPage++;
     }
 
     console.log(`[${CRON_NAME}] Received ${ads.length} total records from API across ${currentPage} page(s)`);
 
     if (ads.length === 0) {
-      throw new Error("Caroogle API returned 0 records — possible schema change or downtime");
+      throw new Error("Caroogle API returned 0 records across all pages — possible schema change or downtime");
     }
 
     // ── Build rows for vehicle_listings ──

@@ -764,7 +764,7 @@ Deno.serve(async (req) => {
 
         // Fetch dataset items with pagination
         let offset = run.items_fetched || 0;
-        const batchSize = 100;
+        const batchSize = 50;
         
         let itemsFetchedThisRun = 0;
         let itemsUpsertedThisRun = 0;
