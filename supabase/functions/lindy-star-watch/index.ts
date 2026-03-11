@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     // Look up the vehicle listing
     const { data: listing, error: listErr } = await sb
       .from("vehicle_listings")
-      .select("id, listing_id, listing_url, make, model, year, variant, km, source, auction_house, auction_datetime")
+      .select("id, listing_id, listing_url, make, model, year, variant_used, km, source, auction_house, auction_datetime")
       .eq("id", listing_id)
       .single();
 
