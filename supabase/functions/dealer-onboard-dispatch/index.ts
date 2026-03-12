@@ -1,18 +1,17 @@
 /**
- * dealer-onboard-dispatch — Dispatches a new dealer to Lindy for auto-profiling.
+ * dealer-onboard-dispatch — Dispatches a new dealer to CaroogleAI for auto-profiling.
  *
- * Called from the DealerOnboarding UI after a dealer_profile is seeded.
- * POSTs to Lindy's HTTP Webhook with the dealer's website so Lindy can:
- *   1. Crawl the website
- *   2. Extract inventory patterns
- *   3. Build a dealer fingerprint
- *   4. POST results back to dealer-fingerprint-webhook
+ * Sends a JSON payload via email to the CaroogleAI LindyMail trigger address.
+ * The agent crawls the dealer website, extracts inventory patterns, builds a
+ * fingerprint, and POSTs results back to dealer-fingerprint-webhook.
  *
  * Required secrets:
- *   - LINDY_HTTP_WEBHOOK_URL
+ *   - SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM
+ *   - LINDY_WEBHOOK_SECRET (for callback HMAC signature)
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,17 +19,11 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const LINDY_EMAIL = "caroogleai-dealer-profile@lindymail.ai";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
-  }
-
-  const LINDY_URL = Deno.env.get("LINDY_HTTP_WEBHOOK_URL");
-  if (!LINDY_URL) {
-    return new Response(
-      JSON.stringify({ error: "LINDY_HTTP_WEBHOOK_URL not configured" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
   }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -60,92 +53,65 @@ Deno.serve(async (req) => {
     );
   }
 
-  const prompt = `You are an automated dealer intelligence agent operating inside the Carbitrage platform.
-
-Your task is to automatically generate a Dealer Fingerprint Profile for a new dealership.
-
-Dealer Information:
-- Name: ${body.dealer_name}
-- Website: ${body.dealer_website}
-${body.dealer_email ? `- Email: ${body.dealer_email}` : ''}
-${body.dealer_phone ? `- Phone: ${body.dealer_phone}` : ''}
-
-Step 1 — Visit the dealership website and extract: dealership name, business description, address, phone, suburb, state, postcode.
-
-Step 2 — Scan the website inventory pages. Common paths: /used-cars, /stock, /inventory, /vehicles. Extract the first 20-50 listings.
-
-Step 3 — From inventory analysis determine:
-- Primary Makes (e.g. Toyota, Ford, Isuzu)
-- Common Models (e.g. Hilux, Ranger, Prado)
-- Price Range (e.g. $30,000 - $70,000)
-- Typical KM Range (e.g. 40,000 - 120,000 km)
-- Vehicle Segments (4x4, SUV, Commercial utes, Passenger, Luxury, Mixed)
-- Dealer Type (Franchise, Independent, Wholesale, Mixed)
-
-Step 4 — Return results as JSON to the callback URL. The JSON payload MUST be:
-{
-  "dealer_profile_id": "${body.dealer_profile_id}",
-  "dealer_name": "${body.dealer_name}",
-  "website": "${body.dealer_website}",
-  "location": { "suburb": "...", "state": "...", "postcode": "...", "address": "..." },
-  "primary_makes": ["Toyota", "Ford"],
-  "top_models": ["Hilux", "Ranger"],
-  "price_band": { "min": 30000, "max": 70000 },
-  "km_band": { "min": 40000, "max": 120000 },
-  "vehicle_segments": ["4x4", "SUV"],
-  "dealer_type": "Independent",
-  "inventory_sample_size": 25,
-  "confidence": "HIGH",
-  "year_band": { "min": 2018, "max": 2024 }
-}
-
-Important: Prioritise actual inventory listings over marketing descriptions. If inventory pages are unavailable, check sitemap or third-party stock feeds.`;
-
-  const lindyPayload = {
+  const emailPayload = {
     dealer_profile_id: body.dealer_profile_id,
     dealer_name: body.dealer_name,
     dealer_website: body.dealer_website,
-    prompt,
+    dealer_email: body.dealer_email || null,
     callback_url: CALLBACK_URL,
-    callback_headers: {
-      ...(Deno.env.get("LINDY_WEBHOOK_SECRET")
-        ? { "x-lindy-signature": Deno.env.get("LINDY_WEBHOOK_SECRET")! }
-        : {}),
-      "Content-Type": "application/json",
-    },
   };
 
-  console.log(`[dealer-onboard-dispatch] Dispatching profiling for: ${body.dealer_name} → ${body.dealer_website}`);
+  console.log(`[dealer-onboard-dispatch] Sending profiling request for: ${body.dealer_name} → ${body.dealer_website}`);
+  console.log(`[dealer-onboard-dispatch] Target: ${LINDY_EMAIL} | Callback: ${CALLBACK_URL}`);
 
   try {
-    const resp = await fetch(LINDY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(lindyPayload),
-    });
+    const smtpHost = Deno.env.get("SMTP_HOST");
+    const smtpPort = Deno.env.get("SMTP_PORT");
+    const smtpUser = Deno.env.get("SMTP_USERNAME");
+    const smtpPass = Deno.env.get("SMTP_PASSWORD");
+    const smtpFrom = Deno.env.get("SMTP_FROM");
 
-    const respText = await resp.text();
-    console.log(`[dealer-onboard-dispatch] Lindy response: ${resp.status} — ${respText.slice(0, 500)}`);
-
-    if (!resp.ok) {
+    if (!smtpHost || !smtpPort || !smtpUser || !smtpPass || !smtpFrom) {
       return new Response(
-        JSON.stringify({ error: "Lindy dispatch failed", status: resp.status, detail: respText.slice(0, 500) }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "SMTP credentials not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const client = new SMTPClient({
+      connection: {
+        hostname: smtpHost,
+        port: Number(smtpPort),
+        tls: true,
+        auth: { username: smtpUser, password: smtpPass },
+      },
+    });
+
+    await client.send({
+      from: smtpFrom,
+      to: LINDY_EMAIL,
+      subject: `dealer_profile — ${body.dealer_name}`,
+      content: "auto",
+      html: `<pre>${JSON.stringify(emailPayload, null, 2)}</pre>`,
+    });
+
+    await client.close();
+
+    console.log(`[dealer-onboard-dispatch] Email dispatched to ${LINDY_EMAIL}`);
 
     return new Response(
       JSON.stringify({
         status: "dispatched",
+        method: "email",
         dealer_profile_id: body.dealer_profile_id,
-        message: "Lindy profiling dispatched. Fingerprint will arrive at dealer-fingerprint-webhook.",
+        message: `CaroogleAI profiling dispatched via email to ${LINDY_EMAIL}. Fingerprint will arrive at dealer-fingerprint-webhook.`,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
-    console.error("[dealer-onboard-dispatch] Lindy fetch error:", err);
+    console.error("[dealer-onboard-dispatch] Email dispatch error:", err);
     return new Response(
-      JSON.stringify({ error: "Lindy unreachable", detail: String(err) }),
+      JSON.stringify({ error: "Email dispatch failed", detail: String(err) }),
       { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
