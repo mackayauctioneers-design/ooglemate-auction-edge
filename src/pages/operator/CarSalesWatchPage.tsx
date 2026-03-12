@@ -195,6 +195,7 @@ export default function CarSalesWatchPage() {
           .eq('market_price_source', 'comparable_median')
           .eq('source', 'carsales')
           .in('lifecycle_status', ['ACTIVE', 'NEW'])
+          .gte('year', 2020)
           .lt('price_difference_percent', -5)
           .gte('comp_count', 3)
           .order('price_difference_percent', { ascending: true })
@@ -207,6 +208,7 @@ export default function CarSalesWatchPage() {
           .eq('source', 'carsales')
           .or('price_badge.ilike.well below market%,price_badge.ilike.below market%')
           .in('lifecycle_status', ['ACTIVE', 'NEW'])
+          .gte('year', 2020)
           .order('asking_price', { ascending: true })
           .limit(200),
       ]);
