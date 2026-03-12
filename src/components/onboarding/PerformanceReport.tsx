@@ -1,4 +1,4 @@
-import { TrendingUp, Award, Zap } from "lucide-react";
+import { TrendingUp, TrendingDown, Award, Zap, AlertTriangle, Clock } from "lucide-react";
 import type { DealerIntelligenceData } from "@/utils/dealerIntelligence";
 
 interface PerformanceReportProps {
@@ -10,17 +10,18 @@ function formatCurrency(val: number) {
 }
 
 export function PerformanceReport({ data }: PerformanceReportProps) {
-  const { summary, topProfitVehicles, fastestMovers, kmHeatmap } = data;
+  const { summary, topProfitVehicles, worstProfitVehicles, slowestMovers, fastestMovers, kmHeatmap } = data;
   const kmBandLabels = ["0–20k", "20–40k", "40–60k", "60–80k", "80–100k", "100k+"];
 
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <SummaryCard label="Total Sales" value={String(summary.totalSales)} />
-        <SummaryCard label="Avg Profit" value={formatCurrency(summary.avgProfit)} highlight />
+        <SummaryCard label="Avg Profit" value={formatCurrency(summary.avgProfit)} highlight={summary.avgProfit > 0} />
         <SummaryCard label="Avg Days to Sell" value={`${summary.avgDaysToSell}d`} />
-        <SummaryCard label="Profitable" value={`${summary.profitablePercentage}%`} />
+        <SummaryCard label="Profitable" value={`${summary.profitablePercentage}%`} highlight />
+        <SummaryCard label="Loss-Making" value={`${100 - summary.profitablePercentage}%`} danger={100 - summary.profitablePercentage > 20} />
       </div>
 
       {/* Top Profit Vehicles */}
@@ -48,6 +49,76 @@ export function PerformanceReport({ data }: PerformanceReportProps) {
                     </td>
                     <td className="px-4 py-2.5 text-right font-semibold text-primary">{formatCurrency(v.avgProfit)}</td>
                     <td className="px-4 py-2.5 text-right text-muted-foreground">{v.avgDaysToSell}d</td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground">{v.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Money Losers — Vehicles to Avoid */}
+      {worstProfitVehicles.length > 0 && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 overflow-hidden">
+          <div className="px-4 py-3 border-b border-destructive/20 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <h4 className="font-semibold text-sm text-foreground">Vehicles to Avoid</h4>
+            <span className="text-xs text-muted-foreground ml-auto">Avg loss per unit</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-destructive/20 bg-destructive/5">
+                  <th className="text-left px-4 py-2 text-muted-foreground font-medium">Vehicle</th>
+                  <th className="text-right px-4 py-2 text-muted-foreground font-medium">Avg Loss</th>
+                  <th className="text-right px-4 py-2 text-muted-foreground font-medium">Days to Sell</th>
+                  <th className="text-right px-4 py-2 text-muted-foreground font-medium">Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {worstProfitVehicles.slice(0, 6).map((v, i) => (
+                  <tr key={i} className="border-b border-destructive/10 last:border-0">
+                    <td className="px-4 py-2.5 font-medium text-foreground">
+                      {v.make} {v.model} {v.variant && <span className="text-muted-foreground">{v.variant}</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-destructive">{formatCurrency(v.avgProfit)}</td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground">{v.avgDaysToSell}d</td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground">{v.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Slowest Movers — Capital Traps */}
+      {slowestMovers.length > 0 && (
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            <h4 className="font-semibold text-sm text-foreground">Slowest Movers</h4>
+            <span className="text-xs text-muted-foreground ml-auto">Longest time on lot</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className="text-left px-4 py-2 text-muted-foreground font-medium">Vehicle</th>
+                  <th className="text-right px-4 py-2 text-muted-foreground font-medium">Avg Days</th>
+                  <th className="text-right px-4 py-2 text-muted-foreground font-medium">Avg Profit</th>
+                  <th className="text-right px-4 py-2 text-muted-foreground font-medium">Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {slowestMovers.slice(0, 5).map((v, i) => (
+                  <tr key={i} className="border-b border-border/50 last:border-0">
+                    <td className="px-4 py-2.5 font-medium text-foreground">
+                      {v.make} {v.model} {v.variant && <span className="text-muted-foreground">{v.variant}</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-destructive">{v.avgDaysToSell}d</td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground">{formatCurrency(v.avgProfit)}</td>
                     <td className="px-4 py-2.5 text-right text-muted-foreground">{v.count}</td>
                   </tr>
                 ))}
@@ -146,11 +217,11 @@ export function PerformanceReport({ data }: PerformanceReportProps) {
   );
 }
 
-function SummaryCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function SummaryCard({ label, value, highlight, danger }: { label: string; value: string; highlight?: boolean; danger?: boolean }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-3 text-center">
+    <div className={`rounded-lg border p-3 text-center ${danger ? "border-destructive/30 bg-destructive/5" : "border-border bg-card"}`}>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`text-lg font-bold mt-0.5 ${highlight ? "text-primary" : "text-foreground"}`}>{value}</p>
+      <p className={`text-lg font-bold mt-0.5 ${danger ? "text-destructive" : highlight ? "text-primary" : "text-foreground"}`}>{value}</p>
     </div>
   );
 }
