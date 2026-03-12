@@ -62,7 +62,7 @@ export function DealerIntelligenceReport({
 
   // Simulate progressive task completion for the wow-factor delay
   useEffect(() => {
-    const timers: NodeJS.Timeout[] = [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
 
     // Task 1: Sales analysis (fast)
     timers.push(setTimeout(() => {
