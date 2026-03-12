@@ -582,10 +582,12 @@ export default function SalesUploadPage() {
               Upload your sales file — we handle the rest
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={downloadTemplate}>
-            <Download className="h-4 w-4 mr-1" />
-            Template
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={downloadTemplate}>
+              <Download className="h-4 w-4 mr-1" />
+              Template
+            </Button>
+          </div>
         </div>
 
         {/* Guard — no linked account */}
@@ -596,12 +598,70 @@ export default function SalesUploadPage() {
           </div>
         )}
 
-        {/* Step: Idle → Drop Zone */}
-        {selectedAccountId && (step === "idle" || step === "parsing") && (
+        {/* Mode toggle */}
+        {selectedAccountId && step === "idle" && (
+          <div className="flex gap-2">
+            <Button
+              variant={uploadMode === "single" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setUploadMode("single")}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-1" />
+              Single File
+            </Button>
+            <Button
+              variant={uploadMode === "merge" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setUploadMode("merge")}
+            >
+              <Merge className="h-4 w-4 mr-1" />
+              EasyCars Merge
+            </Button>
+          </div>
+        )}
+
+        {/* Step: Idle → Single file Drop Zone */}
+        {selectedAccountId && uploadMode === "single" && (step === "idle" || step === "parsing") && (
           <FileDropZone
             onFileSelected={handleFileSelected}
             isProcessing={isProcessingFile}
           />
+        )}
+
+        {/* Step: Idle → Dual file merge */}
+        {selectedAccountId && uploadMode === "merge" && (step === "idle" || step === "parsing") && (
+          <DualFileUpload
+            onFilesReady={handleMergeFiles}
+            isProcessing={isProcessingFile}
+          />
+        )}
+
+        {/* Merge stats banner */}
+        {mergeStats && step === "mapping" && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Merge className="h-4 w-4 text-primary" />
+              Merge Complete
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3 text-sm">
+              <div>
+                <p className="text-muted-foreground">Sales</p>
+                <p className="font-semibold">{mergeStats.soldCount}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Acquisition Records</p>
+                <p className="font-semibold">{mergeStats.acqCount}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Matched</p>
+                <p className="font-semibold text-primary">{mergeStats.matchedCount}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Unmatched</p>
+                <p className="font-semibold">{mergeStats.unmatchedCount}</p>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Step: Mapping → Header Editor */}
