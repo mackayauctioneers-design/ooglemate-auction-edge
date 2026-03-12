@@ -3,9 +3,10 @@ import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Building2, Globe, MapPin, Fingerprint, Package, ChevronDown, ChevronUp } from 'lucide-react';
+import { Building2, Globe, MapPin, Fingerprint, Package, ChevronDown, ChevronUp, Rocket, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { toast } from 'sonner';
 
 interface DealerProfile {
   id: string;
