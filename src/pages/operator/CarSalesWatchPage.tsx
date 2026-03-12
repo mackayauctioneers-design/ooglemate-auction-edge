@@ -177,7 +177,6 @@ export default function CarSalesWatchPage() {
   const [realDeals, setRealDeals] = useState<RetailListing[]>([]);
   const [badgeDeals, setBadgeDeals] = useState<RetailListing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isRecomputing, setIsRecomputing] = useState(false);
 
   useEffect(() => {
     document.title = 'Car Sales Watch | Operator';
