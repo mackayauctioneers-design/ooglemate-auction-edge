@@ -56,12 +56,7 @@ Deno.serve(async (req) => {
     });
 
   try {
-    // Kill switch
-    const crawlMode = Deno.env.get("CRAWL_MODE") || "normal";
-    if (crawlMode === "disabled") {
-      console.log("[EASYAUTO] Crawl skipped: CRAWL_MODE=disabled");
-      return respond(200, { ok: true, status: "skipped_disabled" });
-    }
+    // Note: EasyAuto does NOT honour global CRAWL_MODE — it has its own lifecycle
 
     const apifyToken = Deno.env.get("APIFY_TOKEN");
     const actorId = Deno.env.get("APIFY_ACTOR_ID_EASYAUTO");
