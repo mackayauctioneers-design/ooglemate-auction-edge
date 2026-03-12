@@ -227,6 +227,7 @@ const App = () => (
               <Route path="/operator/demand-desk" element={<OperatorGuard><DealerDemandDeskPage /></OperatorGuard>} />
               <Route path="/operator/car-sales-watch" element={<OperatorGuard><CarSalesWatchPage /></OperatorGuard>} />
               <Route path="/operator/dealers" element={<OperatorGuard><DealerManagementPage /></OperatorGuard>} />
+              <Route path="/operator/dealer-profiles" element={<OperatorGuard><DealerProfilesPage /></OperatorGuard>} />
 
               {/* Fleet Enterprise */}
               <Route path="/fleet/buyer-terminal" element={<RequireAuth><BuyerTerminalPage /></RequireAuth>} />
