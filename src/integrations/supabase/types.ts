@@ -1858,7 +1858,10 @@ export type Database = {
         Row: {
           account_id: string | null
           created_at: string
+          dealer_email: string | null
           dealer_name: string
+          dealer_phone: string | null
+          dealer_website: string | null
           id: string
           org_id: string | null
           region_id: string
@@ -1868,7 +1871,10 @@ export type Database = {
         Insert: {
           account_id?: string | null
           created_at?: string
+          dealer_email?: string | null
           dealer_name: string
+          dealer_phone?: string | null
+          dealer_website?: string | null
           id?: string
           org_id?: string | null
           region_id?: string
@@ -1878,7 +1884,10 @@ export type Database = {
         Update: {
           account_id?: string | null
           created_at?: string
+          dealer_email?: string | null
           dealer_name?: string
+          dealer_phone?: string | null
+          dealer_website?: string | null
           id?: string
           org_id?: string | null
           region_id?: string

@@ -6,14 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, UserPlus, Link2, Building2 } from 'lucide-react';
+import { Loader2, UserPlus, Link2, Building2, Globe } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
-// ============================================================================
-// DEALER ONBOARDING - Admin tool to:
-// 1. Seed dealer profiles (no auth user required)
-// 2. Link existing dealer profiles to auth users
-// ============================================================================
 
 interface DealerOnboardingProps {
   onComplete?: () => void;
@@ -37,6 +31,7 @@ const REGIONS = [
   { id: 'VIC_REGIONAL', label: 'Regional VIC' },
   { id: 'QLD_BRISBANE', label: 'Brisbane' },
   { id: 'QLD_REGIONAL', label: 'Regional QLD' },
+  { id: 'MACKAY_QLD', label: 'Mackay QLD' },
   { id: 'SA_ADELAIDE', label: 'Adelaide' },
   { id: 'WA_PERTH', label: 'Perth' },
   { id: 'TAS', label: 'Tasmania' },
@@ -58,13 +53,15 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
   const [dealerName, setDealerName] = useState('');
   const [orgId, setOrgId] = useState('');
   const [regionId, setRegionId] = useState('CENTRAL_COAST_NSW');
+  const [dealerWebsite, setDealerWebsite] = useState('');
+  const [dealerEmail, setDealerEmail] = useState('');
+  const [dealerPhone, setDealerPhone] = useState('');
   
   // Link user form
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [authUserId, setAuthUserId] = useState('');
   const [role, setRole] = useState<'dealer' | 'admin' | 'internal'>('dealer');
 
-  // Load existing dealer profiles
   useEffect(() => {
     loadDealerProfiles();
   }, []);
@@ -80,9 +77,32 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
     }
   };
 
-  // =========================================================================
-  // TAB 1: Seed a new dealer profile (no auth user required)
-  // =========================================================================
+  // Dispatch to Lindy for auto-profiling
+  const dispatchLindyProfiling = async (profileId: string, name: string, website: string, email: string, phone: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('dealer-onboard-dispatch', {
+        body: {
+          dealer_profile_id: profileId,
+          dealer_name: name,
+          dealer_website: website,
+          dealer_email: email,
+          dealer_phone: phone,
+        },
+      });
+
+      if (error) {
+        console.error('[DealerOnboarding] Lindy dispatch error:', error);
+        toast.info('Dealer created but auto-profiling failed to dispatch');
+        return;
+      }
+
+      toast.success('🤖 Lindy profiling dispatched — fingerprint incoming');
+      console.log('[DealerOnboarding] Lindy dispatch response:', data);
+    } catch (err) {
+      console.error('[DealerOnboarding] Lindy dispatch exception:', err);
+    }
+  };
+
   const handleSeedProfile = async () => {
     if (!dealerName.trim()) {
       toast.error('Dealer name is required');
@@ -100,16 +120,27 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
           dealer_name: dealerName.trim(),
           org_id: orgId.trim() || null,
           region_id: regionId,
-        });
+          dealer_website: dealerWebsite.trim() || null,
+          dealer_email: dealerEmail.trim() || null,
+          dealer_phone: dealerPhone.trim() || null,
+        } as any);
 
       if (error) throw error;
 
       toast.success(`Created dealer profile: ${dealerName}`);
+
+      // Auto-dispatch Lindy if website provided
+      if (dealerWebsite.trim()) {
+        await dispatchLindyProfiling(profileId, dealerName.trim(), dealerWebsite.trim(), dealerEmail.trim(), dealerPhone.trim());
+      }
       
       // Reset and reload
       setDealerName('');
       setOrgId('');
       setRegionId('CENTRAL_COAST_NSW');
+      setDealerWebsite('');
+      setDealerEmail('');
+      setDealerPhone('');
       loadDealerProfiles();
       onComplete?.();
 
@@ -120,9 +151,6 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
     }
   };
 
-  // =========================================================================
-  // TAB 2: Link an existing dealer profile to an auth user
-  // =========================================================================
   const handleLinkUser = async () => {
     if (!selectedProfileId) {
       toast.error('Please select a dealer profile');
@@ -133,7 +161,6 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
       return;
     }
 
-    // Validate UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(authUserId.trim())) {
       toast.error('Invalid user ID format (must be UUID)');
@@ -143,7 +170,6 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
     setIsLoading(true);
 
     try {
-      // Step 1: Create the link (FK enforced to both tables)
       const { error: linkError } = await supabase
         .from('dealer_profile_user_links')
         .insert({
@@ -153,31 +179,20 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
         });
 
       if (linkError) {
-        if (linkError.code === '23503') {
-          throw new Error('User ID not found in auth.users - user must sign up first');
-        }
-        if (linkError.code === '23505') {
-          throw new Error('This user or profile is already linked');
-        }
+        if (linkError.code === '23503') throw new Error('User ID not found — user must sign up first');
+        if (linkError.code === '23505') throw new Error('This user or profile is already linked');
         throw linkError;
       }
 
-      // Step 2: Upsert user role (idempotent, FK enforced to auth.users)
       const { error: roleError } = await supabase
         .from('user_roles')
-        .upsert(
-          { user_id: authUserId.trim(), role: role },
-          { onConflict: 'user_id' }
-        );
+        .upsert({ user_id: authUserId.trim(), role: role }, { onConflict: 'user_id' });
 
-      if (roleError) {
-        throw roleError;
-      }
+      if (roleError) throw roleError;
 
       const profile = dealerProfiles.find(p => p.id === selectedProfileId);
       toast.success(`Linked ${profile?.dealer_name || 'dealer'} to user with role ${role}`);
       
-      // Reset
       setSelectedProfileId('');
       setAuthUserId('');
       setRole('dealer');
@@ -190,7 +205,6 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
     }
   };
 
-  // Quick seed for Brian Hilton Toyota
   const handleQuickSeed = async () => {
     setIsLoading(true);
     try {
@@ -201,7 +215,8 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
           dealer_name: 'Brian Hilton Toyota',
           org_id: 'brian-hilton-group',
           region_id: 'CENTRAL_COAST_NSW',
-        });
+          dealer_website: 'https://www.brianhilton.com.au',
+        } as any);
 
       if (error && error.code !== '23505') throw error;
 
@@ -222,7 +237,7 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
           Dealer Onboarding
         </CardTitle>
         <CardDescription>
-          Seed dealer profiles and link them to auth users
+          Seed dealer profiles, auto-profile via Lindy, and link to auth users
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -255,45 +270,47 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
 
               <div>
                 <Label htmlFor="dealerName">Dealer Name *</Label>
-                <Input
-                  id="dealerName"
-                  placeholder="e.g. Central Coast Motors"
-                  value={dealerName}
-                  onChange={(e) => setDealerName(e.target.value)}
-                />
+                <Input id="dealerName" placeholder="e.g. Central Coast Motors" value={dealerName} onChange={(e) => setDealerName(e.target.value)} />
+              </div>
+
+              <div>
+                <Label htmlFor="dealerWebsite">Website</Label>
+                <Input id="dealerWebsite" placeholder="https://www.example.com.au" value={dealerWebsite} onChange={(e) => setDealerWebsite(e.target.value)} />
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                  <Globe className="h-3 w-3" />
+                  Providing a website triggers automatic Lindy profiling
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="dealerEmail">Email</Label>
+                  <Input id="dealerEmail" type="email" placeholder="info@dealer.com.au" value={dealerEmail} onChange={(e) => setDealerEmail(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="dealerPhone">Phone</Label>
+                  <Input id="dealerPhone" type="tel" placeholder="02 1234 5678" value={dealerPhone} onChange={(e) => setDealerPhone(e.target.value)} />
+                </div>
               </div>
 
               <div>
                 <Label htmlFor="orgId">Org ID (optional)</Label>
-                <Input
-                  id="orgId"
-                  placeholder="e.g. cc-motors-group"
-                  value={orgId}
-                  onChange={(e) => setOrgId(e.target.value)}
-                />
+                <Input id="orgId" placeholder="e.g. cc-motors-group" value={orgId} onChange={(e) => setOrgId(e.target.value)} />
               </div>
 
               <div>
                 <Label htmlFor="region">Region</Label>
                 <Select value={regionId} onValueChange={setRegionId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select region" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Select region" /></SelectTrigger>
                   <SelectContent>
                     {REGIONS.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.label}
-                      </SelectItem>
+                      <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              <Button 
-                onClick={handleSeedProfile}
-                className="w-full gap-2"
-                disabled={isLoading || !dealerName.trim()}
-              >
+              <Button onClick={handleSeedProfile} className="w-full gap-2" disabled={isLoading || !dealerName.trim()}>
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Building2 className="h-4 w-4" />}
                 Create Dealer Profile
               </Button>
@@ -303,21 +320,16 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
           {/* TAB 2: Link existing profile to auth user */}
           <TabsContent value="link" className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Link an existing dealer profile to an authenticated user.
-              The user must have signed up first.
+              Link an existing dealer profile to an authenticated user. The user must have signed up first.
             </p>
 
             <div>
               <Label htmlFor="selectProfile">Dealer Profile *</Label>
               <Select value={selectedProfileId} onValueChange={setSelectedProfileId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select dealer..." />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select dealer..." /></SelectTrigger>
                 <SelectContent>
                   {dealerProfiles.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.dealer_name} ({p.region_id})
-                    </SelectItem>
+                    <SelectItem key={p.id} value={p.id}>{p.dealer_name} ({p.region_id})</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -325,45 +337,29 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
 
             <div>
               <Label htmlFor="authUserId">Auth User ID *</Label>
-              <Input
-                id="authUserId"
-                placeholder="e.g. 12345678-1234-1234-1234-123456789012"
-                value={authUserId}
-                onChange={(e) => setAuthUserId(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Get this from the user's profile or auth logs
-              </p>
+              <Input id="authUserId" placeholder="e.g. 12345678-1234-1234-1234-123456789012" value={authUserId} onChange={(e) => setAuthUserId(e.target.value)} />
+              <p className="text-xs text-muted-foreground mt-1">Get this from the user's profile or auth logs</p>
             </div>
 
             <div>
               <Label htmlFor="role">Role</Label>
               <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
                 <SelectContent>
                   {ROLES.map((r) => (
-                    <SelectItem key={r.id} value={r.id}>
-                      {r.label}
-                    </SelectItem>
+                    <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <Button 
-              onClick={handleLinkUser}
-              className="w-full gap-2"
-              disabled={isLoading || !selectedProfileId || !authUserId.trim()}
-            >
+            <Button onClick={handleLinkUser} className="w-full gap-2" disabled={isLoading || !selectedProfileId || !authUserId.trim()}>
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
               Link User to Profile
             </Button>
           </TabsContent>
         </Tabs>
 
-        {/* Show existing profiles */}
         {dealerProfiles.length > 0 && (
           <div className="mt-6 pt-4 border-t">
             <p className="text-xs text-muted-foreground mb-2">
