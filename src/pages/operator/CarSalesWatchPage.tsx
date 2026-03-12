@@ -217,22 +217,6 @@ export default function CarSalesWatchPage() {
     }
   }
 
-  async function triggerRecompute() {
-    setIsRecomputing(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('recompute-retail-medians', {
-        body: { limit: 200 },
-      });
-      if (error) throw error;
-      console.log('Recompute result:', data);
-      // Reload after recompute
-      await loadListings();
-    } catch (err) {
-      console.error('Recompute failed:', err);
-    } finally {
-      setIsRecomputing(false);
-    }
-  }
 
   return (
     <OperatorLayout>
