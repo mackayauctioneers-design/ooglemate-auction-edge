@@ -35,6 +35,8 @@ export interface DealerIntelligenceData {
   summary: DealerSummary;
   topPerformers: VehiclePerformance[];
   topProfitVehicles: VehiclePerformance[];
+  worstProfitVehicles: VehiclePerformance[];
+  slowestMovers: VehiclePerformance[];
   fastestMovers: VehiclePerformance[];
   kmHeatmap: KmBandProfit[];
 }
