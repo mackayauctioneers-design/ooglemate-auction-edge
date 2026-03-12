@@ -24,7 +24,7 @@ import {
 import { derivePlatform } from "@/utils/derivePlatform";
 import { mergeEasyCarsFiles, readAsWorkbook, type MergeResult } from "@/utils/easycarsmerge";
 
-type UploadStep = "idle" | "parsing" | "mapping" | "importing";
+type UploadStep = "idle" | "parsing" | "mapping" | "importing" | "report";
 type UploadMode = "single" | "merge";
 
 /** Extract make/model/year/variant from a combined description string */
