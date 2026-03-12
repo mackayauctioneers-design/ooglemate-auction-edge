@@ -2,16 +2,11 @@
  * dealer-onboard-dispatch — Dispatches a new dealer to CaroogleAI for auto-profiling.
  *
  * Sends a JSON payload via email to the CaroogleAI LindyMail trigger address.
- * The agent crawls the dealer website, extracts inventory patterns, builds a
- * fingerprint, and POSTs results back to dealer-fingerprint-webhook.
- *
- * Required secrets:
- *   - SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM
- *   - LINDY_WEBHOOK_SECRET (for callback HMAC signature)
+ * Uses nodemailer (npm) for reliable STARTTLS — same pattern as lindy-star-watch.
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+// @ts-nocheck
+import nodemailer from "npm:nodemailer@6.9.10";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,14 +24,7 @@ Deno.serve(async (req) => {
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/dealer-fingerprint-webhook`;
 
-  let body: {
-    dealer_profile_id: string;
-    dealer_name: string;
-    dealer_website: string;
-    dealer_email?: string;
-    dealer_phone?: string;
-  };
-
+  let body: any;
   try {
     body = await req.json();
   } catch {
@@ -62,40 +50,35 @@ Deno.serve(async (req) => {
   };
 
   console.log(`[dealer-onboard-dispatch] Sending profiling request for: ${body.dealer_name} → ${body.dealer_website}`);
-  console.log(`[dealer-onboard-dispatch] Target: ${LINDY_EMAIL} | Callback: ${CALLBACK_URL}`);
 
   try {
     const smtpHost = Deno.env.get("SMTP_HOST");
-    const smtpPort = Deno.env.get("SMTP_PORT");
+    const smtpPort = Number(Deno.env.get("SMTP_PORT") || "587");
     const smtpUser = Deno.env.get("SMTP_USERNAME");
     const smtpPass = Deno.env.get("SMTP_PASSWORD");
     const smtpFrom = Deno.env.get("SMTP_FROM");
 
-    if (!smtpHost || !smtpPort || !smtpUser || !smtpPass || !smtpFrom) {
+    if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
       return new Response(
         JSON.stringify({ error: "SMTP credentials not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const client = new SMTPClient({
-      connection: {
-        hostname: smtpHost,
-        port: Number(smtpPort),
-        tls: true,
-        auth: { username: smtpUser, password: smtpPass },
-      },
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: { user: smtpUser, pass: smtpPass },
     });
 
-    await client.send({
+    await transporter.sendMail({
       from: smtpFrom,
       to: LINDY_EMAIL,
       subject: `dealer_profile — ${body.dealer_name}`,
-      content: "auto",
+      text: JSON.stringify(emailPayload, null, 2),
       html: `<pre>${JSON.stringify(emailPayload, null, 2)}</pre>`,
     });
-
-    await client.close();
 
     console.log(`[dealer-onboard-dispatch] Email dispatched to ${LINDY_EMAIL}`);
 
@@ -104,7 +87,7 @@ Deno.serve(async (req) => {
         status: "dispatched",
         method: "email",
         dealer_profile_id: body.dealer_profile_id,
-        message: `CaroogleAI profiling dispatched via email to ${LINDY_EMAIL}. Fingerprint will arrive at dealer-fingerprint-webhook.`,
+        message: `CaroogleAI profiling dispatched via email to ${LINDY_EMAIL}.`,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
