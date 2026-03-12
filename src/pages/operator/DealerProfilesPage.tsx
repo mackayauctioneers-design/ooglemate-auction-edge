@@ -299,9 +299,21 @@ export default function DealerProfilesPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 rounded-lg px-4 py-3">
+                          <div className="flex items-center gap-3 text-sm text-muted-foreground bg-muted/30 rounded-lg px-4 py-3">
                             <Package className="h-4 w-4" />
-                            <span>No fingerprints yet — CaroogleAI may still be profiling</span>
+                            <span className="flex-1">No fingerprints yet</span>
+                            {dealer.dealer_website && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5"
+                                disabled={profilingIds.has(dealer.id)}
+                                onClick={(e) => { e.stopPropagation(); triggerProfiling(dealer); }}
+                              >
+                                {profilingIds.has(dealer.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
+                                Profile Now
+                              </Button>
+                            )}
                           </div>
                         )}
                       </CardContent>
