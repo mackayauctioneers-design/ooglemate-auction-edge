@@ -3,9 +3,10 @@ import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Building2, Globe, MapPin, Fingerprint, Package, ChevronDown, ChevronUp } from 'lucide-react';
+import { Building2, Globe, MapPin, Fingerprint, Package, ChevronDown, ChevronUp, Rocket, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { toast } from 'sonner';
 
 interface DealerProfile {
   id: string;
@@ -41,6 +42,35 @@ export default function DealerProfilesPage() {
   const [dealers, setDealers] = useState<DealerWithFingerprints[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [profilingIds, setProfilingIds] = useState<Set<string>>(new Set());
+
+  const triggerProfiling = async (dealer: DealerWithFingerprints) => {
+    if (!dealer.dealer_website) {
+      toast.error('No website on file — cannot profile');
+      return;
+    }
+    setProfilingIds((prev) => new Set(prev).add(dealer.id));
+    try {
+      const { error } = await supabase.functions.invoke('dealer-onboard-dispatch', {
+        body: {
+          dealer_profile_id: dealer.id,
+          dealer_name: dealer.dealer_name,
+          dealer_website: dealer.dealer_website,
+          dealer_email: dealer.dealer_email || undefined,
+        },
+      });
+      if (error) throw error;
+      toast.success(`🤖 CaroogleAI dispatched for ${dealer.dealer_name}`);
+    } catch (err) {
+      toast.error('Dispatch failed: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setProfilingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(dealer.id);
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     document.title = 'Dealer Profiles | Operator';
@@ -226,9 +256,21 @@ export default function DealerProfilesPage() {
                           <div>
                             <div className="flex items-center gap-2 mb-2">
                               <Fingerprint className="h-4 w-4 text-primary" />
-                              <span className="text-sm font-medium">
+                              <span className="text-sm font-medium flex-1">
                                 Fingerprints ({dealer.fingerprints.length})
                               </span>
+                              {dealer.dealer_website && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="gap-1.5 text-xs h-7"
+                                  disabled={profilingIds.has(dealer.id)}
+                                  onClick={(e) => { e.stopPropagation(); triggerProfiling(dealer); }}
+                                >
+                                  {profilingIds.has(dealer.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Rocket className="h-3 w-3" />}
+                                  Re-profile
+                                </Button>
+                              )}
                             </div>
                             <div className="border rounded-lg overflow-hidden">
                               <table className="w-full text-sm">
@@ -259,7 +301,7 @@ export default function DealerProfilesPage() {
                                           variant={fp.is_spec_only ? 'outline' : 'default'}
                                           className="text-xs"
                                         >
-                                          {fp.is_spec_only ? 'Lindy' : 'Sales'}
+                                          {fp.is_spec_only ? 'CaroogleAI' : 'Sales'}
                                         </Badge>
                                       </td>
                                     </tr>
@@ -269,9 +311,21 @@ export default function DealerProfilesPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 rounded-lg px-4 py-3">
+                          <div className="flex items-center gap-3 text-sm text-muted-foreground bg-muted/30 rounded-lg px-4 py-3">
                             <Package className="h-4 w-4" />
-                            <span>No fingerprints yet — CaroogleAI may still be profiling</span>
+                            <span className="flex-1">No fingerprints yet</span>
+                            {dealer.dealer_website && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5"
+                                disabled={profilingIds.has(dealer.id)}
+                                onClick={(e) => { e.stopPropagation(); triggerProfiling(dealer); }}
+                              >
+                                {profilingIds.has(dealer.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
+                                Profile Now
+                              </Button>
+                            )}
                           </div>
                         )}
                       </CardContent>
