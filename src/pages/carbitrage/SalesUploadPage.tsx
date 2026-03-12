@@ -204,7 +204,72 @@ export default function SalesUploadPage() {
     [profiles, parseFile, aiMapping]
   );
 
-  // Import mutation: normalize rows into vehicle_sales_truth
+  // Handle dual-file merge (EasyCars Sold + Acquisition)
+  const handleMergeFiles = useCallback(
+    async (soldFile: File, acqFile: File) => {
+      try {
+        setStep("parsing");
+        setCurrentFile(soldFile);
+
+        const soldExt = soldFile.name.split(".").pop()?.toLowerCase();
+        const acqExt = acqFile.name.split(".").pop()?.toLowerCase();
+
+        // Parse both files
+        let soldData: { wb?: any; pdfRows?: Record<string, string>[] } = {};
+        let acqData: { wb?: any; pdfRows?: Record<string, string>[] } = {};
+
+        if (soldExt === "xlsx" || soldExt === "xls") {
+          soldData.wb = await readAsWorkbook(soldFile);
+        } else if (soldExt === "pdf") {
+          const parsed = await parseFile(soldFile);
+          soldData.pdfRows = parsed.rows;
+        } else {
+          const parsed = await parseFile(soldFile);
+          soldData.pdfRows = parsed.rows;
+        }
+
+        if (acqExt === "xlsx" || acqExt === "xls") {
+          acqData.wb = await readAsWorkbook(acqFile);
+        } else if (acqExt === "pdf") {
+          const parsed = await parseFile(acqFile);
+          acqData.pdfRows = parsed.rows;
+        } else {
+          const parsed = await parseFile(acqFile);
+          acqData.pdfRows = parsed.rows;
+        }
+
+        // Merge
+        const result = mergeEasyCarsFiles(soldData, acqData);
+        setParsedHeaders(result.headers);
+        setParsedRows(result.rows);
+        setMergeStats(result.stats);
+        setDetectedFormat("EasyCars Merge");
+
+        // Build direct mapping (headers already canonical)
+        const directMapping: HeaderMapping = {};
+        for (const h of result.headers) {
+          directMapping[h] = h; // headers are already canonical field names
+        }
+        // Map our output names to the canonical import names
+        directMapping["sold_at"] = "sold_at";
+        directMapping["sold_to"] = "notes"; // store sold_to in notes
+        directMapping["stock_no"] = "stock_no";
+        setCurrentMapping(directMapping);
+        setAiMethod("easycars_merge");
+        setStep("mapping");
+
+        toast.success(
+          `Merged: ${result.stats.matchedCount}/${result.stats.soldCount} sales matched with acquisition data`
+        );
+      } catch (err: any) {
+        toast.error(err.message || "Failed to merge files");
+        setStep("idle");
+      }
+    },
+    [parseFile]
+  );
+
+
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!parsedRows.length || !selectedAccountId) {
