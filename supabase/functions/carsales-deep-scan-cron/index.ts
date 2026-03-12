@@ -6,22 +6,23 @@ const corsHeaders = {
 };
 
 /**
- * carsales-deep-scan-cron v1.0 — Daily market pricing dataset
+ * carsales-deep-scan-cron v2.0 — Serialised daily market pricing
  *
- * Runs ONCE per day. Scrapes by specific make/model buckets
- * with small item limits (~150 per bucket) to prevent OOM.
- * Sorted by price (ascending) for market floor detection.
+ * SAFETY:
+ * - Honours CRAWL_MODE kill switch
+ * - Serialised: one bucket at a time, waits between launches
+ * - Concurrency lock delegated to carsales-scan
+ * - No retries on failure — logs and moves on
+ * - All URLs are fully filtered and validated by carsales-scan
  *
- * This builds the true comparable dataset for delta calculations.
- * The shallow cron (carsales-scan-cron) catches new inventory every 2h.
- * This deep cron builds the pricing truth table once daily.
+ * Schedule: once daily
  */
 
 const YEAR_MIN = 2020;
 const KM_MAX = 120000;
 const ITEMS_PER_BUCKET = 150;
+const INTER_BUCKET_DELAY_MS = 12000; // 12s between buckets — wider gap for daily deep scan
 
-// Top-volume make/model pairs for AU market pricing
 const MARKET_BUCKETS = [
   { make: "Toyota", model: "HiLux" },
   { make: "Toyota", model: "LandCruiser" },
@@ -50,7 +51,6 @@ const MARKET_BUCKETS = [
   { make: "GWM", model: "Ute" },
 ];
 
-/** Carsales PascalCase slug */
 function carsalesSlug(str: string): string {
   return str
     .trim()
@@ -69,30 +69,45 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const respond = (status: number, body: Record<string, unknown>) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
   try {
+    // ── CRAWL_MODE kill switch ──
     const crawlMode = Deno.env.get("CRAWL_MODE") || "normal";
     if (crawlMode === "disabled") {
-      console.log("Deep scan: CRAWL_MODE=disabled, skipping");
-      return new Response(JSON.stringify({ success: true, message: "crawl disabled" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.log("[CARSALES-DEEP] Carsales crawl skipped: CRAWL_MODE=disabled");
+      return respond(200, { ok: true, status: "skipped_disabled" });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`Deep scan: ${MARKET_BUCKETS.length} make/model buckets, ${ITEMS_PER_BUCKET} items each`);
+    console.log(`[CARSALES-DEEP] Deep scan: ${MARKET_BUCKETS.length} buckets, ${ITEMS_PER_BUCKET} items each, SERIALISED`);
 
-    const results = [];
+    const results: Array<{ make: string; model: string; status: string; run_id?: string; error?: string }> = [];
+    let consecutiveSkipsForLock = 0;
 
     for (let i = 0; i < MARKET_BUCKETS.length; i++) {
       const bucket = MARKET_BUCKETS[i];
       const bucketUrl = buildBucketUrl(bucket.make, bucket.model);
 
-      // 8s stagger between buckets to avoid Apify contention
+      // Stagger between buckets
       if (i > 0) {
-        await new Promise((r) => setTimeout(r, 8000));
+        await new Promise((r) => setTimeout(r, INTER_BUCKET_DELAY_MS));
+      }
+
+      // If 3 consecutive skips due to active lock, stop — system is backed up
+      if (consecutiveSkipsForLock >= 3) {
+        console.log(`[CARSALES-DEEP] Halting: ${consecutiveSkipsForLock} consecutive lock-skips — system backed up`);
+        for (let j = i; j < MARKET_BUCKETS.length; j++) {
+          results.push({ ...MARKET_BUCKETS[j], status: "skipped_backpressure" });
+        }
+        break;
       }
 
       try {
@@ -112,22 +127,42 @@ Deno.serve(async (req) => {
         );
 
         const result = await scanResponse.json();
-        if (!scanResponse.ok) {
-          console.error(`[${bucket.make} ${bucket.model}] error: ${JSON.stringify(result)}`);
-          results.push({ ...bucket, error: result.error });
-        } else {
-          console.log(`[${bucket.make} ${bucket.model}] queued: run ${result.apify_run_id}`);
-          results.push({ ...bucket, run_id: result.apify_run_id, queued: true });
+
+        if (result.status === "skipped_disabled") {
+          console.log(`[CARSALES-DEEP] Halting: CRAWL_MODE disabled mid-run`);
+          results.push({ ...bucket, status: "skipped_disabled" });
+          break;
         }
+
+        if (result.status === "skipped_already_running") {
+          console.log(`[CARSALES-DEEP] [${bucket.make} ${bucket.model}] Skipped: lock active`);
+          results.push({ ...bucket, status: "skipped_already_running" });
+          consecutiveSkipsForLock++;
+          continue;
+        }
+
+        if (result.ok === false) {
+          console.error(`[CARSALES-DEEP] [${bucket.make} ${bucket.model}] Failed: ${result.error || result.status}`);
+          results.push({ ...bucket, status: "failed", error: result.error || result.status });
+          consecutiveSkipsForLock = 0;
+          continue; // No retry
+        }
+
+        console.log(`[CARSALES-DEEP] [${bucket.make} ${bucket.model}] Launched: run=${result.apify_run_id}`);
+        results.push({ ...bucket, status: "launched", run_id: result.apify_run_id });
+        consecutiveSkipsForLock = 0;
+
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[${bucket.make} ${bucket.model}] dispatch failed: ${msg}`);
-        results.push({ ...bucket, error: msg });
+        console.error(`[CARSALES-DEEP] [${bucket.make} ${bucket.model}] Error: ${msg}`);
+        results.push({ ...bucket, status: "error", error: msg });
+        consecutiveSkipsForLock = 0;
       }
     }
 
-    const queued = results.filter((r) => r.queued).length;
-    const failed = results.filter((r) => r.error).length;
+    const launched = results.filter((r) => r.status === "launched").length;
+    const skipped = results.filter((r) => r.status.startsWith("skipped")).length;
+    const failed = results.filter((r) => r.status === "failed" || r.status === "error").length;
 
     await supabase
       .from("cron_heartbeat")
@@ -136,21 +171,19 @@ Deno.serve(async (req) => {
           cron_name: "carsales-deep-scan-cron",
           last_seen_at: new Date().toISOString(),
           last_ok: failed === 0,
-          note: `v1 deep: ${queued}/${MARKET_BUCKETS.length} buckets, ~${queued * ITEMS_PER_BUCKET} items`,
+          note: `v2 deep: launched=${launched} skipped=${skipped} failed=${failed}`,
           states_failed: failed,
         },
         { onConflict: "cron_name" }
       );
 
-    console.log(`Deep scan complete: ${queued} queued, ${failed} failed`);
+    console.log(`[CARSALES-DEEP] Complete: launched=${launched} skipped=${skipped} failed=${failed}`);
 
-    return new Response(
-      JSON.stringify({ success: true, queued, failed, buckets: MARKET_BUCKETS.length, results }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return respond(200, { ok: true, launched, skipped, failed, buckets: MARKET_BUCKETS.length, results });
+
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("Deep scan error:", errorMsg);
+    console.error("[CARSALES-DEEP] Fatal error:", errorMsg);
 
     try {
       const supabase = createClient(
@@ -170,9 +203,6 @@ Deno.serve(async (req) => {
         );
     } catch (_) { /* best effort */ }
 
-    return new Response(JSON.stringify({ error: errorMsg }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return respond(500, { ok: false, status: "fatal_error", error: errorMsg });
   }
 });
