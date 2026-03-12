@@ -217,11 +217,11 @@ export function PerformanceReport({ data }: PerformanceReportProps) {
   );
 }
 
-function SummaryCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function SummaryCard({ label, value, highlight, danger }: { label: string; value: string; highlight?: boolean; danger?: boolean }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-3 text-center">
+    <div className={`rounded-lg border p-3 text-center ${danger ? "border-destructive/30 bg-destructive/5" : "border-border bg-card"}`}>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`text-lg font-bold mt-0.5 ${highlight ? "text-primary" : "text-foreground"}`}>{value}</p>
+      <p className={`text-lg font-bold mt-0.5 ${danger ? "text-destructive" : highlight ? "text-primary" : "text-foreground"}`}>{value}</p>
     </div>
   );
 }
