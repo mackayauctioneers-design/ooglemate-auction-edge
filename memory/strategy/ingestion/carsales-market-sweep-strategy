@@ -1,10 +1,27 @@
 # Memory: strategy/ingestion/carsales-market-sweep-strategy
 Updated: now
 
-The Carsales ingestion now follows a two-tier architecture to prevent Apify actor OOM crashes:
+## Architecture (v2 — Hardened)
 
-**Tier 1 — Shallow Sweep (every 2h):** `carsales-scan-cron` scans all 8 AU states with 200 items per state (down from 500), sorted by ~DateAdded. This catches fresh inventory entering the market. ~1,200-1,600 listings per cycle. The `carsales-scan` actor cap is hard-limited to 250 maxItems to stay within actor memory.
+The Carsales ingestion follows a two-tier architecture with strict safety controls:
 
-**Tier 2 — Deep Market Pricing (once daily):** `carsales-deep-scan-cron` scrapes 25 specific make/model buckets (HiLux, Ranger, Prado, RAV4, etc.) with 150 items per bucket, sorted by ~Price (ascending). This builds the true comparable dataset for median-based market delta calculations. ~3,750 listings per daily run.
+**Global Kill Switch:** `CRAWL_MODE=disabled` env secret instantly stops ALL Carsales crawling. No Apify calls, no queuing, no retries. Clean 200 response.
 
-Both tiers use the 'memo23/carsales-cheerio' Apify actor with Carsales filter syntax: (And.Make.X._.Model.Y._.Year.range(2020..)._.Odometer.range(..120000)). The deep scan staggers 8s between buckets to avoid Apify contention.
+**Tier 1 — Shallow Sweep (every 2h):** `carsales-scan-cron` scans all 8 AU states SERIALISED (one at a time, 10s gaps). 200 items per state. No retries on failure.
+
+**Tier 2 — Deep Market Pricing (daily):** `carsales-deep-scan-cron` scrapes 25 make/model buckets SERIALISED (12s gaps). 150 items per bucket. Auto-halts after 3 consecutive lock-skips (backpressure protection).
+
+**Concurrency Lock:** `carsales-scan` checks `apify_runs_queue` for any active carsales run (status=queued|running). If one exists, the launch is skipped. This prevents ALL parallel Carsales runs.
+
+**URL Validation:** Every URL must be a fully filtered `carsales.com.au/cars/` search URL with `q=` filter params. Bare pages, missing filters, or malformed URLs are rejected before any Apify call.
+
+**Apify Defaults:** timeout=20000s, memory=1024MB, maxItems capped at 250.
+
+**Structured Responses:** All paths return `{ok, status, ...}` objects: `skipped_disabled`, `skipped_invalid_url`, `skipped_already_running`, `launched`, `launch_failed`, `config_missing`.
+
+**No Retries:** Failed runs log and stop. Next scheduled cycle or manual intervention required. No cost bleed from retry loops.
+
+**Env Vars That Matter:**
+- `CRAWL_MODE` — set to "disabled" to kill all Carsales crawling
+- `APIFY_TOKEN` — Apify API token
+- `APIFY_ACTOR_ID_CARSALES` — actor identifier (slash or tilde format)
