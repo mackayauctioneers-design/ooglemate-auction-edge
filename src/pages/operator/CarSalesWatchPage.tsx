@@ -243,14 +243,10 @@ export default function CarSalesWatchPage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Car Sales Watch</h1>
             <p className="text-sm text-muted-foreground">
-              Real comparable median analysis — not badge estimates. Delta = (asking - median) / median.
+              Carsales listings tagged with price badges — 2020+ only.
             </p>
           </div>
-          <div className="ml-auto flex gap-2">
-            <Button variant="outline" size="sm" onClick={triggerRecompute} disabled={isRecomputing}>
-              {isRecomputing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-              Recompute Medians
-            </Button>
+          <div className="ml-auto">
             <Button variant="outline" size="sm" onClick={loadListings} disabled={isLoading}>
               {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
               Refresh
@@ -259,7 +255,7 @@ export default function CarSalesWatchPage() {
         </div>
 
         <PriceBadgeSection
-          title="Real Below-Market Deals (Comparable Median)"
+          title="Well Below Market"
           color="destructive"
           listings={realDeals}
           isLoading={isLoading}
@@ -267,7 +263,7 @@ export default function CarSalesWatchPage() {
         />
 
         <PriceBadgeSection
-          title="Badge-Estimated (Unverified — Awaiting Median)"
+          title="Below Market"
           color="warning"
           listings={badgeDeals}
           isLoading={isLoading}
