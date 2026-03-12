@@ -57,6 +57,76 @@ export function PerformanceReport({ data }: PerformanceReportProps) {
         </div>
       )}
 
+      {/* Money Losers — Vehicles to Avoid */}
+      {worstProfitVehicles.length > 0 && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 overflow-hidden">
+          <div className="px-4 py-3 border-b border-destructive/20 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <h4 className="font-semibold text-sm text-foreground">Vehicles to Avoid</h4>
+            <span className="text-xs text-muted-foreground ml-auto">Avg loss per unit</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-destructive/20 bg-destructive/5">
+                  <th className="text-left px-4 py-2 text-muted-foreground font-medium">Vehicle</th>
+                  <th className="text-right px-4 py-2 text-muted-foreground font-medium">Avg Loss</th>
+                  <th className="text-right px-4 py-2 text-muted-foreground font-medium">Days to Sell</th>
+                  <th className="text-right px-4 py-2 text-muted-foreground font-medium">Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {worstProfitVehicles.slice(0, 6).map((v, i) => (
+                  <tr key={i} className="border-b border-destructive/10 last:border-0">
+                    <td className="px-4 py-2.5 font-medium text-foreground">
+                      {v.make} {v.model} {v.variant && <span className="text-muted-foreground">{v.variant}</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-destructive">{formatCurrency(v.avgProfit)}</td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground">{v.avgDaysToSell}d</td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground">{v.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Slowest Movers — Capital Traps */}
+      {slowestMovers.length > 0 && (
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            <h4 className="font-semibold text-sm text-foreground">Slowest Movers</h4>
+            <span className="text-xs text-muted-foreground ml-auto">Longest time on lot</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className="text-left px-4 py-2 text-muted-foreground font-medium">Vehicle</th>
+                  <th className="text-right px-4 py-2 text-muted-foreground font-medium">Avg Days</th>
+                  <th className="text-right px-4 py-2 text-muted-foreground font-medium">Avg Profit</th>
+                  <th className="text-right px-4 py-2 text-muted-foreground font-medium">Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {slowestMovers.slice(0, 5).map((v, i) => (
+                  <tr key={i} className="border-b border-border/50 last:border-0">
+                    <td className="px-4 py-2.5 font-medium text-foreground">
+                      {v.make} {v.model} {v.variant && <span className="text-muted-foreground">{v.variant}</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-destructive">{v.avgDaysToSell}d</td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground">{formatCurrency(v.avgProfit)}</td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground">{v.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Fastest Movers */}
       {fastestMovers.length > 0 && (
         <div className="rounded-lg border border-border bg-card overflow-hidden">
