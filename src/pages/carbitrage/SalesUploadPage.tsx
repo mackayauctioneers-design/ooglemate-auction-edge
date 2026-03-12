@@ -5,10 +5,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { DealerLayout } from "@/components/layout/DealerLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileSpreadsheet, Download, Sparkles } from "lucide-react";
+import { FileSpreadsheet, Download, Sparkles, Merge } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { FileDropZone } from "@/components/sales-upload/FileDropZone";
+import { DualFileUpload } from "@/components/sales-upload/DualFileUpload";
 import { HeaderMappingEditor } from "@/components/sales-upload/HeaderMappingEditor";
 import { UploadBatchHistory } from "@/components/sales-upload/UploadBatchHistory";
 import { useFileParser } from "@/hooks/useFileParser";
@@ -20,8 +21,10 @@ import {
   findMatchingProfile,
 } from "@/hooks/useHeaderMapping";
 import { derivePlatform } from "@/utils/derivePlatform";
+import { mergeEasyCarsFiles, readAsWorkbook, type MergeResult } from "@/utils/easycarsmerge";
 
 type UploadStep = "idle" | "parsing" | "mapping" | "importing";
+type UploadMode = "single" | "merge";
 
 /** Extract make/model/year/variant from a combined description string */
 function parseDescription(desc: string): {
@@ -116,12 +119,14 @@ export default function SalesUploadPage() {
   const { dealerProfile } = useAuth();
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [step, setStep] = useState<UploadStep>("idle");
+  const [uploadMode, setUploadMode] = useState<UploadMode>("single");
   const [parsedHeaders, setParsedHeaders] = useState<string[]>([]);
   const [parsedRows, setParsedRows] = useState<Record<string, string>[]>([]);
   const [currentMapping, setCurrentMapping] = useState<HeaderMapping>({});
   const [aiMethod, setAiMethod] = useState<string>("");
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [detectedFormat, setDetectedFormat] = useState<string>("");
+  const [mergeStats, setMergeStats] = useState<MergeResult["stats"] | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -199,7 +204,72 @@ export default function SalesUploadPage() {
     [profiles, parseFile, aiMapping]
   );
 
-  // Import mutation: normalize rows into vehicle_sales_truth
+  // Handle dual-file merge (EasyCars Sold + Acquisition)
+  const handleMergeFiles = useCallback(
+    async (soldFile: File, acqFile: File) => {
+      try {
+        setStep("parsing");
+        setCurrentFile(soldFile);
+
+        const soldExt = soldFile.name.split(".").pop()?.toLowerCase();
+        const acqExt = acqFile.name.split(".").pop()?.toLowerCase();
+
+        // Parse both files
+        let soldData: { wb?: any; pdfRows?: Record<string, string>[] } = {};
+        let acqData: { wb?: any; pdfRows?: Record<string, string>[] } = {};
+
+        if (soldExt === "xlsx" || soldExt === "xls") {
+          soldData.wb = await readAsWorkbook(soldFile);
+        } else if (soldExt === "pdf") {
+          const parsed = await parseFile(soldFile);
+          soldData.pdfRows = parsed.rows;
+        } else {
+          const parsed = await parseFile(soldFile);
+          soldData.pdfRows = parsed.rows;
+        }
+
+        if (acqExt === "xlsx" || acqExt === "xls") {
+          acqData.wb = await readAsWorkbook(acqFile);
+        } else if (acqExt === "pdf") {
+          const parsed = await parseFile(acqFile);
+          acqData.pdfRows = parsed.rows;
+        } else {
+          const parsed = await parseFile(acqFile);
+          acqData.pdfRows = parsed.rows;
+        }
+
+        // Merge
+        const result = mergeEasyCarsFiles(soldData, acqData);
+        setParsedHeaders(result.headers);
+        setParsedRows(result.rows);
+        setMergeStats(result.stats);
+        setDetectedFormat("EasyCars Merge");
+
+        // Build direct mapping (headers already canonical)
+        const directMapping: HeaderMapping = {};
+        for (const h of result.headers) {
+          directMapping[h] = h; // headers are already canonical field names
+        }
+        // Map our output names to the canonical import names
+        directMapping["sold_at"] = "sold_at";
+        directMapping["sold_to"] = "notes"; // store sold_to in notes
+        directMapping["stock_no"] = "stock_no";
+        setCurrentMapping(directMapping);
+        setAiMethod("easycars_merge");
+        setStep("mapping");
+
+        toast.success(
+          `Merged: ${result.stats.matchedCount}/${result.stats.soldCount} sales matched with acquisition data`
+        );
+      } catch (err: any) {
+        toast.error(err.message || "Failed to merge files");
+        setStep("idle");
+      }
+    },
+    [parseFile]
+  );
+
+
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!parsedRows.length || !selectedAccountId) {
@@ -477,6 +547,7 @@ export default function SalesUploadPage() {
     setCurrentMapping({});
     setCurrentFile(null);
     setDetectedFormat("");
+    setMergeStats(null);
   };
 
   const downloadTemplate = () => {
@@ -511,10 +582,12 @@ export default function SalesUploadPage() {
               Upload your sales file — we handle the rest
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={downloadTemplate}>
-            <Download className="h-4 w-4 mr-1" />
-            Template
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={downloadTemplate}>
+              <Download className="h-4 w-4 mr-1" />
+              Template
+            </Button>
+          </div>
         </div>
 
         {/* Guard — no linked account */}
@@ -525,12 +598,70 @@ export default function SalesUploadPage() {
           </div>
         )}
 
-        {/* Step: Idle → Drop Zone */}
-        {selectedAccountId && (step === "idle" || step === "parsing") && (
+        {/* Mode toggle */}
+        {selectedAccountId && step === "idle" && (
+          <div className="flex gap-2">
+            <Button
+              variant={uploadMode === "single" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setUploadMode("single")}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-1" />
+              Single File
+            </Button>
+            <Button
+              variant={uploadMode === "merge" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setUploadMode("merge")}
+            >
+              <Merge className="h-4 w-4 mr-1" />
+              EasyCars Merge
+            </Button>
+          </div>
+        )}
+
+        {/* Step: Idle → Single file Drop Zone */}
+        {selectedAccountId && uploadMode === "single" && (step === "idle" || step === "parsing") && (
           <FileDropZone
             onFileSelected={handleFileSelected}
             isProcessing={isProcessingFile}
           />
+        )}
+
+        {/* Step: Idle → Dual file merge */}
+        {selectedAccountId && uploadMode === "merge" && (step === "idle" || step === "parsing") && (
+          <DualFileUpload
+            onFilesReady={handleMergeFiles}
+            isProcessing={isProcessingFile}
+          />
+        )}
+
+        {/* Merge stats banner */}
+        {mergeStats && step === "mapping" && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Merge className="h-4 w-4 text-primary" />
+              Merge Complete
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3 text-sm">
+              <div>
+                <p className="text-muted-foreground">Sales</p>
+                <p className="font-semibold">{mergeStats.soldCount}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Acquisition Records</p>
+                <p className="font-semibold">{mergeStats.acqCount}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Matched</p>
+                <p className="font-semibold text-primary">{mergeStats.matchedCount}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Unmatched</p>
+                <p className="font-semibold">{mergeStats.unmatchedCount}</p>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Step: Mapping → Header Editor */}
