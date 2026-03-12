@@ -149,6 +149,18 @@ export function analyzeDealerSales(rawRows: Record<string, string>[]): DealerInt
     .sort((a, b) => b.avgProfit - a.avgProfit)
     .slice(0, 10);
 
+  // Worst profit vehicles (money losers / avoid list)
+  const worstProfitVehicles = [...performances]
+    .filter((p) => p.count >= 2 && p.avgProfit < 0)
+    .sort((a, b) => a.avgProfit - b.avgProfit)
+    .slice(0, 10);
+
+  // Slowest movers (capital tied up)
+  const slowestMovers = [...performances]
+    .filter((p) => p.count >= 2 && p.avgDaysToSell > 0)
+    .sort((a, b) => b.avgDaysToSell - a.avgDaysToSell)
+    .slice(0, 10);
+
   // Fastest movers
   const fastestMovers = [...performances]
     .filter((p) => p.count >= 2 && p.avgDaysToSell > 0)
