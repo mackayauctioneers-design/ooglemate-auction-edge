@@ -20,9 +20,9 @@ const corsHeaders = {
 
 // ─── CENTRALISED CARSALES CONFIG ──────────────────────────────────────────────
 const CARSALES_CONFIG = {
-  timeoutSecs: 20000,
+  timeoutSecs: 3600,    // 1 hour max — if it can't finish in 1h, the batch is too big
   memoryMbytes: 1024,
-  maxItems: 250,        // Hard cap per run to prevent actor OOM
+  maxItems: 80,         // Small batches that finish fast — prevents actor timeout
   source: "carsales",
 };
 

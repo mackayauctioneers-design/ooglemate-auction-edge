@@ -21,7 +21,7 @@ const corsHeaders = {
 const YEAR_MIN = 2020;
 const KM_MAX = 120000;
 const ALL_STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
-const ITEMS_PER_STATE = 200;
+const ITEMS_PER_STATE = 80; // Small batches — prevents actor timeout
 const INTER_STATE_DELAY_MS = 10000; // 10s between states — serialised
 
 function buildNewestUrl(state: string): string {
