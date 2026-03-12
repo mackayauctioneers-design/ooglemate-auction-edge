@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, TrendingDown } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink, Loader2, TrendingDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -177,7 +177,6 @@ export default function CarSalesWatchPage() {
   const [realDeals, setRealDeals] = useState<RetailListing[]>([]);
   const [badgeDeals, setBadgeDeals] = useState<RetailListing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isRecomputing, setIsRecomputing] = useState(false);
 
   useEffect(() => {
     document.title = 'Car Sales Watch | Operator';
@@ -187,34 +186,30 @@ export default function CarSalesWatchPage() {
   async function loadListings() {
     setIsLoading(true);
     try {
-      const [realRes, badgeRes] = await Promise.all([
-        // Real comparable medians — sorted by biggest delta
+      const [wellBelowRes, belowRes] = await Promise.all([
         supabase
           .from('retail_listings')
           .select('id, make, model, variant_raw, year, asking_price, market_price, km, price_badge, price_difference, price_difference_percent, listing_url, source, seller_type, region_id, first_seen_at, last_seen_at, lifecycle_status, comp_count, market_confidence, market_price_source')
-          .eq('market_price_source', 'comparable_median')
           .eq('source', 'carsales')
+          .ilike('price_badge', 'well below market%')
           .in('lifecycle_status', ['ACTIVE', 'NEW'])
           .gte('year', 2020)
-          .lt('price_difference_percent', -5)
-          .gte('comp_count', 3)
-          .order('price_difference_percent', { ascending: true })
+          .order('asking_price', { ascending: true })
           .limit(200),
-        // Badge-estimated (unverified) — "Well below market" + "Below market" badges
         supabase
           .from('retail_listings')
           .select('id, make, model, variant_raw, year, asking_price, market_price, km, price_badge, price_difference, price_difference_percent, listing_url, source, seller_type, region_id, first_seen_at, last_seen_at, lifecycle_status, comp_count, market_confidence, market_price_source')
-          .eq('market_price_source', 'badge_estimate')
           .eq('source', 'carsales')
-          .or('price_badge.ilike.well below market%,price_badge.ilike.below market%')
+          .ilike('price_badge', 'below market%')
+          .not('price_badge', 'ilike', 'well below market%')
           .in('lifecycle_status', ['ACTIVE', 'NEW'])
           .gte('year', 2020)
           .order('asking_price', { ascending: true })
           .limit(200),
       ]);
 
-      if (realRes.data) setRealDeals(realRes.data as RetailListing[]);
-      if (badgeRes.data) setBadgeDeals(badgeRes.data as RetailListing[]);
+      if (wellBelowRes.data) setRealDeals(wellBelowRes.data as RetailListing[]);
+      if (belowRes.data) setBadgeDeals(belowRes.data as RetailListing[]);
     } catch (err) {
       console.error('Failed to load car sales watch data:', err);
     } finally {
@@ -222,22 +217,6 @@ export default function CarSalesWatchPage() {
     }
   }
 
-  async function triggerRecompute() {
-    setIsRecomputing(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('recompute-retail-medians', {
-        body: { limit: 200 },
-      });
-      if (error) throw error;
-      console.log('Recompute result:', data);
-      // Reload after recompute
-      await loadListings();
-    } catch (err) {
-      console.error('Recompute failed:', err);
-    } finally {
-      setIsRecomputing(false);
-    }
-  }
 
   return (
     <OperatorLayout>
@@ -247,14 +226,10 @@ export default function CarSalesWatchPage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Car Sales Watch</h1>
             <p className="text-sm text-muted-foreground">
-              Real comparable median analysis — not badge estimates. Delta = (asking - median) / median.
+              Carsales listings tagged with price badges — 2020+ only.
             </p>
           </div>
-          <div className="ml-auto flex gap-2">
-            <Button variant="outline" size="sm" onClick={triggerRecompute} disabled={isRecomputing}>
-              {isRecomputing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-              Recompute Medians
-            </Button>
+          <div className="ml-auto">
             <Button variant="outline" size="sm" onClick={loadListings} disabled={isLoading}>
               {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
               Refresh
@@ -263,7 +238,7 @@ export default function CarSalesWatchPage() {
         </div>
 
         <PriceBadgeSection
-          title="Real Below-Market Deals (Comparable Median)"
+          title="Well Below Market"
           color="destructive"
           listings={realDeals}
           isLoading={isLoading}
@@ -271,7 +246,7 @@ export default function CarSalesWatchPage() {
         />
 
         <PriceBadgeSection
-          title="Badge-Estimated (Unverified — Awaiting Median)"
+          title="Below Market"
           color="warning"
           listings={badgeDeals}
           isLoading={isLoading}
