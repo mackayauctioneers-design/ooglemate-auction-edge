@@ -410,7 +410,7 @@ verify_jwt = false
 
 [functions.easyauto-scrape]
 verify_jwt = false
-schedule = "0 * * * *"
+schedule = "0 */3 * * *"
 
 [functions.toyota-used-scrape]
 verify_jwt = false

@@ -1,32 +1,28 @@
 # Memory: technical/ingestion/easyauto123-scraper
-Updated: 2026-03-11
+Updated: 2026-03-12
 
-## EasyAuto123 Scraper — Status & Architecture
+## EasyAuto123 Scraper — IMPLEMENTED via Apify Actor
 
-### Current State: STUB ONLY — Edge Function Not Yet Created
+### Architecture:
+- **Edge Function**: `easyauto-scrape` — Apify actor launcher (same pattern as `carsales-scan`)
+- **Actor ID Secret**: `APIFY_ACTOR_ID_EASYAUTO` (configured)
+- **Schedule**: Every 3 hours (`0 */3 * * *`)
+- **Ingestion**: Queues to `apify_runs_queue` (source: `easyauto`) → picked up by universal `autotrader-fetch` worker
+- **Mapper**: `mapEasyAutoItem` in `autotrader-fetch/index.ts` — maps to `easyauto123` source, prefixes listing IDs with `ea-`
+- **Target table**: `retail_listings` via `upsert_retail_listing` RPC (retail source, not auction)
 
-The UI references `easyauto-scrape` edge function (via `TrapCrawlPreviewDrawer` with `parserMode: 'easyauto_scrape'`), but **no such function exists** in `supabase/functions/`. Invoking it will 404.
+### Safety Features:
+- CRAWL_MODE kill switch
+- Concurrency lock (one run at a time via apify_runs_queue)
+- Heartbeat to cron_heartbeat
+- Accepts `{ maxPages, limit }` overrides
 
-### What Exists:
-1. **Trap Registry Entry**: `easyauto123-national` registered in `auction_sources` (slug: `easyauto123-national`, URL: `https://www.easyauto123.com.au/used-cars`, parser_profile: `auto`, enabled: `true`)
-2. **`retail_source_listings` table**: Created with `source` defaulting to `'easyauto123'` — designed to hold raw scraped retail listings before normalization
-3. **UI wiring**: `TrapCrawlPreviewDrawer` routes `easyauto_scrape` parser mode to `supabase.functions.invoke('easyauto-scrape')` with `{ maxPages: 2 }`
-4. **Whitelisted domain**: `easyauto123.com.au` in `submit-dealer-urls` allowed domains list
-5. **Demand check inclusion**: `check-internal-demand` treats `easyauto123` as a dealer-site-class source
-
-### Site Characteristics:
+### Site Info:
 - **Operator**: AP Eagers (Australia's largest automotive retail group)
-- **Coverage**: National — vehicles across QLD, NSW, VIC, SA, WA
-- **URL pattern**: `https://www.easyauto123.com.au/used-cars` (main listing page)
-- **Pagination**: JS-rendered, likely React/Next.js SPA — requires Firecrawl or Manus for extraction
-- **Volume**: High — typically 500-1500+ vehicles nationally
+- **Coverage**: National — QLD, NSW, VIC, SA, WA
+- **URL**: `https://www.easyauto123.com.au/used-cars`
+- **Volume**: 500-1500+ vehicles
 
-### Recommended Implementation Path:
-- Use Manus task (consistent with outward search migration) or Firecrawl scrape
-- Ingest to `retail_source_listings` → normalize via `listing-normalizer` → route to `retail_listings`
-- Edge function name must be `easyauto-scrape` to match existing UI wiring
-- Should accept `{ maxPages: number }` and return `{ totalFound, ingested, dropped, error }`
-
-### Related Memory:
-- `memory/logic/sourcing/mega-dealer-aggregator-strategy` — EasyAuto123 classified as high-priority mega-dealer
-- `memory/technical/ingestion/manus-api-hybrid-integration-v1` — Manus now handles outward search (preferred over Firecrawl for JS-heavy sites)
+### Related:
+- `memory/architecture/ingestion/universal-multi-source-fetch-worker`
+- `memory/technical/ingestion/production-source-whitelist-v5` (should be updated to include easyauto)

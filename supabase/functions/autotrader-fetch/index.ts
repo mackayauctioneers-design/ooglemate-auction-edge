@@ -695,6 +695,97 @@ function mapFbMarketplaceItem(rawItem: Record<string, unknown>): MappedListing |
   } catch { return null; }
 }
 
+// ─── EASYAUTO123 MAPPER ────────────────────────────────────────
+/**
+ * EasyAuto123 (AP Eagers) Apify actor output.
+ * Expected fields: title, price, url/link, year, make, model, variant,
+ *   odometer/km/mileage, location, state, image/imageUrl
+ */
+function mapEasyAutoItem(rawItem: Record<string, unknown>): MappedListing | null {
+  try {
+    const item = rawItem;
+
+    // Listing ID from URL or id field
+    const url = (item.url || item.link || item.detailUrl || "") as string;
+    const rawId = (item.id || item.stockNumber || item.stock_number || "") as string;
+    const idMatch = url.match(/\/([a-zA-Z0-9-]{6,})\/?(\?|$)/);
+    const listingId = String(rawId || idMatch?.[1] || "");
+    if (!listingId) return null;
+
+    // Year
+    let year = 0;
+    if (typeof item.year === "number") year = item.year;
+    else if (typeof item.year === "string") year = parseInt(item.year, 10) || 0;
+    // Try extracting from title
+    if (!year) {
+      const title = (item.title || item.name || "") as string;
+      const ym = title.match(/\b(20[0-2]\d)\b/);
+      if (ym) year = parseInt(ym[1], 10);
+    }
+    if (!year || year < 2000) return null;
+
+    // Make/Model
+    const make = ((item.make || item.brand || "") as string).toUpperCase().trim();
+    const model = ((item.model || "") as string).toUpperCase().trim();
+    if (!make || !model) return null;
+
+    // Variant
+    const variant = ((item.variant || item.badge || item.trim || "") as string).toUpperCase().trim();
+
+    // Price
+    let price = 0;
+    const rawPrice = item.price || item.askingPrice || item.asking_price;
+    if (typeof rawPrice === "number") price = rawPrice;
+    else if (typeof rawPrice === "string") {
+      const m = rawPrice.replace(/[^0-9]/g, "");
+      if (m) price = parseInt(m, 10);
+    } else if (rawPrice && typeof rawPrice === "object") {
+      const p = rawPrice as Record<string, unknown>;
+      price = (p.value || p.amount || p.driveaway || 0) as number;
+    }
+    if (!price || price < 1000 || price > 500000) return null;
+
+    // KM
+    let km: number | undefined;
+    const rawKm = item.odometer || item.km || item.mileage || item.kilometres;
+    if (typeof rawKm === "number") km = rawKm;
+    else if (typeof rawKm === "string") {
+      const parsed = parseInt(rawKm.replace(/[^0-9]/g, ""), 10);
+      if (parsed > 0) km = parsed;
+    }
+
+    // Location
+    const location = (item.location || item.suburb || item.dealership || "") as string;
+    const stateRaw = (item.state || "") as string;
+    let state = stateRaw.toUpperCase().trim();
+    if (!state) {
+      const stateMatch = location.match(/\b(NSW|VIC|QLD|WA|SA|TAS|NT|ACT)\b/i);
+      if (stateMatch) state = stateMatch[1].toUpperCase();
+    }
+
+    const fullUrl = url.startsWith("http") ? url
+      : url ? `https://www.easyauto123.com.au${url}` : "";
+    if (!fullUrl) return null;
+
+    // Transmission / fuel
+    const transmission = ((item.transmission || "") as string).toUpperCase().trim() || undefined;
+    const fuelType = ((item.fuel || item.fuelType || item.fuel_type || "") as string).toUpperCase().trim() || undefined;
+
+    return {
+      source: "easyauto123",
+      source_listing_id: `ea-${listingId}`,
+      listing_url: fullUrl,
+      year, make, model,
+      variant_raw: variant || undefined,
+      km, asking_price: price,
+      state: state || undefined,
+      suburb: location || undefined,
+      ...(transmission ? { transmission } : {}),
+      ...(fuelType ? { fuel_type: fuelType } : {}),
+    };
+  } catch { return null; }
+}
+
 // ─── SOURCE ROUTER ─────────────────────────────────────────────
 
 function mapItemForSource(source: string, rawItem: Record<string, unknown>): MappedListing | null {
@@ -705,6 +796,7 @@ function mapItemForSource(source: string, rawItem: Record<string, unknown>): Map
     case "slattery": return mapSlatteryItem(rawItem);
     case "ultimate-car": return mapUltimateCarItem(rawItem);
     case "fb-marketplace": return mapFbMarketplaceItem(rawItem);
+    case "easyauto": return mapEasyAutoItem(rawItem);
     default: {
       console.warn(`[FETCH] Unknown source '${source}', attempting generic mapping`);
       return mapCarsalesItem(rawItem) || mapAutotraderItem(rawItem);
