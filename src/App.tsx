@@ -52,6 +52,7 @@ import CrossSafeMonitorPage from "./pages/operator/CrossSafeMonitorPage";
 import OperatorDealerUploadPage from "./pages/operator/OperatorDealerUploadPage";
 import ManualIntakePage from "./pages/operator/ManualIntakePage";
 import OogleBotPage from "./pages/operator/OogleBotPage";
+import DealerProfilesPage from "./pages/operator/DealerProfilesPage";
 import VAIntakePage from "./pages/VAIntakePage";
 import VATasksPage from "./pages/VATasksPage";
 import MandateFeedPage from "./pages/MandateFeedPage";
