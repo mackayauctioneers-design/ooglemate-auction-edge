@@ -199,16 +199,16 @@ export default function CarSalesWatchPage() {
           .gte('comp_count', 3)
           .order('price_difference_percent', { ascending: true })
           .limit(200),
-        // Badge-estimated (unverified) — still show but marked
+        // Badge-estimated (unverified) — "Well below market" + "Below market" badges
         supabase
           .from('retail_listings')
           .select('id, make, model, variant_raw, year, asking_price, market_price, km, price_badge, price_difference, price_difference_percent, listing_url, source, seller_type, region_id, first_seen_at, last_seen_at, lifecycle_status, comp_count, market_confidence, market_price_source')
           .eq('market_price_source', 'badge_estimate')
           .eq('source', 'carsales')
-          .ilike('price_badge', 'well below market%')
+          .or('price_badge.ilike.well below market%,price_badge.ilike.below market%')
           .in('lifecycle_status', ['ACTIVE', 'NEW'])
           .order('asking_price', { ascending: true })
-          .limit(100),
+          .limit(200),
       ]);
 
       if (realRes.data) setRealDeals(realRes.data as RetailListing[]);
