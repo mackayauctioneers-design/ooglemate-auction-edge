@@ -180,7 +180,7 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
           Dealer Onboarding
         </CardTitle>
         <CardDescription>
-          Paste a dealer's website — Lindy does the rest
+          Paste a dealer's website — CaroogleAI does the rest
         </CardDescription>
       </CardHeader>
       <CardContent>
