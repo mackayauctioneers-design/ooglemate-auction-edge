@@ -275,7 +275,7 @@ export default function CarSalesWatchPage() {
           color="warning"
           listings={badgeDeals}
           isLoading={isLoading}
-          defaultOpen={false}
+          defaultOpen={true}
         />
       </div>
     </OperatorLayout>
