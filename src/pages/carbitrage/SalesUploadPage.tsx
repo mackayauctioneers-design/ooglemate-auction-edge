@@ -687,6 +687,20 @@ export default function SalesUploadPage() {
           </>
         )}
 
+        {/* Step: Report — Intelligence Report after import */}
+        {step === "report" && reportRows.length > 0 && (
+          <DealerIntelligenceReport
+            salesRows={reportRows}
+            dealerName={dealerProfile?.dealer_name || "Your Dealership"}
+            hasWebsite={false}
+            onContinue={() => {
+              setReportRows([]);
+              setStep("idle");
+              navigate("/sales-insights");
+            }}
+          />
+        )}
+
         {/* Saved profiles info */}
         {profiles && profiles.length > 0 && step === "idle" && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -699,7 +713,7 @@ export default function SalesUploadPage() {
         )}
 
         {/* Recent uploads */}
-        <UploadBatchHistory batches={batches} isLoading={batchesLoading} />
+        {step !== "report" && <UploadBatchHistory batches={batches} isLoading={batchesLoading} />}
       </div>
     </DealerLayout>
   );
