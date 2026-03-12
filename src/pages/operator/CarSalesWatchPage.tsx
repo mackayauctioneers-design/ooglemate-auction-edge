@@ -187,34 +187,30 @@ export default function CarSalesWatchPage() {
   async function loadListings() {
     setIsLoading(true);
     try {
-      const [realRes, badgeRes] = await Promise.all([
-        // Real comparable medians — sorted by biggest delta
+      const [wellBelowRes, belowRes] = await Promise.all([
         supabase
           .from('retail_listings')
           .select('id, make, model, variant_raw, year, asking_price, market_price, km, price_badge, price_difference, price_difference_percent, listing_url, source, seller_type, region_id, first_seen_at, last_seen_at, lifecycle_status, comp_count, market_confidence, market_price_source')
-          .eq('market_price_source', 'comparable_median')
           .eq('source', 'carsales')
+          .ilike('price_badge', 'well below market%')
           .in('lifecycle_status', ['ACTIVE', 'NEW'])
           .gte('year', 2020)
-          .lt('price_difference_percent', -5)
-          .gte('comp_count', 3)
-          .order('price_difference_percent', { ascending: true })
+          .order('asking_price', { ascending: true })
           .limit(200),
-        // Badge-estimated (unverified) — "Well below market" + "Below market" badges
         supabase
           .from('retail_listings')
           .select('id, make, model, variant_raw, year, asking_price, market_price, km, price_badge, price_difference, price_difference_percent, listing_url, source, seller_type, region_id, first_seen_at, last_seen_at, lifecycle_status, comp_count, market_confidence, market_price_source')
-          .eq('market_price_source', 'badge_estimate')
           .eq('source', 'carsales')
-          .or('price_badge.ilike.well below market%,price_badge.ilike.below market%')
+          .ilike('price_badge', 'below market%')
+          .not('price_badge', 'ilike', 'well below market%')
           .in('lifecycle_status', ['ACTIVE', 'NEW'])
           .gte('year', 2020)
           .order('asking_price', { ascending: true })
           .limit(200),
       ]);
 
-      if (realRes.data) setRealDeals(realRes.data as RetailListing[]);
-      if (badgeRes.data) setBadgeDeals(badgeRes.data as RetailListing[]);
+      if (wellBelowRes.data) setRealDeals(wellBelowRes.data as RetailListing[]);
+      if (belowRes.data) setBadgeDeals(belowRes.data as RetailListing[]);
     } catch (err) {
       console.error('Failed to load car sales watch data:', err);
     } finally {
