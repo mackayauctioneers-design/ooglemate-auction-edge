@@ -105,6 +105,7 @@ import MorningBriefPage from "./pages/operator/MorningBriefPage";
 import FingerprintPerformancePage from "./pages/operator/FingerprintPerformancePage";
 import DealerDemandDeskPage from "./pages/operator/DealerDemandDeskPage";
 import CarSalesWatchPage from "./pages/operator/CarSalesWatchPage";
+import DealerManagementPage from "./pages/operator/DealerManagementPage";
 import BuyerTerminalPage from "./pages/fleet/BuyerTerminalPage";
 import FleetDashboardPage from "./pages/fleet/FleetDashboardPage";
 

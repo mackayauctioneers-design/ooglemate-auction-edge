@@ -1,12 +1,21 @@
+import { useEffect } from 'react';
+import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { DealerOnboarding } from '@/components/admin/DealerOnboarding';
-import { OperatorShell } from '@/components/operator/OperatorShell';
 
 export default function DealerManagementPage() {
+  useEffect(() => {
+    document.title = 'Dealer Management | Operator';
+  }, []);
+
   return (
-    <OperatorShell title="Dealer Management" subtitle="Onboard and manage dealer profiles">
-      <div className="max-w-2xl mx-auto">
+    <OperatorLayout>
+      <div className="max-w-2xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Dealer Management</h1>
+          <p className="text-muted-foreground mt-1">Onboard and link dealer profiles</p>
+        </div>
         <DealerOnboarding />
       </div>
-    </OperatorShell>
+    </OperatorLayout>
   );
 }
