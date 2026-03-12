@@ -105,6 +105,7 @@ import MorningBriefPage from "./pages/operator/MorningBriefPage";
 import FingerprintPerformancePage from "./pages/operator/FingerprintPerformancePage";
 import DealerDemandDeskPage from "./pages/operator/DealerDemandDeskPage";
 import CarSalesWatchPage from "./pages/operator/CarSalesWatchPage";
+import DealerManagementPage from "./pages/operator/DealerManagementPage";
 import BuyerTerminalPage from "./pages/fleet/BuyerTerminalPage";
 import FleetDashboardPage from "./pages/fleet/FleetDashboardPage";
 
@@ -224,6 +225,7 @@ const App = () => (
               <Route path="/operator/fingerprint-performance" element={<OperatorGuard><FingerprintPerformancePage /></OperatorGuard>} />
               <Route path="/operator/demand-desk" element={<OperatorGuard><DealerDemandDeskPage /></OperatorGuard>} />
               <Route path="/operator/car-sales-watch" element={<OperatorGuard><CarSalesWatchPage /></OperatorGuard>} />
+              <Route path="/operator/dealers" element={<OperatorGuard><DealerManagementPage /></OperatorGuard>} />
 
               {/* Fleet Enterprise */}
               <Route path="/fleet/buyer-terminal" element={<RequireAuth><BuyerTerminalPage /></RequireAuth>} />
