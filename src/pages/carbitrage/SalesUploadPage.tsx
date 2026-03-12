@@ -119,12 +119,14 @@ export default function SalesUploadPage() {
   const { dealerProfile } = useAuth();
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [step, setStep] = useState<UploadStep>("idle");
+  const [uploadMode, setUploadMode] = useState<UploadMode>("single");
   const [parsedHeaders, setParsedHeaders] = useState<string[]>([]);
   const [parsedRows, setParsedRows] = useState<Record<string, string>[]>([]);
   const [currentMapping, setCurrentMapping] = useState<HeaderMapping>({});
   const [aiMethod, setAiMethod] = useState<string>("");
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [detectedFormat, setDetectedFormat] = useState<string>("");
+  const [mergeStats, setMergeStats] = useState<MergeResult["stats"] | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
