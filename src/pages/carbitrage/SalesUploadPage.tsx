@@ -128,6 +128,7 @@ export default function SalesUploadPage() {
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [detectedFormat, setDetectedFormat] = useState<string>("");
   const [mergeStats, setMergeStats] = useState<MergeResult["stats"] | null>(null);
+  const [reportRows, setReportRows] = useState<Record<string, string>[]>([]);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
