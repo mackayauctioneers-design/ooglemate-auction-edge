@@ -271,7 +271,7 @@ export default function DealerProfilesPage() {
                         ) : (
                           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 rounded-lg px-4 py-3">
                             <Package className="h-4 w-4" />
-                            <span>No fingerprints yet — Lindy may still be profiling</span>
+                            <span>No fingerprints yet — CaroogleAI may still be profiling</span>
                           </div>
                         )}
                       </CardContent>

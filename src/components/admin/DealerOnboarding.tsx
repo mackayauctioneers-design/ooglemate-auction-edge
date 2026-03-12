@@ -226,7 +226,7 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
             </div>
 
             <div>
-              <Label htmlFor="region">Region (optional — Lindy will detect)</Label>
+              <Label htmlFor="region">Region (optional — CaroogleAI will detect)</Label>
               <Select value={regionId} onValueChange={setRegionId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Auto-detect from website" />
