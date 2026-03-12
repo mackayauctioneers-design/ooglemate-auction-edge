@@ -20,7 +20,7 @@ const corsHeaders = {
 
 const YEAR_MIN = 2020;
 const KM_MAX = 120000;
-const ITEMS_PER_BUCKET = 150;
+const ITEMS_PER_BUCKET = 80; // Small batches — prevents actor timeout
 const INTER_BUCKET_DELAY_MS = 12000; // 12s between buckets — wider gap for daily deep scan
 
 const MARKET_BUCKETS = [
