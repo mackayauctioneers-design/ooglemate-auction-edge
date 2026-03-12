@@ -1,4 +1,4 @@
-import { TrendingUp, Award, Zap } from "lucide-react";
+import { TrendingUp, TrendingDown, Award, Zap, AlertTriangle, Clock } from "lucide-react";
 import type { DealerIntelligenceData } from "@/utils/dealerIntelligence";
 
 interface PerformanceReportProps {
