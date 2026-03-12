@@ -547,6 +547,7 @@ export default function SalesUploadPage() {
     setCurrentMapping({});
     setCurrentFile(null);
     setDetectedFormat("");
+    setMergeStats(null);
   };
 
   const downloadTemplate = () => {
