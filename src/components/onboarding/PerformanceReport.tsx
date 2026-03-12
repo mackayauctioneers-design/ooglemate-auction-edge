@@ -16,11 +16,12 @@ export function PerformanceReport({ data }: PerformanceReportProps) {
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <SummaryCard label="Total Sales" value={String(summary.totalSales)} />
-        <SummaryCard label="Avg Profit" value={formatCurrency(summary.avgProfit)} highlight />
+        <SummaryCard label="Avg Profit" value={formatCurrency(summary.avgProfit)} highlight={summary.avgProfit > 0} />
         <SummaryCard label="Avg Days to Sell" value={`${summary.avgDaysToSell}d`} />
-        <SummaryCard label="Profitable" value={`${summary.profitablePercentage}%`} />
+        <SummaryCard label="Profitable" value={`${summary.profitablePercentage}%`} highlight />
+        <SummaryCard label="Loss-Making" value={`${100 - summary.profitablePercentage}%`} danger={100 - summary.profitablePercentage > 20} />
       </div>
 
       {/* Top Profit Vehicles */}
