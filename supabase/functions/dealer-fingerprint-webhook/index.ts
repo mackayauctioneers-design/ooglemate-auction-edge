@@ -1,23 +1,9 @@
 /**
- * dealer-fingerprint-webhook — Receives Lindy's auto-profiling results
+ * dealer-fingerprint-webhook — Receives CaroogleAI's auto-profiling results
  * and upserts dealer fingerprints into the database.
  *
- * Expected payload from Lindy:
- * {
- *   dealer_profile_id: string,
- *   dealer_name: string,
- *   website: string,
- *   location: { suburb, state, postcode, address },
- *   primary_makes: string[],
- *   top_models: string[],
- *   price_band: { min, max },
- *   km_band: { min, max },
- *   vehicle_segments: string[],
- *   dealer_type: string,
- *   inventory_sample_size: number,
- *   confidence: string,
- *   year_band: { min, max }
- * }
+ * Auth: HMAC-SHA256 signature via x-lindy-signature header
+ * Secret: LINDY_WEBHOOK_SECRET
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -28,17 +14,42 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-lindy-signature",
 };
 
+async function verifyHmac(body: string, signature: string, secret: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
+  const expected = Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  // Constant-time comparison
+  if (expected.length !== signature.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < expected.length; i++) {
+    mismatch |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Verify Lindy signature if configured
   const secret = Deno.env.get("LINDY_WEBHOOK_SECRET");
+  const rawBody = await req.text();
+
+  // Verify HMAC-SHA256 signature
   if (secret) {
-    const sig = req.headers.get("x-lindy-signature");
-    if (sig !== secret) {
-      console.warn("[dealer-fingerprint-webhook] Invalid signature");
+    const sig = req.headers.get("x-lindy-signature") || "";
+    const valid = await verifyHmac(rawBody, sig, secret);
+    if (!valid) {
+      console.warn("[dealer-fingerprint-webhook] Invalid HMAC signature");
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -48,7 +59,7 @@ Deno.serve(async (req) => {
 
   let payload: any;
   try {
-    payload = await req.json();
+    payload = JSON.parse(rawBody);
   } catch {
     return new Response(JSON.stringify({ error: "Invalid JSON" }), {
       status: 400,
@@ -69,7 +80,18 @@ Deno.serve(async (req) => {
     inventory_sample_size,
     confidence,
     location,
+    status: agentStatus,
+    error_message,
   } = payload;
+
+  // Handle agent failure reports
+  if (agentStatus === "failed") {
+    console.error(`[dealer-fingerprint-webhook] Agent reported failure for ${dealer_name}: ${error_message}`);
+    return new Response(
+      JSON.stringify({ status: "acknowledged", agent_status: "failed", error_message }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
 
   if (!dealer_profile_id || !dealer_name) {
     return new Response(
@@ -84,18 +106,17 @@ Deno.serve(async (req) => {
   );
 
   console.log(`[dealer-fingerprint-webhook] Processing fingerprint for: ${dealer_name} (${dealer_profile_id})`);
-  console.log(`[dealer-fingerprint-webhook] Makes: ${primary_makes.join(', ')} | Models: ${top_models.join(', ')}`);
+  console.log(`[dealer-fingerprint-webhook] Makes: ${primary_makes.join(", ")} | Models: ${top_models.join(", ")} | Confidence: ${confidence}`);
 
   // Create a fingerprint for each primary make + top model combination
   const fingerprints: any[] = [];
 
   for (const make of primary_makes) {
-    // Find models that match this make (best effort — use all if can't determine)
-    const modelsForMake = top_models.length > 0 ? top_models : ['ALL'];
+    const modelsForMake = top_models.length > 0 ? top_models : ["ALL"];
 
     for (const model of modelsForMake) {
       fingerprints.push({
-        fingerprint_id: `auto-${dealer_profile_id}-${make}-${model}`.toLowerCase().replace(/\s+/g, '-'),
+        fingerprint_id: `auto-${dealer_profile_id}-${make}-${model}`.toLowerCase().replace(/\s+/g, "-"),
         dealer_name,
         dealer_profile_id,
         make: make.toUpperCase(),
@@ -105,7 +126,7 @@ Deno.serve(async (req) => {
         min_km: km_band?.min || null,
         max_km: km_band?.max || null,
         is_active: true,
-        is_spec_only: true, // Auto-generated, not from sales truth
+        is_spec_only: true,
       });
     }
   }
@@ -134,9 +155,7 @@ Deno.serve(async (req) => {
 
   console.log(`[dealer-fingerprint-webhook] Created ${data?.length || 0} fingerprints for ${dealer_name}`);
 
-  // Update dealer_profiles with location metadata if provided
   if (location) {
-    // Store location info — we don't have dedicated columns yet but can log it
     console.log(`[dealer-fingerprint-webhook] Location: ${location.suburb}, ${location.state} ${location.postcode}`);
   }
 
