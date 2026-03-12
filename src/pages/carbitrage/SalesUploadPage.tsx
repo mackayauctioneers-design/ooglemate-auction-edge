@@ -6,6 +6,7 @@ import { DealerLayout } from "@/components/layout/DealerLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FileSpreadsheet, Download, Sparkles, Merge } from "lucide-react";
+import { DealerIntelligenceReport } from "@/components/onboarding/DealerIntelligenceReport";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { FileDropZone } from "@/components/sales-upload/FileDropZone";
