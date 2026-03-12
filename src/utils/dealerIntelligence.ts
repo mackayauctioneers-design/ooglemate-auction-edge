@@ -237,6 +237,8 @@ export function analyzeDealerSales(rawRows: Record<string, string>[]): DealerInt
     summary,
     topPerformers,
     topProfitVehicles,
+    worstProfitVehicles,
+    slowestMovers,
     fastestMovers,
     kmHeatmap: kmHeatmap.slice(0, 8),
   };

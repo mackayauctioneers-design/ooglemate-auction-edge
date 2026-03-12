@@ -10,7 +10,7 @@ function formatCurrency(val: number) {
 }
 
 export function PerformanceReport({ data }: PerformanceReportProps) {
-  const { summary, topProfitVehicles, fastestMovers, kmHeatmap } = data;
+  const { summary, topProfitVehicles, worstProfitVehicles, slowestMovers, fastestMovers, kmHeatmap } = data;
   const kmBandLabels = ["0–20k", "20–40k", "40–60k", "60–80k", "80–100k", "100k+"];
 
   return (
