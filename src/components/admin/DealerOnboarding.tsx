@@ -117,7 +117,7 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
       toast.success(`Created: ${dealerName}`);
 
       // Dispatch Lindy to crawl & build fingerprints
-      await dispatchLindyProfiling(profileId, dealerName.trim(), website);
+      await dispatchCaroogleProfiling(profileId, dealerName.trim(), website);
 
       setDealerName('');
       setDealerWebsite('');
