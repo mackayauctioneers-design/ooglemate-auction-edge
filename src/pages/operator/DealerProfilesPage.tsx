@@ -301,7 +301,7 @@ export default function DealerProfilesPage() {
                                           variant={fp.is_spec_only ? 'outline' : 'default'}
                                           className="text-xs"
                                         >
-                                          {fp.is_spec_only ? 'Lindy' : 'Sales'}
+                                          {fp.is_spec_only ? 'CaroogleAI' : 'Sales'}
                                         </Badge>
                                       </td>
                                     </tr>
