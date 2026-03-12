@@ -256,9 +256,21 @@ export default function DealerProfilesPage() {
                           <div>
                             <div className="flex items-center gap-2 mb-2">
                               <Fingerprint className="h-4 w-4 text-primary" />
-                              <span className="text-sm font-medium">
+                              <span className="text-sm font-medium flex-1">
                                 Fingerprints ({dealer.fingerprints.length})
                               </span>
+                              {dealer.dealer_website && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="gap-1.5 text-xs h-7"
+                                  disabled={profilingIds.has(dealer.id)}
+                                  onClick={(e) => { e.stopPropagation(); triggerProfiling(dealer); }}
+                                >
+                                  {profilingIds.has(dealer.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Rocket className="h-3 w-3" />}
+                                  Re-profile
+                                </Button>
+                              )}
                             </div>
                             <div className="border rounded-lg overflow-hidden">
                               <table className="w-full text-sm">
