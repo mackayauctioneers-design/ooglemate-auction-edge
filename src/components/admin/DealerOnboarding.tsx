@@ -71,20 +71,20 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
     if (!error && data) setDealerProfiles(data);
   };
 
-  const dispatchLindyProfiling = async (profileId: string, name: string, website: string) => {
+  const dispatchCaroogleProfiling = async (profileId: string, name: string, website: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('dealer-onboard-dispatch', {
         body: { dealer_profile_id: profileId, dealer_name: name, dealer_website: website },
       });
       if (error) {
-        console.error('[DealerOnboarding] Lindy dispatch error:', error);
+        console.error('[DealerOnboarding] CaroogleAI dispatch error:', error);
         toast.info('Dealer created — auto-profiling failed to dispatch');
         return;
       }
-      toast.success('🤖 Lindy dispatched — fingerprint incoming');
-      console.log('[DealerOnboarding] Lindy dispatch response:', data);
+      toast.success('🤖 CaroogleAI dispatched — fingerprint incoming');
+      console.log('[DealerOnboarding] CaroogleAI dispatch response:', data);
     } catch (err) {
-      console.error('[DealerOnboarding] Lindy dispatch exception:', err);
+      console.error('[DealerOnboarding] CaroogleAI dispatch exception:', err);
     }
   };
 
