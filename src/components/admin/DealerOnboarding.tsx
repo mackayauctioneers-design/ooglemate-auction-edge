@@ -71,20 +71,20 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
     if (!error && data) setDealerProfiles(data);
   };
 
-  const dispatchLindyProfiling = async (profileId: string, name: string, website: string) => {
+  const dispatchCaroogleProfiling = async (profileId: string, name: string, website: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('dealer-onboard-dispatch', {
         body: { dealer_profile_id: profileId, dealer_name: name, dealer_website: website },
       });
       if (error) {
-        console.error('[DealerOnboarding] Lindy dispatch error:', error);
+        console.error('[DealerOnboarding] CaroogleAI dispatch error:', error);
         toast.info('Dealer created — auto-profiling failed to dispatch');
         return;
       }
-      toast.success('🤖 Lindy dispatched — fingerprint incoming');
-      console.log('[DealerOnboarding] Lindy dispatch response:', data);
+      toast.success('🤖 CaroogleAI dispatched — fingerprint incoming');
+      console.log('[DealerOnboarding] CaroogleAI dispatch response:', data);
     } catch (err) {
-      console.error('[DealerOnboarding] Lindy dispatch exception:', err);
+      console.error('[DealerOnboarding] CaroogleAI dispatch exception:', err);
     }
   };
 
@@ -117,7 +117,7 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
       toast.success(`Created: ${dealerName}`);
 
       // Dispatch Lindy to crawl & build fingerprints
-      await dispatchLindyProfiling(profileId, dealerName.trim(), website);
+      await dispatchCaroogleProfiling(profileId, dealerName.trim(), website);
 
       setDealerName('');
       setDealerWebsite('');
@@ -180,7 +180,7 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
           Dealer Onboarding
         </CardTitle>
         <CardDescription>
-          Paste a dealer's website — Lindy does the rest
+          Paste a dealer's website — CaroogleAI does the rest
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -201,7 +201,7 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
             <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
               <p className="text-sm text-primary font-medium">How it works</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Enter name + website → Lindy crawls inventory → auto-creates fingerprints (makes, models, price bands, segments)
+                Enter name + website → CaroogleAI crawls inventory → auto-creates fingerprints (makes, models, price bands, segments)
               </p>
             </div>
 
@@ -226,7 +226,7 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
             </div>
 
             <div>
-              <Label htmlFor="region">Region (optional — Lindy will detect)</Label>
+              <Label htmlFor="region">Region (optional — CaroogleAI will detect)</Label>
               <Select value={regionId} onValueChange={setRegionId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Auto-detect from website" />
