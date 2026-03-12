@@ -42,6 +42,35 @@ export default function DealerProfilesPage() {
   const [dealers, setDealers] = useState<DealerWithFingerprints[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [profilingIds, setProfilingIds] = useState<Set<string>>(new Set());
+
+  const triggerProfiling = async (dealer: DealerWithFingerprints) => {
+    if (!dealer.dealer_website) {
+      toast.error('No website on file — cannot profile');
+      return;
+    }
+    setProfilingIds((prev) => new Set(prev).add(dealer.id));
+    try {
+      const { error } = await supabase.functions.invoke('dealer-onboard-dispatch', {
+        body: {
+          dealer_profile_id: dealer.id,
+          dealer_name: dealer.dealer_name,
+          dealer_website: dealer.dealer_website,
+          dealer_email: dealer.dealer_email || undefined,
+        },
+      });
+      if (error) throw error;
+      toast.success(`🤖 CaroogleAI dispatched for ${dealer.dealer_name}`);
+    } catch (err) {
+      toast.error('Dispatch failed: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setProfilingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(dealer.id);
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     document.title = 'Dealer Profiles | Operator';
