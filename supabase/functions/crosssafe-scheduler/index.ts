@@ -14,7 +14,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const NIGHTLY_SOURCES = ["pickles", "grays"];
+const NIGHTLY_SOURCES = ["pickles", "grays", "slattery"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {

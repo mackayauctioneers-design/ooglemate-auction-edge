@@ -163,7 +163,7 @@ async function handleSourceRefresh(sb: any, source: string, payload: any): Promi
     pickles: "pickles-ingest-cron",
     grays: "grays-stub-ingest",
     manheim: "manheim-stub-ingest",
-    slattery: "slattery-stub-ingest-webhook",
+    slattery: "slattery-scan",
   };
 
   const fnName = functionMap[source];
