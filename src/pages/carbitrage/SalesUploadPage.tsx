@@ -6,6 +6,7 @@ import { DealerLayout } from "@/components/layout/DealerLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FileSpreadsheet, Download, Sparkles, Merge } from "lucide-react";
+import { DealerIntelligenceReport } from "@/components/onboarding/DealerIntelligenceReport";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { FileDropZone } from "@/components/sales-upload/FileDropZone";
@@ -23,7 +24,7 @@ import {
 import { derivePlatform } from "@/utils/derivePlatform";
 import { mergeEasyCarsFiles, readAsWorkbook, type MergeResult } from "@/utils/easycarsmerge";
 
-type UploadStep = "idle" | "parsing" | "mapping" | "importing";
+type UploadStep = "idle" | "parsing" | "mapping" | "importing" | "report";
 type UploadMode = "single" | "merge";
 
 /** Extract make/model/year/variant from a combined description string */
@@ -127,6 +128,7 @@ export default function SalesUploadPage() {
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [detectedFormat, setDetectedFormat] = useState<string>("");
   const [mergeStats, setMergeStats] = useState<MergeResult["stats"] | null>(null);
+  const [reportRows, setReportRows] = useState<Record<string, string>[]>([]);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -496,7 +498,6 @@ export default function SalesUploadPage() {
     },
     onSuccess: async ({ imported, skipped, withBuyPrice, withClearance }) => {
       queryClient.invalidateQueries({ queryKey: ["upload-batches"] });
-      resetState();
 
       // Show detailed audit summary
       const parts = [`${imported} records imported`];
@@ -505,17 +506,19 @@ export default function SalesUploadPage() {
       if (skipped > 0) parts.push(`${skipped} rows skipped`);
       toast.success(parts.join(" · "));
 
-      // Auto-run Winners Watchlist + Target Conduit
+      // Save rows for the intelligence report before resetting
+      setReportRows([...parsedRows]);
+      resetState();
+      setStep("report");
+
+      // Auto-run Winners Watchlist + Target Conduit in background
       try {
-        toast.info("Updating winners watchlist…");
         const { error: winnersErr } = await supabase.functions.invoke(
           "update-winners-watchlist",
           { body: { account_id: selectedAccountId } }
         );
         if (winnersErr) console.error("update-winners-watchlist error:", winnersErr);
-        else toast.success("Winners watchlist updated");
 
-        toast.info("Building target candidates…");
         const { error: buildErr } = await supabase.functions.invoke(
           "build-sales-targets",
           { body: { account_id: selectedAccountId } }
@@ -527,13 +530,9 @@ export default function SalesUploadPage() {
           { body: { account_id: selectedAccountId, n: 15 } }
         );
         if (genErr) console.error("generate-daily-targets error:", genErr);
-
-        toast.success("Targets generated — redirecting to insights.");
       } catch (e) {
         console.error("Post-upload pipeline error:", e);
       }
-
-      setTimeout(() => navigate("/sales-insights"), 1500);
     },
     onError: (err: any) => {
       toast.error(err.message);
@@ -688,6 +687,20 @@ export default function SalesUploadPage() {
           </>
         )}
 
+        {/* Step: Report — Intelligence Report after import */}
+        {step === "report" && reportRows.length > 0 && (
+          <DealerIntelligenceReport
+            salesRows={reportRows}
+            dealerName={dealerProfile?.dealer_name || "Your Dealership"}
+            hasWebsite={false}
+            onContinue={() => {
+              setReportRows([]);
+              setStep("idle");
+              navigate("/sales-insights");
+            }}
+          />
+        )}
+
         {/* Saved profiles info */}
         {profiles && profiles.length > 0 && step === "idle" && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -700,7 +713,7 @@ export default function SalesUploadPage() {
         )}
 
         {/* Recent uploads */}
-        <UploadBatchHistory batches={batches} isLoading={batchesLoading} />
+        {step !== "report" && <UploadBatchHistory batches={batches} isLoading={batchesLoading} />}
       </div>
     </DealerLayout>
   );
