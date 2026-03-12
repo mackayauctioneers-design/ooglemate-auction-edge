@@ -201,7 +201,7 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
             <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
               <p className="text-sm text-primary font-medium">How it works</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Enter name + website → Lindy crawls inventory → auto-creates fingerprints (makes, models, price bands, segments)
+                Enter name + website → CaroogleAI crawls inventory → auto-creates fingerprints (makes, models, price bands, segments)
               </p>
             </div>
 
