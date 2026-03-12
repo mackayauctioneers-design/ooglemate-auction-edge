@@ -5,10 +5,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { DealerLayout } from "@/components/layout/DealerLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileSpreadsheet, Download, Sparkles } from "lucide-react";
+import { FileSpreadsheet, Download, Sparkles, Merge } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { FileDropZone } from "@/components/sales-upload/FileDropZone";
+import { DualFileUpload } from "@/components/sales-upload/DualFileUpload";
 import { HeaderMappingEditor } from "@/components/sales-upload/HeaderMappingEditor";
 import { UploadBatchHistory } from "@/components/sales-upload/UploadBatchHistory";
 import { useFileParser } from "@/hooks/useFileParser";
@@ -20,8 +21,10 @@ import {
   findMatchingProfile,
 } from "@/hooks/useHeaderMapping";
 import { derivePlatform } from "@/utils/derivePlatform";
+import { mergeEasyCarsFiles, readAsWorkbook, type MergeResult } from "@/utils/easycarsmerge";
 
 type UploadStep = "idle" | "parsing" | "mapping" | "importing";
+type UploadMode = "single" | "merge";
 
 /** Extract make/model/year/variant from a combined description string */
 function parseDescription(desc: string): {
