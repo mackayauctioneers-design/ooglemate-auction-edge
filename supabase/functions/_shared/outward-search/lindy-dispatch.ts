@@ -8,9 +8,13 @@
  * Trigger: carbitrage-dispatch-mackayauctioneers@lindymail.ai
  * Subject must contain: carbitrage-batch
  * Recommended batch size: 3–5 rows per email.
+ *
+ * Uses nodemailer (npm) for reliable STARTTLS via Gmail SMTP.
  */
 
+// @ts-nocheck
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import nodemailer from "npm:nodemailer@6.9.12";
 import type { ParsedIntent } from "./types.ts";
 
 const MAX_CONCURRENT_SESSIONS = 3;
