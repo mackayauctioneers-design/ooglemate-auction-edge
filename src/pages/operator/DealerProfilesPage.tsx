@@ -4,10 +4,11 @@ import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Building2, Globe, MapPin, Fingerprint, Package, ChevronDown, ChevronUp, Rocket, Loader2, BarChart3 } from 'lucide-react';
+import { Building2, Globe, MapPin, Fingerprint, Package, ChevronDown, ChevronUp, Rocket, Loader2, BarChart3, Shield, Eye, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface DealerProfile {
   id: string;
@@ -33,11 +34,27 @@ interface DealerFingerprint {
   is_active: boolean;
   is_spec_only: boolean;
   created_at: string;
+  fingerprint_priority: string;
+  fingerprint_type: string;
+  profit_score: number | null;
+  avg_profit: number | null;
+  sales_count: number | null;
+  alert_enabled: boolean;
+  avg_days_to_sell: number | null;
 }
 
 interface DealerWithFingerprints extends DealerProfile {
   fingerprints: DealerFingerprint[];
 }
+
+const fmt = (n: number) =>
+  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(n);
+
+const priorityConfig: Record<string, { label: string; color: string; bgColor: string }> = {
+  high: { label: 'HIGH', color: 'text-green-700', bgColor: 'bg-green-100 border-green-200' },
+  medium: { label: 'MED', color: 'text-amber-700', bgColor: 'bg-amber-100 border-amber-200' },
+  low: { label: 'LOW', color: 'text-muted-foreground', bgColor: 'bg-muted border-border' },
+};
 
 export default function DealerProfilesPage() {
   const navigate = useNavigate();
@@ -83,13 +100,12 @@ export default function DealerProfilesPage() {
     setLoading(true);
     const [profilesRes, fingerprintsRes] = await Promise.all([
       supabase.from('dealer_profiles').select('*').order('dealer_name'),
-      supabase.from('dealer_fingerprints').select('*').order('make, model'),
+      supabase.from('dealer_fingerprints').select('*').order('profit_score', { ascending: false, nullsFirst: false }),
     ]);
 
     const profiles = (profilesRes.data || []) as DealerProfile[];
     const fingerprints = (fingerprintsRes.data || []) as DealerFingerprint[];
 
-    // Group fingerprints by dealer_profile_id and dealer_name
     const fpByProfileId = new Map<string, DealerFingerprint[]>();
     const fpByName = new Map<string, DealerFingerprint[]>();
     for (const fp of fingerprints) {
@@ -106,10 +122,7 @@ export default function DealerProfilesPage() {
 
     const merged: DealerWithFingerprints[] = profiles.map((p) => ({
       ...p,
-      fingerprints:
-        fpByProfileId.get(p.id) ||
-        fpByName.get(p.dealer_name.toLowerCase()) ||
-        [],
+      fingerprints: fpByProfileId.get(p.id) || fpByName.get(p.dealer_name.toLowerCase()) || [],
     }));
 
     setDealers(merged);
@@ -125,6 +138,7 @@ export default function DealerProfilesPage() {
   };
 
   const totalFingerprints = dealers.reduce((s, d) => s + d.fingerprints.length, 0);
+  const activeAlerts = dealers.reduce((s, d) => s + d.fingerprints.filter(f => f.alert_enabled).length, 0);
 
   return (
     <OperatorLayout>
@@ -132,7 +146,7 @@ export default function DealerProfilesPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Dealer Profiles</h1>
           <p className="text-muted-foreground mt-1">
-            {dealers.length} dealers · {totalFingerprints} fingerprints
+            {dealers.length} dealers · {totalFingerprints} fingerprints · {activeAlerts} active alerts
           </p>
         </div>
 
@@ -142,9 +156,7 @@ export default function DealerProfilesPage() {
           <Card>
             <CardContent className="py-12 text-center text-muted-foreground">
               No dealers onboarded yet. Head to{' '}
-              <a href="/operator/dealers" className="text-primary underline">
-                Dealer Management
-              </a>{' '}
+              <a href="/operator/dealers" className="text-primary underline">Dealer Management</a>{' '}
               to add one.
             </CardContent>
           </Card>
@@ -152,7 +164,9 @@ export default function DealerProfilesPage() {
           <div className="space-y-3">
             {dealers.map((dealer) => {
               const isOpen = expandedIds.has(dealer.id);
-              const makes = [...new Set(dealer.fingerprints.map((f) => f.make))];
+              const highFps = dealer.fingerprints.filter(f => f.fingerprint_priority === 'high');
+              const medFps = dealer.fingerprints.filter(f => f.fingerprint_priority === 'medium' && f.fingerprint_type === 'dealer_trade');
+              const lowFps = dealer.fingerprints.filter(f => f.fingerprint_priority === 'low' || f.fingerprint_type === 'wholesale');
               const hasFingerprints = dealer.fingerprints.length > 0;
 
               return (
@@ -167,7 +181,7 @@ export default function DealerProfilesPage() {
                             </div>
                             <div className="min-w-0">
                               <CardTitle className="text-base truncate">{dealer.dealer_name}</CardTitle>
-                                <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                              <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                                 <MapPin className="h-3 w-3" />
                                 <span>{dealer.region_id.replace(/_/g, ' ')}</span>
                                 {dealer.dealer_website ? (
@@ -189,29 +203,21 @@ export default function DealerProfilesPage() {
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
-                            {makes.length > 0 ? (
-                              <div className="hidden sm:flex gap-1">
-                                {makes.slice(0, 3).map((m) => (
-                                  <Badge key={m} variant="secondary" className="text-xs">
-                                    {m}
-                                  </Badge>
-                                ))}
-                                {makes.length > 3 && (
-                                  <Badge variant="outline" className="text-xs">
-                                    +{makes.length - 3}
-                                  </Badge>
-                                )}
-                              </div>
-                            ) : (
-                              <Badge variant="outline" className="text-xs text-muted-foreground">
-                                No fingerprints
+                            {highFps.length > 0 && (
+                              <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">
+                                <Shield className="h-3 w-3 mr-1" />
+                                {highFps.length} Active
                               </Badge>
                             )}
-                            {isOpen ? (
-                              <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            {lowFps.length > 0 && (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">
+                                {lowFps.length} Passive
+                              </Badge>
                             )}
+                            {!hasFingerprints && (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">No fingerprints</Badge>
+                            )}
+                            {isOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                           </div>
                         </CardHeader>
                       </button>
@@ -225,12 +231,7 @@ export default function DealerProfilesPage() {
                             <div>
                               <span className="text-muted-foreground text-xs">Website</span>
                               <p>
-                                <a
-                                  href={dealer.dealer_website}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-primary underline truncate block"
-                                >
+                                <a href={dealer.dealer_website} target="_blank" rel="noopener noreferrer" className="text-primary underline truncate block">
                                   {dealer.dealer_website.replace(/^https?:\/\//, '')}
                                 </a>
                               </p>
@@ -258,76 +259,63 @@ export default function DealerProfilesPage() {
                           </div>
                         </div>
 
-                        {/* Report Link for dealers with sales data */}
+                        {/* Report Link */}
                         {dealer.dealer_name.toLowerCase().includes('ajh') && (
                           <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-2 w-full sm:w-auto"
+                            size="sm" variant="outline" className="gap-2 w-full sm:w-auto"
                             onClick={(e) => { e.stopPropagation(); navigate('/dealer/report/ajh'); }}
                           >
                             <BarChart3 className="h-4 w-4" /> View Intelligence Report
                           </Button>
                         )}
 
-                        {/* Fingerprints */}
+                        {/* Tiered Fingerprints */}
                         {hasFingerprints ? (
-                          <div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <Fingerprint className="h-4 w-4 text-primary" />
-                              <span className="text-sm font-medium flex-1">
-                                Fingerprints ({dealer.fingerprints.length})
-                              </span>
-                              {dealer.dealer_website && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="gap-1.5 text-xs h-7"
-                                  disabled={profilingIds.has(dealer.id)}
-                                  onClick={(e) => { e.stopPropagation(); triggerProfiling(dealer); }}
-                                >
-                                  {profilingIds.has(dealer.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Rocket className="h-3 w-3" />}
-                                  Re-profile
-                                </Button>
-                              )}
-                            </div>
-                            <div className="border rounded-lg overflow-hidden">
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="bg-muted/50 text-muted-foreground text-xs">
-                                    <th className="text-left px-3 py-2 font-medium">Make</th>
-                                    <th className="text-left px-3 py-2 font-medium">Model</th>
-                                    <th className="text-left px-3 py-2 font-medium">Years</th>
-                                    <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">KM Range</th>
-                                    <th className="text-left px-3 py-2 font-medium">Source</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border">
-                                  {dealer.fingerprints.map((fp) => (
-                                    <tr key={fp.id} className="hover:bg-muted/30">
-                                      <td className="px-3 py-2 font-medium">{fp.make}</td>
-                                      <td className="px-3 py-2">{fp.model}</td>
-                                      <td className="px-3 py-2 text-muted-foreground">
-                                        {fp.year_min}–{fp.year_max}
-                                      </td>
-                                      <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">
-                                        {fp.min_km && fp.max_km
-                                          ? `${(fp.min_km / 1000).toFixed(0)}k – ${(fp.max_km / 1000).toFixed(0)}k`
-                                          : '—'}
-                                      </td>
-                                      <td className="px-3 py-2">
-                                        <Badge
-                                          variant={fp.is_spec_only ? 'outline' : 'default'}
-                                          className="text-xs"
-                                        >
-                                          {fp.is_spec_only ? 'CaroogleAI' : 'Sales'}
-                                        </Badge>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
+                          <div className="space-y-4">
+                            {/* HIGH — Active Alerts */}
+                            {highFps.length > 0 && (
+                              <FingerprintTier
+                                title="Dealer Trade — Active Alerts"
+                                icon={<Shield className="h-4 w-4 text-green-600" />}
+                                badgeClass="bg-green-100 text-green-700 border-green-200"
+                                fingerprints={highFps}
+                                showProfit
+                              />
+                            )}
+
+                            {/* MEDIUM — Watch List */}
+                            {medFps.length > 0 && (
+                              <FingerprintTier
+                                title="Dealer Trade — Watch List"
+                                icon={<Eye className="h-4 w-4 text-amber-600" />}
+                                badgeClass="bg-amber-100 text-amber-700 border-amber-200"
+                                fingerprints={medFps}
+                                showProfit
+                              />
+                            )}
+
+                            {/* LOW — Background Data */}
+                            {lowFps.length > 0 && (
+                              <FingerprintTier
+                                title="Wholesale — Background Data"
+                                icon={<AlertTriangle className="h-4 w-4 text-muted-foreground" />}
+                                badgeClass="bg-muted text-muted-foreground border-border"
+                                fingerprints={lowFps}
+                                showProfit={false}
+                                collapsed
+                              />
+                            )}
+
+                            {dealer.dealer_website && (
+                              <Button
+                                size="sm" variant="ghost" className="gap-1.5 text-xs h-7"
+                                disabled={profilingIds.has(dealer.id)}
+                                onClick={(e) => { e.stopPropagation(); triggerProfiling(dealer); }}
+                              >
+                                {profilingIds.has(dealer.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Rocket className="h-3 w-3" />}
+                                Re-profile
+                              </Button>
+                            )}
                           </div>
                         ) : (
                           <div className="flex items-center gap-3 text-sm text-muted-foreground bg-muted/30 rounded-lg px-4 py-3">
@@ -335,9 +323,7 @@ export default function DealerProfilesPage() {
                             <span className="flex-1">No fingerprints yet</span>
                             {dealer.dealer_website && (
                               <Button
-                                size="sm"
-                                variant="outline"
-                                className="gap-1.5"
+                                size="sm" variant="outline" className="gap-1.5"
                                 disabled={profilingIds.has(dealer.id)}
                                 onClick={(e) => { e.stopPropagation(); triggerProfiling(dealer); }}
                               >
@@ -357,5 +343,98 @@ export default function DealerProfilesPage() {
         )}
       </div>
     </OperatorLayout>
+  );
+}
+
+function FingerprintTier({
+  title,
+  icon,
+  badgeClass,
+  fingerprints,
+  showProfit,
+  collapsed = false,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  badgeClass: string;
+  fingerprints: DealerFingerprint[];
+  showProfit: boolean;
+  collapsed?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(!collapsed);
+
+  return (
+    <div>
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CollapsibleTrigger asChild>
+          <button className="w-full flex items-center gap-2 mb-2 hover:opacity-80 transition-opacity">
+            {icon}
+            <span className="text-sm font-medium flex-1 text-left">{title}</span>
+            <Badge variant="outline" className={cn("text-xs", badgeClass)}>{fingerprints.length}</Badge>
+            {isOpen ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/50 text-muted-foreground text-xs">
+                  <th className="text-left px-3 py-2 font-medium">Make</th>
+                  <th className="text-left px-3 py-2 font-medium">Model</th>
+                  <th className="text-left px-3 py-2 font-medium">Years</th>
+                  <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">KM Range</th>
+                  {showProfit && (
+                    <>
+                      <th className="text-right px-3 py-2 font-medium hidden sm:table-cell">Avg Profit</th>
+                      <th className="text-right px-3 py-2 font-medium hidden md:table-cell">Score</th>
+                      <th className="text-right px-3 py-2 font-medium hidden md:table-cell">Sales</th>
+                      <th className="text-right px-3 py-2 font-medium hidden lg:table-cell">Avg Days</th>
+                    </>
+                  )}
+                  <th className="text-left px-3 py-2 font-medium">Alert</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {fingerprints.map((fp) => (
+                  <tr key={fp.id} className="hover:bg-muted/30">
+                    <td className="px-3 py-2 font-medium">{fp.make}</td>
+                    <td className="px-3 py-2">{fp.model}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{fp.year_min}–{fp.year_max}</td>
+                    <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">
+                      {fp.min_km && fp.max_km
+                        ? `${(fp.min_km / 1000).toFixed(0)}k – ${(fp.max_km / 1000).toFixed(0)}k`
+                        : '—'}
+                    </td>
+                    {showProfit && (
+                      <>
+                        <td className="px-3 py-2 text-right hidden sm:table-cell font-medium" style={{ color: (fp.avg_profit ?? 0) >= 0 ? 'hsl(142, 71%, 45%)' : 'hsl(0, 84%, 60%)' }}>
+                          {fp.avg_profit != null ? fmt(fp.avg_profit) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right hidden md:table-cell text-muted-foreground">
+                          {fp.profit_score != null ? fp.profit_score.toLocaleString() : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right hidden md:table-cell text-muted-foreground">
+                          {fp.sales_count ?? '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right hidden lg:table-cell text-muted-foreground">
+                          {fp.avg_days_to_sell != null ? `${fp.avg_days_to_sell}d` : '—'}
+                        </td>
+                      </>
+                    )}
+                    <td className="px-3 py-2">
+                      {fp.alert_enabled ? (
+                        <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">ON</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] text-muted-foreground">OFF</Badge>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
   );
 }
