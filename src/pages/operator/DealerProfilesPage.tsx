@@ -40,6 +40,7 @@ interface DealerWithFingerprints extends DealerProfile {
 }
 
 export default function DealerProfilesPage() {
+  const navigate = useNavigate();
   const [dealers, setDealers] = useState<DealerWithFingerprints[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
