@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,28 +8,35 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Search, TrendingUp, Target, BarChart3, ArrowRight, Lock,
-  DollarSign, Clock, Package, Zap, Bell, Upload, Loader2
+  Search, TrendingUp, Target, BarChart3, Lock,
+  DollarSign, Clock, Package, Zap, Bell, Upload, Loader2, Users, ArrowRight
 } from "lucide-react";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// ─── Demo Data ──────────────────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────────────────
 
-const DEMO_MAKES = ["Toyota", "BMW", "Mercedes-Benz", "Ford", "Volkswagen", "Hyundai", "Kia", "Mazda", "Land Rover", "Nissan"];
+interface DealerProfile {
+  id: string;
+  dealer_name: string;
+  region_id: string;
+}
 
-const DEMO_MODELS: Record<string, string[]> = {
-  Toyota: ["Hilux", "Prado", "RAV4", "Corolla", "Camry", "Fortuner"],
-  BMW: ["X5", "X3", "X1", "3 Series", "5 Series"],
-  "Mercedes-Benz": ["GLE", "GLC", "C-Class", "A-Class", "GLA"],
-  Ford: ["Ranger", "Everest", "Mustang", "Focus"],
-  Volkswagen: ["Amarok", "Tiguan", "Golf", "T-Roc"],
-  Hyundai: ["Tucson", "Santa Fe", "i30", "Kona"],
-  Kia: ["Sportage", "Sorento", "Cerato", "Seltos"],
-  Mazda: ["CX-5", "CX-9", "BT-50", "Mazda3"],
-  "Land Rover": ["Range Rover Evoque", "Discovery Sport", "Defender"],
-  Nissan: ["Navara", "X-Trail", "Patrol", "Qashqai"],
-};
+interface Fingerprint {
+  id: string;
+  make: string;
+  model: string;
+  avg_profit: number | null;
+  sales_count: number | null;
+  profit_score: number | null;
+  fingerprint_priority: string;
+  avg_days_to_sell: number | null;
+  year_min: number;
+  year_max: number;
+  min_km: number | null;
+  max_km: number | null;
+  alert_enabled: boolean;
+}
 
 interface DemoIntelligence {
   make: string;
@@ -55,26 +62,20 @@ function generateDemoIntelligence(make: string, model: string, variant: string):
   return { make, model, variant, avgRetail, wholesaleMin, wholesaleMax, avgMargin, avgDaysToSell, currentListings };
 }
 
-const DEMO_FINGERPRINT = {
-  make: "Toyota",
-  model: "Hilux SR5",
-  avgProfit: 4300,
-  bestKmRange: "40k–90k",
-  avgDaysToSell: 18,
-  salesCount: 12,
-};
-
-const DEMO_OPPORTUNITIES = [
-  { vehicle: "2021 Hilux SR5", price: 45900, estRetail: 50800, margin: 4900, source: "Carsales" },
-  { vehicle: "2020 Hilux SR5", price: 43700, estRetail: 48000, margin: 4300, source: "Autotrader" },
-  { vehicle: "2022 Hilux SR5", price: 49200, estRetail: 52500, margin: 3300, source: "Pickles" },
-];
-
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function DemoDashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  // Dealer data
+  const [dealers, setDealers] = useState<DealerProfile[]>([]);
+  const [selectedDealerId, setSelectedDealerId] = useState<string>("");
+  const [fingerprints, setFingerprints] = useState<Fingerprint[]>([]);
+  const [loadingDealers, setLoadingDealers] = useState(true);
+  const [loadingFingerprints, setLoadingFingerprints] = useState(false);
+
+  // Search state
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [variant, setVariant] = useState("");
@@ -87,6 +88,50 @@ export default function DemoDashboardPage() {
   const [alertEnabled, setAlertEnabled] = useState(false);
 
   const SEARCH_LIMIT = 5;
+  const fmt = (n: number) => `$${n.toLocaleString()}`;
+
+  // Load dealers
+  useEffect(() => {
+    const loadDealers = async () => {
+      const { data } = await supabase
+        .from("dealer_profiles")
+        .select("id, dealer_name, region_id")
+        .order("dealer_name");
+      setDealers(data || []);
+      if (data && data.length > 0) {
+        setSelectedDealerId(data[0].id);
+      }
+      setLoadingDealers(false);
+    };
+    loadDealers();
+  }, []);
+
+  // Load fingerprints when dealer changes
+  useEffect(() => {
+    if (!selectedDealerId) return;
+    const loadFingerprints = async () => {
+      setLoadingFingerprints(true);
+      const { data } = await supabase
+        .from("dealer_fingerprints")
+        .select("id, make, model, avg_profit, sales_count, profit_score, fingerprint_priority, avg_days_to_sell, year_min, year_max, min_km, max_km, alert_enabled")
+        .eq("dealer_profile_id", selectedDealerId)
+        .eq("is_active", true)
+        .order("profit_score", { ascending: false });
+      setFingerprints(data || []);
+      setLoadingFingerprints(false);
+    };
+    loadFingerprints();
+  }, [selectedDealerId]);
+
+  const selectedDealer = dealers.find((d) => d.id === selectedDealerId);
+  const highPriority = fingerprints.filter((f) => f.fingerprint_priority === "high");
+  const mediumPriority = fingerprints.filter((f) => f.fingerprint_priority === "medium");
+
+  // Derive makes/models from fingerprints for search
+  const fingerprintMakes = [...new Set(fingerprints.map((f) => f.make))];
+  const fingerprintModels = make
+    ? [...new Set(fingerprints.filter((f) => f.make === make).map((f) => f.model))]
+    : [];
 
   const handleSearch = async () => {
     if (!make || !model) {
@@ -97,20 +142,14 @@ export default function DemoDashboardPage() {
       toast.error("Demo search limit reached. Upload your sales data to unlock unlimited searches.");
       return;
     }
-
     setSearching(true);
-
-    // Track demo usage
     if (user) {
       await supabase.from("demo_usage").insert({
         user_id: user.id,
-        vehicle_search: { make, model, variant, yearMin, yearMax, kmMax },
+        vehicle_search: { make, model, variant, yearMin, yearMax, kmMax, dealer_id: selectedDealerId },
       });
     }
-
-    // Simulate search delay
     await new Promise((r) => setTimeout(r, 1500));
-
     setIntelligence(generateDemoIntelligence(make, model, variant));
     setSearchCount((c) => c + 1);
     setAlertEnabled(false);
@@ -140,7 +179,21 @@ export default function DemoDashboardPage() {
     navigate("/sales-upload");
   };
 
-  const fmt = (n: number) => `$${n.toLocaleString()}`;
+  const handleViewOpportunityFeed = () => {
+    if (selectedDealer?.dealer_name?.toLowerCase().includes("ajh")) {
+      navigate("/dealer/opportunities/ajh");
+    } else {
+      navigate("/dealer/opportunities/demo");
+    }
+  };
+
+  if (loadingDealers) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -165,7 +218,148 @@ export default function DemoDashboardPage() {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-6 space-y-8">
-        {/* ── Section 1: Vehicle Search ─────────────────────────────── */}
+        {/* ── Dealer Selector ──────────────────────────────────────── */}
+        <Card className="border-border bg-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Users className="w-5 h-5 text-primary" />
+              Select Dealer Profile
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Browse existing dealer intelligence profiles
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs text-muted-foreground">Dealer</Label>
+                <Select value={selectedDealerId} onValueChange={setSelectedDealerId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a dealer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dealers.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.dealer_name} — {d.region_id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {selectedDealer && (
+                <div className="flex items-end">
+                  <Button variant="outline" onClick={handleViewOpportunityFeed}>
+                    <Target className="w-4 h-4 mr-2" />
+                    View Opportunity Feed
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ── Fingerprints from selected dealer ────────────────────── */}
+        {loadingFingerprints ? (
+          <Card className="border-border bg-card">
+            <CardContent className="py-8 text-center">
+              <Loader2 className="w-6 h-6 mx-auto animate-spin text-muted-foreground" />
+            </CardContent>
+          </Card>
+        ) : fingerprints.length > 0 ? (
+          <Card className="border-border bg-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <TrendingUp className="w-5 h-5 text-primary" />
+                {selectedDealer?.dealer_name} — Dealer Profit Fingerprints
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {highPriority.length} high-priority &middot; {mediumPriority.length} medium-priority fingerprints
+              </p>
+            </CardHeader>
+            <CardContent>
+              {highPriority.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                    High Priority — Active Buy Alerts
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {highPriority.slice(0, 6).map((fp) => (
+                      <div key={fp.id} className="bg-muted/20 rounded-lg p-4 border border-border">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-bold text-foreground text-sm">{fp.make} {fp.model}</span>
+                          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px]">HIGH</Badge>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div>
+                            <span className="text-muted-foreground">Avg Profit</span>
+                            <div className="font-bold text-emerald-400">{fmt(fp.avg_profit || 0)}</div>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Sales</span>
+                            <div className="font-bold text-foreground">{fp.sales_count || 0}</div>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Total Profit</span>
+                            <div className="font-bold text-foreground">{fmt(fp.profit_score || 0)}</div>
+                          </div>
+                        </div>
+                        {fp.avg_days_to_sell && (
+                          <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> Avg {fp.avg_days_to_sell} days to sell
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {mediumPriority.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                    Medium Priority — Watch List
+                  </h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-muted-foreground text-xs">
+                          <th className="text-left py-2 px-3">Vehicle</th>
+                          <th className="text-right py-2 px-3">Avg Profit</th>
+                          <th className="text-right py-2 px-3">Sales</th>
+                          <th className="text-right py-2 px-3">Total Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {mediumPriority.slice(0, 8).map((fp) => (
+                          <tr key={fp.id} className="border-b border-border/50">
+                            <td className="py-2 px-3 font-medium text-foreground">{fp.make} {fp.model}</td>
+                            <td className="py-2 px-3 text-right text-emerald-400">{fmt(fp.avg_profit || 0)}</td>
+                            <td className="py-2 px-3 text-right text-foreground">{fp.sales_count || 0}</td>
+                            <td className="py-2 px-3 text-right text-foreground">{fmt(fp.profit_score || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {mediumPriority.length > 8 && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      + {mediumPriority.length - 8} more medium-priority fingerprints
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-border bg-card">
+            <CardContent className="py-8 text-center">
+              <p className="text-muted-foreground">No fingerprints found for this dealer. Upload sales data to generate intelligence.</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Vehicle Search ───────────────────────────────────────── */}
         <Card className="border-border bg-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -173,7 +367,9 @@ export default function DemoDashboardPage() {
               Vehicle Search
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Search a vehicle you trade — Example: Hilux SR5, Ranger Wildtrak, Prado GXL
+              {fingerprintMakes.length > 0
+                ? `Search from ${selectedDealer?.dealer_name}'s fingerprint vehicles, or enter any make/model`
+                : "Search a vehicle you trade — Example: Hilux SR5, Ranger Wildtrak, Prado GXL"}
             </p>
           </CardHeader>
           <CardContent>
@@ -183,7 +379,7 @@ export default function DemoDashboardPage() {
                 <Select value={make} onValueChange={(v) => { setMake(v); setModel(""); }}>
                   <SelectTrigger><SelectValue placeholder="Select make" /></SelectTrigger>
                   <SelectContent>
-                    {DEMO_MAKES.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                    {fingerprintMakes.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -192,7 +388,7 @@ export default function DemoDashboardPage() {
                 <Select value={model} onValueChange={setModel} disabled={!make}>
                   <SelectTrigger><SelectValue placeholder="Select model" /></SelectTrigger>
                   <SelectContent>
-                    {(DEMO_MODELS[make] || []).map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                    {fingerprintModels.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -220,7 +416,7 @@ export default function DemoDashboardPage() {
           </CardContent>
         </Card>
 
-        {/* ── Section 2: Vehicle Intelligence Report ──────────────── */}
+        {/* ── Vehicle Intelligence Report ──────────────────────────── */}
         {intelligence && (
           <Card className="border-border bg-card">
             <CardHeader>
@@ -261,7 +457,6 @@ export default function DemoDashboardPage() {
                 </div>
               </div>
 
-              {/* Enable Alert Button */}
               <div className="mt-6 flex items-center gap-4">
                 <Button
                   variant={alertEnabled ? "outline" : "default"}
@@ -281,7 +476,7 @@ export default function DemoDashboardPage() {
           </Card>
         )}
 
-        {/* ── Section 3: Opportunity Feed Preview ─────────────────── */}
+        {/* ── Opportunity Preview (3 results, locked) ──────────────── */}
         {intelligence && (
           <Card className="border-border bg-card">
             <CardHeader>
@@ -306,11 +501,15 @@ export default function DemoDashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {DEMO_OPPORTUNITIES.map((opp, i) => (
+                    {[
+                      { vehicle: `2021 ${make} ${model}`, price: Math.round(intelligence.wholesaleMax * 0.95), margin: Math.round(intelligence.avgMargin * 1.1), source: "Carsales" },
+                      { vehicle: `2020 ${make} ${model}`, price: Math.round(intelligence.wholesaleMin * 1.02), margin: intelligence.avgMargin, source: "Autotrader" },
+                      { vehicle: `2022 ${make} ${model}`, price: Math.round(intelligence.wholesaleMax * 1.05), margin: Math.round(intelligence.avgMargin * 0.75), source: "Pickles" },
+                    ].map((opp, i) => (
                       <tr key={i} className="border-b border-border/50">
                         <td className="py-3 px-3 font-medium text-foreground">{opp.vehicle}</td>
                         <td className="py-3 px-3 text-right text-foreground">{fmt(opp.price)}</td>
-                        <td className="py-3 px-3 text-right text-muted-foreground">{fmt(opp.estRetail)}</td>
+                        <td className="py-3 px-3 text-right text-muted-foreground">{fmt(opp.price + opp.margin)}</td>
                         <td className="py-3 px-3 text-right font-bold text-emerald-400">{fmt(opp.margin)}</td>
                         <td className="py-3 px-3">
                           <Badge variant="outline" className="text-xs">{opp.source}</Badge>
@@ -320,7 +519,6 @@ export default function DemoDashboardPage() {
                   </tbody>
                 </table>
               </div>
-
               <div className="mt-4 bg-muted/30 rounded-lg p-4 text-center">
                 <Lock className="w-5 h-5 mx-auto mb-2 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">
@@ -334,41 +532,7 @@ export default function DemoDashboardPage() {
           </Card>
         )}
 
-        {/* ── Section 4: Fingerprint Example ──────────────────────── */}
-        <Card className="border-border bg-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <TrendingUp className="w-5 h-5 text-primary" />
-              Dealer Profit Fingerprint Example
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">This uses demo data.</p>
-          </CardHeader>
-          <CardContent>
-            <div className="bg-muted/20 rounded-lg p-5 border border-border">
-              <h3 className="text-lg font-bold text-foreground mb-4">{DEMO_FINGERPRINT.make} {DEMO_FINGERPRINT.model}</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <div className="text-xs text-muted-foreground">Average Profit</div>
-                  <div className="text-lg font-bold text-emerald-400">{fmt(DEMO_FINGERPRINT.avgProfit)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Best KM Range</div>
-                  <div className="text-lg font-bold text-foreground">{DEMO_FINGERPRINT.bestKmRange}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Avg Days To Sell</div>
-                  <div className="text-lg font-bold text-foreground">{DEMO_FINGERPRINT.avgDaysToSell}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Successful Sales</div>
-                  <div className="text-lg font-bold text-foreground">{DEMO_FINGERPRINT.salesCount}</div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* ── Section 5: Upgrade CTA ──────────────────────────────── */}
+        {/* ── Upgrade CTA ──────────────────────────────────────────── */}
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="py-8 text-center">
             <Zap className="w-10 h-10 mx-auto mb-3 text-primary" />
