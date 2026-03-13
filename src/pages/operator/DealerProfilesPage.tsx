@@ -261,12 +261,20 @@ export default function DealerProfilesPage() {
 
                         {/* Report Link */}
                         {dealer.dealer_name.toLowerCase().includes('ajh') && (
-                          <Button
-                            size="sm" variant="outline" className="gap-2 w-full sm:w-auto"
-                            onClick={(e) => { e.stopPropagation(); navigate('/dealer/report/ajh'); }}
-                          >
-                            <BarChart3 className="h-4 w-4" /> View Intelligence Report
-                          </Button>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm" variant="outline" className="gap-2"
+                              onClick={(e) => { e.stopPropagation(); navigate('/dealer/report/ajh'); }}
+                            >
+                              <BarChart3 className="h-4 w-4" /> Intelligence Report
+                            </Button>
+                            <Button
+                              size="sm" className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                              onClick={(e) => { e.stopPropagation(); navigate('/dealer/opportunities/ajh'); }}
+                            >
+                              <Target className="h-4 w-4" /> Opportunity Feed
+                            </Button>
+                          </div>
                         )}
 
                         {/* Tiered Fingerprints */}
