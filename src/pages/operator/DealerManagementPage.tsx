@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { DealerOnboarding } from '@/components/admin/DealerOnboarding';
 import { Button } from '@/components/ui/button';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, Eye } from 'lucide-react';
 
 export default function DealerManagementPage() {
   const navigate = useNavigate();
