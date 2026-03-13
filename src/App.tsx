@@ -108,6 +108,7 @@ import DealerDemandDeskPage from "./pages/operator/DealerDemandDeskPage";
 import CarSalesWatchPage from "./pages/operator/CarSalesWatchPage";
 import DealerManagementPage from "./pages/operator/DealerManagementPage";
 import AJHReportPage from "./pages/dealer/AJHReportPage";
+import DealerOpportunityFeedPage from "./pages/dealer/DealerOpportunityFeedPage";
 import BuyerTerminalPage from "./pages/fleet/BuyerTerminalPage";
 import FleetDashboardPage from "./pages/fleet/FleetDashboardPage";
 
@@ -230,8 +231,9 @@ const App = () => (
               <Route path="/operator/dealers" element={<OperatorGuard><DealerManagementPage /></OperatorGuard>} />
               <Route path="/operator/dealer-profiles" element={<OperatorGuard><DealerProfilesPage /></OperatorGuard>} />
 
-              {/* Dealer Reports */}
+              {/* Dealer Reports & Feeds */}
               <Route path="/dealer/report/ajh" element={<RequireAuth><AJHReportPage /></RequireAuth>} />
+              <Route path="/dealer/opportunities/ajh" element={<RequireAuth><DealerOpportunityFeedPage /></RequireAuth>} />
 
               {/* Fleet Enterprise */}
               <Route path="/fleet/buyer-terminal" element={<RequireAuth><BuyerTerminalPage /></RequireAuth>} />
