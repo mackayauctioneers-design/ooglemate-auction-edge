@@ -231,8 +231,9 @@ const App = () => (
               <Route path="/operator/dealers" element={<OperatorGuard><DealerManagementPage /></OperatorGuard>} />
               <Route path="/operator/dealer-profiles" element={<OperatorGuard><DealerProfilesPage /></OperatorGuard>} />
 
-              {/* Dealer Reports */}
+              {/* Dealer Reports & Feeds */}
               <Route path="/dealer/report/ajh" element={<RequireAuth><AJHReportPage /></RequireAuth>} />
+              <Route path="/dealer/opportunities/ajh" element={<RequireAuth><DealerOpportunityFeedPage /></RequireAuth>} />
 
               {/* Fleet Enterprise */}
               <Route path="/fleet/buyer-terminal" element={<RequireAuth><BuyerTerminalPage /></RequireAuth>} />
