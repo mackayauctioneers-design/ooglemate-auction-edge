@@ -107,6 +107,7 @@ import FingerprintPerformancePage from "./pages/operator/FingerprintPerformanceP
 import DealerDemandDeskPage from "./pages/operator/DealerDemandDeskPage";
 import CarSalesWatchPage from "./pages/operator/CarSalesWatchPage";
 import DealerManagementPage from "./pages/operator/DealerManagementPage";
+import AJHReportPage from "./pages/dealer/AJHReportPage";
 import BuyerTerminalPage from "./pages/fleet/BuyerTerminalPage";
 import FleetDashboardPage from "./pages/fleet/FleetDashboardPage";
 
@@ -228,6 +229,9 @@ const App = () => (
               <Route path="/operator/car-sales-watch" element={<OperatorGuard><CarSalesWatchPage /></OperatorGuard>} />
               <Route path="/operator/dealers" element={<OperatorGuard><DealerManagementPage /></OperatorGuard>} />
               <Route path="/operator/dealer-profiles" element={<OperatorGuard><DealerProfilesPage /></OperatorGuard>} />
+
+              {/* Dealer Reports */}
+              <Route path="/dealer/report/ajh" element={<RequireAuth><AJHReportPage /></RequireAuth>} />
 
               {/* Fleet Enterprise */}
               <Route path="/fleet/buyer-terminal" element={<RequireAuth><BuyerTerminalPage /></RequireAuth>} />
