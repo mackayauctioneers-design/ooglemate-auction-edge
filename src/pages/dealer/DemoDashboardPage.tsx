@@ -271,8 +271,10 @@ export default function DemoDashboardPage() {
       await supabase.from("demo_usage").insert({
         user_id: user.id, vehicle_search: { action: "clicked_upload" }, clicked_upload: true,
       });
+      navigate("/sales-upload");
+    } else {
+      navigate("/auth");
     }
-    navigate("/sales-upload");
   };
 
   const handleViewOpportunityFeed = () => {
