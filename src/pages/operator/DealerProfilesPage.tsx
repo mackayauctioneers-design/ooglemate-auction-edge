@@ -258,6 +258,18 @@ export default function DealerProfilesPage() {
                           </div>
                         </div>
 
+                        {/* Report Link for dealers with sales data */}
+                        {dealer.dealer_name.toLowerCase().includes('ajh') && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-2 w-full sm:w-auto"
+                            onClick={(e) => { e.stopPropagation(); navigate('/dealer/report/ajh'); }}
+                          >
+                            <BarChart3 className="h-4 w-4" /> View Intelligence Report
+                          </Button>
+                        )}
+
                         {/* Fingerprints */}
                         {hasFingerprints ? (
                           <div>
