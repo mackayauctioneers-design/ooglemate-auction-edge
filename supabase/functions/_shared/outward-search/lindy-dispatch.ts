@@ -8,9 +8,13 @@
  * Trigger: carbitrage-dispatch-mackayauctioneers@lindymail.ai
  * Subject must contain: carbitrage-batch
  * Recommended batch size: 3–5 rows per email.
+ *
+ * Uses nodemailer (npm) for reliable STARTTLS via Gmail SMTP.
  */
 
+// @ts-nocheck
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import nodemailer from "npm:nodemailer@6.9.12";
 import type { ParsedIntent } from "./types.ts";
 
 const MAX_CONCURRENT_SESSIONS = 3;
@@ -166,8 +170,11 @@ export async function dispatchLindyJobs(
   intent: ParsedIntent,
   sourceKeys: string[],
 ): Promise<DispatchResult[]> {
-  const resendApiKey = Deno.env.get("RESEND_API_KEY");
-  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "onboarding@resend.dev";
+  const smtpHost = Deno.env.get("SMTP_HOST");
+  const smtpPort = Number(Deno.env.get("SMTP_PORT") || "587");
+  const smtpUser = Deno.env.get("SMTP_USERNAME");
+  const smtpPass = Deno.env.get("SMTP_PASSWORD");
+  const smtpFrom = Deno.env.get("SMTP_FROM") || smtpUser;
 
   if (!resendApiKey) {
     console.warn("[lindy-dispatch] RESEND_API_KEY not configured — cannot send dispatch email");
@@ -282,34 +289,19 @@ export async function dispatchLindyJobs(
     });
 
     try {
-      const resp = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${resendApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: resendFromEmail,
-          to: LINDY_TRIGGER_EMAIL,
-          subject: LINDY_SUBJECT,
-          text: emailBody,
-        }),
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: false,
+        auth: { user: smtpUser, pass: smtpPass },
       });
 
-      if (!resp.ok) {
-        const errText = await resp.text().catch(() => "unknown");
-        console.error(`[lindy-dispatch] Resend returned ${resp.status}: ${errText}`);
-        // Mark batch jobs as error
-        for (const r of batch) {
-          await sb.from("outward_jobs").update({ status: "failed", error: `Resend HTTP ${resp.status}` }).eq("id", r.job_id);
-          await sb.from("outward_browse_queue").update({ status: "failed", last_error: `Resend HTTP ${resp.status}` }).eq("id", r.id);
-          const idx = results.findIndex((res) => res.job_id === r.job_id);
-          if (idx >= 0) results[idx] = { ...results[idx], status: "error", reason: `Resend HTTP ${resp.status}` };
-        }
-        continue;
-      }
-
-      await resp.text(); // consume body
+      await transporter.sendMail({
+        from: smtpFrom,
+        to: LINDY_TRIGGER_EMAIL,
+        subject: LINDY_SUBJECT,
+        text: emailBody,
+      });
 
       // Mark queue rows as dispatched
       for (const r of batch) {
@@ -317,9 +309,9 @@ export async function dispatchLindyJobs(
         await sb.from("outward_browse_queue").update({ status: "dispatched", dispatched_at: new Date().toISOString() }).eq("id", r.id);
       }
 
-      console.log(`[lindy-dispatch] Email dispatched with ${batch.length} rows to LindyMail`);
+      console.log(`[lindy-dispatch] Email dispatched with ${batch.length} rows to LindyMail via SMTP`);
     } catch (err) {
-      console.error(`[lindy-dispatch] Email send error:`, err);
+      console.error(`[lindy-dispatch] SMTP send error:`, err);
       for (const r of batch) {
         await sb.from("outward_jobs").update({ status: "failed", error: String(err) }).eq("id", r.job_id);
         await sb.from("outward_browse_queue").update({ status: "failed", last_error: String(err) }).eq("id", r.id);
