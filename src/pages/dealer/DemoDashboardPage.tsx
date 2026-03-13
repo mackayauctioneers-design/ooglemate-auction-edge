@@ -744,9 +744,13 @@ export default function DemoDashboardPage() {
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="py-8 text-center">
             <Zap className="w-10 h-10 mx-auto mb-3 text-primary" />
-            <h2 className="text-xl font-bold text-foreground mb-2">Unlock Full Dealer Intelligence</h2>
+            <h2 className="text-xl font-bold text-foreground mb-2">
+              {user ? "Unlock Full Dealer Intelligence" : "Ready to Get Started?"}
+            </h2>
             <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
-              Upload your past sales history and Carbitrage will automatically discover:
+              {user
+                ? "Upload your past sales history and Carbitrage will automatically discover:"
+                : "Create your free account to unlock the full Carbitrage platform:"}
             </p>
             <ul className="text-sm text-muted-foreground space-y-1 mb-6">
               <li>• your most profitable vehicles</li>
@@ -754,10 +758,22 @@ export default function DemoDashboardPage() {
               <li>• fastest selling models</li>
               <li>• live sourcing opportunities</li>
             </ul>
-            <Button size="lg" onClick={handleUploadClick}>
-              <Upload className="w-4 h-4 mr-2" />
-              Upload Sales Data
-            </Button>
+            {user ? (
+              <Button size="lg" onClick={handleUploadClick}>
+                <Upload className="w-4 h-4 mr-2" />
+                Upload Sales Data
+              </Button>
+            ) : (
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button size="lg" onClick={() => navigate("/auth")}>
+                  <Zap className="w-4 h-4 mr-2" />
+                  Create Free Account
+                </Button>
+                <Button size="lg" variant="outline" onClick={() => navigate("/auth")}>
+                  Already have an account? Log in
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
