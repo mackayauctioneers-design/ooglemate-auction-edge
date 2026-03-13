@@ -1150,11 +1150,16 @@ export type Database = {
       }
       dealer_fingerprints: {
         Row: {
+          alert_enabled: boolean
+          avg_days_to_sell: number | null
+          avg_profit: number | null
           created_at: string
           dealer_name: string
           dealer_profile_id: string | null
           expires_at: string | null
           fingerprint_id: string
+          fingerprint_priority: string
+          fingerprint_type: string
           id: string
           is_active: boolean
           is_spec_only: boolean
@@ -1162,17 +1167,25 @@ export type Database = {
           max_km: number | null
           min_km: number | null
           model: string
+          profit_score: number | null
+          recency_weight: number | null
+          sales_count: number | null
           updated_at: string
           variant_family: string | null
           year_max: number
           year_min: number
         }
         Insert: {
+          alert_enabled?: boolean
+          avg_days_to_sell?: number | null
+          avg_profit?: number | null
           created_at?: string
           dealer_name: string
           dealer_profile_id?: string | null
           expires_at?: string | null
           fingerprint_id: string
+          fingerprint_priority?: string
+          fingerprint_type?: string
           id?: string
           is_active?: boolean
           is_spec_only?: boolean
@@ -1180,17 +1193,25 @@ export type Database = {
           max_km?: number | null
           min_km?: number | null
           model: string
+          profit_score?: number | null
+          recency_weight?: number | null
+          sales_count?: number | null
           updated_at?: string
           variant_family?: string | null
           year_max: number
           year_min: number
         }
         Update: {
+          alert_enabled?: boolean
+          avg_days_to_sell?: number | null
+          avg_profit?: number | null
           created_at?: string
           dealer_name?: string
           dealer_profile_id?: string | null
           expires_at?: string | null
           fingerprint_id?: string
+          fingerprint_priority?: string
+          fingerprint_type?: string
           id?: string
           is_active?: boolean
           is_spec_only?: boolean
@@ -1198,6 +1219,9 @@ export type Database = {
           max_km?: number | null
           min_km?: number | null
           model?: string
+          profit_score?: number | null
+          recency_weight?: number | null
+          sales_count?: number | null
           updated_at?: string
           variant_family?: string | null
           year_max?: number
