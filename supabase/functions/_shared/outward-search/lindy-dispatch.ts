@@ -176,9 +176,9 @@ export async function dispatchLindyJobs(
   const smtpPass = Deno.env.get("SMTP_PASSWORD");
   const smtpFrom = Deno.env.get("SMTP_FROM") || smtpUser;
 
-  if (!resendApiKey) {
-    console.warn("[lindy-dispatch] RESEND_API_KEY not configured — cannot send dispatch email");
-    return sourceKeys.map((s) => ({ source: s, job_id: null, status: "skipped" as const, reason: "No RESEND_API_KEY" }));
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    console.warn("[lindy-dispatch] SMTP credentials not configured — cannot send dispatch email");
+    return sourceKeys.map((s) => ({ source: s, job_id: null, status: "skipped" as const, reason: "No SMTP credentials" }));
   }
 
   const activeCount = await getActiveJobCount(sb);
