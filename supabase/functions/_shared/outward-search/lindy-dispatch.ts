@@ -170,8 +170,11 @@ export async function dispatchLindyJobs(
   intent: ParsedIntent,
   sourceKeys: string[],
 ): Promise<DispatchResult[]> {
-  const resendApiKey = Deno.env.get("RESEND_API_KEY");
-  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "onboarding@resend.dev";
+  const smtpHost = Deno.env.get("SMTP_HOST");
+  const smtpPort = Number(Deno.env.get("SMTP_PORT") || "587");
+  const smtpUser = Deno.env.get("SMTP_USERNAME");
+  const smtpPass = Deno.env.get("SMTP_PASSWORD");
+  const smtpFrom = Deno.env.get("SMTP_FROM") || smtpUser;
 
   if (!resendApiKey) {
     console.warn("[lindy-dispatch] RESEND_API_KEY not configured — cannot send dispatch email");
