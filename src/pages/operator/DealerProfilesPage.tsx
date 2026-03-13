@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Building2, Globe, MapPin, Fingerprint, Package, ChevronDown, ChevronUp, Rocket, Loader2 } from 'lucide-react';
+import { Building2, Globe, MapPin, Fingerprint, Package, ChevronDown, ChevronUp, Rocket, Loader2, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
@@ -39,6 +40,7 @@ interface DealerWithFingerprints extends DealerProfile {
 }
 
 export default function DealerProfilesPage() {
+  const navigate = useNavigate();
   const [dealers, setDealers] = useState<DealerWithFingerprints[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -165,16 +167,21 @@ export default function DealerProfilesPage() {
                             </div>
                             <div className="min-w-0">
                               <CardTitle className="text-base truncate">{dealer.dealer_name}</CardTitle>
-                              <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                                <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                                 <MapPin className="h-3 w-3" />
                                 <span>{dealer.region_id.replace(/_/g, ' ')}</span>
-                                {dealer.dealer_website && (
+                                {dealer.dealer_website ? (
                                   <>
                                     <span>·</span>
                                     <Globe className="h-3 w-3" />
                                     <span className="truncate max-w-[200px]">
                                       {dealer.dealer_website.replace(/^https?:\/\//, '')}
                                     </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>·</span>
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">Independent</Badge>
                                   </>
                                 )}
                               </div>
@@ -250,6 +257,18 @@ export default function DealerProfilesPage() {
                             <p>{new Date(dealer.created_at).toLocaleDateString()}</p>
                           </div>
                         </div>
+
+                        {/* Report Link for dealers with sales data */}
+                        {dealer.dealer_name.toLowerCase().includes('ajh') && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-2 w-full sm:w-auto"
+                            onClick={(e) => { e.stopPropagation(); navigate('/dealer/report/ajh'); }}
+                          >
+                            <BarChart3 className="h-4 w-4" /> View Intelligence Report
+                          </Button>
+                        )}
 
                         {/* Fingerprints */}
                         {hasFingerprints ? (
