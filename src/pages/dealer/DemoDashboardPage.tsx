@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Search, TrendingUp, Target, BarChart3, Lock,
-  DollarSign, Clock, Package, Zap, Bell, Upload, Loader2, Users, ArrowRight
+  DollarSign, Clock, Package, Zap, Bell, Upload, Loader2, Users, ArrowRight,
+  Flame, ExternalLink, Eye, ShieldCheck, AlertTriangle, Sparkles
 } from "lucide-react";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -38,6 +39,19 @@ interface Fingerprint {
   alert_enabled: boolean;
 }
 
+interface RealListing {
+  make: string;
+  model: string;
+  variant_raw: string | null;
+  year: number | null;
+  km: number | null;
+  asking_price: number | null;
+  listing_url: string | null;
+  source: string;
+  state: string | null;
+  first_seen_at: string | null;
+}
+
 interface DemoIntelligence {
   make: string;
   model: string;
@@ -48,18 +62,7 @@ interface DemoIntelligence {
   avgMargin: number;
   avgDaysToSell: number;
   currentListings: number;
-}
-
-function generateDemoIntelligence(make: string, model: string, variant: string): DemoIntelligence {
-  const seed = (make + model + variant).length;
-  const base = 30000 + seed * 1200;
-  const avgRetail = Math.round(base + Math.random() * 15000);
-  const wholesaleMin = Math.round(avgRetail * 0.78);
-  const wholesaleMax = Math.round(avgRetail * 0.88);
-  const avgMargin = Math.round(avgRetail * (0.06 + Math.random() * 0.06));
-  const avgDaysToSell = Math.round(14 + Math.random() * 28);
-  const currentListings = Math.round(40 + Math.random() * 150);
-  return { make, model, variant, avgRetail, wholesaleMin, wholesaleMax, avgMargin, avgDaysToSell, currentListings };
+  matchingFingerprint: Fingerprint | null;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -68,12 +71,17 @@ export default function DemoDashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Dealer data
   const [dealers, setDealers] = useState<DealerProfile[]>([]);
   const [selectedDealerId, setSelectedDealerId] = useState<string>("");
   const [fingerprints, setFingerprints] = useState<Fingerprint[]>([]);
   const [loadingDealers, setLoadingDealers] = useState(true);
   const [loadingFingerprints, setLoadingFingerprints] = useState(false);
+
+  // Real listings state
+  const [realListings, setRealListings] = useState<RealListing[]>([]);
+  const [totalMatches, setTotalMatches] = useState(0);
+  const [freshCount, setFreshCount] = useState(0);
+  const [loadingListings, setLoadingListings] = useState(false);
 
   // Search state
   const [make, setMake] = useState("");
@@ -92,24 +100,22 @@ export default function DemoDashboardPage() {
 
   // Load dealers
   useEffect(() => {
-    const loadDealers = async () => {
+    const load = async () => {
       const { data } = await supabase
         .from("dealer_profiles")
         .select("id, dealer_name, region_id")
         .order("dealer_name");
       setDealers(data || []);
-      if (data && data.length > 0) {
-        setSelectedDealerId(data[0].id);
-      }
+      if (data && data.length > 0) setSelectedDealerId(data[0].id);
       setLoadingDealers(false);
     };
-    loadDealers();
+    load();
   }, []);
 
-  // Load fingerprints when dealer changes
+  // Load fingerprints + real listings when dealer changes
   useEffect(() => {
     if (!selectedDealerId) return;
-    const loadFingerprints = async () => {
+    const load = async () => {
       setLoadingFingerprints(true);
       const { data } = await supabase
         .from("dealer_fingerprints")
@@ -119,29 +125,83 @@ export default function DemoDashboardPage() {
         .order("profit_score", { ascending: false });
       setFingerprints(data || []);
       setLoadingFingerprints(false);
+
+      // Fetch real listings for top fingerprints
+      if (data && data.length > 0) {
+        setLoadingListings(true);
+        const topFps = data.filter((f) => f.fingerprint_priority === "high").slice(0, 5);
+        const makeModels = topFps.map((f) => `(make.eq.${f.make},model.eq.${f.model})`);
+
+        // Query real listings matching top fingerprints
+        const allListings: RealListing[] = [];
+        let total = 0;
+        let fresh = 0;
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+        for (const fp of topFps.slice(0, 3)) {
+          const { data: listings, count } = await supabase
+            .from("retail_listings")
+            .select("make, model, variant_raw, year, km, asking_price, listing_url, source, state, first_seen_at", { count: "exact" })
+            .eq("make", fp.make)
+            .eq("model", fp.model)
+            .is("delisted_at", null)
+            .not("asking_price", "is", null)
+            .gte("year", fp.year_min)
+            .lte("year", fp.year_max)
+            .order("first_seen_at", { ascending: false })
+            .limit(10);
+
+          if (listings) {
+            allListings.push(...listings);
+            total += count || listings.length;
+            fresh += listings.filter((l) => l.first_seen_at && l.first_seen_at >= yesterday).length;
+          }
+        }
+
+        setRealListings(allListings);
+        setTotalMatches(total);
+        setFreshCount(fresh);
+        setLoadingListings(false);
+      }
     };
-    loadFingerprints();
+    load();
   }, [selectedDealerId]);
 
   const selectedDealer = dealers.find((d) => d.id === selectedDealerId);
   const highPriority = fingerprints.filter((f) => f.fingerprint_priority === "high");
   const mediumPriority = fingerprints.filter((f) => f.fingerprint_priority === "medium");
-
-  // Derive makes/models from fingerprints for search
   const fingerprintMakes = [...new Set(fingerprints.map((f) => f.make))];
   const fingerprintModels = make
     ? [...new Set(fingerprints.filter((f) => f.make === make).map((f) => f.model))]
     : [];
 
+  // Hero deal: best real listing with highest estimated margin
+  const heroDeal = useMemo(() => {
+    if (realListings.length === 0 || highPriority.length === 0) return null;
+    // Find the listing with the best margin based on fingerprint avg_profit
+    let best: { listing: RealListing; fp: Fingerprint; margin: number } | null = null;
+    for (const listing of realListings) {
+      const fp = highPriority.find((f) => f.make === listing.make && f.model === listing.model);
+      if (!fp || !listing.asking_price || !fp.avg_profit) continue;
+      const margin = fp.avg_profit;
+      if (!best || margin > best.margin) {
+        best = { listing, fp, margin };
+      }
+    }
+    return best;
+  }, [realListings, highPriority]);
+
+  // High margin opportunities count
+  const highMarginOpps = useMemo(() => {
+    return realListings.filter((l) => {
+      const fp = highPriority.find((f) => f.make === l.make && f.model === l.model);
+      return fp && fp.avg_profit && fp.avg_profit > 2000;
+    }).length;
+  }, [realListings, highPriority]);
+
   const handleSearch = async () => {
-    if (!make || !model) {
-      toast.error("Please select Make and Model");
-      return;
-    }
-    if (searchCount >= SEARCH_LIMIT) {
-      toast.error("Demo search limit reached. Upload your sales data to unlock unlimited searches.");
-      return;
-    }
+    if (!make || !model) { toast.error("Please select Make and Model"); return; }
+    if (searchCount >= SEARCH_LIMIT) { toast.error("Demo search limit reached."); return; }
     setSearching(true);
     if (user) {
       await supabase.from("demo_usage").insert({
@@ -149,8 +209,48 @@ export default function DemoDashboardPage() {
         vehicle_search: { make, model, variant, yearMin, yearMax, kmMax, dealer_id: selectedDealerId },
       });
     }
-    await new Promise((r) => setTimeout(r, 1500));
-    setIntelligence(generateDemoIntelligence(make, model, variant));
+
+    // Find matching fingerprint
+    const matchFp = fingerprints.find((f) => f.make === make && f.model === model) || null;
+
+    // Pull real listings for the searched vehicle
+    const { data: searchListings, count } = await supabase
+      .from("retail_listings")
+      .select("make, model, variant_raw, year, km, asking_price, listing_url, source, state, first_seen_at", { count: "exact" })
+      .eq("make", make)
+      .eq("model", model)
+      .is("delisted_at", null)
+      .not("asking_price", "is", null)
+      .gte("year", parseInt(yearMin) || 2018)
+      .lte("year", parseInt(yearMax) || 2024)
+      .order("asking_price", { ascending: true })
+      .limit(20);
+
+    const listings = searchListings || [];
+    const prices = listings.map((l) => l.asking_price).filter(Boolean) as number[];
+    const avgPrice = prices.length > 0 ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 45000;
+    const minPrice = prices.length > 0 ? Math.min(...prices) : 38000;
+    const maxPrice = prices.length > 0 ? Math.max(...prices) : 55000;
+    const avgMargin = matchFp?.avg_profit || Math.round(avgPrice * 0.08);
+    const avgDays = matchFp?.avg_days_to_sell || Math.round(14 + Math.random() * 28);
+
+    setIntelligence({
+      make, model, variant,
+      avgRetail: avgPrice,
+      wholesaleMin: Math.round(avgPrice * 0.82),
+      wholesaleMax: Math.round(avgPrice * 0.92),
+      avgMargin,
+      avgDaysToSell: avgDays,
+      currentListings: count || listings.length,
+      matchingFingerprint: matchFp,
+    });
+
+    // Update real listings to show search results
+    setRealListings(listings);
+    setTotalMatches(count || listings.length);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    setFreshCount(listings.filter((l) => l.first_seen_at && l.first_seen_at >= yesterday).length);
+
     setSearchCount((c) => c + 1);
     setAlertEnabled(false);
     setSearching(false);
@@ -160,9 +260,7 @@ export default function DemoDashboardPage() {
     setAlertEnabled(true);
     if (user) {
       await supabase.from("demo_usage").insert({
-        user_id: user.id,
-        vehicle_search: { make, model, action: "enable_alert" },
-        clicked_alert: true,
+        user_id: user.id, vehicle_search: { make, model, action: "enable_alert" }, clicked_alert: true,
       });
     }
     toast.success("You will be notified when this vehicle appears below market value.");
@@ -171,9 +269,7 @@ export default function DemoDashboardPage() {
   const handleUploadClick = async () => {
     if (user) {
       await supabase.from("demo_usage").insert({
-        user_id: user.id,
-        vehicle_search: { action: "clicked_upload" },
-        clicked_upload: true,
+        user_id: user.id, vehicle_search: { action: "clicked_upload" }, clicked_upload: true,
       });
     }
     navigate("/sales-upload");
@@ -185,6 +281,13 @@ export default function DemoDashboardPage() {
     } else {
       navigate("/dealer/opportunities/demo");
     }
+  };
+
+  // Profit badge helper
+  const getMarginBadge = (margin: number, avgProfit: number) => {
+    if (margin >= avgProfit * 1.2) return { label: "🔥 Hot Deal", className: "bg-red-500/20 text-red-400 border-red-500/30" };
+    if (margin >= avgProfit * 0.8) return { label: "✔ Strong Match", className: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" };
+    return { label: "⚠ Below Average", className: "bg-amber-500/20 text-amber-400 border-amber-500/30" };
   };
 
   if (loadingDealers) {
@@ -211,28 +314,23 @@ export default function DemoDashboardPage() {
           <h1 className="text-2xl font-bold text-foreground">Carbitrage Demo Mode</h1>
           <p className="text-muted-foreground mt-1">
             This is a limited preview of the Carbitrage dealer intelligence platform.
-            <br />
-            Upload your own sales data to unlock dealer-specific opportunities.
           </p>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-6 space-y-8">
+      <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
         {/* ── Dealer Selector ──────────────────────────────────────── */}
         <Card className="border-border bg-card">
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Users className="w-5 h-5 text-primary" />
               Select Dealer Profile
             </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Browse existing dealer intelligence profiles
-            </p>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-xs text-muted-foreground">Dealer</Label>
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
                 <Select value={selectedDealerId} onValueChange={setSelectedDealerId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a dealer" />
@@ -246,20 +344,111 @@ export default function DemoDashboardPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {selectedDealer && (
-                <div className="flex items-end">
-                  <Button variant="outline" onClick={handleViewOpportunityFeed}>
-                    <Target className="w-4 h-4 mr-2" />
-                    View Opportunity Feed
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </div>
-              )}
+              <Button variant="outline" onClick={handleViewOpportunityFeed}>
+                <Target className="w-4 h-4 mr-2" />
+                Full Opportunity Feed
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* ── Fingerprints from selected dealer ────────────────────── */}
+        {/* ── Market Scan Counter ──────────────────────────────────── */}
+        {!loadingListings && totalMatches > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-card border border-border rounded-lg p-4 text-center">
+              <Eye className="w-5 h-5 mx-auto mb-1 text-primary" />
+              <div className="text-2xl font-bold text-foreground">{totalMatches}</div>
+              <div className="text-xs text-muted-foreground">Cars matching fingerprints</div>
+            </div>
+            <div className="bg-card border border-border rounded-lg p-4 text-center">
+              <Flame className="w-5 h-5 mx-auto mb-1 text-red-400" />
+              <div className="text-2xl font-bold text-foreground">{highMarginOpps}</div>
+              <div className="text-xs text-muted-foreground">High margin opportunities</div>
+            </div>
+            <div className="bg-card border border-border rounded-lg p-4 text-center">
+              <Sparkles className="w-5 h-5 mx-auto mb-1 text-amber-400" />
+              <div className="text-2xl font-bold text-foreground">{freshCount}</div>
+              <div className="text-xs text-muted-foreground">New in last 24 hours</div>
+            </div>
+            <div className="bg-card border border-border rounded-lg p-4 text-center">
+              <Package className="w-5 h-5 mx-auto mb-1 text-purple-400" />
+              <div className="text-2xl font-bold text-foreground">{highPriority.length}</div>
+              <div className="text-xs text-muted-foreground">Active fingerprints</div>
+            </div>
+          </div>
+        )}
+
+        {/* ── HERO DEAL CARD ───────────────────────────────────────── */}
+        {heroDeal && (
+          <Card className="border-emerald-500/30 bg-emerald-500/5 overflow-hidden">
+            <CardContent className="py-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Flame className="w-5 h-5 text-red-400" />
+                <span className="text-sm font-bold text-foreground uppercase tracking-wider">Top Opportunity Detected</span>
+                <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px] ml-auto">
+                  MATCHES DEALER FINGERPRINT
+                </Badge>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-6">
+                <div>
+                  <h3 className="text-2xl font-bold text-foreground mb-1">
+                    {heroDeal.listing.year} {heroDeal.listing.make} {heroDeal.listing.model}
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {heroDeal.listing.variant_raw} · {heroDeal.listing.km?.toLocaleString()} km · {heroDeal.listing.source}
+                  </p>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Price</div>
+                      <div className="text-xl font-bold text-foreground">{fmt(heroDeal.listing.asking_price!)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Estimated Retail</div>
+                      <div className="text-xl font-bold text-muted-foreground">
+                        {fmt(heroDeal.listing.asking_price! + heroDeal.margin)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Expected Margin</div>
+                      <div className="text-3xl font-black text-emerald-400">{fmt(heroDeal.margin)}</div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center gap-3">
+                    <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                      <ShieldCheck className="w-3 h-3 mr-1" />
+                      High Confidence
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      Matches {heroDeal.fp.sales_count} previous profitable deals
+                    </span>
+                  </div>
+                  <p className="text-xs text-primary mt-3 font-medium italic">
+                    "This vehicle matches your profit history."
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 justify-center">
+                  {heroDeal.listing.listing_url && (
+                    <Button asChild>
+                      <a href={heroDeal.listing.listing_url} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        View Listing
+                      </a>
+                    </Button>
+                  )}
+                  <div className="text-center">
+                    <div className="text-xs text-muted-foreground flex items-center gap-1 justify-center">
+                      <Clock className="w-3 h-3" />
+                      Avg {heroDeal.fp.avg_days_to_sell || "~20"} days to sell
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Fingerprints ─────────────────────────────────────────── */}
         {loadingFingerprints ? (
           <Card className="border-border bg-card">
             <CardContent className="py-8 text-center">
@@ -271,10 +460,10 @@ export default function DemoDashboardPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <TrendingUp className="w-5 h-5 text-primary" />
-                {selectedDealer?.dealer_name} — Dealer Profit Fingerprints
+                {selectedDealer?.dealer_name} — Profit Fingerprints
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                {highPriority.length} high-priority &middot; {mediumPriority.length} medium-priority fingerprints
+                {highPriority.length} high-priority · {mediumPriority.length} medium-priority
               </p>
             </CardHeader>
             <CardContent>
@@ -342,11 +531,6 @@ export default function DemoDashboardPage() {
                       </tbody>
                     </table>
                   </div>
-                  {mediumPriority.length > 8 && (
-                    <p className="text-xs text-muted-foreground mt-2">
-                      + {mediumPriority.length - 8} more medium-priority fingerprints
-                    </p>
-                  )}
                 </div>
               )}
             </CardContent>
@@ -354,7 +538,7 @@ export default function DemoDashboardPage() {
         ) : (
           <Card className="border-border bg-card">
             <CardContent className="py-8 text-center">
-              <p className="text-muted-foreground">No fingerprints found for this dealer. Upload sales data to generate intelligence.</p>
+              <p className="text-muted-foreground">No fingerprints for this dealer yet. Upload sales data to generate intelligence.</p>
             </CardContent>
           </Card>
         )}
@@ -368,8 +552,8 @@ export default function DemoDashboardPage() {
             </CardTitle>
             <p className="text-sm text-muted-foreground">
               {fingerprintMakes.length > 0
-                ? `Search from ${selectedDealer?.dealer_name}'s fingerprint vehicles, or enter any make/model`
-                : "Search a vehicle you trade — Example: Hilux SR5, Ranger Wildtrak, Prado GXL"}
+                ? `Search from ${selectedDealer?.dealer_name}'s fingerprint vehicles`
+                : "Search a vehicle you trade"}
             </p>
           </CardHeader>
           <CardContent>
@@ -411,12 +595,12 @@ export default function DemoDashboardPage() {
             </div>
             <Button onClick={handleSearch} disabled={searching || searchCount >= SEARCH_LIMIT} className="w-full md:w-auto">
               {searching ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
-              {searching ? "Searching market..." : "Search Vehicle"}
+              {searching ? "Scanning live market..." : "Search Vehicle"}
             </Button>
           </CardContent>
         </Card>
 
-        {/* ── Vehicle Intelligence Report ──────────────────────────── */}
+        {/* ── Intelligence Report ──────────────────────────────────── */}
         {intelligence && (
           <Card className="border-border bg-card">
             <CardHeader>
@@ -424,6 +608,11 @@ export default function DemoDashboardPage() {
                 <BarChart3 className="w-5 h-5 text-primary" />
                 Vehicle Intelligence Report
               </CardTitle>
+              {intelligence.matchingFingerprint && (
+                <Badge className="bg-primary/20 text-primary border-primary/30 text-xs w-fit">
+                  ✔ Matches dealer fingerprint — {intelligence.matchingFingerprint.sales_count} profitable deals on record
+                </Badge>
+              )}
             </CardHeader>
             <CardContent>
               <h3 className="text-xl font-bold text-foreground mb-4">
@@ -442,7 +631,7 @@ export default function DemoDashboardPage() {
                 </div>
                 <div className="bg-muted/30 rounded-lg p-4 text-center">
                   <Zap className="w-5 h-5 mx-auto mb-1 text-emerald-400" />
-                  <div className="text-xs text-muted-foreground">Typical Dealer Margin</div>
+                  <div className="text-xs text-muted-foreground">Typical Margin</div>
                   <div className="text-lg font-bold text-emerald-400">{fmt(intelligence.avgMargin)}</div>
                 </div>
                 <div className="bg-muted/30 rounded-lg p-4 text-center">
@@ -452,41 +641,36 @@ export default function DemoDashboardPage() {
                 </div>
                 <div className="bg-muted/30 rounded-lg p-4 text-center">
                   <Package className="w-5 h-5 mx-auto mb-1 text-purple-400" />
-                  <div className="text-xs text-muted-foreground">Currently Listed</div>
+                  <div className="text-xs text-muted-foreground">Market Supply</div>
                   <div className="text-lg font-bold text-foreground">{intelligence.currentListings}</div>
                 </div>
               </div>
-
               <div className="mt-6 flex items-center gap-4">
-                <Button
-                  variant={alertEnabled ? "outline" : "default"}
-                  onClick={handleEnableAlert}
-                  disabled={alertEnabled}
-                >
+                <Button variant={alertEnabled ? "outline" : "default"} onClick={handleEnableAlert} disabled={alertEnabled}>
                   <Bell className="w-4 h-4 mr-2" />
                   {alertEnabled ? "Alert Enabled" : "Enable Buy Alerts"}
                 </Button>
                 {alertEnabled && (
-                  <span className="text-sm text-emerald-400">
-                    ✓ You will be notified when this vehicle appears below market value.
-                  </span>
+                  <span className="text-sm text-emerald-400">✓ You will be notified when this vehicle appears below market value.</span>
                 )}
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* ── Opportunity Preview (3 results, locked) ──────────────── */}
-        {intelligence && (
+        {/* ── Live Opportunities (real listings, 3 shown) ──────────── */}
+        {intelligence && realListings.length > 0 && (
           <Card className="border-border bg-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Target className="w-5 h-5 text-primary" />
                 Live Market Opportunities
               </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Cars currently matching this vehicle: <span className="font-bold text-foreground">12</span>
-              </p>
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span>Matching: <strong className="text-foreground">{totalMatches}</strong></span>
+                <span>High margin: <strong className="text-emerald-400">{highMarginOpps}</strong></span>
+                <span>New today: <strong className="text-amber-400">{freshCount}</strong></span>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -498,36 +682,58 @@ export default function DemoDashboardPage() {
                       <th className="text-right py-2 px-3">Est Retail</th>
                       <th className="text-right py-2 px-3">Margin</th>
                       <th className="text-left py-2 px-3">Source</th>
+                      <th className="text-left py-2 px-3">Confidence</th>
+                      <th className="text-left py-2 px-3"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {[
-                      { vehicle: `2021 ${make} ${model}`, price: Math.round(intelligence.wholesaleMax * 0.95), margin: Math.round(intelligence.avgMargin * 1.1), source: "Carsales" },
-                      { vehicle: `2020 ${make} ${model}`, price: Math.round(intelligence.wholesaleMin * 1.02), margin: intelligence.avgMargin, source: "Autotrader" },
-                      { vehicle: `2022 ${make} ${model}`, price: Math.round(intelligence.wholesaleMax * 1.05), margin: Math.round(intelligence.avgMargin * 0.75), source: "Pickles" },
-                    ].map((opp, i) => (
-                      <tr key={i} className="border-b border-border/50">
-                        <td className="py-3 px-3 font-medium text-foreground">{opp.vehicle}</td>
-                        <td className="py-3 px-3 text-right text-foreground">{fmt(opp.price)}</td>
-                        <td className="py-3 px-3 text-right text-muted-foreground">{fmt(opp.price + opp.margin)}</td>
-                        <td className="py-3 px-3 text-right font-bold text-emerald-400">{fmt(opp.margin)}</td>
-                        <td className="py-3 px-3">
-                          <Badge variant="outline" className="text-xs">{opp.source}</Badge>
-                        </td>
-                      </tr>
-                    ))}
+                    {realListings.slice(0, 3).map((listing, i) => {
+                      const fp = fingerprints.find((f) => f.make === listing.make && f.model === listing.model);
+                      const margin = fp?.avg_profit || Math.round((listing.asking_price || 40000) * 0.08);
+                      const badge = getMarginBadge(margin, fp?.avg_profit || margin);
+                      return (
+                        <tr key={i} className="border-b border-border/50">
+                          <td className="py-3 px-3">
+                            <div className="font-medium text-foreground">
+                              {listing.year} {listing.make} {listing.model}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {listing.variant_raw} · {listing.km?.toLocaleString()} km
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 text-right font-bold text-foreground">{fmt(listing.asking_price || 0)}</td>
+                          <td className="py-3 px-3 text-right text-muted-foreground">{fmt((listing.asking_price || 0) + margin)}</td>
+                          <td className="py-3 px-3 text-right font-bold text-emerald-400">{fmt(margin)}</td>
+                          <td className="py-3 px-3">
+                            <Badge variant="outline" className="text-xs">{listing.source}</Badge>
+                          </td>
+                          <td className="py-3 px-3">
+                            <Badge variant="outline" className={`text-[10px] ${badge.className}`}>{badge.label}</Badge>
+                          </td>
+                          <td className="py-3 px-3">
+                            {listing.listing_url && (
+                              <a href={listing.listing_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs">
+                                View →
+                              </a>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
-              <div className="mt-4 bg-muted/30 rounded-lg p-4 text-center">
-                <Lock className="w-5 h-5 mx-auto mb-2 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  <span className="font-bold text-foreground">9 additional opportunities</span> hidden in demo mode.
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Upload your sales data to unlock the full opportunity feed.
-                </p>
-              </div>
+              {totalMatches > 3 && (
+                <div className="mt-4 bg-muted/30 rounded-lg p-4 text-center">
+                  <Lock className="w-5 h-5 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-bold text-foreground">{totalMatches - 3} additional opportunities</span> hidden in demo mode.
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Upload your sales data to unlock the full opportunity feed.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
