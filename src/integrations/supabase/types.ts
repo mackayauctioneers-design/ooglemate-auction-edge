@@ -2048,6 +2048,60 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_sales_facts: {
+        Row: {
+          account_id: string
+          buy_price: number | null
+          created_at: string | null
+          data_source: string | null
+          dealer_sales_id: string | null
+          id: string
+          km: number | null
+          make: string | null
+          model: string | null
+          region_id: string | null
+          sell_price: number | null
+          sold_date: string | null
+          state: string | null
+          variant_raw: string | null
+          year: number | null
+        }
+        Insert: {
+          account_id: string
+          buy_price?: number | null
+          created_at?: string | null
+          data_source?: string | null
+          dealer_sales_id?: string | null
+          id?: string
+          km?: number | null
+          make?: string | null
+          model?: string | null
+          region_id?: string | null
+          sell_price?: number | null
+          sold_date?: string | null
+          state?: string | null
+          variant_raw?: string | null
+          year?: number | null
+        }
+        Update: {
+          account_id?: string
+          buy_price?: number | null
+          created_at?: string | null
+          data_source?: string | null
+          dealer_sales_id?: string | null
+          id?: string
+          km?: number | null
+          make?: string | null
+          model?: string | null
+          region_id?: string | null
+          sell_price?: number | null
+          sold_date?: string | null
+          state?: string | null
+          variant_raw?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       dealer_sales_fingerprints: {
         Row: {
           count_sold: number
