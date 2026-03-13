@@ -732,8 +732,13 @@ export default function DemoDashboardPage() {
                     <span className="font-bold text-foreground">{totalMatches - 3} additional opportunities</span> hidden in demo mode.
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Upload your sales data to unlock the full opportunity feed.
+                    {user ? "Upload your sales data to unlock the full opportunity feed." : "Create a free account to unlock the full opportunity feed."}
                   </p>
+                  {!user && (
+                    <Button size="sm" className="mt-3" onClick={() => navigate("/auth")}>
+                      <Zap className="w-3 h-3 mr-1" /> Sign Up Free
+                    </Button>
+                  )}
                 </div>
               )}
             </CardContent>
