@@ -1885,7 +1885,10 @@ export type Database = {
           dealer_email: string | null
           dealer_name: string
           dealer_phone: string | null
+          dealer_type: string
           dealer_website: string | null
+          demo_mode: boolean
+          demo_query_limit: number
           id: string
           org_id: string | null
           region_id: string
@@ -1898,7 +1901,10 @@ export type Database = {
           dealer_email?: string | null
           dealer_name: string
           dealer_phone?: string | null
+          dealer_type?: string
           dealer_website?: string | null
+          demo_mode?: boolean
+          demo_query_limit?: number
           id?: string
           org_id?: string | null
           region_id?: string
@@ -1911,7 +1917,10 @@ export type Database = {
           dealer_email?: string | null
           dealer_name?: string
           dealer_phone?: string | null
+          dealer_type?: string
           dealer_website?: string | null
+          demo_mode?: boolean
+          demo_query_limit?: number
           id?: string
           org_id?: string | null
           region_id?: string
@@ -2798,6 +2807,33 @@ export type Database = {
           variant_resolved?: string | null
           velocity?: number | null
           velocity_score?: number | null
+        }
+        Relationships: []
+      }
+      demo_usage: {
+        Row: {
+          clicked_alert: boolean | null
+          clicked_upload: boolean | null
+          created_at: string
+          id: string
+          user_id: string
+          vehicle_search: Json | null
+        }
+        Insert: {
+          clicked_alert?: boolean | null
+          clicked_upload?: boolean | null
+          created_at?: string
+          id?: string
+          user_id: string
+          vehicle_search?: Json | null
+        }
+        Update: {
+          clicked_alert?: boolean | null
+          clicked_upload?: boolean | null
+          created_at?: string
+          id?: string
+          user_id?: string
+          vehicle_search?: Json | null
         }
         Relationships: []
       }
