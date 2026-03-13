@@ -152,6 +152,8 @@ const App = () => (
               <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/auth" element={<AuthPage />} />
+              <Route path="/demo" element={<DemoLoginPage />} />
+              <Route path="/dealer/demo-dashboard" element={<RequireAuth><DemoDashboardPage /></RequireAuth>} />
               <Route path="/architecture" element={<ArchitectureOverviewPage />} />
 
               {/* === LEGACY REDIRECTS — dealer nav still points to trading desk === */}
