@@ -411,7 +411,7 @@ function FingerprintTier({
                           {fp.avg_profit != null ? fmt(fp.avg_profit) : '—'}
                         </td>
                         <td className="px-3 py-2 text-right hidden md:table-cell text-muted-foreground">
-                          {fp.profit_score != null ? fp.profit_score.toLocaleString() : '—'}
+                          {fp.profit_score != null ? fmt(fp.profit_score) : '—'}
                         </td>
                         <td className="px-3 py-2 text-right hidden md:table-cell text-muted-foreground">
                           {fp.sales_count ?? '—'}
