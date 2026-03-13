@@ -332,10 +332,10 @@ export async function scoreListingsForDealer(
     return { scored: 0, no_match: listings.length };
   }
 
-  // Filter expired
+  // Filter expired and alert-disabled fingerprints
   const now = new Date().toISOString();
   const activeFps = fps.filter(
-    (f) => !f.expires_at || f.expires_at > now,
+    (f) => (!f.expires_at || f.expires_at > now) && f.alert_enabled !== false,
   ) as Fingerprint[];
 
   if (activeFps.length === 0) {
