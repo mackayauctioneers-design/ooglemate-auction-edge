@@ -167,16 +167,21 @@ export default function DealerProfilesPage() {
                             </div>
                             <div className="min-w-0">
                               <CardTitle className="text-base truncate">{dealer.dealer_name}</CardTitle>
-                              <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                                <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                                 <MapPin className="h-3 w-3" />
                                 <span>{dealer.region_id.replace(/_/g, ' ')}</span>
-                                {dealer.dealer_website && (
+                                {dealer.dealer_website ? (
                                   <>
                                     <span>·</span>
                                     <Globe className="h-3 w-3" />
                                     <span className="truncate max-w-[200px]">
                                       {dealer.dealer_website.replace(/^https?:\/\//, '')}
                                     </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>·</span>
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">Independent</Badge>
                                   </>
                                 )}
                               </div>
