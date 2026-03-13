@@ -54,6 +54,13 @@ export default function AJHReportPage() {
             <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
               <ArrowLeft className="h-4 w-4 mr-1" /> Back
             </Button>
+            <Button
+              size="sm"
+              className="ml-auto gap-2 bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => navigate('/dealer/opportunities/ajh')}
+            >
+              <Target className="h-4 w-4" /> View Opportunity Feed
+            </Button>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
             AJH Auto Traders — Intelligence Report
