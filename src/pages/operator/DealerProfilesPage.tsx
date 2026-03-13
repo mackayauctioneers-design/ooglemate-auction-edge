@@ -386,7 +386,7 @@ function FingerprintTier({
                   {showProfit && (
                     <>
                       <th className="text-right px-3 py-2 font-medium hidden sm:table-cell">Avg Profit</th>
-                      <th className="text-right px-3 py-2 font-medium hidden md:table-cell">Score</th>
+                      <th className="text-right px-3 py-2 font-medium hidden md:table-cell">Total Profit</th>
                       <th className="text-right px-3 py-2 font-medium hidden md:table-cell">Sales</th>
                       <th className="text-right px-3 py-2 font-medium hidden lg:table-cell">Avg Days</th>
                     </>
