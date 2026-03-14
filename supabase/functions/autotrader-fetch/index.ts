@@ -977,7 +977,7 @@ Deno.serve(async (req) => {
             // Fall through to dataset fetch below
           }
 
-          if (apifyStatus !== "SUCCEEDED" && apifyStatus !== "TIMED-OUT") {
+          if (apifyStatus !== "SUCCEEDED" && apifyStatus !== "TIMED-OUT" && apifyStatus !== "FAILED") {
             // Unknown status - release lock
             await supabase
               .from("apify_runs_queue")
