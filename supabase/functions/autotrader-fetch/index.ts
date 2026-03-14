@@ -952,7 +952,8 @@ Deno.serve(async (req) => {
             break;
           }
 
-          if (apifyStatus === "FAILED" || apifyStatus === "ABORTED") {
+          // ABORTED runs have no usable data — mark as error and skip
+          if (apifyStatus === "ABORTED") {
             await supabase
               .from("apify_runs_queue")
               .update({ 
@@ -970,9 +971,9 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          // TIMED-OUT runs still have partial results in their dataset — treat as fetchable
-          if (apifyStatus === "TIMED-OUT") {
-            console.log(`[${runSource}] Run ${run.run_id} timed out but has partial results — fetching dataset`);
+          // FAILED and TIMED-OUT runs still have partial results in their dataset — fetch them
+          if (apifyStatus === "FAILED" || apifyStatus === "TIMED-OUT") {
+            console.log(`[${runSource}] Run ${run.run_id} ${apifyStatus} but may have partial results — fetching dataset`);
             // Fall through to dataset fetch below
           }
 
