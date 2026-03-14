@@ -434,6 +434,13 @@ Deno.serve(async (req) => {
         model_norm: identity.model_norm,
         fingerprint: identity.fingerprint,
         ingested_at: new Date().toISOString(),
+        // Condition report fields (null if not provided)
+        condition_grade: l.condition_grade,
+        condition_score: l.condition_score,
+        major_defects: l.major_defects,
+        interior_notes: l.interior_notes,
+        exterior_notes: l.exterior_notes,
+        mechanical_notes: l.mechanical_notes,
       };
     });
 
