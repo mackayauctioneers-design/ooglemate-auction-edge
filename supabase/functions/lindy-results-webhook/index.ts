@@ -43,6 +43,13 @@ interface ValidatedListing {
   state: string | null;
   listing_url: string;
   source_id: string | null;
+  // Condition report fields (optional, from Browse Worker)
+  condition_grade: string | null;
+  condition_score: number | null;
+  major_defects: string | null;
+  interior_notes: string | null;
+  exterior_notes: string | null;
+  mechanical_notes: string | null;
 }
 
 const MAX_LISTINGS_PER_POST = 50;
