@@ -43,6 +43,13 @@ interface ValidatedListing {
   state: string | null;
   listing_url: string;
   source_id: string | null;
+  // Condition report fields (optional, from Browse Worker)
+  condition_grade: string | null;
+  condition_score: number | null;
+  major_defects: string | null;
+  interior_notes: string | null;
+  exterior_notes: string | null;
+  mechanical_notes: string | null;
 }
 
 const MAX_LISTINGS_PER_POST = 50;
@@ -102,7 +109,7 @@ function validateListings(raw: unknown[], sourceKey: string): ValidatedListing[]
     // (no normalization needed, just pass-through)
 
     // RELAXED VALIDATION: Log unexpected keys but DON'T reject during integration
-    const allowedKeys = new Set(["title", "price_aud", "odometer_km", "year", "state", "listing_url", "source_id", "image_url", "seller_name"]);
+    const allowedKeys = new Set(["title", "price_aud", "odometer_km", "year", "state", "listing_url", "source_id", "image_url", "seller_name", "condition_grade", "condition_score", "major_defects", "interior_notes", "exterior_notes", "mechanical_notes"]);
     const extraKeys = Object.keys(r).filter((k) => !allowedKeys.has(k));
     if (extraKeys.length > 0) {
       console.warn(`[lindy-webhook] Listing has unexpected keys (KEPT): ${extraKeys.join(", ")}`, JSON.stringify(r));
@@ -126,6 +133,12 @@ function validateListings(raw: unknown[], sourceKey: string): ValidatedListing[]
       state: typeof r.state === "string" ? r.state.toUpperCase().slice(0, 5) : null,
       listing_url: r.listing_url,
       source_id: typeof r.source_id === "string" ? r.source_id : sourceKey,
+      condition_grade: typeof r.condition_grade === "string" ? r.condition_grade : null,
+      condition_score: toNumberOrNull(r.condition_score),
+      major_defects: typeof r.major_defects === "string" ? r.major_defects : null,
+      interior_notes: typeof r.interior_notes === "string" ? r.interior_notes : null,
+      exterior_notes: typeof r.exterior_notes === "string" ? r.exterior_notes : null,
+      mechanical_notes: typeof r.mechanical_notes === "string" ? r.mechanical_notes : null,
     });
   }
 
@@ -421,6 +434,13 @@ Deno.serve(async (req) => {
         model_norm: identity.model_norm,
         fingerprint: identity.fingerprint,
         ingested_at: new Date().toISOString(),
+        // Condition report fields (null if not provided)
+        condition_grade: l.condition_grade,
+        condition_score: l.condition_score,
+        major_defects: l.major_defects,
+        interior_notes: l.interior_notes,
+        exterior_notes: l.exterior_notes,
+        mechanical_notes: l.mechanical_notes,
       };
     });
 

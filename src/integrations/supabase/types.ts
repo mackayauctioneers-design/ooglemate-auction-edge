@@ -6896,20 +6896,26 @@ export type Database = {
       }
       outward_search_results: {
         Row: {
+          condition_grade: string | null
+          condition_score: number | null
           confidence: string | null
+          exterior_notes: string | null
           fingerprint: string | null
           fingerprint_id: string | null
           id: string
           ingested_at: string | null
+          interior_notes: string | null
           job_id: string
           listing_id: string | null
           listing_url: string
+          major_defects: string | null
           make_norm: string | null
           margin_band_high: number | null
           margin_band_low: number | null
           margin_estimate: number | null
           match_reasons: Json | null
           match_score: number | null
+          mechanical_notes: string | null
           model_norm: string | null
           norm_confidence: number | null
           norm_explain: string[] | null
@@ -6927,20 +6933,26 @@ export type Database = {
           year: number | null
         }
         Insert: {
+          condition_grade?: string | null
+          condition_score?: number | null
           confidence?: string | null
+          exterior_notes?: string | null
           fingerprint?: string | null
           fingerprint_id?: string | null
           id?: string
           ingested_at?: string | null
+          interior_notes?: string | null
           job_id: string
           listing_id?: string | null
           listing_url: string
+          major_defects?: string | null
           make_norm?: string | null
           margin_band_high?: number | null
           margin_band_low?: number | null
           margin_estimate?: number | null
           match_reasons?: Json | null
           match_score?: number | null
+          mechanical_notes?: string | null
           model_norm?: string | null
           norm_confidence?: number | null
           norm_explain?: string[] | null
@@ -6958,20 +6970,26 @@ export type Database = {
           year?: number | null
         }
         Update: {
+          condition_grade?: string | null
+          condition_score?: number | null
           confidence?: string | null
+          exterior_notes?: string | null
           fingerprint?: string | null
           fingerprint_id?: string | null
           id?: string
           ingested_at?: string | null
+          interior_notes?: string | null
           job_id?: string
           listing_id?: string | null
           listing_url?: string
+          major_defects?: string | null
           make_norm?: string | null
           margin_band_high?: number | null
           margin_band_low?: number | null
           margin_estimate?: number | null
           match_reasons?: Json | null
           match_score?: number | null
+          mechanical_notes?: string | null
           model_norm?: string | null
           norm_confidence?: number | null
           norm_explain?: string[] | null
