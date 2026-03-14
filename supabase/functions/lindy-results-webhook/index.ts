@@ -109,7 +109,7 @@ function validateListings(raw: unknown[], sourceKey: string): ValidatedListing[]
     // (no normalization needed, just pass-through)
 
     // RELAXED VALIDATION: Log unexpected keys but DON'T reject during integration
-    const allowedKeys = new Set(["title", "price_aud", "odometer_km", "year", "state", "listing_url", "source_id", "image_url", "seller_name"]);
+    const allowedKeys = new Set(["title", "price_aud", "odometer_km", "year", "state", "listing_url", "source_id", "image_url", "seller_name", "condition_grade", "condition_score", "major_defects", "interior_notes", "exterior_notes", "mechanical_notes"]);
     const extraKeys = Object.keys(r).filter((k) => !allowedKeys.has(k));
     if (extraKeys.length > 0) {
       console.warn(`[lindy-webhook] Listing has unexpected keys (KEPT): ${extraKeys.join(", ")}`, JSON.stringify(r));
