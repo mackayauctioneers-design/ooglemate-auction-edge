@@ -133,6 +133,12 @@ function validateListings(raw: unknown[], sourceKey: string): ValidatedListing[]
       state: typeof r.state === "string" ? r.state.toUpperCase().slice(0, 5) : null,
       listing_url: r.listing_url,
       source_id: typeof r.source_id === "string" ? r.source_id : sourceKey,
+      condition_grade: typeof r.condition_grade === "string" ? r.condition_grade : null,
+      condition_score: toNumberOrNull(r.condition_score),
+      major_defects: typeof r.major_defects === "string" ? r.major_defects : null,
+      interior_notes: typeof r.interior_notes === "string" ? r.interior_notes : null,
+      exterior_notes: typeof r.exterior_notes === "string" ? r.exterior_notes : null,
+      mechanical_notes: typeof r.mechanical_notes === "string" ? r.mechanical_notes : null,
     });
   }
 
