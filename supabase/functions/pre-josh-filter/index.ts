@@ -195,7 +195,7 @@ async function dispatchHighScoreAlert(rows: QueueRow[], supabase: any): Promise<
 
   let dispatched = 0;
 
-  for (const row of eligible) {
+  for (const row of dedupedEligible) {
     const vehicle = [row.year, row.make, row.model, row.variant]
       .filter(Boolean)
       .join(" ");
