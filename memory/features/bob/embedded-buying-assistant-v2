@@ -1,0 +1,16 @@
+# Memory: features/bob/embedded-buying-assistant-v2
+Updated: now
+
+Bob v2 is a production-grade embedded AI buying assistant powered by GPT-5 with tool-calling. Architecture:
+
+1. **Edge Function (`bob-chat`)**: Orchestrator that receives conversation history + dealer context + page context, calls GPT-5 with 8 tools, executes tool calls against Supabase, and streams the final response back via SSE.
+
+2. **Tools Available**: search_vehicles, get_dealer_context, explain_vehicle_score, get_buy_recommendations, find_replacement, create_watch, get_dealer_performance, explain_page.
+
+3. **Context System (`BobContext.tsx`)**: React context provider that captures current page route/type, selected vehicles, filters, and dealer profile. Automatically maps routes to page types and generates context-aware quick actions.
+
+4. **UI (`BobPanel.tsx`)**: Right-side Sheet panel with streaming markdown rendering, structured vehicle result cards, tool result displays, and page-specific quick actions. Available on all authenticated pages via AppLayout.
+
+5. **Database**: `bob_conversations` (conversation history), `bob_watch_profiles` (persistent watch alerts). Both RLS-protected per dealer.
+
+6. **Key Behaviors**: Inference-first (infers from dealer fingerprints before asking), action-first (returns structured vehicle data not just chat), page-aware (adapts quick actions per page type), streaming (token-by-token rendering).

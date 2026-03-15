@@ -9,35 +9,10 @@ interface AppLayoutProps {
   children: ReactNode;
 }
 
-// Detect if running on iOS
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false);
-  
-  useEffect(() => {
-    const checkMobile = () => {
-      const ua = navigator.userAgent;
-      const isIOS = /iPhone|iPad|iPod/.test(ua);
-      const isSmallScreen = window.innerWidth < 768;
-      setIsMobile(isIOS || isSmallScreen);
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-  
-  return isMobile;
-}
-
 export function AppLayout({ children }: AppLayoutProps) {
   const isNested = useIsNestedLayout();
   const location = useLocation();
-  const { currentUser } = useAuth();
-  const isMobile = useIsMobile();
-  
-  // Don't show Bob features on ValoPage or on mobile devices (causes iOS crashes)
-  const isValoPage = location.pathname === '/valo';
-  const showBobFeatures = !isValoPage && !isMobile;
+  const { user } = useAuth();
 
   if (isNested) return <>{children}</>;
   
@@ -49,26 +24,9 @@ export function AppLayout({ children }: AppLayoutProps) {
           {children}
         </main>
         
-        {/* Bob Avatar + Panel - Desktop only to prevent iOS memory crashes */}
-        {showBobFeatures && (
-          <>
-            <BobAvatarLazy dealerName={currentUser?.dealer_name} />
-            <BobPanel />
-          </>
-        )}
+        {/* Bob AI Assistant — available on all pages for logged-in users */}
+        {user && <BobPanel />}
       </div>
     </LayoutNestingProvider>
-  );
-}
-
-// Lazy load BobAvatar to prevent initial load overhead
-import { lazy, Suspense } from 'react';
-const BobAvatarComponent = lazy(() => import('@/components/valo/BobAvatar').then(m => ({ default: m.BobAvatar })));
-
-function BobAvatarLazy({ dealerName }: { dealerName?: string }) {
-  return (
-    <Suspense fallback={null}>
-      <BobAvatarComponent dealerName={dealerName} />
-    </Suspense>
   );
 }

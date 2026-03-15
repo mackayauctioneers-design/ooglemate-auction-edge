@@ -1,435 +1,382 @@
-import { useState, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { useRef, useEffect, useState } from 'react';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { 
-  MessageCircle, Send, Loader2, 
-  TrendingUp, TrendingDown, Minus, Clock, 
-  HelpCircle, ChevronRight, AlertTriangle, Eye
+import { Badge } from '@/components/ui/badge';
+import {
+  Send, Loader2, X, MessageSquare, Trash2,
+  ExternalLink, Eye, Plus, Search, ArrowRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { useBob, BobMessage } from '@/contexts/BobContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useBobSiteContext } from '@/contexts/BobSiteContext';
-import { useBobTools } from '@/hooks/useBobTools';
-
+import ReactMarkdown from 'react-markdown';
 
 // ============================================================================
-// BOB PANEL - Site-aware dealer assistant
+// BOB PANEL v2 — Production AI Buying Assistant
 // ============================================================================
 
-interface ChatMessage {
-  role: 'user' | 'bob';
-  content: string;
-  data?: any; // structured data from tools
-  actions?: Array<{
-    label: string;
-    route?: string;
-    action?: string;
-  }>;
+function VehicleResultCard({ vehicle }: { vehicle: any }) {
+  const priceFormatted = vehicle.price ? `$${Number(vehicle.price).toLocaleString()}` : 'Price N/A';
+  const kmFormatted = vehicle.km ? `${(vehicle.km / 1000).toFixed(0)}k km` : '';
+  const profitFormatted = vehicle.estimated_profit ? `~$${Number(vehicle.estimated_profit).toLocaleString()} est. profit` : '';
+
+  return (
+    <div className="border border-border rounded-lg p-3 bg-card hover:bg-accent/50 transition-colors">
+      <div className="flex gap-3">
+        {vehicle.image_url && (
+          <div className="w-20 h-14 rounded overflow-hidden flex-shrink-0 bg-muted">
+            <img src={vehicle.image_url} alt="" className="w-full h-full object-cover" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <h4 className="font-semibold text-sm text-foreground truncate">
+              {vehicle.year} {vehicle.make} {vehicle.model} {vehicle.variant || ''}
+            </h4>
+            {vehicle.fingerprint_match && (
+              <Badge variant="default" className="text-[10px] px-1.5 py-0 flex-shrink-0">Match</Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{priceFormatted}</span>
+            {kmFormatted && <span>• {kmFormatted}</span>}
+            {vehicle.location && <span>• {vehicle.location}</span>}
+          </div>
+          {vehicle.source && (
+            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+              <span className="capitalize">{vehicle.source}</span>
+              {vehicle.price_badge && <Badge variant="secondary" className="text-[10px] px-1 py-0">{vehicle.price_badge}</Badge>}
+              {profitFormatted && <span className="text-emerald-600 dark:text-emerald-400 font-medium">{profitFormatted}</span>}
+            </div>
+          )}
+          {vehicle.fit_reason && (
+            <p className="text-xs text-muted-foreground mt-1 italic">{vehicle.fit_reason}</p>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-1.5 mt-2">
+        {vehicle.listing_url && (
+          <Button variant="ghost" size="sm" className="h-6 text-xs px-2" asChild>
+            <a href={vehicle.listing_url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-3 w-3 mr-1" />View
+            </a>
+          </Button>
+        )}
+        <Button variant="ghost" size="sm" className="h-6 text-xs px-2">
+          <Search className="h-3 w-3 mr-1" />Similar
+        </Button>
+        <Button variant="ghost" size="sm" className="h-6 text-xs px-2">
+          <Eye className="h-3 w-3 mr-1" />Watch
+        </Button>
+      </div>
+    </div>
+  );
 }
 
-// Intent detection for routing to appropriate tools
-function detectIntent(message: string): 'opportunities' | 'auctions' | 'watchlist' | 'explain' | 'today' | 'help' | 'general' {
-  const text = message.toLowerCase();
-  
-  // Today/brief intent
-  if (text.includes('today') || text.includes('brief') || text.includes('what should i do') || text.includes('morning')) {
-    return 'today';
-  }
-  
-  // Opportunities intent
-  if (text.includes('opportunit') || text.includes('buy') || text.includes('deal') || text.includes('what to get')) {
-    return 'opportunities';
-  }
-  
-  // Auction intent
-  if (text.includes('auction') || text.includes('upcoming') || text.includes('lane')) {
-    return 'auctions';
-  }
-  
-  // Watchlist intent
-  if (text.includes('watchlist') || text.includes('watching') || text.includes('saved') || text.includes('my list')) {
-    return 'watchlist';
-  }
-  
-  // Explain intent (when viewing a specific lot)
-  if (text.includes('why') || text.includes('explain') || text.includes('how come') || text.includes('reason')) {
-    return 'explain';
-  }
-  
-  // Help intent
-  if (text.includes('help') || text.includes('how do') || text.includes('what is') || text.includes('what are')) {
-    return 'help';
-  }
-  
-  return 'general';
+function ToolResultsDisplay({ toolResults }: { toolResults: any[] }) {
+  if (!toolResults?.length) return null;
+
+  return (
+    <div className="space-y-2 mt-2">
+      {toolResults.map((tr, i) => {
+        const result = tr.result;
+        if (!result) return null;
+
+        // Vehicle search results
+        if (tr.function_name === 'search_vehicles' && result.results?.length) {
+          return (
+            <div key={i} className="space-y-2">
+              {result.results.slice(0, 8).map((v: any, j: number) => (
+                <VehicleResultCard key={j} vehicle={v} />
+              ))}
+              {result.total > 8 && (
+                <p className="text-xs text-muted-foreground text-center">
+                  + {result.total - 8} more results
+                </p>
+              )}
+            </div>
+          );
+        }
+
+        // Buy recommendations
+        if (tr.function_name === 'get_buy_recommendations' && result.recommendations?.length) {
+          return (
+            <div key={i} className="space-y-2">
+              {result.recommendations.slice(0, 6).map((v: any, j: number) => (
+                <VehicleResultCard key={j} vehicle={v} />
+              ))}
+            </div>
+          );
+        }
+
+        // Replacement results
+        if (tr.function_name === 'find_replacement' && result.replacements?.length) {
+          return (
+            <div key={i}>
+              <p className="text-xs text-muted-foreground mb-2">
+                Replacements for: {result.reference}
+              </p>
+              <div className="space-y-2">
+                {result.replacements.map((v: any, j: number) => (
+                  <VehicleResultCard key={j} vehicle={v} />
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        // Watch created
+        if (tr.function_name === 'create_watch' && result.watch_id) {
+          return (
+            <div key={i} className="border border-border rounded-lg p-3 bg-card">
+              <div className="flex items-center gap-2">
+                <Eye className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">Watch created: {result.label}</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Watching for {result.profile?.make} {result.profile?.model}
+                {result.profile?.year_min && ` ${result.profile.year_min}+`}
+                {result.profile?.km_max && ` under ${(result.profile.km_max/1000).toFixed(0)}k km`}
+              </p>
+            </div>
+          );
+        }
+
+        return null;
+      })}
+    </div>
+  );
 }
 
-// Format opportunity for display
-function formatOpportunity(item: any): string {
-  const parts = [
-    `**${item.year} ${item.make} ${item.model}${item.variant ? ` ${item.variant}` : ''}**`,
-    item.km ? `${(item.km / 1000).toFixed(0)}k km` : '',
-    `@ ${item.auction_house} ${item.location || ''}`,
-    item.relevance_score ? `(Score: ${item.relevance_score.toFixed(1)})` : '',
-  ].filter(Boolean);
-  
-  const reasons = item.edge_reasons?.length 
-    ? `\n  → ${item.edge_reasons.join(', ')}`
-    : '';
-  
-  const action = item.next_action 
-    ? `\n  📌 ${item.next_action}`
-    : '';
-  
-  return parts.join(' • ') + reasons + action;
-}
+function MessageBubble({ message }: { message: BobMessage }) {
+  const isUser = message.role === 'user';
 
-// Format auction card for display
-function formatAuctionCard(card: any): string {
-  const heatEmoji = {
-    'VERY_HOT': '🔥🔥',
-    'HOT': '🔥',
-    'WARM': '⚠️',
-    'COLD': '❄️'
-  }[card.heat_tier] || '';
-  
-  const warnings = card.warnings?.includes('LOCATION_UNKNOWN') ? ' ⚠️ Location unknown' : '';
-  
-  return `${heatEmoji} **${card.auction_house}** ${card.location_label || 'Unknown'}
-  ${card.relevant_lots} relevant / ${card.eligible_lots} eligible / ${card.total_lots} total${warnings}`;
+  return (
+    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+      <div className={cn(
+        "max-w-[90%] rounded-xl px-3.5 py-2.5 text-sm",
+        isUser
+          ? "bg-primary text-primary-foreground rounded-br-sm"
+          : "bg-muted text-foreground rounded-bl-sm"
+      )}>
+        {isUser ? (
+          <p className="whitespace-pre-wrap">{message.content}</p>
+        ) : (
+          <div className="prose prose-sm dark:prose-invert max-w-none [&_p]:mb-1.5 [&_p]:mt-0 [&_ul]:my-1 [&_li]:my-0.5 [&_strong]:text-foreground">
+            <ReactMarkdown>{message.content}</ReactMarkdown>
+          </div>
+        )}
+        {!isUser && message.tool_results && (
+          <ToolResultsDisplay toolResults={message.tool_results} />
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function BobPanel() {
-  const { isAdmin, dealerProfile, user } = useAuth();
-  const { runtimeContext } = useBobSiteContext();
-  const bobTools = useBobTools();
-  const navigate = useNavigate();
-  
-  // Extract from runtime context
-  const filters = runtimeContext?.filters;
-  const selection = runtimeContext?.selection ?? { lot_id: null, auction_event_id: null };
-  
-  const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { user } = useAuth();
+  const {
+    isOpen, setIsOpen,
+    messages, isStreaming,
+    sendMessage, clearMessages,
+    quickActions, dealerName,
+    pageContext,
+  } = useBob();
+
   const [input, setInput] = useState('');
-  const [accountNotLinked, setAccountNotLinked] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const dealerName = dealerProfile?.dealer_name || 'mate';
-
-  // Add initial greeting when panel opens
+  // Auto-scroll on new messages
   useEffect(() => {
-    if (isOpen && messages.length === 0 && user) {
-      const contextSummary = bobTools.getContextSummary();
-      setMessages([{
-        role: 'bob',
-        content: `G'day ${dealerName}. ${contextSummary}\n\nWhat do you need?`,
-        actions: [
-          { label: 'What opportunities today?', action: 'opportunities' },
-          { label: 'Show upcoming auctions', action: 'auctions' },
-          { label: 'My watchlist', action: 'watchlist' }
-        ]
-      }]);
+    if (scrollRef.current) {
+      const el = scrollRef.current;
+      el.scrollTop = el.scrollHeight;
     }
-  }, [isOpen, messages.length, user, dealerName, bobTools]);
+  }, [messages, isStreaming]);
 
-  // Handle user message with tool calls
-  const handleSend = useCallback(async () => {
-    if (!input.trim() || !user) return;
+  // Focus input when panel opens
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => inputRef.current?.focus(), 200);
+    }
+  }, [isOpen]);
 
-    const userMessage = input.trim();
+  const handleSend = async () => {
+    if (!input.trim() || isStreaming) return;
+    const text = input;
     setInput('');
-    
-    // Add user message
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-    setIsLoading(true);
-
-    try {
-      const intent = detectIntent(userMessage);
-      let response: ChatMessage;
-
-      switch (intent) {
-        case 'today':
-        case 'opportunities': {
-          const opps = await bobTools.getTodayOpportunities();
-          if (!opps) {
-            response = { role: 'bob', content: 'Having trouble getting opportunities. Make sure you\'re logged in.' };
-          } else if (!opps.items?.length) {
-            response = { 
-              role: 'bob', 
-              content: `Nothing jumping out right now based on your filters. ${filters?.eligible_only ? 'You\'ve got "eligible only" on - maybe widen the net?' : 'Try adjusting your search criteria.'}`,
-              actions: [{ label: 'View All Auctions', route: '/upcoming-auctions' }]
-            };
-          } else {
-            const topItems = opps.items.slice(0, 5);
-            const formatted = topItems.map((item: any, i: number) => `${i + 1}. ${formatOpportunity(item)}`).join('\n\n');
-            response = {
-              role: 'bob',
-              content: `Found ${opps.counts?.total || opps.items.length} opportunities. Here's the top ones:\n\n${formatted}`,
-              data: opps,
-              actions: [{ label: 'View Opportunities', route: '/opportunities' }]
-            };
-          }
-          break;
-        }
-
-        case 'auctions': {
-          const auctions = await bobTools.getUpcomingAuctionCards();
-          if (!auctions) {
-            response = { role: 'bob', content: 'Couldn\'t fetch auctions. Make sure you\'re logged in.' };
-          } else if (!auctions.cards?.length) {
-            response = { 
-              role: 'bob', 
-              content: 'No auctions matching your current filters. Try widening the date range or location.',
-              actions: [{ label: 'View All Auctions', route: '/upcoming-auctions' }]
-            };
-          } else {
-            const hotAuctions = auctions.cards.filter((c: any) => c.heat_tier === 'VERY_HOT' || c.heat_tier === 'HOT');
-            const formatted = auctions.cards.slice(0, 5).map((card: any) => formatAuctionCard(card)).join('\n\n');
-            response = {
-              role: 'bob',
-              content: `${auctions.cards.length} auctions coming up. ${hotAuctions.length > 0 ? `${hotAuctions.length} looking hot.` : ''}\n\n${formatted}`,
-              data: auctions,
-              actions: [{ label: 'View Upcoming Auctions', route: '/upcoming-auctions' }]
-            };
-          }
-          break;
-        }
-
-        case 'watchlist': {
-          const watchlist = await bobTools.getWatchlist();
-          if (!watchlist) {
-            response = { role: 'bob', content: 'Couldn\'t get your watchlist. Make sure you\'re logged in.' };
-          } else if (!watchlist.watchlist?.length) {
-            response = { 
-              role: 'bob', 
-              content: 'Your watchlist is empty. Add some cars when you spot something worth tracking.',
-              actions: [{ label: 'Search Lots', route: '/search-lots' }]
-            };
-          } else {
-            const items = watchlist.watchlist.slice(0, 5);
-            const formatted = items.map((item: any) => 
-              `• **${item.title}** @ ${item.auction_house}\n  ${item.why || 'On your watch list'}`
-            ).join('\n\n');
-            response = {
-              role: 'bob',
-              content: `You're watching ${watchlist.watchlist.length} cars:\n\n${formatted}`,
-              data: watchlist,
-              actions: [{ label: 'View Full Watchlist', route: '/saved-searches' }]
-            };
-          }
-          break;
-        }
-
-        case 'explain': {
-          if (selection.lot_id) {
-            const explanation = await bobTools.explainWhyListed(selection.lot_id);
-            if (!explanation) {
-              response = { role: 'bob', content: 'Can\'t explain that one. The lot might not exist or there was an error.' };
-            } else {
-              const lot = explanation.lot;
-              const checks = explanation.eligibility?.checks?.join(', ') || 'all passed';
-              const matchStrength = explanation.fingerprint?.match_strength 
-                ? `${(explanation.fingerprint.match_strength * 100).toFixed(0)}% match`
-                : 'unknown match';
-              const comps = explanation.market_context?.comp_count || 0;
-              const medianPrice = explanation.market_context?.median_price 
-                ? `$${(explanation.market_context.median_price / 1000).toFixed(0)}k`
-                : 'unknown';
-              
-              const upgradeHints = explanation.what_would_upgrade_to_buy?.length
-                ? `\n\n📈 Would upgrade to BUY if: ${explanation.what_would_upgrade_to_buy.join(', ')}`
-                : '';
-              
-              response = {
-                role: 'bob',
-                content: `**${lot.year} ${lot.make} ${lot.model}** at ${lot.auction_house}\n\n` +
-                  `✓ Eligibility: ${checks}\n` +
-                  `🔗 Fingerprint: ${matchStrength}\n` +
-                  `📊 Market: ${comps} comps, median ${medianPrice}\n` +
-                  `📌 Recommendation: **${explanation.recommended_action}**${upgradeHints}`,
-                data: explanation
-              };
-            }
-          } else {
-            response = { 
-              role: 'bob', 
-              content: 'Click on a specific lot first, then ask me why it\'s there. I need to know which car you\'re looking at.',
-              actions: [{ label: 'Search Lots', route: '/search-lots' }]
-            };
-          }
-          break;
-        }
-
-        case 'help': {
-          response = {
-            role: 'bob',
-            content: `Here's what I can help with:\n\n` +
-              `• **"What opportunities today?"** - Top buying opportunities based on your profile\n` +
-              `• **"Show upcoming auctions"** - Auctions ranked by relevance\n` +
-              `• **"My watchlist"** - Cars you're tracking\n` +
-              `• **"Why is this here?"** - Explain why a lot matches (click lot first)\n\n` +
-              `I see what you're looking at and filter based on your dealer profile.`,
-            actions: [
-              { label: 'Opportunities', action: 'opportunities' },
-              { label: 'Auctions', action: 'auctions' }
-            ]
-          };
-          break;
-        }
-
-        default: {
-          // Try opportunities as default useful response
-          const opps = await bobTools.getTodayOpportunities();
-          if (opps.items?.length > 0) {
-            response = {
-              role: 'bob',
-              content: `Not sure what you're after, but here's what I've got:\n\n${opps.items.slice(0, 3).map((item: any, i: number) => `${i + 1}. ${formatOpportunity(item)}`).join('\n\n')}\n\nAsk me about opportunities, auctions, or your watchlist.`,
-              actions: [{ label: 'View All Opportunities', route: '/opportunities' }]
-            };
-          } else {
-            response = {
-              role: 'bob',
-              content: `Not sure what you mean, mate. Try:\n• "What opportunities today?"\n• "Show upcoming auctions"\n• "Why is this here?" (when viewing a lot)\n• "My watchlist"`,
-            };
-          }
-        }
-      }
-
-      setMessages(prev => [...prev, response]);
-    } catch (err) {
-      console.error('Bob error:', err);
-      setMessages(prev => [...prev, {
-        role: 'bob',
-        content: 'Something went wrong on my end. Try again in a sec.'
-      }]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [input, user, filters, selection, bobTools]);
-
-  // Handle quick action clicks
-  const handleAction = (action: { label: string; route?: string; action?: string }) => {
-    if (action.route) {
-      navigate(action.route);
-      setIsOpen(false);
-    } else if (action.action) {
-      setInput(action.label);
-      setTimeout(() => handleSend(), 100);
-    }
+    await sendMessage(text);
   };
 
+  const handleQuickAction = async (prompt: string) => {
+    await sendMessage(prompt);
+  };
+
+  if (!user) return null;
+
   return (
-    <Sheet open={isOpen} onOpenChange={setIsOpen}>
-      <SheetTrigger asChild>
+    <>
+      {/* Floating trigger button */}
+      {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
           className={cn(
-            "fixed bottom-6 right-24 z-50 w-12 h-12 rounded-full shadow-lg",
-            "flex items-center justify-center transition-all duration-200",
-            "bg-primary text-primary-foreground",
-            "hover:scale-105 active:scale-95"
+            "fixed bottom-6 right-6 z-50",
+            "w-14 h-14 rounded-2xl shadow-lg",
+            "flex items-center justify-center",
+            "bg-foreground text-background",
+            "hover:scale-105 active:scale-95 transition-all duration-200",
+            "border-2 border-background/20"
           )}
-          aria-label="Open Bob Panel"
+          aria-label="Open Bob"
         >
-          <MessageCircle className="h-5 w-5" />
-        </button>
-      </SheetTrigger>
-
-      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
-        {/* Header */}
-        <div className="bg-gradient-to-br from-primary to-primary/80 p-4 text-primary-foreground">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary-foreground/30">
-              <img
-                src="/pwa-192x192.png"
-                alt="Bob"
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div className="flex-1">
-              <p className="font-semibold">Bob</p>
-              <p className="text-sm opacity-80">Site-Aware Assistant</p>
-            </div>
-            {selection.lot_id && (
-              <div className="flex items-center gap-1 text-xs bg-primary-foreground/20 px-2 py-1 rounded">
-                <Eye className="h-3 w-3" />
-                <span>Viewing lot</span>
-              </div>
-            )}
+          <div className="flex flex-col items-center">
+            <MessageSquare className="h-5 w-5" />
+            <span className="text-[9px] font-bold mt-0.5 tracking-wide">BOB</span>
           </div>
-        </div>
+        </button>
+      )}
 
-        {/* Content */}
-        <ScrollArea className="flex-1 p-4">
-          {!user ? (
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
-              <p className="text-sm text-amber-800 dark:text-amber-200">
-                Please <a href="/auth" className="underline font-medium">log in</a> to access Bob.
-              </p>
+      <Sheet open={isOpen} onOpenChange={setIsOpen}>
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-[420px] p-0 flex flex-col gap-0 border-l-2 border-foreground/10"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-foreground text-background flex items-center justify-center font-bold text-sm">
+                B
+              </div>
+              <div>
+                <h2 className="font-semibold text-sm text-foreground">Bob</h2>
+                <p className="text-[11px] text-muted-foreground">
+                  {pageContext.page_title} • {dealerName}
+                </p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Conversation */}
-              {messages.map((msg, i) => (
-                <div 
-                  key={i}
-                  className={cn(
-                    "rounded-lg p-3 text-sm",
-                    msg.role === 'user' ? "bg-muted ml-8" : "bg-primary/10 mr-4"
-                  )}
+            <div className="flex items-center gap-1">
+              {messages.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground"
+                  onClick={clearMessages}
+                  title="Clear conversation"
                 >
-                  <div className="leading-relaxed whitespace-pre-wrap">
-                    {msg.content.split('**').map((part, j) => 
-                      j % 2 === 1 ? <strong key={j}>{part}</strong> : part
-                    )}
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground"
+                onClick={() => setIsOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Messages area */}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto">
+            <div className="p-4 space-y-4">
+              {/* Empty state with quick actions */}
+              {messages.length === 0 && (
+                <div className="space-y-4">
+                  <div className="text-center py-6">
+                    <div className="w-16 h-16 rounded-2xl bg-foreground text-background flex items-center justify-center font-bold text-2xl mx-auto mb-3">
+                      B
+                    </div>
+                    <p className="text-sm text-foreground font-medium">
+                      G'day {dealerName}.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      What do you need?
+                    </p>
                   </div>
-                  {msg.actions && msg.actions.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {msg.actions.map((action, j) => (
-                        <Button
-                          key={j}
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleAction(action)}
+
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-1">
+                      Quick actions
+                    </p>
+                    <div className="grid gap-1.5">
+                      {quickActions.map((action, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleQuickAction(action.prompt)}
+                          className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors text-left group"
                         >
-                          {action.label}
-                        </Button>
+                          <span className="text-base flex-shrink-0">{action.icon || '💬'}</span>
+                          <span className="text-sm text-foreground flex-1">{action.label}</span>
+                          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
                       ))}
                     </div>
-                  )}
+                  </div>
                 </div>
+              )}
+
+              {/* Conversation */}
+              {messages.map(msg => (
+                <MessageBubble key={msg.id} message={msg} />
               ))}
 
-              {isLoading && (
-                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Checking the system...</span>
+              {/* Streaming indicator */}
+              {isStreaming && messages[messages.length - 1]?.role !== 'assistant' && (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span className="text-xs">Thinking...</span>
                 </div>
               )}
             </div>
-          )}
-        </ScrollArea>
+          </div>
 
-        {/* Input */}
-        <div className="border-t p-3 flex gap-2">
-          <Input
-            placeholder="Ask Bob anything..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSend()}
-            className="flex-1"
-            disabled={!user || isLoading}
-          />
-          <Button onClick={handleSend} size="icon" disabled={!input.trim() || !user || isLoading}>
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
+          {/* Quick actions strip (when in conversation) */}
+          {messages.length > 0 && !isStreaming && (
+            <div className="px-3 py-2 border-t border-border/50 flex gap-1.5 overflow-x-auto">
+              {quickActions.slice(0, 3).map((action, i) => (
+                <Button
+                  key={i}
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs whitespace-nowrap flex-shrink-0"
+                  onClick={() => handleQuickAction(action.prompt)}
+                >
+                  {action.icon} {action.label}
+                </Button>
+              ))}
+            </div>
+          )}
+
+          {/* Input */}
+          <div className="border-t border-border p-3 bg-card">
+            <div className="flex gap-2">
+              <Input
+                ref={inputRef}
+                placeholder="Ask Bob anything..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                className="flex-1 bg-background"
+                disabled={isStreaming}
+              />
+              <Button
+                onClick={handleSend}
+                size="icon"
+                disabled={!input.trim() || isStreaming}
+                className="flex-shrink-0"
+              >
+                {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
