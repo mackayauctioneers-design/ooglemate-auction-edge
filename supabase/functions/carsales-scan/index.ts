@@ -20,9 +20,11 @@ const corsHeaders = {
 
 // ─── CENTRALISED CARSALES CONFIG ──────────────────────────────────────────────
 const CARSALES_CONFIG = {
-  timeoutSecs: 3600,    // 1 hour max — if it can't finish in 1h, the batch is too big
+  timeoutSecs: 20000,   // ~5.5h — memo23 recommended for DataDome resilience
   memoryMbytes: 1024,
   maxItems: 80,         // Small batches that finish fast — prevents actor timeout
+  build: "0.0.91",      // Pinned stable build per memo23 — avoids broken "latest"
+  maxConcurrency: 1,    // memo23: run 1 browser at a time to avoid DataDome blocks
   source: "carsales",
 };
 
