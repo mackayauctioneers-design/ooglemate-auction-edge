@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { BobSiteContextProvider } from "@/contexts/BobSiteContext";
+import { BobContextProvider } from "@/contexts/BobContext";
 import { OperatorGuard } from "@/components/guards/OperatorGuard";
 import { RequireAdmin } from "@/components/guards/RequireAdmin";
 import { RequireAuth } from "@/components/guards/RequireAuth";
