@@ -133,6 +133,7 @@ const App = () => (
     <AuthProvider>
       <BrowserRouter>
         <BobSiteContextProvider>
+          <BobContextProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
