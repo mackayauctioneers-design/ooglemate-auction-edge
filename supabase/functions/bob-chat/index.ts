@@ -583,7 +583,7 @@ Deno.serve(async (req) => {
 
     const systemMessage = SYSTEM_PROMPT + contextBlock;
 
-    // Call GPT-5 with tools
+    // First pass: Use fast model for tool selection (non-streaming for speed)
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -591,13 +591,13 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemMessage },
           ...(messages || []),
         ],
         tools: TOOLS,
-        stream: true,
+        stream: false,
       }),
     });
 
