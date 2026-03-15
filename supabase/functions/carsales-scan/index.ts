@@ -166,10 +166,11 @@ Deno.serve(async (req) => {
         typeof u === "string" ? { url: u } : u
       ),
       maxItems: Math.min(limit, CARSALES_CONFIG.maxItems),
+      maxConcurrency: CARSALES_CONFIG.maxConcurrency,
     };
 
     const safeActorId = actorId.replace(/\//g, "~");
-    const apifyUrl = `https://api.apify.com/v2/acts/${safeActorId}/runs?token=${apifyToken}&waitForFinish=0&timeout=${CARSALES_CONFIG.timeoutSecs}&memory=${CARSALES_CONFIG.memoryMbytes}`;
+    const apifyUrl = `https://api.apify.com/v2/acts/${safeActorId}/runs?token=${apifyToken}&waitForFinish=0&timeout=${CARSALES_CONFIG.timeoutSecs}&memory=${CARSALES_CONFIG.memoryMbytes}&build=${CARSALES_CONFIG.build}`;
 
     console.log(`[CARSALES] LAUNCHING: actor=${safeActorId} urls=${startUrls.length} limit=${Math.min(limit, CARSALES_CONFIG.maxItems)} timeout=${CARSALES_CONFIG.timeoutSecs}s memory=${CARSALES_CONFIG.memoryMbytes}MB`);
     console.log(`[CARSALES] Filtered URL: ${typeof startUrls[0] === "string" ? startUrls[0] : startUrls[0]?.url}`);
