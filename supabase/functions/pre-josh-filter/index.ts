@@ -328,7 +328,7 @@ Deno.serve(async (req) => {
     const approvedRows = (rows as QueueRow[]).filter((r) =>
       approved.some((v) => v.id === r.id)
     );
-    const alertsDispatched = await dispatchHighScoreAlert(approvedRows);
+    const alertsDispatched = await dispatchHighScoreAlert(approvedRows, supabase);
 
     const elapsed = Date.now() - startTime;
 
