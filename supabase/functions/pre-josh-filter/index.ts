@@ -235,6 +235,11 @@ async function dispatchHighScoreAlert(rows: QueueRow[], supabase: any): Promise<
         subject: LINDY_ALERT_SUBJECT,
         text: JSON.stringify(alertPayload, null, 2),
       });
+      // Record in alerted_listings for dedup
+      await supabase.from("alerted_listings").upsert(
+        { listing_id: row.listing_id, payload_hash: null, alerted_at: new Date().toISOString() },
+        { onConflict: "listing_id" }
+      );
       dispatched++;
       console.log(
         `[PRE-JOSH] 🔥 Score ≥9 alert dispatched: ${vehicle} @ $${row.price?.toLocaleString()} (-${discountStr})`
