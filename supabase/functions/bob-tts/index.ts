@@ -6,6 +6,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// ElevenLabs "Callum" — mature Australian male voice, confident & professional
+const VOICE_ID = "N2lVS1w4EtoT3dr4eOWO";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -20,30 +23,36 @@ serve(async (req) => {
       });
     }
 
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (!OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY not configured");
+    const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+    if (!ELEVENLABS_API_KEY) {
+      throw new Error("ELEVENLABS_API_KEY not configured");
     }
 
-    // Use OpenAI TTS - "ash" voice is confident and professional
-    const response = await fetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "tts-1",
-        input: text.substring(0, 4096),
-        voice: "ash",
-        response_format: "mp3",
-        speed: 1.05,
-      }),
-    });
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=mp3_44100_128`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": ELEVENLABS_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: text.substring(0, 5000),
+          model_id: "eleven_turbo_v2_5",
+          voice_settings: {
+            stability: 0.55,
+            similarity_boost: 0.75,
+            style: 0.35,
+            use_speaker_boost: true,
+            speed: 1.05,
+          },
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("OpenAI TTS error:", response.status, errText);
+      console.error("ElevenLabs TTS error:", response.status, errText);
       throw new Error(`TTS failed: ${response.status}`);
     }
 
