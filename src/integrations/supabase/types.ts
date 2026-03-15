@@ -12166,6 +12166,45 @@ export type Database = {
           },
         ]
       }
+      well_below_market_alerts_sent: {
+        Row: {
+          alerted: boolean
+          below_pct: number | null
+          comp_count: number | null
+          created_at: string
+          id: string
+          listing_id: string
+          median_sell_price: number | null
+          reason: string | null
+          thin_data: boolean | null
+          whatsapp_sent: boolean | null
+        }
+        Insert: {
+          alerted?: boolean
+          below_pct?: number | null
+          comp_count?: number | null
+          created_at?: string
+          id?: string
+          listing_id: string
+          median_sell_price?: number | null
+          reason?: string | null
+          thin_data?: boolean | null
+          whatsapp_sent?: boolean | null
+        }
+        Update: {
+          alerted?: boolean
+          below_pct?: number | null
+          comp_count?: number | null
+          created_at?: string
+          id?: string
+          listing_id?: string
+          median_sell_price?: number | null
+          reason?: string | null
+          thin_data?: boolean | null
+          whatsapp_sent?: boolean | null
+        }
+        Relationships: []
+      }
       winners_watchlist: {
         Row: {
           account_id: string
