@@ -583,7 +583,7 @@ Deno.serve(async (req) => {
 
     const systemMessage = SYSTEM_PROMPT + contextBlock;
 
-    // Call GPT-5 with tools
+    // First pass: Use fast model for tool selection (non-streaming for speed)
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -591,13 +591,13 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemMessage },
           ...(messages || []),
         ],
         tools: TOOLS,
-        stream: true,
+        stream: false,
       }),
     });
 
@@ -623,51 +623,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check if we need to handle tool calls (non-streaming first pass)
-    // For tool calls, we need to process them and then re-call AI
-    // For streaming text responses, we pass through directly
-    
-    // Read the full stream to check for tool calls
-    const reader = aiResponse.body!.getReader();
-    const decoder = new TextDecoder();
-    let fullContent = "";
-    let toolCalls: any[] = [];
-    let currentToolCall: any = null;
-
-    let buffer = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      let newlineIdx;
-      while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
-        let line = buffer.slice(0, newlineIdx);
-        buffer = buffer.slice(newlineIdx + 1);
-        if (line.endsWith("\r")) line = line.slice(0, -1);
-        if (!line.startsWith("data: ")) continue;
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === "[DONE]") continue;
-
-        try {
-          const parsed = JSON.parse(jsonStr);
-          const delta = parsed.choices?.[0]?.delta;
-          if (delta?.content) fullContent += delta.content;
-          if (delta?.tool_calls) {
-            for (const tc of delta.tool_calls) {
-              if (tc.index !== undefined) {
-                if (!toolCalls[tc.index]) {
-                  toolCalls[tc.index] = { id: tc.id || "", function: { name: "", arguments: "" } };
-                }
-                if (tc.id) toolCalls[tc.index].id = tc.id;
-                if (tc.function?.name) toolCalls[tc.index].function.name = tc.function.name;
-                if (tc.function?.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
-              }
-            }
-          }
-        } catch { /* partial JSON */ }
-      }
-    }
+    // Parse non-streaming response for tool calls
+    const aiData = await aiResponse.json();
+    const choice = aiData.choices?.[0];
+    const fullContent = choice?.message?.content || "";
+    const toolCalls = choice?.message?.tool_calls || [];
 
     // If there are tool calls, execute them and re-call AI
     if (toolCalls.length > 0) {
@@ -744,7 +704,7 @@ Deno.serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "openai/gpt-5",
+          model: "google/gemini-2.5-flash",
           messages: toolMessages,
           stream: true,
         }),
