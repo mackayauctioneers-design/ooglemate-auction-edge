@@ -261,6 +261,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
           </TooltipProvider>
+          </BobContextProvider>
         </BobSiteContextProvider>
       </BrowserRouter>
     </AuthProvider>
