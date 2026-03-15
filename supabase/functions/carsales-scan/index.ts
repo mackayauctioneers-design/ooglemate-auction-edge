@@ -23,7 +23,7 @@ const CARSALES_CONFIG = {
   timeoutSecs: 20000,   // ~5.5h — memo23 recommended for DataDome resilience
   memoryMbytes: 1024,
   maxItems: 80,         // Small batches that finish fast — prevents actor timeout
-  build: "0.0.91",      // Pinned stable build per memo23 — avoids broken "latest"
+  build: "0.0.94",      // Updated 2026-03-15 — DataDome fix confirmed by memo23
   maxConcurrency: 1,    // memo23: run 1 browser at a time to avoid DataDome blocks
   source: "carsales",
 };
