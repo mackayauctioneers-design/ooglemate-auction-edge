@@ -147,12 +147,34 @@ function applyRules(row: QueueRow): FilterVerdict {
 const LINDY_ALERT_EMAIL = "carbitrage-dispatch-mackayauctioneers@lindymail.ai";
 const LINDY_ALERT_SUBJECT = "carbitrage_alert_high";
 
-async function dispatchHighScoreAlert(rows: QueueRow[]): Promise<number> {
+async function dispatchHighScoreAlert(rows: QueueRow[], supabase: any): Promise<number> {
   const eligible = rows.filter(
     (r) => r.deal_score != null && r.deal_score >= 9
   );
   if (eligible.length === 0) return 0;
 
+  // ── Dedup: filter out already-alerted listings ──
+  const listingIds = eligible.map((r) => r.listing_id);
+  const { data: alreadyAlerted } = await supabase
+    .from("alerted_listings")
+    .select("listing_id")
+    .in("listing_id", listingIds);
+  const alertedSet = new Set((alreadyAlerted || []).map((a: any) => a.listing_id));
+
+  // For rows without a real listing_id, hash the payload for dedup
+  const dedupedEligible: QueueRow[] = [];
+  for (const r of eligible) {
+    if (alertedSet.has(r.listing_id)) {
+      console.log(`[PRE-JOSH] Dedup skip: ${r.listing_id} already alerted`);
+      continue;
+    }
+    dedupedEligible.push(r);
+  }
+
+  if (dedupedEligible.length === 0) {
+    console.log("[PRE-JOSH] All ≥9 listings already alerted, skipping");
+    return 0;
+  }
   const smtpHost = Deno.env.get("SMTP_HOST") || "smtp.gmail.com";
   const smtpPort = parseInt(Deno.env.get("SMTP_PORT") || "587", 10);
   const smtpUser = Deno.env.get("SMTP_USERNAME");
@@ -173,7 +195,7 @@ async function dispatchHighScoreAlert(rows: QueueRow[]): Promise<number> {
 
   let dispatched = 0;
 
-  for (const row of eligible) {
+  for (const row of dedupedEligible) {
     const vehicle = [row.year, row.make, row.model, row.variant]
       .filter(Boolean)
       .join(" ");
@@ -213,6 +235,11 @@ async function dispatchHighScoreAlert(rows: QueueRow[]): Promise<number> {
         subject: LINDY_ALERT_SUBJECT,
         text: JSON.stringify(alertPayload, null, 2),
       });
+      // Record in alerted_listings for dedup
+      await supabase.from("alerted_listings").upsert(
+        { listing_id: row.listing_id, payload_hash: null, alerted_at: new Date().toISOString() },
+        { onConflict: "listing_id" }
+      );
       dispatched++;
       console.log(
         `[PRE-JOSH] 🔥 Score ≥9 alert dispatched: ${vehicle} @ $${row.price?.toLocaleString()} (-${discountStr})`
@@ -301,7 +328,7 @@ Deno.serve(async (req) => {
     const approvedRows = (rows as QueueRow[]).filter((r) =>
       approved.some((v) => v.id === r.id)
     );
-    const alertsDispatched = await dispatchHighScoreAlert(approvedRows);
+    const alertsDispatched = await dispatchHighScoreAlert(approvedRows, supabase);
 
     const elapsed = Date.now() - startTime;
 

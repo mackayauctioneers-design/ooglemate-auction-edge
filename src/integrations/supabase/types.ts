@@ -190,6 +190,24 @@ export type Database = {
           },
         ]
       }
+      alerted_listings: {
+        Row: {
+          alerted_at: string
+          listing_id: string
+          payload_hash: string | null
+        }
+        Insert: {
+          alerted_at?: string
+          listing_id: string
+          payload_hash?: string | null
+        }
+        Update: {
+          alerted_at?: string
+          listing_id?: string
+          payload_hash?: string | null
+        }
+        Relationships: []
+      }
       apify_runs_queue: {
         Row: {
           completed_at: string | null
