@@ -20,9 +20,11 @@ const corsHeaders = {
 
 // ─── CENTRALISED CARSALES CONFIG ──────────────────────────────────────────────
 const CARSALES_CONFIG = {
-  timeoutSecs: 3600,    // 1 hour max — if it can't finish in 1h, the batch is too big
+  timeoutSecs: 20000,   // ~5.5h — memo23 recommended for DataDome resilience
   memoryMbytes: 1024,
   maxItems: 80,         // Small batches that finish fast — prevents actor timeout
+  build: "0.0.91",      // Pinned stable build per memo23 — avoids broken "latest"
+  maxConcurrency: 1,    // memo23: run 1 browser at a time to avoid DataDome blocks
   source: "carsales",
 };
 
@@ -164,10 +166,11 @@ Deno.serve(async (req) => {
         typeof u === "string" ? { url: u } : u
       ),
       maxItems: Math.min(limit, CARSALES_CONFIG.maxItems),
+      maxConcurrency: CARSALES_CONFIG.maxConcurrency,
     };
 
     const safeActorId = actorId.replace(/\//g, "~");
-    const apifyUrl = `https://api.apify.com/v2/acts/${safeActorId}/runs?token=${apifyToken}&waitForFinish=0&timeout=${CARSALES_CONFIG.timeoutSecs}&memory=${CARSALES_CONFIG.memoryMbytes}`;
+    const apifyUrl = `https://api.apify.com/v2/acts/${safeActorId}/runs?token=${apifyToken}&waitForFinish=0&timeout=${CARSALES_CONFIG.timeoutSecs}&memory=${CARSALES_CONFIG.memoryMbytes}&build=${CARSALES_CONFIG.build}`;
 
     console.log(`[CARSALES] LAUNCHING: actor=${safeActorId} urls=${startUrls.length} limit=${Math.min(limit, CARSALES_CONFIG.maxItems)} timeout=${CARSALES_CONFIG.timeoutSecs}s memory=${CARSALES_CONFIG.memoryMbytes}MB`);
     console.log(`[CARSALES] Filtered URL: ${typeof startUrls[0] === "string" ? startUrls[0] : startUrls[0]?.url}`);

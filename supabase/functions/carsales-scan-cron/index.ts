@@ -25,7 +25,7 @@ const ITEMS_PER_STATE = 80; // Small batches — prevents actor timeout
 const INTER_STATE_DELAY_MS = 10000; // 10s between states — serialised
 
 function buildNewestUrl(state: string): string {
-  const q = `(And.Year.range(${YEAR_MIN}..)._.Odometer.range(..${KM_MAX})._.State.${state})`;
+  const q = `(And.Year.range(${YEAR_MIN}..)..Odometer.range(..${KM_MAX})..State.${state}.)`;
   return `https://www.carsales.com.au/cars/?q=${encodeURIComponent(q)}&sort=~DateAdded`;
 }
 

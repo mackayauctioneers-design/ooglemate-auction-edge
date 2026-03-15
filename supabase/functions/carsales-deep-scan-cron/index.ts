@@ -60,7 +60,7 @@ function carsalesSlug(str: string): string {
 }
 
 function buildBucketUrl(make: string, model: string): string {
-  const q = `(And.Make.${carsalesSlug(make)}._.Model.${carsalesSlug(model)}._.Year.range(${YEAR_MIN}..)._.Odometer.range(..${KM_MAX}))`;
+  const q = `(And.Make.${carsalesSlug(make)}..Model.${carsalesSlug(model)}..Year.range(${YEAR_MIN}..)..Odometer.range(..${KM_MAX}).)`;
   return `https://www.carsales.com.au/cars/?q=${encodeURIComponent(q)}&sort=~Price`;
 }
 
