@@ -1,0 +1,4 @@
+# Memory: technical/ingestion/carsales-hardened-governance-v1
+Updated: now
+
+The Carsales scraping workflow (carsales-scan, carsales-scan-cron, carsales-deep-scan-cron) implements high-resilience hardening measures ('memo23' standard) to bypass DataDome blocks and ensure stable ingestion. 1) Execution Constraints: Pinning the Apify actor build to '0.0.94' (updated 2026-03-15 after DataDome fix confirmed), restricting maxConcurrency to 1, and increasing memory to 1024MB. 2) Extended Lifecycle: The timeout is extended to 20,000s (~5.5 hours) to allow for slower, more human-like crawl speeds. 3) Query Syntax: Utilizes the double-dot separator syntax (e.g., '..Odometer.range(..120000)..') for all start URLs to satisfy the actor's requirements. 4) Operational Guards: Honors a global 'CRAWL_MODE=disabled' kill switch and serializes state-based sweeps with 10-12s delays to prevent cost bleed and overlapping runs.
