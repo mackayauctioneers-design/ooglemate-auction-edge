@@ -550,6 +550,69 @@ export type Database = {
         }
         Relationships: []
       }
+      bob_conversations: {
+        Row: {
+          created_at: string
+          dealer_profile_id: string
+          id: string
+          messages: Json
+          page_context: Json | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_profile_id: string
+          id?: string
+          messages?: Json
+          page_context?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dealer_profile_id?: string
+          id?: string
+          messages?: Json
+          page_context?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      bob_watch_profiles: {
+        Row: {
+          created_at: string
+          dealer_profile_id: string
+          id: string
+          label: string
+          last_match_at: string | null
+          matches_found: number
+          search_profile: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_profile_id: string
+          id?: string
+          label: string
+          last_match_at?: string | null
+          matches_found?: number
+          search_profile: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dealer_profile_id?: string
+          id?: string
+          label?: string
+          last_match_at?: string | null
+          matches_found?: number
+          search_profile?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cheap_car_queue: {
         Row: {
           condition_notes: string | null
