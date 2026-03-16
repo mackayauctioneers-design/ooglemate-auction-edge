@@ -848,6 +848,26 @@ Deno.serve(async (req) => {
 
     console.log(`[SCORE-V2] Ranked: ${scoredCandidates.length} → inserting ${toInsert.length} (${pricedInserted} priced, ${auctionWatchInserted} auction watch, ${results.skipped_cap} capped)`);
 
+    // Revive auction rows that were previously expired but are active again upstream.
+    // The guarded upsert intentionally skips terminal rows, so we must flip these back to `new`
+    // before calling it for live auction inventory.
+    const auctionListingIdsToRevive = toInsert
+      .filter((row: any) => AUCTION_SOURCES.includes(String(row.listing_source || "")))
+      .map((row: any) => row.listing_id)
+      .filter(Boolean);
+
+    if (auctionListingIdsToRevive.length > 0) {
+      const { error: reviveErr } = await sb
+        .from("operator_opportunities")
+        .update({ status: "new", updated_at: new Date().toISOString() })
+        .in("listing_id", auctionListingIdsToRevive)
+        .eq("status", "expired");
+
+      if (reviveErr) {
+        console.error("[SCORE-V2] Auction revive error:", reviveErr.message);
+      }
+    }
+
     // ── 8. Guarded upsert via DB function (terminal protection) ──
     for (let i = 0; i < toInsert.length; i += 25) {
       const chunk = toInsert.slice(i, i + 25);
