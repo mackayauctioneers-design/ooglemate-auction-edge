@@ -35,6 +35,21 @@ function extractBadge(text: string | null): string {
   return sharedExtractBadge(text);
 }
 
+// Sanitize source URLs: reject search/list pages, keep only detail/lot pages
+function sanitizeSourceUrl(url: string, listingId: string): string {
+  if (!url) return "";
+  // Reject search page URLs
+  if (/\/search\?q=|\/search\/-\/|\/list\/keyword/i.test(url)) {
+    // Try to build a correct Pickles detail URL from listing_id
+    const picklesMatch = listingId.match(/^pickles:(\d+)$/);
+    if (picklesMatch) {
+      return `https://www.pickles.com.au/used/details/cars/${picklesMatch[1]}`;
+    }
+    return ""; // Can't repair — return empty
+  }
+  return url;
+}
+
 const PRODUCTION_SOURCES = [
   "pickles","grays","manheim","caroogle_shadow",
   "autotrader","carsales","easyauto","slattery",
@@ -500,7 +515,7 @@ Deno.serve(async (req) => {
         platform_class: l.platform_class || derivePlatform(make, model),
         trim_class: l.variant_family || extractBadge(l.variant_raw) || "UNKNOWN",
         drivetrain_bucket: drivetrainBucket(l.drivetrain),
-        source_url: l.listing_url || "",
+        source_url: sanitizeSourceUrl(l.listing_url || "", lid),
         first_seen_at: l.first_seen_at || new Date().toISOString(),
         days_listed: daysSince, price_drops: 0, pass_count: l.pass_count || 0,
         badge: null, fuel_type: null, body_type: null,
@@ -525,7 +540,7 @@ Deno.serve(async (req) => {
         platform_class: derivePlatform(make, model),
         trim_class: extractBadge(trimSource) || "UNKNOWN",
         drivetrain_bucket: drivetrainBucket(s.drivetrain || raw.driveType),
-        source_url: (raw.listingUrl || s.listing_url || "").trim() || null,
+        source_url: sanitizeSourceUrl((raw.listingUrl || s.listing_url || "").trim() || "", lid),
         first_seen_at: s.first_seen_at || new Date().toISOString(),
         days_listed: daysSince, price_drops: 0, pass_count: 0,
         badge: null, fuel_type: null, body_type: null,
@@ -548,7 +563,7 @@ Deno.serve(async (req) => {
         platform_class: derivePlatform(make, model),
         trim_class: r.badge || r.variant_family || extractBadge(r.variant_raw) || "UNKNOWN",
         drivetrain_bucket: drivetrainBucket(r.drivetrain),
-        source_url: r.listing_url || "",
+        source_url: sanitizeSourceUrl(r.listing_url || "", lid),
         first_seen_at: r.first_seen_at || new Date().toISOString(),
         days_listed: daysSince, price_drops: r.price_change_count || 0, pass_count: 0,
         badge: r.badge || r.variant_family || extractBadge(r.variant_raw) || null,
@@ -570,7 +585,7 @@ Deno.serve(async (req) => {
         platform_class: l.platform_class || derivePlatform(make, model),
         trim_class: l.variant_family || extractBadge(l.variant_raw) || "UNKNOWN",
         drivetrain_bucket: drivetrainBucket(l.drivetrain),
-        source_url: l.listing_url || "",
+        source_url: sanitizeSourceUrl(l.listing_url || "", lid),
         first_seen_at: l.first_seen_at || new Date().toISOString(),
         auction_house: l.auction_house || l.source || null,
         auction_datetime: l.auction_datetime || null,
