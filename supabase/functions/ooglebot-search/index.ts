@@ -258,7 +258,8 @@ Deno.serve(async (req) => {
         drivetrain, fuel_type, transmission, seller_type,
         first_seen_at, last_seen_at, price_badge,
         market_price, price_difference, price_difference_percent,
-        lifecycle_status, region_raw
+        lifecycle_status, region_raw, series_code, series_family,
+        cab_type, body_type
       `)
       .ilike("make", input.make)
       .gte("last_seen_at", recencyCutoff)
