@@ -282,8 +282,75 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const searchUrl = body.search_url || SEARCH_URL;
 
+    // ── MODE 1: Apify webhook — items array provided directly ──
+    if (Array.isArray(body.items) && body.items.length > 0) {
+      console.log(`[AUTO-AUCTIONS] Apify webhook mode: ${body.items.length} items`);
+      const rawListings: RawParsedListing[] = [];
+      for (const item of body.items) {
+        if (!item.mta) continue;
+        rawListings.push({
+          externalId: item.mta,
+          makeRaw: item.make_raw || '',
+          modelRaw: item.model_raw || '',
+          variantRaw: item.variant || null,
+          year: item.year || 0,
+          km: item.km || null,
+          fuel: item.fuel || null,
+          transmission: item.transmission || null,
+          bodyType: item.body_type || null,
+          listingUrl: item.detail_url || `${BASE_URL}/cp_veh_inspection_report.aspx?MTA=${item.mta}&sitekey=AAV`,
+          title: item.title || `${item.year || ''} ${item.make_raw || ''} ${item.model_raw || ''}`.trim(),
+        });
+      }
+      metrics.total_found = rawListings.length;
+      metrics.pages_fetched = 0; // Apify did the fetching
+
+      // Normalize and upsert (same as below)
+      const normalizedRows = await normalizeBatch(taxonomyDeps, rawListings, metrics);
+      for (let i = 0; i < normalizedRows.length; i += 50) {
+        const batch = normalizedRows.slice(i, i + 50);
+        const { data, error } = await supabase
+          .from("vehicle_listings")
+          .upsert(batch, { onConflict: "listing_id,source" })
+          .select("id, first_seen_at, last_seen_at");
+        if (error) {
+          metrics.total_skipped += batch.length;
+          if (metrics.errors.length < 5) metrics.errors.push(`Upsert: ${error.message}`);
+        } else if (data) {
+          for (const row of data) {
+            const diff = Math.abs(new Date(row.last_seen_at).getTime() - new Date(row.first_seen_at).getTime());
+            if (diff < 2000) metrics.total_new++;
+            else metrics.total_updated++;
+          }
+        }
+      }
+
+      const elapsed = Date.now() - startTime;
+      await supabase.from("cron_heartbeat").upsert({
+        cron_name: "auto-auctions-ingest",
+        last_seen_at: new Date().toISOString(),
+        last_ok: metrics.errors.length === 0,
+        note: `apify found=${metrics.total_found} new=${metrics.total_new} upd=${metrics.total_updated} ms=${elapsed}`,
+      }, { onConflict: "cron_name" });
+
+      await supabase.from("cron_audit_log").insert({
+        cron_name: "auto-auctions-ingest",
+        success: metrics.errors.length === 0,
+        result: { ...metrics, elapsed_ms: elapsed, mode: "apify" },
+        error: metrics.errors.length > 0 ? metrics.errors.join("; ") : null,
+        run_date: new Date().toISOString().split("T")[0],
+      });
+
+      console.log(`[AUTO-AUCTIONS] Apify ingest done in ${elapsed}ms:`, metrics);
+      return new Response(
+        JSON.stringify({ success: true, mode: "apify", ...metrics, elapsed_ms: elapsed }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ── MODE 2: Self-scrape via Firecrawl ──
+    const searchUrl = body.search_url || SEARCH_URL;
     console.log(`[AUTO-AUCTIONS] Starting HTML ingest from: ${searchUrl.substring(0, 80)}...`);
 
     // Fetch the search page
@@ -299,7 +366,6 @@ Deno.serve(async (req) => {
     console.log(`[AUTO-AUCTIONS] Parsed ${rawListings.length} listings from HTML`);
 
     if (rawListings.length === 0) {
-      // Write heartbeat even on zero results
       await supabase.from("cron_heartbeat").upsert(
         {
           cron_name: "auto-auctions-ingest",
