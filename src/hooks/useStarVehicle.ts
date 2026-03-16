@@ -74,6 +74,14 @@ export function useStarVehicle() {
 
         setStarredIds((prev) => new Set(prev).add(lid));
         toast.success("⭐ Starred — added to Trading Desk");
+
+        // Dispatch CaroogleAI watch for new stars
+        supabase.functions.invoke('lindy-star-watch', {
+          body: { listing_id: lid },
+        }).then(({ error: watchErr }) => {
+          if (watchErr) console.warn("[useStarVehicle] lindy-star-watch failed:", watchErr);
+          else console.log("[useStarVehicle] lindy-star-watch dispatched for", lid);
+        });
       }
     } catch (err: any) {
       console.error("[useStarVehicle]", err);
