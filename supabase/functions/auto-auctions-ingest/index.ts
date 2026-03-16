@@ -57,25 +57,42 @@ interface NormalizedRow {
 // ─── Fetch ─────────────────────────────────────────────────────────────────
 
 async function fetchPage(url: string): Promise<string | null> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(url, { headers: BROWSER_HEADERS, redirect: "follow" });
-      if (res.status === 403 || res.status === 429) {
-        console.warn(`[AUTO-AUCTIONS] ${res.status} on attempt ${attempt + 1}, retrying...`);
-        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
-        continue;
-      }
-      if (!res.ok) {
-        console.error(`[AUTO-AUCTIONS] HTTP ${res.status} for ${url}`);
-        return null;
-      }
-      return await res.text();
-    } catch (e) {
-      console.error(`[AUTO-AUCTIONS] Fetch error attempt ${attempt + 1}:`, e);
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-    }
+  const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
+  if (!firecrawlKey) {
+    console.error("[AUTO-AUCTIONS] FIRECRAWL_API_KEY not configured");
+    return null;
   }
-  return null;
+
+  try {
+    console.log("[AUTO-AUCTIONS] Fetching via Firecrawl:", url.substring(0, 80));
+    const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${firecrawlKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url,
+        formats: ["rawHtml"],
+        onlyMainContent: false,
+        waitFor: 10000,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[AUTO-AUCTIONS] Firecrawl error ${res.status}: ${errText}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const html = data.data?.rawHtml || data.data?.html || data.rawHtml || data.html || "";
+    console.log(`[AUTO-AUCTIONS] Got ${html.length} chars via Firecrawl`);
+    return html || null;
+  } catch (e) {
+    console.error("[AUTO-AUCTIONS] Firecrawl fetch error:", e);
+    return null;
+  }
 }
 
 // ─── HTML Parsing ──────────────────────────────────────────────────────────
