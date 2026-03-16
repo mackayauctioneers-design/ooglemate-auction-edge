@@ -11865,6 +11865,7 @@ export type Database = {
           auction_datetime: string | null
           auction_history: Json | null
           auction_house: string | null
+          auction_status: string
           avoid_reason: string | null
           buy_method: string | null
           buy_window_at: string | null
@@ -11904,6 +11905,8 @@ export type Database = {
           last_ingest_run_id: string | null
           last_ingested_at: string | null
           last_seen_at: string
+          lemon_flag: boolean
+          lemon_reason: string | null
           lifecycle_state: string
           linked_from_listing_id: string | null
           linked_reason: string | null
@@ -11974,6 +11977,7 @@ export type Database = {
           auction_datetime?: string | null
           auction_history?: Json | null
           auction_house?: string | null
+          auction_status?: string
           avoid_reason?: string | null
           buy_method?: string | null
           buy_window_at?: string | null
@@ -12013,6 +12017,8 @@ export type Database = {
           last_ingest_run_id?: string | null
           last_ingested_at?: string | null
           last_seen_at?: string
+          lemon_flag?: boolean
+          lemon_reason?: string | null
           lifecycle_state?: string
           linked_from_listing_id?: string | null
           linked_reason?: string | null
@@ -12083,6 +12089,7 @@ export type Database = {
           auction_datetime?: string | null
           auction_history?: Json | null
           auction_house?: string | null
+          auction_status?: string
           avoid_reason?: string | null
           buy_method?: string | null
           buy_window_at?: string | null
@@ -12122,6 +12129,8 @@ export type Database = {
           last_ingest_run_id?: string | null
           last_ingested_at?: string | null
           last_seen_at?: string
+          lemon_flag?: boolean
+          lemon_reason?: string | null
           lifecycle_state?: string
           linked_from_listing_id?: string | null
           linked_reason?: string | null
