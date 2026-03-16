@@ -347,13 +347,13 @@ export default function TradingDeskPage() {
   };
 
   // ─── Filter + Sort ──────────────────────────────────────────────────────────
-  const filtered = opportunities.filter(o => {
+  const matchesFilters = (o: OperatorOpportunity, options?: { ignoreSource?: boolean }) => {
     if (filterStatus === 'starred' && !o.is_starred) return false;
     if (filterStatus === 'active' && !['new', 'reviewed'].includes(o.status)) return false;
     if (filterStatus !== 'all' && filterStatus !== 'active' && filterStatus !== 'starred' && o.status !== filterStatus) return false;
     if (filterAccount !== 'all' && o.best_account_id !== filterAccount) return false;
     if (filterTier !== 'all' && o.tier !== filterTier) return false;
-    if (filterSource !== 'all' && o.listing_source !== filterSource) return false;
+    if (!options?.ignoreSource && filterSource !== 'all' && o.listing_source !== filterSource) return false;
     if (filterDealerSearch) {
       const q = filterDealerSearch.toLowerCase();
       const nameMatch = o.best_account_name?.toLowerCase().includes(q);
@@ -365,7 +365,10 @@ export default function TradingDeskPage() {
       if (!isNaN(maxKm) && o.km != null && o.km > maxKm) return false;
     }
     return true;
-  });
+  };
+
+  const filtered = opportunities.filter(o => matchesFilters(o));
+  const sourcePool = opportunities.filter(o => matchesFilters(o, { ignoreSource: true }));
 
   const AUCTION_SOURCES = new Set(["pickles","grays","manheim","slattery","f3","auto_auctions","vma","bidsonline","caroogle_shadow"]);
   const sorted = [...filtered].sort((a, b) => {
@@ -396,6 +399,13 @@ export default function TradingDeskPage() {
   };
 
   const uniqueSources = [...new Set(opportunities.map(o => o.listing_source).filter(Boolean))] as string[];
+  const sourceCounts = uniqueSources
+    .map(source => ({
+      source,
+      count: sourcePool.filter(o => o.listing_source === source).length,
+    }))
+    .filter(item => item.count > 0)
+    .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source));
 
   // Base set respects dealer search + account filter so KPI counts update
   const baseFiltered = opportunities.filter(o => {
@@ -625,6 +635,31 @@ export default function TradingDeskPage() {
             </Select>
           </div>
         </div>
+
+        {sourceCounts.length > 0 && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-muted-foreground">Live sources:</span>
+            <Button
+              size="sm"
+              variant={filterSource === 'all' ? 'default' : 'outline'}
+              className="h-7 text-xs"
+              onClick={() => setFilterSource('all')}
+            >
+              All <span className="ml-1 text-xs opacity-70">{sourcePool.length}</span>
+            </Button>
+            {sourceCounts.map(({ source, count }) => (
+              <Button
+                key={source}
+                size="sm"
+                variant={filterSource === source ? 'default' : 'outline'}
+                className="h-7 text-xs"
+                onClick={() => setFilterSource(source)}
+              >
+                {source} <span className="ml-1 text-xs opacity-70">{count}</span>
+              </Button>
+            ))}
+          </div>
+        )}
 
         <p className="text-sm text-muted-foreground">{sorted.length} opportunities</p>
 
