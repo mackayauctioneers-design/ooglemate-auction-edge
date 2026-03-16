@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
     const { data: listings, error } = await sb
       .from("market_listings")
       .select(
-        "id, make, model, variant_resolved, year, km, price, source, location, listing_url, image_url, lifecycle_status, days_on_market"
+        "id, make, model, variant_resolved, year, km, price, source, location, listing_url, lifecycle_status"
       )
       .not("lifecycle_status", "in", '("STALE","DEAD","SOLD","DELISTED","INVALID")')
       .gte("last_seen_at", recencyCutoff)
