@@ -128,7 +128,10 @@ function isAuctionResult(r: { source?: string; source_class?: string | null; auc
 
 // ── Unified Result Card ──
 
-function UnifiedResultCard({ result, isBestPrice, isOperator }: { result: UnifiedResult; isBestPrice?: boolean; isOperator?: boolean }) {
+function UnifiedResultCard({ result, isBestPrice, isOperator, starred, starLoading, onToggleStar }: {
+  result: UnifiedResult; isBestPrice?: boolean; isOperator?: boolean;
+  starred?: boolean; starLoading?: boolean; onToggleStar?: (r: UnifiedResult) => void;
+}) {
   const hasUrl = !!result.url;
   const cheapestFlag = result.deal_flags?.find(f => f.flag_type === "CHEAPEST_IN_MARKET");
   const underMarketFlag = result.deal_flags?.find(f => f.flag_type === "UNDER_MARKET");
@@ -196,15 +199,29 @@ function UnifiedResultCard({ result, isBestPrice, isOperator }: { result: Unifie
           </div>
         )}
       </div>
-      {hasUrl ? (
-        <a href={result.url!} target="_blank" rel="noopener noreferrer" className="shrink-0">
-          <Button variant="ghost" size="iconSm" className="h-6 w-6 text-muted-foreground hover:text-primary">
-            <ExternalLink className="h-3 w-3" />
+      <div className="flex items-center gap-0.5 shrink-0">
+        {onToggleStar && (
+          <Button
+            variant="ghost"
+            size="iconSm"
+            className="h-6 w-6 p-0"
+            disabled={starLoading}
+            onClick={(e) => { e.stopPropagation(); onToggleStar(result); }}
+            title={starred ? "Unstar" : "Star to Trading Desk"}
+          >
+            <Star className={`h-3.5 w-3.5 transition-colors ${starred ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground hover:text-amber-400'}`} />
           </Button>
-        </a>
-      ) : result.is_discovery ? (
-        <span className="text-[9px] text-muted-foreground shrink-0 italic">AI est.</span>
-      ) : null}
+        )}
+        {hasUrl ? (
+          <a href={result.url!} target="_blank" rel="noopener noreferrer">
+            <Button variant="ghost" size="iconSm" className="h-6 w-6 text-muted-foreground hover:text-primary">
+              <ExternalLink className="h-3 w-3" />
+            </Button>
+          </a>
+        ) : result.is_discovery ? (
+          <span className="text-[9px] text-muted-foreground italic">AI est.</span>
+        ) : null}
+      </div>
     </div>
   );
 }
