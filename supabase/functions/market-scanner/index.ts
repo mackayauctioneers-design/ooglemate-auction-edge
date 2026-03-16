@@ -108,9 +108,7 @@ interface Listing {
   source: string;
   location: string | null;
   listing_url: string | null;
-  image_url: string | null;
   lifecycle_status: string | null;
-  days_on_market: number | null;
 }
 
 interface Find {
