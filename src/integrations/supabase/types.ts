@@ -613,6 +613,108 @@ export type Database = {
         }
         Relationships: []
       }
+      caroogle_finds: {
+        Row: {
+          auction_arbitrage_gap: number | null
+          avg_days_on_market: number | null
+          cluster_key: string
+          cluster_size: number
+          confidence: string
+          discount_percent: number | null
+          expires_at: string
+          first_detected_at: string
+          flag_types: string[]
+          id: string
+          image_url: string | null
+          is_auction: boolean
+          km: number | null
+          listing_id: string
+          listing_url: string | null
+          location: string | null
+          lowest_price: number | null
+          make: string | null
+          median_price: number | null
+          model: string | null
+          price: number | null
+          reasons: string[]
+          score: number
+          second_lowest_price: number | null
+          series: string | null
+          source: string | null
+          spread: number | null
+          status: string
+          updated_at: string
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          auction_arbitrage_gap?: number | null
+          avg_days_on_market?: number | null
+          cluster_key: string
+          cluster_size?: number
+          confidence?: string
+          discount_percent?: number | null
+          expires_at?: string
+          first_detected_at?: string
+          flag_types?: string[]
+          id?: string
+          image_url?: string | null
+          is_auction?: boolean
+          km?: number | null
+          listing_id: string
+          listing_url?: string | null
+          location?: string | null
+          lowest_price?: number | null
+          make?: string | null
+          median_price?: number | null
+          model?: string | null
+          price?: number | null
+          reasons?: string[]
+          score?: number
+          second_lowest_price?: number | null
+          series?: string | null
+          source?: string | null
+          spread?: number | null
+          status?: string
+          updated_at?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          auction_arbitrage_gap?: number | null
+          avg_days_on_market?: number | null
+          cluster_key?: string
+          cluster_size?: number
+          confidence?: string
+          discount_percent?: number | null
+          expires_at?: string
+          first_detected_at?: string
+          flag_types?: string[]
+          id?: string
+          image_url?: string | null
+          is_auction?: boolean
+          km?: number | null
+          listing_id?: string
+          listing_url?: string | null
+          location?: string | null
+          lowest_price?: number | null
+          make?: string | null
+          median_price?: number | null
+          model?: string | null
+          price?: number | null
+          reasons?: string[]
+          score?: number
+          second_lowest_price?: number | null
+          series?: string | null
+          source?: string | null
+          spread?: number | null
+          status?: string
+          updated_at?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       cheap_car_queue: {
         Row: {
           condition_notes: string | null
