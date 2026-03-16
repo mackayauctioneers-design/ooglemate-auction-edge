@@ -636,6 +636,31 @@ export default function TradingDeskPage() {
           </div>
         </div>
 
+        {sourceCounts.length > 0 && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-muted-foreground">Live sources:</span>
+            <Button
+              size="sm"
+              variant={filterSource === 'all' ? 'default' : 'outline'}
+              className="h-7 text-xs"
+              onClick={() => setFilterSource('all')}
+            >
+              All <span className="ml-1 text-xs opacity-70">{sourcePool.length}</span>
+            </Button>
+            {sourceCounts.map(({ source, count }) => (
+              <Button
+                key={source}
+                size="sm"
+                variant={filterSource === source ? 'default' : 'outline'}
+                className="h-7 text-xs"
+                onClick={() => setFilterSource(source)}
+              >
+                {source} <span className="ml-1 text-xs opacity-70">{count}</span>
+              </Button>
+            ))}
+          </div>
+        )}
+
         <p className="text-sm text-muted-foreground">{sorted.length} opportunities</p>
 
         {/* Table */}
