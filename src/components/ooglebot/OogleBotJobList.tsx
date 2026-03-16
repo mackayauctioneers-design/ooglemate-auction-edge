@@ -1,16 +1,25 @@
-import { useOogleBotJobs, useUpdateJobStatus } from "@/hooks/useOogleBot";
+import { useEffect } from "react";
+import { useOogleBotJobs, useOogleBotMatches, useUpdateJobStatus } from "@/hooks/useOogleBot";
+import { useStarVehicle } from "@/hooks/useStarVehicle";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { formatDistanceToNow } from "date-fns";
-import { CheckCircle, Pause, XCircle, Eye, Loader2 } from "lucide-react";
+import {
+  CheckCircle,
+  Pause,
+  XCircle,
+  ChevronDown,
+  Loader2,
+  ExternalLink,
+  MapPin,
+  Star,
+  Play,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -31,9 +40,124 @@ const statusColors: Record<string, string> = {
   paused: "bg-yellow-500/20 text-yellow-400",
 };
 
+function JobMatchesPanel({ jobId }: { jobId: string }) {
+  const { data: matches, isLoading } = useOogleBotMatches(jobId);
+  const { toggleStar, isStarred, isLoading: isStarLoading, checkStarred } = useStarVehicle();
+
+  useEffect(() => {
+    if (matches?.length) {
+      checkStarred(matches.map((m) => m.listing_id));
+    }
+  }, [matches, checkStarred]);
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center p-3">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!matches?.length) {
+    return (
+      <p className="text-xs text-muted-foreground px-4 py-3">
+        No matches yet — waiting for next scan cycle.
+      </p>
+    );
+  }
+
+  return (
+    <div className="px-4 pb-3 space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">Top 3 cheapest nationally</p>
+      {matches.map((m) => (
+        <div
+          key={m.id}
+          className="rounded-md border border-border bg-muted/20 p-2.5 space-y-1.5"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                #{m.rank_position}
+              </Badge>
+              <span className="text-sm text-foreground">
+                {m.year} {m.make} {m.model} {m.variant || ""}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-sm font-semibold text-foreground">
+                ${m.effective_cost?.toLocaleString()}
+              </span>
+              <Button
+                variant="ghost"
+                size="iconSm"
+                onClick={() =>
+                  toggleStar({
+                    listing_id: m.listing_id,
+                    make: m.make,
+                    model: m.model,
+                    year: m.year,
+                    km: m.km,
+                    asking_price: m.ask_price,
+                    source: m.source,
+                    source_url: m.listing_url,
+                    variant: m.variant,
+                    location: m.location,
+                  })
+                }
+                disabled={isStarLoading(m.listing_id)}
+              >
+                <Star
+                  className={cn(
+                    "h-3.5 w-3.5",
+                    isStarred(m.listing_id)
+                      ? "fill-amber-400 text-amber-400"
+                      : "text-muted-foreground"
+                  )}
+                />
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+            {m.ask_price && <span>Ask: ${m.ask_price.toLocaleString()}</span>}
+            {m.km != null && <span>{(m.km / 1000).toFixed(0)}k km</span>}
+            {m.days_listed != null && <span>{m.days_listed}d listed</span>}
+            <span className="capitalize">{m.source}</span>
+          </div>
+
+          <div className="flex items-center justify-between">
+            {m.location && (
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <MapPin className="h-2.5 w-2.5" />
+                {m.location}
+              </div>
+            )}
+            {m.listing_url && (
+              <a
+                href={m.listing_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+              >
+                <ExternalLink className="h-2.5 w-2.5" />
+                View
+              </a>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function OogleBotJobList({ selectedJobId, onSelectJob }: Props) {
   const { data: jobs, isLoading } = useOogleBotJobs();
   const updateStatus = useUpdateJobStatus();
+
+  // Filter to show active/paused jobs, plus recently fulfilled
+  const relevantJobs = jobs?.filter(
+    (j) => j.status === "active" || j.status === "paused" || j.status === "fulfilled"
+  );
 
   if (isLoading) {
     return (
@@ -43,10 +167,10 @@ export function OogleBotJobList({ selectedJobId, onSelectJob }: Props) {
     );
   }
 
-  if (!jobs?.length) {
+  if (!relevantJobs?.length) {
     return (
-      <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
-        No OogleBot jobs yet. Create one above.
+      <div className="rounded-lg border border-border bg-card p-6 text-center text-muted-foreground text-sm">
+        No active OogleBot jobs. Create one above to start hunting.
       </div>
     );
   }
@@ -54,62 +178,44 @@ export function OogleBotJobList({ selectedJobId, onSelectJob }: Props) {
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
       <div className="p-4 border-b border-border">
-        <h2 className="font-semibold text-foreground">Active Jobs</h2>
+        <h2 className="font-semibold text-foreground text-sm">
+          Active Jobs ({relevantJobs.filter((j) => j.status === "active").length})
+        </h2>
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Dealer</TableHead>
-            <TableHead>Vehicle</TableHead>
-            <TableHead>Budget</TableHead>
-            <TableHead>Expires</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {jobs.map((job) => (
-            <TableRow
-              key={job.id}
-              className={cn(
-                "cursor-pointer",
-                selectedJobId === job.id && "bg-primary/5"
-              )}
-              onClick={() => onSelectJob(job.id)}
-            >
-              <TableCell>
-                <div className="font-medium text-foreground">{job.dealer_name}</div>
-                <Badge className={cn("mt-1 text-xs", urgencyColors[job.urgency])}>
-                  {job.urgency}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <div className="text-foreground">
-                  {job.make} {job.model} {job.variant || ""}
+
+      <div className="divide-y divide-border">
+        {relevantJobs.map((job) => (
+          <Collapsible
+            key={job.id}
+            open={selectedJobId === job.id}
+            onOpenChange={(open) => onSelectJob(open ? job.id : null)}
+          >
+            <CollapsibleTrigger asChild>
+              <button className="flex items-center justify-between w-full p-3 text-left hover:bg-muted/30 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm text-foreground truncate">
+                      {job.make} {job.model} {job.variant || ""}
+                    </span>
+                    <Badge className={cn("text-[10px] px-1.5", urgencyColors[job.urgency])}>
+                      {job.urgency}
+                    </Badge>
+                    <Badge className={cn("text-[10px] px-1.5", statusColors[job.status])}>
+                      {job.status}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                    <span>{job.dealer_name}</span>
+                    <span className="font-mono">≤${job.budget_ceiling.toLocaleString()}</span>
+                    {job.last_match_at && (
+                      <span>
+                        Scanned {formatDistanceToNow(new Date(job.last_match_at), { addSuffix: true })}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  {job.year_min}–{job.year_max} · ≤{(job.km_max / 1000).toFixed(0)}k km
-                </div>
-              </TableCell>
-              <TableCell className="font-mono text-foreground">
-                ${job.budget_ceiling.toLocaleString()}
-              </TableCell>
-              <TableCell className="text-muted-foreground text-sm">
-                {formatDistanceToNow(new Date(job.expiry_date), { addSuffix: true })}
-              </TableCell>
-              <TableCell>
-                <Badge className={cn(statusColors[job.status])}>{job.status}</Badge>
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    variant="ghost"
-                    size="iconSm"
-                    title="View matches"
-                    onClick={() => onSelectJob(job.id)}
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
+
+                <div className="flex items-center gap-1 ml-2" onClick={(e) => e.stopPropagation()}>
                   {job.status === "active" && (
                     <>
                       <Button
@@ -118,7 +224,7 @@ export function OogleBotJobList({ selectedJobId, onSelectJob }: Props) {
                         title="Mark fulfilled"
                         onClick={() => updateStatus.mutate({ id: job.id, status: "fulfilled" })}
                       >
-                        <CheckCircle className="h-4 w-4 text-green-400" />
+                        <CheckCircle className="h-3.5 w-3.5 text-green-400" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -126,7 +232,7 @@ export function OogleBotJobList({ selectedJobId, onSelectJob }: Props) {
                         title="Pause"
                         onClick={() => updateStatus.mutate({ id: job.id, status: "paused" })}
                       >
-                        <Pause className="h-4 w-4 text-yellow-400" />
+                        <Pause className="h-3.5 w-3.5 text-yellow-400" />
                       </Button>
                     </>
                   )}
@@ -137,25 +243,38 @@ export function OogleBotJobList({ selectedJobId, onSelectJob }: Props) {
                       title="Resume"
                       onClick={() => updateStatus.mutate({ id: job.id, status: "active" })}
                     >
-                      <CheckCircle className="h-4 w-4 text-primary" />
+                      <Play className="h-3.5 w-3.5 text-primary" />
                     </Button>
                   )}
                   {(job.status === "active" || job.status === "paused") && (
                     <Button
                       variant="ghost"
                       size="iconSm"
-                      title="Cancel (expire)"
+                      title="Cancel"
                       onClick={() => updateStatus.mutate({ id: job.id, status: "expired" })}
                     >
-                      <XCircle className="h-4 w-4 text-destructive" />
+                      <XCircle className="h-3.5 w-3.5 text-destructive" />
                     </Button>
                   )}
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 text-muted-foreground transition-transform cursor-pointer",
+                      selectedJobId === job.id && "rotate-180"
+                    )}
+                    onClick={() => onSelectJob(selectedJobId === job.id ? null : job.id)}
+                  />
                 </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+              </button>
+            </CollapsibleTrigger>
+
+            <CollapsibleContent>
+              <div className="border-t border-border bg-muted/10">
+                <JobMatchesPanel jobId={job.id} />
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        ))}
+      </div>
     </div>
   );
 }
