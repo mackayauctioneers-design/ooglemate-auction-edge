@@ -127,11 +127,14 @@ async function checkOne(row: OpRow): Promise<CheckResult> {
     const html = (await resp.text()).toLowerCase();
     const bodyLen = html.length;
 
-    // Pickles-specific: sold/removed lots return short "Oops" or "lemon" pages
-    if (source.includes("pickles") && bodyLen < PICKLES_MAX_BODY_LENGTH) {
-      if (PICKLES_SOLD_SIGNALS.some((s) => html.includes(s))) {
+    // Pickles-specific: their HTML templates contain generic "not available"/"doesn't exist"
+    // text in JS bundles, so we ONLY use Pickles-specific signals (short body + exact text)
+    if (source.includes("pickles")) {
+      if (bodyLen < PICKLES_MAX_BODY_LENGTH && PICKLES_SOLD_SIGNALS.some((s) => html.includes(s))) {
         return { id: row.id, listing_id: row.listing_id, status: "sold", http_status: 200, reason: "pickles_sold_signal" };
       }
+      // Skip generic signals for Pickles — too many false positives
+      return { id: row.id, listing_id: row.listing_id, status: "active", http_status: 200, reason: "still_live" };
     }
 
     if (SOLD_SIGNALS.some((s) => html.includes(s))) {
