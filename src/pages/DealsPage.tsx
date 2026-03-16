@@ -101,9 +101,9 @@ export default function DealsPage() {
           <Card>
             <CardContent className="py-12 text-center">
               <AlertTriangle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-              <h3 className="font-medium text-foreground mb-1">No deals found</h3>
+              <h3 className="font-medium text-foreground mb-1">No purchases yet</h3>
               <p className="text-sm text-muted-foreground">
-                Create deals from the Matches Inbox to start tracking.
+                When cars are purchased on your behalf, they'll appear here with full paperwork attached.
               </p>
             </CardContent>
           </Card>
