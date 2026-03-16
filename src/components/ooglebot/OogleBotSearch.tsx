@@ -84,6 +84,13 @@ function numericOrInfinity(value: number | null | undefined) {
 
 // ── Unified Result (canonical shape for merged display) ──
 
+interface DealFlag {
+  flag_type: string;
+  price_gap: number | null;
+  price_gap_pct: number | null;
+  confidence: number;
+}
+
 interface UnifiedResult {
   id: string;
   title: string;
@@ -104,6 +111,7 @@ interface UnifiedResult {
   match_reason: string[];
   is_auction: boolean;
   is_discovery: boolean;
+  deal_flags?: DealFlag[];
 }
 
 const AUCTION_SOURCES = new Set([
