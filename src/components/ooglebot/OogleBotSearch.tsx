@@ -1737,7 +1737,7 @@ export function OogleBotSearch() {
               return (
                 <>
                   {displayed.map((result) => (
-                    <UnifiedResultCard key={result.id} result={result} isOperator={isAdmin} />
+                    <UnifiedResultCard key={result.id} result={result} isOperator={isAdmin} starred={isStarred(result.id)} starLoading={isStarLoading(result.id)} onToggleStar={handleToggleStar} />
                   ))}
                   {auctionResults.length > 5 && !showAllAuction && (
                     <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => setShowAllAuction(true)}>
