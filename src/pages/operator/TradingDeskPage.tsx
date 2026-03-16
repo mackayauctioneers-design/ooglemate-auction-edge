@@ -609,6 +609,21 @@ export default function TradingDeskPage() {
             <label className="text-xs text-muted-foreground mb-1 block">Search Dealer</label>
             <Input value={filterDealerSearch} onChange={e => setFilterDealerSearch(e.target.value)} placeholder="Type dealer name…" />
           </div>
+          <div className="w-36">
+            <label className="text-xs text-muted-foreground mb-1 block">Max KM</label>
+            <Select value={filterKmMax} onValueChange={setFilterKmMax}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">No limit</SelectItem>
+                <SelectItem value="50000">50,000 km</SelectItem>
+                <SelectItem value="80000">80,000 km</SelectItem>
+                <SelectItem value="100000">100,000 km</SelectItem>
+                <SelectItem value="120000">120,000 km</SelectItem>
+                <SelectItem value="150000">150,000 km</SelectItem>
+                <SelectItem value="200000">200,000 km</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <p className="text-sm text-muted-foreground">{sorted.length} opportunities</p>
