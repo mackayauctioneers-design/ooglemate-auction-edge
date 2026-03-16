@@ -432,24 +432,26 @@ Deno.serve(async (req) => {
     results.fetched_priced = listings.length;
 
     // 3a-bis. Priced auction listings (full scan — auction sources don't update last_seen_at frequently)
-    const auctionCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(); // 7-day window
+    // Use 48h last_seen window AND 7-day first_seen freshness to avoid surfacing sold/lemon lots
+    const auctionCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const auctionFreshCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const auctionPricedListings = await fetchDelta(
       sb, "vehicle_listings",
       "id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, last_seen_at",
       auctionCutoff,
-      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).not("asking_price", "is", null).gt("asking_price", 0),
+      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).not("asking_price", "is", null).gt("asking_price", 0).gt("first_seen_at", auctionFreshCutoff),
       MAX_LISTINGS_PER_RUN,
     );
     results.fetched_auction_priced = auctionPricedListings.length;
     // Merge auction priced into main listings (deduped later by seenIds)
     listings.push(...auctionPricedListings);
 
-    // 3b. Priceless auction (full scan — same reason)
+    // 3b. Priceless auction (full scan — same reason, with first_seen freshness guard)
     const pricelessListings = await fetchDelta(
       sb, "vehicle_listings",
       "id, listing_id, source, make, model, year, km, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, auction_datetime, last_seen_at",
       auctionCutoff,
-      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).or("asking_price.is.null,asking_price.eq.0"),
+      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).or("asking_price.is.null,asking_price.eq.0").gt("first_seen_at", auctionFreshCutoff),
       MAX_LISTINGS_PER_RUN,
     );
     results.fetched_priceless = pricelessListings.length;
