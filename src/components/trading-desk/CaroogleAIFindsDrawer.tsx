@@ -222,7 +222,7 @@ export function CaroogleAIFindsDrawer() {
           </div>
         ) : (
           <div className="space-y-3 pt-2">
-            {filtered.map(find => (
+            {sorted.map(find => (
               <FindCard key={find.id} find={find} onToggleStar={toggleStar} onDismiss={dismissFind} />
             ))}
           </div>
