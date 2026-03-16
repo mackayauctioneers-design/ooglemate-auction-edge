@@ -261,7 +261,18 @@ Deno.serve(async (req) => {
     const vlListings = vlResult.data || [];
     const rlListings = rlResult.data || [];
 
-    console.log(`ooglebot-search: ${vlListings.length} vehicle_listings, ${rlListings.length} retail_listings`);
+    // OEM freshness gate: Toyota feed runs every 2h.
+    // If an OEM listing hasn't been seen in 48h, it's almost certainly sold.
+    const oemCutoff = Date.now() - OEM_FRESHNESS_HOURS * 60 * 60 * 1000;
+    const vlFiltered = vlListings.filter((l: any) => {
+      if (OEM_SOURCES.has((l.source || "").toLowerCase())) {
+        const lastSeen = l.last_seen_at ? new Date(l.last_seen_at).getTime() : 0;
+        return lastSeen >= oemCutoff;
+      }
+      return true;
+    });
+
+    console.log(`ooglebot-search: ${vlFiltered.length} vehicle_listings (${vlListings.length - vlFiltered.length} OEM stale removed), ${rlListings.length} retail_listings`);
 
     // --- 2. Normalize retail_listings into the same shape ---
     // Extract badge from Carsales URL when variant_raw is missing it
