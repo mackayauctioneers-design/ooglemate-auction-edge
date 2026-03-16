@@ -426,7 +426,7 @@ Deno.serve(async (req) => {
       sb, "vehicle_listings",
       "id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, last_seen_at",
       cutoff,
-      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).not("asking_price", "is", null).gt("asking_price", 0),
+      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).not("asking_price", "is", null).gt("asking_price", 0).neq("lemon_flag", true).not("auction_status", "in", '("sold","withdrawn","invalid")'),
       MAX_LISTINGS_PER_RUN,
     );
     results.fetched_priced = listings.length;
@@ -439,7 +439,7 @@ Deno.serve(async (req) => {
       sb, "vehicle_listings",
       "id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, last_seen_at",
       auctionCutoff,
-      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).not("asking_price", "is", null).gt("asking_price", 0).gt("first_seen_at", auctionFreshCutoff),
+      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).not("asking_price", "is", null).gt("asking_price", 0).gt("first_seen_at", auctionFreshCutoff).neq("lemon_flag", true).not("auction_status", "in", '("sold","withdrawn","invalid")'),
       MAX_LISTINGS_PER_RUN,
     );
     results.fetched_auction_priced = auctionPricedListings.length;
@@ -451,7 +451,7 @@ Deno.serve(async (req) => {
       sb, "vehicle_listings",
       "id, listing_id, source, make, model, year, km, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, auction_datetime, last_seen_at",
       auctionCutoff,
-      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).or("asking_price.is.null,asking_price.eq.0").gt("first_seen_at", auctionFreshCutoff),
+      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).or("asking_price.is.null,asking_price.eq.0").gt("first_seen_at", auctionFreshCutoff).neq("lemon_flag", true).not("auction_status", "in", '("sold","withdrawn","invalid")'),
       MAX_LISTINGS_PER_RUN,
     );
     results.fetched_priceless = pricelessListings.length;

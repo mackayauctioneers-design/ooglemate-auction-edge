@@ -36,6 +36,7 @@ Deno.serve(async (req) => {
   const results = {
     expired_auction: 0,
     expired_stale: 0,
+    expired_lemon: 0,
     expired_aged: 0,
     total_swept: 0,
   };
@@ -82,7 +83,58 @@ Deno.serve(async (req) => {
     if (e2) console.error("dead listing reconcile error:", e2.message);
     results.expired_stale = deadListings ?? 0;
 
-    // ── 3. Expire aged opportunities (>7d, still actionable, not starred) ──
+    // ── 3. Expire opportunities whose underlying listing is lemon-flagged or has dead auction_status ──
+    const { data: activeOpps } = await supabase
+      .from("operator_opportunities")
+      .select("id, listing_id")
+      .in("status", ACTIONABLE_STATES)
+      .eq("is_starred", false);
+
+    const lemonExpireIds: string[] = [];
+    if (activeOpps && activeOpps.length > 0) {
+      // Batch check: find listing_ids that are lemon or dead auction_status
+      const listingIds = [...new Set(activeOpps.map((o: any) => o.listing_id).filter(Boolean))];
+      
+      // Check in chunks of 200
+      const badListingIds = new Set<string>();
+      for (let i = 0; i < listingIds.length; i += 200) {
+        const chunk = listingIds.slice(i, i + 200);
+        
+        // Lemon-flagged
+        const { data: lemons } = await supabase
+          .from("vehicle_listings")
+          .select("listing_id")
+          .in("listing_id", chunk)
+          .eq("lemon_flag", true);
+        for (const l of lemons || []) badListingIds.add(l.listing_id);
+
+        // Dead auction_status
+        const { data: deadAuction } = await supabase
+          .from("vehicle_listings")
+          .select("listing_id")
+          .in("listing_id", chunk)
+          .in("auction_status", ["sold", "withdrawn", "invalid"]);
+        for (const d of deadAuction || []) badListingIds.add(d.listing_id);
+      }
+
+      for (const opp of activeOpps) {
+        if (badListingIds.has(opp.listing_id)) {
+          lemonExpireIds.push(opp.id);
+        }
+      }
+
+      if (lemonExpireIds.length > 0) {
+        for (let i = 0; i < lemonExpireIds.length; i += 50) {
+          await supabase
+            .from("operator_opportunities")
+            .update({ status: "expired", updated_at: now.toISOString() })
+            .in("id", lemonExpireIds.slice(i, i + 50));
+        }
+      }
+    }
+    results.expired_lemon = lemonExpireIds.length;
+
+    // ── 4. Expire aged opportunities (>7d, still actionable, not starred) ──
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: agedOut, error: e3 } = await supabase
       .from("operator_opportunities")
@@ -96,7 +148,7 @@ Deno.serve(async (req) => {
     results.expired_aged = agedOut?.length ?? 0;
 
     results.total_swept =
-      results.expired_auction + results.expired_stale + results.expired_aged;
+      results.expired_auction + results.expired_stale + results.expired_lemon + results.expired_aged;
 
     // ── 4. Log to cron_heartbeat ──
     await supabase
