@@ -125,6 +125,14 @@ async function checkOne(row: OpRow): Promise<CheckResult> {
     }
 
     const html = (await resp.text()).toLowerCase();
+    const bodyLen = html.length;
+
+    // Pickles-specific: sold/removed lots return short "Oops" or "lemon" pages
+    if (source.includes("pickles") && bodyLen < PICKLES_MAX_BODY_LENGTH) {
+      if (PICKLES_SOLD_SIGNALS.some((s) => html.includes(s))) {
+        return { id: row.id, listing_id: row.listing_id, status: "sold", http_status: 200, reason: "pickles_sold_signal" };
+      }
+    }
 
     if (SOLD_SIGNALS.some((s) => html.includes(s))) {
       return { id: row.id, listing_id: row.listing_id, status: "sold", http_status: 200, reason: "sold_signal" };
