@@ -119,7 +119,7 @@ function detectSeries(model: string, variant?: string | null): string | null {
   if (/PRADO.*(150|J150|GDJ150)/.test(combined)) return "PRADO_150";
   if (/300|FJA300|GR.?S/.test(combined) && /LAND\s?CRUISER|LC/.test(combined)) return "LC300";
   if (/200|UZJ200|VDJ200/.test(combined) && /LAND\s?CRUISER|LC/.test(combined)) return "LC200";
-  if /(70|76|78|79|VDJ7|GDJ7)/.test(combined) && /LAND\s?CRUISER|LC/.test(combined)) return "LC70";
+  if (/(70|76|78|79|VDJ7|GDJ7)/.test(combined) && /LAND\s?CRUISER|LC/.test(combined)) return "LC70";
   // Ranger
   if (/RANGER/.test(combined) && /PY|V6|3\.0/.test(combined)) return "RANGER_PY";
   if (/RANGER/.test(combined) && /PX|XL|XLS|XLT|WILDTRAK/.test(combined) && !/PY|V6|3\.0/.test(combined)) return "RANGER_PX";
