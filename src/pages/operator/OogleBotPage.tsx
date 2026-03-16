@@ -26,10 +26,6 @@ export default function OogleBotPage() {
           {/* Left: Create + List */}
           <div className="lg:col-span-2 space-y-6">
             <OogleBotJobForm />
-            <OogleBotJobList
-              selectedJobId={selectedJobId}
-              onSelectJob={setSelectedJobId}
-            />
           </div>
 
           {/* Right: Active Hunt first, then Job Detail */}
