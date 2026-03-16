@@ -26,6 +26,74 @@ const SOURCE_CLASS = "auction";
 const AUCTION_HOUSE = "pickles";
 const BATCH_SIZE = 200;
 
+// ─── PAGE STATUS CLASSIFIER ──────────────────────────────────────────────────
+
+type AuctionStatus = "active" | "sold" | "withdrawn" | "invalid";
+
+const SOLD_SIGNALS = [
+  /lot\s+(?:has\s+been\s+)?sold/i,
+  /sale\s+closed/i,
+  /bidding\s+closed/i,
+  /auction\s+ended/i,
+  /sale\s+completed/i,
+];
+
+const WITHDRAWN_SIGNALS = [
+  /no\s+longer\s+available/i,
+  /listing\s+withdrawn/i,
+  /vehicle\s+removed/i,
+  /item\s+(?:has\s+been\s+)?removed/i,
+  /unfortunately.*not\s+available/i,
+  /lot\s+withdrawn/i,
+];
+
+async function classifyPageStatus(url: string): Promise<{ status: AuctionStatus; reason: string }> {
+  if (!url) return { status: "invalid", reason: "no_url" };
+
+  try {
+    const resp = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      headers: {
+        "user-agent": "Mozilla/5.0 (compatible; CarOogleVerifier/1.0)",
+        "accept": "text/html",
+      },
+    });
+
+    // HTTP status checks
+    if (resp.status === 404 || resp.status === 410) {
+      return { status: "invalid", reason: `http_${resp.status}` };
+    }
+
+    // Redirect away from detail page = invalid
+    const finalUrl = resp.url || url;
+    if (!finalUrl.includes("/used/") && !finalUrl.includes("/lot/") && !finalUrl.includes("/details/")) {
+      return { status: "invalid", reason: "redirect_away" };
+    }
+
+    // Server error = pass through (might be temporary)
+    if (resp.status >= 500) {
+      return { status: "active", reason: "5xx_passthrough" };
+    }
+
+    // Content analysis — read first 8000 chars for signals
+    const bodyText = await resp.text().catch(() => "");
+    const snippet = bodyText.slice(0, 8000);
+
+    for (const re of SOLD_SIGNALS) {
+      if (re.test(snippet)) return { status: "sold", reason: re.source };
+    }
+    for (const re of WITHDRAWN_SIGNALS) {
+      if (re.test(snippet)) return { status: "withdrawn", reason: re.source };
+    }
+
+    return { status: "active", reason: "live" };
+  } catch (_e) {
+    // Network error = allow through to avoid false rejections
+    return { status: "active", reason: "fetch_error_passthrough" };
+  }
+}
+
 // ─── NORMALIZERS ─────────────────────────────────────────────────────────────
 
 function normalizeDrivetrain(raw: string | null | undefined): string {
