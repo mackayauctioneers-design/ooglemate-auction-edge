@@ -451,9 +451,18 @@ export function OogleBotSearch() {
   const [outwardPolling, setOutwardPolling] = useState(false);
   const [outwardTriggered, setOutwardTriggered] = useState(false);
   const [outwardTimedOut, setOutwardTimedOut] = useState(false);
-  const [phase1Count, setPhase1Count] = useState(0);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+   const [phase1Count, setPhase1Count] = useState(0);
+   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+   // ── Active Hunt state ──
+   const [huntId, setHuntId] = useState<string | null>(null);
+   const [huntStatus, setHuntStatus] = useState<"idle" | "hunting" | "complete">("idle");
+   const [huntSources, setHuntSources] = useState<string[]>([]);
+   const [huntQueueIds, setHuntQueueIds] = useState<string[]>([]);
+   const huntPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+   const huntReQueryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+   const MIN_RESULTS_FOR_HUNT = 20;
 
   // ── Accessory helpers ──
   const toggleAccessory = (acc: string) => {
