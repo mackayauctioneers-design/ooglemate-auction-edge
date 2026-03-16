@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { OperatorLayout } from "@/components/layout/OperatorLayout";
 import { OogleBotJobForm } from "@/components/ooglebot/OogleBotJobForm";
-import { OogleBotJobDetail } from "@/components/ooglebot/OogleBotJobDetail";
+import { OogleBotJobList } from "@/components/ooglebot/OogleBotJobList";
 import { OogleBotSearch } from "@/components/ooglebot/OogleBotSearch";
 import kitingWingMark from "@/assets/kiting-wing-mark.jpg";
 
@@ -22,15 +22,18 @@ export default function OogleBotPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Create + List */}
+          {/* Left: Create + Job List */}
           <div className="lg:col-span-2 space-y-6">
             <OogleBotJobForm />
+            <OogleBotJobList
+              selectedJobId={selectedJobId}
+              onSelectJob={setSelectedJobId}
+            />
           </div>
 
-          {/* Right: Active Hunt first, then Job Detail */}
+          {/* Right: Search */}
           <div className="space-y-6">
             <OogleBotSearch />
-            <OogleBotJobDetail jobId={selectedJobId} />
           </div>
         </div>
       </div>
