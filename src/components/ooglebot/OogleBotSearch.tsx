@@ -922,7 +922,7 @@ export function OogleBotSearch() {
         directResponse?.results ?? [],
         [],
         structuredFilters.badge,
-        extractSeries(structuredFilters.make, structuredFilters.model),
+        effectiveSeries || extractSeries(structuredFilters.make, structuredFilters.model),
       );
       const totalResults = visibleBaselineResults.length;
       console.log(`[Search] Unique visible results: ${totalResults} (tiered: ${listings.length}, direct: ${directResponse?.results?.length ?? 0})`);
