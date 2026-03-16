@@ -42,14 +42,14 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Loader2, Search, Database, Globe, MapPin, Gauge, DollarSign,
-  ExternalLink, Mic, MicOff, Building2, ChevronDown, X, Gavel,
+  ExternalLink, Mic, MicOff, Building2, ChevronDown, X, Gavel, Star,
 } from "lucide-react";
 import { KitingLoader } from "@/components/ui/KitingLoader";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
 import { useToast } from "@/hooks/use-toast";
 import { toast as sonnerToast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-
+import { useStarVehicle, type StarVehiclePayload } from "@/hooks/useStarVehicle";
 // ── Constants ──
 
 const COMMON_MAKES = [
@@ -128,7 +128,10 @@ function isAuctionResult(r: { source?: string; source_class?: string | null; auc
 
 // ── Unified Result Card ──
 
-function UnifiedResultCard({ result, isBestPrice, isOperator }: { result: UnifiedResult; isBestPrice?: boolean; isOperator?: boolean }) {
+function UnifiedResultCard({ result, isBestPrice, isOperator, starred, starLoading, onToggleStar }: {
+  result: UnifiedResult; isBestPrice?: boolean; isOperator?: boolean;
+  starred?: boolean; starLoading?: boolean; onToggleStar?: (r: UnifiedResult) => void;
+}) {
   const hasUrl = !!result.url;
   const cheapestFlag = result.deal_flags?.find(f => f.flag_type === "CHEAPEST_IN_MARKET");
   const underMarketFlag = result.deal_flags?.find(f => f.flag_type === "UNDER_MARKET");
@@ -196,15 +199,29 @@ function UnifiedResultCard({ result, isBestPrice, isOperator }: { result: Unifie
           </div>
         )}
       </div>
-      {hasUrl ? (
-        <a href={result.url!} target="_blank" rel="noopener noreferrer" className="shrink-0">
-          <Button variant="ghost" size="iconSm" className="h-6 w-6 text-muted-foreground hover:text-primary">
-            <ExternalLink className="h-3 w-3" />
+      <div className="flex items-center gap-0.5 shrink-0">
+        {onToggleStar && (
+          <Button
+            variant="ghost"
+            size="iconSm"
+            className="h-6 w-6 p-0"
+            disabled={starLoading}
+            onClick={(e) => { e.stopPropagation(); onToggleStar(result); }}
+            title={starred ? "Unstar" : "Star to Trading Desk"}
+          >
+            <Star className={`h-3.5 w-3.5 transition-colors ${starred ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground hover:text-amber-400'}`} />
           </Button>
-        </a>
-      ) : result.is_discovery ? (
-        <span className="text-[9px] text-muted-foreground shrink-0 italic">AI est.</span>
-      ) : null}
+        )}
+        {hasUrl ? (
+          <a href={result.url!} target="_blank" rel="noopener noreferrer">
+            <Button variant="ghost" size="iconSm" className="h-6 w-6 text-muted-foreground hover:text-primary">
+              <ExternalLink className="h-3 w-3" />
+            </Button>
+          </a>
+        ) : result.is_discovery ? (
+          <span className="text-[9px] text-muted-foreground italic">AI est.</span>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -426,6 +443,22 @@ function mergeAllResults(
 export function OogleBotSearch() {
   const { toast } = useToast();
   const { isAdmin, dealerProfile } = useAuth();
+  const { toggleStar, isStarred, isLoading: isStarLoading, checkStarred } = useStarVehicle();
+
+  const handleToggleStar = useCallback((r: UnifiedResult) => {
+    toggleStar({
+      listing_id: r.id,
+      make: r.title.split(" ").slice(1, 2).join(" ") || null,
+      model: r.title.split(" ").slice(2).join(" ") || null,
+      year: r.year,
+      km: r.km,
+      asking_price: r.price,
+      source: r.source,
+      source_url: r.url,
+      variant: r.variant,
+      location: r.location,
+    });
+  }, [toggleStar]);
 
   // ── Entitlement: fetch plan_tier for discovery eligibility ──
   const [planTier, setPlanTier] = useState<string | null>(null);
@@ -1663,7 +1696,7 @@ export function OogleBotSearch() {
                 <>
                   <div className={!showAllMarket && marketResults.length > INITIAL_SHOW ? "max-h-[420px] overflow-y-auto space-y-1.5 pr-1" : "space-y-1.5"}>
                     {displayed.map((result, i) => (
-                      <UnifiedResultCard key={result.id} result={result} isBestPrice={i === 0 && marketResults.length > 1} isOperator={isAdmin} />
+                      <UnifiedResultCard key={result.id} result={result} isBestPrice={i === 0 && marketResults.length > 1} isOperator={isAdmin} starred={isStarred(result.id)} starLoading={isStarLoading(result.id)} onToggleStar={handleToggleStar} />
                     ))}
                   </div>
                   {marketResults.length > INITIAL_SHOW && !showAllMarket && (
@@ -1704,7 +1737,7 @@ export function OogleBotSearch() {
               return (
                 <>
                   {displayed.map((result) => (
-                    <UnifiedResultCard key={result.id} result={result} isOperator={isAdmin} />
+                    <UnifiedResultCard key={result.id} result={result} isOperator={isAdmin} starred={isStarred(result.id)} starLoading={isStarLoading(result.id)} onToggleStar={handleToggleStar} />
                   ))}
                   {auctionResults.length > 5 && !showAllAuction && (
                     <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={() => setShowAllAuction(true)}>
