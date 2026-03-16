@@ -1143,6 +1143,27 @@ export function OogleBotSearch() {
             </p>
           </div>
 
+          {/* Row 2b: Series (conditional) */}
+          {availableSeries.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Series / Generation</Label>
+              <Select value={series} onValueChange={setSeries}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="All generations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All generations</SelectItem>
+                  {availableSeries.map(s => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                Filters to a specific generation (e.g. 300 Series vs 70 Series)
+              </p>
+            </div>
+          )}
+
           {/* Row 3: Year / KM / Price / State */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="space-y-1.5">
