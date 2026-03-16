@@ -578,10 +578,17 @@ export function OogleBotSearch() {
   // ── Unified result merge ──
   // Extract intent series from make + model for LC generation gating
   const intentSeries = useMemo(() => extractSeries(make, model), [make, model]);
-  const allUnified = useMemo(
-    () => mergeAllResults(internalResults, externalResponse?.results ?? [], outwardResults, badge, intentSeries),
-    [internalResults, externalResponse?.results, outwardResults, badge, intentSeries],
-  );
+  const allUnified = useMemo(() => {
+    const results = mergeAllResults(internalResults, externalResponse?.results ?? [], outwardResults, badge, intentSeries);
+    // Enrich with deal flags
+    if (dealFlagsMap.size > 0) {
+      return results.map(r => ({
+        ...r,
+        deal_flags: dealFlagsMap.get(r.id) || r.deal_flags,
+      }));
+    }
+    return results;
+  }, [internalResults, externalResponse?.results, outwardResults, badge, intentSeries, dealFlagsMap]);
   const marketResults = useMemo(() => allUnified.filter(r => !r.is_auction), [allUnified]);
   const auctionResults = useMemo(() => allUnified.filter(r => r.is_auction), [allUnified]);
 
