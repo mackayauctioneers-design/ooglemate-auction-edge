@@ -320,6 +320,34 @@ function normalizeModelForQuery(make: string, model: string): string {
   return model.replace(/\b(7[0689]|200|300)\b/gi, "").replace(/\s+/g, " ").trim();
 }
 
+function applyBadgeFilter(results: InternalMatch[], badge: string | null): InternalMatch[] {
+  if (!badge) return results;
+
+  const badgeUpper = badge.trim().toUpperCase().replace(/[^A-Z0-9\s\-]/g, "").replace(/\s+/g, " ");
+  const badgeNorm = badgeUpper.replace(/[\s\-]/g, "");
+  const badgeRe = new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
+  const badgeHasQualifier = (q: string) => badgeNorm.includes(q.replace(/[\s\-]/g, ""));
+
+  return results.filter((r) => {
+    const variant = r.variant_raw;
+    if (!variant) return false;
+
+    const allText = [variant, r.model, r.listing_url]
+      .filter(Boolean)
+      .join(" ")
+      .toUpperCase()
+      .replace(/[\s\-]/g, "");
+
+    for (const qual of SUB_BADGE_QUALIFIERS) {
+      const qualNorm = qual.replace(/[\s\-]/g, "");
+      if (allText.includes(qualNorm) && !badgeHasQualifier(qual)) return false;
+    }
+
+    const vNorm = variant.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
+    return vNorm === badgeUpper || badgeRe.test(variant);
+  });
+}
+
 /** Apply series gate post-filter */
 function applySeriesGate(results: InternalMatch[], parsed: ParsedIntent): InternalMatch[] {
   const intentSeries = extractSeries(parsed.make || "", parsed.model || "");
