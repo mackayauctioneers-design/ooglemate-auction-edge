@@ -532,6 +532,7 @@ export function OogleBotSearch() {
   const [externalResponse, setExternalResponse] = useState<OogleBotResponse | null>(null);
   const [internalLoading, setInternalLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [dealFlagsMap, setDealFlagsMap] = useState<Map<string, DealFlag[]>>(new Map());
 
   // ── Outward search state (Phase 2) ──
   const [searchRunId, setSearchRunId] = useState<string | null>(null);
