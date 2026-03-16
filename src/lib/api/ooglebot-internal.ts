@@ -366,6 +366,15 @@ function applySeriesGate(results: InternalMatch[], parsed: ParsedIntent): Intern
     if (intentIsLC && text.includes("PRADO")) return false;
     if (intentIsPrado && !text.includes("PRADO")) return false;
 
+    // Toyota OEM sometimes stores LC70 rows as generic LANDCRUISER/GXL with no explicit series.
+    // For explicit LC300 searches, exclude those ambiguous generic Toyota rows unless they carry a positive LC300 signal.
+    if (
+      intentSeries === "LC300" &&
+      l.source === "toyota" &&
+      (l.model || "").toUpperCase() === "LANDCRUISER" &&
+      !/\b300\b|LC300|FJA300R|GR[\-_\s]?SPORT|GR[\-_\s]?S\b/.test(text)
+    ) return false;
+
     const ls = detectListingSeriesLC(l);
     // For explicit series searches, require a positive series match.
     return ls === intentSeries;
