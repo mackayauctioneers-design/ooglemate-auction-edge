@@ -614,7 +614,7 @@ export default function TradingDeskPage() {
             <Select value={filterKmMax} onValueChange={setFilterKmMax}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">No limit</SelectItem>
+                <SelectItem value="none">No limit</SelectItem>
                 <SelectItem value="50000">50,000 km</SelectItem>
                 <SelectItem value="80000">80,000 km</SelectItem>
                 <SelectItem value="100000">100,000 km</SelectItem>
