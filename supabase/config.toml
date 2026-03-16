@@ -345,6 +345,9 @@ verify_jwt = false
 [functions.asp-auction-crawl]
 verify_jwt = false
 
+[functions.auto-auctions-ingest]
+verify_jwt = false
+
 [functions.bob-chat]
 verify_jwt = false
 
