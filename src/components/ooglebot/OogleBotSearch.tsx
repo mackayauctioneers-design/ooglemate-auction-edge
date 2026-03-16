@@ -825,9 +825,20 @@ export function OogleBotSearch() {
   const handleSearch = async () => {
     if (!canSearch) return;
 
+    // If user selected a series, inject the series token into the model for the search engine
+    const effectiveSeries = series && series !== "all" ? series : null;
+    const seriesModelSuffix: Record<string, string> = {
+      LC300: "300", LC200: "200", LC70: "70",
+      PRADO_250: "250", PRADO_150: "150",
+      RANGER_PY: "Next Gen",
+    };
+    const modelWithSeries = effectiveSeries && seriesModelSuffix[effectiveSeries]
+      ? `${model.trim()} ${seriesModelSuffix[effectiveSeries]}`.trim()
+      : model.trim();
+
     const structuredFilters = {
       make: make.trim(),
-      model: model.trim(),
+      model: modelWithSeries,
       badge: badge.trim() || null,
       year_min: yearMin ? parseInt(yearMin, 10) : null,
       year_max: yearMax ? parseInt(yearMax, 10) : null,
