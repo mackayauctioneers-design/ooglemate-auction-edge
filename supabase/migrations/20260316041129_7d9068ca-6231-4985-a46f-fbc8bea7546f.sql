@@ -1,0 +1,1 @@
+UPDATE operator_opportunities SET status = 'expired', updated_at = now() WHERE listing_source = 'caroogle_shadow' AND source_url LIKE '%pickles.com.au/cars/search%' AND status IN ('new', 'assigned', 'reviewed');
