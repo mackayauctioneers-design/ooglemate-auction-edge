@@ -23,7 +23,7 @@ import {
 } from "@/hooks/useHeaderMapping";
 import { normaliseDateValue } from "@/utils/salesUploadUtils";
 import { derivePlatform } from "@/utils/derivePlatform";
-import { mergeEasyCarsFiles, readAsWorkbook, type MergeResult } from "@/utils/easycarsmerge";
+import { mergeEasyCarsFiles, readAsWorkbook, parseDescription, type MergeResult } from "@/utils/easycarsmerge";
 
 type UploadStep = "idle" | "parsing" | "mapping" | "importing";
 type UploadMode = "single" | "merge";
@@ -207,6 +207,15 @@ export default function OperatorDealerUploadPage() {
         if (mapped.series) mapped.series = String(mapped.series).trim();
         if (mapped.badge) mapped.badge = String(mapped.badge).trim();
         if (mapped.variant) mapped.variant = String(mapped.variant).trim();
+
+        // If make/model missing but description present, parse from description
+        if ((!mapped.make || !mapped.model) && mapped.description) {
+          const parsed = parseDescription(String(mapped.description));
+          if (!mapped.make && parsed.make) mapped.make = parsed.make;
+          if (!mapped.model && parsed.model) mapped.model = parsed.model;
+          if (!mapped.year && parsed.year) mapped.year = parsed.year;
+          if (!mapped.variant && parsed.variant) mapped.variant = parsed.variant;
+        }
 
         if (!mapped.make || !mapped.model) {
           skippedRows.push({
