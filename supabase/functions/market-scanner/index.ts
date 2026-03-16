@@ -54,8 +54,41 @@ function kmBand(km: number | null): string {
   return "150k+";
 }
 
-function buildClusterKey(make: string, model: string, yb: string, kb: string): string {
-  return `${make.toUpperCase()}|${model.toUpperCase()}|${yb}|${kb}`;
+function buildClusterKey(make: string, model: string, variant: string, yb: string, kb: string): string {
+  return `${make.toUpperCase()}|${model.toUpperCase()}|${variant.toUpperCase()}|${yb}|${kb}`;
+}
+
+/** Normalize model names so PRADO and LANDCRUISER PRADO cluster together */
+function normalizeModel(model: string): string {
+  const up = model.toUpperCase().trim();
+  // Normalize standalone PRADO → LANDCRUISER PRADO
+  if (up === "PRADO") return "LANDCRUISER PRADO";
+  return up;
+}
+
+/** Normalize variant to a grade tier for clustering */
+function normalizeVariant(variant: string | null): string {
+  if (!variant) return "BASE";
+  const up = variant.toUpperCase().trim();
+  // Map known grades
+  if (/GR.?S|GR\s?SPORT/.test(up)) return "GR_SPORT";
+  if (/KAKADU/.test(up)) return "KAKADU";
+  if (/VX/.test(up)) return "VX";
+  if (/GXL/.test(up)) return "GXL";
+  if (/GX/.test(up)) return "GX";
+  if (/ZR/.test(up)) return "ZR";
+  if (/SAHARA/.test(up)) return "SAHARA";
+  if (/ALTITUDE/.test(up)) return "ALTITUDE";
+  if (/WILDTRAK/.test(up)) return "WILDTRAK";
+  if (/SPORT/.test(up)) return "SPORT";
+  if (/XLT/.test(up)) return "XLT";
+  if (/XLS/.test(up)) return "XLS";
+  if (/XL\b/.test(up)) return "XL";
+  if (/SR5/.test(up)) return "SR5";
+  if (/SR\b/.test(up)) return "SR";
+  if (/ROGUE/.test(up)) return "ROGUE";
+  if (/RUGGED/.test(up)) return "RUGGED";
+  return up || "BASE";
 }
 
 function confidenceLabel(score: number): string {
