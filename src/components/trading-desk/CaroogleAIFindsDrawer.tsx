@@ -167,14 +167,31 @@ export function CaroogleAIFindsDrawer() {
             Automatically detected market opportunities
           </p>
 
-          {/* Filter tabs */}
-          <div className="flex gap-2 pt-2">
+          {/* Sort + Filter row */}
+          <div className="flex items-center gap-2 pt-2">
             <Button size="sm" variant={viewFilter === 'active' ? 'default' : 'outline'} onClick={() => setViewFilter('active')} className="text-xs h-7">
               All ({totalCount + starredCount})
             </Button>
             <Button size="sm" variant={viewFilter === 'starred' ? 'default' : 'outline'} onClick={() => setViewFilter('starred')} className="text-xs h-7">
               <Star className="h-3 w-3 mr-1" /> Starred ({starredCount})
             </Button>
+            <div className="ml-auto w-[140px]">
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="h-7 text-xs">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="score">Best Score</SelectItem>
+                  <SelectItem value="spread">Largest Spread</SelectItem>
+                  <SelectItem value="discount">Biggest Discount</SelectItem>
+                  <SelectItem value="year">Latest Model</SelectItem>
+                  <SelectItem value="price_low">Price: Low → High</SelectItem>
+                  <SelectItem value="price_high">Price: High → Low</SelectItem>
+                  <SelectItem value="km_low">Lowest KM</SelectItem>
+                  <SelectItem value="newest">Most Recent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Summary strip */}
