@@ -218,9 +218,14 @@ const TERMINAL_STATUSES = new Set(["complete", "failed", "timeout"]);
 /** Detect which LC series a result belongs to (for series gate) */
 function detectSeriesFromText(text: string): string | null {
   const t = text.toUpperCase();
-  if (/\b7[0689]\b/.test(t) || /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]/.test(t) || /\bWORKMATE\b/.test(t)) return "LC70";
-  if (/\b300\b/.test(t) || /GR[\-_\s]?SPORT|GR[\-_\s]?S\b|LC300/.test(t)) return "LC300";
-  if (/\b200\b/.test(t) || /LC200/.test(t)) return "LC200";
+  if (
+    /\b7[0689]\b/.test(t) ||
+    /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]|VDJL79R|GDJL79R|TROOPY|TROOPCARRIER|WORKMATE/.test(t) ||
+    /DOUBLE[\-_\s]?CAB|CAB[\-_\s]?CHASSIS/.test(t) ||
+    /LCMILITARY|LANDCRUISERMILITARY/.test(t)
+  ) return "LC70";
+  if (/\b300\b/.test(t) || /LC300|FJA300R|GR[\-_\s]?SPORT|GR[\-_\s]?S\b/.test(t)) return "LC300";
+  if (/\b200\b/.test(t) || /LC200|VDJ200|UZJ200/.test(t)) return "LC200";
   return null;
 }
 
@@ -272,7 +277,7 @@ function mergeAllResults(
     if (isLCIntent && textUpper.includes("PRADO")) return false;
     if (isPradoIntent && !textUpper.includes("PRADO")) return false;
     const ls = detectSeriesFromText(allText);
-    return ls === null || ls === intentSeries;
+    return ls === intentSeries;
   };
 
   // Internal results
