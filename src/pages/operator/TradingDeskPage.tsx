@@ -360,7 +360,7 @@ export default function TradingDeskPage() {
       const assignedMatch = o.assigned_to_name?.toLowerCase().includes(q);
       if (!nameMatch && !assignedMatch) return false;
     }
-    if (filterKmMax) {
+    if (filterKmMax && filterKmMax !== 'none') {
       const maxKm = parseInt(filterKmMax);
       if (!isNaN(maxKm) && o.km != null && o.km > maxKm) return false;
     }
