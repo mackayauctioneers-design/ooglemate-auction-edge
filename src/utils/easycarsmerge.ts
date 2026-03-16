@@ -57,7 +57,7 @@ function extractKm(raw: string): string {
  *  e.g. "TOYOTA LANDCRUISER 2007 LANDCRUISER PRADO GXL (4x4) KDJ120R ..." 
  *  or  "BMW X3 2012 X3 xDRIVE20d F25 DIESEL TURBO ..."
  */
-function parseDescription(desc: string) {
+export function parseDescription(desc: string) {
   if (!desc) return { make: "", model: "", year: "", variant: "" };
   const tokens = desc.trim().split(/\s+/);
   
