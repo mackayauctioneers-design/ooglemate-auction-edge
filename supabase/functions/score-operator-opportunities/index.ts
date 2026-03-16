@@ -515,7 +515,7 @@ Deno.serve(async (req) => {
         platform_class: l.platform_class || derivePlatform(make, model),
         trim_class: l.variant_family || extractBadge(l.variant_raw) || "UNKNOWN",
         drivetrain_bucket: drivetrainBucket(l.drivetrain),
-        source_url: l.listing_url || "",
+        source_url: sanitizeSourceUrl(l.listing_url || "", lid),
         first_seen_at: l.first_seen_at || new Date().toISOString(),
         days_listed: daysSince, price_drops: 0, pass_count: l.pass_count || 0,
         badge: null, fuel_type: null, body_type: null,
