@@ -23,6 +23,7 @@ import {
   TrendingUp,
   Bot,
   Building2,
+  FileSpreadsheet,
   Users,
   Sparkles,
   Car,
@@ -128,6 +129,7 @@ const operatorSections: NavSection[] = [
     items: [
       { path: '/operator/dealers', label: 'Dealer Management', icon: Users },
       { path: '/operator/dealer-profiles', label: 'Dealer Profiles', icon: Building2 },
+      { path: '/operator/dealer-upload', label: 'Dealer Sales Upload', icon: FileSpreadsheet },
       { path: '/operator/dealer-specs', label: 'Dealer Buy Specs', icon: Target },
     ],
   },
