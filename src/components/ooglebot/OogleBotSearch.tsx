@@ -395,11 +395,48 @@ export function OogleBotSearch() {
   const [makeSearch, setMakeSearch] = useState("");
   const [makeOpen, setMakeOpen] = useState(false);
   const [badge, setBadge] = useState("");
+  const [series, setSeries] = useState("");
   const [yearMin, setYearMin] = useState("");
   const [yearMax, setYearMax] = useState("");
   const [kmMax, setKmMax] = useState("");
   const [priceMax, setPriceMax] = useState("");
   const [stateFilter, setStateFilter] = useState("");
+
+  // ── Series options derived from make/model ──
+  const SERIES_OPTIONS: Record<string, { label: string; value: string }[]> = {
+    "TOYOTA:LANDCRUISER": [
+      { label: "300 Series", value: "LC300" },
+      { label: "200 Series", value: "LC200" },
+      { label: "70 Series", value: "LC70" },
+    ],
+    "TOYOTA:PRADO": [
+      { label: "250 Series (New)", value: "PRADO_250" },
+      { label: "150 Series", value: "PRADO_150" },
+    ],
+    "FORD:RANGER": [
+      { label: "Next Gen (PY)", value: "RANGER_PY" },
+    ],
+  };
+
+  const seriesKey = useMemo(() => {
+    const m = make.toUpperCase().trim();
+    const mo = model.toUpperCase().trim();
+    if (m === "TOYOTA") {
+      if (mo.includes("PRADO")) return "TOYOTA:PRADO";
+      if (mo.includes("LANDCRUISER") || mo.includes("LAND CRUISER")) return "TOYOTA:LANDCRUISER";
+    }
+    if (m === "FORD" && mo.includes("RANGER")) return "FORD:RANGER";
+    return null;
+  }, [make, model]);
+
+  const availableSeries = seriesKey ? SERIES_OPTIONS[seriesKey] || [] : [];
+
+  // Reset series when make/model changes and series is no longer valid
+  useEffect(() => {
+    if (series && !availableSeries.find(s => s.value === series)) {
+      setSeries("");
+    }
+  }, [availableSeries, series]);
   const [selectedAccessories, setSelectedAccessories] = useState<string[]>([]);
   const [customAccessory, setCustomAccessory] = useState("");
   // Discovery users always get full market scan — no toggle needed
