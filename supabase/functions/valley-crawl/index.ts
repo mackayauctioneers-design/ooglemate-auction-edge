@@ -205,9 +205,9 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         url: listUrl,
-        formats: ['html'],
+        formats: ['rawHtml'],
         onlyMainContent: false,
-        waitFor: 3000,
+        waitFor: 10000,
       }),
     });
 
@@ -216,7 +216,7 @@ Deno.serve(async (req) => {
     }
 
     const listData = await listResponse.json();
-    const html = listData.data?.html || listData.html || '';
+    const html = listData.data?.rawHtml || listData.data?.html || listData.rawHtml || listData.html || '';
     
     console.log(`[valley-crawl] Got HTML: ${html.length} chars`);
     
