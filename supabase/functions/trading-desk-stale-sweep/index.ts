@@ -180,7 +180,47 @@ Deno.serve(async (req) => {
       });
     }
 
-    const results = await runPool(batch, concurrencyLimit, checkOne);
+    const urlResults = await runPool(batch, concurrencyLimit, checkOne);
+
+    // ── Manheim DB-based recency check (can't scrape session-gated URLs) ──
+    const manheimRows = batch.filter((r) =>
+      (r.source_url ?? "").toLowerCase().includes("manheim.com") ||
+      (r.listing_source ?? "").toLowerCase().includes("manheim")
+    );
+    const manheimSoldIds: CheckResult[] = [];
+    if (manheimRows.length > 0) {
+      const manheimListingIds = manheimRows.map((r) => r.listing_id);
+      for (let i = 0; i < manheimListingIds.length; i += 200) {
+        const chunk = manheimListingIds.slice(i, i + 200);
+        // Check if listing is no longer active in vehicle_listings
+        const { data: staleManheim } = await sb
+          .from("vehicle_listings")
+          .select("listing_id, lifecycle_state, last_seen_at")
+          .in("listing_id", chunk);
+
+        const staleThreshold = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+        for (const vl of staleManheim ?? []) {
+          const isDead = ["SOLD", "DEAD", "STALE", "DELISTED"].includes(vl.lifecycle_state);
+          const isStale = vl.last_seen_at && vl.last_seen_at < staleThreshold;
+          if (isDead || isStale) {
+            const row = manheimRows.find((r) => r.listing_id === vl.listing_id);
+            if (row) {
+              manheimSoldIds.push({
+                id: row.id,
+                listing_id: row.listing_id,
+                status: isDead ? "sold" : "expired",
+                http_status: null,
+                reason: isDead ? `manheim_db_${vl.lifecycle_state.toLowerCase()}` : "manheim_db_stale_48h",
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Merge URL results with Manheim DB results (DB results override "active" for Manheim)
+    const manheimOverrideMap = new Map(manheimSoldIds.map((r) => [r.id, r]));
+    const results = urlResults.map((r) => manheimOverrideMap.get(r.id) ?? r);
 
     // Separate sold from expired from alive
     const soldResults = results.filter((r) => r.status === "sold");
