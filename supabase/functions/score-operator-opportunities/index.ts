@@ -540,7 +540,7 @@ Deno.serve(async (req) => {
         platform_class: derivePlatform(make, model),
         trim_class: extractBadge(trimSource) || "UNKNOWN",
         drivetrain_bucket: drivetrainBucket(s.drivetrain || raw.driveType),
-        source_url: (raw.listingUrl || s.listing_url || "").trim() || null,
+        source_url: sanitizeSourceUrl((raw.listingUrl || s.listing_url || "").trim() || "", lid),
         first_seen_at: s.first_seen_at || new Date().toISOString(),
         days_listed: daysSince, price_drops: 0, pass_count: 0,
         badge: null, fuel_type: null, body_type: null,
