@@ -360,7 +360,7 @@ export default function TradingDeskPage() {
       const assignedMatch = o.assigned_to_name?.toLowerCase().includes(q);
       if (!nameMatch && !assignedMatch) return false;
     }
-    if (filterKmMax) {
+    if (filterKmMax && filterKmMax !== 'none') {
       const maxKm = parseInt(filterKmMax);
       if (!isNaN(maxKm) && o.km != null && o.km > maxKm) return false;
     }
@@ -614,7 +614,7 @@ export default function TradingDeskPage() {
             <Select value={filterKmMax} onValueChange={setFilterKmMax}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">No limit</SelectItem>
+                <SelectItem value="none">No limit</SelectItem>
                 <SelectItem value="50000">50,000 km</SelectItem>
                 <SelectItem value="80000">80,000 km</SelectItem>
                 <SelectItem value="100000">100,000 km</SelectItem>
