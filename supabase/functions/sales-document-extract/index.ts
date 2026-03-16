@@ -344,44 +344,45 @@ Deno.serve(async (req) => {
       const rawBytes = Uint8Array.from(atob(pdf_base64), c => c.charCodeAt(0));
       const pdfSizeKB = Math.round(rawBytes.length / 1024);
 
-      // Strategy: For small PDFs (< 200KB raw / ~10 pages), use multimodal vision.
-      // For larger PDFs, extract text locally and use fast chunked text pipeline.
-      // This avoids edge function timeout on large documents.
-      const USE_MULTIMODAL_THRESHOLD_KB = 200;
+      // Strategy: Use multimodal vision for PDFs up to 5MB raw (Gemini handles PDFs natively).
+      // Only fall back to text extraction for very large PDFs.
+      const USE_MULTIMODAL_THRESHOLD_KB = 5120;
 
       if (pdfSizeKB <= USE_MULTIMODAL_THRESHOLD_KB) {
-        console.log(`[sales-document-extract] Small PDF (${pdfSizeKB}KB) — using multimodal vision`);
+        console.log(`[sales-document-extract] PDF (${pdfSizeKB}KB) — using multimodal vision`);
 
         const systemPrompt = `You are a data extraction specialist for Australian automotive dealer sales reports (EasyCars, Dealertrack, AutoMate formats).
 Extract ALL tabular sales data from this PDF as CSV format.
 Rules:
 - The FIRST line must be the CSV header row
-- Extract EVERY row — do not skip, summarise, or truncate
+- Extract EVERY row from EVERY page — do not skip, summarise, or truncate
+- This document may have 50+ pages — you MUST extract all of them
 - If there's a combined "Description" or "Vehicle" field, keep it as-is (e.g. "Toyota Hilux 2015 GUN126R SR Double Cab Utility 4dr Spts Auto 6sp 4x4 2.8DT")
 - Clean up page breaks, repeated headers, footers like "Printed using EasyCars", "Page X of Y"
 - Ignore totals/summary/averages rows
 - Quote fields that contain commas
 - For currency values, preserve exact format including negatives (e.g. "-$6,184.79")
 - For dates, preserve exact format (e.g. "05/06/25")
+- Some pages may have slightly different header labels (e.g. "Stock No" vs "Deal Stock No") — treat them as the same column
 After ALL CSV rows, write: FORMAT: <detected format name>`;
 
         const userContent: any[] = [
           { type: "file", file: { filename: filename || "document.pdf", file_data: `data:application/pdf;base64,${pdf_base64}` } },
-          { type: "text", text: "Extract ALL tabular sales data. Return as CSV only." },
+          { type: "text", text: `Extract ALL tabular sales data from ALL pages of this document. It may have many pages — extract every single row. Return as CSV only.` },
         ];
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 90000);
+        const timeoutId = setTimeout(() => controller.abort(), 120000);
 
         try {
           const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "google/gemini-3-flash-preview",
+              model: "google/gemini-2.5-flash",
               messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userContent }],
               temperature: 0.0,
-              max_tokens: 32000,
+              max_tokens: 65000,
             }),
             signal: controller.signal,
           });
