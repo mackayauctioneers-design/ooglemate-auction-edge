@@ -110,10 +110,10 @@ async function checkOne(row: OpRow): Promise<CheckResult> {
       return { id: row.id, listing_id: row.listing_id, status: "active", http_status: 200, reason: "js_rendered_skip" };
     }
 
-    // Manheim: session-gated — skip (can't verify without login)
+    // Manheim: session-gated — handled via DB recency check below, skip URL scraping
     if (originalUrl.includes("manheim.com")) {
       await resp.text();
-      return { id: row.id, listing_id: row.listing_id, status: "active", http_status: 200, reason: "session_gated_skip" };
+      return { id: row.id, listing_id: row.listing_id, status: "active", http_status: 200, reason: "manheim_db_check" };
     }
 
     const html = (await resp.text()).toLowerCase();
