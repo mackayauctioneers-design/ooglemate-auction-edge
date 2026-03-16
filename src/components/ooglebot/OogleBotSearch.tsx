@@ -462,6 +462,7 @@ export function OogleBotSearch() {
    const [huntQueueIds, setHuntQueueIds] = useState<string[]>([]);
    const huntPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
    const huntReQueryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+   const huntNeedsFinalRequeryRef = useRef(false);
    const MIN_RESULTS_FOR_HUNT = 20;
 
   // ── Accessory helpers ──
