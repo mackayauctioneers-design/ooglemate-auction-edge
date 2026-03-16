@@ -261,17 +261,24 @@ function mergeAllResults(
     return true;
   };
 
-  // Series gate helper — reject cross-generation results
-  const matchesSeries = (r: { title?: string; variant?: string | null; id?: string; url?: string | null }): boolean => {
+  // Series gate helper — reject cross-generation results AND cross-platform contamination
+  const isLCIntent = intentSeries?.startsWith("LC");
+  const isPradoIntent = intentSeries?.startsWith("PRADO");
+  const matchesSeries = (r: { title?: string; variant?: string | null; id?: string; url?: string | null; model?: string | null }): boolean => {
     if (!intentSeries) return true;
-    const text = [r.title, r.variant, r.id, r.url].filter(Boolean).join(" ");
-    const ls = detectSeriesFromText(text);
+    const allText = [r.title, r.variant, r.id, r.url, r.model].filter(Boolean).join(" ");
+    // Hard gate: LC intent must exclude Prado, and vice versa
+    const textUpper = allText.toUpperCase();
+    if (isLCIntent && textUpper.includes("PRADO")) return false;
+    if (isPradoIntent && !textUpper.includes("PRADO")) return false;
+    const ls = detectSeriesFromText(allText);
     return ls === null || ls === intentSeries;
   };
 
   // Internal results
   for (const m of internalResults) {
     if (!matchesBadge(m.variant_raw)) continue;
+    if (!matchesSeries({ title: `${m.make} ${m.model}`, variant: m.variant_raw, id: m.id, url: m.listing_url, model: m.model })) continue;
     all.push({
       id: m.id,
       title: `${m.year ?? ""} ${m.make ?? ""} ${m.model ?? ""}`.trim(),
@@ -298,6 +305,7 @@ function mergeAllResults(
   // Scored / ooglebot-search results
   for (const r of scoredResults) {
     if (!matchesBadge(r.variant, r.listing_url)) continue;
+    if (!matchesSeries({ title: `${r.make} ${r.model}`, variant: r.variant, url: r.listing_url, model: r.model })) continue;
     all.push({
       id: r.listing_id,
       title: `${r.year ?? ""} ${r.make ?? ""} ${r.model ?? ""}`.trim(),
