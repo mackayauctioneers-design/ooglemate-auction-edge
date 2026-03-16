@@ -210,8 +210,9 @@ Deno.serve(async (req) => {
     const clusters = new Map<string, Listing[]>();
     for (const l of listings as Listing[]) {
       const series = detectSeries(l.model, l.variant_resolved);
-      const modelKey = series || l.model;
-      const key = buildClusterKey(l.make, modelKey, yearBand(l.year), kmBand(l.km));
+      const modelKey = series || normalizeModel(l.model);
+      const variantKey = normalizeVariant(l.variant_resolved);
+      const key = buildClusterKey(l.make, modelKey, variantKey, yearBand(l.year), kmBand(l.km));
       if (!clusters.has(key)) clusters.set(key, []);
       clusters.get(key)!.push(l);
     }
