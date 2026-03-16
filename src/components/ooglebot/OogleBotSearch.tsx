@@ -825,16 +825,17 @@ export function OogleBotSearch() {
     setInsightText(null);
     setInsightLoading(false);
     insightFiredRef.current = null;
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    if (huntPollRef.current) { clearInterval(huntPollRef.current); huntPollRef.current = null; }
-    if (huntReQueryRef.current) { clearTimeout(huntReQueryRef.current); huntReQueryRef.current = null; }
-    seenJobIdsRef.current.clear();
-    prevOutwardCountRef.current = 0;
-    setJobStatuses([]);
-    setHuntId(null);
-    setHuntStatus("idle");
-    setHuntSources([]);
-    setHuntQueueIds([]);
+     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+     if (huntPollRef.current) { clearInterval(huntPollRef.current); huntPollRef.current = null; }
+     if (huntReQueryRef.current) { clearTimeout(huntReQueryRef.current); huntReQueryRef.current = null; }
+     seenJobIdsRef.current.clear();
+     prevOutwardCountRef.current = 0;
+     huntNeedsFinalRequeryRef.current = false;
+     setJobStatuses([]);
+     setHuntId(null);
+     setHuntStatus("idle");
+     setHuntSources([]);
+     setHuntQueueIds([]);
 
     try {
       const structuredIntent = {
