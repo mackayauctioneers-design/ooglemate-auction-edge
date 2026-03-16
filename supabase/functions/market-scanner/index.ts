@@ -240,16 +240,8 @@ Deno.serve(async (req) => {
       const secondLowestPrice = prices[1];
       const spread = secondLowestPrice - lowestPrice;
 
-      // Average days on market for fast-mover detection
-      const daysValues = sorted
-        .map((l) => l.days_on_market)
-        .filter((d): d is number => d != null && d > 0);
-      const avgDays =
-        daysValues.length > 0
-          ? Math.round(
-              daysValues.reduce((a, b) => a + b, 0) / daysValues.length
-            )
-          : null;
+      // days_on_market not available on market_listings view — skip fast-mover for now
+      const avgDays: number | null = null;
 
       const isFastMover = avgDays != null && avgDays <= FAST_MOVER_MAX_DAYS;
 
