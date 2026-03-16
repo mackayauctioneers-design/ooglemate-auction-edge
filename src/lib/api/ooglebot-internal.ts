@@ -28,8 +28,10 @@ const RECENCY_DAYS = 14;
 const OUTWARD_GATE_THRESHOLD = 3;
 
 /** Maximum results per tier */
-const TIER0_LIMIT = 100;
-const TIER1_LIMIT = 50;
+const TIER0_LIMIT = 300;
+const TIER1_LIMIT = 300;
+
+const SUB_BADGE_QUALIFIERS = ["HI-RIDER", "HIRIDER", "HI RIDER", "WILDTRAK", "RAPTOR", "SPORT"];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -62,6 +64,7 @@ export interface TieredSearchResult {
 export interface ParsedIntent {
   make: string | null;
   model: string | null;
+  badge: string | null;
   yearMin: number | null;
   yearMax: number | null;
   kmMax: number | null;
@@ -128,7 +131,7 @@ export function parseSearchQuery(query: string): ParsedIntent {
   const make = words.length > 0 ? words[0] : null;
   const model = words.length > 1 ? words.slice(1).join(" ") : null;
 
-  return { make, model, yearMin, yearMax, kmMax, priceMax };
+  return { make, model, badge: null, yearMin, yearMax, kmMax, priceMax };
 }
 
 // ─── Core Search: Tiered Auction-First ───────────────────────────────────────
@@ -146,6 +149,7 @@ export async function searchTiered(query: string, structuredOverride?: Partial<P
   const parsed: ParsedIntent = {
     make: structuredOverride?.make || textParsed.make,
     model: structuredOverride?.model || textParsed.model,
+    badge: structuredOverride?.badge || textParsed.badge,
     yearMin: structuredOverride?.yearMin ?? textParsed.yearMin,
     yearMax: structuredOverride?.yearMax ?? textParsed.yearMax,
     kmMax: structuredOverride?.kmMax ?? textParsed.kmMax,
@@ -231,15 +235,15 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
   if (parsed.yearMin) q = q.gte("year", parsed.yearMin);
   if (parsed.yearMax) q = q.lte("year", parsed.yearMax);
   if (parsed.kmMax) q = q.lte("km", parsed.kmMax);
-  if (parsed.priceMax) q = q.lte("asking_price", parsed.priceMax);
+  if (parsed.priceMax) q = q.or(`asking_price.lte.${parsed.priceMax},asking_price.is.null`);
 
   const { data, error } = await q;
   if (error) {
     console.error("Tier 0 auction search error:", error);
     return [];
   }
-  // Apply series gate post-filter
-  return applySeriesGate((data || []) as InternalMatch[], parsed);
+
+  return applyBadgeFilter(applySeriesGate((data || []) as InternalMatch[], parsed), parsed.badge);
 }
 
 // ─── Tier 1: Internal Retail / Other ─────────────────────────────────────────
@@ -284,8 +288,8 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
     console.error("Tier 1 internal search error:", error);
     return [];
   }
-  // Apply series gate post-filter
-  return applySeriesGate((data || []) as InternalMatch[], parsed);
+
+  return applyBadgeFilter(applySeriesGate((data || []) as InternalMatch[], parsed), parsed.badge);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -314,6 +318,34 @@ function normalizeModelForQuery(make: string, model: string): string {
   const intentSeries = extractSeries(make, model);
   if (!intentSeries?.startsWith("LC")) return model;
   return model.replace(/\b(7[0689]|200|300)\b/gi, "").replace(/\s+/g, " ").trim();
+}
+
+function applyBadgeFilter(results: InternalMatch[], badge: string | null): InternalMatch[] {
+  if (!badge) return results;
+
+  const badgeUpper = badge.trim().toUpperCase().replace(/[^A-Z0-9\s\-]/g, "").replace(/\s+/g, " ");
+  const badgeNorm = badgeUpper.replace(/[\s\-]/g, "");
+  const badgeRe = new RegExp(`(^|[\\s\\-\\/,])${badgeUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s\\-\\/,])`, "i");
+  const badgeHasQualifier = (q: string) => badgeNorm.includes(q.replace(/[\s\-]/g, ""));
+
+  return results.filter((r) => {
+    const variant = r.variant_raw;
+    if (!variant) return false;
+
+    const allText = [variant, r.model, r.listing_url]
+      .filter(Boolean)
+      .join(" ")
+      .toUpperCase()
+      .replace(/[\s\-]/g, "");
+
+    for (const qual of SUB_BADGE_QUALIFIERS) {
+      const qualNorm = qual.replace(/[\s\-]/g, "");
+      if (allText.includes(qualNorm) && !badgeHasQualifier(qual)) return false;
+    }
+
+    const vNorm = variant.toUpperCase().replace(/[^A-Z0-9\s\-\/,]/g, "");
+    return vNorm === badgeUpper || badgeRe.test(variant);
+  });
 }
 
 /** Apply series gate post-filter */
