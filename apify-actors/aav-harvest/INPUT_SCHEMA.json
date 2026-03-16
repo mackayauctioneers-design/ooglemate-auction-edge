@@ -1,0 +1,36 @@
+{
+  "title": "AAV Harvest Input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "searchUrl": {
+      "title": "Search URL",
+      "type": "string",
+      "description": "AAV search results page URL to harvest",
+      "default": "https://www.auto-auctions.com.au/search_results.aspx?sitekey=AAV&make=All%20Makes&model=All%20Models&fromyear=2016&toklm=100,000",
+      "editor": "textfield"
+    },
+    "maxPages": {
+      "title": "Max Pages",
+      "type": "integer",
+      "description": "Maximum number of pages to crawl",
+      "default": 5,
+      "minimum": 1,
+      "maximum": 50
+    },
+    "INGEST_URL": {
+      "title": "Ingest URL",
+      "type": "string",
+      "description": "Edge function URL to POST harvested items to",
+      "editor": "textfield"
+    },
+    "INGEST_KEY": {
+      "title": "Ingest Key",
+      "type": "string",
+      "description": "Bearer token for ingest endpoint auth",
+      "editor": "textfield",
+      "isSecret": true
+    }
+  },
+  "required": ["INGEST_URL", "INGEST_KEY"]
+}

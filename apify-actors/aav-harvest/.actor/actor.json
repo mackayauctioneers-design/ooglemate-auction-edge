@@ -1,0 +1,8 @@
+{
+  "actorSpecification": 1,
+  "name": "aav-harvest",
+  "version": "1.0",
+  "build": {
+    "dockerfile": "../Dockerfile"
+  }
+}
