@@ -979,7 +979,7 @@ export function OogleBotSearch() {
         effectiveSeries || extractSeries(structuredFilters.make, structuredFilters.model),
       );
 
-      // Enrich with deal flags (fire-and-forget enrichment)
+      // Enrich with deal flags
       if (visibleBaselineResults.length > 0) {
         const resultIds = visibleBaselineResults.map(r => r.id).filter(Boolean).slice(0, 200);
         supabase
@@ -989,18 +989,14 @@ export function OogleBotSearch() {
           .gt("expires_at", new Date().toISOString())
           .then(({ data: flagData }) => {
             if (flagData && flagData.length > 0) {
-              console.log(`[Search] ${flagData.length} deal flags found for results`);
-              const flagMap = new Map<string, DealFlag[]>();
+              console.log(`[Search] ${flagData.length} deal flags found`);
+              const fm = new Map<string, DealFlag[]>();
               for (const f of flagData) {
-                const existing = flagMap.get(f.listing_id) || [];
+                const existing = fm.get(f.listing_id) || [];
                 existing.push({ flag_type: f.flag_type, price_gap: f.price_gap, price_gap_pct: f.price_gap_pct, confidence: f.confidence });
-                flagMap.set(f.listing_id, existing);
+                fm.set(f.listing_id, existing);
               }
-              // Update internal results with flags (triggers re-render)
-              setInternalResults(prev => prev.map(r => ({
-                ...r,
-                _dealFlags: flagMap.get(r.id) || undefined,
-              })));
+              setDealFlagsMap(fm);
             }
           });
       }
