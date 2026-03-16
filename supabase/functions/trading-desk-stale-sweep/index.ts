@@ -38,7 +38,6 @@ const SOLD_SIGNALS = [
   "listing has ended",
   "ad has been removed",
   "this listing has been removed",
-  "you do not have access to this item",  // Pickles sold/removed lots
 ];
 
 const EXPIRED_SIGNALS = [
@@ -50,8 +49,15 @@ const EXPIRED_SIGNALS = [
   "we couldn't find",
   "doesn't exist",
   "404 - not found",
-  "this page is a lemon",  // Pickles 404 page
 ];
+
+// Pickles-specific: sold/removed lots return HTTP 200 with a short "Oops" page.
+// We check body length + specific text to avoid false positives from JS bundles.
+const PICKLES_SOLD_SIGNALS = [
+  "you do not have access to this item",
+  "this page is a lemon",
+];
+const PICKLES_MAX_BODY_LENGTH = 15000; // Real lot pages are 50k+; sold/lemon pages are ~2-5k
 
 async function fetchWithRetry(url: string, tries = 2): Promise<Response> {
   let lastErr: unknown = null;
