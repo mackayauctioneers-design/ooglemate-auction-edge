@@ -373,7 +373,7 @@ Deno.serve(async (req) => {
         .select("listing_id, auction_status, lifecycle_state, relist_count")
         .in("listing_id", batch);
       for (const e of existing || []) {
-        existingIds.set(e.listing_id);
+        existingIds.add(e.listing_id);
       }
     }
 
