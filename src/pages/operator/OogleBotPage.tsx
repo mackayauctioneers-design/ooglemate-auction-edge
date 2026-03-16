@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { OperatorLayout } from "@/components/layout/OperatorLayout";
 import { OogleBotJobForm } from "@/components/ooglebot/OogleBotJobForm";
-import { OogleBotJobList } from "@/components/ooglebot/OogleBotJobList";
 import { OogleBotJobDetail } from "@/components/ooglebot/OogleBotJobDetail";
 import { OogleBotSearch } from "@/components/ooglebot/OogleBotSearch";
 import kitingWingMark from "@/assets/kiting-wing-mark.jpg";
