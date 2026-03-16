@@ -352,7 +352,20 @@ function applyBadgeFilter(results: InternalMatch[], badge: string | null): Inter
 function applySeriesGate(results: InternalMatch[], parsed: ParsedIntent): InternalMatch[] {
   const intentSeries = extractSeries(parsed.make || "", parsed.model || "");
   if (!intentSeries) return results;
-  return results.filter(l => {
+
+  const intentIsLC = intentSeries.startsWith("LC");
+  const intentIsPrado = intentSeries.startsWith("PRADO");
+
+  return results.filter((l) => {
+    const text = [l.model, l.variant_raw, l.listing_url, l.id]
+      .filter(Boolean)
+      .join(" ")
+      .toUpperCase();
+
+    // Hard model-family gate: Prado must never appear in LandCruiser results, and vice versa.
+    if (intentIsLC && text.includes("PRADO")) return false;
+    if (intentIsPrado && !text.includes("PRADO")) return false;
+
     const ls = detectListingSeriesLC(l);
     return ls === null || ls === intentSeries;
   });
