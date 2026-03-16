@@ -977,6 +977,33 @@ export function OogleBotSearch() {
         structuredFilters.badge,
         effectiveSeries || extractSeries(structuredFilters.make, structuredFilters.model),
       );
+
+      // Enrich with deal flags (fire-and-forget enrichment)
+      if (visibleBaselineResults.length > 0) {
+        const resultIds = visibleBaselineResults.map(r => r.id).filter(Boolean).slice(0, 200);
+        supabase
+          .from("deal_flags")
+          .select("listing_id, flag_type, price_gap, price_gap_pct, confidence")
+          .in("listing_id", resultIds)
+          .gt("expires_at", new Date().toISOString())
+          .then(({ data: flagData }) => {
+            if (flagData && flagData.length > 0) {
+              console.log(`[Search] ${flagData.length} deal flags found for results`);
+              const flagMap = new Map<string, DealFlag[]>();
+              for (const f of flagData) {
+                const existing = flagMap.get(f.listing_id) || [];
+                existing.push({ flag_type: f.flag_type, price_gap: f.price_gap, price_gap_pct: f.price_gap_pct, confidence: f.confidence });
+                flagMap.set(f.listing_id, existing);
+              }
+              // Update internal results with flags (triggers re-render)
+              setInternalResults(prev => prev.map(r => ({
+                ...r,
+                _dealFlags: flagMap.get(r.id) || undefined,
+              })));
+            }
+          });
+      }
+
       const totalResults = visibleBaselineResults.length;
       console.log(`[Search] Unique visible results: ${totalResults} (tiered: ${listings.length}, direct: ${directResponse?.results?.length ?? 0})`);
 
