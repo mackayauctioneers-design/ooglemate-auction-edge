@@ -474,7 +474,7 @@ Deno.serve(async (req) => {
     );
     results.fetched_retail = retailListings.length;
 
-    console.log(`[SCORE-V2] Fetched: priced=${results.fetched_priced} priceless=${results.fetched_priceless} shadow=${results.fetched_shadow} retail=${results.fetched_retail}`);
+    console.log(`[SCORE-V2] Fetched: priced=${results.fetched_priced} auction_priced=${results.fetched_auction_priced || 0} priceless=${results.fetched_priceless} shadow=${results.fetched_shadow} retail=${results.fetched_retail}`);
 
     // ── 4. Build unified candidate list (deduped) ──
     const candidates: CandidateListing[] = [];
