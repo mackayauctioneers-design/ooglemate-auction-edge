@@ -200,12 +200,13 @@ export function CaroogleAIFindsDrawer() {
   );
 }
 
-function FindCard({ find }: { find: CaroogleFind }) {
+function FindCard({ find, onToggleStar, onDismiss }: { find: CaroogleFind; onToggleStar: (id: string, status: string) => void; onDismiss: (id: string) => void }) {
   const vehicle = `${find.year || ''} ${find.make || ''} ${find.model || ''} ${find.variant || ''}`.trim();
+  const isStarred = find.status === 'starred';
 
   return (
-    <div className="rounded-lg border border-border bg-card p-3 space-y-2">
-      {/* Header: vehicle + score */}
+    <div className={`rounded-lg border bg-card p-3 space-y-2 ${isStarred ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-border'}`}>
+      {/* Header: vehicle + actions */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="font-medium text-sm text-foreground truncate">{vehicle || 'Unknown vehicle'}</p>
@@ -215,10 +216,16 @@ function FindCard({ find }: { find: CaroogleFind }) {
             {find.km && <span>• {fmtKm(find.km)}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <Badge variant="outline" className={`text-[10px] font-bold ${confidenceColors[find.confidence] || ''}`}>
             {find.score}
           </Badge>
+          <Button variant="ghost" size="iconSm" onClick={() => onToggleStar(find.id, find.status)} title={isStarred ? 'Unstar' : 'Star to watch'}>
+            <Star className={`h-3.5 w-3.5 ${isStarred ? 'fill-amber-500 text-amber-500' : 'text-muted-foreground'}`} />
+          </Button>
+          <Button variant="ghost" size="iconSm" onClick={() => onDismiss(find.id)} title="Dismiss">
+            <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+          </Button>
           {find.listing_url && (
             <a href={find.listing_url} target="_blank" rel="noopener noreferrer">
               <Button variant="ghost" size="iconSm">
