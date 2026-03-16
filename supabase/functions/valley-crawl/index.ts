@@ -205,9 +205,9 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         url: listUrl,
-        formats: ['html'],
+        formats: ['rawHtml'],
         onlyMainContent: false,
-        waitFor: 3000,
+        waitFor: 10000,
       }),
     });
 
