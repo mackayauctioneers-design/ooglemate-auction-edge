@@ -157,6 +157,7 @@ Deno.serve(async (req) => {
       .gte("last_seen_at", recencyCutoff)
       .not("price", "is", null)
       .gt("price", 1000)
+      .gte("year", 2020)
       .not("make", "is", null)
       .not("model", "is", null)
       .order("price", { ascending: true })
