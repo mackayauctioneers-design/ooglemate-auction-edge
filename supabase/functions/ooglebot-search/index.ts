@@ -191,8 +191,8 @@ Deno.serve(async (req) => {
       .not("status", "ilike", "inactive")
       .not("lifecycle_state", "in", `("${EXCLUDED_LIFECYCLE.join('","')}")`)
       .gte("last_seen_at", recencyCutoff)
-      .order("asking_price", { ascending: false, nullsFirst: false })
-      .limit(input.limit! * 3);
+      .order("asking_price", { ascending: true, nullsFirst: false })
+      .limit(300);
 
     // Model matching for vehicle_listings
     const modelParts = queryModel.split(/\s+/);
