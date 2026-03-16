@@ -84,6 +84,13 @@ function numericOrInfinity(value: number | null | undefined) {
 
 // ── Unified Result (canonical shape for merged display) ──
 
+interface DealFlag {
+  flag_type: string;
+  price_gap: number | null;
+  price_gap_pct: number | null;
+  confidence: number;
+}
+
 interface UnifiedResult {
   id: string;
   title: string;
@@ -104,6 +111,7 @@ interface UnifiedResult {
   match_reason: string[];
   is_auction: boolean;
   is_discovery: boolean;
+  deal_flags?: DealFlag[];
 }
 
 const AUCTION_SOURCES = new Set([
@@ -122,15 +130,33 @@ function isAuctionResult(r: { source?: string; source_class?: string | null; auc
 
 function UnifiedResultCard({ result, isBestPrice, isOperator }: { result: UnifiedResult; isBestPrice?: boolean; isOperator?: boolean }) {
   const hasUrl = !!result.url;
+  const cheapestFlag = result.deal_flags?.find(f => f.flag_type === "CHEAPEST_IN_MARKET");
+  const underMarketFlag = result.deal_flags?.find(f => f.flag_type === "UNDER_MARKET");
+  const hasDealFlag = !!cheapestFlag || !!underMarketFlag;
+
   return (
     <div className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md border transition-colors ${
-      isBestPrice
-        ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15"
-        : "border-border bg-card hover:bg-muted/30"
+      cheapestFlag
+        ? "border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/15"
+        : underMarketFlag
+          ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15"
+          : isBestPrice
+            ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15"
+            : "border-border bg-card hover:bg-muted/30"
     }`}>
       <div className="flex-1 min-w-0 space-y-0.5">
         <div className="flex items-center gap-1.5 flex-wrap">
-          {isBestPrice && (
+          {cheapestFlag && (
+            <Badge className="text-[9px] px-1 py-0 bg-amber-500 text-white border-amber-600 leading-tight">
+              🏆 Cheapest — ${cheapestFlag.price_gap?.toLocaleString()} under next
+            </Badge>
+          )}
+          {underMarketFlag && !cheapestFlag && (
+            <Badge className="text-[9px] px-1 py-0 bg-emerald-500 text-white border-emerald-600 leading-tight">
+              📉 {underMarketFlag.price_gap_pct}% under market
+            </Badge>
+          )}
+          {isBestPrice && !hasDealFlag && (
             <Badge className="text-[9px] px-1 py-0 bg-emerald-500 text-white border-emerald-600 leading-tight">
               Best
             </Badge>
@@ -215,9 +241,16 @@ const REASSURANCE_MESSAGES = [
 const OUTWARD_TIMEOUT_MS = 5 * 60 * 1000;
 const TERMINAL_STATUSES = new Set(["complete", "failed", "timeout"]);
 
-/** Detect which LC series a result belongs to (for series gate) */
+/** Detect which series a result belongs to (LC + Prado + Ranger + Patrol) */
 function detectSeriesFromText(text: string): string | null {
   const t = text.toUpperCase();
+  // Prado must be checked FIRST (before LC) because "LandCruiser Prado 250" contains "250"
+  if (t.includes("PRADO")) {
+    if (/\b250\b|PRADO[\-_\s]?250/.test(t)) return "PRADO_250";
+    if (/\b150\b|PRADO[\-_\s]?150/.test(t)) return "PRADO_150";
+    return null; // Prado but unknown generation
+  }
+  // LC70
   if (
     /\b7[0689]\b/.test(t) ||
     /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]|VDJL79R|GDJL79R|TROOPY|TROOPCARRIER|WORKMATE/.test(t) ||
@@ -226,6 +259,11 @@ function detectSeriesFromText(text: string): string | null {
   ) return "LC70";
   if (/\b300\b/.test(t) || /LC300|FJA300R|GR[\-_\s]?SPORT|GR[\-_\s]?S\b/.test(t)) return "LC300";
   if (/\b200\b/.test(t) || /LC200|VDJ200|UZJ200/.test(t)) return "LC200";
+  // Ranger
+  if (/NEXT[\-_\s]?GEN|NEXTGEN|\bV6\b|RANGER[\-_\s]?PY/.test(t)) return "RANGER_PY";
+  // Patrol
+  if (/\bY62\b/.test(t)) return "PATROL_Y62";
+  if (/\bY61\b|\bGU\b/.test(t)) return "PATROL_Y61";
   return null;
 }
 
@@ -277,7 +315,9 @@ function mergeAllResults(
     if (isLCIntent && textUpper.includes("PRADO")) return false;
     if (isPradoIntent && !textUpper.includes("PRADO")) return false;
     const ls = detectSeriesFromText(allText);
-    return ls === intentSeries;
+    if (ls !== null) return ls === intentSeries;
+    // Unknown series: allow for LC (Prado already excluded), reject for Prado
+    return isLCIntent === true;
   };
 
   // Internal results
@@ -492,6 +532,7 @@ export function OogleBotSearch() {
   const [externalResponse, setExternalResponse] = useState<OogleBotResponse | null>(null);
   const [internalLoading, setInternalLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [dealFlagsMap, setDealFlagsMap] = useState<Map<string, DealFlag[]>>(new Map());
 
   // ── Outward search state (Phase 2) ──
   const [searchRunId, setSearchRunId] = useState<string | null>(null);
@@ -537,10 +578,17 @@ export function OogleBotSearch() {
   // ── Unified result merge ──
   // Extract intent series from make + model for LC generation gating
   const intentSeries = useMemo(() => extractSeries(make, model), [make, model]);
-  const allUnified = useMemo(
-    () => mergeAllResults(internalResults, externalResponse?.results ?? [], outwardResults, badge, intentSeries),
-    [internalResults, externalResponse?.results, outwardResults, badge, intentSeries],
-  );
+  const allUnified = useMemo(() => {
+    const results = mergeAllResults(internalResults, externalResponse?.results ?? [], outwardResults, badge, intentSeries);
+    // Enrich with deal flags
+    if (dealFlagsMap.size > 0) {
+      return results.map(r => ({
+        ...r,
+        deal_flags: dealFlagsMap.get(r.id) || r.deal_flags,
+      }));
+    }
+    return results;
+  }, [internalResults, externalResponse?.results, outwardResults, badge, intentSeries, dealFlagsMap]);
   const marketResults = useMemo(() => allUnified.filter(r => !r.is_auction), [allUnified]);
   const auctionResults = useMemo(() => allUnified.filter(r => r.is_auction), [allUnified]);
 
@@ -876,6 +924,7 @@ export function OogleBotSearch() {
     setShowAllAuction(false);
     setOutwardTimedOut(false);
     setInternalResults([]);
+    setDealFlagsMap(new Map());
     setDealerSpecs([]);
     setExternalResponse(null);
     setSearchRunId(null);
@@ -937,6 +986,29 @@ export function OogleBotSearch() {
         structuredFilters.badge,
         effectiveSeries || extractSeries(structuredFilters.make, structuredFilters.model),
       );
+
+      // Enrich with deal flags
+      if (visibleBaselineResults.length > 0) {
+        const resultIds = visibleBaselineResults.map(r => r.id).filter(Boolean).slice(0, 200);
+        supabase
+          .from("deal_flags")
+          .select("listing_id, flag_type, price_gap, price_gap_pct, confidence")
+          .in("listing_id", resultIds)
+          .gt("expires_at", new Date().toISOString())
+          .then(({ data: flagData }) => {
+            if (flagData && flagData.length > 0) {
+              console.log(`[Search] ${flagData.length} deal flags found`);
+              const fm = new Map<string, DealFlag[]>();
+              for (const f of flagData) {
+                const existing = fm.get(f.listing_id) || [];
+                existing.push({ flag_type: f.flag_type, price_gap: f.price_gap, price_gap_pct: f.price_gap_pct, confidence: f.confidence });
+                fm.set(f.listing_id, existing);
+              }
+              setDealFlagsMap(fm);
+            }
+          });
+      }
+
       const totalResults = visibleBaselineResults.length;
       console.log(`[Search] Unique visible results: ${totalResults} (tiered: ${listings.length}, direct: ${directResponse?.results?.length ?? 0})`);
 
