@@ -950,6 +950,78 @@ export type Database = {
         }
         Relationships: []
       }
+      deal_flags: {
+        Row: {
+          cluster_key: string
+          cluster_size: number
+          confidence: number
+          created_at: string
+          expires_at: string
+          flag_type: string
+          id: string
+          km: number | null
+          listing_id: string
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          market_spread: number | null
+          model: string | null
+          price: number | null
+          price_gap: number | null
+          price_gap_pct: number | null
+          source: string | null
+          updated_at: string
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          cluster_key: string
+          cluster_size?: number
+          confidence?: number
+          created_at?: string
+          expires_at?: string
+          flag_type: string
+          id?: string
+          km?: number | null
+          listing_id: string
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          market_spread?: number | null
+          model?: string | null
+          price?: number | null
+          price_gap?: number | null
+          price_gap_pct?: number | null
+          source?: string | null
+          updated_at?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          cluster_key?: string
+          cluster_size?: number
+          confidence?: number
+          created_at?: string
+          expires_at?: string
+          flag_type?: string
+          id?: string
+          km?: number | null
+          listing_id?: string
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          market_spread?: number | null
+          model?: string | null
+          price?: number | null
+          price_gap?: number | null
+          price_gap_pct?: number | null
+          source?: string | null
+          updated_at?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       deal_truth_artefacts: {
         Row: {
           artefact_type: string
