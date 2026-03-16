@@ -277,7 +277,7 @@ function mergeAllResults(
     if (isLCIntent && textUpper.includes("PRADO")) return false;
     if (isPradoIntent && !textUpper.includes("PRADO")) return false;
     const ls = detectSeriesFromText(allText);
-    return ls === null || ls === intentSeries;
+    return ls === intentSeries;
   };
 
   // Internal results

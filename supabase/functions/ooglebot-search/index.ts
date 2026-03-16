@@ -403,7 +403,8 @@ Deno.serve(async (req) => {
         if (intentIsPrado && !text.includes("PRADO")) return false;
 
         const ls = detectListingSeriesLC(l);
-        return ls === null || ls === intentSeries;
+        // For explicit series searches, require a positive series match.
+        return ls === intentSeries;
       });
       console.log(`Series gate (${intentSeries}): ${beforeSeries} → ${filtered.length}`);
     }

@@ -367,7 +367,8 @@ function applySeriesGate(results: InternalMatch[], parsed: ParsedIntent): Intern
     if (intentIsPrado && !text.includes("PRADO")) return false;
 
     const ls = detectListingSeriesLC(l);
-    return ls === null || ls === intentSeries;
+    // For explicit series searches, require a positive series match.
+    return ls === intentSeries;
   });
 }
 
