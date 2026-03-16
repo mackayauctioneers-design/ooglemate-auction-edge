@@ -924,6 +924,7 @@ export function OogleBotSearch() {
     setShowAllAuction(false);
     setOutwardTimedOut(false);
     setInternalResults([]);
+    setDealFlagsMap(new Map());
     setDealerSpecs([]);
     setExternalResponse(null);
     setSearchRunId(null);
