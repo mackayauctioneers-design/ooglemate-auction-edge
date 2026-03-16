@@ -1,73 +1,99 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Sparkles, ExternalLink, Trophy, TrendingDown, RefreshCw, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Sparkles, ExternalLink, Trophy, TrendingDown, RefreshCw, Loader2, Zap, Gavel } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 
-interface DealFlag {
+interface CaroogleFind {
   id: string;
   listing_id: string;
-  flag_type: string;
-  confidence: number;
-  price: number | null;
-  price_gap: number | null;
-  price_gap_pct: number | null;
-  market_spread: number | null;
   make: string | null;
   model: string | null;
+  series: string | null;
   variant: string | null;
   year: number | null;
   km: number | null;
+  price: number | null;
+  median_price: number | null;
+  spread: number | null;
+  discount_percent: number | null;
+  score: number;
+  confidence: string;
+  reasons: string[];
+  flag_types: string[];
   source: string | null;
   location: string | null;
   listing_url: string | null;
   cluster_key: string;
   cluster_size: number;
-  created_at: string;
-  expires_at: string;
+  avg_days_on_market: number | null;
+  is_auction: boolean;
+  auction_arbitrage_gap: number | null;
+  first_detected_at: string;
 }
 
 const fmt = (n: number | null) => n != null ? `$${n.toLocaleString()}` : '-';
 const fmtKm = (n: number | null) => n != null ? `${(n / 1000).toFixed(0)}k km` : '';
 
+const confidenceColors: Record<string, string> = {
+  HIGH: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30',
+  MEDIUM: 'bg-amber-500/15 text-amber-700 border-amber-500/30',
+  LOW: 'bg-muted text-muted-foreground border-border',
+};
+
+const flagIcons: Record<string, React.ReactNode> = {
+  CHEAPEST_IN_MARKET: <Trophy className="h-3.5 w-3.5 text-amber-500" />,
+  UNDER_MARKET: <TrendingDown className="h-3.5 w-3.5 text-emerald-500" />,
+  AUCTION_ARBITRAGE: <Gavel className="h-3.5 w-3.5 text-violet-500" />,
+  FAST_MOVER: <Zap className="h-3.5 w-3.5 text-orange-500" />,
+};
+
+const flagLabels: Record<string, string> = {
+  CHEAPEST_IN_MARKET: 'Cheapest',
+  UNDER_MARKET: 'Under Market',
+  AUCTION_ARBITRAGE: 'Auction Arb',
+  FAST_MOVER: 'Fast Mover',
+};
+
 export function CaroogleAIFindsDrawer() {
   const [open, setOpen] = useState(false);
-  const [flags, setFlags] = useState<DealFlag[]>([]);
+  const [finds, setFinds] = useState<CaroogleFind[]>([]);
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
 
-  const fetchFlags = useCallback(async () => {
+  const fetchFinds = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('deal_flags')
+        .from('caroogle_finds')
         .select('*')
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false })
-        .limit(100);
+        .eq('status', 'active')
+        .gte('score', 40)
+        .order('score', { ascending: false })
+        .limit(50);
       if (error) throw error;
-      setFlags((data as DealFlag[]) || []);
+      setFinds((data as CaroogleFind[]) || []);
     } catch (err) {
-      console.error('Failed to load deal flags:', err);
+      console.error('Failed to load finds:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (open) fetchFlags();
-  }, [open, fetchFlags]);
+    if (open) fetchFinds();
+  }, [open, fetchFinds]);
 
   const runScanner = async () => {
     setScanning(true);
     try {
       const { data, error } = await supabase.functions.invoke('market-scanner');
       if (error) throw error;
-      toast.success(`Scanned ${data?.clusters_scanned || 0} clusters, flagged ${data?.flags_created || 0} deals`);
-      fetchFlags();
+      toast.success(`Scanned ${data?.clusters_scanned || 0} clusters → ${data?.finds_created || 0} finds`);
+      fetchFinds();
     } catch (err: any) {
       toast.error(err.message || 'Scanner failed');
     } finally {
@@ -75,9 +101,7 @@ export function CaroogleAIFindsDrawer() {
     }
   };
 
-  const cheapest = flags.filter(f => f.flag_type === 'CHEAPEST_IN_MARKET');
-  const underMarket = flags.filter(f => f.flag_type === 'UNDER_MARKET');
-  const totalCount = flags.length;
+  const totalCount = finds.length;
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -93,56 +117,47 @@ export function CaroogleAIFindsDrawer() {
           <div className="flex items-center justify-between">
             <SheetTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-amber-500" />
-              CaroogleAI Finds
+              CarOogle Finds
             </SheetTitle>
             <Button size="sm" variant="outline" onClick={runScanner} disabled={scanning}>
               {scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
             </Button>
           </div>
           <p className="text-sm text-muted-foreground">
-            Market leader & undervalued detections from the opportunity engine
+            Automatically detected market opportunities
           </p>
+
+          {/* Summary strip */}
+          {!loading && finds.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-2">
+              {(['CHEAPEST_IN_MARKET', 'UNDER_MARKET', 'AUCTION_ARBITRAGE', 'FAST_MOVER'] as const).map(ft => {
+                const count = finds.filter(f => f.flag_types?.includes(ft)).length;
+                if (count === 0) return null;
+                return (
+                  <span key={ft} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                    {flagIcons[ft]} {count} {flagLabels[ft]}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </SheetHeader>
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : flags.length === 0 ? (
+        ) : finds.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Sparkles className="h-8 w-8 mx-auto mb-3 opacity-40" />
-            <p className="font-medium">No active flags</p>
+            <p className="font-medium">No active finds</p>
             <p className="text-sm mt-1">Run the scanner to detect market opportunities</p>
           </div>
         ) : (
-          <div className="space-y-6 pt-2">
-            {/* Cheapest in Market */}
-            {cheapest.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Trophy className="h-4 w-4 text-amber-500" />
-                  <h3 className="text-sm font-semibold text-foreground">Cheapest in Market</h3>
-                  <Badge variant="secondary" className="text-[10px]">{cheapest.length}</Badge>
-                </div>
-                {cheapest.map(flag => (
-                  <FlagCard key={flag.id} flag={flag} />
-                ))}
-              </div>
-            )}
-
-            {/* Under Market */}
-            {underMarket.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <TrendingDown className="h-4 w-4 text-emerald-500" />
-                  <h3 className="text-sm font-semibold text-foreground">Under Market Value</h3>
-                  <Badge variant="secondary" className="text-[10px]">{underMarket.length}</Badge>
-                </div>
-                {underMarket.map(flag => (
-                  <FlagCard key={flag.id} flag={flag} />
-                ))}
-              </div>
-            )}
+          <div className="space-y-3 pt-2">
+            {finds.map(find => (
+              <FindCard key={find.id} find={find} />
+            ))}
           </div>
         )}
       </SheetContent>
@@ -150,51 +165,84 @@ export function CaroogleAIFindsDrawer() {
   );
 }
 
-function FlagCard({ flag }: { flag: DealFlag }) {
-  const vehicle = `${flag.year || ''} ${flag.make || ''} ${flag.model || ''} ${flag.variant || ''}`.trim();
-  const isCheapest = flag.flag_type === 'CHEAPEST_IN_MARKET';
+function FindCard({ find }: { find: CaroogleFind }) {
+  const vehicle = `${find.year || ''} ${find.make || ''} ${find.model || ''} ${find.variant || ''}`.trim();
 
   return (
-    <div className={`rounded-lg border p-3 space-y-2 ${
-      isCheapest
-        ? 'border-amber-500/30 bg-amber-500/5'
-        : 'border-emerald-500/30 bg-emerald-500/5'
-    }`}>
+    <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+      {/* Header: vehicle + score */}
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-medium text-sm text-foreground truncate">{vehicle || 'Unknown vehicle'}</p>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-            {flag.source && <span>{flag.source}</span>}
-            {flag.location && <span>• {flag.location}</span>}
-            {flag.km && <span>• {fmtKm(flag.km)}</span>}
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+            {find.source && <span className="capitalize">{find.source}</span>}
+            {find.location && <span>• {find.location}</span>}
+            {find.km && <span>• {fmtKm(find.km)}</span>}
           </div>
         </div>
-        {flag.listing_url && (
-          <a href={flag.listing_url} target="_blank" rel="noopener noreferrer">
-            <Button variant="ghost" size="iconSm">
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Button>
-          </a>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Badge variant="outline" className={`text-[10px] font-bold ${confidenceColors[find.confidence] || ''}`}>
+            {find.score}
+          </Badge>
+          {find.listing_url && (
+            <a href={find.listing_url} target="_blank" rel="noopener noreferrer">
+              <Button variant="ghost" size="iconSm">
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
+            </a>
+          )}
+        </div>
       </div>
 
+      {/* Price row */}
       <div className="flex items-center gap-3 text-xs">
-        <span className="font-semibold text-foreground">{fmt(flag.price)}</span>
-        {isCheapest && flag.market_spread != null && (
-          <Badge className="bg-amber-500/15 text-amber-700 border border-amber-500/30 text-[10px]">
-            🏆 {fmt(flag.market_spread)} under next
-          </Badge>
+        <span className="font-bold text-foreground text-sm">{fmt(find.price)}</span>
+        {find.median_price && (
+          <span className="text-muted-foreground">
+            Market {fmt(find.median_price)}
+          </span>
         )}
-        {!isCheapest && flag.price_gap_pct != null && (
-          <Badge className="bg-emerald-500/15 text-emerald-700 border border-emerald-500/30 text-[10px]">
-            📉 {Math.abs(flag.price_gap_pct).toFixed(0)}% under market
-          </Badge>
+        {find.spread != null && find.spread > 0 && (
+          <span className="text-muted-foreground">
+            Spread {fmt(find.spread)}
+          </span>
         )}
       </div>
 
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-        <span>{flag.cluster_size} in cluster • {(flag.confidence * 100).toFixed(0)}% confidence</span>
-        <span>{formatDistanceToNow(new Date(flag.created_at), { addSuffix: true })}</span>
+      {/* Flag badges */}
+      <div className="flex flex-wrap gap-1.5">
+        {find.flag_types?.map(ft => (
+          <span
+            key={ft}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border ${
+              ft === 'CHEAPEST_IN_MARKET'
+                ? 'border-amber-500/30 bg-amber-500/10 text-amber-700'
+                : ft === 'UNDER_MARKET'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+                : ft === 'AUCTION_ARBITRAGE'
+                ? 'border-violet-500/30 bg-violet-500/10 text-violet-700'
+                : 'border-orange-500/30 bg-orange-500/10 text-orange-700'
+            }`}
+          >
+            {flagIcons[ft]}
+            {flagLabels[ft]}
+            {ft === 'UNDER_MARKET' && find.discount_percent != null && ` ${find.discount_percent}%`}
+            {ft === 'AUCTION_ARBITRAGE' && find.auction_arbitrage_gap != null && ` ${fmt(find.auction_arbitrage_gap)}`}
+          </span>
+        ))}
+      </div>
+
+      {/* Reasons */}
+      <div className="text-[10px] text-muted-foreground space-y-0.5">
+        {find.reasons?.map((r, i) => (
+          <p key={i}>• {r}</p>
+        ))}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border">
+        <span>{find.cluster_size} in cluster{find.avg_days_on_market ? ` • avg ${find.avg_days_on_market}d` : ''}</span>
+        <span>{formatDistanceToNow(new Date(find.first_detected_at), { addSuffix: true })}</span>
       </div>
     </div>
   );
