@@ -214,7 +214,7 @@ export function CaroogleAIFindsDrawer() {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : sorted.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Sparkles className="h-8 w-8 mx-auto mb-3 opacity-40" />
             <p className="font-medium">{viewFilter === 'starred' ? 'No starred finds' : 'No active finds'}</p>
