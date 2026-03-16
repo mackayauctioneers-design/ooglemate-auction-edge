@@ -864,14 +864,34 @@ export function OogleBotSearch() {
         console.log(`[Search] Tier 0: ${tiered.tier0_auctions.length} | Tier 1: ${tiered.tier1_internal.length} | Outward: ${tiered.outward_allowed ? "ALLOWED" : "BLOCKED"} (${tiered.outward_reason}) | ${tiered.duration_ms}ms`);
       }
 
-      if (directResult.status === "fulfilled") {
-        setExternalResponse(directResult.value);
+      const directResponse = directResult.status === "fulfilled" ? directResult.value : null;
+      if (directResponse) {
+        setExternalResponse(directResponse);
       }
 
-      // Count total results
-      const directCount = directResult.status === "fulfilled" ? (directResult.value.results?.length ?? 0) : 0;
-      const totalResults = listings.length + directCount;
-      console.log(`[Search] Total internal results: ${totalResults} (tiered: ${listings.length}, direct: ${directCount})`);
+      const visibleBaselineResults = mergeAllResults(
+        listings,
+        directResponse?.results ?? [],
+        [],
+        structuredFilters.badge,
+        extractSeries(structuredFilters.make, structuredFilters.model),
+      );
+      const totalResults = visibleBaselineResults.length;
+      console.log(`[Search] Unique visible results: ${totalResults} (tiered: ${listings.length}, direct: ${directResponse?.results?.length ?? 0})`);
+
+      const rerunCanonicalSearch = async () => {
+        const [reQueryResult, reDirectResult] = await Promise.allSettled([
+          searchTiered(instruction, structuredIntent),
+          searchOogleBotDirect(structuredFilters),
+        ]);
+
+        if (reQueryResult.status === "fulfilled") {
+          setInternalResults([...reQueryResult.value.tier0_auctions, ...reQueryResult.value.tier1_internal]);
+        }
+        if (reDirectResult.status === "fulfilled") {
+          setExternalResponse(reDirectResult.value);
+        }
+      };
 
       // Outward gate — always trigger outward search for AI discovery
       const outwardAllowed = tiered?.outward_allowed ?? true;
@@ -890,9 +910,9 @@ export function OogleBotSearch() {
         console.log(`[Search] Outward search BLOCKED: ${tiered?.outward_reason}`);
       }
 
-      // ── ACTIVE HUNT: If fewer than MIN_RESULTS, trigger scrapers ──
+      // ── ACTIVE HUNT: trigger off deduped visible coverage, not raw duplicate counts ──
       if (totalResults < MIN_RESULTS_FOR_HUNT) {
-        console.log(`[Active Hunt] Only ${totalResults} results (< ${MIN_RESULTS_FOR_HUNT}), launching scrapers…`);
+        console.log(`[Active Hunt] Only ${totalResults} unique results (< ${MIN_RESULTS_FOR_HUNT}), launching scrapers…`);
         setHuntStatus("hunting");
 
         try {
@@ -916,18 +936,28 @@ export function OogleBotSearch() {
             console.error("[Active Hunt] Error:", huntError);
             setHuntStatus("idle");
           } else if (huntData?.hunt_id) {
+            const triggeredSources = huntData.sources_triggered || [];
+            const queueIds = huntData.apify_queue_ids || [];
+            huntNeedsFinalRequeryRef.current = Boolean(huntData.sync_sources_triggered?.length);
+
+            if (triggeredSources.length === 0) {
+              setHuntStatus("idle");
+              sonnerToast.error("Market hunt could not start", {
+                description: "All hunt sources failed to launch.",
+              });
+              return;
+            }
+
             setHuntId(huntData.hunt_id);
-            setHuntSources(huntData.sources_triggered || []);
-            setHuntQueueIds(huntData.apify_queue_ids || []);
-            console.log(`[Active Hunt] Launched: ${huntData.sources_triggered?.join(", ")} (hunt_id: ${huntData.hunt_id})`);
+            setHuntSources(triggeredSources);
+            setHuntQueueIds(queueIds);
+            console.log(`[Active Hunt] Launched: ${triggeredSources.join(", ")} (hunt_id: ${huntData.hunt_id})`);
 
             sonnerToast.info("Hunting the market…", {
-              description: `Searching ${huntData.sources_triggered?.length || 0} external sources: ${huntData.sources_triggered?.join(", ")}`,
+              description: `Searching ${triggeredSources.length} external sources: ${triggeredSources.join(", ")}`,
               duration: 6000,
             });
 
-            // Poll apify_runs_queue for completion, then re-query
-            const queueIds = huntData.apify_queue_ids || [];
             if (queueIds.length > 0) {
               let reQueryDone = false;
               huntPollRef.current = setInterval(async () => {
@@ -939,51 +969,45 @@ export function OogleBotSearch() {
                 if (!queueRows) return;
                 const completed = queueRows.filter(r => r.status === "completed" || r.status === "failed");
                 const totalUpserted = queueRows.reduce((sum, r) => sum + (r.items_upserted || 0), 0);
+                const shouldRefresh = totalUpserted > 0 || huntNeedsFinalRequeryRef.current;
 
-                if (totalUpserted > 0 && !reQueryDone) {
+                if (shouldRefresh && !reQueryDone) {
                   reQueryDone = true;
-                  console.log(`[Active Hunt] ${totalUpserted} items ingested — re-running search`);
-                  // Re-query internal DB
-                  const reQuery = await searchTiered(instruction, structuredIntent);
-                  const newListings = [...reQuery.tier0_auctions, ...reQuery.tier1_internal];
-                  setInternalResults(newListings);
-                  sonnerToast.success(`${totalUpserted} new vehicles discovered`, {
-                    description: `Total results now: ${newListings.length}`,
-                  });
+                  console.log(`[Active Hunt] Refreshing search after hunt activity (upserted=${totalUpserted})`);
+                  await rerunCanonicalSearch();
+                  if (totalUpserted > 0) {
+                    sonnerToast.success(`${totalUpserted} new vehicles discovered`, {
+                      description: "Results updated from live market hunt.",
+                    });
+                  }
                 }
 
                 if (completed.length === queueRows.length) {
-                  // All done
                   setHuntStatus("complete");
                   if (huntPollRef.current) { clearInterval(huntPollRef.current); huntPollRef.current = null; }
 
-                  // Final re-query if we haven't already
-                  if (!reQueryDone && totalUpserted > 0) {
-                    const finalReQuery = await searchTiered(instruction, structuredIntent);
-                    setInternalResults([...finalReQuery.tier0_auctions, ...finalReQuery.tier1_internal]);
+                  if (!reQueryDone && shouldRefresh) {
+                    await rerunCanonicalSearch();
                   }
 
-                  // Update hunt record
                   supabase.from("ooglebot_active_hunts").update({
                     status: "complete",
                     results_found: totalUpserted,
                     completed_at: new Date().toISOString(),
                   }).eq("id", huntData.hunt_id).then(() => {});
                 }
-              }, 10_000); // Poll every 10s
+              }, 10_000);
 
-              // Safety timeout: stop polling after 5 minutes
               huntReQueryRef.current = setTimeout(() => {
                 if (huntPollRef.current) { clearInterval(huntPollRef.current); huntPollRef.current = null; }
                 setHuntStatus(prev => prev === "hunting" ? "complete" : prev);
               }, 5 * 60 * 1000);
             } else {
-              // No Apify queue IDs (e.g. only CaroogleAI), wait and re-query once
+              const requeryDelayMs = huntNeedsFinalRequeryRef.current ? 10_000 : 30_000;
               huntReQueryRef.current = setTimeout(async () => {
-                const reQuery = await searchTiered(instruction, structuredIntent);
-                setInternalResults([...reQuery.tier0_auctions, ...reQuery.tier1_internal]);
+                await rerunCanonicalSearch();
                 setHuntStatus("complete");
-              }, 30_000);
+              }, requeryDelayMs);
             }
           }
         } catch (huntErr) {
