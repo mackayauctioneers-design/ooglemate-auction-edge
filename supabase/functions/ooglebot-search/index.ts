@@ -29,6 +29,8 @@ const OEM_SOURCES = new Set(["toyota"]);
 function detectListingSeriesLC(l: {
   model?: string | null;
   variant_raw?: string | null; variant_family?: string | null; variant_used?: string | null;
+  series_code?: string | null; series_family?: string | null;
+  cab_type?: string | null; body_type?: string | null;
   drivetrain?: string | null; transmission?: string | null;
   listing_id?: string; listing_url?: string | null;
 }): string | null {
