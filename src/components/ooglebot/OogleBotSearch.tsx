@@ -825,9 +825,15 @@ export function OogleBotSearch() {
     setInsightLoading(false);
     insightFiredRef.current = null;
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (huntPollRef.current) { clearInterval(huntPollRef.current); huntPollRef.current = null; }
+    if (huntReQueryRef.current) { clearTimeout(huntReQueryRef.current); huntReQueryRef.current = null; }
     seenJobIdsRef.current.clear();
     prevOutwardCountRef.current = 0;
     setJobStatuses([]);
+    setHuntId(null);
+    setHuntStatus("idle");
+    setHuntSources([]);
+    setHuntQueueIds([]);
 
     try {
       const structuredIntent = {
@@ -860,7 +866,12 @@ export function OogleBotSearch() {
         setExternalResponse(directResult.value);
       }
 
-      // Outward gate
+      // Count total results
+      const directCount = directResult.status === "fulfilled" ? (directResult.value.results?.length ?? 0) : 0;
+      const totalResults = listings.length + directCount;
+      console.log(`[Search] Total internal results: ${totalResults} (tiered: ${listings.length}, direct: ${directCount})`);
+
+      // Outward gate — always trigger outward search for AI discovery
       const outwardAllowed = tiered?.outward_allowed ?? true;
       if (outwardAllowed || fullMarketScan) {
         const outwardFilters = {
@@ -875,6 +886,108 @@ export function OogleBotSearch() {
         triggerOutwardSearch(outwardFilters);
       } else {
         console.log(`[Search] Outward search BLOCKED: ${tiered?.outward_reason}`);
+      }
+
+      // ── ACTIVE HUNT: If fewer than MIN_RESULTS, trigger scrapers ──
+      if (totalResults < MIN_RESULTS_FOR_HUNT) {
+        console.log(`[Active Hunt] Only ${totalResults} results (< ${MIN_RESULTS_FOR_HUNT}), launching scrapers…`);
+        setHuntStatus("hunting");
+
+        try {
+          const { data: huntData, error: huntError } = await supabase.functions.invoke("ooglebot-active-hunt", {
+            body: {
+              make: structuredFilters.make,
+              model: structuredFilters.model,
+              badge: structuredFilters.badge,
+              year_min: structuredFilters.year_min,
+              year_max: structuredFilters.year_max,
+              km_max: structuredFilters.max_km,
+              price_max: structuredFilters.price_max,
+              state: structuredFilters.state,
+              account_id: dealerProfile?.account_id || null,
+              initiated_by: isAdmin ? "operator" : "user",
+              internal_count: totalResults,
+            },
+          });
+
+          if (huntError) {
+            console.error("[Active Hunt] Error:", huntError);
+            setHuntStatus("idle");
+          } else if (huntData?.hunt_id) {
+            setHuntId(huntData.hunt_id);
+            setHuntSources(huntData.sources_triggered || []);
+            setHuntQueueIds(huntData.apify_queue_ids || []);
+            console.log(`[Active Hunt] Launched: ${huntData.sources_triggered?.join(", ")} (hunt_id: ${huntData.hunt_id})`);
+
+            sonnerToast.info("Hunting the market…", {
+              description: `Searching ${huntData.sources_triggered?.length || 0} external sources: ${huntData.sources_triggered?.join(", ")}`,
+              duration: 6000,
+            });
+
+            // Poll apify_runs_queue for completion, then re-query
+            const queueIds = huntData.apify_queue_ids || [];
+            if (queueIds.length > 0) {
+              let reQueryDone = false;
+              huntPollRef.current = setInterval(async () => {
+                const { data: queueRows } = await supabase
+                  .from("apify_runs_queue")
+                  .select("id, status, items_upserted")
+                  .in("id", queueIds);
+
+                if (!queueRows) return;
+                const completed = queueRows.filter(r => r.status === "completed" || r.status === "failed");
+                const totalUpserted = queueRows.reduce((sum, r) => sum + (r.items_upserted || 0), 0);
+
+                if (totalUpserted > 0 && !reQueryDone) {
+                  reQueryDone = true;
+                  console.log(`[Active Hunt] ${totalUpserted} items ingested — re-running search`);
+                  // Re-query internal DB
+                  const reQuery = await searchTiered(instruction, structuredIntent);
+                  const newListings = [...reQuery.tier0_auctions, ...reQuery.tier1_internal];
+                  setInternalResults(newListings);
+                  sonnerToast.success(`${totalUpserted} new vehicles discovered`, {
+                    description: `Total results now: ${newListings.length}`,
+                  });
+                }
+
+                if (completed.length === queueRows.length) {
+                  // All done
+                  setHuntStatus("complete");
+                  if (huntPollRef.current) { clearInterval(huntPollRef.current); huntPollRef.current = null; }
+
+                  // Final re-query if we haven't already
+                  if (!reQueryDone && totalUpserted > 0) {
+                    const finalReQuery = await searchTiered(instruction, structuredIntent);
+                    setInternalResults([...finalReQuery.tier0_auctions, ...finalReQuery.tier1_internal]);
+                  }
+
+                  // Update hunt record
+                  supabase.from("ooglebot_active_hunts").update({
+                    status: "complete",
+                    results_found: totalUpserted,
+                    completed_at: new Date().toISOString(),
+                  }).eq("id", huntData.hunt_id).then(() => {});
+                }
+              }, 10_000); // Poll every 10s
+
+              // Safety timeout: stop polling after 5 minutes
+              huntReQueryRef.current = setTimeout(() => {
+                if (huntPollRef.current) { clearInterval(huntPollRef.current); huntPollRef.current = null; }
+                setHuntStatus(prev => prev === "hunting" ? "complete" : prev);
+              }, 5 * 60 * 1000);
+            } else {
+              // No Apify queue IDs (e.g. only CaroogleAI), wait and re-query once
+              huntReQueryRef.current = setTimeout(async () => {
+                const reQuery = await searchTiered(instruction, structuredIntent);
+                setInternalResults([...reQuery.tier0_auctions, ...reQuery.tier1_internal]);
+                setHuntStatus("complete");
+              }, 30_000);
+            }
+          }
+        } catch (huntErr) {
+          console.error("[Active Hunt] Failed:", huntErr);
+          setHuntStatus("idle");
+        }
       }
     } catch (err) {
       console.error("Search error:", err);
