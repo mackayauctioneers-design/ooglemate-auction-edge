@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Sparkles, ExternalLink, Trophy, TrendingDown, RefreshCw, Loader2, Zap, Gavel, Star, Trash2 } from 'lucide-react';
@@ -65,6 +66,7 @@ export function CaroogleAIFindsDrawer() {
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [viewFilter, setViewFilter] = useState<'active' | 'starred'>('active');
+  const [sortBy, setSortBy] = useState<string>('score');
 
   const fetchFinds = useCallback(async () => {
     setLoading(true);
@@ -119,6 +121,19 @@ export function CaroogleAIFindsDrawer() {
   };
 
   const filtered = finds.filter(f => viewFilter === 'starred' ? f.status === 'starred' : true);
+  const sorted = [...filtered].sort((a, b) => {
+    switch (sortBy) {
+      case 'spread': return (b.spread ?? 0) - (a.spread ?? 0);
+      case 'discount': return (b.discount_percent ?? 0) - (a.discount_percent ?? 0);
+      case 'price_low': return (a.price ?? Infinity) - (b.price ?? Infinity);
+      case 'price_high': return (b.price ?? 0) - (a.price ?? 0);
+      case 'year': return (b.year ?? 0) - (a.year ?? 0);
+      case 'km_low': return (a.km ?? Infinity) - (b.km ?? Infinity);
+      case 'newest': return new Date(b.first_detected_at).getTime() - new Date(a.first_detected_at).getTime();
+      case 'score':
+      default: return b.score - a.score;
+    }
+  });
   const starredCount = finds.filter(f => f.status === 'starred').length;
   const totalCount = finds.filter(f => f.status === 'active').length;
 
@@ -152,14 +167,31 @@ export function CaroogleAIFindsDrawer() {
             Automatically detected market opportunities
           </p>
 
-          {/* Filter tabs */}
-          <div className="flex gap-2 pt-2">
+          {/* Sort + Filter row */}
+          <div className="flex items-center gap-2 pt-2">
             <Button size="sm" variant={viewFilter === 'active' ? 'default' : 'outline'} onClick={() => setViewFilter('active')} className="text-xs h-7">
               All ({totalCount + starredCount})
             </Button>
             <Button size="sm" variant={viewFilter === 'starred' ? 'default' : 'outline'} onClick={() => setViewFilter('starred')} className="text-xs h-7">
               <Star className="h-3 w-3 mr-1" /> Starred ({starredCount})
             </Button>
+            <div className="ml-auto w-[140px]">
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="h-7 text-xs">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="score">Best Score</SelectItem>
+                  <SelectItem value="spread">Largest Spread</SelectItem>
+                  <SelectItem value="discount">Biggest Discount</SelectItem>
+                  <SelectItem value="year">Latest Model</SelectItem>
+                  <SelectItem value="price_low">Price: Low → High</SelectItem>
+                  <SelectItem value="price_high">Price: High → Low</SelectItem>
+                  <SelectItem value="km_low">Lowest KM</SelectItem>
+                  <SelectItem value="newest">Most Recent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Summary strip */}
@@ -182,7 +214,7 @@ export function CaroogleAIFindsDrawer() {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : sorted.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Sparkles className="h-8 w-8 mx-auto mb-3 opacity-40" />
             <p className="font-medium">{viewFilter === 'starred' ? 'No starred finds' : 'No active finds'}</p>
@@ -190,7 +222,7 @@ export function CaroogleAIFindsDrawer() {
           </div>
         ) : (
           <div className="space-y-3 pt-2">
-            {filtered.map(find => (
+            {sorted.map(find => (
               <FindCard key={find.id} find={find} onToggleStar={toggleStar} onDismiss={dismissFind} />
             ))}
           </div>
