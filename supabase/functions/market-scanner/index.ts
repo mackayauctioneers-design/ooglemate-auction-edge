@@ -132,7 +132,7 @@ interface Find {
   source: string | null;
   location: string | null;
   listing_url: string | null;
-  image_url: string | null;
+  image_url: string | null; // nullable — not all views have this
   cluster_key: string;
   cluster_size: number;
   avg_days_on_market: number | null;
