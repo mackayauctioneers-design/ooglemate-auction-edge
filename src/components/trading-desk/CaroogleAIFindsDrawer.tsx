@@ -82,15 +82,11 @@ export function CaroogleAIFindsDrawer() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="outline" className="relative gap-2">
-          <Sparkles className="h-4 w-4 text-amber-500" />
-          CaroogleAI Finds
-          {totalCount > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1">
-              {totalCount}
-            </span>
-          )}
-        </Button>
+        <button className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border font-medium transition-all border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 ${totalCount > 0 ? 'ring-2 ring-offset-1 ring-amber-500 shadow-md scale-105' : 'opacity-80 hover:opacity-100'}`}>
+          <Sparkles className="h-4 w-4" />
+          <span className="text-xl font-bold">{totalCount}</span>
+          <span className="text-[11px] uppercase tracking-wide">AI FINDS</span>
+        </button>
       </SheetTrigger>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader className="pb-4">
