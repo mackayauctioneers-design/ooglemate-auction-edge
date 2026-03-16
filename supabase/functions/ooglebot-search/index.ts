@@ -25,16 +25,43 @@ const RECENCY_DAYS = 14;
 const OEM_FRESHNESS_HOURS = 48;
 const OEM_SOURCES = new Set(["toyota"]);
 
-/** Detect which LC series (LC70/LC200/LC300) a listing belongs to, based on variant+URL signals */
+/** Detect which LC series (LC70/LC200/LC300) a listing belongs to, based on variant+URL+body signals */
 function detectListingSeriesLC(l: {
+  model?: string | null;
   variant_raw?: string | null; variant_family?: string | null; variant_used?: string | null;
+  drivetrain?: string | null; transmission?: string | null;
   listing_id?: string; listing_url?: string | null;
 }): string | null {
-  const text = [l.variant_raw, l.variant_family, l.variant_used, l.listing_id, l.listing_url]
-    .filter(Boolean).join(" ").toUpperCase();
-  if (/\b7[0689]\b/.test(text) || /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]/.test(text) || /\bWORKMATE\b/.test(text)) return "LC70";
-  if (/\b300\b/.test(text) || /GR[\-_\s]?SPORT|GR[\-_\s]?S\b|LC300/.test(text)) return "LC300";
-  if (/\b200\b/.test(text) || /LC200/.test(text)) return "LC200";
+  const text = [
+    l.model,
+    l.variant_raw,
+    l.variant_family,
+    l.variant_used,
+    l.drivetrain,
+    l.transmission,
+    l.listing_id,
+    l.listing_url,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toUpperCase();
+
+  // Strong LC70 signals
+  if (
+    /\b7[0689]\b/.test(text) ||
+    /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]|VDJL79R|GDJL79R|TROOPY|TROOPCARRIER|WORKMATE/.test(text) ||
+    /DOUBLE[\-_\s]?CAB|CAB[\-_\s]?CHASSIS/.test(text) ||
+    /LCMILITARY|LANDCRUISERMILITARY/.test(text)
+  ) return "LC70";
+
+  // Strong LC300 signals
+  if (
+    /\b300\b/.test(text) ||
+    /LC300|FJA300R|GR[\-_\s]?SPORT|GR[\-_\s]?S\b/.test(text)
+  ) return "LC300";
+
+  // LC200 fallback signals
+  if (/\b200\b/.test(text) || /LC200|VDJ200|UZJ200/.test(text)) return "LC200";
   return null;
 }
 
