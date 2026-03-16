@@ -217,10 +217,9 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
     .in("source", AUCTION_SOURCE_ALLOWLIST)
     .in("lifecycle_status", ACTIVE_LIFECYCLE)
     .eq("is_historical_result", false)
-    .not("asking_price", "is", null)
     .gte("last_seen_at", recencyCutoff)
     .ilike("make", `%${parsed.make}%`)
-    .order("asking_price", { ascending: true, nullsFirst: false })
+    .order("last_seen_at", { ascending: false })
     .limit(TIER0_LIMIT);
 
   // Model matching — use normalized model (series stripped) for LC queries
