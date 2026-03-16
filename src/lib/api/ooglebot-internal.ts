@@ -235,15 +235,15 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
   if (parsed.yearMin) q = q.gte("year", parsed.yearMin);
   if (parsed.yearMax) q = q.lte("year", parsed.yearMax);
   if (parsed.kmMax) q = q.lte("km", parsed.kmMax);
-  if (parsed.priceMax) q = q.lte("asking_price", parsed.priceMax);
+  if (parsed.priceMax) q = q.or(`asking_price.lte.${parsed.priceMax},asking_price.is.null`);
 
   const { data, error } = await q;
   if (error) {
     console.error("Tier 0 auction search error:", error);
     return [];
   }
-  // Apply series gate post-filter
-  return applySeriesGate((data || []) as InternalMatch[], parsed);
+
+  return applyBadgeFilter(applySeriesGate((data || []) as InternalMatch[], parsed), parsed.badge);
 }
 
 // ─── Tier 1: Internal Retail / Other ─────────────────────────────────────────
