@@ -33,7 +33,8 @@ interface CaroogleFind {
   is_auction: boolean;
   auction_arbitrage_gap: number | null;
   first_detected_at: string;
-}
+  status: string;
+};
 
 const fmt = (n: number | null) => n != null ? `$${n.toLocaleString()}` : '-';
 const fmtKm = (n: number | null) => n != null ? `${(n / 1000).toFixed(0)}k km` : '';
