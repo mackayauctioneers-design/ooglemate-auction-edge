@@ -358,13 +358,113 @@ Deno.serve(async (req) => {
 
     console.log(`[${CRON_NAME}] Built ${rows.length} valid rows (skipped ${skipped}, normalized ${normCount})`);
 
-    // ── Batch upsert into vehicle_listings ──
+    // ── Page Status Gate: validate a sample of listings ──
+    // For new listings (not already in DB), validate their URLs
+    // For performance, we batch-check up to 50 new URLs per run
+    const existingIds = new Set<string>();
+    const PAGE_CHECK_LIMIT = 50;
+
+    // Fetch existing listing_ids to know which are new
+    const allListingIds = rows.map(r => r.listing_id);
+    for (let i = 0; i < allListingIds.length; i += 500) {
+      const batch = allListingIds.slice(i, i + 500);
+      const { data: existing } = await sb
+        .from("vehicle_listings")
+        .select("listing_id, auction_status, lifecycle_state, relist_count")
+        .in("listing_id", batch);
+      for (const e of existing || []) {
+        existingIds.set(e.listing_id);
+      }
+    }
+
+    // Classify new listings via page status gate
+    const statusMap = new Map<string, { status: AuctionStatus; reason: string }>();
+    let checksPerformed = 0;
+    let filteredSold = 0;
+    let filteredWithdrawn = 0;
+    let filteredInvalid = 0;
+
+    // Also detect relists — listings that were previously DEAD/SOLD now reappearing
+    const relistDetected: string[] = [];
+    
+    // Check existing records for relist detection
+    for (let i = 0; i < allListingIds.length; i += 500) {
+      const batch = allListingIds.slice(i, i + 500);
+      const { data: deadOnes } = await sb
+        .from("vehicle_listings")
+        .select("listing_id, relist_count, lifecycle_state, auction_status")
+        .in("listing_id", batch)
+        .in("lifecycle_state", ["DEAD", "STALE"])
+        .in("auction_status", ["sold", "withdrawn", "invalid"]);
+      
+      for (const d of deadOnes || []) {
+        relistDetected.push(d.listing_id);
+      }
+    }
+
+    // Page-check new listings (capped for performance)
+    const newListingIds = rows
+      .filter(r => !existingIds.has(r.listing_id))
+      .map(r => r.listing_id);
+
+    for (const row of rows) {
+      if (existingIds.has(row.listing_id)) continue; // skip existing, they'll just update
+      if (checksPerformed >= PAGE_CHECK_LIMIT) break;
+
+      const result = await classifyPageStatus(row.listing_url);
+      statusMap.set(row.listing_id, result);
+      checksPerformed++;
+
+      if (result.status !== "active") {
+        console.log(`[${CRON_NAME}] PAGE GATE: ${row.listing_id} → ${result.status} (${result.reason})`);
+      }
+
+      // Small delay between checks to be polite
+      if (checksPerformed % 10 === 0) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+
+    // Filter rows: only upsert active listings (or existing ones being updated)
+    const activeRows: any[] = [];
+    const nonActiveRows: any[] = [];
+
+    for (const row of rows) {
+      const pageResult = statusMap.get(row.listing_id);
+      
+      if (pageResult && pageResult.status !== "active") {
+        // New listing that failed page gate — track but don't insert
+        row.auction_status = pageResult.status;
+        nonActiveRows.push(row);
+        if (pageResult.status === "sold") filteredSold++;
+        else if (pageResult.status === "withdrawn") filteredWithdrawn++;
+        else filteredInvalid++;
+        continue;
+      }
+
+      // Active or existing — set auction_status
+      row.auction_status = "active";
+
+      // Relist detection
+      if (relistDetected.includes(row.listing_id)) {
+        row.relist_count = 1; // Will be incremented via SQL below
+        row.lifecycle_state = "NEW"; // Revive
+        console.log(`[${CRON_NAME}] RELIST DETECTED: ${row.listing_id}`);
+      }
+
+      activeRows.push(row);
+    }
+
+    console.log(`[${CRON_NAME}] Page gate: ${checksPerformed} checked, ${filteredSold} sold, ${filteredWithdrawn} withdrawn, ${filteredInvalid} invalid`);
+    console.log(`[${CRON_NAME}] Active rows for upsert: ${activeRows.length}, filtered: ${nonActiveRows.length}, relists: ${relistDetected.length}`);
+
+    // ── Batch upsert ACTIVE rows into vehicle_listings ──
     let totalNew = 0;
     let totalUpdated = 0;
     let errors = 0;
 
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = rows.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < activeRows.length; i += BATCH_SIZE) {
+      const batch = activeRows.slice(i, i + BATCH_SIZE);
       const { error, data } = await sb
         .from("vehicle_listings")
         .upsert(batch, { onConflict: "listing_id", ignoreDuplicates: false })
@@ -375,8 +475,40 @@ Deno.serve(async (req) => {
         console.error(`[${CRON_NAME}] Batch upsert error at offset ${i}: ${error.message}`);
       } else {
         const count = data?.length || batch.length;
-        totalNew += count; // upsert doesn't distinguish new vs updated
+        totalNew += count;
       }
+    }
+
+    // ── Increment relist_count for detected relists ──
+    for (const relistId of relistDetected) {
+      await sb.rpc("increment_relist_count", { p_listing_id: relistId }).catch(() => {
+        // Fallback: manual increment
+        sb.from("vehicle_listings")
+          .update({ relist_count: 1 }) // At minimum mark as relisted
+          .eq("listing_id", relistId);
+      });
+    }
+
+    // ── Flag lemons: relist_count >= 2 ──
+    if (relistDetected.length > 0) {
+      await sb
+        .from("vehicle_listings")
+        .update({ lemon_flag: true, lemon_reason: "relisted_multiple_times" })
+        .in("listing_id", relistDetected)
+        .gte("relist_count", 2);
+    }
+
+    // ── Update non-active records' auction_status (if they exist) ──
+    for (const row of nonActiveRows) {
+      await sb
+        .from("vehicle_listings")
+        .update({
+          auction_status: row.auction_status,
+          lifecycle_state: "DEAD",
+          status: row.auction_status === "sold" ? "sold" : "inactive",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("listing_id", row.listing_id);
     }
 
     const runtimeMs = Date.now() - startTime;
