@@ -108,9 +108,7 @@ interface Listing {
   source: string;
   location: string | null;
   listing_url: string | null;
-  image_url: string | null;
   lifecycle_status: string | null;
-  days_on_market: number | null;
 }
 
 interface Find {
@@ -134,7 +132,7 @@ interface Find {
   source: string | null;
   location: string | null;
   listing_url: string | null;
-  image_url: string | null;
+  image_url: string | null; // nullable — not all views have this
   cluster_key: string;
   cluster_size: number;
   avg_days_on_market: number | null;
@@ -184,7 +182,7 @@ Deno.serve(async (req) => {
     const { data: listings, error } = await sb
       .from("market_listings")
       .select(
-        "id, make, model, variant_resolved, year, km, price, source, location, listing_url, image_url, lifecycle_status, days_on_market"
+        "id, make, model, variant_resolved, year, km, price, source, location, listing_url, lifecycle_status"
       )
       .not("lifecycle_status", "in", '("STALE","DEAD","SOLD","DELISTED","INVALID")')
       .gte("last_seen_at", recencyCutoff)
@@ -242,16 +240,8 @@ Deno.serve(async (req) => {
       const secondLowestPrice = prices[1];
       const spread = secondLowestPrice - lowestPrice;
 
-      // Average days on market for fast-mover detection
-      const daysValues = sorted
-        .map((l) => l.days_on_market)
-        .filter((d): d is number => d != null && d > 0);
-      const avgDays =
-        daysValues.length > 0
-          ? Math.round(
-              daysValues.reduce((a, b) => a + b, 0) / daysValues.length
-            )
-          : null;
+      // days_on_market not available on market_listings view — skip fast-mover for now
+      const avgDays: number | null = null;
 
       const isFastMover = avgDays != null && avgDays <= FAST_MOVER_MAX_DAYS;
 
@@ -291,7 +281,7 @@ Deno.serve(async (req) => {
           source: l.source,
           location: l.location,
           listing_url: l.listing_url,
-          image_url: l.image_url,
+          image_url: null,
           cluster_key: key,
           cluster_size: cluster.length,
           avg_days_on_market: avgDays,
