@@ -43,7 +43,7 @@ function sanitizeSourceUrl(url: string, listingId: string): string {
     // Try to build a correct Pickles detail URL from listing_id
     const picklesMatch = listingId.match(/^pickles:(\d+)$/);
     if (picklesMatch) {
-      return `https://www.pickles.com.au/used/details/cars/${picklesMatch[1]}`;
+      return `https://www.pickles.com.au/cars/search?q=${picklesMatch[1]}`;
     }
     return ""; // Can't repair — return empty
   }
