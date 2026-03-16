@@ -64,6 +64,7 @@ export interface TieredSearchResult {
 export interface ParsedIntent {
   make: string | null;
   model: string | null;
+  badge: string | null;
   yearMin: number | null;
   yearMax: number | null;
   kmMax: number | null;
