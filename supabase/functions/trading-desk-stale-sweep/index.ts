@@ -83,6 +83,10 @@ async function checkOne(row: OpRow): Promise<CheckResult> {
   if (!url) {
     return { id: row.id, listing_id: row.listing_id, status: "active", http_status: null, reason: "no_url_skip" };
   }
+  // Reject search/list page URLs — these are not real lot pages
+  if (/\/search\?q=|\/search\/-\/|\/list\/keyword/i.test(url)) {
+    return { id: row.id, listing_id: row.listing_id, status: "active", http_status: null, reason: "search_url_skip" };
+  }
 
   try {
     const resp = await fetchWithRetry(url);
