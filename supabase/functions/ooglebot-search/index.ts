@@ -25,8 +25,8 @@ const RECENCY_DAYS = 14;
 const OEM_FRESHNESS_HOURS = 48;
 const OEM_SOURCES = new Set(["toyota"]);
 
-/** Detect which LC series (LC70/LC200/LC300) a listing belongs to, based on variant+URL+body signals */
-function detectListingSeriesLC(l: {
+/** Detect which series a listing belongs to (LC + Prado + Ranger + Patrol) */
+function detectListingSeries(l: {
   model?: string | null;
   variant_raw?: string | null; variant_family?: string | null; variant_used?: string | null;
   series_code?: string | null; series_family?: string | null;
@@ -35,22 +35,17 @@ function detectListingSeriesLC(l: {
   listing_id?: string; listing_url?: string | null;
 }): string | null {
   const text = [
-    l.model,
-    l.variant_raw,
-    l.variant_family,
-    l.variant_used,
-    l.series_code,
-    l.series_family,
-    l.cab_type,
-    l.body_type,
-    l.drivetrain,
-    l.transmission,
-    l.listing_id,
-    l.listing_url,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toUpperCase();
+    l.model, l.variant_raw, l.variant_family, l.variant_used,
+    l.series_code, l.series_family, l.cab_type, l.body_type,
+    l.drivetrain, l.transmission, l.listing_id, l.listing_url,
+  ].filter(Boolean).join(" ").toUpperCase();
+
+  // Prado must be checked FIRST (before LC) because "LandCruiser Prado 250" contains "250"
+  if (text.includes("PRADO")) {
+    if (/\b250\b|PRADO[\-_\s]?250/.test(text)) return "PRADO_250";
+    if (/\b150\b|PRADO[\-_\s]?150/.test(text)) return "PRADO_150";
+    return null; // Prado but unknown generation
+  }
 
   // Strong LC70 signals
   if (
@@ -68,6 +63,13 @@ function detectListingSeriesLC(l: {
 
   // LC200 fallback signals
   if (/\b200\b/.test(text) || /LC200|VDJ200|UZJ200/.test(text)) return "LC200";
+
+  // Ranger
+  if (/NEXT[\-_\s]?GEN|NEXTGEN|\bV6\b|RANGER[\-_\s]?PY/.test(text)) return "RANGER_PY";
+  // Patrol
+  if (/\bY62\b/.test(text)) return "PATROL_Y62";
+  if (/\bY61\b|\bGU\b/.test(text)) return "PATROL_Y61";
+
   return null;
 }
 
