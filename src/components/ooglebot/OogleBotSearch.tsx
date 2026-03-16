@@ -305,6 +305,7 @@ function mergeAllResults(
   // Scored / ooglebot-search results
   for (const r of scoredResults) {
     if (!matchesBadge(r.variant, r.listing_url)) continue;
+    if (!matchesSeries({ title: `${r.make} ${r.model}`, variant: r.variant, url: r.listing_url, model: r.model })) continue;
     all.push({
       id: r.listing_id,
       title: `${r.year ?? ""} ${r.make ?? ""} ${r.model ?? ""}`.trim(),
