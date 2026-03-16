@@ -86,7 +86,7 @@ export default function DealDetailPage() {
       <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
         {/* Back link */}
         <Link to="/deals" className="text-sm text-primary hover:underline flex items-center gap-1">
-          <ArrowLeft className="h-3 w-3" /> Back to Deal Ledger
+          <ArrowLeft className="h-3 w-3" /> Back to Transparency Ledger
         </Link>
 
         {/* Header */}
