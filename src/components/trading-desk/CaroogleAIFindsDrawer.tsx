@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Sparkles, ExternalLink, Trophy, TrendingDown, RefreshCw, Loader2, Zap, Gavel } from 'lucide-react';
+import { Sparkles, ExternalLink, Trophy, TrendingDown, RefreshCw, Loader2, Zap, Gavel, Star, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 
