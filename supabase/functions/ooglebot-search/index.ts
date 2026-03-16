@@ -21,6 +21,9 @@ const EXCLUDED_LIFECYCLE = ["STALE", "DEAD", "RETURNED", "INVALID", "DELISTED", 
 
 // Recency gate: only show listings seen in the last 14 days
 const RECENCY_DAYS = 14;
+// OEM feeds (toyota, etc.) refresh every 2h — if not seen in 48h, listing is likely sold
+const OEM_FRESHNESS_HOURS = 48;
+const OEM_SOURCES = new Set(["toyota"]);
 
 /** Detect which LC series (LC70/LC200/LC300) a listing belongs to, based on variant+URL signals */
 function detectListingSeriesLC(l: {
@@ -188,8 +191,8 @@ Deno.serve(async (req) => {
       .not("status", "ilike", "inactive")
       .not("lifecycle_state", "in", `("${EXCLUDED_LIFECYCLE.join('","')}")`)
       .gte("last_seen_at", recencyCutoff)
-      .order("asking_price", { ascending: false, nullsFirst: false })
-      .limit(input.limit! * 3);
+      .order("asking_price", { ascending: true, nullsFirst: false })
+      .limit(300);
 
     // Model matching for vehicle_listings
     const modelParts = queryModel.split(/\s+/);
@@ -228,7 +231,7 @@ Deno.serve(async (req) => {
       .gte("last_seen_at", recencyCutoff)
       .not("lifecycle_status", "in", '("DELISTED","SOLD","DEAD")')
       .order("last_seen_at", { ascending: false })
-      .limit(input.limit! * RETAIL_FETCH_MULTIPLIER);
+      .limit(300);
 
     // Model matching for retail_listings
     if (modelParts.length > 1) {
@@ -258,7 +261,18 @@ Deno.serve(async (req) => {
     const vlListings = vlResult.data || [];
     const rlListings = rlResult.data || [];
 
-    console.log(`ooglebot-search: ${vlListings.length} vehicle_listings, ${rlListings.length} retail_listings`);
+    // OEM freshness gate: Toyota feed runs every 2h.
+    // If an OEM listing hasn't been seen in 48h, it's almost certainly sold.
+    const oemCutoff = Date.now() - OEM_FRESHNESS_HOURS * 60 * 60 * 1000;
+    const vlFiltered = vlListings.filter((l: any) => {
+      if (OEM_SOURCES.has((l.source || "").toLowerCase())) {
+        const lastSeen = l.last_seen_at ? new Date(l.last_seen_at).getTime() : 0;
+        return lastSeen >= oemCutoff;
+      }
+      return true;
+    });
+
+    console.log(`ooglebot-search: ${vlFiltered.length} vehicle_listings (${vlListings.length - vlFiltered.length} OEM stale removed), ${rlListings.length} retail_listings`);
 
     // --- 2. Normalize retail_listings into the same shape ---
     // Extract badge from Carsales URL when variant_raw is missing it
@@ -303,7 +317,7 @@ Deno.serve(async (req) => {
 
     // Merge both sets
     const allListings = [
-      ...vlListings.map((v: any) => ({ ...v, price_badge: null, market_price: null, price_difference: null, price_difference_percent: null })),
+      ...vlFiltered.map((v: any) => ({ ...v, price_badge: null, market_price: null, price_difference: null, price_difference_percent: null })),
       ...normalizedRetail,
     ];
 
