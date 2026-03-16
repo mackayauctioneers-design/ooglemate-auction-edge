@@ -427,6 +427,7 @@ async function upsertListings(sb: any, listings: ScrapedListing[], runId: string
         seller_type: "auction",
         source_class: "auction",
         lifecycle_state: "NEW",
+        auction_status: "active",
       });
       if (error) errors.push(`Insert ${listingId}: ${error.message}`);
       else newListings++;
