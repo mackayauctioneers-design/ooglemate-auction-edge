@@ -53,10 +53,10 @@ export default function DealsPage() {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2">
               <FileText className="h-6 w-6 text-primary" />
-              Closed Deals
+              Transparency Ledger
             </h1>
             <p className="text-sm text-muted-foreground">
-              Deal records from identification through delivery
+              Every car purchased on your behalf — full paperwork, fully transparent
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -101,9 +101,9 @@ export default function DealsPage() {
           <Card>
             <CardContent className="py-12 text-center">
               <AlertTriangle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-              <h3 className="font-medium text-foreground mb-1">No deals found</h3>
+              <h3 className="font-medium text-foreground mb-1">No purchases yet</h3>
               <p className="text-sm text-muted-foreground">
-                Create deals from the Matches Inbox to start tracking.
+                When cars are purchased on your behalf, they'll appear here with full paperwork attached.
               </p>
             </CardContent>
           </Card>
@@ -172,7 +172,7 @@ export default function DealsPage() {
         )}
 
         <p className="text-xs text-muted-foreground text-center py-2">
-          This deal record is an audit trail. Events and documents are append-only and timestamped.
+          Every record is an immutable audit trail. Documents and events are append-only, timestamped, and SHA-256 verified.
         </p>
       </div>
     </DealerLayout>
