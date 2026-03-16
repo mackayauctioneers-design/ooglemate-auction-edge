@@ -64,6 +64,7 @@ export function CaroogleAIFindsDrawer() {
   const [finds, setFinds] = useState<CaroogleFind[]>([]);
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [viewFilter, setViewFilter] = useState<'active' | 'starred'>('active');
 
   const fetchFinds = useCallback(async () => {
     setLoading(true);
@@ -71,10 +72,10 @@ export function CaroogleAIFindsDrawer() {
       const { data, error } = await supabase
         .from('caroogle_finds')
         .select('*')
-        .eq('status', 'active')
+        .in('status', ['active', 'starred'])
         .gte('score', 40)
         .order('score', { ascending: false })
-        .limit(50);
+        .limit(100);
       if (error) throw error;
       setFinds((data as CaroogleFind[]) || []);
     } catch (err) {
@@ -102,15 +103,38 @@ export function CaroogleAIFindsDrawer() {
     }
   };
 
-  const totalCount = finds.length;
+  const toggleStar = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'starred' ? 'active' : 'starred';
+    const { error } = await supabase.from('caroogle_finds').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) { toast.error(error.message); return; }
+    setFinds(prev => prev.map(f => f.id === id ? { ...f, status: newStatus } : f));
+    toast.success(newStatus === 'starred' ? 'Starred — watching closely' : 'Unstarred');
+  };
+
+  const dismissFind = async (id: string) => {
+    const { error } = await supabase.from('caroogle_finds').update({ status: 'dismissed', updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) { toast.error(error.message); return; }
+    setFinds(prev => prev.filter(f => f.id !== id));
+    toast.success('Dismissed');
+  };
+
+  const filtered = finds.filter(f => viewFilter === 'starred' ? f.status === 'starred' : true);
+  const starredCount = finds.filter(f => f.status === 'starred').length;
+  const totalCount = finds.filter(f => f.status === 'active').length;
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <button className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border font-medium transition-all border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 ${totalCount > 0 ? 'ring-2 ring-offset-1 ring-amber-500 shadow-md scale-105' : 'opacity-80 hover:opacity-100'}`}>
+        <button className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border font-medium transition-all border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 ${finds.length > 0 ? 'ring-2 ring-offset-1 ring-amber-500 shadow-md scale-105' : 'opacity-80 hover:opacity-100'}`}>
           <Sparkles className="h-4 w-4" />
-          <span className="text-xl font-bold">{totalCount}</span>
+          <span className="text-xl font-bold">{finds.length}</span>
           <span className="text-[11px] uppercase tracking-wide">AI FINDS</span>
+          {starredCount > 0 && (
+            <span className="flex items-center gap-0.5 text-[11px] ml-1">
+              <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+              {starredCount}
+            </span>
+          )}
         </button>
       </SheetTrigger>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
@@ -128,11 +152,21 @@ export function CaroogleAIFindsDrawer() {
             Automatically detected market opportunities
           </p>
 
+          {/* Filter tabs */}
+          <div className="flex gap-2 pt-2">
+            <Button size="sm" variant={viewFilter === 'active' ? 'default' : 'outline'} onClick={() => setViewFilter('active')} className="text-xs h-7">
+              All ({totalCount + starredCount})
+            </Button>
+            <Button size="sm" variant={viewFilter === 'starred' ? 'default' : 'outline'} onClick={() => setViewFilter('starred')} className="text-xs h-7">
+              <Star className="h-3 w-3 mr-1" /> Starred ({starredCount})
+            </Button>
+          </div>
+
           {/* Summary strip */}
           {!loading && finds.length > 0 && (
             <div className="flex flex-wrap gap-1.5 pt-2">
               {(['CHEAPEST_IN_MARKET', 'UNDER_MARKET', 'AUCTION_ARBITRAGE', 'FAST_MOVER'] as const).map(ft => {
-                const count = finds.filter(f => f.flag_types?.includes(ft)).length;
+                const count = filtered.filter(f => f.flag_types?.includes(ft)).length;
                 if (count === 0) return null;
                 return (
                   <span key={ft} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
@@ -148,16 +182,16 @@ export function CaroogleAIFindsDrawer() {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : finds.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Sparkles className="h-8 w-8 mx-auto mb-3 opacity-40" />
-            <p className="font-medium">No active finds</p>
-            <p className="text-sm mt-1">Run the scanner to detect market opportunities</p>
+            <p className="font-medium">{viewFilter === 'starred' ? 'No starred finds' : 'No active finds'}</p>
+            <p className="text-sm mt-1">{viewFilter === 'starred' ? 'Star finds to watch them closely' : 'Run the scanner to detect market opportunities'}</p>
           </div>
         ) : (
           <div className="space-y-3 pt-2">
-            {finds.map(find => (
-              <FindCard key={find.id} find={find} />
+            {filtered.map(find => (
+              <FindCard key={find.id} find={find} onToggleStar={toggleStar} onDismiss={dismissFind} />
             ))}
           </div>
         )}
