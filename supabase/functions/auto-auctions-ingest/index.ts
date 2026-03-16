@@ -285,6 +285,16 @@ Deno.serve(async (req) => {
 
     // ── MODE 1: Apify webhook — items array provided directly ──
     if (Array.isArray(body.items) && body.items.length > 0) {
+      // Validate ingest key
+      const authHeader = req.headers.get("authorization") || "";
+      const token = authHeader.replace(/^Bearer\s+/i, "");
+      const expectedKey = Deno.env.get("AAV_INGEST_KEY");
+      if (!expectedKey || token !== expectedKey) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       console.log(`[AUTO-AUCTIONS] Apify webhook mode: ${body.items.length} items`);
       const rawListings: RawParsedListing[] = [];
       for (const item of body.items) {
