@@ -443,6 +443,22 @@ function mergeAllResults(
 export function OogleBotSearch() {
   const { toast } = useToast();
   const { isAdmin, dealerProfile } = useAuth();
+  const { toggleStar, isStarred, isLoading: isStarLoading, checkStarred } = useStarVehicle();
+
+  const handleToggleStar = useCallback((r: UnifiedResult) => {
+    toggleStar({
+      listing_id: r.id,
+      make: r.title.split(" ").slice(1, 2).join(" ") || null,
+      model: r.title.split(" ").slice(2).join(" ") || null,
+      year: r.year,
+      km: r.km,
+      asking_price: r.price,
+      source: r.source,
+      source_url: r.url,
+      variant: r.variant,
+      location: r.location,
+    });
+  }, [toggleStar]);
 
   // ── Entitlement: fetch plan_tier for discovery eligibility ──
   const [planTier, setPlanTier] = useState<string | null>(null);
