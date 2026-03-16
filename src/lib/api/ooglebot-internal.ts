@@ -149,6 +149,7 @@ export async function searchTiered(query: string, structuredOverride?: Partial<P
   const parsed: ParsedIntent = {
     make: structuredOverride?.make || textParsed.make,
     model: structuredOverride?.model || textParsed.model,
+    badge: structuredOverride?.badge || textParsed.badge,
     yearMin: structuredOverride?.yearMin ?? textParsed.yearMin,
     yearMax: structuredOverride?.yearMax ?? textParsed.yearMax,
     kmMax: structuredOverride?.kmMax ?? textParsed.kmMax,
