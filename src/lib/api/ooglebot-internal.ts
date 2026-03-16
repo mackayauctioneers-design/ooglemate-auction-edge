@@ -300,16 +300,22 @@ function isToyotaLandCruiserNotPrado(parsed: ParsedIntent): boolean {
   return make === "toyota" && model.includes("landcruiser") && !model.includes("prado");
 }
 
-/** Detect which LC series (LC70/LC200/LC300) a listing belongs to */
-function detectListingSeriesLC(l: InternalMatch): string | null {
-  const text = [l.variant_raw, l.id, l.listing_url]
+/** Detect which series a listing belongs to (LC + Prado + Ranger + Patrol) */
+function detectListingSeries(l: InternalMatch): string | null {
+  const text = [l.model, l.variant_raw, l.id, l.listing_url]
     .filter(Boolean).join(" ").toUpperCase();
-  // LC70 signals: 70/76/78/79 as tokens, 70SERIES in URL, WORKMATE badge
+  // Prado must be checked FIRST
+  if (text.includes("PRADO")) {
+    if (/\b250\b|PRADO[\-_\s]?250/.test(text)) return "PRADO_250";
+    if (/\b150\b|PRADO[\-_\s]?150/.test(text)) return "PRADO_150";
+    return null; // Prado but unknown generation
+  }
   if (/\b7[0689]\b/.test(text) || /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]/.test(text) || /\bWORKMATE\b/.test(text)) return "LC70";
-  // LC300 signals
   if (/\b300\b/.test(text) || /GR[\-_\s]?SPORT|GR[\-_\s]?S\b|LC300/.test(text)) return "LC300";
-  // LC200 signals
   if (/\b200\b/.test(text) || /LC200/.test(text)) return "LC200";
+  if (/NEXT[\-_\s]?GEN|NEXTGEN|\bV6\b|RANGER[\-_\s]?PY/.test(text)) return "RANGER_PY";
+  if (/\bY62\b/.test(text)) return "PATROL_Y62";
+  if (/\bY61\b|\bGU\b/.test(text)) return "PATROL_Y61";
   return null;
 }
 
