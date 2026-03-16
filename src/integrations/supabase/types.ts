@@ -15007,6 +15007,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      increment_relist_count: {
+        Args: { p_listing_id: string }
+        Returns: undefined
+      }
       is_admin_or_internal: { Args: never; Returns: boolean }
       km_band_minmax: {
         Args: { p_km: number }
