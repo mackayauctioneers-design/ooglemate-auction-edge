@@ -208,6 +208,15 @@ export default function OperatorDealerUploadPage() {
         if (mapped.badge) mapped.badge = String(mapped.badge).trim();
         if (mapped.variant) mapped.variant = String(mapped.variant).trim();
 
+        // If make/model missing but description present, parse from description
+        if ((!mapped.make || !mapped.model) && mapped.description) {
+          const parsed = parseDescription(String(mapped.description));
+          if (!mapped.make && parsed.make) mapped.make = parsed.make;
+          if (!mapped.model && parsed.model) mapped.model = parsed.model;
+          if (!mapped.year && parsed.year) mapped.year = parsed.year;
+          if (!mapped.variant && parsed.variant) mapped.variant = parsed.variant;
+        }
+
         if (!mapped.make || !mapped.model) {
           skippedRows.push({
             row: i + 1,
