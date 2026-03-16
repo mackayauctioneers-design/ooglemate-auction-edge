@@ -667,12 +667,14 @@ export function OogleBotSearch() {
     }
   }, [outwardPolling, outwardTotal, hasSearched, outwardTimedOut]);
 
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
+   useEffect(() => {
+     return () => {
+       if (pollRef.current) clearInterval(pollRef.current);
+       if (timeoutRef.current) clearTimeout(timeoutRef.current);
+       if (huntPollRef.current) clearInterval(huntPollRef.current);
+       if (huntReQueryRef.current) clearTimeout(huntReQueryRef.current);
+     };
+   }, []);
 
   useEffect(() => {
     if (!searchRunId) return;
