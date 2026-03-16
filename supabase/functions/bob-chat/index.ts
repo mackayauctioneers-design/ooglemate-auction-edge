@@ -25,6 +25,15 @@ You must ALWAYS attempt to execute system actions. Never just reply conversation
 
 Flow: Understand intent → Call tools → Return real data → Explain results
 
+CRITICAL RULE — NEVER EXPOSE INTERNAL ERRORS:
+- You must NEVER tell the dealer about system errors, tool failures, search issues, or technical problems.
+- If a tool returned an error or empty results, you MUST NOT mention the error. Instead:
+  1. Describe what you found (even if it's a broader set of results from a retry)
+  2. Offer to narrow down: "I pulled a wider net — want me to filter by variant or KM?"
+  3. If truly nothing was found, say "Nothing matching that exact spec on the market right now. Want me to widen the search or set up a watch?"
+- Internal tool errors are SILENT. The dealer sees results or helpful next steps, never error messages.
+- Never use words like "error", "failed", "issue", "problem", "broke", "bug", "unfortunately there was an error" in reference to system behaviour.
+
 BEHAVIOUR RULES:
 1. ALWAYS CALL TOOLS: If the dealer mentions vehicles, buying, selling, performance, or market data — call the appropriate tool. Do NOT reply with generic advice.
 2. INFER BEFORE ASKING: Use dealer context (fingerprints, sales history) to fill in defaults. If a dealer says "79 Series", you already know they mean Toyota LandCruiser 79 Series in their preferred KM/year band.
@@ -48,6 +57,7 @@ RESPONSE FORMAT:
 - Lead with the action: "Found 5 strong matches for you:" then show results
 - After tool results, add a brief dealer-relevant insight
 - Never repeat vehicle data in text that's already shown in cards
+- If results came from a broadened search (retry), present them naturally: "Here's what's on the market for [make model]" and offer to filter further
 
 TONE: Sharp, direct, commercially savvy. Australian dealer language. "Yeah mate, found three solid options" not "I've identified several potential vehicles."`;
 
@@ -181,10 +191,106 @@ const TOOLS = [
 ];
 
 // ============================================================================
+// Graceful degradation helpers
+// ============================================================================
+
+/** Priority order of parameters to drop when a search fails or returns no results */
+const SEARCH_DEGRADE_ORDER = ["variant", "body_type", "fuel", "km_min", "price_max", "year_min", "year_max", "km_max"];
+
+function degradeSearchParams(params: Record<string, any>): { degraded: Record<string, any>; dropped: string } | null {
+  for (const key of SEARCH_DEGRADE_ORDER) {
+    if (params[key] !== undefined && params[key] !== null) {
+      const degraded = { ...params };
+      delete degraded[key];
+      return { degraded, dropped: key };
+    }
+  }
+  return null; // nothing left to drop
+}
+
+// ============================================================================
 // Tool execution functions
 // ============================================================================
 
-async function executeSearchVehicles(params: any, dealerProfileId: string, supabase: any) {
+async function executeSearchVehicles(params: any, dealerProfileId: string, supabase: any): Promise<any> {
+  // Retry loop with graceful parameter degradation
+  let currentParams = { ...params };
+  const droppedParams: string[] = [];
+  const MAX_RETRIES = 4;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const result = await _runSearchQuery(currentParams, dealerProfileId, supabase);
+
+      // If we got results, return them (with info about broadened search for AI context)
+      if (result.results && result.results.length > 0) {
+        if (droppedParams.length > 0) {
+          result._broadened = true;
+          result._dropped_params = droppedParams;
+          result._original_params = params;
+          console.log(`[BOB-CHAT] Search succeeded after dropping: ${droppedParams.join(", ")}`);
+        }
+        return result;
+      }
+
+      // No results — try degrading
+      if (result.results && result.results.length === 0) {
+        const next = degradeSearchParams(currentParams);
+        if (!next) {
+          // Nothing left to drop — return empty with broadening context
+          return {
+            results: [],
+            total: 0,
+            search_params: currentParams,
+            _broadened: droppedParams.length > 0,
+            _dropped_params: droppedParams,
+            _original_params: params,
+            _no_results: true,
+          };
+        }
+        droppedParams.push(next.dropped);
+        currentParams = next.degraded;
+        console.log(`[BOB-CHAT] No results, retrying without: ${next.dropped}`);
+        continue;
+      }
+
+      // Query error — try degrading
+      if (result.error) {
+        console.error(`[BOB-CHAT] Search error (attempt ${attempt}): ${result.error}`);
+        const next = degradeSearchParams(currentParams);
+        if (!next) {
+          // Can't degrade further — return empty results, NOT the error
+          return {
+            results: [],
+            total: 0,
+            search_params: currentParams,
+            _broadened: true,
+            _dropped_params: droppedParams,
+            _original_params: params,
+            _no_results: true,
+          };
+        }
+        droppedParams.push(next.dropped);
+        currentParams = next.degraded;
+        console.log(`[BOB-CHAT] Error on param, retrying without: ${next.dropped}`);
+        continue;
+      }
+    } catch (err) {
+      console.error(`[BOB-CHAT] Search exception (attempt ${attempt}):`, err);
+      const next = degradeSearchParams(currentParams);
+      if (!next) {
+        return { results: [], total: 0, search_params: currentParams, _no_results: true };
+      }
+      droppedParams.push(next.dropped);
+      currentParams = next.degraded;
+    }
+  }
+
+  return { results: [], total: 0, search_params: currentParams, _no_results: true };
+}
+
+/** Core search query — no retry logic, just executes */
+async function _runSearchQuery(params: any, dealerProfileId: string, supabase: any) {
   const query = supabase
     .from("vehicle_listings")
     .select("id, make, model, variant, year, km, price, location, source, listing_url, image_url, price_badge, seller_type, days_on_market, first_seen_at, last_seen_at")
@@ -253,226 +359,266 @@ async function executeSearchVehicles(params: any, dealerProfileId: string, supab
   return { results: enriched, total: enriched.length, search_params: params };
 }
 
-async function executeGetDealerContext(dealerProfileId: string, supabase: any) {
-  const [fingerprintsRes, profileRes, performanceRes] = await Promise.all([
-    supabase
-      .from("dealer_fingerprints")
-      .select("make, model, variant_family, year_min, year_max, min_km, max_km, avg_profit, avg_days_to_sell, sales_count, fingerprint_priority, fingerprint_type")
-      .eq("dealer_profile_id", dealerProfileId)
-      .eq("is_active", true)
-      .order("sales_count", { ascending: false })
-      .limit(20),
-    supabase
-      .from("dealer_profiles")
-      .select("dealer_name, dealer_type, region_id")
-      .eq("id", dealerProfileId)
-      .single(),
-    supabase
-      .from("dealer_profit_patterns")
-      .select("make, model, trim_class, year_min, year_max, km_min, km_max, median_profit, median_sell_price, total_flips")
-      .eq("account_id", dealerProfileId)
-      .order("median_profit", { ascending: false })
-      .limit(15),
-  ]);
+// --- Other tool executors (unchanged, but wrapped for safety) ---
 
-  const topFingerprints = (fingerprintsRes.data || []).slice(0, 10);
-  return {
-    dealer_name: profileRes.data?.dealer_name || "Unknown Dealer",
-    dealer_type: profileRes.data?.dealer_type || "independent",
-    region: profileRes.data?.region_id || "unknown",
-    fingerprint_count: fingerprintsRes.data?.length || 0,
-    strong_segments: topFingerprints
-      .filter((f: any) => f.fingerprint_priority === "high")
-      .map((f: any) => ({
-        make: f.make, model: f.model, variant: f.variant_family,
-        years: `${f.year_min}-${f.year_max}`,
-        km_band: f.min_km && f.max_km ? `${(f.min_km/1000).toFixed(0)}k-${(f.max_km/1000).toFixed(0)}k` : null,
-        avg_profit: f.avg_profit, avg_days_to_sell: f.avg_days_to_sell, sales_count: f.sales_count,
+async function executeGetDealerContext(dealerProfileId: string, supabase: any) {
+  try {
+    const [fingerprintsRes, profileRes, performanceRes] = await Promise.all([
+      supabase
+        .from("dealer_fingerprints")
+        .select("make, model, variant_family, year_min, year_max, min_km, max_km, avg_profit, avg_days_to_sell, sales_count, fingerprint_priority, fingerprint_type")
+        .eq("dealer_profile_id", dealerProfileId)
+        .eq("is_active", true)
+        .order("sales_count", { ascending: false })
+        .limit(20),
+      supabase
+        .from("dealer_profiles")
+        .select("dealer_name, dealer_type, region_id")
+        .eq("id", dealerProfileId)
+        .single(),
+      supabase
+        .from("dealer_profit_patterns")
+        .select("make, model, trim_class, year_min, year_max, km_min, km_max, median_profit, median_sell_price, total_flips")
+        .eq("account_id", dealerProfileId)
+        .order("median_profit", { ascending: false })
+        .limit(15),
+    ]);
+
+    const topFingerprints = (fingerprintsRes.data || []).slice(0, 10);
+    return {
+      dealer_name: profileRes.data?.dealer_name || "Unknown Dealer",
+      dealer_type: profileRes.data?.dealer_type || "independent",
+      region: profileRes.data?.region_id || "unknown",
+      fingerprint_count: fingerprintsRes.data?.length || 0,
+      strong_segments: topFingerprints
+        .filter((f: any) => f.fingerprint_priority === "high")
+        .map((f: any) => ({
+          make: f.make, model: f.model, variant: f.variant_family,
+          years: `${f.year_min}-${f.year_max}`,
+          km_band: f.min_km && f.max_km ? `${(f.min_km/1000).toFixed(0)}k-${(f.max_km/1000).toFixed(0)}k` : null,
+          avg_profit: f.avg_profit, avg_days_to_sell: f.avg_days_to_sell, sales_count: f.sales_count,
+        })),
+      weak_segments: topFingerprints
+        .filter((f: any) => f.avg_profit !== null && f.avg_profit < 1000)
+        .map((f: any) => ({ make: f.make, model: f.model, avg_profit: f.avg_profit })),
+      profit_patterns: (performanceRes.data || []).slice(0, 8).map((p: any) => ({
+        make: p.make, model: p.model, trim: p.trim_class,
+        years: `${p.year_min}-${p.year_max}`,
+        km_band: `${(p.km_min/1000).toFixed(0)}k-${(p.km_max/1000).toFixed(0)}k`,
+        median_profit: p.median_profit, total_flips: p.total_flips,
       })),
-    weak_segments: topFingerprints
-      .filter((f: any) => f.avg_profit !== null && f.avg_profit < 1000)
-      .map((f: any) => ({ make: f.make, model: f.model, avg_profit: f.avg_profit })),
-    profit_patterns: (performanceRes.data || []).slice(0, 8).map((p: any) => ({
-      make: p.make, model: p.model, trim: p.trim_class,
-      years: `${p.year_min}-${p.year_max}`,
-      km_band: `${(p.km_min/1000).toFixed(0)}k-${(p.km_max/1000).toFixed(0)}k`,
-      median_profit: p.median_profit, total_flips: p.total_flips,
-    })),
-  };
+    };
+  } catch (err) {
+    console.error("[BOB-CHAT] get_dealer_context error:", err);
+    return { dealer_name: "Dealer", fingerprint_count: 0, strong_segments: [], weak_segments: [], profit_patterns: [] };
+  }
 }
 
 async function executeGetBuyRecommendations(params: any, dealerProfileId: string, supabase: any) {
-  const { data: fingerprints } = await supabase
-    .from("dealer_fingerprints")
-    .select("make, model, variant_family, year_min, year_max, min_km, max_km, avg_profit, avg_days_to_sell, sales_count, fingerprint_priority")
-    .eq("dealer_profile_id", dealerProfileId)
-    .eq("is_active", true)
-    .eq("fingerprint_priority", "high")
-    .order("avg_profit", { ascending: false })
-    .limit(5);
+  try {
+    const { data: fingerprints } = await supabase
+      .from("dealer_fingerprints")
+      .select("make, model, variant_family, year_min, year_max, min_km, max_km, avg_profit, avg_days_to_sell, sales_count, fingerprint_priority")
+      .eq("dealer_profile_id", dealerProfileId)
+      .eq("is_active", true)
+      .eq("fingerprint_priority", "high")
+      .order("avg_profit", { ascending: false })
+      .limit(5);
 
-  if (!fingerprints?.length) {
-    return { recommendations: [], message: "No fingerprints found. Upload your sales history first so I can learn what works for you." };
+    if (!fingerprints?.length) {
+      return { recommendations: [], message: "Upload your sales history so I can learn what works for you and start recommending." };
+    }
+
+    const allResults: any[] = [];
+    for (const fp of fingerprints.slice(0, 3)) {
+      const query = supabase
+        .from("vehicle_listings")
+        .select("id, make, model, variant, year, km, price, location, source, listing_url, image_url, price_badge, seller_type, days_on_market")
+        .eq("status", "active")
+        .ilike("make", `%${fp.make}%`)
+        .ilike("model", `%${fp.model}%`);
+
+      if (fp.year_min) query.gte("year", fp.year_min);
+      if (fp.year_max) query.lte("year", fp.year_max);
+      if (fp.max_km) query.lte("km", fp.max_km);
+
+      query.order("price", { ascending: true }).limit(5);
+      const { data } = await query;
+
+      if (data) {
+        const riskFlags = (v: any): string[] => {
+          const flags: string[] = [];
+          if (v.km > 150000) flags.push("High km");
+          if (v.days_on_market > 60) flags.push("Long time listed");
+          return flags;
+        };
+
+        allResults.push(...data.map((v: any) => ({
+          ...v,
+          fingerprint_match: true,
+          fingerprint_priority: fp.fingerprint_priority,
+          estimated_profit: fp.avg_profit,
+          avg_days_to_sell: fp.avg_days_to_sell,
+          historical_sales: fp.sales_count,
+          confidence: fp.sales_count >= 5 ? "high" : fp.sales_count >= 2 ? "medium" : "low",
+          risk_flags: riskFlags(v),
+          fit_reason: `Matches your ${fp.make} ${fp.model} fingerprint (${fp.sales_count} sales, ~$${fp.avg_profit?.toLocaleString()} avg profit)`,
+        })));
+      }
+    }
+
+    const seen = new Set();
+    const unique = allResults.filter(r => {
+      if (seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    });
+
+    return {
+      recommendations: unique.slice(0, params.limit || 5),
+      total_found: unique.length,
+      fingerprints_searched: fingerprints.length,
+    };
+  } catch (err) {
+    console.error("[BOB-CHAT] get_buy_recommendations error:", err);
+    return { recommendations: [], total_found: 0 };
   }
+}
 
-  const allResults: any[] = [];
-  for (const fp of fingerprints.slice(0, 3)) {
+async function executeFindReplacement(params: any, dealerProfileId: string, supabase: any) {
+  try {
     const query = supabase
       .from("vehicle_listings")
       .select("id, make, model, variant, year, km, price, location, source, listing_url, image_url, price_badge, seller_type, days_on_market")
       .eq("status", "active")
-      .ilike("make", `%${fp.make}%`)
-      .ilike("model", `%${fp.model}%`);
+      .ilike("make", `%${params.reference_make}%`)
+      .ilike("model", `%${params.reference_model}%`);
 
-    if (fp.year_min) query.gte("year", fp.year_min);
-    if (fp.year_max) query.lte("year", fp.year_max);
-    if (fp.max_km) query.lte("km", fp.max_km);
-
-    query.order("price", { ascending: true }).limit(5);
-    const { data } = await query;
-
-    if (data) {
-      const riskFlags = (v: any): string[] => {
-        const flags: string[] = [];
-        if (v.km > 150000) flags.push("High km");
-        if (v.days_on_market > 60) flags.push("Long time listed");
-        return flags;
-      };
-
-      allResults.push(...data.map((v: any) => ({
-        ...v,
-        fingerprint_match: true,
-        fingerprint_priority: fp.fingerprint_priority,
-        estimated_profit: fp.avg_profit,
-        avg_days_to_sell: fp.avg_days_to_sell,
-        historical_sales: fp.sales_count,
-        confidence: fp.sales_count >= 5 ? "high" : fp.sales_count >= 2 ? "medium" : "low",
-        risk_flags: riskFlags(v),
-        fit_reason: `Matches your ${fp.make} ${fp.model} fingerprint (${fp.sales_count} sales, ~$${fp.avg_profit?.toLocaleString()} avg profit)`,
-      })));
+    if (params.reference_variant) query.ilike("variant", `%${params.reference_variant}%`);
+    if (params.reference_year) {
+      query.gte("year", params.reference_year - 2);
+      query.lte("year", params.reference_year + 2);
     }
+    if (params.reference_km) query.lte("km", params.reference_km * 1.3);
+
+    query.order("price", { ascending: true }).limit(params.limit || 5);
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("[BOB-CHAT] find_replacement query error:", error.message);
+      // Retry without variant
+      if (params.reference_variant) {
+        console.log("[BOB-CHAT] Retrying find_replacement without variant");
+        const retryParams = { ...params };
+        delete retryParams.reference_variant;
+        return executeFindReplacement(retryParams, dealerProfileId, supabase);
+      }
+      return { replacements: [], reference: `${params.reference_make} ${params.reference_model}`, total: 0 };
+    }
+
+    const { data: fp } = await supabase
+      .from("dealer_fingerprints")
+      .select("avg_profit, avg_days_to_sell, sales_count, fingerprint_priority")
+      .eq("dealer_profile_id", dealerProfileId)
+      .eq("is_active", true)
+      .ilike("make", `%${params.reference_make}%`)
+      .ilike("model", `%${params.reference_model}%`)
+      .limit(1)
+      .single();
+
+    return {
+      replacements: (data || []).map((v: any) => ({
+        ...v,
+        fingerprint_match: !!fp,
+        estimated_profit: fp?.avg_profit || null,
+        avg_days_to_sell: fp?.avg_days_to_sell || null,
+        confidence: fp ? (fp.sales_count >= 5 ? "high" : "medium") : "none",
+        risk_flags: [
+          v.km > 150000 ? "High km" : null,
+          v.days_on_market > 60 ? "Long time listed" : null,
+        ].filter(Boolean),
+      })),
+      reference: `${params.reference_year || ''} ${params.reference_make} ${params.reference_model} ${params.reference_variant || ''}`.trim(),
+      total: data?.length || 0,
+    };
+  } catch (err) {
+    console.error("[BOB-CHAT] find_replacement exception:", err);
+    return { replacements: [], reference: `${params.reference_make} ${params.reference_model}`, total: 0 };
   }
-
-  const seen = new Set();
-  const unique = allResults.filter(r => {
-    if (seen.has(r.id)) return false;
-    seen.add(r.id);
-    return true;
-  });
-
-  return {
-    recommendations: unique.slice(0, params.limit || 5),
-    total_found: unique.length,
-    fingerprints_searched: fingerprints.length,
-  };
-}
-
-async function executeFindReplacement(params: any, dealerProfileId: string, supabase: any) {
-  const query = supabase
-    .from("vehicle_listings")
-    .select("id, make, model, variant, year, km, price, location, source, listing_url, image_url, price_badge, seller_type, days_on_market")
-    .eq("status", "active")
-    .ilike("make", `%${params.reference_make}%`)
-    .ilike("model", `%${params.reference_model}%`);
-
-  if (params.reference_variant) query.ilike("variant", `%${params.reference_variant}%`);
-  if (params.reference_year) {
-    query.gte("year", params.reference_year - 2);
-    query.lte("year", params.reference_year + 2);
-  }
-  if (params.reference_km) query.lte("km", params.reference_km * 1.3);
-
-  query.order("price", { ascending: true }).limit(params.limit || 5);
-  const { data, error } = await query;
-  if (error) return { error: error.message };
-
-  // Enrich with fingerprint data
-  const { data: fp } = await supabase
-    .from("dealer_fingerprints")
-    .select("avg_profit, avg_days_to_sell, sales_count, fingerprint_priority")
-    .eq("dealer_profile_id", dealerProfileId)
-    .eq("is_active", true)
-    .ilike("make", `%${params.reference_make}%`)
-    .ilike("model", `%${params.reference_model}%`)
-    .limit(1)
-    .single();
-
-  return {
-    replacements: (data || []).map((v: any) => ({
-      ...v,
-      fingerprint_match: !!fp,
-      estimated_profit: fp?.avg_profit || null,
-      avg_days_to_sell: fp?.avg_days_to_sell || null,
-      confidence: fp ? (fp.sales_count >= 5 ? "high" : "medium") : "none",
-      risk_flags: [
-        v.km > 150000 ? "High km" : null,
-        v.days_on_market > 60 ? "Long time listed" : null,
-      ].filter(Boolean),
-    })),
-    reference: `${params.reference_year || ''} ${params.reference_make} ${params.reference_model} ${params.reference_variant || ''}`.trim(),
-    total: data?.length || 0,
-  };
 }
 
 async function executeCreateWatch(params: any, dealerProfileId: string, supabase: any) {
-  const searchProfile = {
-    make: params.make, model: params.model, variant: params.variant || null,
-    year_min: params.year_min || null, year_max: params.year_max || null,
-    km_max: params.km_max || null, price_max: params.price_max || null,
-  };
+  try {
+    const searchProfile = {
+      make: params.make, model: params.model, variant: params.variant || null,
+      year_min: params.year_min || null, year_max: params.year_max || null,
+      km_max: params.km_max || null, price_max: params.price_max || null,
+    };
 
-  const { data, error } = await supabase
-    .from("bob_watch_profiles")
-    .insert({ dealer_profile_id: dealerProfileId, search_profile: searchProfile, label: params.label, status: "active" })
-    .select().single();
+    const { data, error } = await supabase
+      .from("bob_watch_profiles")
+      .insert({ dealer_profile_id: dealerProfileId, search_profile: searchProfile, label: params.label, status: "active" })
+      .select().single();
 
-  if (error) return { error: error.message };
-  return { watch_id: data.id, label: params.label, profile: searchProfile, status: "active" };
+    if (error) {
+      console.error("[BOB-CHAT] create_watch error:", error.message);
+      return { watch_created: false, label: params.label };
+    }
+    return { watch_id: data.id, label: params.label, profile: searchProfile, status: "active" };
+  } catch (err) {
+    console.error("[BOB-CHAT] create_watch exception:", err);
+    return { watch_created: false, label: params.label };
+  }
 }
 
 async function executeGetDealerPerformance(dealerProfileId: string, supabase: any) {
-  const [patternsRes, clustersRes, fingerprintsRes] = await Promise.all([
-    supabase
-      .from("dealer_profit_patterns")
-      .select("make, model, trim_class, year_min, year_max, km_min, km_max, median_profit, median_sell_price, median_buy_price, total_flips")
-      .eq("account_id", dealerProfileId)
-      .order("median_profit", { ascending: false })
-      .limit(20),
-    supabase
-      .from("dealer_platform_clusters")
-      .select("make, model, generation, year_min, year_max, total_flips, median_profit, avg_days_to_sell, median_km")
-      .eq("account_id", dealerProfileId)
-      .order("total_flips", { ascending: false })
-      .limit(15),
-    supabase
-      .from("dealer_fingerprints")
-      .select("make, model, variant_family, avg_profit, avg_days_to_sell, sales_count, fingerprint_priority")
-      .eq("dealer_profile_id", dealerProfileId)
-      .eq("is_active", true)
-      .order("sales_count", { ascending: false })
-      .limit(20),
-  ]);
+  try {
+    const [patternsRes, clustersRes, fingerprintsRes] = await Promise.all([
+      supabase
+        .from("dealer_profit_patterns")
+        .select("make, model, trim_class, year_min, year_max, km_min, km_max, median_profit, median_sell_price, median_buy_price, total_flips")
+        .eq("account_id", dealerProfileId)
+        .order("median_profit", { ascending: false })
+        .limit(20),
+      supabase
+        .from("dealer_platform_clusters")
+        .select("make, model, generation, year_min, year_max, total_flips, median_profit, avg_days_to_sell, median_km")
+        .eq("account_id", dealerProfileId)
+        .order("total_flips", { ascending: false })
+        .limit(15),
+      supabase
+        .from("dealer_fingerprints")
+        .select("make, model, variant_family, avg_profit, avg_days_to_sell, sales_count, fingerprint_priority")
+        .eq("dealer_profile_id", dealerProfileId)
+        .eq("is_active", true)
+        .order("sales_count", { ascending: false })
+        .limit(20),
+    ]);
 
-  const patterns = patternsRes.data || [];
-  return {
-    total_patterns: patterns.length,
-    best_performers: patterns.filter((p: any) => p.median_profit > 2000).slice(0, 5).map((p: any) => ({
-      segment: `${p.make} ${p.model} ${p.trim_class}`,
-      years: `${p.year_min}-${p.year_max}`,
-      km_band: `${(p.km_min/1000).toFixed(0)}k-${(p.km_max/1000).toFixed(0)}k`,
-      median_profit: p.median_profit, median_sell: p.median_sell_price, flips: p.total_flips,
-    })),
-    worst_performers: patterns.filter((p: any) => p.median_profit < 500).slice(0, 5).map((p: any) => ({
-      segment: `${p.make} ${p.model} ${p.trim_class}`, median_profit: p.median_profit, flips: p.total_flips,
-    })),
-    clusters: (clustersRes.data || []).slice(0, 8).map((c: any) => ({
-      segment: `${c.make} ${c.model} (${c.generation})`,
-      total_flips: c.total_flips, median_profit: c.median_profit,
-      avg_days_to_sell: c.avg_days_to_sell, median_km: c.median_km,
-    })),
-    fingerprint_count: fingerprintsRes.data?.length || 0,
-    high_priority_count: (fingerprintsRes.data || []).filter((f: any) => f.fingerprint_priority === "high").length,
-  };
+    const patterns = patternsRes.data || [];
+    return {
+      total_patterns: patterns.length,
+      best_performers: patterns.filter((p: any) => p.median_profit > 2000).slice(0, 5).map((p: any) => ({
+        segment: `${p.make} ${p.model} ${p.trim_class}`,
+        years: `${p.year_min}-${p.year_max}`,
+        km_band: `${(p.km_min/1000).toFixed(0)}k-${(p.km_max/1000).toFixed(0)}k`,
+        median_profit: p.median_profit, median_sell: p.median_sell_price, flips: p.total_flips,
+      })),
+      worst_performers: patterns.filter((p: any) => p.median_profit < 500).slice(0, 5).map((p: any) => ({
+        segment: `${p.make} ${p.model} ${p.trim_class}`, median_profit: p.median_profit, flips: p.total_flips,
+      })),
+      clusters: (clustersRes.data || []).slice(0, 8).map((c: any) => ({
+        segment: `${c.make} ${c.model} (${c.generation})`,
+        total_flips: c.total_flips, median_profit: c.median_profit,
+        avg_days_to_sell: c.avg_days_to_sell, median_km: c.median_km,
+      })),
+      fingerprint_count: fingerprintsRes.data?.length || 0,
+      high_priority_count: (fingerprintsRes.data || []).filter((f: any) => f.fingerprint_priority === "high").length,
+    };
+  } catch (err) {
+    console.error("[BOB-CHAT] get_dealer_performance error:", err);
+    return { total_patterns: 0, best_performers: [], worst_performers: [], clusters: [], fingerprint_count: 0 };
+  }
 }
 
 function executeExplainPage(params: any) {
@@ -499,37 +645,75 @@ function executeExplainPage(params: any) {
 }
 
 async function executeExplainVehicleScore(params: any, dealerProfileId: string, supabase: any) {
-  const { data: listing } = await supabase
-    .from("vehicle_listings").select("*").eq("id", params.listing_id).single();
+  try {
+    const { data: listing } = await supabase
+      .from("vehicle_listings").select("*").eq("id", params.listing_id).single();
 
-  if (!listing) return { error: "Vehicle not found" };
+    if (!listing) return { vehicle: null, message: "Vehicle no longer available in the system." };
 
-  const { data: fingerprints } = await supabase
-    .from("dealer_fingerprints").select("*")
-    .eq("dealer_profile_id", dealerProfileId).eq("is_active", true)
-    .ilike("make", `%${listing.make}%`).ilike("model", `%${listing.model}%`).limit(3);
+    const { data: fingerprints } = await supabase
+      .from("dealer_fingerprints").select("*")
+      .eq("dealer_profile_id", dealerProfileId).eq("is_active", true)
+      .ilike("make", `%${listing.make}%`).ilike("model", `%${listing.model}%`).limit(3);
 
-  const bestMatch = fingerprints?.[0] || null;
-  return {
-    vehicle: {
-      id: listing.id,
-      title: `${listing.year} ${listing.make} ${listing.model} ${listing.variant || ''}`.trim(),
-      price: listing.price, km: listing.km, location: listing.location,
-      source: listing.source, price_badge: listing.price_badge, days_on_market: listing.days_on_market,
-    },
-    fingerprint_match: bestMatch ? {
-      matched: true, priority: bestMatch.fingerprint_priority,
-      historical_profit: bestMatch.avg_profit, historical_sales: bestMatch.sales_count,
-      avg_days_to_sell: bestMatch.avg_days_to_sell,
-      km_fit: listing.km >= (bestMatch.min_km || 0) && listing.km <= (bestMatch.max_km || 999999) ? "within_band" : "outside_band",
-      year_fit: listing.year >= bestMatch.year_min && listing.year <= bestMatch.year_max ? "within_range" : "outside_range",
-    } : { matched: false, reason: "No fingerprint found for this make/model" },
-    risk_flags: [
-      listing.km > 150000 ? "High kilometres" : null,
-      listing.days_on_market > 60 ? "Long time on market" : null,
-      listing.price_badge?.toLowerCase().includes("above") ? "Above market price" : null,
-    ].filter(Boolean),
-  };
+    const bestMatch = fingerprints?.[0] || null;
+    return {
+      vehicle: {
+        id: listing.id,
+        title: `${listing.year} ${listing.make} ${listing.model} ${listing.variant || ''}`.trim(),
+        price: listing.price, km: listing.km, location: listing.location,
+        source: listing.source, price_badge: listing.price_badge, days_on_market: listing.days_on_market,
+      },
+      fingerprint_match: bestMatch ? {
+        matched: true, priority: bestMatch.fingerprint_priority,
+        historical_profit: bestMatch.avg_profit, historical_sales: bestMatch.sales_count,
+        avg_days_to_sell: bestMatch.avg_days_to_sell,
+        km_fit: listing.km >= (bestMatch.min_km || 0) && listing.km <= (bestMatch.max_km || 999999) ? "within_band" : "outside_band",
+        year_fit: listing.year >= bestMatch.year_min && listing.year <= bestMatch.year_max ? "within_range" : "outside_range",
+      } : { matched: false, reason: "No fingerprint found for this make/model" },
+      risk_flags: [
+        listing.km > 150000 ? "High kilometres" : null,
+        listing.days_on_market > 60 ? "Long time on market" : null,
+        listing.price_badge?.toLowerCase().includes("above") ? "Above market price" : null,
+      ].filter(Boolean),
+    };
+  } catch (err) {
+    console.error("[BOB-CHAT] explain_vehicle_score error:", err);
+    return { vehicle: null, message: "Couldn't pull details on that vehicle right now." };
+  }
+}
+
+// ============================================================================
+// Safe tool executor wrapper — guarantees no exceptions leak to AI as errors
+// ============================================================================
+
+async function safeExecuteTool(funcName: string, args: any, dealerProfileId: string, supabase: any): Promise<any> {
+  try {
+    switch (funcName) {
+      case "search_vehicles":
+        return await executeSearchVehicles(args, dealerProfileId, supabase);
+      case "get_dealer_context":
+        return await executeGetDealerContext(dealerProfileId, supabase);
+      case "explain_vehicle_score":
+        return await executeExplainVehicleScore(args, dealerProfileId, supabase);
+      case "get_buy_recommendations":
+        return await executeGetBuyRecommendations(args, dealerProfileId, supabase);
+      case "find_replacement":
+        return await executeFindReplacement(args, dealerProfileId, supabase);
+      case "create_watch":
+        return await executeCreateWatch(args, dealerProfileId, supabase);
+      case "get_dealer_performance":
+        return await executeGetDealerPerformance(dealerProfileId, supabase);
+      case "explain_page":
+        return executeExplainPage(args);
+      default:
+        return { results: [], message: "No data available for that request." };
+    }
+  } catch (err) {
+    // CRITICAL: Never return error details — return empty/neutral result
+    console.error(`[BOB-CHAT] Tool ${funcName} unhandled error:`, err);
+    return { results: [], message: "No data available right now." };
+  }
 }
 
 // ============================================================================
@@ -619,28 +803,7 @@ Deno.serve(async (req) => {
         try { args = JSON.parse(tc.function.arguments); } catch { args = {}; }
         console.log(`[BOB-CHAT] Executing tool: ${funcName}`, JSON.stringify(args).substring(0, 200));
 
-        let result: any;
-        switch (funcName) {
-          case "search_vehicles":
-            result = await executeSearchVehicles(args, dealer_profile_id, supabase); break;
-          case "get_dealer_context":
-            result = await executeGetDealerContext(dealer_profile_id, supabase); break;
-          case "explain_vehicle_score":
-            result = await executeExplainVehicleScore(args, dealer_profile_id, supabase); break;
-          case "get_buy_recommendations":
-            result = await executeGetBuyRecommendations(args, dealer_profile_id, supabase); break;
-          case "find_replacement":
-            result = await executeFindReplacement(args, dealer_profile_id, supabase); break;
-          case "create_watch":
-            result = await executeCreateWatch(args, dealer_profile_id, supabase); break;
-          case "get_dealer_performance":
-            result = await executeGetDealerPerformance(dealer_profile_id, supabase); break;
-          case "explain_page":
-            result = executeExplainPage(args); break;
-          default:
-            result = { error: `Unknown tool: ${funcName}` };
-        }
-
+        const result = await safeExecuteTool(funcName, args, dealer_profile_id, supabase);
         toolResults.push({ tool_call_id: tc.id, function_name: funcName, result });
       }
 
