@@ -23,7 +23,7 @@ import {
 } from "@/hooks/useHeaderMapping";
 import { normaliseDateValue } from "@/utils/salesUploadUtils";
 import { derivePlatform } from "@/utils/derivePlatform";
-import { mergeEasyCarsFiles, readAsWorkbook, type MergeResult } from "@/utils/easycarsmerge";
+import { mergeEasyCarsFiles, readAsWorkbook, parseDescription, type MergeResult } from "@/utils/easycarsmerge";
 
 type UploadStep = "idle" | "parsing" | "mapping" | "importing";
 type UploadMode = "single" | "merge";

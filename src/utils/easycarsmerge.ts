@@ -53,6 +53,7 @@ function extractKm(raw: string): string {
 }
 
 /** Parse Make/Model/Year/Variant from EasyCars description
+ *  Exported for use in single-file import when description is combined.
  *  e.g. "TOYOTA LANDCRUISER 2007 LANDCRUISER PRADO GXL (4x4) KDJ120R ..." 
  *  or  "BMW X3 2012 X3 xDRIVE20d F25 DIESEL TURBO ..."
  */
