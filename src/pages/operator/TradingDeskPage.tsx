@@ -468,13 +468,10 @@ export default function TradingDeskPage() {
             <h1 className="text-2xl font-bold text-foreground">Trading Desk</h1>
             <p className="text-muted-foreground text-sm">Centralised multi-dealer opportunity board</p>
           </div>
-          <div className="flex items-center gap-2">
-            <CaroogleAIFindsDrawer />
-            <Button onClick={runScoring} disabled={scoring} variant="default">
-              {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-              {scoring ? 'Scoring…' : 'Run Scoring'}
-            </Button>
-          </div>
+          <Button onClick={runScoring} disabled={scoring} variant="default">
+            {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            {scoring ? 'Scoring…' : 'Run Scoring'}
+          </Button>
         </div>
 
         {/* Daily Signal Strip */}
@@ -500,7 +497,8 @@ export default function TradingDeskPage() {
         )}
 
         {/* KPI Strip - Clickable Tier Buttons */}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          <CaroogleAIFindsDrawer />
           {[
             { tier: 'CODE_RED', count: codeRedCount, label: 'CODE RED', className: 'border-red-500/40 bg-red-600/15 hover:bg-red-600/25 text-red-600' },
             { tier: 'HIGH', count: highCount, label: 'HIGH', className: 'border-primary/30 bg-primary/5 hover:bg-primary/15 text-primary' },
