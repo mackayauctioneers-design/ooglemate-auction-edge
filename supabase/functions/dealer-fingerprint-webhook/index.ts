@@ -44,12 +44,17 @@ Deno.serve(async (req) => {
   const secret = Deno.env.get("LINDY_WEBHOOK_SECRET");
   const rawBody = await req.text();
 
-  // Verify HMAC-SHA256 signature
+  // Verify auth: HMAC signature OR Bearer token
   if (secret) {
+    const authHeader = req.headers.get("authorization") || "";
+    const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
     const sig = req.headers.get("x-lindy-signature") || "";
-    const valid = await verifyHmac(rawBody, sig, secret);
-    if (!valid) {
-      console.warn("[dealer-fingerprint-webhook] Invalid HMAC signature");
+
+    const bearerOk = bearerToken === secret;
+    const hmacOk = sig ? await verifyHmac(rawBody, sig, secret) : false;
+
+    if (!bearerOk && !hmacOk) {
+      console.warn("[dealer-fingerprint-webhook] Invalid auth — no valid HMAC or Bearer token");
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

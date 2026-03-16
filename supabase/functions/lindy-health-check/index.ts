@@ -39,12 +39,19 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // ── HMAC auth ──
+  // ── Auth: HMAC signature OR Bearer token ──
   const secret = Deno.env.get("LINDY_WEBHOOK_SECRET");
   const rawBody = await req.text();
   if (secret) {
-    const sig = req.headers.get("x-lindy-signature") || "";
-    if (!(await verifyHmac(rawBody, sig, secret))) {
+    const authHeader = req.headers.get("authorization") || "";
+    const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    const hmacSig = req.headers.get("x-lindy-signature") || "";
+
+    // Accept either: Bearer <secret> OR HMAC signature
+    const bearerOk = bearerToken === secret;
+    const hmacOk = hmacSig ? await verifyHmac(rawBody, hmacSig, secret) : false;
+
+    if (!bearerOk && !hmacOk) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
