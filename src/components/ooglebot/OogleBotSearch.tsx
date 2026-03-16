@@ -42,7 +42,7 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Loader2, Search, Database, Globe, MapPin, Gauge, DollarSign,
-  ExternalLink, Mic, MicOff, Building2, ChevronDown, X, Gavel,
+  ExternalLink, Mic, MicOff, Building2, ChevronDown, X, Gavel, Star,
 } from "lucide-react";
 import { KitingLoader } from "@/components/ui/KitingLoader";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
