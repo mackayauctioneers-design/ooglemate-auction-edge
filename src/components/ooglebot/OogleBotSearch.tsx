@@ -215,9 +215,16 @@ const REASSURANCE_MESSAGES = [
 const OUTWARD_TIMEOUT_MS = 5 * 60 * 1000;
 const TERMINAL_STATUSES = new Set(["complete", "failed", "timeout"]);
 
-/** Detect which LC series a result belongs to (for series gate) */
+/** Detect which series a result belongs to (LC + Prado + Ranger + Patrol) */
 function detectSeriesFromText(text: string): string | null {
   const t = text.toUpperCase();
+  // Prado must be checked FIRST (before LC) because "LandCruiser Prado 250" contains "250"
+  if (t.includes("PRADO")) {
+    if (/\b250\b|PRADO[\-_\s]?250/.test(t)) return "PRADO_250";
+    if (/\b150\b|PRADO[\-_\s]?150/.test(t)) return "PRADO_150";
+    return null; // Prado but unknown generation
+  }
+  // LC70
   if (
     /\b7[0689]\b/.test(t) ||
     /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]|VDJL79R|GDJL79R|TROOPY|TROOPCARRIER|WORKMATE/.test(t) ||
@@ -226,6 +233,11 @@ function detectSeriesFromText(text: string): string | null {
   ) return "LC70";
   if (/\b300\b/.test(t) || /LC300|FJA300R|GR[\-_\s]?SPORT|GR[\-_\s]?S\b/.test(t)) return "LC300";
   if (/\b200\b/.test(t) || /LC200|VDJ200|UZJ200/.test(t)) return "LC200";
+  // Ranger
+  if (/NEXT[\-_\s]?GEN|NEXTGEN|\bV6\b|RANGER[\-_\s]?PY/.test(t)) return "RANGER_PY";
+  // Patrol
+  if (/\bY62\b/.test(t)) return "PATROL_Y62";
+  if (/\bY61\b|\bGU\b/.test(t)) return "PATROL_Y61";
   return null;
 }
 

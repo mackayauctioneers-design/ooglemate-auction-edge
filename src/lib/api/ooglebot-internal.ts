@@ -381,9 +381,12 @@ function applySeriesGate(results: InternalMatch[], parsed: ParsedIntent): Intern
       !/\b300\b|LC300|FJA300R|GR[\-_\s]?SPORT|GR[\-_\s]?S\b/.test(text)
     ) return false;
 
-    const ls = detectListingSeriesLC(l);
-    // For explicit series searches, require a positive series match.
-    return ls === intentSeries;
+    const ls = detectListingSeries(l);
+    // If we detected a specific series, it must match intent
+    if (ls !== null) return ls === intentSeries;
+    // Unknown series: allow through for LC intent (Prado already excluded above),
+    // but reject for Prado intent (we need positive Prado identification)
+    return intentIsLC; // unknown LC listings are likely the right generation if Prado is excluded
   });
 }
 
