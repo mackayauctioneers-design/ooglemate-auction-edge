@@ -130,15 +130,33 @@ function isAuctionResult(r: { source?: string; source_class?: string | null; auc
 
 function UnifiedResultCard({ result, isBestPrice, isOperator }: { result: UnifiedResult; isBestPrice?: boolean; isOperator?: boolean }) {
   const hasUrl = !!result.url;
+  const cheapestFlag = result.deal_flags?.find(f => f.flag_type === "CHEAPEST_IN_MARKET");
+  const underMarketFlag = result.deal_flags?.find(f => f.flag_type === "UNDER_MARKET");
+  const hasDealFlag = !!cheapestFlag || !!underMarketFlag;
+
   return (
     <div className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md border transition-colors ${
-      isBestPrice
-        ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15"
-        : "border-border bg-card hover:bg-muted/30"
+      cheapestFlag
+        ? "border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/15"
+        : underMarketFlag
+          ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15"
+          : isBestPrice
+            ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15"
+            : "border-border bg-card hover:bg-muted/30"
     }`}>
       <div className="flex-1 min-w-0 space-y-0.5">
         <div className="flex items-center gap-1.5 flex-wrap">
-          {isBestPrice && (
+          {cheapestFlag && (
+            <Badge className="text-[9px] px-1 py-0 bg-amber-500 text-white border-amber-600 leading-tight">
+              🏆 Cheapest — ${cheapestFlag.price_gap?.toLocaleString()} under next
+            </Badge>
+          )}
+          {underMarketFlag && !cheapestFlag && (
+            <Badge className="text-[9px] px-1 py-0 bg-emerald-500 text-white border-emerald-600 leading-tight">
+              📉 {underMarketFlag.price_gap_pct}% under market
+            </Badge>
+          )}
+          {isBestPrice && !hasDealFlag && (
             <Badge className="text-[9px] px-1 py-0 bg-emerald-500 text-white border-emerald-600 leading-tight">
               Best
             </Badge>
