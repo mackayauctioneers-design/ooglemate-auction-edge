@@ -420,6 +420,7 @@ async function upsertListings(sb: any, listings: ScrapedListing[], runId: string
         listing_url: l.listing_url,
         location: l.location || null,
         status: "listed",
+        auction_status: "active",
         first_seen_at: now,
         last_seen_at: now,
         updated_at: now,
