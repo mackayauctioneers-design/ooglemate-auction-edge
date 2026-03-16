@@ -77,6 +77,15 @@ export function getAuctionListingUrl(
     };
   }
 
+  // Pickles: fix broken /used/search URLs to /cars/search
+  if (auctionHouse?.toLowerCase().includes('pickles') && /\/used\/search/.test(listingUrl)) {
+    const correctedUrl = listingUrl.replace('/used/search', '/cars/search');
+    return {
+      url: correctedUrl,
+      requiresSession: false,
+    };
+  }
+
   // Default: use the original listing URL (Pickles, F3, Valley, etc.)
   return {
     url: listingUrl,

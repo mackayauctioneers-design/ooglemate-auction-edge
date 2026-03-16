@@ -862,10 +862,10 @@ export default function TradingDeskPage() {
                                 {(() => {
                                   let linkUrl = opp.source_url;
                                   // Pickles direct lot URLs 404 — build a search URL instead
-                                  if (linkUrl && linkUrl.includes('pickles.com.au')) {
-                                    const q = [opp.year, opp.make, opp.model].filter(Boolean).join('+');
-                                    linkUrl = `https://www.pickles.com.au/used/search?q=${q}`;
-                                  }
+                                    if (linkUrl && linkUrl.includes('pickles.com.au') && /\/search\?q=|\/used\/search/.test(linkUrl)) {
+                                      const q = [opp.year, opp.make, opp.model].filter(Boolean).join('+');
+                                      linkUrl = `https://www.pickles.com.au/cars/search?q=${q}`;
+                                    }
                                   return linkUrl ? (
                                     <Button variant="ghost" size="iconSm" asChild>
                                       <a href={linkUrl} target="_blank" rel="noopener noreferrer">
