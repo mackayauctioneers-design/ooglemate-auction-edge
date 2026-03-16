@@ -6235,6 +6235,69 @@ export type Database = {
         }
         Relationships: []
       }
+      ooglebot_active_hunts: {
+        Row: {
+          account_id: string | null
+          apify_queue_ids: string[]
+          badge: string | null
+          completed_at: string | null
+          created_at: string
+          duration_ms: number | null
+          id: string
+          initiated_by: string
+          internal_count: number
+          km_max: number | null
+          make: string
+          model: string
+          price_max: number | null
+          results_found: number
+          sources_triggered: string[]
+          status: string
+          year_max: number | null
+          year_min: number | null
+        }
+        Insert: {
+          account_id?: string | null
+          apify_queue_ids?: string[]
+          badge?: string | null
+          completed_at?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          id?: string
+          initiated_by?: string
+          internal_count?: number
+          km_max?: number | null
+          make: string
+          model: string
+          price_max?: number | null
+          results_found?: number
+          sources_triggered?: string[]
+          status?: string
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          account_id?: string | null
+          apify_queue_ids?: string[]
+          badge?: string | null
+          completed_at?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          id?: string
+          initiated_by?: string
+          internal_count?: number
+          km_max?: number | null
+          make?: string
+          model?: string
+          price_max?: number | null
+          results_found?: number
+          sources_triggered?: string[]
+          status?: string
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Relationships: []
+      }
       ooglebot_jobs: {
         Row: {
           budget_ceiling: number
