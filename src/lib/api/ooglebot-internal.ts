@@ -28,8 +28,10 @@ const RECENCY_DAYS = 14;
 const OUTWARD_GATE_THRESHOLD = 3;
 
 /** Maximum results per tier */
-const TIER0_LIMIT = 100;
-const TIER1_LIMIT = 50;
+const TIER0_LIMIT = 300;
+const TIER1_LIMIT = 300;
+
+const SUB_BADGE_QUALIFIERS = ["HI-RIDER", "HIRIDER", "HI RIDER", "WILDTRAK", "RAPTOR", "SPORT"];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
