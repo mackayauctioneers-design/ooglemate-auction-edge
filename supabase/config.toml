@@ -308,6 +308,10 @@ verify_jwt = false
 verify_jwt = false
 schedule = "*/15 * * * *"
 
+[functions.slattery-crawl]
+verify_jwt = false
+schedule = "55 20 * * *"
+
 [functions.slattery-stub-ingest-webhook]
 verify_jwt = false
 
