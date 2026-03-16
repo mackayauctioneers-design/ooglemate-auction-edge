@@ -822,6 +822,7 @@ export function OogleBotSearch() {
       const structuredIntent = {
         make: structuredFilters.make,
         model: structuredFilters.model,
+        badge: structuredFilters.badge,
         yearMin: structuredFilters.year_min,
         yearMax: structuredFilters.year_max,
         kmMax: structuredFilters.max_km,

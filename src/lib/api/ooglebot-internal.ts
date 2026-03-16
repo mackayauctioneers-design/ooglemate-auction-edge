@@ -288,8 +288,8 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
     console.error("Tier 1 internal search error:", error);
     return [];
   }
-  // Apply series gate post-filter
-  return applySeriesGate((data || []) as InternalMatch[], parsed);
+
+  return applyBadgeFilter(applySeriesGate((data || []) as InternalMatch[], parsed), parsed.badge);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
