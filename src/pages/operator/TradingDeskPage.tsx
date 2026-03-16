@@ -209,6 +209,7 @@ export default function TradingDeskPage() {
   
   const [filterStatus, setFilterStatus] = useState<string>('active');
   const [filterDealerSearch, setFilterDealerSearch] = useState<string>('');
+  const [filterKmMax, setFilterKmMax] = useState<string>('120000');
 
   const [sortField, setSortField] = useState<SortField>('best_under_buy');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -358,6 +359,10 @@ export default function TradingDeskPage() {
       const nameMatch = o.best_account_name?.toLowerCase().includes(q);
       const assignedMatch = o.assigned_to_name?.toLowerCase().includes(q);
       if (!nameMatch && !assignedMatch) return false;
+    }
+    if (filterKmMax) {
+      const maxKm = parseInt(filterKmMax);
+      if (!isNaN(maxKm) && o.km != null && o.km > maxKm) return false;
     }
     return true;
   });
@@ -603,6 +608,21 @@ export default function TradingDeskPage() {
           <div className="w-48">
             <label className="text-xs text-muted-foreground mb-1 block">Search Dealer</label>
             <Input value={filterDealerSearch} onChange={e => setFilterDealerSearch(e.target.value)} placeholder="Type dealer name…" />
+          </div>
+          <div className="w-36">
+            <label className="text-xs text-muted-foreground mb-1 block">Max KM</label>
+            <Select value={filterKmMax} onValueChange={setFilterKmMax}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">No limit</SelectItem>
+                <SelectItem value="50000">50,000 km</SelectItem>
+                <SelectItem value="80000">80,000 km</SelectItem>
+                <SelectItem value="100000">100,000 km</SelectItem>
+                <SelectItem value="120000">120,000 km</SelectItem>
+                <SelectItem value="150000">150,000 km</SelectItem>
+                <SelectItem value="200000">200,000 km</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
