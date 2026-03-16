@@ -289,7 +289,7 @@ Deno.serve(async (req) => {
           source: l.source,
           location: l.location,
           listing_url: l.listing_url,
-          image_url: l.image_url,
+          image_url: null,
           cluster_key: key,
           cluster_size: cluster.length,
           avg_days_on_market: avgDays,
