@@ -421,7 +421,7 @@ Deno.serve(async (req) => {
     // ── 3. Delta fetch from all sources ──
     const AUCTION_SOURCES = ["pickles","grays","manheim","slattery","f3","auto_auctions","vma","bidsonline"];
 
-    // 3a. Priced listings (delta)
+    // 3a. Priced retail/dealer listings (delta — cursor-gated)
     const listings = await fetchDelta(
       sb, "vehicle_listings",
       "id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, last_seen_at",
@@ -431,11 +431,24 @@ Deno.serve(async (req) => {
     );
     results.fetched_priced = listings.length;
 
-    // 3b. Priceless auction (delta)
+    // 3a-bis. Priced auction listings (full scan — auction sources don't update last_seen_at frequently)
+    const auctionCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(); // 7-day window
+    const auctionPricedListings = await fetchDelta(
+      sb, "vehicle_listings",
+      "id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, last_seen_at",
+      auctionCutoff,
+      (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).not("asking_price", "is", null).gt("asking_price", 0),
+      MAX_LISTINGS_PER_RUN,
+    );
+    results.fetched_auction_priced = auctionPricedListings.length;
+    // Merge auction priced into main listings (deduped later by seenIds)
+    listings.push(...auctionPricedListings);
+
+    // 3b. Priceless auction (full scan — same reason)
     const pricelessListings = await fetchDelta(
       sb, "vehicle_listings",
       "id, listing_id, source, make, model, year, km, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, auction_datetime, last_seen_at",
-      cutoff,
+      auctionCutoff,
       (q: any) => q.in("lifecycle_state", ["NEW","ACTIVE","WATCHING","RETURNED"]).in("source", AUCTION_SOURCES).or("asking_price.is.null,asking_price.eq.0"),
       MAX_LISTINGS_PER_RUN,
     );
