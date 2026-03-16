@@ -432,7 +432,8 @@ Deno.serve(async (req) => {
     results.fetched_priced = listings.length;
 
     // 3a-bis. Priced auction listings (full scan — auction sources don't update last_seen_at frequently)
-    const auctionCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(); // 7-day window
+    // Use 48h window to avoid surfacing sold/lemon lots that linger in the DB
+    const auctionCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     const auctionPricedListings = await fetchDelta(
       sb, "vehicle_listings",
       "id, listing_id, source, make, model, year, km, asking_price, drivetrain, variant_raw, variant_family, platform_class, first_seen_at, listing_url, location, state, lifecycle_state, pass_count, auction_house, last_seen_at",
