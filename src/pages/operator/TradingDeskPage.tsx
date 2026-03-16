@@ -11,6 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff, Trash2 } from 'lucide-react';
+import { CaroogleAIFindsDrawer } from '@/components/trading-desk/CaroogleAIFindsDrawer';
 
 import { toast } from 'sonner';
 import { format, formatDistanceToNow, isPast, isToday, isTomorrow, differenceInHours } from 'date-fns';
@@ -467,10 +468,13 @@ export default function TradingDeskPage() {
             <h1 className="text-2xl font-bold text-foreground">Trading Desk</h1>
             <p className="text-muted-foreground text-sm">Centralised multi-dealer opportunity board</p>
           </div>
-          <Button onClick={runScoring} disabled={scoring} variant="default">
-            {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-            {scoring ? 'Scoring…' : 'Run Scoring'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <CaroogleAIFindsDrawer />
+            <Button onClick={runScoring} disabled={scoring} variant="default">
+              {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              {scoring ? 'Scoring…' : 'Run Scoring'}
+            </Button>
+          </div>
         </div>
 
         {/* Daily Signal Strip */}
