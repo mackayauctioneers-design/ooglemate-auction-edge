@@ -49,7 +49,7 @@ import { useSpeechToText } from "@/hooks/useSpeechToText";
 import { useToast } from "@/hooks/use-toast";
 import { toast as sonnerToast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-
+import { useStarVehicle, type StarVehiclePayload } from "@/hooks/useStarVehicle";
 // ── Constants ──
 
 const COMMON_MAKES = [
