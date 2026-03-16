@@ -1,19 +1,19 @@
 /**
- * ooglebot-active-hunt — On-Demand Scraper Orchestrator
+ * ooglebot-active-hunt — On-Demand Market Hunt Orchestrator
  *
- * When OogleBot finds < MIN_RESULTS in the internal database,
- * this function fires scrapers across multiple marketplaces:
- *   - Carsales (via carsales-scan)
- *   - Autotrader (via autotrader-ingest)
- *   - Pickles (via pickles-search-harvest)
- *   - Slattery (via slattery-scan)
- *   - Gumtree (via gumtree-scan)
- *   - CaroogleAI (via valo-perplexity-scan)
+ * When OogleBot finds thin coverage, this function fans out to the
+ * sources that can materially widen supply right now:
+ *   - Carsales (queued Apify run)
+ *   - AutoTrader API ingest (synchronous)
+ *   - Pickles harvest (best-effort async)
+ *   - Manheim crawl (synchronous)
+ *   - Slattery crawl (synchronous)
+ *   - CaroogleAI discovery (best-effort)
  *
- * Each scraper queues results into apify_runs_queue → autotrader-fetch
- * processes them → market_listings gets populated.
- *
- * Returns a hunt_id for the UI to poll progress.
+ * Returns:
+ *   - hunt_id
+ *   - queued source ids the UI can poll
+ *   - sync sources that require a final re-query even if queue rows stay at 0
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -35,10 +35,16 @@ interface HuntIntent {
   state?: string | null;
 }
 
-// ─── URL Builders ────────────────────────────────────────────────────────────
+interface DispatchOutcome {
+  source: string;
+  ok: boolean;
+  mode: "queued" | "sync" | "async";
+  queue_id?: string;
+  error?: string;
+}
 
 function carsalesSlug(str: string): string {
-  return str.trim().split(/\s+/).map(w => w[0].toUpperCase() + w.slice(1).toLowerCase()).join("");
+  return str.trim().split(/\s+/).map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase()).join("");
 }
 
 function buildCarsalesUrl(intent: HuntIntent): string {
@@ -57,14 +63,22 @@ function buildCarsalesUrl(intent: HuntIntent): string {
 }
 
 function buildAutotraderSearch(intent: HuntIntent): string {
-  return `${intent.make} ${intent.model}${intent.badge ? " " + intent.badge : ""}`.trim();
+  return `${intent.make} ${intent.model}${intent.badge ? ` ${intent.badge}` : ""}`.trim();
 }
 
-// ─── Scraper Dispatchers ─────────────────────────────────────────────────────
+async function readJsonSafe(resp: Response): Promise<Record<string, any> | null> {
+  try {
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
 
 async function dispatchCarsales(
-  sbUrl: string, sbKey: string, intent: HuntIntent
-): Promise<{ source: string; ok: boolean; queue_id?: string; error?: string }> {
+  sbUrl: string,
+  sbKey: string,
+  intent: HuntIntent,
+): Promise<DispatchOutcome> {
   try {
     const url = buildCarsalesUrl(intent);
     const resp = await fetch(`${sbUrl}/functions/v1/carsales-scan`, {
@@ -72,84 +86,144 @@ async function dispatchCarsales(
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${sbKey}` },
       body: JSON.stringify({ startUrls: [{ url }], limit: 60 }),
     });
-    const data = await resp.json();
-    if (data.ok && data.status === "launched") {
-      return { source: "carsales", ok: true, queue_id: data.queue_id };
+    const data = await readJsonSafe(resp);
+    if (data?.ok && data?.status === "launched" && data?.queue_id) {
+      return { source: "carsales", ok: true, mode: "queued", queue_id: data.queue_id };
     }
-    return { source: "carsales", ok: false, error: data.status || data.error };
+    return { source: "carsales", ok: false, mode: "queued", error: data?.detail || data?.status || data?.error || `HTTP ${resp.status}` };
   } catch (e) {
-    return { source: "carsales", ok: false, error: String(e) };
+    return { source: "carsales", ok: false, mode: "queued", error: String(e) };
   }
 }
 
 async function dispatchAutotrader(
-  sbUrl: string, sbKey: string, intent: HuntIntent
-): Promise<{ source: string; ok: boolean; queue_id?: string; error?: string }> {
+  sbUrl: string,
+  intent: HuntIntent,
+): Promise<DispatchOutcome> {
   try {
-    const resp = await fetch(`${sbUrl}/functions/v1/autotrader-ingest`, {
+    const internalSecret = Deno.env.get("AUTOTRADER_INTERNAL_SECRET");
+    if (!internalSecret) {
+      return { source: "autotrader", ok: false, mode: "sync", error: "AUTOTRADER_INTERNAL_SECRET missing" };
+    }
+
+    const resp = await fetch(`${sbUrl}/functions/v1/autotrader-api-ingest`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${sbKey}` },
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-secret": internalSecret,
+      },
       body: JSON.stringify({
-        search: buildAutotraderSearch(intent),
+        make: intent.make,
+        model: buildAutotraderSearch(intent),
+        state: intent.state || null,
         year_min: intent.year_min || 2016,
-        limit: 100,
+        year_max: intent.year_max || null,
+        max_pages: 4,
       }),
     });
-    const data = await resp.json();
-    if (data.queue_id) {
-      return { source: "autotrader", ok: true, queue_id: data.queue_id };
+
+    const data = await readJsonSafe(resp);
+    if (resp.ok && data?.success) {
+      return { source: "autotrader", ok: true, mode: "sync" };
     }
-    return { source: "autotrader", ok: false, error: data.error || "no queue_id" };
+
+    return {
+      source: "autotrader",
+      ok: false,
+      mode: "sync",
+      error: data?.error || `HTTP ${resp.status}`,
+    };
   } catch (e) {
-    return { source: "autotrader", ok: false, error: String(e) };
+    return { source: "autotrader", ok: false, mode: "sync", error: String(e) };
   }
 }
 
-async function dispatchGumtree(
-  sbUrl: string, sbKey: string, intent: HuntIntent
-): Promise<{ source: string; ok: boolean; queue_id?: string; error?: string }> {
+async function dispatchPickles(
+  sbUrl: string,
+  sbKey: string,
+  intent: HuntIntent,
+): Promise<DispatchOutcome> {
   try {
-    const makeSlug = intent.make.toLowerCase().replace(/\s+/g, "-");
-    const modelSlug = intent.model.toLowerCase().replace(/\s+/g, "-");
-    const searchUrl = `https://www.gumtree.com.au/s-cars-vans-utes/australia/carmake-${makeSlug}/carmodel-${makeSlug}_${modelSlug}/c18320?pageSize=96${intent.year_min ? `&caryear=${intent.year_min}` : ""}`;
-
-    const resp = await fetch(`${sbUrl}/functions/v1/gumtree-scan`, {
+    const resp = await fetch(`${sbUrl}/functions/v1/pickles-search-harvest`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${sbKey}` },
-      body: JSON.stringify({ startUrls: [{ url: searchUrl }], limit: 60 }),
+      body: JSON.stringify({
+        make: intent.make,
+        model: intent.model,
+        year_min: intent.year_min || 2016,
+        max_pages: 3,
+      }),
     });
-    const data = await resp.json();
-    if (data.ok || data.queue_id) {
-      return { source: "gumtree", ok: true, queue_id: data.queue_id };
+    const data = await readJsonSafe(resp);
+    if (resp.ok && data?.success) {
+      return { source: "pickles", ok: true, mode: "async" };
     }
-    return { source: "gumtree", ok: false, error: data.status || data.error };
+    return {
+      source: "pickles",
+      ok: false,
+      mode: "async",
+      error: data?.error || `HTTP ${resp.status}`,
+    };
   } catch (e) {
-    return { source: "gumtree", ok: false, error: String(e) };
+    return { source: "pickles", ok: false, mode: "async", error: String(e) };
+  }
+}
+
+async function dispatchManheim(
+  sbUrl: string,
+  sbKey: string,
+): Promise<DispatchOutcome> {
+  try {
+    const resp = await fetch(`${sbUrl}/functions/v1/manheim-crawl`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${sbKey}` },
+      body: JSON.stringify({ mode: "discover" }),
+    });
+    const data = await readJsonSafe(resp);
+    if (resp.ok && data?.success) {
+      return { source: "manheim", ok: true, mode: "sync" };
+    }
+    return {
+      source: "manheim",
+      ok: false,
+      mode: "sync",
+      error: data?.error || `HTTP ${resp.status}`,
+    };
+  } catch (e) {
+    return { source: "manheim", ok: false, mode: "sync", error: String(e) };
   }
 }
 
 async function dispatchSlattery(
-  sbUrl: string, sbKey: string
-): Promise<{ source: string; ok: boolean; queue_id?: string; error?: string }> {
+  sbUrl: string,
+  sbKey: string,
+): Promise<DispatchOutcome> {
   try {
-    const resp = await fetch(`${sbUrl}/functions/v1/slattery-scan`, {
+    const resp = await fetch(`${sbUrl}/functions/v1/slattery-crawl`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${sbKey}` },
-      body: JSON.stringify({ mode: "stub", maxPages: 5 }),
+      body: JSON.stringify({}),
     });
-    const data = await resp.json();
-    if (data.ok || data.queue_id) {
-      return { source: "slattery", ok: true, queue_id: data.queue_id };
+    const data = await readJsonSafe(resp);
+    if (resp.ok && data?.success) {
+      return { source: "slattery", ok: true, mode: "sync" };
     }
-    return { source: "slattery", ok: false, error: data.status || data.error };
+    return {
+      source: "slattery",
+      ok: false,
+      mode: "sync",
+      error: data?.error || `HTTP ${resp.status}`,
+    };
   } catch (e) {
-    return { source: "slattery", ok: false, error: String(e) };
+    return { source: "slattery", ok: false, mode: "sync", error: String(e) };
   }
 }
 
 async function dispatchCaroogleAI(
-  sbUrl: string, sbKey: string, intent: HuntIntent
-): Promise<{ source: string; ok: boolean; error?: string }> {
+  sbUrl: string,
+  sbKey: string,
+  intent: HuntIntent,
+): Promise<DispatchOutcome> {
   try {
     const resp = await fetch(`${sbUrl}/functions/v1/valo-perplexity-scan`, {
       method: "POST",
@@ -167,16 +241,15 @@ async function dispatchCaroogleAI(
         },
       }),
     });
+    const data = await readJsonSafe(resp);
     if (resp.ok) {
-      return { source: "caroogleai", ok: true };
+      return { source: "caroogleai", ok: true, mode: "sync" };
     }
-    return { source: "caroogleai", ok: false, error: `HTTP ${resp.status}` };
+    return { source: "caroogleai", ok: false, mode: "sync", error: data?.error || `HTTP ${resp.status}` };
   } catch (e) {
-    return { source: "caroogleai", ok: false, error: String(e) };
+    return { source: "caroogleai", ok: false, mode: "sync", error: String(e) };
   }
 }
-
-// ─── Main Handler ────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -237,7 +310,6 @@ Deno.serve(async (req) => {
 
   console.log(`[ACTIVE-HUNT] Launching hunt: ${make} ${model} ${intent.badge || ""}`);
 
-  // Create hunt record
   const { data: hunt, error: huntErr } = await sb
     .from("ooglebot_active_hunts")
     .insert({
@@ -264,33 +336,35 @@ Deno.serve(async (req) => {
 
   const huntId = hunt.id;
 
-  // ── Fire all scrapers in parallel ──
   const dispatches = await Promise.allSettled([
     dispatchCarsales(sbUrl, sbKey, intent),
-    dispatchAutotrader(sbUrl, sbKey, intent),
-    dispatchGumtree(sbUrl, sbKey, intent),
+    dispatchAutotrader(sbUrl, intent),
+    dispatchPickles(sbUrl, sbKey, intent),
+    dispatchManheim(sbUrl, sbKey),
     dispatchSlattery(sbUrl, sbKey),
     dispatchCaroogleAI(sbUrl, sbKey, intent),
   ]);
 
   const sources: string[] = [];
   const queueIds: string[] = [];
-  const results: Array<{ source: string; ok: boolean; queue_id?: string; error?: string }> = [];
+  const syncSources: string[] = [];
+  const delayedSources: string[] = [];
+  const results: DispatchOutcome[] = [];
 
-  for (const d of dispatches) {
-    if (d.status === "fulfilled") {
-      results.push(d.value);
-      if (d.value.ok) {
-        sources.push(d.value.source);
-        if (d.value.queue_id) queueIds.push(d.value.queue_id);
-      }
-    }
+  for (const dispatched of dispatches) {
+    if (dispatched.status !== "fulfilled") continue;
+    results.push(dispatched.value);
+
+    if (!dispatched.value.ok) continue;
+    sources.push(dispatched.value.source);
+    if (dispatched.value.queue_id) queueIds.push(dispatched.value.queue_id);
+    if (dispatched.value.mode === "sync") syncSources.push(dispatched.value.source);
+    if (dispatched.value.mode === "async") delayedSources.push(dispatched.value.source);
   }
 
-  console.log(`[ACTIVE-HUNT] ${sources.length} sources triggered: ${sources.join(", ")}`);
-  console.log(`[ACTIVE-HUNT] Failures: ${results.filter(r => !r.ok).map(r => `${r.source}: ${r.error}`).join("; ") || "none"}`);
+  console.log(`[ACTIVE-HUNT] Triggered: ${sources.join(", ") || "none"}`);
+  console.log(`[ACTIVE-HUNT] Failures: ${results.filter((r) => !r.ok).map((r) => `${r.source}: ${r.error}`).join("; ") || "none"}`);
 
-  // Update hunt record with triggered sources
   await sb
     .from("ooglebot_active_hunts")
     .update({
@@ -305,7 +379,9 @@ Deno.serve(async (req) => {
     status: "ok",
     hunt_id: huntId,
     sources_triggered: sources,
-    sources_failed: results.filter(r => !r.ok).map(r => ({ source: r.source, error: r.error })),
+    sync_sources_triggered: syncSources,
+    delayed_sources_triggered: delayedSources,
+    sources_failed: results.filter((r) => !r.ok).map((r) => ({ source: r.source, error: r.error })),
     apify_queue_ids: queueIds,
     duration_ms: durationMs,
   });
