@@ -21,6 +21,9 @@ const EXCLUDED_LIFECYCLE = ["STALE", "DEAD", "RETURNED", "INVALID", "DELISTED", 
 
 // Recency gate: only show listings seen in the last 14 days
 const RECENCY_DAYS = 14;
+// OEM feeds (toyota, etc.) refresh every 2h — if not seen in 48h, listing is likely sold
+const OEM_FRESHNESS_HOURS = 48;
+const OEM_SOURCES = new Set(["toyota"]);
 
 /** Detect which LC series (LC70/LC200/LC300) a listing belongs to, based on variant+URL signals */
 function detectListingSeriesLC(l: {
