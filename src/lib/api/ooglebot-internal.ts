@@ -131,7 +131,7 @@ export function parseSearchQuery(query: string): ParsedIntent {
   const make = words.length > 0 ? words[0] : null;
   const model = words.length > 1 ? words.slice(1).join(" ") : null;
 
-  return { make, model, yearMin, yearMax, kmMax, priceMax };
+  return { make, model, badge: null, yearMin, yearMax, kmMax, priceMax };
 }
 
 // ─── Core Search: Tiered Auction-First ───────────────────────────────────────
