@@ -395,11 +395,48 @@ export function OogleBotSearch() {
   const [makeSearch, setMakeSearch] = useState("");
   const [makeOpen, setMakeOpen] = useState(false);
   const [badge, setBadge] = useState("");
+  const [series, setSeries] = useState("");
   const [yearMin, setYearMin] = useState("");
   const [yearMax, setYearMax] = useState("");
   const [kmMax, setKmMax] = useState("");
   const [priceMax, setPriceMax] = useState("");
   const [stateFilter, setStateFilter] = useState("");
+
+  // ── Series options derived from make/model ──
+  const SERIES_OPTIONS: Record<string, { label: string; value: string }[]> = {
+    "TOYOTA:LANDCRUISER": [
+      { label: "300 Series", value: "LC300" },
+      { label: "200 Series", value: "LC200" },
+      { label: "70 Series", value: "LC70" },
+    ],
+    "TOYOTA:PRADO": [
+      { label: "250 Series (New)", value: "PRADO_250" },
+      { label: "150 Series", value: "PRADO_150" },
+    ],
+    "FORD:RANGER": [
+      { label: "Next Gen (PY)", value: "RANGER_PY" },
+    ],
+  };
+
+  const seriesKey = useMemo(() => {
+    const m = make.toUpperCase().trim();
+    const mo = model.toUpperCase().trim();
+    if (m === "TOYOTA") {
+      if (mo.includes("PRADO")) return "TOYOTA:PRADO";
+      if (mo.includes("LANDCRUISER") || mo.includes("LAND CRUISER")) return "TOYOTA:LANDCRUISER";
+    }
+    if (m === "FORD" && mo.includes("RANGER")) return "FORD:RANGER";
+    return null;
+  }, [make, model]);
+
+  const availableSeries = seriesKey ? SERIES_OPTIONS[seriesKey] || [] : [];
+
+  // Reset series when make/model changes and series is no longer valid
+  useEffect(() => {
+    if (series && !availableSeries.find(s => s.value === series)) {
+      setSeries("");
+    }
+  }, [availableSeries, series]);
   const [selectedAccessories, setSelectedAccessories] = useState<string[]>([]);
   const [customAccessory, setCustomAccessory] = useState("");
   // Discovery users always get full market scan — no toggle needed
@@ -788,9 +825,20 @@ export function OogleBotSearch() {
   const handleSearch = async () => {
     if (!canSearch) return;
 
+    // If user selected a series, inject the series token into the model for the search engine
+    const effectiveSeries = series && series !== "all" ? series : null;
+    const seriesModelSuffix: Record<string, string> = {
+      LC300: "300", LC200: "200", LC70: "70",
+      PRADO_250: "250", PRADO_150: "150",
+      RANGER_PY: "Next Gen",
+    };
+    const modelWithSeries = effectiveSeries && seriesModelSuffix[effectiveSeries]
+      ? `${model.trim()} ${seriesModelSuffix[effectiveSeries]}`.trim()
+      : model.trim();
+
     const structuredFilters = {
       make: make.trim(),
-      model: model.trim(),
+      model: modelWithSeries,
       badge: badge.trim() || null,
       year_min: yearMin ? parseInt(yearMin, 10) : null,
       year_max: yearMax ? parseInt(yearMax, 10) : null,
@@ -874,7 +922,7 @@ export function OogleBotSearch() {
         directResponse?.results ?? [],
         [],
         structuredFilters.badge,
-        extractSeries(structuredFilters.make, structuredFilters.model),
+        effectiveSeries || extractSeries(structuredFilters.make, structuredFilters.model),
       );
       const totalResults = visibleBaselineResults.length;
       console.log(`[Search] Unique visible results: ${totalResults} (tiered: ${listings.length}, direct: ${directResponse?.results?.length ?? 0})`);
@@ -1105,6 +1153,27 @@ export function OogleBotSearch() {
               )}
             </p>
           </div>
+
+          {/* Row 2b: Series (conditional) */}
+          {availableSeries.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Series / Generation</Label>
+              <Select value={series} onValueChange={setSeries}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="All generations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All generations</SelectItem>
+                  {availableSeries.map(s => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                Filters to a specific generation (e.g. 300 Series vs 70 Series)
+              </p>
+            </div>
+          )}
 
           {/* Row 3: Year / KM / Price / State */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
