@@ -26,6 +26,74 @@ const SOURCE_CLASS = "auction";
 const AUCTION_HOUSE = "pickles";
 const BATCH_SIZE = 200;
 
+// ─── PAGE STATUS CLASSIFIER ──────────────────────────────────────────────────
+
+type AuctionStatus = "active" | "sold" | "withdrawn" | "invalid";
+
+const SOLD_SIGNALS = [
+  /lot\s+(?:has\s+been\s+)?sold/i,
+  /sale\s+closed/i,
+  /bidding\s+closed/i,
+  /auction\s+ended/i,
+  /sale\s+completed/i,
+];
+
+const WITHDRAWN_SIGNALS = [
+  /no\s+longer\s+available/i,
+  /listing\s+withdrawn/i,
+  /vehicle\s+removed/i,
+  /item\s+(?:has\s+been\s+)?removed/i,
+  /unfortunately.*not\s+available/i,
+  /lot\s+withdrawn/i,
+];
+
+async function classifyPageStatus(url: string): Promise<{ status: AuctionStatus; reason: string }> {
+  if (!url) return { status: "invalid", reason: "no_url" };
+
+  try {
+    const resp = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      headers: {
+        "user-agent": "Mozilla/5.0 (compatible; CarOogleVerifier/1.0)",
+        "accept": "text/html",
+      },
+    });
+
+    // HTTP status checks
+    if (resp.status === 404 || resp.status === 410) {
+      return { status: "invalid", reason: `http_${resp.status}` };
+    }
+
+    // Redirect away from detail page = invalid
+    const finalUrl = resp.url || url;
+    if (!finalUrl.includes("/used/") && !finalUrl.includes("/lot/") && !finalUrl.includes("/details/")) {
+      return { status: "invalid", reason: "redirect_away" };
+    }
+
+    // Server error = pass through (might be temporary)
+    if (resp.status >= 500) {
+      return { status: "active", reason: "5xx_passthrough" };
+    }
+
+    // Content analysis — read first 8000 chars for signals
+    const bodyText = await resp.text().catch(() => "");
+    const snippet = bodyText.slice(0, 8000);
+
+    for (const re of SOLD_SIGNALS) {
+      if (re.test(snippet)) return { status: "sold", reason: re.source };
+    }
+    for (const re of WITHDRAWN_SIGNALS) {
+      if (re.test(snippet)) return { status: "withdrawn", reason: re.source };
+    }
+
+    return { status: "active", reason: "live" };
+  } catch (_e) {
+    // Network error = allow through to avoid false rejections
+    return { status: "active", reason: "fetch_error_passthrough" };
+  }
+}
+
 // ─── NORMALIZERS ─────────────────────────────────────────────────────────────
 
 function normalizeDrivetrain(raw: string | null | undefined): string {
@@ -290,13 +358,113 @@ Deno.serve(async (req) => {
 
     console.log(`[${CRON_NAME}] Built ${rows.length} valid rows (skipped ${skipped}, normalized ${normCount})`);
 
-    // ── Batch upsert into vehicle_listings ──
+    // ── Page Status Gate: validate a sample of listings ──
+    // For new listings (not already in DB), validate their URLs
+    // For performance, we batch-check up to 50 new URLs per run
+    const existingIds = new Set<string>();
+    const PAGE_CHECK_LIMIT = 50;
+
+    // Fetch existing listing_ids to know which are new
+    const allListingIds = rows.map(r => r.listing_id);
+    for (let i = 0; i < allListingIds.length; i += 500) {
+      const batch = allListingIds.slice(i, i + 500);
+      const { data: existing } = await sb
+        .from("vehicle_listings")
+        .select("listing_id, auction_status, lifecycle_state, relist_count")
+        .in("listing_id", batch);
+      for (const e of existing || []) {
+        existingIds.add(e.listing_id);
+      }
+    }
+
+    // Classify new listings via page status gate
+    const statusMap = new Map<string, { status: AuctionStatus; reason: string }>();
+    let checksPerformed = 0;
+    let filteredSold = 0;
+    let filteredWithdrawn = 0;
+    let filteredInvalid = 0;
+
+    // Also detect relists — listings that were previously DEAD/SOLD now reappearing
+    const relistDetected: string[] = [];
+    
+    // Check existing records for relist detection
+    for (let i = 0; i < allListingIds.length; i += 500) {
+      const batch = allListingIds.slice(i, i + 500);
+      const { data: deadOnes } = await sb
+        .from("vehicle_listings")
+        .select("listing_id, relist_count, lifecycle_state, auction_status")
+        .in("listing_id", batch)
+        .in("lifecycle_state", ["DEAD", "STALE"])
+        .in("auction_status", ["sold", "withdrawn", "invalid"]);
+      
+      for (const d of deadOnes || []) {
+        relistDetected.push(d.listing_id);
+      }
+    }
+
+    // Page-check new listings (capped for performance)
+    const newListingIds = rows
+      .filter(r => !existingIds.has(r.listing_id))
+      .map(r => r.listing_id);
+
+    for (const row of rows) {
+      if (existingIds.has(row.listing_id)) continue; // skip existing, they'll just update
+      if (checksPerformed >= PAGE_CHECK_LIMIT) break;
+
+      const result = await classifyPageStatus(row.listing_url);
+      statusMap.set(row.listing_id, result);
+      checksPerformed++;
+
+      if (result.status !== "active") {
+        console.log(`[${CRON_NAME}] PAGE GATE: ${row.listing_id} → ${result.status} (${result.reason})`);
+      }
+
+      // Small delay between checks to be polite
+      if (checksPerformed % 10 === 0) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+
+    // Filter rows: only upsert active listings (or existing ones being updated)
+    const activeRows: any[] = [];
+    const nonActiveRows: any[] = [];
+
+    for (const row of rows) {
+      const pageResult = statusMap.get(row.listing_id);
+      
+      if (pageResult && pageResult.status !== "active") {
+        // New listing that failed page gate — track but don't insert
+        row.auction_status = pageResult.status;
+        nonActiveRows.push(row);
+        if (pageResult.status === "sold") filteredSold++;
+        else if (pageResult.status === "withdrawn") filteredWithdrawn++;
+        else filteredInvalid++;
+        continue;
+      }
+
+      // Active or existing — set auction_status
+      row.auction_status = "active";
+
+      // Relist detection
+      if (relistDetected.includes(row.listing_id)) {
+        row.relist_count = 1; // Will be incremented via SQL below
+        row.lifecycle_state = "NEW"; // Revive
+        console.log(`[${CRON_NAME}] RELIST DETECTED: ${row.listing_id}`);
+      }
+
+      activeRows.push(row);
+    }
+
+    console.log(`[${CRON_NAME}] Page gate: ${checksPerformed} checked, ${filteredSold} sold, ${filteredWithdrawn} withdrawn, ${filteredInvalid} invalid`);
+    console.log(`[${CRON_NAME}] Active rows for upsert: ${activeRows.length}, filtered: ${nonActiveRows.length}, relists: ${relistDetected.length}`);
+
+    // ── Batch upsert ACTIVE rows into vehicle_listings ──
     let totalNew = 0;
     let totalUpdated = 0;
     let errors = 0;
 
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = rows.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < activeRows.length; i += BATCH_SIZE) {
+      const batch = activeRows.slice(i, i + BATCH_SIZE);
       const { error, data } = await sb
         .from("vehicle_listings")
         .upsert(batch, { onConflict: "listing_id", ignoreDuplicates: false })
@@ -307,14 +475,52 @@ Deno.serve(async (req) => {
         console.error(`[${CRON_NAME}] Batch upsert error at offset ${i}: ${error.message}`);
       } else {
         const count = data?.length || batch.length;
-        totalNew += count; // upsert doesn't distinguish new vs updated
+        totalNew += count;
       }
+    }
+
+    // ── Increment relist_count for detected relists ──
+    for (const relistId of relistDetected) {
+      await sb.rpc("increment_relist_count", { p_listing_id: relistId }).catch(() => {
+        // Fallback: manual increment
+        sb.from("vehicle_listings")
+          .update({ relist_count: 1 }) // At minimum mark as relisted
+          .eq("listing_id", relistId);
+      });
+    }
+
+    // ── Flag lemons: relist_count >= 2 ──
+    if (relistDetected.length > 0) {
+      await sb
+        .from("vehicle_listings")
+        .update({ lemon_flag: true, lemon_reason: "relisted_multiple_times" })
+        .in("listing_id", relistDetected)
+        .gte("relist_count", 2);
+    }
+
+    // ── Update non-active records' auction_status (if they exist) ──
+    for (const row of nonActiveRows) {
+      await sb
+        .from("vehicle_listings")
+        .update({
+          auction_status: row.auction_status,
+          lifecycle_state: "DEAD",
+          status: row.auction_status === "sold" ? "sold" : "inactive",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("listing_id", row.listing_id);
     }
 
     const runtimeMs = Date.now() - startTime;
     const result = {
       listings_received: ads.length,
       valid_rows: rows.length,
+      active_rows: activeRows.length,
+      filtered_sold: filteredSold,
+      filtered_withdrawn: filteredWithdrawn,
+      filtered_invalid: filteredInvalid,
+      page_checks: checksPerformed,
+      relists_detected: relistDetected.length,
       skipped,
       upserted: totalNew,
       with_price: withPriceCount,

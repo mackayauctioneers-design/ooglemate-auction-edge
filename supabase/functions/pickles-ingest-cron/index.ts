@@ -420,12 +420,14 @@ async function upsertListings(sb: any, listings: ScrapedListing[], runId: string
         listing_url: l.listing_url,
         location: l.location || null,
         status: "listed",
+        auction_status: "active",
         first_seen_at: now,
         last_seen_at: now,
         updated_at: now,
         seller_type: "auction",
         source_class: "auction",
         lifecycle_state: "NEW",
+        auction_status: "active",
       });
       if (error) errors.push(`Insert ${listingId}: ${error.message}`);
       else newListings++;

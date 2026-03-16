@@ -1,0 +1,36 @@
+# Memory: technical/ingestion/auction-page-status-gate-v1
+Updated: now
+
+The Pickles ingestion pipeline now enforces a **Page Status Gate** that classifies every new listing before database insertion. The gate runs in `caroogle-shadow-cron` (the main Pickles production feed) and `pickles-ingest-cron` (Buy Now scraper).
+
+**Classification States:**
+- `active` — live listing, safe to insert/update
+- `sold` — auction completed (detected via page content: "lot sold", "bidding closed", etc.)
+- `withdrawn` — vehicle removed (detected via "no longer available", "listing withdrawn", etc.)
+- `invalid` — 404/410 or redirect away from detail page
+
+**Database Columns Added to `vehicle_listings`:**
+- `auction_status` (text, default 'active') — page classification state
+- `relist_count` (integer, default 0) — times a listing reappeared after being marked dead/sold
+- `lemon_flag` (boolean, default false) — true if vehicle shows lemon patterns
+- `lemon_reason` (text) — explanation for lemon flag
+
+**Relist-Lemon Detection:**
+- When a previously DEAD/SOLD listing reappears in the Caroogle API feed, `relist_count` is incremented
+- Listings with `relist_count >= 2` are automatically flagged as lemons
+- The `lifecycle-sweep` also detects relists when reviving STALE/DEAD listings
+
+**Performance:**
+- Page checks are capped at 50 new URLs per run to avoid timeout
+- Existing listings skip page validation (they're just updated)
+- 500ms delay every 10 checks to be polite to Pickles servers
+
+**Flow:**
+```
+Caroogle API → build rows → fetch existing IDs → page classify new URLs
+  → ACTIVE: upsert into vehicle_listings
+  → SOLD/WITHDRAWN/INVALID: update existing record's auction_status, mark DEAD
+  → Relist detection: increment relist_count, flag lemons
+```
+
+**RPC:** `increment_relist_count(p_listing_id)` — atomically increments the counter.

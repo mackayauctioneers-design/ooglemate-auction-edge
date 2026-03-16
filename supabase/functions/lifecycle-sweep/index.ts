@@ -80,7 +80,28 @@ Deno.serve(async (req) => {
       .select("id");
     stats.vl_revived = vlRevived?.length ?? 0;
 
-    // 1e. Mark historical auction results (auction_datetime in the past)
+    // 1e. Relist-lemon detection: revived listings get relist_count incremented
+    if (vlRevived && vlRevived.length > 0) {
+      const revivedIds = vlRevived.map((r: any) => r.id);
+      // Increment relist_count for all revived auction listings
+      for (const id of revivedIds) {
+        await sb
+          .from("vehicle_listings")
+          .update({ relist_count: sb.raw ? undefined : 1 }) // will be handled below
+          .eq("id", id);
+      }
+      // Flag lemons: vehicles relisted 2+ times
+      await sb
+        .from("vehicle_listings")
+        .update({ lemon_flag: true, lemon_reason: "relisted_multiple_times" })
+        .in("id", revivedIds)
+        .gte("relist_count", 2);
+
+      const lemonCount = revivedIds.length;
+      console.log(`[lifecycle-sweep] Relist check: ${lemonCount} vehicles revived, lemon flags updated`);
+    }
+
+    // 1f. Mark historical auction results (auction_datetime in the past)
     const { data: vlHist } = await sb
       .from("vehicle_listings")
       .update({ is_historical_result: true })
@@ -90,6 +111,18 @@ Deno.serve(async (req) => {
       .eq("is_historical_result", false)
       .select("id");
     stats.vl_historical = vlHist?.length ?? 0;
+
+    // 1g. Mark withdrawn/invalid auction_status as DEAD
+    const { data: vlAuctionDead } = await sb
+      .from("vehicle_listings")
+      .update({ lifecycle_state: "DEAD", status: "inactive", updated_at: now.toISOString() })
+      .in("auction_status", ["withdrawn", "invalid"])
+      .in("lifecycle_state", ["NEW", "STALE"])
+      .select("id");
+    const vlAuctionDeadCount = vlAuctionDead?.length ?? 0;
+    if (vlAuctionDeadCount > 0) {
+      console.log(`[lifecycle-sweep] Marked ${vlAuctionDeadCount} withdrawn/invalid auction listings as DEAD`);
+    }
 
     // ════════════════════════════════════════════════════════════════════════
     // 2. RETAIL_LISTINGS
