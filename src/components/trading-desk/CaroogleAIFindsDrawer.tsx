@@ -121,6 +121,19 @@ export function CaroogleAIFindsDrawer() {
   };
 
   const filtered = finds.filter(f => viewFilter === 'starred' ? f.status === 'starred' : true);
+  const sorted = [...filtered].sort((a, b) => {
+    switch (sortBy) {
+      case 'spread': return (b.spread ?? 0) - (a.spread ?? 0);
+      case 'discount': return (b.discount_percent ?? 0) - (a.discount_percent ?? 0);
+      case 'price_low': return (a.price ?? Infinity) - (b.price ?? Infinity);
+      case 'price_high': return (b.price ?? 0) - (a.price ?? 0);
+      case 'year': return (b.year ?? 0) - (a.year ?? 0);
+      case 'km_low': return (a.km ?? Infinity) - (b.km ?? Infinity);
+      case 'newest': return new Date(b.first_detected_at).getTime() - new Date(a.first_detected_at).getTime();
+      case 'score':
+      default: return b.score - a.score;
+    }
+  });
   const starredCount = finds.filter(f => f.status === 'starred').length;
   const totalCount = finds.filter(f => f.status === 'active').length;
 
