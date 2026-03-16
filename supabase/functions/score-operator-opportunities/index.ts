@@ -35,6 +35,21 @@ function extractBadge(text: string | null): string {
   return sharedExtractBadge(text);
 }
 
+// Sanitize source URLs: reject search/list pages, keep only detail/lot pages
+function sanitizeSourceUrl(url: string, listingId: string): string {
+  if (!url) return "";
+  // Reject search page URLs
+  if (/\/search\?q=|\/search\/-\/|\/list\/keyword/i.test(url)) {
+    // Try to build a correct Pickles detail URL from listing_id
+    const picklesMatch = listingId.match(/^pickles:(\d+)$/);
+    if (picklesMatch) {
+      return `https://www.pickles.com.au/used/details/cars/${picklesMatch[1]}`;
+    }
+    return ""; // Can't repair — return empty
+  }
+  return url;
+}
+
 const PRODUCTION_SOURCES = [
   "pickles","grays","manheim","caroogle_shadow",
   "autotrader","carsales","easyauto","slattery",
