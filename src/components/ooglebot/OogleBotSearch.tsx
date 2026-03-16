@@ -1313,6 +1313,53 @@ export function OogleBotSearch() {
               })()}
             </div>
           )}
+
+          {/* ── Active Hunt Banner ── */}
+          {huntStatus === "hunting" && (
+            <div className="p-3 rounded-lg bg-primary/10 border border-primary/30 space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="relative flex h-3 w-3 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-primary">
+                    🔍 Hunting the market…
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Scraping {huntSources.length} sources for live inventory. Results will appear automatically.
+                  </p>
+                </div>
+                <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+              </div>
+              {huntSources.length > 0 && (
+                <div className="flex flex-wrap gap-2 pl-6">
+                  {huntSources.map(src => {
+                    const names: Record<string, string> = {
+                      carsales: "Carsales", autotrader: "Autotrader", gumtree: "Gumtree",
+                      slattery: "Slattery", caroogleai: "AI Discovery",
+                    };
+                    return (
+                      <Badge key={src} variant="outline" className="text-[10px] border-primary/30 text-primary">
+                        {names[src] || src}
+                      </Badge>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {huntStatus === "complete" && (
+            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+              <div className="flex items-center gap-3">
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shrink-0"></span>
+                <p className="text-sm text-emerald-700 dark:text-emerald-400">
+                  ✅ Market hunt complete — results updated
+                </p>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
