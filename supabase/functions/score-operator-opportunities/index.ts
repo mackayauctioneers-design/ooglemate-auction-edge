@@ -563,7 +563,7 @@ Deno.serve(async (req) => {
         platform_class: derivePlatform(make, model),
         trim_class: r.badge || r.variant_family || extractBadge(r.variant_raw) || "UNKNOWN",
         drivetrain_bucket: drivetrainBucket(r.drivetrain),
-        source_url: r.listing_url || "",
+        source_url: sanitizeSourceUrl(r.listing_url || "", lid),
         first_seen_at: r.first_seen_at || new Date().toISOString(),
         days_listed: daysSince, price_drops: r.price_change_count || 0, pass_count: 0,
         badge: r.badge || r.variant_family || extractBadge(r.variant_raw) || null,
