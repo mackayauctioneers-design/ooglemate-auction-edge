@@ -343,7 +343,27 @@ Deno.serve(async (req) => {
     // --- 3b. Series gate ---
     if (intentSeries) {
       const beforeSeries = filtered.length;
+      const intentIsLC = intentSeries.startsWith("LC");
+      const intentIsPrado = intentSeries.startsWith("PRADO");
+
       filtered = filtered.filter((l: any) => {
+        const text = [
+          l.make,
+          l.model,
+          l.variant_raw,
+          l.variant_family,
+          l.variant_used,
+          l.listing_url,
+          l.listing_id,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toUpperCase();
+
+        // Hard model-family gate: Prado must never appear in LandCruiser results, and vice versa.
+        if (intentIsLC && text.includes("PRADO")) return false;
+        if (intentIsPrado && !text.includes("PRADO")) return false;
+
         const ls = detectListingSeriesLC(l);
         return ls === null || ls === intentSeries;
       });
