@@ -217,6 +217,7 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
     .in("source", AUCTION_SOURCE_ALLOWLIST)
     .in("lifecycle_status", ACTIVE_LIFECYCLE)
     .eq("is_historical_result", false)
+    .not("asking_price", "is", null)
     .gte("last_seen_at", recencyCutoff)
     .ilike("make", `%${parsed.make}%`)
     .order("asking_price", { ascending: true, nullsFirst: false })
@@ -235,7 +236,7 @@ async function searchAuctionTier(parsed: ParsedIntent): Promise<InternalMatch[]>
   if (parsed.yearMin) q = q.gte("year", parsed.yearMin);
   if (parsed.yearMax) q = q.lte("year", parsed.yearMax);
   if (parsed.kmMax) q = q.lte("km", parsed.kmMax);
-  if (parsed.priceMax) q = q.or(`asking_price.lte.${parsed.priceMax},asking_price.is.null`);
+  if (parsed.priceMax) q = q.lte("asking_price", parsed.priceMax);
 
   const { data, error } = await q;
   if (error) {
