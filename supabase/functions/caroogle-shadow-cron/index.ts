@@ -515,6 +515,12 @@ Deno.serve(async (req) => {
     const result = {
       listings_received: ads.length,
       valid_rows: rows.length,
+      active_rows: activeRows.length,
+      filtered_sold: filteredSold,
+      filtered_withdrawn: filteredWithdrawn,
+      filtered_invalid: filteredInvalid,
+      page_checks: checksPerformed,
+      relists_detected: relistDetected.length,
       skipped,
       upserted: totalNew,
       with_price: withPriceCount,
