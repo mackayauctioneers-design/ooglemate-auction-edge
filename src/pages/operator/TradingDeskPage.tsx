@@ -218,12 +218,20 @@ export default function TradingDeskPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [oppsRes, acctsRes] = await Promise.all([
+      // Fetch active opportunities + starred (regardless of status) in parallel
+      const [oppsRes, starredRes, acctsRes] = await Promise.all([
         supabase.from('operator_opportunities').select('*').in('status', ['new', 'assigned', 'reviewed']).order('best_expected_margin', { ascending: false }).limit(500),
+        supabase.from('operator_opportunities').select('*').eq('is_starred', true).not('status', 'in', '("new","assigned","reviewed")').limit(100),
         supabase.from('accounts').select('id, display_name'),
       ]);
       if (oppsRes.error) throw oppsRes.error;
-      setOpportunities((oppsRes.data as OperatorOpportunity[]) || []);
+      // Merge: active opps + starred that weren't already in active set
+      const activeIds = new Set((oppsRes.data || []).map((o: any) => o.id));
+      const merged = [
+        ...(oppsRes.data || []),
+        ...((starredRes.data || []).filter((o: any) => !activeIds.has(o.id))),
+      ];
+      setOpportunities(merged as OperatorOpportunity[]);
       setAccounts((acctsRes.data || []) as { id: string; display_name: string }[]);
     } catch (err) {
       console.error('Failed to load trading desk:', err);
