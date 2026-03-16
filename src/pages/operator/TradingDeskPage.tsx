@@ -209,6 +209,7 @@ export default function TradingDeskPage() {
   
   const [filterStatus, setFilterStatus] = useState<string>('active');
   const [filterDealerSearch, setFilterDealerSearch] = useState<string>('');
+  const [filterKmMax, setFilterKmMax] = useState<string>('120000');
 
   const [sortField, setSortField] = useState<SortField>('best_under_buy');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
