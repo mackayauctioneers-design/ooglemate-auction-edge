@@ -53,10 +53,10 @@ export default function DealsPage() {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2">
               <FileText className="h-6 w-6 text-primary" />
-              Closed Deals
+              Transparency Ledger
             </h1>
             <p className="text-sm text-muted-foreground">
-              Deal records from identification through delivery
+              Every car purchased on your behalf — full paperwork, fully transparent
             </p>
           </div>
           <div className="flex items-center gap-2">
