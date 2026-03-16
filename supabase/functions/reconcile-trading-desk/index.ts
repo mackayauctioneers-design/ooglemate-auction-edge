@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
     results.expired_aged = agedOut?.length ?? 0;
 
     results.total_swept =
-      results.expired_auction + results.expired_stale + results.expired_aged;
+      results.expired_auction + results.expired_stale + results.expired_lemon + results.expired_aged;
 
     // ── 4. Log to cron_heartbeat ──
     await supabase
