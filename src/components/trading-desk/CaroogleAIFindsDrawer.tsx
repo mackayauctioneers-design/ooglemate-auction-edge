@@ -66,6 +66,7 @@ export function CaroogleAIFindsDrawer() {
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [viewFilter, setViewFilter] = useState<'active' | 'starred'>('active');
+  const [sortBy, setSortBy] = useState<string>('score');
 
   const fetchFinds = useCallback(async () => {
     setLoading(true);
