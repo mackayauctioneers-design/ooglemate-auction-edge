@@ -1362,8 +1362,12 @@ export function OogleBotSearch() {
                 <div className="flex flex-wrap gap-2 pl-6">
                   {huntSources.map(src => {
                     const names: Record<string, string> = {
-                      carsales: "Carsales", autotrader: "Autotrader", gumtree: "Gumtree",
-                      slattery: "Slattery", caroogleai: "AI Discovery",
+                      carsales: "Carsales",
+                      autotrader: "Autotrader",
+                      pickles: "Pickles",
+                      manheim: "Manheim",
+                      slattery: "Slattery",
+                      caroogleai: "AI Discovery",
                     };
                     return (
                       <Badge key={src} variant="outline" className="text-[10px] border-primary/30 text-primary">
