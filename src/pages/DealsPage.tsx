@@ -172,7 +172,7 @@ export default function DealsPage() {
         )}
 
         <p className="text-xs text-muted-foreground text-center py-2">
-          This deal record is an audit trail. Events and documents are append-only and timestamped.
+          Every record is an immutable audit trail. Documents and events are append-only, timestamped, and SHA-256 verified.
         </p>
       </div>
     </DealerLayout>

@@ -11,7 +11,7 @@ const dealerNav = [
   { path: '/ooglebot', label: 'OogleBot', icon: Bot },
   { path: '/trading-desk', label: 'Trading Desk', icon: DollarSign },
   { path: '/sales-upload', label: 'My Sales', icon: BarChart3 },
-  { path: '/deals', label: 'Closed Deals', icon: FileText },
+  { path: '/deals', label: 'Transparency Ledger', icon: FileText },
 ];
 
 interface DealerLayoutProps {
