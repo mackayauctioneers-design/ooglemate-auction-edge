@@ -289,7 +289,9 @@ function mergeAllResults(
     if (isLCIntent && textUpper.includes("PRADO")) return false;
     if (isPradoIntent && !textUpper.includes("PRADO")) return false;
     const ls = detectSeriesFromText(allText);
-    return ls === intentSeries;
+    if (ls !== null) return ls === intentSeries;
+    // Unknown series: allow for LC (Prado already excluded), reject for Prado
+    return isLCIntent === true;
   };
 
   // Internal results
