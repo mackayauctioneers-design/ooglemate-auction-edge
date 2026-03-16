@@ -36,6 +36,7 @@ Deno.serve(async (req) => {
   const results = {
     expired_auction: 0,
     expired_stale: 0,
+    expired_lemon: 0,
     expired_aged: 0,
     total_swept: 0,
   };
