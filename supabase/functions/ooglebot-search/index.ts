@@ -317,7 +317,7 @@ Deno.serve(async (req) => {
 
     // Merge both sets
     const allListings = [
-      ...vlListings.map((v: any) => ({ ...v, price_badge: null, market_price: null, price_difference: null, price_difference_percent: null })),
+      ...vlFiltered.map((v: any) => ({ ...v, price_badge: null, market_price: null, price_difference: null, price_difference_percent: null })),
       ...normalizedRetail,
     ];
 
