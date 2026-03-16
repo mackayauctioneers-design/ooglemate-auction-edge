@@ -38,6 +38,7 @@ const SOLD_SIGNALS = [
   "listing has ended",
   "ad has been removed",
   "this listing has been removed",
+  "you do not have access to this item",  // Pickles sold/removed lots
 ];
 
 const EXPIRED_SIGNALS = [
@@ -49,6 +50,7 @@ const EXPIRED_SIGNALS = [
   "we couldn't find",
   "doesn't exist",
   "404 - not found",
+  "this page is a lemon",  // Pickles 404 page
 ];
 
 async function fetchWithRetry(url: string, tries = 2): Promise<Response> {
