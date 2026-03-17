@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
         source: EASYAUTO_CONFIG.source,
         run_id: runId,
         dataset_id: datasetId,
-        input: { startUrls, maxPages, limit },
+        input: { maxPages, INGEST_URL: ingestUrl },
         status: "queued",
       })
       .select()
