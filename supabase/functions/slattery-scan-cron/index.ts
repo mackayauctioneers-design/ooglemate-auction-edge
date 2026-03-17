@@ -6,10 +6,10 @@ const corsHeaders = {
 };
 
 /**
- * slattery-scan-cron: Scheduled trigger for Slattery Auctions scraper.
+ * slattery-scan-cron: Scheduled trigger for Slattery Auctions crawler.
  *
- * Dispatches a stub-mode scan to discover new auction listings,
- * then calls slattery-scan to start the Apify actor.
+ * Calls slattery-crawl (Firecrawl-based) to scrape motor vehicles.
+ * Replaces the previous Apify actor approach which had a stale actor ID.
  *
  * Schedule: every 2 hours
  */
@@ -23,26 +23,22 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    console.log("Slattery cron: dispatching stub scan");
+    console.log("Slattery cron: dispatching Firecrawl-based crawl");
 
-    // Call slattery-scan edge function internally
+    // Call slattery-crawl (Firecrawl) instead of slattery-scan (Apify)
     const scanResponse = await fetch(
-      `${supabaseUrl}/functions/v1/slattery-scan`,
+      `${supabaseUrl}/functions/v1/slattery-crawl`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${supabaseKey}`,
         },
-        body: JSON.stringify({
-          mode: "stub",
-          maxPages: 10,
-          batchSize: 50,
-        }),
+        body: JSON.stringify({}),
       }
     );
 
-    const result = await scanResponse.json();
+    const result = await scanResponse.json().catch(() => ({}));
 
     if (!scanResponse.ok) {
       throw new Error(`slattery-scan returned ${scanResponse.status}: ${JSON.stringify(result)}`);
@@ -56,7 +52,7 @@ Deno.serve(async (req) => {
         cron_name: "slattery-scan-cron",
         last_seen_at: new Date().toISOString(),
         last_ok: true,
-        note: "Dispatched stub scan",
+        note: `Firecrawl crawl: ${JSON.stringify(result?.metrics || {}).slice(0, 180)}`,
       }, { onConflict: "cron_name" });
 
     console.log("Slattery cron complete:", JSON.stringify(result));
