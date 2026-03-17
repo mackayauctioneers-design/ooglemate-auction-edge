@@ -84,12 +84,18 @@ Deno.serve(async (req) => {
       return respond(200, { ok: true, status: "skipped_already_running", active_run: lockCheck.runId });
     }
 
-    // Build actor input — generic web scraper pattern
-    const startUrls = [{ url: EASYAUTO_CONFIG.startUrl }];
+    // Build actor input — push-based actor (POSTs items to ingest endpoint)
+    const ingestUrl = `${supabaseUrl}/functions/v1/easyauto-ingest`;
+    const ingestKey = Deno.env.get("EASYAUTO_INGEST_KEY") || "";
+    if (!ingestKey) {
+      return respond(200, { ok: false, status: "config_missing", detail: "EASYAUTO_INGEST_KEY" });
+    }
+
     const actorInput: Record<string, unknown> = {
-      startUrls,
-      maxItems: Math.min(limit, EASYAUTO_CONFIG.maxItems),
-      ...(maxPages ? { maxPagesPerCrawl: maxPages } : {}),
+      searchUrl: EASYAUTO_CONFIG.startUrl,
+      maxPages,
+      INGEST_URL: ingestUrl,
+      INGEST_KEY: ingestKey,
     };
 
     const safeActorId = actorId.replace(/\//g, "~");
