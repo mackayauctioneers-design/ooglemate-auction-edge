@@ -1,7 +1,7 @@
 /**
  * Outward Search v2 — Adapter Interface Contract
  *
- * Every search source (internal DB, Manus, future APIs) must implement
+ * Every search source (internal DB, future APIs) must implement
  * the OutwardSearchAdapter interface. This ensures:
  * - Consistent result shape across all sources
  * - Quota/cooldown enforcement at the orchestrator level
