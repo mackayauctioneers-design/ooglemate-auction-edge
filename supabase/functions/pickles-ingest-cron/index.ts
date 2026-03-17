@@ -20,7 +20,7 @@ const corsHeaders = {
 };
 
 const SOURCE = "pickles";
-const SEARCH_URL = "https://www.pickles.com.au/used/search/cars?filter=and%255B0%255D%255Bor%255D%255B0%255D%255BbuyMethod%255D%3DBuy%2520Now&contentkey=cars-to-buy-now";
+const SEARCH_URL = "https://www.pickles.com.au/cars/search?filter=and%255B0%255D%255Bor%255D%255B0%255D%255BbuyMethod%255D%3DBuy%2520Now&contentkey=cars-to-buy-now";
 const MAX_PAGES = 2;          // LOCKED: max 2 search pages per run
 const STALE_HOURS = 48;
 const DAILY_CREDIT_LIMIT = 30; // LOCKED: was 150, now hard-capped

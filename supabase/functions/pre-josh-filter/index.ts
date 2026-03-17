@@ -12,13 +12,13 @@ const corsHeaders = {
  *
  * Runs on a cron (every 5 min). For each NEW listing:
  *   1. Hard-reject obvious duds (missing data, flagged damage/sold, terrible score)
- *   2. Auto-promote high-conviction deals (Well Below Market + high score)
+ *   2. Auto-promote high-conviction deals (Well Below Market / Below Market + strong score)
  *   3. Leave borderline ones as NEW for Josh's manual review
  *   4. Score ≥9 PRE_APPROVED → dispatch LindyMail alert for immediate SMS escalation
  *
  * Statuses written:
  *   - AUTO_REJECTED  → removed from Josh's view, reason logged
- *   - PRE_APPROVED   → fast-tracked for Josh (just needs a glance)
+ *   - PRE_APPROVED   → fast-tracked for Josh
  *   - NEW            → unchanged, needs full manual review
  */
 
@@ -123,12 +123,21 @@ function applyRules(row: QueueRow): FilterVerdict {
 
   const badge = (row.price_badge || row.deal_tag || "").toLowerCase();
   const isWellBelow = badge.includes("well below");
+  const isBelowMarket = badge.includes("below market");
   const hasStrongScore = row.deal_score != null && row.deal_score >= 8;
   const hasGoodDiscount = row.discount_pct != null && row.discount_pct <= -12;
+  const hasActionableDiscount = row.discount_pct != null && row.discount_pct <= -8;
 
   // Well Below Market + strong score = fast-track
   if (isWellBelow && hasStrongScore) {
     reasons.push("WELL_BELOW_MARKET", "DEAL_SCORE_HIGH");
+    return { id: row.id, action: "PRE_APPROVED", reason: reasons.join("+") };
+  }
+
+  // Current Carsales feed often lands as "Below market price" at ~-8% with score 8.
+  // Treat that as pre-approved so actionable deals don't pile up in NEW.
+  if (isBelowMarket && hasActionableDiscount && hasStrongScore) {
+    reasons.push("BELOW_MARKET", "ACTIONABLE_SCORE", `${row.discount_pct}%`);
     return { id: row.id, action: "PRE_APPROVED", reason: reasons.join("+") };
   }
 
@@ -314,12 +323,14 @@ Deno.serve(async (req) => {
         .eq("id", v.id);
     }
 
-    // Batch update PRE_APPROVED — keep as NEW but add a note so Josh knows it's pre-screened
+    // Batch update PRE_APPROVED — move out of NEW and tag for Josh follow-up
     for (const v of approved) {
       await supabase
         .from("cheap_car_queue")
         .update({
+          status: "PRE_APPROVED",
           condition_notes: `[PRE-APPROVED] ${v.reason}`,
+          josh_verified: false,
         })
         .eq("id", v.id);
     }
