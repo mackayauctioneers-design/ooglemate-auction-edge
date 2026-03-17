@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
       }
     );
 
-    const result = await scanResponse.json();
+    const result = await scanResponse.json().catch(() => ({}));
 
     if (!scanResponse.ok) {
       throw new Error(`slattery-scan returned ${scanResponse.status}: ${JSON.stringify(result)}`);
