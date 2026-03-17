@@ -56,7 +56,7 @@ export interface SourceRegistryEntry {
   source: string;
   display_name: string;
   source_type: string;       // marketplace | auction | dealer_site | aggregator
-  adapter_type: string;      // internal_db | manus | api | manual
+  adapter_type: string;      // internal_db | api | manual
   tier: string;              // free | premium
   enabled: boolean;
   rate_limit_per_hour: number;

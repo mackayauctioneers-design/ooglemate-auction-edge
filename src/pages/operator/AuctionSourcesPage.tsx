@@ -67,7 +67,7 @@ export default function AuctionSourcesPage() {
 
   async function testScrape(source: Source) {
     toast.info(`Testing ${source.dealer_name}…`);
-    toast.success("Test scrape not available — Manus adapter removed");
+    toast.success("Test scrape not available — adapter removed");
   }
 
   const filtered = useMemo(() => {
