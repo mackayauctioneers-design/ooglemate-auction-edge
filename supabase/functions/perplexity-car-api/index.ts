@@ -29,8 +29,10 @@ function getSupabaseAdmin() {
 function verifyAuth(req: Request): boolean {
   const authHeader = req.headers.get("authorization") ?? "";
   const token = authHeader.replace("Bearer ", "");
-  const secret = Deno.env.get("LINDY_WEBHOOK_SECRET") ?? "";
-  return token.length > 0 && token === secret;
+  if (!token) return false;
+  const lindySecret = Deno.env.get("LINDY_WEBHOOK_SECRET") ?? "";
+  const apiKey = Deno.env.get("PERPLEXITY_CAR_API_KEY") ?? "";
+  return (lindySecret && token === lindySecret) || (apiKey && token === apiKey);
 }
 
 Deno.serve(async (req) => {
