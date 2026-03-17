@@ -49,8 +49,9 @@ Deno.serve(async (req) => {
 
     console.log(`Gumtree scan: ${startUrls.length} URLs, limit=${limit}`);
 
+    const safeActorId = actorId.replace(/\//g, "~");
     const runResponse = await fetch(
-      `https://api.apify.com/v2/acts/${actorId}/runs?token=${apifyToken}&waitForFinish=0`,
+      `https://api.apify.com/v2/acts/${safeActorId}/runs?token=${apifyToken}&waitForFinish=0`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

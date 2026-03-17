@@ -57,8 +57,9 @@ Deno.serve(async (req) => {
     console.log(`Slattery scan: mode=${mode}, maxPages=${maxPages}`);
 
     // Start Apify run (non-blocking)
+    const safeActorId = actorId.replace(/\//g, "~");
     const runResponse = await fetch(
-      `https://api.apify.com/v2/acts/${actorId}/runs?token=${apifyToken}&waitForFinish=0`,
+      `https://api.apify.com/v2/acts/${safeActorId}/runs?token=${apifyToken}&waitForFinish=0`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
