@@ -73,25 +73,25 @@ Deno.serve(async (req) => {
 
   const errors: string[] = [];
 
-  // ── 1. Ingestion volume ──
+  // ── 1. Ingestion volume (from vehicle_listings — the actual ingestion target) ──
   let ingestion: any = null;
   try {
     const { data: last24, error: e1 } = await sb
-      .from("outward_search_results")
-      .select("source_key")
-      .gte("ingested_at", h24);
+      .from("vehicle_listings")
+      .select("source")
+      .gte("updated_at", h24);
     if (e1) throw e1;
 
     const { data: prev24, error: e2 } = await sb
-      .from("outward_search_results")
-      .select("source_key")
-      .gte("ingested_at", h48)
-      .lt("ingested_at", h24);
+      .from("vehicle_listings")
+      .select("source")
+      .gte("updated_at", h48)
+      .lt("updated_at", h24);
     if (e2) throw e2;
 
     const countBy = (rows: any[]) => {
       const m: Record<string, number> = {};
-      for (const r of rows) m[r.source_key] = (m[r.source_key] || 0) + 1;
+      for (const r of rows) m[r.source] = (m[r.source] || 0) + 1;
       return m;
     };
     const last24By = countBy(last24 || []);
