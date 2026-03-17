@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
         cron_name: "slattery-scan-cron",
         last_seen_at: new Date().toISOString(),
         last_ok: true,
-        note: "Dispatched stub scan",
+        note: `Firecrawl crawl: ${JSON.stringify(result?.metrics || {}).slice(0, 180)}`,
       }, { onConflict: "cron_name" });
 
     console.log("Slattery cron complete:", JSON.stringify(result));
