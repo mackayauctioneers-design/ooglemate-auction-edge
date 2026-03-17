@@ -19,8 +19,8 @@ const corsHeaders = {
 
 const BATCH_SIZE = 100;
 const TIME_BUDGET_MS = 50000; // 50s budget (leave 10s buffer)
-const MAX_ATTEMPTS = 3;
-const PARALLEL_SIZE = 5; // 5 concurrent scrapes
+const MAX_ATTEMPTS = 5;
+const PARALLEL_SIZE = 3; // 3 concurrent scrapes (reduced to avoid rate limits)
 
 interface DetailResult {
   dealer_name: string | null;
@@ -260,13 +260,24 @@ function deriveEngineFamily(litres: number, cyls: number | null): string | null 
   return null;
 }
 
+// ─── HTML-to-text fallback ──────────────────────────────────────
+
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // ─── Scrape a single listing ───────────────────────────────────
 
-async function scrapeDetail(
+async function firecrawlScrape(
   firecrawlKey: string,
   url: string,
-  source: string,
-): Promise<DetailResult> {
+  waitFor: number,
+): Promise<{ markdown: string; html: string }> {
   const res = await fetch('https://api.firecrawl.dev/v1/scrape', {
     method: 'POST',
     headers: {
@@ -275,9 +286,9 @@ async function scrapeDetail(
     },
     body: JSON.stringify({
       url,
-      formats: ['markdown'],
+      formats: ['markdown', 'html'],
       onlyMainContent: true,
-      waitFor: 2000,
+      waitFor,
     }),
   });
 
@@ -288,6 +299,34 @@ async function scrapeDetail(
 
   const data = await res.json();
   const markdown = data.data?.markdown || data.markdown || '';
+  const html = data.data?.html || data.html || '';
+  return { markdown, html };
+}
+
+async function scrapeDetail(
+  firecrawlKey: string,
+  url: string,
+  source: string,
+): Promise<DetailResult> {
+  // First attempt with 5s wait
+  let { markdown, html } = await firecrawlScrape(firecrawlKey, url, 5000);
+
+  // If markdown is empty/short, try HTML fallback from same response
+  if ((!markdown || markdown.length < 50) && html && html.length >= 50) {
+    markdown = htmlToText(html);
+  }
+
+  // If still empty/short, retry once with longer wait
+  if (!markdown || markdown.length < 50) {
+    const retry = await firecrawlScrape(firecrawlKey, url, 8000);
+    markdown = retry.markdown;
+    html = retry.html;
+
+    // Try HTML fallback on retry response too
+    if ((!markdown || markdown.length < 50) && html && html.length >= 50) {
+      markdown = htmlToText(html);
+    }
+  }
 
   if (!markdown || markdown.length < 50) {
     throw new Error('Empty or too-short markdown returned');
@@ -363,6 +402,9 @@ Deno.serve(async (req) => {
       }
 
       const chunk = filteredListings.slice(i, i + PARALLEL_SIZE);
+
+      // Space out chunks to avoid Firecrawl rate limits
+      if (i > 0) await new Promise(r => setTimeout(r, 500));
 
       await Promise.allSettled(chunk.map(async (listing: any) => {
         if (!listing.listing_url) {
