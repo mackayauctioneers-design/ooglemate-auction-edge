@@ -106,7 +106,7 @@ export default function JoshDealDeskPage() {
         .limit(50);
 
       if (queueFilter === "NEW") {
-        q = q.eq("status", "NEW").eq("josh_verified", false);
+        q = q.in("status", ["NEW", "PRE_APPROVED"]).eq("josh_verified", false);
       } else if (queueFilter === "VERIFIED") {
         q = q.eq("status", "VERIFIED");
       } else if (queueFilter === "REJECTED") {
@@ -126,7 +126,7 @@ export default function JoshDealDeskPage() {
     queryFn: async () => {
       const [detected, reviewed, verified, rejected] = await Promise.all([
         supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }),
-        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).neq("status", "NEW"),
+        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).in("status", ["VERIFIED", "REJECTED", "SOLD"]),
         supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).eq("status", "VERIFIED"),
         supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).eq("status", "REJECTED"),
       ]);
