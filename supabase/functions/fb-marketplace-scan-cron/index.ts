@@ -17,6 +17,10 @@ const corsHeaders = {
  */
 
 const ITEMS_PER_CITY = 150;
+const CITY_STAGGER_MS = 1500;
+const RETRY_WAIT_MS = 2000;
+const RETRY_STAGGER_MS = 750;
+const MAX_RETRY_CITIES = 2;
 
 // Major AU cities with FB Marketplace location slugs
 const AU_CITIES = [
@@ -60,9 +64,9 @@ Deno.serve(async (req) => {
       const city = AU_CITIES[i];
       const cityUrl = buildFbMarketplaceUrl(city.slug);
 
-      // 8s stagger between cities
+      // Keep stagger short enough to stay within edge runtime limits.
       if (i > 0) {
-        await new Promise(r => setTimeout(r, 8000));
+        await new Promise((r) => setTimeout(r, CITY_STAGGER_MS));
       }
 
       try {
@@ -96,14 +100,14 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Auto-retry failed cities once
-    const failedCities = results.filter(r => r.error);
-    if (failedCities.length > 0 && failedCities.length <= 4) {
+    // Auto-retry a very small subset only, so the cron doesn't time out.
+    const failedCities = results.filter((r) => r.error).slice(0, MAX_RETRY_CITIES);
+    if (failedCities.length > 0) {
       console.log(`Retrying ${failedCities.length} failed cities`);
-      await new Promise(r => setTimeout(r, 10000));
+      await new Promise((r) => setTimeout(r, RETRY_WAIT_MS));
 
       for (const failed of failedCities) {
-        const city = AU_CITIES.find(c => c.name === failed.city);
+        const city = AU_CITIES.find((c) => c.name === failed.city);
         if (!city) continue;
 
         try {
@@ -123,15 +127,17 @@ Deno.serve(async (req) => {
           );
           const retryResult = await retryResp.json();
           if (retryResp.ok) {
-            const idx = results.findIndex(r => r.city === city.name && r.error);
+            const idx = results.findIndex((r) => r.city === city.name && r.error);
             if (idx >= 0) {
               results[idx] = { city: city.name, run_id: retryResult.apify_run_id, queued: true, retried: true };
             }
             console.log(`[${city.name}] RETRY OK: run ${retryResult.apify_run_id}`);
           }
-        } catch (_) { /* best effort */ }
+        } catch (_) {
+          /* best effort */
+        }
 
-        await new Promise(r => setTimeout(r, 5000));
+        await new Promise((r) => setTimeout(r, RETRY_STAGGER_MS));
       }
     }
 
