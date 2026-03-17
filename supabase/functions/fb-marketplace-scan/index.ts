@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
     console.log(`FB Marketplace scan: ${startUrls.length} URLs, limit=${Math.min(limit, 250)}`);
 
     const safeActorId = actorId.replace(/\//g, "~");
+    console.log(`[FB-MKTPLACE] Using actor: ${safeActorId}`);
     const runResponse = await fetch(
       `https://api.apify.com/v2/acts/${safeActorId}/runs?token=${apifyToken}&waitForFinish=0`,
       {
