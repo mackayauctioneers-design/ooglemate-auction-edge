@@ -1,28 +1,40 @@
 # Memory: technical/ingestion/easyauto123-scraper
-Updated: 2026-03-12
+Updated: 2026-03-17
 
-## EasyAuto123 Scraper — IMPLEMENTED via Apify Actor
+## EasyAuto123 Scraper — Push-based Apify Actor (v2)
 
 ### Architecture:
-- **Edge Function**: `easyauto-scrape` — Apify actor launcher (same pattern as `carsales-scan`)
-- **Actor ID Secret**: `APIFY_ACTOR_ID_EASYAUTO` (configured)
-- **Schedule**: Every 3 hours (`0 */3 * * *`)
-- **Ingestion**: Queues to `apify_runs_queue` (source: `easyauto`) → picked up by universal `autotrader-fetch` worker
-- **Mapper**: `mapEasyAutoItem` in `autotrader-fetch/index.ts` — maps to `easyauto123` source, prefixes listing IDs with `ea-`
-- **Target table**: `retail_listings` via `upsert_retail_listing` RPC (retail source, not auction)
+- **Edge Function (launcher)**: `easyauto-scrape` — Launches Apify actor with INGEST_URL + INGEST_KEY
+- **Edge Function (ingest)**: `easyauto-ingest` — Receives POSTed items from actor, upserts to retail_listings
+- **Actor ID Secret**: `APIFY_ACTOR_ID_EASYAUTO` = `LAhyi5Lx0VPpNUgh1`
+- **Ingest Key Secret**: `EASYAUTO_INGEST_KEY`
+- **Schedule**: Daily 6am AEDT (configured in Apify)
+- **Pattern**: Same push-based model as AAV harvest — actor POSTs items directly to ingest endpoint
+- **Target table**: `retail_listings` via `upsert_retail_listing` RPC
+- **Source ID prefix**: `ea-`
+
+### Data Fields (rich output from new actor):
+- VIN, price (DAP/EGC), odometer, fuel consumption, vehicleId
+- Location down to suburb level
+- ~200 vehicles per 2 pages, ~$0.01 for all 2,069 vehicles
+- Plain HTTP scraping (no browser needed)
 
 ### Safety Features:
-- CRAWL_MODE kill switch
+- Bearer token auth on ingest endpoint
 - Concurrency lock (one run at a time via apify_runs_queue)
-- Heartbeat to cron_heartbeat
-- Accepts `{ maxPages, limit }` overrides
+- Heartbeat to cron_heartbeat (both easyauto-scrape and easyauto-ingest)
+- Audit logging to cron_audit_log
+
+### Actor Setup in Apify:
+- Configure `INGEST_URL` = `https://xznchxsbuwngfmwvsvhq.supabase.co/functions/v1/easyauto-ingest`
+- Configure `INGEST_KEY` = value of EASYAUTO_INGEST_KEY secret
 
 ### Site Info:
 - **Operator**: AP Eagers (Australia's largest automotive retail group)
 - **Coverage**: National — QLD, NSW, VIC, SA, WA
 - **URL**: `https://www.easyauto123.com.au/used-cars`
-- **Volume**: 500-1500+ vehicles
+- **Volume**: 2,000+ vehicles
 
 ### Related:
 - `memory/architecture/ingestion/universal-multi-source-fetch-worker`
-- `memory/technical/ingestion/production-source-whitelist-v5` (should be updated to include easyauto)
+- `memory/technical/ingestion/specialized-auction-crawlers`
