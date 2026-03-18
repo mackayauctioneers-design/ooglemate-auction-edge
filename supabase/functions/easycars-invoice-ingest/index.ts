@@ -39,31 +39,40 @@ Deno.serve(async (req) => {
 
     const records = sales
       .filter((s) => s.make || s.description)
-      .map((s) => ({
-        account_id: s.account_id || EASYCARS_ACCOUNT_ID,
-        make: s.make?.toUpperCase() || null,
-        model: s.model?.toUpperCase() || null,
-        variant: s.variant || null,
-        year: s.year ? parseInt(String(s.year)) : null,
-        sold_at: s.sold_at || s.sale_date || s.invoice_date || null,
-        sale_price: s.sale_price ? Math.round(Number(s.sale_price)) : null,
-        buy_price: s.buy_price || s.cost_price ? Math.round(Number(s.buy_price || s.cost_price)) : null,
-        days_to_clear: s.days_to_clear || s.days_in_stock ? parseInt(String(s.days_to_clear || s.days_in_stock)) : null,
-        body_type: s.body_type || null,
-        transmission: s.transmission || null,
-        fuel_type: s.fuel_type || null,
-        drive_type: s.drive_type || null,
-        source: "easycars_invoice_gmail",
-        confidence: "high",
-        notes: [
-          s.stock_no ? `Stock #${s.stock_no}` : null,
-          s.vin ? `VIN: ${s.vin}` : null,
-          s.invoice_number ? `Invoice: ${s.invoice_number}` : null,
-          s.km || s.kilometres ? `KM: ${s.km || s.kilometres}` : null,
-        ]
-          .filter(Boolean)
-          .join(" | ") || null,
-      }));
+      .map((s) => {
+        const make = (s.make || "").toUpperCase();
+        const model = (s.model || "").toUpperCase();
+        const variantText = s.variant || s.description || "";
+        return {
+          account_id: s.account_id || DEFAULT_ACCOUNT_ID,
+          make: make || null,
+          model: model || null,
+          variant: s.variant || null,
+          year: s.year ? parseInt(String(s.year)) : null,
+          sold_at: s.sold_at || s.sale_date || s.invoice_date || null,
+          sale_price: s.sale_price ? Math.round(Number(s.sale_price)) : null,
+          buy_price: s.buy_price || s.cost_price ? Math.round(Number(s.buy_price || s.cost_price)) : null,
+          days_to_clear: s.days_to_clear || s.days_in_stock ? parseInt(String(s.days_to_clear || s.days_in_stock)) : null,
+          km: s.km || s.kilometres ? parseInt(String(s.km || s.kilometres)) : null,
+          body_type: s.body_type || null,
+          transmission: s.transmission || null,
+          fuel_type: s.fuel_type || null,
+          drive_type: s.drive_type || null,
+          platform_class: derivePlatform(make, model),
+          series: extractSeries(make, model) || null,
+          badge: extractBadge(variantText) || null,
+          source: "easycars_invoice_gmail",
+          confidence: "high",
+          notes: [
+            s.stock_no ? `Stock #${s.stock_no}` : null,
+            s.vin ? `VIN: ${s.vin}` : null,
+            s.invoice_number ? `Invoice: ${s.invoice_number}` : null,
+            s.km || s.kilometres ? `KM: ${s.km || s.kilometres}` : null,
+          ]
+            .filter(Boolean)
+            .join(" | ") || null,
+        };
+      });
 
     if (records.length === 0) {
       return new Response(
