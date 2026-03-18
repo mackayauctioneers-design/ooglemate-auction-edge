@@ -1,0 +1,1 @@
+UPDATE scorer_cursors SET last_seen_cutoff = '2026-03-17T00:00:00Z' WHERE job_name = 'operator_scorer_v2'
