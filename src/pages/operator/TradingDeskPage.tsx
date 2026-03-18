@@ -361,7 +361,7 @@ export default function TradingDeskPage() {
   // ─── Filter + Sort ──────────────────────────────────────────────────────────
   const matchesFilters = (o: OperatorOpportunity, options?: { ignoreSource?: boolean }) => {
     if (filterStatus === 'starred' && !o.is_starred) return false;
-    if (filterStatus === 'active' && !['new', 'reviewed'].includes(o.status)) return false;
+    if (filterStatus === 'active' && !ACTIONABLE_STATUSES.includes(o.status)) return false;
     if (filterStatus !== 'all' && filterStatus !== 'active' && filterStatus !== 'starred' && o.status !== filterStatus) return false;
     if (filterAccount !== 'all' && o.best_account_id !== filterAccount) return false;
     if (filterTier !== 'all' && o.tier !== filterTier) return false;
