@@ -522,6 +522,10 @@ export default function OperatorDealerUploadPage() {
               onCancel={resetState}
               isConfirming={importMutation.isPending}
             />
+            {/* Merged data preview with validation metrics */}
+            <MergedDataPreview rows={parsedRows} mapping={currentMapping} />
+            {/* Pre-import analysis: KM bands, top performers, fast movers */}
+            <MergeAnalysisPanel rows={parsedRows} mapping={currentMapping} />
           </>
         )}
 
