@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ChevronDown, ChevronRight, ExternalLink, Loader2, TrendingDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDistanceToNow } from 'date-fns';
 
 interface RetailListing {
@@ -173,10 +174,39 @@ function PriceBadgeSection({
   );
 }
 
+type SortOption = 'price_asc' | 'price_desc' | 'year_desc' | 'year_asc' | 'delta_desc' | 'delta_asc';
+
+const SORT_LABELS: Record<SortOption, string> = {
+  price_asc: 'Price: Low → High',
+  price_desc: 'Price: High → Low',
+  year_desc: 'Year: Newest first',
+  year_asc: 'Year: Oldest first',
+  delta_desc: 'Delta %: Biggest discount',
+  delta_asc: 'Delta %: Smallest discount',
+};
+
+function sortListings(listings: RetailListing[], sort: SortOption): RetailListing[] {
+  return [...listings].sort((a, b) => {
+    switch (sort) {
+      case 'price_asc': return a.asking_price - b.asking_price;
+      case 'price_desc': return b.asking_price - a.asking_price;
+      case 'year_desc': return (b.year ?? 0) - (a.year ?? 0);
+      case 'year_asc': return (a.year ?? 0) - (b.year ?? 0);
+      case 'delta_desc': return (a.price_difference_percent ?? 0) - (b.price_difference_percent ?? 0);
+      case 'delta_asc': return (b.price_difference_percent ?? 0) - (a.price_difference_percent ?? 0);
+      default: return 0;
+    }
+  });
+}
+
 export default function CarSalesWatchPage() {
   const [realDeals, setRealDeals] = useState<RetailListing[]>([]);
   const [badgeDeals, setBadgeDeals] = useState<RetailListing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [sortBy, setSortBy] = useState<SortOption>('price_asc');
+
+  const sortedRealDeals = useMemo(() => sortListings(realDeals, sortBy), [realDeals, sortBy]);
+  const sortedBadgeDeals = useMemo(() => sortListings(badgeDeals, sortBy), [badgeDeals, sortBy]);
 
   useEffect(() => {
     document.title = 'Car Sales Watch | Operator';
@@ -231,7 +261,17 @@ export default function CarSalesWatchPage() {
               Carsales listings tagged with price badges — 2015+ / ≤120k km.
             </p>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+              <SelectTrigger className="w-[200px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(SORT_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value} className="text-xs">{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button variant="outline" size="sm" onClick={loadListings} disabled={isLoading}>
               {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
               Refresh
@@ -242,7 +282,7 @@ export default function CarSalesWatchPage() {
         <PriceBadgeSection
           title="Well Below Market"
           color="destructive"
-          listings={realDeals}
+          listings={sortedRealDeals}
           isLoading={isLoading}
           defaultOpen={true}
         />
@@ -250,7 +290,7 @@ export default function CarSalesWatchPage() {
         <PriceBadgeSection
           title="Below Market"
           color="warning"
-          listings={badgeDeals}
+          listings={sortedBadgeDeals}
           isLoading={isLoading}
           defaultOpen={true}
         />
