@@ -13,6 +13,8 @@ import { FileDropZone } from "@/components/sales-upload/FileDropZone";
 import { DualFileUpload } from "@/components/sales-upload/DualFileUpload";
 import { HeaderMappingEditor } from "@/components/sales-upload/HeaderMappingEditor";
 import { UploadBatchHistory } from "@/components/sales-upload/UploadBatchHistory";
+import { MergedDataPreview } from "@/components/sales-upload/MergedDataPreview";
+import { MergeAnalysisPanel } from "@/components/sales-upload/MergeAnalysisPanel";
 import { useFileParser } from "@/hooks/useFileParser";
 import {
   type HeaderMapping,
