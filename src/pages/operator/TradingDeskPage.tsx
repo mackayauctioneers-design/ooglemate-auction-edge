@@ -60,6 +60,8 @@ interface OperatorOpportunity {
 
 type SortField = 'best_expected_margin' | 'best_under_buy' | 'asking_price' | 'year' | 'created_at' | 'tier' | 'auction_datetime';
 
+const ACTIONABLE_STATUSES = ['new', 'assigned', 'reviewed'];
+
 const tierOrder: Record<string, number> = { CODE_RED: 0, HIGH: 1, BUY: 2, RETAIL_BUY: 3, RETAIL_TARGET: 4, AUCTION_WATCH: 5, WATCH: 6 };
 const tierColors: Record<string, string> = {
   CODE_RED: 'bg-red-600 text-white',
