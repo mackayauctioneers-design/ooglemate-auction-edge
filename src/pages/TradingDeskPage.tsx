@@ -133,7 +133,7 @@ async function exportSalesCSV() {
 export default function TradingDeskPage() {
   useDocumentTitle(0);
   const { data: accounts } = useAccounts();
-  const { currentUser } = useAuth();
+  const { currentUser, dealerProfile } = useAuth();
   const [accountId, setAccountId] = useState("");
   const [opps, setOpps] = useState<Opportunity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,8 +143,15 @@ export default function TradingDeskPage() {
   const [sourceFilter, setSourceFilter] = useState<"all" | "auction">("all");
 
   useEffect(() => {
-    if (accounts?.length && !accountId) setAccountId(accounts[0].id);
-  }, [accounts, accountId]);
+    if (dealerProfile?.account_id) {
+      setAccountId(dealerProfile.account_id);
+      return;
+    }
+
+    if (accounts?.length && !accountId) {
+      setAccountId(accounts[0].id);
+    }
+  }, [accounts, accountId, dealerProfile?.account_id]);
 
   const fetchData = useCallback(async () => {
     if (!accountId) return;
