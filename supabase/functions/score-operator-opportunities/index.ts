@@ -410,7 +410,7 @@ Deno.serve(async (req) => {
 
     const { data: allSales } = await sb
       .from("vehicle_sales_truth")
-      .select("id, account_id, make, model, year, km, buy_price, sale_price, sold_at, trim_class, platform_class, drivetrain_bucket")
+      .select("id, account_id, make, model, year, km, buy_price, sale_price, sold_at, trim_class, variant, platform_class, drivetrain_bucket, drive_type")
       .not("buy_price", "is", null)
       .not("sale_price", "is", null);
 
@@ -420,12 +420,35 @@ Deno.serve(async (req) => {
     }
 
     const salesByAccount: Record<string, any[]> = {};
-    for (const s of allSales) {
-      const profit = s.sale_price - Number(s.buy_price);
+    for (const rawSale of allSales) {
+      const profit = rawSale.sale_price - Number(rawSale.buy_price);
       if (profit <= 0) continue;
-      if (!s.account_id) continue;
-      if (!salesByAccount[s.account_id]) salesByAccount[s.account_id] = [];
-      salesByAccount[s.account_id].push(s);
+      if (!rawSale.account_id) continue;
+
+      const derivedPlatform = derivePlatform(
+        (rawSale.make || "").toUpperCase().trim(),
+        (rawSale.model || "").toUpperCase().trim(),
+      );
+
+      const normalizedSale = {
+        ...rawSale,
+        platform_class:
+          rawSale.platform_class && rawSale.platform_class.includes(":")
+            ? rawSale.platform_class
+            : derivedPlatform || rawSale.platform_class,
+        trim_class: rawSale.trim_class || extractBadge(rawSale.variant) || "UNKNOWN",
+        drivetrain_bucket:
+          rawSale.drivetrain_bucket && rawSale.drivetrain_bucket !== "UNKNOWN"
+            ? rawSale.drivetrain_bucket
+            : drivetrainBucket(rawSale.drive_type),
+      };
+
+      if (!normalizedSale.platform_class || normalizedSale.platform_class === "UNKNOWN") continue;
+      if (!normalizedSale.trim_class || normalizedSale.trim_class === "UNKNOWN") continue;
+      if (!normalizedSale.year) continue;
+
+      if (!salesByAccount[normalizedSale.account_id]) salesByAccount[normalizedSale.account_id] = [];
+      salesByAccount[normalizedSale.account_id].push(normalizedSale);
     }
 
     const accountNames: Record<string, string> = {};
