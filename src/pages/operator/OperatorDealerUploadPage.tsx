@@ -13,6 +13,8 @@ import { FileDropZone } from "@/components/sales-upload/FileDropZone";
 import { DualFileUpload } from "@/components/sales-upload/DualFileUpload";
 import { HeaderMappingEditor } from "@/components/sales-upload/HeaderMappingEditor";
 import { UploadBatchHistory } from "@/components/sales-upload/UploadBatchHistory";
+import { MergedDataPreview } from "@/components/sales-upload/MergedDataPreview";
+import { MergeAnalysisPanel } from "@/components/sales-upload/MergeAnalysisPanel";
 import { useFileParser } from "@/hooks/useFileParser";
 import {
   type HeaderMapping,
@@ -520,6 +522,10 @@ export default function OperatorDealerUploadPage() {
               onCancel={resetState}
               isConfirming={importMutation.isPending}
             />
+            {/* Merged data preview with validation metrics */}
+            <MergedDataPreview rows={parsedRows} mapping={currentMapping} />
+            {/* Pre-import analysis: KM bands, top performers, fast movers */}
+            <MergeAnalysisPanel rows={parsedRows} mapping={currentMapping} />
           </>
         )}
 
