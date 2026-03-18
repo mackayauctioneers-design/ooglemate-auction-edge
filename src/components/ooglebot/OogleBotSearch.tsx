@@ -605,7 +605,7 @@ export function OogleBotSearch() {
 
   // ── Validation ──
   const authReady = !!(dealerProfile?.account_id);
-  const canSearch = make.trim().length > 0 && model.trim().length > 0;
+  const canSearch = make.trim().length > 0;
   const badgeMissing = canSearch && !badge.trim();
 
   // ── Unified result merge ──

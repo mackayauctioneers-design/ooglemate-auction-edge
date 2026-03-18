@@ -95,10 +95,9 @@ function validate(body: unknown): { ok: true; input: SearchInput } | { ok: false
   const b = body as Record<string, unknown>;
 
   if (typeof b.make !== "string" || !b.make.trim()) return { ok: false, error: "make is required (string)" };
-  if (typeof b.model !== "string" || !b.model.trim()) return { ok: false, error: "model is required (string)" };
 
   const make = b.make.trim().substring(0, 50);
-  const model = b.model.trim().substring(0, 50);
+  const model = typeof b.model === "string" && b.model.trim() ? b.model.trim().substring(0, 50) : null;
   const badge = typeof b.badge === "string" && b.badge.trim() ? b.badge.trim().substring(0, 50) : null;
   const year_min = typeof b.year_min === "number" && b.year_min >= 1990 && b.year_min <= 2030 ? b.year_min : null;
   const year_max = typeof b.year_max === "number" && b.year_max >= 1990 && b.year_max <= 2030 ? b.year_max : null;
