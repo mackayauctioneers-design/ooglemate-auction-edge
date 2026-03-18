@@ -681,7 +681,20 @@ export default function TradingDeskPage() {
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
         ) : sorted.length === 0 ? (
-          <Card><CardContent className="p-12 text-center"><p className="text-muted-foreground">No opportunities yet. Hit "Run Scoring" to populate.</p></CardContent></Card>
+          <Card>
+            <CardContent className="p-12 text-center space-y-4">
+              <p className="text-muted-foreground">
+                {filtersAreRestrictingResults
+                  ? 'No opportunities match the current filters.'
+                  : 'No opportunities yet. Hit "Run Scoring" to populate.'}
+              </p>
+              {filtersAreRestrictingResults && (
+                <div className="flex justify-center">
+                  <Button variant="outline" onClick={resetFilters}>Reset filters</Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         ) : (
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
