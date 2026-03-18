@@ -675,7 +675,9 @@ export default function TradingDeskPage() {
           </div>
         )}
 
-        <p className="text-sm text-muted-foreground">{sorted.length} opportunities</p>
+        <p className="text-sm text-muted-foreground">
+          {sorted.length} opportunities{filtersAreRestrictingResults ? ` · ${totalActionableCount} live in backend` : ''}
+        </p>
 
         {/* Table */}
         {loading ? (
