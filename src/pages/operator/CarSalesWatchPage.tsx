@@ -261,7 +261,17 @@ export default function CarSalesWatchPage() {
               Carsales listings tagged with price badges — 2015+ / ≤120k km.
             </p>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+              <SelectTrigger className="w-[200px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(SORT_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value} className="text-xs">{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button variant="outline" size="sm" onClick={loadListings} disabled={isLoading}>
               {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
               Refresh
@@ -272,7 +282,7 @@ export default function CarSalesWatchPage() {
         <PriceBadgeSection
           title="Well Below Market"
           color="destructive"
-          listings={realDeals}
+          listings={sortedRealDeals}
           isLoading={isLoading}
           defaultOpen={true}
         />
@@ -280,7 +290,7 @@ export default function CarSalesWatchPage() {
         <PriceBadgeSection
           title="Below Market"
           color="warning"
-          listings={badgeDeals}
+          listings={sortedBadgeDeals}
           isLoading={isLoading}
           defaultOpen={true}
         />
