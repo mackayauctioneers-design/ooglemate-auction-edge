@@ -454,7 +454,7 @@ export default function TradingDeskPage() {
 
     const strong = scoped.filter(o =>
       (o.best_under_buy || 0) >= 1500 &&
-      ['new', 'reviewed'].includes(o.status)
+      ACTIONABLE_STATUSES.includes(o.status)
     );
 
     // Explicit sort — never assume UI sort equals data truth
