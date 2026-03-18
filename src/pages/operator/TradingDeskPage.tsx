@@ -363,7 +363,11 @@ export default function TradingDeskPage() {
     if (filterStatus === 'starred' && !o.is_starred) return false;
     if (filterStatus === 'active' && !ACTIONABLE_STATUSES.includes(o.status)) return false;
     if (filterStatus !== 'all' && filterStatus !== 'active' && filterStatus !== 'starred' && o.status !== filterStatus) return false;
-    if (filterAccount !== 'all' && o.best_account_id !== filterAccount) return false;
+    if (filterAccount !== 'all') {
+      const isBest = o.best_account_id === filterAccount;
+      const isAlt = Array.isArray(o.alt_matches) && o.alt_matches.some((m: any) => m.account_id === filterAccount);
+      if (!isBest && !isAlt) return false;
+    }
     if (filterTier !== 'all' && o.tier !== filterTier) return false;
     if (!options?.ignoreSource && filterSource !== 'all' && o.listing_source !== filterSource) return false;
     if (filterDealerSearch) {
