@@ -258,10 +258,11 @@ export default function TradingDeskPage() {
   const runScoring = async () => {
     setScoring(true);
     try {
-      const { data, error } = await supabase.functions.invoke('score-operator-opportunities');
+      const { error } = await supabase.functions.invoke('score-operator-opportunities');
       if (error) throw error;
-      toast.success(`Scored ${data?.scored || 0} opportunities from ${data?.candidates || 0} listings`);
-      fetchData();
+      resetFilters();
+      await fetchData();
+      toast.success('Scoring complete — Trading Desk refreshed');
     } catch (err: any) {
       toast.error(err.message || 'Scoring failed');
     } finally {
