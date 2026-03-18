@@ -216,6 +216,15 @@ export default function TradingDeskPage() {
   const [sortField, setSortField] = useState<SortField>('best_under_buy');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+  const resetFilters = useCallback(() => {
+    setFilterAccount('all');
+    setFilterTier('all');
+    setFilterSource('all');
+    setFilterStatus('active');
+    setFilterDealerSearch('');
+    setFilterKmMax('120000');
+  }, []);
+
   useEffect(() => { document.title = 'Trading Desk | Operator'; }, []);
 
   const fetchData = useCallback(async () => {
