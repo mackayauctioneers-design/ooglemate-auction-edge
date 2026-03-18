@@ -372,7 +372,7 @@ After ALL CSV rows, write: FORMAT: <detected format name>`;
         ];
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000);
+        const timeoutId = setTimeout(() => controller.abort(), 50000);
 
         try {
           const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
