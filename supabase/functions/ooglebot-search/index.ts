@@ -81,7 +81,7 @@ function normalizeModelForQuery(model: string, intentSeries: string | null): str
 
 interface SearchInput {
   make: string;
-  model: string;
+  model: string | null;
   badge: string | null;
   year_min?: number | null;
   year_max?: number | null;
