@@ -605,7 +605,7 @@ export function OogleBotSearch() {
 
   // ── Validation ──
   const authReady = !!(dealerProfile?.account_id);
-  const canSearch = make.trim().length > 0 && model.trim().length > 0;
+  const canSearch = make.trim().length > 0;
   const badgeMissing = canSearch && !badge.trim();
 
   // ── Unified result merge ──
@@ -1419,7 +1419,7 @@ export function OogleBotSearch() {
             disabled={internalLoading || !canSearch || !authReady}
             className="w-full gap-2"
             size="lg"
-            title={!authReady ? "Loading dealer profile…" : !canSearch ? "Make and Model are required" : undefined}
+            title={!authReady ? "Loading dealer profile…" : !canSearch ? "Make is required" : undefined}
           >
             {internalLoading ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Searching…</>

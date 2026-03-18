@@ -81,7 +81,7 @@ function normalizeModelForQuery(model: string, intentSeries: string | null): str
 
 interface SearchInput {
   make: string;
-  model: string;
+  model: string | null;
   badge: string | null;
   year_min?: number | null;
   year_max?: number | null;
@@ -95,10 +95,9 @@ function validate(body: unknown): { ok: true; input: SearchInput } | { ok: false
   const b = body as Record<string, unknown>;
 
   if (typeof b.make !== "string" || !b.make.trim()) return { ok: false, error: "make is required (string)" };
-  if (typeof b.model !== "string" || !b.model.trim()) return { ok: false, error: "model is required (string)" };
 
   const make = b.make.trim().substring(0, 50);
-  const model = b.model.trim().substring(0, 50);
+  const model = typeof b.model === "string" && b.model.trim() ? b.model.trim().substring(0, 50) : null;
   const badge = typeof b.badge === "string" && b.badge.trim() ? b.badge.trim().substring(0, 50) : null;
   const year_min = typeof b.year_min === "number" && b.year_min >= 1990 && b.year_min <= 2030 ? b.year_min : null;
   const year_max = typeof b.year_max === "number" && b.year_max >= 1990 && b.year_max <= 2030 ? b.year_max : null;
@@ -203,9 +202,9 @@ Deno.serve(async (req) => {
     const { input } = validation;
 
     // Derive intent series from make + model (e.g. "LandCruiser 79" → LC70)
-    const intentSeries = extractSeries(input.make, input.model);
+    const intentSeries = input.model ? extractSeries(input.make, input.model) : null;
     // Normalize model for DB query: "LandCruiser 79" → "LandCruiser" to avoid missing GXL-only variants
-    const queryModel = normalizeModelForQuery(input.model, intentSeries);
+    const queryModel = input.model ? normalizeModelForQuery(input.model, intentSeries) : null;
 
     const recencyCutoff = new Date(Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
@@ -229,18 +228,20 @@ Deno.serve(async (req) => {
       .order("asking_price", { ascending: true, nullsFirst: false })
       .limit(300);
 
-    // Model matching for vehicle_listings
-    const modelParts = queryModel.split(/\s+/);
-    if (modelParts.length > 1) {
-      const modelFilter = [
-        `model.ilike.%${queryModel}%`,
-        `variant_raw.ilike.%${modelParts.slice(1).join(" ")}%`,
-        `variant_family.ilike.%${modelParts.slice(1).join(" ")}%`,
-        `variant_used.ilike.%${modelParts.slice(1).join(" ")}%`,
-      ].join(",");
-      vlQuery = vlQuery.or(modelFilter);
-    } else {
-      vlQuery = vlQuery.ilike("model", `%${queryModel}%`);
+    // Model matching for vehicle_listings (only if model provided)
+    if (queryModel) {
+      const modelParts = queryModel.split(/\s+/);
+      if (modelParts.length > 1) {
+        const modelFilter = [
+          `model.ilike.%${queryModel}%`,
+          `variant_raw.ilike.%${modelParts.slice(1).join(" ")}%`,
+          `variant_family.ilike.%${modelParts.slice(1).join(" ")}%`,
+          `variant_used.ilike.%${modelParts.slice(1).join(" ")}%`,
+        ].join(",");
+        vlQuery = vlQuery.or(modelFilter);
+      } else {
+        vlQuery = vlQuery.ilike("model", `%${queryModel}%`);
+      }
     }
 
     if (input.year_min) vlQuery = vlQuery.gte("year", input.year_min);
@@ -269,16 +270,19 @@ Deno.serve(async (req) => {
       .order("last_seen_at", { ascending: false })
       .limit(300);
 
-    // Model matching for retail_listings
-    if (modelParts.length > 1) {
-      const rlModelFilter = [
-        `model.ilike.%${queryModel}%`,
-        `variant_raw.ilike.%${modelParts.slice(1).join(" ")}%`,
-        `variant_family.ilike.%${modelParts.slice(1).join(" ")}%`,
-      ].join(",");
-      rlQuery = rlQuery.or(rlModelFilter);
-    } else {
-      rlQuery = rlQuery.ilike("model", `%${queryModel}%`);
+    // Model matching for retail_listings (only if model provided)
+    if (queryModel) {
+      const modelParts = queryModel.split(/\s+/);
+      if (modelParts.length > 1) {
+        const rlModelFilter = [
+          `model.ilike.%${queryModel}%`,
+          `variant_raw.ilike.%${queryModel}%`,
+          `variant_family.ilike.%${queryModel}%`,
+        ].join(",");
+        rlQuery = rlQuery.or(rlModelFilter);
+      } else {
+        rlQuery = rlQuery.ilike("model", `%${queryModel}%`);
+      }
     }
 
     if (input.year_min) rlQuery = rlQuery.gte("year", input.year_min);
