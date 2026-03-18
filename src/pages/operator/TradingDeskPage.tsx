@@ -425,7 +425,11 @@ export default function TradingDeskPage() {
 
   // Base set respects dealer search + account filter so KPI counts update
   const baseFiltered = opportunities.filter(o => {
-    if (filterAccount !== 'all' && o.best_account_id !== filterAccount) return false;
+    if (filterAccount !== 'all') {
+      const isBest = o.best_account_id === filterAccount;
+      const isAlt = Array.isArray(o.alt_matches) && o.alt_matches.some((m: any) => m.account_id === filterAccount);
+      if (!isBest && !isAlt) return false;
+    }
     if (filterDealerSearch) {
       const q = filterDealerSearch.toLowerCase();
       const nameMatch = o.best_account_name?.toLowerCase().includes(q);
