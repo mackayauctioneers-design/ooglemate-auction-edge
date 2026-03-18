@@ -223,7 +223,7 @@ export default function CarSalesWatchPage() {
           .eq('source', 'carsales')
           .ilike('price_badge', 'well below market%')
           .in('lifecycle_status', ['ACTIVE', 'NEW'])
-          .gte('year', 2015)
+          .gte('year', 2020)
           .lte('km', 120000)
           .order('asking_price', { ascending: true })
           .limit(200),
@@ -234,7 +234,7 @@ export default function CarSalesWatchPage() {
           .ilike('price_badge', 'below market%')
           .not('price_badge', 'ilike', 'well below market%')
           .in('lifecycle_status', ['ACTIVE', 'NEW'])
-          .gte('year', 2015)
+          .gte('year', 2020)
           .lte('km', 120000)
           .order('asking_price', { ascending: true })
           .limit(200),
@@ -258,7 +258,7 @@ export default function CarSalesWatchPage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Car Sales Watch</h1>
             <p className="text-sm text-muted-foreground">
-              Carsales listings tagged with price badges — 2015+ / ≤120k km.
+              Carsales listings tagged with price badges — 2020+ / ≤120k km.
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
