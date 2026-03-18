@@ -60,6 +60,8 @@ interface OperatorOpportunity {
 
 type SortField = 'best_expected_margin' | 'best_under_buy' | 'asking_price' | 'year' | 'created_at' | 'tier' | 'auction_datetime';
 
+const ACTIONABLE_STATUSES = ['new', 'assigned', 'reviewed'];
+
 const tierOrder: Record<string, number> = { CODE_RED: 0, HIGH: 1, BUY: 2, RETAIL_BUY: 3, RETAIL_TARGET: 4, AUCTION_WATCH: 5, WATCH: 6 };
 const tierColors: Record<string, string> = {
   CODE_RED: 'bg-red-600 text-white',
@@ -214,6 +216,15 @@ export default function TradingDeskPage() {
   const [sortField, setSortField] = useState<SortField>('best_under_buy');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+  const resetFilters = useCallback(() => {
+    setFilterAccount('all');
+    setFilterTier('all');
+    setFilterSource('all');
+    setFilterStatus('active');
+    setFilterDealerSearch('');
+    setFilterKmMax('120000');
+  }, []);
+
   useEffect(() => { document.title = 'Trading Desk | Operator'; }, []);
 
   const fetchData = useCallback(async () => {
@@ -221,7 +232,7 @@ export default function TradingDeskPage() {
     try {
       // Fetch active opportunities + starred (regardless of status) in parallel
       const [oppsRes, starredRes, acctsRes] = await Promise.all([
-        supabase.from('operator_opportunities').select('*').in('status', ['new', 'assigned', 'reviewed']).order('best_expected_margin', { ascending: false }).limit(500),
+        supabase.from('operator_opportunities').select('*').in('status', ACTIONABLE_STATUSES).order('best_expected_margin', { ascending: false }).limit(500),
         supabase.from('operator_opportunities').select('*').eq('is_starred', true).not('status', 'in', '("new","assigned","reviewed")').limit(100),
         supabase.from('accounts').select('id, display_name'),
       ]);
@@ -247,10 +258,11 @@ export default function TradingDeskPage() {
   const runScoring = async () => {
     setScoring(true);
     try {
-      const { data, error } = await supabase.functions.invoke('score-operator-opportunities');
+      const { error } = await supabase.functions.invoke('score-operator-opportunities');
       if (error) throw error;
-      toast.success(`Scored ${data?.scored || 0} opportunities from ${data?.candidates || 0} listings`);
-      fetchData();
+      resetFilters();
+      await fetchData();
+      toast.success('Scoring complete — Trading Desk refreshed');
     } catch (err: any) {
       toast.error(err.message || 'Scoring failed');
     } finally {
@@ -349,7 +361,7 @@ export default function TradingDeskPage() {
   // ─── Filter + Sort ──────────────────────────────────────────────────────────
   const matchesFilters = (o: OperatorOpportunity, options?: { ignoreSource?: boolean }) => {
     if (filterStatus === 'starred' && !o.is_starred) return false;
-    if (filterStatus === 'active' && !['new', 'reviewed'].includes(o.status)) return false;
+    if (filterStatus === 'active' && !ACTIONABLE_STATUSES.includes(o.status)) return false;
     if (filterStatus !== 'all' && filterStatus !== 'active' && filterStatus !== 'starred' && o.status !== filterStatus) return false;
     if (filterAccount !== 'all' && o.best_account_id !== filterAccount) return false;
     if (filterTier !== 'all' && o.tier !== filterTier) return false;
@@ -418,15 +430,17 @@ export default function TradingDeskPage() {
     }
     return true;
   });
-  const active = (tier: string) => baseFiltered.filter(o => o.tier === tier && ['new', 'reviewed'].includes(o.status)).length;
+  const active = (tier: string) => baseFiltered.filter(o => o.tier === tier && ACTIONABLE_STATUSES.includes(o.status)).length;
   const codeRedCount = active('CODE_RED');
   const highCount = active('HIGH');
   const buyCount = active('BUY');
   const retailBuyCount = active('RETAIL_BUY');
   const retailTargetCount = active('RETAIL_TARGET');
   const watchCount = active('WATCH');
-  const auctionCount = baseFiltered.filter(o => o.auction_status && o.auction_status !== 'none' && ['new', 'reviewed'].includes(o.status)).length;
+  const auctionCount = baseFiltered.filter(o => o.auction_status && o.auction_status !== 'none' && ACTIONABLE_STATUSES.includes(o.status)).length;
   const starredCount = baseFiltered.filter(o => o.is_starred).length;
+  const totalActionableCount = opportunities.filter(o => ACTIONABLE_STATUSES.includes(o.status)).length;
+  const filtersAreRestrictingResults = sorted.length === 0 && totalActionableCount > 0;
 
   // ─── Daily Signal Strip (deterministic, no AI) ──────────────────────────────
   const signalStrip = (() => {
@@ -440,7 +454,7 @@ export default function TradingDeskPage() {
 
     const strong = scoped.filter(o =>
       (o.best_under_buy || 0) >= 1500 &&
-      ['new', 'reviewed'].includes(o.status)
+      ACTIONABLE_STATUSES.includes(o.status)
     );
 
     // Explicit sort — never assume UI sort equals data truth
@@ -661,13 +675,28 @@ export default function TradingDeskPage() {
           </div>
         )}
 
-        <p className="text-sm text-muted-foreground">{sorted.length} opportunities</p>
+        <p className="text-sm text-muted-foreground">
+          {sorted.length} opportunities{filtersAreRestrictingResults ? ` · ${totalActionableCount} live in backend` : ''}
+        </p>
 
         {/* Table */}
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
         ) : sorted.length === 0 ? (
-          <Card><CardContent className="p-12 text-center"><p className="text-muted-foreground">No opportunities yet. Hit "Run Scoring" to populate.</p></CardContent></Card>
+          <Card>
+            <CardContent className="p-12 text-center space-y-4">
+              <p className="text-muted-foreground">
+                {filtersAreRestrictingResults
+                  ? 'No opportunities match the current filters.'
+                  : 'No opportunities yet. Hit "Run Scoring" to populate.'}
+              </p>
+              {filtersAreRestrictingResults && (
+                <div className="flex justify-center">
+                  <Button variant="outline" onClick={resetFilters}>Reset filters</Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         ) : (
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
