@@ -439,6 +439,8 @@ export default function TradingDeskPage() {
   const watchCount = active('WATCH');
   const auctionCount = baseFiltered.filter(o => o.auction_status && o.auction_status !== 'none' && ACTIONABLE_STATUSES.includes(o.status)).length;
   const starredCount = baseFiltered.filter(o => o.is_starred).length;
+  const totalActionableCount = opportunities.filter(o => ACTIONABLE_STATUSES.includes(o.status)).length;
+  const filtersAreRestrictingResults = sorted.length === 0 && totalActionableCount > 0;
 
   // ─── Daily Signal Strip (deterministic, no AI) ──────────────────────────────
   const signalStrip = (() => {
