@@ -202,9 +202,9 @@ Deno.serve(async (req) => {
     const { input } = validation;
 
     // Derive intent series from make + model (e.g. "LandCruiser 79" → LC70)
-    const intentSeries = extractSeries(input.make, input.model);
+    const intentSeries = input.model ? extractSeries(input.make, input.model) : null;
     // Normalize model for DB query: "LandCruiser 79" → "LandCruiser" to avoid missing GXL-only variants
-    const queryModel = normalizeModelForQuery(input.model, intentSeries);
+    const queryModel = input.model ? normalizeModelForQuery(input.model, intentSeries) : null;
 
     const recencyCutoff = new Date(Date.now() - RECENCY_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
@@ -228,18 +228,20 @@ Deno.serve(async (req) => {
       .order("asking_price", { ascending: true, nullsFirst: false })
       .limit(300);
 
-    // Model matching for vehicle_listings
-    const modelParts = queryModel.split(/\s+/);
-    if (modelParts.length > 1) {
-      const modelFilter = [
-        `model.ilike.%${queryModel}%`,
-        `variant_raw.ilike.%${modelParts.slice(1).join(" ")}%`,
-        `variant_family.ilike.%${modelParts.slice(1).join(" ")}%`,
-        `variant_used.ilike.%${modelParts.slice(1).join(" ")}%`,
-      ].join(",");
-      vlQuery = vlQuery.or(modelFilter);
-    } else {
-      vlQuery = vlQuery.ilike("model", `%${queryModel}%`);
+    // Model matching for vehicle_listings (only if model provided)
+    if (queryModel) {
+      const modelParts = queryModel.split(/\s+/);
+      if (modelParts.length > 1) {
+        const modelFilter = [
+          `model.ilike.%${queryModel}%`,
+          `variant_raw.ilike.%${modelParts.slice(1).join(" ")}%`,
+          `variant_family.ilike.%${modelParts.slice(1).join(" ")}%`,
+          `variant_used.ilike.%${modelParts.slice(1).join(" ")}%`,
+        ].join(",");
+        vlQuery = vlQuery.or(modelFilter);
+      } else {
+        vlQuery = vlQuery.ilike("model", `%${queryModel}%`);
+      }
     }
 
     if (input.year_min) vlQuery = vlQuery.gte("year", input.year_min);
