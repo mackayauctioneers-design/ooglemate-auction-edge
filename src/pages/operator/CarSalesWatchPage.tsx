@@ -174,10 +174,39 @@ function PriceBadgeSection({
   );
 }
 
+type SortOption = 'price_asc' | 'price_desc' | 'year_desc' | 'year_asc' | 'delta_desc' | 'delta_asc';
+
+const SORT_LABELS: Record<SortOption, string> = {
+  price_asc: 'Price: Low → High',
+  price_desc: 'Price: High → Low',
+  year_desc: 'Year: Newest first',
+  year_asc: 'Year: Oldest first',
+  delta_desc: 'Delta %: Biggest discount',
+  delta_asc: 'Delta %: Smallest discount',
+};
+
+function sortListings(listings: RetailListing[], sort: SortOption): RetailListing[] {
+  return [...listings].sort((a, b) => {
+    switch (sort) {
+      case 'price_asc': return a.asking_price - b.asking_price;
+      case 'price_desc': return b.asking_price - a.asking_price;
+      case 'year_desc': return (b.year ?? 0) - (a.year ?? 0);
+      case 'year_asc': return (a.year ?? 0) - (b.year ?? 0);
+      case 'delta_desc': return (a.price_difference_percent ?? 0) - (b.price_difference_percent ?? 0);
+      case 'delta_asc': return (b.price_difference_percent ?? 0) - (a.price_difference_percent ?? 0);
+      default: return 0;
+    }
+  });
+}
+
 export default function CarSalesWatchPage() {
   const [realDeals, setRealDeals] = useState<RetailListing[]>([]);
   const [badgeDeals, setBadgeDeals] = useState<RetailListing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [sortBy, setSortBy] = useState<SortOption>('price_asc');
+
+  const sortedRealDeals = useMemo(() => sortListings(realDeals, sortBy), [realDeals, sortBy]);
+  const sortedBadgeDeals = useMemo(() => sortListings(badgeDeals, sortBy), [badgeDeals, sortBy]);
 
   useEffect(() => {
     document.title = 'Car Sales Watch | Operator';
