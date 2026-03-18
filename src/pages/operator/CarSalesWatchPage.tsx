@@ -228,7 +228,7 @@ export default function CarSalesWatchPage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Car Sales Watch</h1>
             <p className="text-sm text-muted-foreground">
-              Carsales listings tagged with price badges — 2020+ only.
+              Carsales listings tagged with price badges — 2015+ / ≤120k km.
             </p>
           </div>
           <div className="ml-auto">
