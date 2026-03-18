@@ -234,7 +234,7 @@ export default function CarSalesWatchPage() {
           .ilike('price_badge', 'below market%')
           .not('price_badge', 'ilike', 'well below market%')
           .in('lifecycle_status', ['ACTIVE', 'NEW'])
-          .gte('year', 2015)
+          .gte('year', 2020)
           .lte('km', 120000)
           .order('asking_price', { ascending: true })
           .limit(200),
