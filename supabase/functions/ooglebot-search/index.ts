@@ -270,16 +270,19 @@ Deno.serve(async (req) => {
       .order("last_seen_at", { ascending: false })
       .limit(300);
 
-    // Model matching for retail_listings
-    if (modelParts.length > 1) {
-      const rlModelFilter = [
-        `model.ilike.%${queryModel}%`,
-        `variant_raw.ilike.%${modelParts.slice(1).join(" ")}%`,
-        `variant_family.ilike.%${modelParts.slice(1).join(" ")}%`,
-      ].join(",");
-      rlQuery = rlQuery.or(rlModelFilter);
-    } else {
-      rlQuery = rlQuery.ilike("model", `%${queryModel}%`);
+    // Model matching for retail_listings (only if model provided)
+    if (queryModel) {
+      const modelParts = queryModel.split(/\s+/);
+      if (modelParts.length > 1) {
+        const rlModelFilter = [
+          `model.ilike.%${queryModel}%`,
+          `variant_raw.ilike.%${queryModel}%`,
+          `variant_family.ilike.%${queryModel}%`,
+        ].join(",");
+        rlQuery = rlQuery.or(rlModelFilter);
+      } else {
+        rlQuery = rlQuery.ilike("model", `%${queryModel}%`);
+      }
     }
 
     if (input.year_min) rlQuery = rlQuery.gte("year", input.year_min);
