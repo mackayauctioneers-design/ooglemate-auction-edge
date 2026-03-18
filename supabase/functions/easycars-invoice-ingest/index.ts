@@ -34,8 +34,8 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Default account_id for EasyCars dealer
-    const EASYCARS_ACCOUNT_ID = body.account_id || "easycars-default";
+    // Default account_id for Mackay Traders
+    const DEFAULT_ACCOUNT_ID = "d24da4ea-f500-47fd-9b66-d2c9aa2d3f51";
 
     const records = sales
       .filter((s) => s.make || s.description)
