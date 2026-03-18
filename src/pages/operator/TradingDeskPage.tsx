@@ -430,14 +430,14 @@ export default function TradingDeskPage() {
     }
     return true;
   });
-  const active = (tier: string) => baseFiltered.filter(o => o.tier === tier && ['new', 'reviewed'].includes(o.status)).length;
+  const active = (tier: string) => baseFiltered.filter(o => o.tier === tier && ACTIONABLE_STATUSES.includes(o.status)).length;
   const codeRedCount = active('CODE_RED');
   const highCount = active('HIGH');
   const buyCount = active('BUY');
   const retailBuyCount = active('RETAIL_BUY');
   const retailTargetCount = active('RETAIL_TARGET');
   const watchCount = active('WATCH');
-  const auctionCount = baseFiltered.filter(o => o.auction_status && o.auction_status !== 'none' && ['new', 'reviewed'].includes(o.status)).length;
+  const auctionCount = baseFiltered.filter(o => o.auction_status && o.auction_status !== 'none' && ACTIONABLE_STATUSES.includes(o.status)).length;
   const starredCount = baseFiltered.filter(o => o.is_starred).length;
 
   // ─── Daily Signal Strip (deterministic, no AI) ──────────────────────────────
