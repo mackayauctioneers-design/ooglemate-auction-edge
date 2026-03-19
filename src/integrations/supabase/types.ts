@@ -5899,6 +5899,33 @@ export type Database = {
           },
         ]
       }
+      login_events: {
+        Row: {
+          email: string | null
+          id: string
+          ip_hint: string | null
+          logged_in_at: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          email?: string | null
+          id?: string
+          ip_hint?: string | null
+          logged_in_at?: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          email?: string | null
+          id?: string
+          ip_hint?: string | null
+          logged_in_at?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       mandate_alerts: {
         Row: {
           alert_type: string
