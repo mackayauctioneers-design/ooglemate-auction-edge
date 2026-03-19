@@ -61,6 +61,7 @@ import DemoLoginPage from "./pages/DemoLoginPage";
 import DemoDashboardPage from "./pages/dealer/DemoDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import DealerWelcomePage from "./pages/dealer/DealerWelcomePage";
+import WinFlowPage from "./pages/onboarding/WinFlowPage";
 
 // Carbitrage legacy pages kept for operator access
 import JoshInboxPage from "./pages/carbitrage/JoshInboxPage";
@@ -154,6 +155,7 @@ const App = () => (
               <Route path="/my-hunts" element={<RequireAuth><MyHuntsPage /></RequireAuth>} />
               <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
               <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
+              <Route path="/onboarding/win-flow" element={<RequireAuth><WinFlowPage /></RequireAuth>} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/auth" element={<AuthPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
