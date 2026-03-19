@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
 
         // ── Price — prefer DAP/EGC from the new actor ──
         let price = 0;
-        const rawPrice = item.dap || item.egc || item.price || item.askingPrice || item.asking_price;
+        const rawPrice = item.display_price || item.dap || item.egc || item.price || item.askingPrice || item.asking_price;
         if (typeof rawPrice === "number") price = rawPrice;
         else if (typeof rawPrice === "string") {
           const cleaned = rawPrice.replace(/[^0-9]/g, "");
