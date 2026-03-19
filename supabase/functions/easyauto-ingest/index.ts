@@ -16,9 +16,11 @@ const corsHeaders = {
  */
 
 interface EasyAutoItem {
+  vehicle_id?: string;
   vehicleId?: string;
   id?: string;
   stockNumber?: string;
+  detail_url?: string;
   url?: string;
   link?: string;
   detailUrl?: string;
