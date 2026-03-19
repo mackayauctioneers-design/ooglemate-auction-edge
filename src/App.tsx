@@ -59,6 +59,8 @@ import VATasksPage from "./pages/VATasksPage";
 import MandateFeedPage from "./pages/MandateFeedPage";
 import DemoLoginPage from "./pages/DemoLoginPage";
 import DemoDashboardPage from "./pages/dealer/DemoDashboardPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
+import DealerWelcomePage from "./pages/dealer/DealerWelcomePage";
 
 // Carbitrage legacy pages kept for operator access
 import JoshInboxPage from "./pages/carbitrage/JoshInboxPage";
@@ -154,6 +156,8 @@ const App = () => (
               <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/auth" element={<AuthPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/dealer/welcome" element={<RequireAuth><DealerWelcomePage /></RequireAuth>} />
               <Route path="/demo" element={<DemoDashboardPage />} />
               <Route path="/dealer/demo-dashboard" element={<DemoDashboardPage />} />
               <Route path="/architecture" element={<ArchitectureOverviewPage />} />

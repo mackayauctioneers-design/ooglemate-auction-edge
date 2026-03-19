@@ -16,6 +16,8 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [isSignUp, setIsSignUp] = useState(searchParams.get('mode') === 'signup');
+  const [forgotMode, setForgotMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -44,6 +46,19 @@ export default function AuthPage() {
     if (error) { toast.error(error.message); return; }
     setMagicLinkSent(true);
     toast.success('Check your email for the magic link!');
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) { toast.error('Enter your email first'); return; }
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setLoading(false);
+    if (error) { toast.error(error.message); return; }
+    setResetSent(true);
+    toast.success('Password reset link sent — check your email!');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -124,7 +139,47 @@ export default function AuthPage() {
             </p>
           </div>
 
-          {magicLinkMode ? (
+          {forgotMode ? (
+            resetSent ? (
+              <div className="text-center space-y-3">
+                <p className="text-white/70">Reset link sent to <span className="text-white font-medium">{email}</span></p>
+                <p className="text-sm text-white/40">Check your inbox and click the link to set a new password.</p>
+                <button onClick={() => { setResetSent(false); setForgotMode(false); }} className="text-white/50 underline text-sm">
+                  Back to sign in
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="forgot-email" className="text-white/70 text-sm">Email</Label>
+                  <Input
+                    id="forgot-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                    disabled={loading}
+                    className="bg-white/5 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/10"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending…</>
+                  ) : (
+                    'Send Reset Link'
+                  )}
+                </Button>
+                <button onClick={() => setForgotMode(false)} className="text-white/50 underline text-sm w-full text-center">
+                  Back to sign in
+                </button>
+              </form>
+            )
+          ) : magicLinkMode ? (
             magicLinkSent ? (
               <div className="text-center space-y-3">
                 <p className="text-white/70">Magic link sent to <span className="text-white font-medium">{email}</span></p>
@@ -181,7 +236,18 @@ export default function AuthPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="auth-password" className="text-white/70 text-sm">Password</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="auth-password" className="text-white/70 text-sm">Password</Label>
+                    {!isSignUp && (
+                      <button
+                        type="button"
+                        onClick={() => setForgotMode(true)}
+                        className="text-white/40 hover:text-white/60 text-xs underline"
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
                   <Input
                     id="auth-password"
                     type="password"
