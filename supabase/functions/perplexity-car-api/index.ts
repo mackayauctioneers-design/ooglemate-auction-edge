@@ -56,14 +56,18 @@ Deno.serve(async (req) => {
     switch (endpoint) {
       case "listings":
         return await handleListings(supabase, url);
+      case "retail":
+        return await handleRetail(supabase, url);
       case "fingerprints":
         return await handleFingerprints(supabase, url);
       case "analytics":
         return await handleAnalytics(supabase, url);
       case "deals":
         return await handleDeals(supabase, url);
+      case "schema":
+        return await handleSchema(supabase);
       default:
-        return json({ error: `Unknown endpoint: ${endpoint}`, available: ["listings", "fingerprints", "analytics", "deals"] }, 400);
+        return json({ error: `Unknown endpoint: ${endpoint}`, available: ["listings", "retail", "fingerprints", "analytics", "deals", "schema"] }, 400);
     }
   } catch (err) {
     console.error("perplexity-car-api error:", err);
@@ -225,6 +229,87 @@ async function handleDeals(supabase: any, url: URL) {
   if (error) throw new Error(error.message);
 
   return json({ endpoint: "deals", status, count: data?.length ?? 0, data });
+}
+
+// ========== RETAIL ==========
+async function handleRetail(supabase: any, url: URL) {
+  const make = url.searchParams.get("make");
+  const model = url.searchParams.get("model");
+  const yearMin = url.searchParams.get("year_min");
+  const yearMax = url.searchParams.get("year_max");
+  const kmMax = url.searchParams.get("km_max");
+  const priceMax = url.searchParams.get("price_max");
+  const priceMin = url.searchParams.get("price_min");
+  const source = url.searchParams.get("source");
+  const state = url.searchParams.get("state");
+  const badge = url.searchParams.get("badge");
+  const sellerType = url.searchParams.get("seller_type");
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 200);
+  const offset = parseInt(url.searchParams.get("offset") ?? "0");
+
+  let query = supabase
+    .from("retail_listings")
+    .select("id, source, source_listing_id, make, model, variant_raw, variant_family, badge, year, km, asking_price, last_price, price_change_count, price_badge, market_price, price_difference_percent, state, suburb, transmission, drivetrain, fuel_type, body_type, colour, seller_type, listing_url, first_seen_at, last_seen_at, delisted_at, lifecycle_status, series_family, engine_litres, image_urls")
+    .order("last_seen_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (make) query = query.ilike("make", `%${make}%`);
+  if (model) query = query.ilike("model", `%${model}%`);
+  if (yearMin) query = query.gte("year", parseInt(yearMin));
+  if (yearMax) query = query.lte("year", parseInt(yearMax));
+  if (kmMax) query = query.lte("km", parseInt(kmMax));
+  if (priceMax) query = query.lte("asking_price", parseInt(priceMax));
+  if (priceMin) query = query.gte("asking_price", parseInt(priceMin));
+  if (source) query = query.eq("source", source);
+  if (state) query = query.ilike("state", `%${state}%`);
+  if (badge) query = query.ilike("badge", `%${badge}%`);
+  if (sellerType) query = query.ilike("seller_type", `%${sellerType}%`);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return json({ endpoint: "retail", count: data?.length ?? 0, offset, limit, data });
+}
+
+// ========== SCHEMA ==========
+async function handleSchema(supabase: any) {
+  const tables = [
+    "vehicle_listings", "retail_listings", "dealer_fingerprints", "cheap_car_queue",
+    "vehicle_sales_truth", "dealer_outcomes", "dealer_liquidity_profiles",
+    "caroogle_finds", "deal_flags", "market_listing_history",
+    "listing_price_history", "clearance_events", "dealer_demands",
+    "demand_opportunities", "matched_opportunities_v1", "apify_runs_queue",
+    "cron_heartbeat", "retail_listing_events", "ingestion_sources"
+  ];
+
+  const counts: Record<string, number> = {};
+  for (const t of tables) {
+    const { count } = await supabase.from(t).select("id", { count: "exact", head: true });
+    counts[t] = count ?? 0;
+  }
+
+  return json({
+    endpoint: "schema",
+    total_tables: 231,
+    key_tables: counts,
+    table_roles: {
+      "vehicle_listings": "Auction + OEM listings (Pickles, Manheim, Toyota, etc.)",
+      "retail_listings": "Retail pricing backbone (Carsales 61k, Autotrader 67k, Drive, EasyAuto)",
+      "dealer_fingerprints": "Dealer buying pattern profiles",
+      "cheap_car_queue": "Scored deal opportunities",
+      "vehicle_sales_truth": "Historical verified sale outcomes",
+      "dealer_liquidity_profiles": "Dealer flip history & profit patterns",
+      "caroogle_finds": "AI-detected market anomalies",
+      "deal_flags": "Price gap / underpriced flags",
+      "market_listing_history": "Persistent market intelligence (price tracking, disappearances)",
+      "listing_price_history": "Per-listing price change timeline",
+      "clearance_events": "When listings clear (sell/delist) + days on market",
+      "dealer_demands": "Active dealer buy requests",
+      "demand_opportunities": "Demand-supply gap opportunities",
+      "matched_opportunities_v1": "Matched dealer specs to listings",
+    },
+    note: "Use ?endpoint=retail for retail listings (129k records). Use ?endpoint=listings for auction/OEM (21k records)."
+  });
 }
 
 // Helper
