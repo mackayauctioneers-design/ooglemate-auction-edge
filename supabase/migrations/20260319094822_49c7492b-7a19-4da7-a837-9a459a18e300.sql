@@ -1,0 +1,1 @@
+DELETE FROM cron_heartbeat WHERE cron_name IN ('carsales-scan-cron', 'carsales-deep-scan-cron');
