@@ -914,6 +914,17 @@ export default function TradingDeskPage() {
                             {/* Actions — Assign Best + Override + Ignore + Link */}
                             <TableCell className="text-right px-2">
                               <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs h-7 px-2 gap-1"
+                                  disabled={sendingPush.has(opp.id)}
+                                  onClick={() => sendToDealer(opp)}
+                                  title={`Send push to ${opp.assigned_to_name || opp.best_account_name || 'dealer'}`}
+                                >
+                                  {sendingPush.has(opp.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                                  Push
+                                </Button>
                                 {opp.best_account_id && opp.status !== 'assigned' && (
                                   <Button
                                     variant="default"
@@ -922,7 +933,7 @@ export default function TradingDeskPage() {
                                     onClick={() => updateStatus(opp.id, 'assigned', opp.best_account_id!)}
                                   >
                                     <Check className="h-3 w-3" />
-                                    Assign Best
+                                    Assign
                                   </Button>
                                 )}
                                 <OverrideDealerPopover
