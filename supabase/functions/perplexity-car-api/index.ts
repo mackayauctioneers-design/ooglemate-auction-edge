@@ -56,14 +56,18 @@ Deno.serve(async (req) => {
     switch (endpoint) {
       case "listings":
         return await handleListings(supabase, url);
+      case "retail":
+        return await handleRetail(supabase, url);
       case "fingerprints":
         return await handleFingerprints(supabase, url);
       case "analytics":
         return await handleAnalytics(supabase, url);
       case "deals":
         return await handleDeals(supabase, url);
+      case "schema":
+        return await handleSchema(supabase);
       default:
-        return json({ error: `Unknown endpoint: ${endpoint}`, available: ["listings", "fingerprints", "analytics", "deals"] }, 400);
+        return json({ error: `Unknown endpoint: ${endpoint}`, available: ["listings", "retail", "fingerprints", "analytics", "deals", "schema"] }, 400);
     }
   } catch (err) {
     console.error("perplexity-car-api error:", err);
