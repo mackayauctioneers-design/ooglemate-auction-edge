@@ -329,6 +329,40 @@ export default function TradingDeskPage() {
     toast.success('Reminder cleared');
   };
 
+  const [sendingPush, setSendingPush] = useState<Set<string>>(new Set());
+
+  const sendToDealer = async (opp: OperatorOpportunity) => {
+    const dealerName = opp.assigned_to_name || opp.best_account_name;
+    if (!dealerName) { toast.error('No dealer matched to this opportunity'); return; }
+
+    setSendingPush(prev => new Set(prev).add(opp.id));
+    try {
+      const vehicle = `${opp.year || ''} ${opp.make || ''} ${opp.model || ''}`.trim();
+      const emoji = opp.auction_datetime ? '🔨' : '🎯';
+      const auctionInfo = opp.auction_datetime
+        ? ` • ${format(new Date(opp.auction_datetime), 'd MMM h:mm a')}`
+        : '';
+
+      const { error } = await supabase.functions.invoke('push-send', {
+        body: {
+          dealer_name: dealerName,
+          title: `${emoji} ${opp.tier}: ${vehicle}`,
+          body: `${opp.asking_price ? '$' + opp.asking_price.toLocaleString() : 'No price'} • ${opp.listing_source || 'Unknown'}${auctionInfo}`,
+          url: opp.source_url || '/',
+          alertId: opp.id,
+          force: true,
+        },
+      });
+
+      if (error) throw error;
+      toast.success(`Push sent to ${dealerName}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to send push');
+    } finally {
+      setSendingPush(prev => { const n = new Set(prev); n.delete(opp.id); return n; });
+    }
+  };
+
   const deleteAnchor = async (oppId: string, anchorSaleId: string) => {
     if (!confirm('Remove this anchor? The pipeline will not re-attach any anchor to this opportunity.')) return;
     // Get current dismissed list
