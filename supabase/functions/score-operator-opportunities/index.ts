@@ -926,11 +926,63 @@ Deno.serve(async (req) => {
     }
 
     results.auction_watch_created = auctionWatchInserted;
+
+    // ── 9. AUTO-NOTIFY: push new high-tier opportunities to dealers ──
+    const NOTIFY_TIERS = new Set(["CODE_RED", "HIGH", "BUY", "AUCTION_WATCH"]);
+    const newlyCreated = toInsert.filter((row: any) => NOTIFY_TIERS.has(row.tier) && row.best_account_name);
+
+    // Group by dealer name
+    const dealerGroups = new Map<string, any[]>();
+    for (const row of newlyCreated) {
+      const name = row.best_account_name;
+      if (!dealerGroups.has(name)) dealerGroups.set(name, []);
+      dealerGroups.get(name)!.push(row);
+    }
+
+    let pushesSent = 0;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+    for (const [dealerName, opps] of dealerGroups) {
+      // Send one push per dealer with a summary
+      const topOpp = opps[0];
+      const vehicle = `${topOpp.year || ""} ${topOpp.make || ""} ${topOpp.model || ""}`.trim();
+      const emoji = topOpp.auction_datetime ? "🔨" : "🎯";
+      const countText = opps.length > 1 ? ` (+${opps.length - 1} more)` : "";
+
+      try {
+        const pushRes = await fetch(`${supabaseUrl}/functions/v1/push-send`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            dealer_name: dealerName,
+            title: `${emoji} ${opps.length} new match${opps.length > 1 ? "es" : ""}`,
+            body: `${topOpp.tier}: ${vehicle}${countText} • ${topOpp.listing_source || ""}`,
+            url: "/operator/trading-desk",
+            alertId: `score-run-${new Date().toISOString()}`,
+            force: false, // respect quiet hours
+          }),
+        });
+
+        if (pushRes.ok) {
+          const result = await pushRes.json();
+          if (result.sent > 0) pushesSent++;
+        }
+      } catch (err) {
+        console.warn(`[SCORE-V2] Push to ${dealerName} failed (non-blocking):`, err);
+      }
+    }
+
+    results.pushes_sent = pushesSent;
+    results.dealers_notified = dealerGroups.size;
     results.runtime_ms = Date.now() - startTime;
 
-    console.log(`[SCORE-V2] Done: created=${results.created} skipped_terminal=${results.skipped_terminal} median_cache_keys=${medianCache.size} runtime=${results.runtime_ms}ms`);
+    console.log(`[SCORE-V2] Done: created=${results.created} skipped_terminal=${results.skipped_terminal} pushes=${pushesSent} runtime=${results.runtime_ms}ms`);
 
-    // ── 9. Audit ──
+    // ── 10. Audit ──
     await sb.from("cron_audit_log").insert({
       cron_name: "score-operator-opportunities-v2",
       run_date: new Date().toISOString().split("T")[0],
@@ -944,7 +996,7 @@ Deno.serve(async (req) => {
       note: JSON.stringify(results),
     }, { onConflict: "cron_name" });
 
-    // ── 10. Advance cursor ──
+    // ── 11. Advance cursor ──
     await setCursor(sb, true, results);
 
     return respond({ success: true, ...results });
