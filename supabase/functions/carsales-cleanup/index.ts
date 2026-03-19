@@ -62,8 +62,8 @@ Deno.serve(async (req) => {
 
     const stuckRuns = (activeRuns ?? []).filter((run) => {
       if (run.status === "fetching") {
-        const referenceTime = run.updated_at ?? run.started_at ?? run.created_at;
-        return Boolean(referenceTime && referenceTime < fetchingCutoff);
+        const fetchingStartedAt = run.started_at ?? run.created_at;
+        return Boolean(fetchingStartedAt && fetchingStartedAt < fetchingCutoff);
       }
 
       return Boolean(run.created_at && run.created_at < queuedRunningCutoff);
@@ -92,7 +92,9 @@ Deno.serve(async (req) => {
 
     for (const run of stuckRuns) {
       const thresholdMinutes = getThresholdMinutes(run.status);
-      const referenceTime = run.updated_at ?? run.started_at ?? run.created_at;
+      const referenceTime = run.status === "fetching"
+        ? (run.started_at ?? run.created_at)
+        : run.created_at;
       const { error: updateError } = await supabase
         .from("apify_runs_queue")
         .update({
