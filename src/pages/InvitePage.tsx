@@ -7,7 +7,7 @@ const VALUE_PROPS = [
   {
     icon: Target,
     title: 'Your Proven Winners',
-    desc: 'See the exact models you flip fast — with real margins, real velocity.',
+    desc: 'See the exact models you sell fast — with real margins, real velocity.',
   },
   {
     icon: Flame,
