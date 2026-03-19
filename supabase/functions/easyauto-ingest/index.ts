@@ -16,9 +16,11 @@ const corsHeaders = {
  */
 
 interface EasyAutoItem {
+  vehicle_id?: string;
   vehicleId?: string;
   id?: string;
   stockNumber?: string;
+  detail_url?: string;
   url?: string;
   link?: string;
   detailUrl?: string;
@@ -31,6 +33,7 @@ interface EasyAutoItem {
   variant?: string;
   badge?: string;
   trim?: string;
+  display_price?: number | string;
   price?: number | string | Record<string, unknown>;
   askingPrice?: number | string;
   asking_price?: number | string;
@@ -112,8 +115,8 @@ Deno.serve(async (req) => {
     for (const item of items) {
       try {
         // ── Extract listing ID ──
-        const url = String(item.url || item.link || item.detailUrl || "");
-        const rawId = String(item.vehicleId || item.id || item.stockNumber || "");
+        const url = String(item.detail_url || item.url || item.link || item.detailUrl || "");
+        const rawId = String(item.vehicle_id || item.vehicleId || item.id || item.stockNumber || "");
         const idMatch = url.match(/\/([a-zA-Z0-9-]{6,})\/?(\?|$)/);
         const listingId = rawId || idMatch?.[1] || "";
         if (!listingId) { metrics.skipped++; continue; }
@@ -139,7 +142,7 @@ Deno.serve(async (req) => {
 
         // ── Price — prefer DAP/EGC from the new actor ──
         let price = 0;
-        const rawPrice = item.dap || item.egc || item.price || item.askingPrice || item.asking_price;
+        const rawPrice = item.display_price || item.dap || item.egc || item.price || item.askingPrice || item.asking_price;
         if (typeof rawPrice === "number") price = rawPrice;
         else if (typeof rawPrice === "string") {
           const cleaned = rawPrice.replace(/[^0-9]/g, "");
