@@ -33,6 +33,7 @@ interface EasyAutoItem {
   variant?: string;
   badge?: string;
   trim?: string;
+  display_price?: number | string;
   price?: number | string | Record<string, unknown>;
   askingPrice?: number | string;
   asking_price?: number | string;
