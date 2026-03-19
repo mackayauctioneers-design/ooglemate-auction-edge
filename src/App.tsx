@@ -59,6 +59,8 @@ import VATasksPage from "./pages/VATasksPage";
 import MandateFeedPage from "./pages/MandateFeedPage";
 import DemoLoginPage from "./pages/DemoLoginPage";
 import DemoDashboardPage from "./pages/dealer/DemoDashboardPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
+import DealerWelcomePage from "./pages/dealer/DealerWelcomePage";
 
 // Carbitrage legacy pages kept for operator access
 import JoshInboxPage from "./pages/carbitrage/JoshInboxPage";
