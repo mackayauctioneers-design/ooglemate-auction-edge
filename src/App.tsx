@@ -156,6 +156,8 @@ const App = () => (
               <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/auth" element={<AuthPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/dealer/welcome" element={<RequireAuth><DealerWelcomePage /></RequireAuth>} />
               <Route path="/demo" element={<DemoDashboardPage />} />
               <Route path="/dealer/demo-dashboard" element={<DemoDashboardPage />} />
               <Route path="/architecture" element={<ArchitectureOverviewPage />} />
