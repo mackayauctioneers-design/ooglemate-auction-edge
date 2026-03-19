@@ -112,8 +112,8 @@ Deno.serve(async (req) => {
     for (const item of items) {
       try {
         // ── Extract listing ID ──
-        const url = String(item.url || item.link || item.detailUrl || "");
-        const rawId = String(item.vehicleId || item.id || item.stockNumber || "");
+        const url = String(item.detail_url || item.url || item.link || item.detailUrl || "");
+        const rawId = String(item.vehicle_id || item.vehicleId || item.id || item.stockNumber || "");
         const idMatch = url.match(/\/([a-zA-Z0-9-]{6,})\/?(\?|$)/);
         const listingId = rawId || idMatch?.[1] || "";
         if (!listingId) { metrics.skipped++; continue; }
