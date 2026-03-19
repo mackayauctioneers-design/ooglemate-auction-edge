@@ -107,13 +107,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           // Log login events (SIGNED_IN covers password, magic link, OAuth)
           if (event === 'SIGNED_IN') {
+            const loginEmail = newSession.user.email ?? null;
             supabase.from('login_events').insert({
               user_id: newSession.user.id,
-              email: newSession.user.email ?? null,
+              email: loginEmail,
               user_agent: navigator.userAgent,
             }).then(({ error }) => {
               if (error) console.warn('Failed to log login event:', error.message);
             });
+
+            // Notify via Lindy (fire-and-forget)
+            supabase.functions.invoke('notify-login', {
+              body: { email: loginEmail, logged_in_at: new Date().toISOString() },
+            }).catch(() => {});
           }
         } else {
           setRole(null);
