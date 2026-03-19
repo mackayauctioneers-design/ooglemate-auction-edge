@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
       const { error: updateError } = await supabase
         .from("apify_runs_queue")
         .update({
-          status: "failed",
+          status: "error",
           last_error: `Auto-killed: stuck in ${run.status} for >${STUCK_THRESHOLD_MINUTES}min (created ${run.created_at})`,
           completed_at: new Date().toISOString(),
         })
