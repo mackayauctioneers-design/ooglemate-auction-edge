@@ -61,6 +61,7 @@ import DemoLoginPage from "./pages/DemoLoginPage";
 import DemoDashboardPage from "./pages/dealer/DemoDashboardPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import DealerWelcomePage from "./pages/dealer/DealerWelcomePage";
+import WinFlowPage from "./pages/onboarding/WinFlowPage";
 
 // Carbitrage legacy pages kept for operator access
 import JoshInboxPage from "./pages/carbitrage/JoshInboxPage";
