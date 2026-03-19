@@ -376,6 +376,28 @@ Deno.serve(async (req) => {
             if (result?.price_changed) results.price_changes++;
             if (result?.was_relisted) results.relisted_listings++;
 
+            // Write enrichment fields that the RPC doesn't accept yet
+            const source = hit._source;
+            if (result?.id && source) {
+              const enrichFields: Record<string, unknown> = {};
+              const transmission = source.transmission?.toString().toUpperCase().trim();
+              const fuelType = source.fuel_type?.toString().toUpperCase().trim();
+              const bodyType = source.body_type?.toString().toUpperCase().trim();
+              const colour = source.colour_body?.toString().toUpperCase().trim();
+              const sellerName = source.seller_name?.toString().trim();
+              if (transmission) enrichFields.transmission = transmission;
+              if (fuelType) enrichFields.fuel_type = fuelType;
+              if (bodyType) enrichFields.body_type = bodyType;
+              if (colour) enrichFields.colour = colour;
+              if (sellerName) {
+                enrichFields.seller_name_raw = sellerName;
+                enrichFields.seller_type = 'dealer'; // Autotrader is dealer-only
+              }
+              if (Object.keys(enrichFields).length > 0) {
+                await supabase.from("retail_listings").update(enrichFields).eq("id", result.id);
+              }
+            }
+
           } catch (err) {
             console.error("Error processing hit:", err);
             results.parse_errors++;

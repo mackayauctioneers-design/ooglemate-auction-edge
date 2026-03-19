@@ -31,6 +31,10 @@ interface MappedListing {
   fuel_type?: string;
   transmission?: string;
   body_type?: string;
+  colour?: string;
+  drivetrain?: string;
+  seller_name_raw?: string;
+  seller_type?: string;
   // Auction-specific fields
   auction_house?: string;
   auction_datetime?: string;
@@ -105,6 +109,14 @@ function mapAutotraderItem(rawItem: Record<string, unknown>): MappedListing | nu
     const baseUrl = "https://www.autotrader.com.au/";
     const fullUrl = urlPath.startsWith("http") ? urlPath : `${baseUrl}${urlPath}`;
 
+    // ── Extract enrichment fields that Autotrader provides ──
+    const transmission = ((item.transmission || vehicle.transmission || "") as string).toUpperCase().trim();
+    const fuelType = ((item.fuel_type || item.fuelType || vehicle.fuel_type || "") as string).toUpperCase().trim();
+    const bodyType = ((item.body_type || item.bodyType || vehicle.body_type || "") as string).toUpperCase().trim();
+    const colour = ((item.colour_body || item.colour || vehicle.colour || "") as string).toUpperCase().trim();
+    const drivetrain = ((item.drive || item.drivetrain || vehicle.drivetrain || "") as string).toUpperCase().trim();
+    const sellerName = (item.seller_name || item.dealer_name || "") as string;
+
     return {
       source: "autotrader",
       source_listing_id: listingId,
@@ -114,6 +126,13 @@ function mapAutotraderItem(rawItem: Record<string, unknown>): MappedListing | nu
       km, asking_price: price,
       state: state || undefined,
       suburb: suburb || undefined,
+      ...(transmission ? { transmission } : {}),
+      ...(fuelType ? { fuel_type: fuelType } : {}),
+      ...(bodyType ? { body_type: bodyType } : {}),
+      ...(colour ? { colour } : {}),
+      ...(drivetrain ? { drivetrain } : {}),
+      ...(sellerName ? { seller_name_raw: sellerName } : {}),
+      seller_type: 'dealer', // Autotrader is dealer-only
     };
   } catch { return null; }
 }
@@ -129,9 +148,9 @@ function mapAutotraderItem(rawItem: Record<string, unknown>): MappedListing | nu
  * nested GridItem > Stack > Icon(title="Odometer") + Text(value="32km") patterns.
  */
 function extractFromMerlinTree(node: unknown): {
-  km?: number; bodyType?: string; fuel?: string; transmission?: string; priceBadge?: string;
+  km?: number; bodyType?: string; fuel?: string; transmission?: string; priceBadge?: string; colour?: string;
 } {
-  const result: { km?: number; bodyType?: string; fuel?: string; transmission?: string; priceBadge?: string } = {};
+  const result: { km?: number; bodyType?: string; fuel?: string; transmission?: string; priceBadge?: string; colour?: string } = {};
   if (!node || typeof node !== "object") return result;
   const n = node as Record<string, unknown>;
 
@@ -153,6 +172,8 @@ function extractFromMerlinTree(node: unknown): {
         result.fuel = value;
       } else if (title === "transmission") {
         result.transmission = value;
+      } else if (title === "colour" || title === "color" || title === "exterior colour") {
+        result.colour = value;
       }
     }
 
@@ -177,6 +198,7 @@ function extractFromMerlinTree(node: unknown): {
       if (sub.fuel && !result.fuel) result.fuel = sub.fuel;
       if (sub.transmission && !result.transmission) result.transmission = sub.transmission;
       if (sub.priceBadge && !result.priceBadge) result.priceBadge = sub.priceBadge;
+      if (sub.colour && !result.colour) result.colour = sub.colour;
     }
   }
 
@@ -188,6 +210,7 @@ function extractFromMerlinTree(node: unknown): {
     if (sub.fuel && !result.fuel) result.fuel = sub.fuel;
     if (sub.transmission && !result.transmission) result.transmission = sub.transmission;
     if (sub.priceBadge && !result.priceBadge) result.priceBadge = sub.priceBadge;
+    if (sub.colour && !result.colour) result.colour = sub.colour;
   }
 
   return result;
@@ -319,10 +342,21 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
       price_difference: priceDiff,
       price_difference_percent: priceDiffPct,
       market_price_source: marketPriceSource,
-      // Pass through Merlin-extracted fields for downstream enrichment
-      ...(merlin.fuel ? { fuel_type: merlin.fuel } : {}),
-      ...(merlin.transmission ? { transmission: merlin.transmission } : {}),
-      ...(merlin.bodyType ? { body_type: merlin.bodyType } : {}),
+      // Pass through extracted fields — flat Carsales fields first, then Merlin tree fallback
+      ...(((item.fuelType || item.fuel_type || item.fuel || "") as string).trim() || merlin.fuel
+        ? { fuel_type: ((item.fuelType || item.fuel_type || item.fuel || "") as string).trim().toUpperCase() || merlin.fuel }
+        : {}),
+      ...(((item.transmission || "") as string).trim() || merlin.transmission
+        ? { transmission: ((item.transmission || "") as string).trim().toUpperCase() || merlin.transmission }
+        : {}),
+      ...(((item.bodyType || item.body_type || "") as string).trim() || merlin.bodyType
+        ? { body_type: ((item.bodyType || item.body_type || "") as string).trim().toUpperCase() || merlin.bodyType }
+        : {}),
+      ...(((item.colour || item.color || item.exteriorColour || "") as string).trim() || merlin.colour
+        ? { colour: ((item.colour || item.color || item.exteriorColour || "") as string).trim().toUpperCase() || merlin.colour }
+        : {}),
+      // Seller classification: parse URL for /dealer/ vs /private/, fallback to payload fields
+      ...classifySellerType('carsales', fullUrl, item),
     };
   } catch { return null; }
 }
@@ -412,6 +446,7 @@ function mapGumtreeItem(rawItem: Record<string, unknown>): MappedListing | null 
       variant_raw: title.toUpperCase() || undefined,
       km, asking_price: price,
       state, suburb: location || undefined,
+      ...classifySellerType('gumtree', fullUrl, item),
     };
   } catch { return null; }
 }
@@ -543,6 +578,7 @@ function mapUltimateCarItem(rawItem: Record<string, unknown>): MappedListing | n
       km, asking_price: price,
       state,
       suburb: location || undefined,
+      ...classifySellerType(mappedSource, url, item),
     };
   } catch { return null; }
 }
@@ -782,8 +818,94 @@ function mapEasyAutoItem(rawItem: Record<string, unknown>): MappedListing | null
       suburb: location || undefined,
       ...(transmission ? { transmission } : {}),
       ...(fuelType ? { fuel_type: fuelType } : {}),
+      seller_type: 'dealer', // EasyAuto123 is dealer-only (AP Eagers)
     };
   } catch { return null; }
+}
+
+// ─── SELLER TYPE CLASSIFIER ────────────────────────────────────
+
+/**
+ * Classify seller_type for a retail listing based on source, URL patterns,
+ * and seller metadata. Returns 'dealer', 'private', or undefined.
+ *
+ * Rules:
+ * - autotrader, drive, easyauto, easyauto123, carsguide → always 'dealer' (dealer-only platforms)
+ * - carsales → parse URL: /dealer/ = dealer, /private/ = private; fallback to seller fields
+ * - gumtree → check seller type fields; default to 'private'
+ * - fb-marketplace → always 'private'
+ * - ultimate-car → check dealer field
+ */
+function classifySellerType(
+  source: string,
+  listingUrl: string,
+  rawItem?: Record<string, unknown>
+): { seller_type: string; seller_name_raw?: string } {
+  const url = (listingUrl || '').toLowerCase();
+
+  // Dealer-only platforms
+  if (['autotrader', 'autotrader-uc', 'drive', 'easyauto', 'easyauto123', 'carsguide'].includes(source)) {
+    const sellerName = rawItem
+      ? ((rawItem.seller_name || rawItem.dealer_name || rawItem.dealer || (rawItem._source as Record<string,unknown>)?.seller_name || '') as string).trim()
+      : undefined;
+    return { seller_type: 'dealer', ...(sellerName ? { seller_name_raw: sellerName } : {}) };
+  }
+
+  // Carsales: URL-based classification
+  if (source === 'carsales') {
+    // Carsales dealer URLs typically contain /dealer/ or /item/ with dealer context
+    // Private URLs contain /private/ segment
+    const sellerName = rawItem
+      ? ((rawItem.sellerName || rawItem.seller_name || rawItem.dealerName || rawItem.dealer_name || rawItem.dealer || '') as string).trim()
+      : undefined;
+    if (url.includes('/dealer/') || url.includes('/dealer-')) {
+      return { seller_type: 'dealer', ...(sellerName ? { seller_name_raw: sellerName } : {}) };
+    }
+    if (url.includes('/private/') || url.includes('/private-')) {
+      return { seller_type: 'private', ...(sellerName ? { seller_name_raw: sellerName } : {}) };
+    }
+    // Fallback: check seller metadata from payload
+    if (rawItem) {
+      const sellerType = ((rawItem.sellerType || rawItem.seller_type || rawItem.listingType || '') as string).toLowerCase();
+      if (sellerType.includes('dealer') || sellerType.includes('professional')) {
+        return { seller_type: 'dealer', ...(sellerName ? { seller_name_raw: sellerName } : {}) };
+      }
+      if (sellerType.includes('private') || sellerType.includes('individual')) {
+        return { seller_type: 'private', ...(sellerName ? { seller_name_raw: sellerName } : {}) };
+      }
+      // If there's a dealer/seller name, likely a dealer
+      if (sellerName) {
+        return { seller_type: 'dealer', seller_name_raw: sellerName };
+      }
+    }
+    // Default carsales to dealer (majority are dealer listings)
+    return { seller_type: 'dealer' };
+  }
+
+  // Gumtree: mixed platform
+  if (source === 'gumtree') {
+    if (rawItem) {
+      const sellerType = ((rawItem.sellerType || rawItem.seller_type || '') as string).toLowerCase();
+      if (sellerType.includes('dealer') || sellerType.includes('professional') || sellerType.includes('business')) {
+        return { seller_type: 'dealer' };
+      }
+    }
+    return { seller_type: 'private' };
+  }
+
+  // Facebook Marketplace: always private
+  if (source === 'fb-marketplace') {
+    return { seller_type: 'private' };
+  }
+
+  // Ultimate-car: check dealer field
+  if (source === 'ultimate-car') {
+    const dealer = rawItem ? ((rawItem.dealer || rawItem.dealer_key || '') as string).trim() : '';
+    return { seller_type: dealer ? 'dealer' : 'private', ...(dealer ? { seller_name_raw: dealer } : {}) };
+  }
+
+  // Unknown source — leave unclassified
+  return { seller_type: 'dealer' };
 }
 
 // ─── SOURCE ROUTER ─────────────────────────────────────────────
@@ -1114,17 +1236,20 @@ Deno.serve(async (req) => {
 
                 // Update structured fields
                 const resultRow = data?.[0] || data;
-                if (resultRow?.id && (extracted.badge || extracted.fuel_type || extracted.drivetrain || extracted.body_type || extracted.engine_type || listing.price_badge || listing.fuel_type || listing.transmission || listing.body_type)) {
+                if (resultRow?.id && (extracted.badge || extracted.fuel_type || extracted.drivetrain || extracted.body_type || extracted.engine_type || listing.price_badge || listing.fuel_type || listing.transmission || listing.body_type || listing.colour || listing.seller_type)) {
                   const updateFields: Record<string, unknown> = {};
                   if (extracted.badge) updateFields.badge = extracted.badge;
                   if (extracted.fuel_type || listing.fuel_type) updateFields.fuel_type = extracted.fuel_type || listing.fuel_type;
-                  if (extracted.drivetrain) updateFields.drivetrain = extracted.drivetrain;
+                  if (extracted.drivetrain || listing.drivetrain) updateFields.drivetrain = extracted.drivetrain || listing.drivetrain;
                   if (extracted.body_type || listing.body_type) updateFields.body_type = extracted.body_type || listing.body_type;
                   if (extracted.engine_type) {
                     updateFields.engine_type = extracted.engine_type;
                     updateFields.engine_confidence = extracted.engine_confidence;
                   }
                   if (listing.transmission) updateFields.transmission = listing.transmission;
+                  if (listing.colour) updateFields.colour = listing.colour;
+                  if (listing.seller_type) updateFields.seller_type = listing.seller_type;
+                  if (listing.seller_name_raw) updateFields.seller_name_raw = listing.seller_name_raw;
                   if (listing.price_badge) updateFields.price_badge = listing.price_badge;
                   if (listing.market_price) updateFields.market_price = listing.market_price;
                   if (listing.price_difference !== undefined) updateFields.price_difference = listing.price_difference;
