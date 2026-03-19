@@ -155,6 +155,7 @@ const App = () => (
               <Route path="/my-hunts" element={<RequireAuth><MyHuntsPage /></RequireAuth>} />
               <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
               <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
+              <Route path="/onboarding/win-flow" element={<RequireAuth><WinFlowPage /></RequireAuth>} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/auth" element={<AuthPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
