@@ -6,72 +6,106 @@ const corsHeaders = {
 };
 
 /**
- * carsales-micro-cron v1.0 — Tier-based micro-batched Carsales scanning
+ * carsales-micro-cron v2.0 — Price-band × State micro-batched scheduler
  *
- * Dispatches state × make/model segments to carsales-scan.
- * Accepts { tier: "high" | "medium" | "low" } to determine which states to scan.
+ * Replaces BOTH carsales-scan-cron AND carsales-deep-scan-cron.
+ * 32 segments = 8 states × 4 price bands, dispatched in round-robin batches of 3.
  *
- * HIGH: NSW, QLD, VIC — every 2h
- * MEDIUM: WA, SA — every 6h
- * LOW: TAS, ACT, NT — every 12h
+ * SCHEDULE (via pg_cron):
+ *   HIGH  (NSW/QLD/VIC): every 2h
+ *   MEDIUM (WA/SA): every 6h
+ *   LOW   (TAS/ACT/NT): every 12h
  *
- * SAFETY:
- * - Honours CRAWL_MODE kill switch
- * - Serialised dispatch with inter-segment delays
- * - Backpressure: halts after 3 consecutive lock-skips
- * - No retries — logs and moves on
+ * OFFSET TRACKING: Uses cron_heartbeat.rows_inserted (NOT cron_state — that table doesn't exist)
+ * AUTH: Uses SUPABASE_SERVICE_ROLE_KEY to call carsales-scan (NOT anon key)
  */
 
-const YEAR_MIN = 2020;
-const KM_MAX = 120000;
-const ITEMS_PER_SEGMENT = 80;
-const INTER_SEGMENT_DELAY_MS = 10000; // 10s between segments
+const BATCH_SIZE = 3;
 
-const TIER_STATES: Record<string, string[]> = {
-  high: ["NSW", "QLD", "VIC"],
-  medium: ["WA", "SA"],
-  low: ["TAS", "ACT", "NT"],
+interface Segment {
+  segment_id: string;
+  state: string;
+  price_band: string;
+  priority: "high" | "medium" | "low";
+  label: string;
+  url: string;
+  maxItems: number;
+}
+
+function buildUrl(state: string, priceMin: number, priceMax: number): string {
+  const priceRange = priceMax >= 200000
+    ? `Price.range(${priceMin}..)`
+    : `Price.range(${priceMin}..${priceMax})`;
+  return `https://www.carsales.com.au/cars/?q=(And.SellerType.Dealer..State.${state}..Year.range(2020..)..Odometer.range(..120000)..${priceRange}.)&sort=~DateAdded`;
+}
+
+const PRICE_BANDS = [
+  { band: "budget",  min: 0,     max: 30000  },
+  { band: "mid",     min: 30000, max: 50000  },
+  { band: "upper",   min: 50000, max: 80000  },
+  { band: "premium", min: 80000, max: 200000 },
+] as const;
+
+const STATE_TIERS: Record<string, "high" | "medium" | "low"> = {
+  NSW: "high", QLD: "high", VIC: "high",
+  WA: "medium", SA: "medium",
+  TAS: "low", ACT: "low", NT: "low",
 };
 
-const PRIORITY_MODELS = [
-  { make: "Toyota", model: "Prado" },
-  { make: "Toyota", model: "HiLux" },
-  { make: "Toyota", model: "LandCruiser" },
-  { make: "Toyota", model: "RAV4" },
-  { make: "Ford", model: "Ranger" },
-  { make: "Ford", model: "Everest" },
-  { make: "Nissan", model: "Patrol" },
-  { make: "Nissan", model: "Navara" },
-  { make: "Isuzu", model: "MUX" },
-  { make: "Isuzu", model: "DMax" },
-  { make: "Mazda", model: "BT50" },
-  { make: "Mazda", model: "CX5" },
-  { make: "Mitsubishi", model: "Triton" },
-  { make: "Hyundai", model: "Tucson" },
-  { make: "Kia", model: "Sportage" },
-  { make: "Volkswagen", model: "Amarok" },
-];
+const MAX_ITEMS_BY_TIER: Record<string, number> = {
+  high: 1000, medium: 800, low: 500,
+};
 
-function carsalesSlug(str: string): string {
-  return str
-    .trim()
-    .split(/\s+/)
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
-    .join("");
+// Build all 32 segments
+const SEGMENTS: Segment[] = [];
+let segIdx = 1;
+for (const [state, tier] of Object.entries(STATE_TIERS)) {
+  for (const pb of PRICE_BANDS) {
+    SEGMENTS.push({
+      segment_id: `SEG_${String(segIdx).padStart(3, "0")}`,
+      state,
+      price_band: pb.band,
+      priority: tier,
+      label: `${state}_${pb.band}`,
+      url: buildUrl(state, pb.min, pb.max),
+      maxItems: MAX_ITEMS_BY_TIER[tier],
+    });
+    segIdx++;
+  }
 }
 
-function buildSegmentUrl(state: string, make: string, model: string): string {
-  const q = `(And.Make.${carsalesSlug(make)}..Model.${carsalesSlug(model)}..Year.range(${YEAR_MIN}..)..Odometer.range(..${KM_MAX})..State.${state}.)`;
-  return `https://www.carsales.com.au/cars/?q=${encodeURIComponent(q)}&sort=~DateAdded`;
+async function getOffset(
+  supabase: ReturnType<typeof createClient>,
+  tier: string
+): Promise<number> {
+  const { data } = await supabase
+    .from("cron_heartbeat")
+    .select("rows_inserted")
+    .eq("cron_name", `carsales_micro_cron_${tier}`)
+    .single();
+  return data?.rows_inserted ?? 0;
 }
 
-interface SegmentResult {
-  state: string;
-  make: string;
-  model: string;
-  status: string;
-  run_id?: string;
-  error?: string;
+async function setOffset(
+  supabase: ReturnType<typeof createClient>,
+  tier: string,
+  offset: number
+): Promise<void> {
+  await supabase.from("cron_heartbeat").upsert(
+    {
+      cron_name: `carsales_micro_cron_${tier}`,
+      rows_inserted: offset,
+      last_seen_at: new Date().toISOString(),
+    },
+    { onConflict: "cron_name" }
+  );
+}
+
+function jsonResp(status: number, body: Record<string, unknown>) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
 Deno.serve(async (req) => {
@@ -79,67 +113,43 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const respond = (status: number, body: Record<string, unknown>) =>
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-
   try {
-    // ── CRAWL_MODE kill switch ──
-    const crawlMode = Deno.env.get("CRAWL_MODE") || "normal";
-    if (crawlMode === "disabled") {
-      console.log("[MICRO-CRON] Skipped: CRAWL_MODE=disabled");
-      return respond(200, { ok: true, status: "skipped_disabled" });
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Parse tier from body
     const body = await req.json().catch(() => ({}));
-    const tier = (body.tier || "high").toLowerCase();
-    const states = TIER_STATES[tier];
+    const requestedTier: string = body.tier || "high";
 
-    if (!states) {
-      return respond(400, { ok: false, error: `Invalid tier: ${tier}. Use high, medium, or low.` });
+    const tierSegments =
+      requestedTier === "all"
+        ? SEGMENTS
+        : SEGMENTS.filter((s) => s.priority === requestedTier);
+
+    if (tierSegments.length === 0) {
+      return jsonResp(400, { error: `No segments for tier: ${requestedTier}` });
     }
 
-    // Build segments: state × make/model
-    const segments: Array<{ state: string; make: string; model: string }> = [];
-    for (const state of states) {
-      for (const { make, model } of PRIORITY_MODELS) {
-        segments.push({ state, make, model });
-      }
+    // Round-robin offset
+    const offset = await getOffset(supabase, requestedTier);
+    const batch: Segment[] = [];
+    for (let i = 0; i < BATCH_SIZE && i < tierSegments.length; i++) {
+      const idx = (offset + i) % tierSegments.length;
+      batch.push(tierSegments[idx]);
     }
 
-    console.log(`[MICRO-CRON] Tier=${tier} states=${states.join(",")} segments=${segments.length}`);
+    const nextOffset = (offset + BATCH_SIZE) % tierSegments.length;
+    await setOffset(supabase, requestedTier, nextOffset);
 
-    const results: SegmentResult[] = [];
-    let consecutiveLockSkips = 0;
+    console.log(
+      `[micro-cron] tier=${requestedTier} | batch=${batch.map((s) => s.label).join(", ")} | offset=${offset}→${nextOffset}`
+    );
 
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
+    const results: Array<{ segment: string; status: string; detail: string }> = [];
 
-      // Backpressure: halt after 3 consecutive lock-skips
-      if (consecutiveLockSkips >= 3) {
-        console.log(`[MICRO-CRON] Halting: ${consecutiveLockSkips} consecutive lock-skips`);
-        for (let j = i; j < segments.length; j++) {
-          results.push({ ...segments[j], status: "skipped_backpressure" });
-        }
-        break;
-      }
-
-      // Stagger between segments
-      if (i > 0) {
-        await new Promise((r) => setTimeout(r, INTER_SEGMENT_DELAY_MS));
-      }
-
-      const segUrl = buildSegmentUrl(seg.state, seg.make, seg.model);
-
+    for (const seg of batch) {
       try {
-        const scanResponse = await fetch(
+        const scanResp = await fetch(
           `${supabaseUrl}/functions/v1/carsales-scan`,
           {
             method: "POST",
@@ -148,89 +158,78 @@ Deno.serve(async (req) => {
               Authorization: `Bearer ${supabaseKey}`,
             },
             body: JSON.stringify({
-              startUrls: [{ url: segUrl }],
-              limit: ITEMS_PER_SEGMENT,
+              url: seg.url,
+              maxItems: seg.maxItems,
+              segment_id: seg.segment_id,
+              priority: seg.priority,
+              label: seg.label,
             }),
           }
         );
 
-        const result = await scanResponse.json();
+        const scanData = await scanResp.json();
 
-        if (result.status === "skipped_disabled") {
-          console.log(`[MICRO-CRON] Halting: CRAWL_MODE disabled mid-run`);
-          results.push({ ...seg, status: "skipped_disabled" });
+        if (scanResp.ok && scanData.ok) {
+          results.push({
+            segment: seg.label,
+            status: "ok",
+            detail: `run=${scanData.run_id}, max=${scanData.max_items}`,
+          });
+        } else if (scanResp.status === 429) {
+          results.push({
+            segment: seg.label,
+            status: "skipped",
+            detail: `Concurrency limit: ${scanData.active_runs}/${scanData.max}`,
+          });
+          console.log(`Concurrency limit hit at ${seg.label}, stopping batch`);
           break;
+        } else {
+          results.push({
+            segment: seg.label,
+            status: "error",
+            detail: scanData.error || `HTTP ${scanResp.status}`,
+          });
         }
-
-        if (result.status === "skipped_already_running") {
-          console.log(`[MICRO-CRON] [${seg.state}/${seg.make}/${seg.model}] Lock active`);
-          results.push({ ...seg, status: "skipped_already_running" });
-          consecutiveLockSkips++;
-          continue;
-        }
-
-        if (result.ok === false) {
-          console.error(`[MICRO-CRON] [${seg.state}/${seg.make}/${seg.model}] Failed: ${result.error || result.status}`);
-          results.push({ ...seg, status: "failed", error: result.error || result.status });
-          consecutiveLockSkips = 0;
-          continue;
-        }
-
-        console.log(`[MICRO-CRON] [${seg.state}/${seg.make}/${seg.model}] Launched: run=${result.apify_run_id}`);
-        results.push({ ...seg, status: "launched", run_id: result.apify_run_id });
-        consecutiveLockSkips = 0;
-
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[MICRO-CRON] [${seg.state}/${seg.make}/${seg.model}] Error: ${msg}`);
-        results.push({ ...seg, status: "error", error: msg });
-        consecutiveLockSkips = 0;
+        results.push({
+          segment: seg.label,
+          status: "error",
+          detail: String(err),
+        });
       }
+
+      // Small delay between launches
+      await new Promise((r) => setTimeout(r, 2000));
     }
 
-    const launched = results.filter((r) => r.status === "launched").length;
-    const skipped = results.filter((r) => r.status.startsWith("skipped")).length;
-    const failed = results.filter((r) => r.status === "failed" || r.status === "error").length;
+    const launched = results.filter((r) => r.status === "ok").length;
+    const skipped = results.filter((r) => r.status === "skipped").length;
+    const errored = results.filter((r) => r.status === "error").length;
 
-    await supabase
-      .from("cron_heartbeat")
-      .upsert(
-        {
-          cron_name: `carsales-micro-cron-${tier}`,
-          last_seen_at: new Date().toISOString(),
-          last_ok: failed === 0,
-          note: `tier=${tier} launched=${launched} skipped=${skipped} failed=${failed} segments=${segments.length}`,
-          states_failed: failed,
-        },
-        { onConflict: "cron_name" }
-      );
+    console.log(`[micro-cron] Done: ${launched} launched, ${skipped} skipped, ${errored} errors`);
 
-    console.log(`[MICRO-CRON] Complete: tier=${tier} launched=${launched} skipped=${skipped} failed=${failed}`);
+    await supabase.from("cron_heartbeat").upsert(
+      {
+        cron_name: "carsales-micro-cron",
+        last_seen_at: new Date().toISOString(),
+        last_ok: errored === 0,
+        note: `tier=${requestedTier} | launched=${launched}, skipped=${skipped}, errors=${errored} | batch: ${batch.map((s) => s.label).join(", ")}`,
+      },
+      { onConflict: "cron_name" }
+    );
 
-    return respond(200, { ok: true, tier, launched, skipped, failed, total_segments: segments.length, results });
-
+    return jsonResp(200, {
+      ok: true,
+      tier: requestedTier,
+      batch_size: batch.length,
+      launched,
+      skipped,
+      errored,
+      results,
+      next_offset: nextOffset,
+    });
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("[MICRO-CRON] Fatal error:", errorMsg);
-
-    try {
-      const supabase = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-      );
-      await supabase
-        .from("cron_heartbeat")
-        .upsert(
-          {
-            cron_name: "carsales-micro-cron",
-            last_seen_at: new Date().toISOString(),
-            last_ok: false,
-            note: errorMsg.slice(0, 200),
-          },
-          { onConflict: "cron_name" }
-        );
-    } catch (_) { /* best effort */ }
-
-    return respond(500, { ok: false, status: "fatal_error", error: errorMsg });
+    console.error("[micro-cron] Fatal error:", err);
+    return jsonResp(500, { ok: false, error: String(err) });
   }
 });
