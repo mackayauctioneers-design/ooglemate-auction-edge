@@ -104,6 +104,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (newSession?.user) {
           // Defer data fetching to avoid blocking
           setTimeout(() => loadUserData(newSession.user.id), 0);
+
+          // Log login events (SIGNED_IN covers password, magic link, OAuth)
+          if (event === 'SIGNED_IN') {
+            supabase.from('login_events').insert({
+              user_id: newSession.user.id,
+              email: newSession.user.email ?? null,
+              user_agent: navigator.userAgent,
+            }).then(({ error }) => {
+              if (error) console.warn('Failed to log login event:', error.message);
+            });
+          }
         } else {
           setRole(null);
           setDealerProfile(null);
