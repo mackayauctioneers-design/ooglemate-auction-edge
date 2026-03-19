@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff, Trash2 } from 'lucide-react';
+import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff, Trash2, Send } from 'lucide-react';
 import { CaroogleAIFindsDrawer } from '@/components/trading-desk/CaroogleAIFindsDrawer';
 
 import { toast } from 'sonner';
@@ -327,6 +327,40 @@ export default function TradingDeskPage() {
     if (error) { toast.error(error.message); return; }
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, reminder_at: null } : o));
     toast.success('Reminder cleared');
+  };
+
+  const [sendingPush, setSendingPush] = useState<Set<string>>(new Set());
+
+  const sendToDealer = async (opp: OperatorOpportunity) => {
+    const dealerName = opp.assigned_to_name || opp.best_account_name;
+    if (!dealerName) { toast.error('No dealer matched to this opportunity'); return; }
+
+    setSendingPush(prev => new Set(prev).add(opp.id));
+    try {
+      const vehicle = `${opp.year || ''} ${opp.make || ''} ${opp.model || ''}`.trim();
+      const emoji = opp.auction_datetime ? '🔨' : '🎯';
+      const auctionInfo = opp.auction_datetime
+        ? ` • ${format(new Date(opp.auction_datetime), 'd MMM h:mm a')}`
+        : '';
+
+      const { error } = await supabase.functions.invoke('push-send', {
+        body: {
+          dealer_name: dealerName,
+          title: `${emoji} ${opp.tier}: ${vehicle}`,
+          body: `${opp.asking_price ? '$' + opp.asking_price.toLocaleString() : 'No price'} • ${opp.listing_source || 'Unknown'}${auctionInfo}`,
+          url: opp.source_url || '/',
+          alertId: opp.id,
+          force: true,
+        },
+      });
+
+      if (error) throw error;
+      toast.success(`Push sent to ${dealerName}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to send push');
+    } finally {
+      setSendingPush(prev => { const n = new Set(prev); n.delete(opp.id); return n; });
+    }
   };
 
   const deleteAnchor = async (oppId: string, anchorSaleId: string) => {
@@ -880,6 +914,17 @@ export default function TradingDeskPage() {
                             {/* Actions — Assign Best + Override + Ignore + Link */}
                             <TableCell className="text-right px-2">
                               <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs h-7 px-2 gap-1"
+                                  disabled={sendingPush.has(opp.id)}
+                                  onClick={() => sendToDealer(opp)}
+                                  title={`Send push to ${opp.assigned_to_name || opp.best_account_name || 'dealer'}`}
+                                >
+                                  {sendingPush.has(opp.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                                  Push
+                                </Button>
                                 {opp.best_account_id && opp.status !== 'assigned' && (
                                   <Button
                                     variant="default"
@@ -888,7 +933,7 @@ export default function TradingDeskPage() {
                                     onClick={() => updateStatus(opp.id, 'assigned', opp.best_account_id!)}
                                   >
                                     <Check className="h-3 w-3" />
-                                    Assign Best
+                                    Assign
                                   </Button>
                                 )}
                                 <OverrideDealerPopover
