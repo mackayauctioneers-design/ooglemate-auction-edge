@@ -3,10 +3,18 @@
  * to query vehicle listings, dealer fingerprints, and market analytics.
  *
  * Endpoints (via ?endpoint= query param):
- *   listings     — Search vehicle listings
- *   fingerprints — Dealer buying fingerprints
- *   analytics    — Market summary stats
- *   deals        — Cheap car queue / flagged deals
+ *   listings       — Search auction/OEM listings (vehicle_listings)
+ *   retail         — Search retail listings (Carsales, Autotrader, etc.)
+ *   search         — Unified cross-table search (retail + auction in one call)
+ *   fingerprints   — Dealer buying fingerprints
+ *   analytics      — Market summary stats
+ *   deals          — Cheap car queue / flagged deals
+ *   audit          — Field completeness stats by source (data quality dashboard)
+ *   history        — Price history for a specific listing
+ *   clearances     — Sold/delisted events with days-on-market
+ *   opportunities  — Matched opportunities + caroogle finds + deal flags
+ *   sales_truth    — Verified historical sale outcomes
+ *   schema         — System overview with table counts
  *
  * Auth: Bearer token (LINDY_WEBHOOK_SECRET or a dedicated API key)
  */
@@ -58,16 +66,28 @@ Deno.serve(async (req) => {
         return await handleListings(supabase, url);
       case "retail":
         return await handleRetail(supabase, url);
+      case "search":
+        return await handleSearch(supabase, url);
       case "fingerprints":
         return await handleFingerprints(supabase, url);
       case "analytics":
         return await handleAnalytics(supabase, url);
       case "deals":
         return await handleDeals(supabase, url);
+      case "audit":
+        return await handleAudit(supabase, url);
+      case "history":
+        return await handleHistory(supabase, url);
+      case "clearances":
+        return await handleClearances(supabase, url);
+      case "opportunities":
+        return await handleOpportunities(supabase, url);
+      case "sales_truth":
+        return await handleSalesTruth(supabase, url);
       case "schema":
         return await handleSchema(supabase);
       default:
-        return json({ error: `Unknown endpoint: ${endpoint}`, available: ["listings", "retail", "fingerprints", "analytics", "deals", "schema"] }, 400);
+        return json({ error: `Unknown endpoint: ${endpoint}`, available: ["listings", "retail", "search", "fingerprints", "analytics", "deals", "audit", "history", "clearances", "opportunities", "sales_truth", "schema"] }, 400);
     }
   } catch (err) {
     console.error("perplexity-car-api error:", err);
@@ -86,7 +106,7 @@ async function handleListings(supabase: any, url: URL) {
   const status = url.searchParams.get("status");
   const source = url.searchParams.get("source");
   const location = url.searchParams.get("location");
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 200);
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 1000);
   const offset = parseInt(url.searchParams.get("offset") ?? "0");
 
   let query = supabase
@@ -213,7 +233,7 @@ async function handleDeals(supabase: any, url: URL) {
   const make = url.searchParams.get("make");
   const model = url.searchParams.get("model");
   const status = url.searchParams.get("status") ?? "new";
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 200);
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 1000);
 
   let query = supabase
     .from("cheap_car_queue")
@@ -244,7 +264,7 @@ async function handleRetail(supabase: any, url: URL) {
   const state = url.searchParams.get("state");
   const badge = url.searchParams.get("badge");
   const sellerType = url.searchParams.get("seller_type");
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 200);
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 1000);
   const offset = parseInt(url.searchParams.get("offset") ?? "0");
 
   let query = supabase
@@ -269,6 +289,299 @@ async function handleRetail(supabase: any, url: URL) {
   if (error) throw new Error(error.message);
 
   return json({ endpoint: "retail", count: data?.length ?? 0, offset, limit, data });
+}
+
+// ========== AUDIT (Data Quality Dashboard) ==========
+async function handleAudit(supabase: any, url: URL) {
+  const source = url.searchParams.get("source"); // optional: filter to one source
+  const table = url.searchParams.get("table") ?? "retail"; // 'retail' or 'auction'
+
+  if (table === "retail" || table === "both") {
+    // Get counts per source
+    const { data: sourceCounts } = await supabase.rpc('exec_sql', {
+      query: `SELECT source, count(*) as total,
+        count(transmission) as has_transmission,
+        count(fuel_type) as has_fuel_type,
+        count(body_type) as has_body_type,
+        count(colour) as has_colour,
+        count(drivetrain) as has_drivetrain,
+        count(seller_type) FILTER (WHERE seller_type IS NOT NULL AND seller_type != 'unknown') as has_seller_type,
+        count(seller_name_raw) as has_seller_name,
+        count(state) as has_state,
+        count(suburb) as has_suburb,
+        count(market_price) as has_market_price,
+        count(price_badge) as has_price_badge,
+        count(badge) as has_badge,
+        count(km) as has_km,
+        count(variant_family) as has_variant_family,
+        count(*) FILTER (WHERE year >= 2020 AND (km IS NULL OR km <= 120000)) as target_segment
+      FROM retail_listings
+      ${source ? "WHERE source = '" + source.replace(/'/g, "''") + "'" : ''}
+      GROUP BY source ORDER BY total DESC`
+    });
+
+    // If RPC doesn't exist, fall back to manual queries per source
+    if (sourceCounts) {
+      return json({ endpoint: "audit", table: "retail_listings", by_source: sourceCounts });
+    }
+
+    // Fallback: query field completeness without custom SQL
+    const sources = source ? [source] : ['carsales', 'autotrader', 'drive', 'easyauto123'];
+    const results: Record<string, any> = {};
+    for (const src of sources) {
+      const { count: total } = await supabase.from('retail_listings').select('id', { count: 'exact', head: true }).eq('source', src);
+      const { count: hasTrans } = await supabase.from('retail_listings').select('id', { count: 'exact', head: true }).eq('source', src).not('transmission', 'is', null);
+      const { count: hasFuel } = await supabase.from('retail_listings').select('id', { count: 'exact', head: true }).eq('source', src).not('fuel_type', 'is', null);
+      const { count: hasBody } = await supabase.from('retail_listings').select('id', { count: 'exact', head: true }).eq('source', src).not('body_type', 'is', null);
+      const { count: hasColour } = await supabase.from('retail_listings').select('id', { count: 'exact', head: true }).eq('source', src).not('colour', 'is', null);
+      const { count: hasDrive } = await supabase.from('retail_listings').select('id', { count: 'exact', head: true }).eq('source', src).not('drivetrain', 'is', null);
+      const { count: hasSeller } = await supabase.from('retail_listings').select('id', { count: 'exact', head: true }).eq('source', src).not('seller_type', 'is', null).neq('seller_type', 'unknown');
+      const { count: hasState } = await supabase.from('retail_listings').select('id', { count: 'exact', head: true }).eq('source', src).not('state', 'is', null);
+      const { count: hasMarket } = await supabase.from('retail_listings').select('id', { count: 'exact', head: true }).eq('source', src).not('market_price', 'is', null);
+      const { count: hasBadge } = await supabase.from('retail_listings').select('id', { count: 'exact', head: true }).eq('source', src).not('price_badge', 'is', null);
+      const { count: hasKm } = await supabase.from('retail_listings').select('id', { count: 'exact', head: true }).eq('source', src).not('km', 'is', null);
+      const { count: target } = await supabase.from('retail_listings').select('id', { count: 'exact', head: true }).eq('source', src).gte('year', 2020).or('km.is.null,km.lte.120000');
+
+      results[src] = {
+        total: total ?? 0,
+        target_2020_under120k: target ?? 0,
+        fields: {
+          transmission: { filled: hasTrans ?? 0, pct: total ? Math.round(((hasTrans ?? 0) / total) * 100) : 0 },
+          fuel_type: { filled: hasFuel ?? 0, pct: total ? Math.round(((hasFuel ?? 0) / total) * 100) : 0 },
+          body_type: { filled: hasBody ?? 0, pct: total ? Math.round(((hasBody ?? 0) / total) * 100) : 0 },
+          colour: { filled: hasColour ?? 0, pct: total ? Math.round(((hasColour ?? 0) / total) * 100) : 0 },
+          drivetrain: { filled: hasDrive ?? 0, pct: total ? Math.round(((hasDrive ?? 0) / total) * 100) : 0 },
+          seller_type: { filled: hasSeller ?? 0, pct: total ? Math.round(((hasSeller ?? 0) / total) * 100) : 0 },
+          state: { filled: hasState ?? 0, pct: total ? Math.round(((hasState ?? 0) / total) * 100) : 0 },
+          market_price: { filled: hasMarket ?? 0, pct: total ? Math.round(((hasMarket ?? 0) / total) * 100) : 0 },
+          price_badge: { filled: hasBadge ?? 0, pct: total ? Math.round(((hasBadge ?? 0) / total) * 100) : 0 },
+          km: { filled: hasKm ?? 0, pct: total ? Math.round(((hasKm ?? 0) / total) * 100) : 0 },
+        }
+      };
+    }
+    return json({ endpoint: "audit", table: "retail_listings", by_source: results });
+  }
+
+  if (table === "auction" || table === "both") {
+    const { count: total } = await supabase.from('vehicle_listings').select('id', { count: 'exact', head: true });
+    const { count: hasPrice } = await supabase.from('vehicle_listings').select('id', { count: 'exact', head: true }).not('asking_price', 'is', null).gt('asking_price', 0);
+    const { count: hasKm } = await supabase.from('vehicle_listings').select('id', { count: 'exact', head: true }).not('km', 'is', null);
+    const { count: hasState } = await supabase.from('vehicle_listings').select('id', { count: 'exact', head: true }).not('state', 'is', null);
+    return json({
+      endpoint: "audit", table: "vehicle_listings", total: total ?? 0,
+      fields: {
+        asking_price: { filled: hasPrice ?? 0, pct: total ? Math.round(((hasPrice ?? 0) / total) * 100) : 0 },
+        km: { filled: hasKm ?? 0, pct: total ? Math.round(((hasKm ?? 0) / total) * 100) : 0 },
+        state: { filled: hasState ?? 0, pct: total ? Math.round(((hasState ?? 0) / total) * 100) : 0 },
+      },
+      note: "Auction listings don't require asking_price (hammer price determined at auction)"
+    });
+  }
+
+  return json({ error: "table must be 'retail', 'auction', or 'both'" }, 400);
+}
+
+// ========== SEARCH (Unified cross-table) ==========
+async function handleSearch(supabase: any, url: URL) {
+  const make = url.searchParams.get("make");
+  const model = url.searchParams.get("model");
+  const yearMin = url.searchParams.get("year_min");
+  const yearMax = url.searchParams.get("year_max");
+  const kmMax = url.searchParams.get("km_max");
+  const priceMax = url.searchParams.get("price_max");
+  const priceMin = url.searchParams.get("price_min");
+  const state = url.searchParams.get("state");
+  const sellerType = url.searchParams.get("seller_type");
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 1000);
+
+  // Query retail_listings
+  let retailQuery = supabase
+    .from("retail_listings")
+    .select("id, source, make, model, variant_raw, badge, year, km, asking_price, state, suburb, transmission, fuel_type, body_type, colour, seller_type, listing_url, price_badge, market_price, price_difference_percent, first_seen_at, last_seen_at, lifecycle_status")
+    .order("last_seen_at", { ascending: false })
+    .limit(limit);
+
+  if (make) retailQuery = retailQuery.ilike("make", `%${make}%`);
+  if (model) retailQuery = retailQuery.ilike("model", `%${model}%`);
+  if (yearMin) retailQuery = retailQuery.gte("year", parseInt(yearMin));
+  if (yearMax) retailQuery = retailQuery.lte("year", parseInt(yearMax));
+  if (kmMax) retailQuery = retailQuery.lte("km", parseInt(kmMax));
+  if (priceMax) retailQuery = retailQuery.lte("asking_price", parseInt(priceMax));
+  if (priceMin) retailQuery = retailQuery.gte("asking_price", parseInt(priceMin));
+  if (state) retailQuery = retailQuery.ilike("state", `%${state}%`);
+  if (sellerType) retailQuery = retailQuery.eq("seller_type", sellerType);
+
+  // Query vehicle_listings (auction/OEM)
+  let auctionQuery = supabase
+    .from("vehicle_listings")
+    .select("id, source, make, model, variant_raw, year, km, asking_price, state, location, transmission, fuel, seller_type, listing_url, auction_house, auction_datetime, status, first_seen_at, last_seen_at")
+    .order("last_seen_at", { ascending: false })
+    .limit(limit);
+
+  if (make) auctionQuery = auctionQuery.ilike("make", `%${make}%`);
+  if (model) auctionQuery = auctionQuery.ilike("model", `%${model}%`);
+  if (yearMin) auctionQuery = auctionQuery.gte("year", parseInt(yearMin));
+  if (yearMax) auctionQuery = auctionQuery.lte("year", parseInt(yearMax));
+  if (kmMax) auctionQuery = auctionQuery.lte("km", parseInt(kmMax));
+  if (priceMax) auctionQuery = auctionQuery.lte("asking_price", parseInt(priceMax));
+  if (priceMin) auctionQuery = auctionQuery.gte("asking_price", parseInt(priceMin));
+
+  const [retailResult, auctionResult] = await Promise.all([
+    retailQuery, auctionQuery
+  ]);
+
+  const retail = (retailResult.data ?? []).map((r: any) => ({ ...r, _table: 'retail' }));
+  const auction = (auctionResult.data ?? []).map((r: any) => ({ ...r, _table: 'auction' }));
+
+  // Merge and sort by last_seen_at
+  const combined = [...retail, ...auction]
+    .sort((a: any, b: any) => (b.last_seen_at ?? '').localeCompare(a.last_seen_at ?? ''))
+    .slice(0, limit);
+
+  return json({
+    endpoint: "search",
+    total: combined.length,
+    retail_count: retail.length,
+    auction_count: auction.length,
+    data: combined
+  });
+}
+
+// ========== HISTORY (Price history) ==========
+async function handleHistory(supabase: any, url: URL) {
+  const listingId = url.searchParams.get("listing_id");
+  const source = url.searchParams.get("source");
+  const make = url.searchParams.get("make");
+  const model = url.searchParams.get("model");
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "200"), 1000);
+
+  let query = supabase
+    .from("listing_price_history")
+    .select("id, listing_id, source, price, price_badge, market_price, price_difference_percent, created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (listingId) query = query.eq("listing_id", listingId);
+  if (source) query = query.eq("source", source);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  // If make/model provided, cross-reference with retail_listings to find listing_ids
+  if (!listingId && (make || model)) {
+    let lookupQuery = supabase.from("retail_listings").select("source_listing_id").limit(100);
+    if (make) lookupQuery = lookupQuery.ilike("make", `%${make}%`);
+    if (model) lookupQuery = lookupQuery.ilike("model", `%${model}%`);
+    const { data: matches } = await lookupQuery;
+    if (matches && matches.length > 0) {
+      const ids = matches.map((m: any) => m.source_listing_id).filter(Boolean);
+      const { data: historyData, error: histError } = await supabase
+        .from("listing_price_history")
+        .select("id, listing_id, source, price, price_badge, market_price, price_difference_percent, created_at")
+        .in("listing_id", ids.slice(0, 50))
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (!histError && historyData) {
+        return json({ endpoint: "history", count: historyData.length, data: historyData });
+      }
+    }
+  }
+
+  return json({ endpoint: "history", count: data?.length ?? 0, data });
+}
+
+// ========== CLEARANCES (Sold/delisted events) ==========
+async function handleClearances(supabase: any, url: URL) {
+  const make = url.searchParams.get("make");
+  const model = url.searchParams.get("model");
+  const source = url.searchParams.get("source");
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 1000);
+
+  let query = supabase
+    .from("clearance_events")
+    .select("*")
+    .order("cleared_at", { ascending: false })
+    .limit(limit);
+
+  if (make) query = query.ilike("make", `%${make}%`);
+  if (model) query = query.ilike("model", `%${model}%`);
+  if (source) query = query.eq("source", source);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return json({ endpoint: "clearances", count: data?.length ?? 0, data });
+}
+
+// ========== OPPORTUNITIES (Matched opps + caroogle + deal flags) ==========
+async function handleOpportunities(supabase: any, url: URL) {
+  const make = url.searchParams.get("make");
+  const model = url.searchParams.get("model");
+  const type = url.searchParams.get("type"); // 'matched', 'caroogle', 'flags', or all
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 500);
+
+  const results: Record<string, any> = {};
+
+  if (!type || type === "matched") {
+    let mq = supabase.from("matched_opportunities_v1").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (make) mq = mq.ilike("make", `%${make}%`);
+    if (model) mq = mq.ilike("model", `%${model}%`);
+    const { data } = await mq;
+    results.matched = data ?? [];
+  }
+
+  if (!type || type === "caroogle") {
+    let cq = supabase.from("caroogle_finds").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (make) cq = cq.ilike("make", `%${make}%`);
+    if (model) cq = cq.ilike("model", `%${model}%`);
+    const { data } = await cq;
+    results.caroogle_finds = data ?? [];
+  }
+
+  if (!type || type === "flags") {
+    let fq = supabase.from("deal_flags").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (make) fq = fq.ilike("make", `%${make}%`);
+    if (model) fq = fq.ilike("model", `%${model}%`);
+    const { data } = await fq;
+    results.deal_flags = data ?? [];
+  }
+
+  return json({
+    endpoint: "opportunities",
+    counts: {
+      matched: results.matched?.length ?? 'not queried',
+      caroogle_finds: results.caroogle_finds?.length ?? 'not queried',
+      deal_flags: results.deal_flags?.length ?? 'not queried',
+    },
+    ...results
+  });
+}
+
+// ========== SALES TRUTH (Verified historical sales) ==========
+async function handleSalesTruth(supabase: any, url: URL) {
+  const make = url.searchParams.get("make");
+  const model = url.searchParams.get("model");
+  const yearMin = url.searchParams.get("year_min");
+  const yearMax = url.searchParams.get("year_max");
+  const source = url.searchParams.get("source");
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 1000);
+
+  let query = supabase
+    .from("vehicle_sales_truth")
+    .select("*")
+    .order("sale_date", { ascending: false })
+    .limit(limit);
+
+  if (make) query = query.ilike("make", `%${make}%`);
+  if (model) query = query.ilike("model", `%${model}%`);
+  if (yearMin) query = query.gte("year", parseInt(yearMin));
+  if (yearMax) query = query.lte("year", parseInt(yearMax));
+  if (source) query = query.eq("source", source);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return json({ endpoint: "sales_truth", count: data?.length ?? 0, data });
 }
 
 // ========== SCHEMA ==========
@@ -308,7 +621,21 @@ async function handleSchema(supabase: any) {
       "demand_opportunities": "Demand-supply gap opportunities",
       "matched_opportunities_v1": "Matched dealer specs to listings",
     },
-    note: "Use ?endpoint=retail for retail listings (129k records). Use ?endpoint=listings for auction/OEM (21k records)."
+    available_endpoints: {
+      "listings": "Auction/OEM listings (vehicle_listings). Filters: make, model, year_min, year_max, km_max, price_max, source, status, location",
+      "retail": "Retail listings (Carsales, Autotrader, etc). Filters: make, model, year_min, year_max, km_max, price_min, price_max, source, state, badge, seller_type",
+      "search": "Unified search across BOTH tables in one call. Filters: make, model, year_min, year_max, km_max, price_min, price_max, state, seller_type",
+      "audit": "Data quality dashboard — field completeness by source. Params: table=retail|auction|both, source=carsales|autotrader|etc",
+      "deals": "Scored deal opportunities (cheap_car_queue). Filters: make, model, status",
+      "history": "Price change timeline. Filters: listing_id, source, make, model",
+      "clearances": "Sold/delisted events with days-on-market. Filters: make, model, source",
+      "opportunities": "Matched opportunities + caroogle finds + deal flags. Filters: make, model, type=matched|caroogle|flags",
+      "sales_truth": "Verified historical sale outcomes. Filters: make, model, year_min, year_max, source",
+      "fingerprints": "Dealer buying pattern profiles. Filters: dealer_name, make, model, active_only",
+      "analytics": "Market summary stats. Filters: make, model",
+      "schema": "This endpoint — system overview"
+    },
+    note: "All endpoints support limit= (up to 1000) and most support offset= for pagination."
   });
 }
 
