@@ -174,9 +174,10 @@ function PriceBadgeSection({
   );
 }
 
-type SortOption = 'price_asc' | 'price_desc' | 'year_desc' | 'year_asc' | 'delta_desc' | 'delta_asc';
+type SortOption = 'newest_first' | 'price_asc' | 'price_desc' | 'year_desc' | 'year_asc' | 'delta_desc' | 'delta_asc';
 
 const SORT_LABELS: Record<SortOption, string> = {
+  newest_first: 'Most Recent',
   price_asc: 'Price: Low → High',
   price_desc: 'Price: High → Low',
   year_desc: 'Year: Newest first',
@@ -188,6 +189,7 @@ const SORT_LABELS: Record<SortOption, string> = {
 function sortListings(listings: RetailListing[], sort: SortOption): RetailListing[] {
   return [...listings].sort((a, b) => {
     switch (sort) {
+      case 'newest_first': return new Date(b.last_seen_at).getTime() - new Date(a.last_seen_at).getTime();
       case 'price_asc': return a.asking_price - b.asking_price;
       case 'price_desc': return b.asking_price - a.asking_price;
       case 'year_desc': return (b.year ?? 0) - (a.year ?? 0);
