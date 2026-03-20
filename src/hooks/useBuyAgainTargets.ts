@@ -288,9 +288,11 @@ export function useBuyAgainTargets(_accountId?: string) {
         trimRankMap.set(`${row.make}|${row.model}|${row.trim_class}`, row.trim_rank);
       }
 
-      // ─── STEP 5: Pull fresh listings ───
+      // ─── STEP 5: Pull fresh listings (auction + retail) ───
       const freshCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
-      const { data: listings, error: lErr } = await supabase
+
+      // 5a) Auction / OEM listings (vehicle_listings)
+      const { data: auctionListings, error: lErr } = await supabase
         .from("vehicle_listings")
         .select("id, make, model, variant_raw, variant_family, year, km, asking_price, listing_url, source, status, first_seen_at, drivetrain")
         .in("status", ["catalogue", "listed"])
@@ -298,6 +300,45 @@ export function useBuyAgainTargets(_accountId?: string) {
         .order("asking_price", { ascending: true, nullsFirst: false })
         .limit(1000);
       if (lErr) throw lErr;
+
+      // 5b) Retail listings (Carsales, Autotrader, Drive, etc.)
+      const { data: retailListings, error: rErr } = await supabase
+        .from("retail_listings")
+        .select("id, make, model, variant_raw, variant_family, year, km, asking_price, listing_url, source, lifecycle_status, first_seen_at, drivetrain")
+        .eq("lifecycle_status", "active")
+        .gte("last_seen_at", freshCutoff)
+        .order("asking_price", { ascending: true, nullsFirst: false })
+        .limit(2000);
+      if (rErr) throw rErr;
+
+      // 5c) Merge into unified listing pool with normalised shape
+      type UnifiedListing = {
+        id: string; make: string; model: string;
+        variant_raw: string | null; variant_family: string | null;
+        year: number | null; km: number | null; asking_price: number | null;
+        listing_url: string | null; source: string | null;
+        status: string | null; first_seen_at: string | null;
+        drivetrain: string | null;
+      };
+
+      const listings: UnifiedListing[] = [
+        ...(auctionListings || []).map((l) => ({
+          id: l.id, make: l.make, model: l.model,
+          variant_raw: l.variant_raw, variant_family: l.variant_family,
+          year: l.year, km: l.km, asking_price: l.asking_price,
+          listing_url: l.listing_url, source: l.source,
+          status: l.status, first_seen_at: l.first_seen_at,
+          drivetrain: l.drivetrain,
+        })),
+        ...(retailListings || []).map((l) => ({
+          id: l.id, make: l.make, model: l.model,
+          variant_raw: l.variant_raw, variant_family: l.variant_family,
+          year: l.year, km: l.km, asking_price: l.asking_price,
+          listing_url: l.listing_url, source: l.source,
+          status: l.lifecycle_status, first_seen_at: l.first_seen_at,
+          drivetrain: l.drivetrain,
+        })),
+      ];
 
       // ─── STEP 6: Match each pattern against listings ───
       const results: PatternWithMatches[] = [];
