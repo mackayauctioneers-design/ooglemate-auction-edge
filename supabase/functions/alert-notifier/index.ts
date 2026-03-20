@@ -160,7 +160,7 @@ Deno.serve(async (req) => {
 
       // Check alert type preference
       const shouldNotifyBuy = settings?.notify_buy ?? true;
-      const shouldNotifyWatch = settings?.notify_watch ?? false;
+      const shouldNotifyWatch = settings?.notify_watch ?? true;
       
       if (alert.alert_type === 'BUY' && !shouldNotifyBuy) {
         skipped++;
