@@ -8,9 +8,9 @@ const corsHeaders = {
 };
 
 /**
- * fingerprint-match-run v4.0
+ * fingerprint-match-run v5.0
  *
- * Scores directly against vehicle_listings (active only).
+ * Scores against BOTH vehicle_listings (auction/OEM) AND retail_listings (Carsales, Autotrader, etc.).
  * Now uses MARKET-REBASED prices and fingerprint expiry.
  *
  * Rebasing: Historical margin % is preserved, but price anchors
@@ -279,23 +279,64 @@ Deno.serve(async (req) => {
       fpMap.set(key, fp);
     }
 
-    // ── Step 3: Load active vehicle_listings ──
-    const { data: listings, error: listErr } = await supabase
+    // ── Step 3: Load active listings from BOTH tables ──
+    // 3a: Auction/OEM from vehicle_listings
+    const { data: auctionListings, error: auctionErr } = await supabase
       .from("vehicle_listings")
       .select("id, listing_id, make, model, year, km, asking_price, price_type, state, variant_raw, transmission, fuel, drivetrain, listing_url, source, platform_class, first_seen_at")
       .in("status", ["listed", "catalogue"])
       .order("last_seen_at", { ascending: false })
       .limit(batchSize);
 
-    if (listErr) {
-      console.error("[fingerprint-match-run] Listing load error:", listErr);
-      return new Response(JSON.stringify({ error: listErr.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (auctionErr) {
+      console.error("[fingerprint-match-run] Auction listing load error:", auctionErr);
     }
 
-    if (!listings || listings.length === 0) {
+    // 3b: Retail from retail_listings (Carsales, Autotrader, Drive, EasyAuto123)
+    //     Map retail fields to the same VehicleListing interface
+    const retailBatchSize = Math.max(batchSize, 1000); // Retail pool is larger
+    const { data: rawRetailListings, error: retailErr } = await supabase
+      .from("retail_listings")
+      .select("id, source_listing_id, make, model, year, km, asking_price, state, variant_raw, transmission, fuel_type, drivetrain, body_type, colour, seller_type, listing_url, source, first_seen_at, lifecycle_status")
+      .or("lifecycle_status.is.null,lifecycle_status.neq.delisted")
+      .order("last_seen_at", { ascending: false })
+      .limit(retailBatchSize);
+
+    if (retailErr) {
+      console.error("[fingerprint-match-run] Retail listing load error:", retailErr);
+    }
+
+    // Normalise retail listings to VehicleListing interface
+    const retailListings: VehicleListing[] = (rawRetailListings ?? []).map((r: any) => ({
+      id: r.id,
+      listing_id: `retail:${r.source}:${r.source_listing_id}`,
+      make: r.make,
+      model: r.model,
+      year: r.year,
+      km: r.km,
+      asking_price: r.asking_price,
+      price_type: 'ask', // Retail is always asking price
+      state: r.state,
+      variant_raw: r.variant_raw,
+      transmission: r.transmission,
+      fuel: r.fuel_type, // retail uses fuel_type, auction uses fuel
+      drivetrain: r.drivetrain,
+      listing_url: r.listing_url,
+      source: r.source,
+      platform_class: null, // retail doesn't use platform_class
+      first_seen_at: r.first_seen_at,
+      // Extra retail fields for enhanced scoring (carried through as-is)
+      _seller_type: r.seller_type,
+      _body_type: r.body_type,
+      _colour: r.colour,
+      _table: 'retail',
+    } as any));
+
+    // Merge both pools
+    const auctionPool = (auctionListings ?? []).map((l: any) => ({ ...l, _table: 'auction' }));
+    const listings = [...auctionPool, ...retailListings];
+
+    if (listings.length === 0) {
       return new Response(
         JSON.stringify({
           success: true,
@@ -309,7 +350,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[fingerprint-match-run] Scoring ${listings.length} active listings against ${fpMap.size} usable fingerprints`);
+    console.log(`[fingerprint-match-run] Scoring ${listings.length} listings (${auctionPool.length} auction + ${retailListings.length} retail) against ${fpMap.size} usable fingerprints`);
 
     // ── Step 3b: Load fingerprint accuracy scores ──
     const fpAccuracyMap = new Map<string, number>();
@@ -334,6 +375,8 @@ Deno.serve(async (req) => {
     let skippedDecay = 0;
     let skippedExpired = 0;
     let watchOnly = 0;
+    let auctionMatched = 0;
+    let retailMatched = 0;
 
     const seenVehicles = new Set<string>();
 
@@ -451,6 +494,11 @@ Deno.serve(async (req) => {
         ? Math.round(Number(fp.rebased_sell_price) - normalisedAskPrice)
         : null;
 
+      // Track source table for reporting
+      const sourceTable = (listing as any)._table || 'auction';
+      if (sourceTable === 'retail') retailMatched++;
+      else auctionMatched++;
+
       opportunities.push({
         account_id: accountId,
         listing_id: listing.id,
@@ -484,7 +532,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log(`[fingerprint-match-run] Scored: ${opportunities.length} matched (${watchOnly} watch-only), ${skipped} skipped, ${skippedBadUrl} bad-url, ${skippedDedupe} deduped, ${skippedDecay} killed-by-decay, ${expiredCount} expired-fingerprints`);
+    console.log(`[fingerprint-match-run] Scored: ${opportunities.length} matched (${auctionMatched} auction, ${retailMatched} retail, ${watchOnly} watch-only), ${skipped} skipped, ${skippedBadUrl} bad-url, ${skippedDedupe} deduped, ${skippedDecay} killed-by-decay, ${expiredCount} expired-fingerprints`);
 
     // ── Step 5: Upsert opportunities ──
     let upserted = 0;
@@ -513,12 +561,17 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
+        version: "5.0",
         fingerprints_loaded: fingerprints.length,
         fingerprints_active: activeCount,
         fingerprints_watch: watchCount,
         fingerprints_expired: expiredCount,
         listings_checked: listings.length,
+        listings_auction: auctionPool.length,
+        listings_retail: retailListings.length,
         matched: upserted,
+        matched_from_auction: auctionMatched,
+        matched_from_retail: retailMatched,
         watch_only: watchOnly,
         skipped,
         skipped_bad_url: skippedBadUrl,
