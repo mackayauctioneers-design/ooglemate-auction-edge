@@ -313,8 +313,8 @@ Deno.serve(async (req) => {
           }
 
           try {
-            const source = hit._source;
-            if (!source) continue;
+            const hitSource = hit._source;
+            if (!hitSource) continue;
 
             const listingId = source.id?.toString() || hit._id || source.source_ref_id?.toString();
             if (!listingId) continue;
