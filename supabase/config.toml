@@ -345,6 +345,7 @@ verify_jwt = false
 
 [functions.alert-notifier]
 verify_jwt = false
+schedule = "*/5 * * * *"
 
 [functions.asp-auction-crawl]
 verify_jwt = false
