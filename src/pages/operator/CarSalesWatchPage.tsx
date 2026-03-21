@@ -239,7 +239,7 @@ export default function CarSalesWatchPage() {
           .gte('year', 2020)
           .lte('km', 120000)
           .order('asking_price', { ascending: true })
-          .limit(200),
+          .limit(1000),
       ]);
 
       if (wellBelowRes.data) setRealDeals(wellBelowRes.data as RetailListing[]);
