@@ -316,12 +316,12 @@ Deno.serve(async (req) => {
             const hitSource = hit._source;
             if (!hitSource) continue;
 
-            const listingId = source.id?.toString() || hit._id || source.source_ref_id?.toString();
+            const listingId = hitSource.id?.toString() || hit._id || hitSource.source_ref_id?.toString();
             if (!listingId) continue;
 
-            const price = source.price?.advertised_price 
-              || source.price?.driveaway_price 
-              || source.price_display 
+            const price = hitSource.price?.advertised_price 
+              || hitSource.price?.driveaway_price 
+              || hitSource.price_display 
               || 0;
 
             // Store full hit (not just _source) for metadata like _score, _id
