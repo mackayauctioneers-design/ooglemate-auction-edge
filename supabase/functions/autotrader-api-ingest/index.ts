@@ -377,14 +377,13 @@ Deno.serve(async (req) => {
             if (result?.was_relisted) results.relisted_listings++;
 
             // Write enrichment fields that the RPC doesn't accept yet
-            // source already declared at line 316 — reuse it
-            if (result?.id && source) {
+            if (result?.id && hitSource) {
               const enrichFields: Record<string, unknown> = {};
-              const transmission = source.transmission?.toString().toUpperCase().trim();
-              const fuelType = source.fuel_type?.toString().toUpperCase().trim();
-              const bodyType = source.body_type?.toString().toUpperCase().trim();
-              const colour = source.colour_body?.toString().toUpperCase().trim();
-              const sellerName = source.seller_name?.toString().trim();
+              const transmission = hitSource.transmission?.toString().toUpperCase().trim();
+              const fuelType = hitSource.fuel_type?.toString().toUpperCase().trim();
+              const bodyType = hitSource.body_type?.toString().toUpperCase().trim();
+              const colour = hitSource.colour_body?.toString().toUpperCase().trim();
+              const sellerName = hitSource.seller_name?.toString().trim();
               if (transmission) enrichFields.transmission = transmission;
               if (fuelType) enrichFields.fuel_type = fuelType;
               if (bodyType) enrichFields.body_type = bodyType;
