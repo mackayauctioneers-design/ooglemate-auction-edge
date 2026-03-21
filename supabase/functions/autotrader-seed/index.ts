@@ -29,7 +29,7 @@ const STATES_TO_SEED = ["nsw", "vic", "qld", "sa", "wa"];
  * autotrader-fetch handles the actual data fetching and upserting.
  */
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
