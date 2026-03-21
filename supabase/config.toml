@@ -14,31 +14,13 @@ schedule = "15 21 * * *"
 [functions.google-sheets]
 verify_jwt = false
 
-[functions.whatsapp-alerts]
-verify_jwt = false
-
 [functions.run-saved-search]
 verify_jwt = false
 
 [functions.valo-parse]
 verify_jwt = false
 
-[functions.bob]
-verify_jwt = false
-
-[functions.bob-sales-truth]
-verify_jwt = false
-
-[functions.bob-realtime-token]
-verify_jwt = false
-
 [functions.bob-tts]
-verify_jwt = false
-
-[functions.bob-daily-brief]
-verify_jwt = false
-
-[functions.bob-push]
 verify_jwt = false
 
 [functions.pickles-alerts]
@@ -96,10 +78,6 @@ schedule = "*/15 * * * *"
 [functions.manheim-deep-fetch]
 verify_jwt = false
 # schedule removed 2026-02-28 — retired, replaced by auction-detail-enricher
-
-[functions.gumtree-cookie-refresh-apify]
-verify_jwt = false
-schedule = "0 */6 * * *"
 
 [functions.feeding-mode-report]
 verify_jwt = false
@@ -190,21 +168,6 @@ schedule = "50 20 * * *"
 verify_jwt = false
 schedule = "0 17 * * *"
 
-[functions.gumtree-cookie-refresh]
-verify_jwt = false
-schedule = "0 */6 * * *"
-
-[functions.gumtree-ingest]
-verify_jwt = false
-
-[functions.retail-ingest-cron]
-verify_jwt = false
-schedule = "0,30 21,22,23,0,1,2,3,4,5,6,7,8,9,10 * * *"
-
-[functions.bulk-seed-ingest]
-verify_jwt = false
-schedule = "*/5 * * * *"
-
 [functions.autotrader-ingest]
 verify_jwt = false
 
@@ -241,21 +204,12 @@ schedule = "*/15 * * * *"
 [functions.pickles-outward-crawl]
 verify_jwt = false
 
-[functions.outward-hunt]
-verify_jwt = false
-
 [functions.build-unified-candidates]
 verify_jwt = false
 
 [functions.dealer-outbound-crawl]
 verify_jwt = false
 schedule = "0 1 * * *"
-
-[functions.pickles-api-probe]
-verify_jwt = false
-
-[functions.pickles-api-harvest]
-verify_jwt = false
 
 [functions.pickles-search-harvest]
 verify_jwt = false
@@ -271,12 +225,6 @@ verify_jwt = false
 schedule = "0 17 * * *"
 
 [functions.submit-dealer-urls]
-verify_jwt = false
-
-[functions.grok-deal-hunter]
-verify_jwt = false
-
-[functions.run-grok-mission]
 verify_jwt = false
 
 [functions.dealer-url-preflight]
@@ -356,9 +304,6 @@ verify_jwt = false
 [functions.bob-chat]
 verify_jwt = false
 
-[functions.bob-site-tools]
-verify_jwt = false
-
 [functions.dealer-spec-matching-cron]
 verify_jwt = false
 
@@ -377,9 +322,6 @@ verify_jwt = false
 [functions.grays-stub-ingest]
 verify_jwt = false
 
-[functions.outward-scrape-worker]
-verify_jwt = false
-
 [functions.bidsonline-crawl]
 verify_jwt = false
 
@@ -387,15 +329,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-buy-window-to-slack]
-verify_jwt = false
-
-[functions.toyota-dealer-trap-mapper]
-verify_jwt = false
-
-[functions.toyota-portal-ingest]
-verify_jwt = false
-
-[functions.toyota-used-portal-crawl]
 verify_jwt = false
 
 [functions.watch-scan]
@@ -422,10 +355,6 @@ verify_jwt = false
 [functions.easyauto-scrape]
 verify_jwt = false
 schedule = "0 */3 * * *"
-
-[functions.toyota-used-scrape]
-verify_jwt = false
-schedule = "0 * * * *"
 
 [functions.caroogle-shadow-cron]
 verify_jwt = false
@@ -465,9 +394,6 @@ schedule = "0 20 * * *"
 verify_jwt = false
 schedule = "0 */3 * * *"
 
-[functions.openclaw-search]
-verify_jwt = false
-
 [functions.ooglebot]
 verify_jwt = false
 
@@ -480,19 +406,6 @@ verify_jwt = false
 [functions.run-mandates]
 verify_jwt = false
 schedule = "*/15 * * * *"
-
-[functions.trigger-manus-search]
-verify_jwt = false
-
-[functions.manus-webhook]
-verify_jwt = false
-
-[functions.auction-detail-enricher]
-verify_jwt = false
-schedule = "*/10 * * * *"
-
-[functions.manus-auction-webhook]
-verify_jwt = false
 
 [functions.auction-queue-cleanup]
 verify_jwt = false
@@ -522,8 +435,6 @@ verify_jwt = false
 [functions.carsales-scan]
 verify_jwt = false
 
-# carsales-scan-cron removed — ghost entry (no index.ts). Replaced by carsales-micro-cron.
-
 [functions.carsales-micro-cron]
 verify_jwt = false
 schedule = "0 */2 * * *"
@@ -545,3 +456,6 @@ verify_jwt = false
 [functions.ultimate-car-scan-cron]
 verify_jwt = false
 schedule = "15 */2 * * *"
+
+[functions.pipeline-cleanup-oneshot]
+verify_jwt = false

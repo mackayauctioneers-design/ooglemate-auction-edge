@@ -21,6 +21,7 @@ const BATCH_SIZE = 100;
 const TIME_BUDGET_MS = 50000; // 50s budget (leave 10s buffer)
 const MAX_ATTEMPTS = 3;
 const PARALLEL_SIZE = 5; // 5 concurrent scrapes
+const BLOCKED_FIRECRAWL_DOMAINS = ['autotrader.com.au', 'carsales.com.au'];
 
 interface DetailResult {
   dealer_name: string | null;
@@ -337,6 +338,7 @@ Deno.serve(async (req) => {
       .lt('details_attempts', MAX_ATTEMPTS)
       .not('listing_url', 'is', null)
       .neq('source', 'autotrader')
+      .neq('source', 'carsales')
       .order('source', { ascending: true })  // 'carsales' < 'drive' < 'gumtree' alphabetically — carsales first
       .order('created_at', { ascending: true })
       .limit(batchSize);
@@ -366,6 +368,18 @@ Deno.serve(async (req) => {
 
       await Promise.allSettled(chunk.map(async (listing: any) => {
         if (!listing.listing_url) {
+          stats.skipped++;
+          return;
+        }
+
+        // Skip Firecrawl for domains that are permanently blocked (403)
+        const isBlockedDomain = BLOCKED_FIRECRAWL_DOMAINS.some(d => listing.listing_url?.includes(d));
+        if (isBlockedDomain) {
+          await supabase.from('retail_listings').update({
+            enrichment_status: 'skipped_blocked_domain',
+            details_scraped: true,
+            enrichment_errors: `Firecrawl blocks ${listing.source} domain`,
+          }).eq('id', listing.id);
           stats.skipped++;
           return;
         }

@@ -226,10 +226,10 @@ async function enrichListing(
   const hasMissingCoreFields = !extractedFields.engine_family && !extractedFields.body_type;
   
   if (firecrawlKey && shouldScrape && hasMissingCoreFields && listing.listing_url) {
-    const isAutotrader = listing.listing_url.includes('autotrader.com.au');
+    // Only scrape drive.com.au — autotrader.com.au is blocked by Firecrawl (403)
     const isDrive = listing.listing_url.includes('drive.com.au');
-    
-    if (isAutotrader || isDrive) {
+
+    if (isDrive) {
       try {
         console.log(`Deep scraping: ${listing.listing_url}`);
         const scrapeRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
@@ -255,7 +255,7 @@ async function enrichListing(
           const scrapedExtracted = applyRules(markdown, rules, listing.make, listing.model);
           scrapedFields = { ...scrapedFields, ...scrapedExtracted };
           
-          enrichmentSource = isAutotrader ? 'autotrader_firecrawl' : 'drive_firecrawl';
+          enrichmentSource = 'drive_firecrawl';
         }
       } catch (e) {
         console.error(`Firecrawl scrape failed for ${listing.listing_url}:`, e);

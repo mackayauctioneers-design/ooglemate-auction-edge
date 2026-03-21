@@ -179,14 +179,6 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const debug = body.debug === true;
     
-    const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
-    if (!firecrawlKey) {
-      return new Response(
-        JSON.stringify({ error: 'FIRECRAWL_API_KEY not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -194,29 +186,21 @@ Deno.serve(async (req) => {
     console.log('[f3-crawl] Starting F3 Motor Auctions crawl, debug:', debug);
 
     const listUrl = 'https://www.f3motorauctions.com.au/search_results.aspx?sitekey=F3A&make=All+Makes&model=All+Models';
-    
-    // Stage 1: Fetch list page
+
+    // Stage 1: Fetch list page directly (no Firecrawl — F3 serves static HTML)
     console.log('[f3-crawl] Fetching list page');
-    const listResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
-      method: 'POST',
+    const listResponse = await fetch(listUrl, {
       headers: {
-        'Authorization': `Bearer ${firecrawlKey}`,
-        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
       },
-      body: JSON.stringify({
-        url: listUrl,
-        formats: ['html'],
-        onlyMainContent: false,
-        waitFor: 3000,
-      }),
     });
 
     if (!listResponse.ok) {
       throw new Error(`Failed to fetch list page: ${listResponse.status}`);
     }
 
-    const listData = await listResponse.json();
-    const html = listData.data?.html || listData.html || '';
+    const html = await listResponse.text();
     
     console.log(`[f3-crawl] Got HTML: ${html.length} chars`);
     
