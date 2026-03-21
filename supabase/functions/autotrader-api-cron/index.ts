@@ -112,11 +112,13 @@ Deno.serve(async (req) => {
       try {
         console.log(`Processing: ${batch.make} in ${batch.state}, page ${batch.next_page}`);
 
-        // Call ingest function with internal secret + run_id for lifecycle tracking
+        // Call ingest function — MUST include Authorization with service role key
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
         const response = await fetch(`${supabaseUrl}/functions/v1/autotrader-api-ingest`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceKey}`,
             "x-internal-secret": INTERNAL_SECRET,
           },
           body: JSON.stringify({

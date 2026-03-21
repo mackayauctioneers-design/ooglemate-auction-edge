@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
             if (result?.was_relisted) results.relisted_listings++;
 
             // Write enrichment fields that the RPC doesn't accept yet
-            const source = hit._source;
+            // source already declared at line 316 — reuse it
             if (result?.id && source) {
               const enrichFields: Record<string, unknown> = {};
               const transmission = source.transmission?.toString().toUpperCase().trim();
