@@ -522,9 +522,15 @@ verify_jwt = false
 [functions.carsales-scan]
 verify_jwt = false
 
-[functions.carsales-scan-cron]
+# carsales-scan-cron removed — ghost entry (no index.ts). Replaced by carsales-micro-cron.
+
+[functions.carsales-micro-cron]
 verify_jwt = false
 schedule = "0 */2 * * *"
+
+[functions.pre-josh-filter]
+verify_jwt = false
+schedule = "*/5 * * * *"
 
 [functions.gumtree-scan]
 verify_jwt = false
