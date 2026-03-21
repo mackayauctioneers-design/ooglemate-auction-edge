@@ -228,7 +228,7 @@ export default function CarSalesWatchPage() {
           .gte('year', 2020)
           .lte('km', 120000)
           .order('asking_price', { ascending: true })
-          .limit(200),
+          .limit(500),
         supabase
           .from('retail_listings')
           .select('id, make, model, variant_raw, year, asking_price, market_price, km, price_badge, price_difference, price_difference_percent, listing_url, source, seller_type, region_id, first_seen_at, last_seen_at, lifecycle_status, comp_count, market_confidence, market_price_source')
