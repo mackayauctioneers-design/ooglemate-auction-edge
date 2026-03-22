@@ -957,7 +957,46 @@ Deno.serve(async (req) => {
     const aiData = await aiResponse.json();
     const choice = aiData.choices?.[0];
     const fullContent = choice?.message?.content || "";
-    const toolCalls = choice?.message?.tool_calls || [];
+    let toolCalls = choice?.message?.tool_calls || [];
+
+    // ── AUTO-INJECT search_market when search_vehicles is called ──
+    // Gemini often skips search_market even when instructed. If search_vehicles
+    // is selected but search_market isn't, auto-inject it so we always check
+    // the external market alongside internal results.
+    const hasSearchVehicles = toolCalls.some((tc: any) => tc.function?.name === "search_vehicles");
+    const hasSearchMarket = toolCalls.some((tc: any) => tc.function?.name === "search_market");
+    const hasValorAppraise = toolCalls.some((tc: any) => tc.function?.name === "valor_quick_appraise");
+
+    if (hasSearchVehicles && !hasSearchMarket && !hasValorAppraise) {
+      // Build a market query from the search_vehicles params
+      const svCall = toolCalls.find((tc: any) => tc.function?.name === "search_vehicles");
+      let svArgs: any = {};
+      try { svArgs = JSON.parse(svCall.function.arguments); } catch { svArgs = {}; }
+      const marketQuery = [
+        svArgs.year_min ? `${svArgs.year_min}` : "",
+        svArgs.make || "",
+        svArgs.model || "",
+        svArgs.variant || "",
+        "for sale Australia",
+        svArgs.km_max ? `under ${svArgs.km_max.toLocaleString()} km` : "",
+        svArgs.price_max ? `under $${svArgs.price_max.toLocaleString()}` : "",
+        "price",
+      ].filter(Boolean).join(" ");
+
+      const injectedId = `injected_market_${Date.now()}`;
+      toolCalls = [
+        ...toolCalls,
+        {
+          id: injectedId,
+          type: "function",
+          function: {
+            name: "search_market",
+            arguments: JSON.stringify({ query: marketQuery }),
+          },
+        },
+      ];
+      console.log(`[BOB-CHAT] Auto-injected search_market: "${marketQuery}"`);
+    }
 
     // Execute tool calls if present
     if (toolCalls.length > 0) {
