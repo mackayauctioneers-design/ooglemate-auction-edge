@@ -59,7 +59,19 @@ RESPONSE FORMAT:
 - Never repeat vehicle data in text that's already shown in cards
 - If results came from a broadened search (retry), present them naturally: "Here's what's on the market for [make model]" and offer to filter further
 
-TONE: Sharp, direct, commercially savvy. Australian dealer language. "Yeah mate, found three solid options" not "I've identified several potential vehicles."`;
+TONE: Sharp, direct, commercially savvy. Australian dealer language. "Yeah mate, found three solid options" not "I've identified several potential vehicles."
+
+OUTWARD SEARCH:
+- When a dealer asks about market prices, availability, or "what's the cheapest", ALWAYS use search_market in addition to search_vehicles.
+- search_vehicles checks YOUR internal database (wholesale, auctions, dealer sites).
+- search_market checks the RETAIL market (Carsales, AutoTrader, Drive, CarsGuide) for current advertised prices.
+- Use BOTH for comprehensive answers. Internal for wholesale intel, market for retail context and margin calculation.
+
+TRADE VALUATIONS:
+- When a dealer describes a vehicle for trade-in valuation, use valor_quick_appraise.
+- This searches both internal and market, then you calculate the trade guide.
+- Be FAST and DIRECT. The dealer is likely standing with a customer.
+- Format: "[Year Make Model] — cheapest comparable is $XX,XXX at [source]. Trade guide: $XX,XXX floor / $XX,XXX mid / $XX,XXX ceiling. [One sentence of market context]."`;
 
 // Tool definitions
 const TOOLS = [
@@ -187,6 +199,38 @@ const TOOLS = [
         required: ["page_route"],
       },
     },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_market",
+      description: "Search the external Australian car market for current retail prices and listings. Checks Carsales, AutoTrader, Drive, CarsGuide. Use this when: (a) The dealer asks about market prices or what something is worth retail, (b) You need to compare internal stock prices against retail, (c) Finding the cheapest available comparable for a trade valuation, (d) The dealer asks about market trends or availability. ALWAYS use this alongside search_vehicles for comprehensive answers.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Natural language search query e.g. '2022 Toyota RAV4 GXL for sale Australia price' or 'cheapest BYD Atto 3 under 30000km Australia'" }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "valor_quick_appraise",
+      description: "Run a quick trade-in valuation. Use when a dealer describes a vehicle they need to value for a trade-in. Searches internal database and external market for the cheapest comparable, then calculates a trade guide (floor/mid/ceiling). The dealer is likely standing with a customer — be fast and direct.",
+      parameters: {
+        type: "object",
+        properties: {
+          make: { type: "string", description: "Vehicle make e.g. HYUNDAI, TOYOTA" },
+          model: { type: "string", description: "Vehicle model e.g. TUCSON, RAV4" },
+          variant: { type: "string", description: "Variant/badge e.g. Active, GXL, SR5" },
+          year: { type: "number", description: "Year of the vehicle" },
+          km: { type: "number", description: "Kilometres on the vehicle" }
+        },
+        required: ["make", "model"]
+      }
+    }
   },
 ];
 
@@ -683,6 +727,124 @@ async function executeExplainVehicleScore(params: any, dealerProfileId: string, 
   }
 }
 
+async function executeSearchMarket(params: any): Promise<any> {
+  const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
+  if (!PERPLEXITY_API_KEY) {
+    console.error("[BOB-CHAT] PERPLEXITY_API_KEY not configured");
+    return { results: [], summary: "Market search not available." };
+  }
+
+  try {
+    const response = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "sonar",
+        messages: [
+          {
+            role: "system",
+            content: `You are a vehicle market research assistant for Australian car dealers. Search for currently advertised vehicles matching the query.
+
+RULES:
+- Only return REAL listings you find. Do NOT fabricate listings.
+- Focus on: prices (AUD), kilometres, year, variant, dealer/seller name, state, source site.
+- Include listings from Carsales, Drive, CarsGuide, AutoTrader, dealer websites.
+- Return the cheapest listings first.
+- Be specific with prices — exact dollar amounts where possible.
+- Include the source URL where you found each listing.
+- Summarise in a dealer-friendly format.`
+          },
+          { role: "user", content: params.query }
+        ],
+        temperature: 0.1,
+        search_domain_filter: [
+          "carsales.com.au",
+          "drive.com.au",
+          "autotrader.com.au",
+          "carsguide.com.au",
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("[BOB-CHAT] Perplexity API error:", response.status, errText);
+      return { results: [], summary: "Market search temporarily unavailable." };
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content ?? "";
+    const citations = data.citations ?? [];
+
+    return {
+      summary: content,
+      citations: citations.slice(0, 10),
+      source: "perplexity_sonar",
+    };
+  } catch (err) {
+    console.error("[BOB-CHAT] search_market error:", err);
+    return { results: [], summary: "Market search temporarily unavailable." };
+  }
+}
+
+async function executeValorQuickAppraise(params: any, dealerProfileId: string, supabase: any): Promise<any> {
+  const make = (params.make || "").toUpperCase();
+  const model = (params.model || "").toUpperCase();
+  const variant = params.variant || null;
+  const year = params.year || null;
+  const km = params.km || null;
+
+  // Step 1: Search internal DB for comparables
+  const internalParams: any = { make, limit: 10 };
+  if (model) internalParams.model = model;
+  if (year) { internalParams.year_min = year - 2; internalParams.year_max = year + 1; }
+  if (km) internalParams.km_max = Math.round(km * 1.5);
+
+  const internalResult = await executeSearchVehicles(internalParams, dealerProfileId, supabase);
+  const internalListings = internalResult?.results || [];
+
+  // Step 2: Search external market for cheapest comparable
+  const yearStr = year ? `${year}` : "";
+  const kmStr = km ? `under ${Math.round(km * 1.3).toLocaleString()} km` : "";
+  const marketQuery = `cheapest ${yearStr} ${make} ${model} ${variant || ""} for sale Australia ${kmStr} price`.trim();
+
+  const marketResult = await executeSearchMarket({ query: marketQuery });
+
+  // Step 3: Find cheapest price from either source
+  let cheapestInternal = null;
+  let cheapestInternalPrice = Infinity;
+  for (const listing of internalListings) {
+    if (listing.price && listing.price < cheapestInternalPrice) {
+      cheapestInternalPrice = listing.price;
+      cheapestInternal = listing;
+    }
+  }
+
+  return {
+    vehicle_description: `${year || ""} ${make} ${model} ${variant || ""}`.trim(),
+    km: km,
+    internal_comps: internalListings.slice(0, 5),
+    internal_cheapest: cheapestInternal ? {
+      price: cheapestInternal.price,
+      year: cheapestInternal.year,
+      km: cheapestInternal.km,
+      source: cheapestInternal.source,
+      location: cheapestInternal.location,
+      url: cheapestInternal.listing_url || cheapestInternal.url || null,
+    } : null,
+    market_summary: marketResult.summary,
+    market_citations: marketResult.citations || [],
+    trade_guide_instructions: `Calculate trade guide from the cheapest comparable found:
+    - Floor = cheapest retail price × 0.80 (20% margin for wholesale)
+    - Mid = cheapest retail price × 0.85 (15% margin)
+    - Ceiling = cheapest retail price × 0.90 (10% margin, tight, only if fast seller)
+    Present the trade guide prominently.`,
+  };
+}
+
 // ============================================================================
 // Safe tool executor wrapper — guarantees no exceptions leak to AI as errors
 // ============================================================================
@@ -706,6 +868,10 @@ async function safeExecuteTool(funcName: string, args: any, dealerProfileId: str
         return await executeGetDealerPerformance(dealerProfileId, supabase);
       case "explain_page":
         return executeExplainPage(args);
+      case "search_market":
+        return await executeSearchMarket(args);
+      case "valor_quick_appraise":
+        return await executeValorQuickAppraise(args, dealerProfileId, supabase);
       default:
         return { results: [], message: "No data available for that request." };
     }
