@@ -21,19 +21,8 @@ export function RequireAuth({ children }: RequireAuthProps) {
 
     if (!user) {
       navigate('/auth', { replace: true });
-      return;
     }
-
-    // Admins/operators skip onboarding redirect
-    if (role === 'admin' || role === 'internal') return;
-
-    // If dealer has no profile, hasn't completed onboarding, and isn't already on onboarding, redirect
-    const isOnboardingRoute = location.pathname.startsWith('/onboarding');
-    const hasCompletedOnboarding = localStorage.getItem('carbitrage_onboarding_complete') === 'true';
-    if (!dealerProfile && !hasCompletedOnboarding && !isOnboardingRoute) {
-      navigate('/onboarding/win-flow', { replace: true });
-    }
-  }, [isLoading, user, dealerProfile, role, navigate, location.pathname]);
+  }, [isLoading, user, navigate]);
 
   if (isLoading) {
     return (
