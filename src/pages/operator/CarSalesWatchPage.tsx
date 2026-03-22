@@ -283,6 +283,16 @@ export default function CarSalesWatchPage() {
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <Select value={recency} onValueChange={(v) => setRecency(v as RecencyFilter)}>
+              <SelectTrigger className="w-[140px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(RECENCY_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value} className="text-xs">{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
               <SelectTrigger className="w-[200px] h-8 text-xs">
                 <SelectValue />
