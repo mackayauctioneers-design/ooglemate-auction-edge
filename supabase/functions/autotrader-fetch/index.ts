@@ -279,8 +279,9 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
     const suburb = (item.suburb || item.location || item.city || "") as string;
 
     // Price badge: flat fields first, then Merlin tree
+    // NOTE: Carsales Cheerio actor uses "priceAssessment" for the badge (e.g. "Well below market price")
     const priceBadge = (
-      (item.priceBadge || item.priceRating || item.dealRating || item.priceLabel || "") as string
+      (item.priceBadge || item.priceAssessment || item.priceRating || item.dealRating || item.priceLabel || "") as string
     ).trim() || merlin.priceBadge || undefined;
 
     // Try to extract structured pricing data from raw payload
