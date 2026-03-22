@@ -162,8 +162,8 @@ export default function TradingDeskPage() {
         .select("*")
         .eq("account_id", accountId)
         .eq("status", "open")
-        .gte("match_score", 70)
-        .gte("created_at", new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
+        .gte("match_score", 50)
+        .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
         .order("match_score", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(100);
