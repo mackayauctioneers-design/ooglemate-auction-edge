@@ -167,6 +167,7 @@ export default function WinFlowPage() {
   }, [step, fingerprints]);
 
   const handleActivate = async () => {
+    localStorage.setItem('carbitrage_onboarding_complete', 'true');
     toast.success("Dealer feed activated! You'll get daily alerts.");
     navigate("/dealer-home", { replace: true });
   };
