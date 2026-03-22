@@ -78,6 +78,52 @@ function estimateMarketDelta(badge: string | undefined, askingPrice: number): {
   };
 }
 
+function normalizeCarsalesBadgeCandidate(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+
+    const normalized = trimmed.toUpperCase();
+    if (normalized === "BETA" || normalized === "ALPHA" || normalized === "TEST") {
+      return undefined;
+    }
+
+    return trimmed;
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return (
+      normalizeCarsalesBadgeCandidate(record.label) ||
+      normalizeCarsalesBadgeCandidate(record.title) ||
+      normalizeCarsalesBadgeCandidate(record.text) ||
+      normalizeCarsalesBadgeCandidate(record.value) ||
+      normalizeCarsalesBadgeCandidate(record.assessment)
+    );
+  }
+
+  return undefined;
+}
+
+function pickCarsalesPriceBadge(item: Record<string, unknown>, merlinBadge?: string): string | undefined {
+  const candidates: unknown[] = [
+    item.priceAssessment,
+    item.priceLabel,
+    item.priceRating,
+    item.priceInsight,
+    item.priceBadge,
+    item.dealRating,
+    merlinBadge,
+  ];
+
+  for (const candidate of candidates) {
+    const badge = normalizeCarsalesBadgeCandidate(candidate);
+    if (badge) return badge;
+  }
+
+  return undefined;
+}
+
 // ─── SOURCE-SPECIFIC MAPPERS ───────────────────────────────────
 
 function mapAutotraderItem(rawItem: Record<string, unknown>): MappedListing | null {
@@ -278,11 +324,8 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
     const state = ((item.state || item.location_state || "") as string).toUpperCase().trim();
     const suburb = (item.suburb || item.location || item.city || "") as string;
 
-    // Price badge: flat fields first, then Merlin tree
-    // NOTE: Carsales Cheerio actor uses "priceAssessment" for the badge (e.g. "Well below market price")
-    const priceBadge = (
-      (item.priceBadge || item.priceAssessment || item.priceRating || item.dealRating || item.priceLabel || "") as string
-    ).trim() || merlin.priceBadge || undefined;
+    // Price badge: prefer actual Carsales assessment fields and ignore placeholder labels like "BETA"
+    const priceBadge = pickCarsalesPriceBadge(item, merlin.priceBadge);
 
     // Try to extract structured pricing data from raw payload
     let marketPrice: number | undefined;
