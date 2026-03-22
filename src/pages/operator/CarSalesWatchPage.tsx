@@ -201,14 +201,33 @@ function sortListings(listings: RetailListing[], sort: SortOption): RetailListin
   });
 }
 
+type RecencyFilter = 'all' | '24h' | '3d' | '7d' | 'new_only';
+
+const RECENCY_LABELS: Record<RecencyFilter, string> = {
+  all: 'All',
+  '24h': 'Last 24h',
+  '3d': 'Last 3 days',
+  '7d': 'Last 7 days',
+  new_only: 'New only',
+};
+
+function filterByRecency(listings: RetailListing[], filter: RecencyFilter): RetailListing[] {
+  if (filter === 'all') return listings;
+  if (filter === 'new_only') return listings.filter(l => l.lifecycle_status === 'NEW');
+  const hours = filter === '24h' ? 24 : filter === '3d' ? 72 : 168;
+  const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  return listings.filter(l => l.first_seen_at >= cutoff);
+}
+
 export default function CarSalesWatchPage() {
   const [realDeals, setRealDeals] = useState<RetailListing[]>([]);
   const [badgeDeals, setBadgeDeals] = useState<RetailListing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortOption>('price_asc');
+  const [recency, setRecency] = useState<RecencyFilter>('all');
 
-  const sortedRealDeals = useMemo(() => sortListings(realDeals, sortBy), [realDeals, sortBy]);
-  const sortedBadgeDeals = useMemo(() => sortListings(badgeDeals, sortBy), [badgeDeals, sortBy]);
+  const sortedRealDeals = useMemo(() => sortListings(filterByRecency(realDeals, recency), sortBy), [realDeals, sortBy, recency]);
+  const sortedBadgeDeals = useMemo(() => sortListings(filterByRecency(badgeDeals, recency), sortBy), [badgeDeals, sortBy, recency]);
 
   useEffect(() => {
     document.title = 'Car Sales Watch | Operator';
