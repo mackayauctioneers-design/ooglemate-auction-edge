@@ -146,6 +146,13 @@ function getQuickActions(pageType: string, hasSelection: boolean): BobQuickActio
         { label: 'What should I bid on?', prompt: 'What should I bid on in the upcoming auctions?', icon: '🏷️' },
         ...base,
       ];
+    case 'valuation':
+      return [
+        { label: 'Do a valo', prompt: 'I need to value a trade-in. Ask me about the vehicle.', icon: '💰' },
+        { label: 'Quick appraise', prompt: 'Quick appraise — I\'ll describe the vehicle.', icon: '⚡' },
+        { label: 'What\'s it worth?', prompt: 'What is this vehicle worth on the market right now?', icon: '📊' },
+        ...base,
+      ];
     case 'opportunity_feed':
       return [
         { label: 'Why #1?', prompt: 'Why is the top opportunity ranked number one?', icon: '🏆' },
