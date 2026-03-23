@@ -19,6 +19,7 @@ import { MAX_RESULTS } from "../_shared/outward-search/types.ts";
 import { emptyIntent, parseIntentLLM, parseIntentRegex } from "../_shared/outward-search/intent-parser.ts";
 import { checkQuota, incrementUsage, checkGlobalCap, incrementGlobalCap } from "../_shared/outward-search/quota.ts";
 import { InternalDbAdapter } from "../_shared/outward-search/adapters/internal-db.ts";
+import { extractSeries } from "../_shared/taxonomy/derivePlatform.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -143,6 +144,15 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ status: "error", error: "Could not determine make/model from instruction" }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  }
+
+  // ── Auto-derive series from make+model to enable generation gate ──
+  // This prevents cross-generation contamination (e.g. LC70 in LC300 searches)
+  if (!intent.series && intent.make && intent.model) {
+    intent.series = extractSeries(intent.make, intent.model);
+    if (intent.series) {
+      console.log(`[Series Gate] Auto-derived series: ${intent.series} from ${intent.make} ${intent.model}`);
+    }
   }
 
   // ══════════════════════════════════════════════════════════
