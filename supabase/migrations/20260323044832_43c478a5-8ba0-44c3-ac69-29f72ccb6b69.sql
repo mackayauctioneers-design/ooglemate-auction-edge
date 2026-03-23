@@ -1,0 +1,1 @@
+ALTER TABLE public.valo_runs ADD COLUMN IF NOT EXISTS cheapest_trade_guide jsonb DEFAULT NULL;

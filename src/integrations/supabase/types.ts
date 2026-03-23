@@ -11566,6 +11566,7 @@ export type Database = {
           adjusted_offer: Json | null
           anchor: Json | null
           backups: Json | null
+          cheapest_trade_guide: Json | null
           confidence: string | null
           created_at: string
           id: string
@@ -11580,6 +11581,7 @@ export type Database = {
           adjusted_offer?: Json | null
           anchor?: Json | null
           backups?: Json | null
+          cheapest_trade_guide?: Json | null
           confidence?: string | null
           created_at?: string
           id?: string
@@ -11594,6 +11596,7 @@ export type Database = {
           adjusted_offer?: Json | null
           anchor?: Json | null
           backups?: Json | null
+          cheapest_trade_guide?: Json | null
           confidence?: string | null
           created_at?: string
           id?: string
