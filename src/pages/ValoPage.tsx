@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useBob, ValoFormFillData } from '@/contexts/BobContext';
 import { useSearchParams } from 'react-router-dom';
 import { DealerLayout } from '@/components/layout/DealerLayout';
 import { Badge } from '@/components/ui/badge';
@@ -68,7 +69,8 @@ const CONFIDENCE_INFO: Record<string, { label: string; color: string; explanatio
 export default function ValoPage() {
   const { currentUser, isAdmin, dealerProfile } = useAuth();
   const [searchParams] = useSearchParams();
-
+  const { onValoFormFill } = useBob();
+  const handleRunValoRef = useRef<(() => void) | null>(null);
   // Structured identity
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
@@ -151,12 +153,33 @@ export default function ValoPage() {
     return () => { document.title = 'OogleMate'; };
   }, []);
 
+  // Bob form fill listener
+  useEffect(() => {
+    const handleBobFormFill = (data: ValoFormFillData) => {
+      if (data.make) setMake(data.make);
+      if (data.model) setModel(data.model);
+      if (data.year) setYear(data.year);
+      if (data.km) setKm(data.km);
+      if (data.badge) setBadge(data.badge);
+      if (data.condition) setCondition(data.condition);
+      if (data.description) setDescription(data.description);
+      toast.success(`Bob filled: ${data.year || ''} ${data.make || ''} ${data.model || ''}`.trim());
+      // Auto-run after a brief delay to let state settle
+      if (data.autoRun) {
+        setTimeout(() => {
+          handleRunValoRef.current?.();
+        }, 300);
+      }
+    };
+    onValoFormFill(handleBobFormFill);
+    return () => onValoFormFill(null);
+  }, [onValoFormFill]);
+
   const toggleAccessory = (acc: string) => {
     setSelectedAccessories(prev =>
       prev.includes(acc) ? prev.filter(a => a !== acc) : [...prev, acc]
     );
   };
-
   const addCustomAccessory = () => {
     const trimmed = customAccessory.trim();
     if (trimmed && !selectedAccessories.includes(trimmed)) {
@@ -326,7 +349,11 @@ export default function ValoPage() {
     }
   };
 
-  // ── MODO Photo Handling ──
+  // Keep ref updated for Bob auto-run
+  useEffect(() => {
+    handleRunValoRef.current = handleRunValo;
+  });
+
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     const validFiles = files.filter(f => f.type.startsWith('image/')).slice(0, 6 - modoPhotos.length);

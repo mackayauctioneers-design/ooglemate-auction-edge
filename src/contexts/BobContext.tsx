@@ -48,6 +48,18 @@ export interface BobQuickAction {
   icon?: string;
 }
 
+// VALO form fill event
+export interface ValoFormFillData {
+  make?: string;
+  model?: string;
+  year?: string;
+  km?: string;
+  badge?: string;
+  condition?: string;
+  description?: string;
+  autoRun?: boolean;
+}
+
 interface BobContextValue {
   // Panel state
   isOpen: boolean;
@@ -69,6 +81,9 @@ interface BobContextValue {
   // Dealer info
   dealerProfileId: string | null;
   dealerName: string;
+
+  // VALO form fill
+  onValoFormFill: (callback: ((data: ValoFormFillData) => void) | null) => void;
 }
 
 const BobContext = createContext<BobContextValue | null>(null);
@@ -131,6 +146,13 @@ function getQuickActions(pageType: string, hasSelection: boolean): BobQuickActio
         { label: 'What should I bid on?', prompt: 'What should I bid on in the upcoming auctions?', icon: '🏷️' },
         ...base,
       ];
+    case 'valuation':
+      return [
+        { label: 'Do a valo', prompt: 'I need to value a trade-in. Ask me about the vehicle.', icon: '💰' },
+        { label: 'Quick appraise', prompt: 'Quick appraise — I\'ll describe the vehicle.', icon: '⚡' },
+        { label: 'What\'s it worth?', prompt: 'What is this vehicle worth on the market right now?', icon: '📊' },
+        ...base,
+      ];
     case 'opportunity_feed':
       return [
         { label: 'Why #1?', prompt: 'Why is the top opportunity ranked number one?', icon: '🏆' },
@@ -161,6 +183,11 @@ export function BobContextProvider({ children }: { children: React.ReactNode }) 
   const [isStreaming, setIsStreaming] = useState(false);
   const [pageContextOverrides, setPageContextOverrides] = useState<Partial<BobPageContext>>({});
   const abortRef = useRef<AbortController | null>(null);
+  const valoFormFillRef = useRef<((data: ValoFormFillData) => void) | null>(null);
+
+  const onValoFormFill = useCallback((callback: ((data: ValoFormFillData) => void) | null) => {
+    valoFormFillRef.current = callback;
+  }, []);
 
   const dealerProfileId = dealerProfile?.dealer_profile_id || user?.id || null;
   const dealerName = dealerProfile?.dealer_name || 'mate';
@@ -265,6 +292,12 @@ export function BobContextProvider({ children }: { children: React.ReactNode }) 
             // Handle tool results event
             if (parsed.type === "tool_results") {
               toolResults = parsed.results || [];
+              // Check for valo_form_fill tool results
+              for (const tr of toolResults) {
+                if (tr.tool === "start_valo" && tr.result?.form_fill && valoFormFillRef.current) {
+                  valoFormFillRef.current(tr.result.form_fill);
+                }
+              }
               continue;
             }
 
@@ -352,6 +385,7 @@ export function BobContextProvider({ children }: { children: React.ReactNode }) 
       quickActions,
       dealerProfileId,
       dealerName,
+      onValoFormFill,
     }}>
       {children}
     </BobContext.Provider>

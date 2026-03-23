@@ -73,6 +73,14 @@ TRADE VALUATIONS:
 - Be FAST and DIRECT. The dealer is likely standing with a customer.
 - Format: "[Year Make Model] — cheapest comparable is $XX,XXX at [source]. Trade guide: $XX,XXX floor / $XX,XXX mid / $XX,XXX ceiling. [One sentence of market context]."
 
+VALO PAGE (page_type: valuation):
+- When the dealer is on the VALO page, use the start_valo tool to fill the form.
+- Ask the dealer to describe the vehicle: make, model, year, km, and badge/variant.
+- You MUST collect at minimum: make, model, year, and km before auto-running.
+- If they give partial info (e.g. "2022 Hilux"), ask for km and badge in ONE follow-up: "Got it — 2022 Hilux. What's the km and badge? (e.g. SR5, 85,000km)"
+- Once you have enough, call start_valo with auto_run=true to fill AND trigger the valuation.
+- Don't use valor_quick_appraise on the VALO page — use start_valo instead so the form is populated.
+
 FULL DATA ACCESS:
 - You have query_database — a universal tool that can read ANY table in Carbitrage.
 - Use it when dealers ask about their sales history, past profits, fingerprints, specific deals, auction results, watches, hunts, or anything about their data.
@@ -252,6 +260,27 @@ const TOOLS = [
           limit: { type: "number", description: "Max rows to return (default 20, max 50)" }
         },
         required: ["table"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "start_valo",
+      description: "Fill the VALO trade-in valuation form on the current page. Use this when the dealer is on the VALO page and describes a vehicle they want to value. Extract make, model, year, km, badge/variant from their description and fill the form. If they haven't provided all details, ask for the missing ones (especially year, km, and badge). Once you have enough info, call this to populate the form and optionally auto-run the valuation.",
+      parameters: {
+        type: "object",
+        properties: {
+          make: { type: "string", description: "Vehicle make e.g. TOYOTA, HYUNDAI" },
+          model: { type: "string", description: "Vehicle model e.g. HILUX, TUCSON" },
+          year: { type: "string", description: "Year of the vehicle e.g. '2022'" },
+          km: { type: "string", description: "Kilometres e.g. '85000'" },
+          badge: { type: "string", description: "Badge/variant e.g. SR5, GXL, Active" },
+          condition: { type: "string", description: "Condition: excellent, good, fair, poor. Default 'good'" },
+          description: { type: "string", description: "Any extra notes about the vehicle" },
+          auto_run: { type: "boolean", description: "Whether to automatically run the VALO after filling the form. Set true when you have make, model, year, and km." }
+        },
+        required: ["make", "model"]
       }
     }
   },
@@ -975,6 +1004,41 @@ async function executeValorQuickAppraise(params: any, dealerProfileId: string, s
   };
 }
 
+function executeStartValo(params: any): any {
+  const make = (params.make || "").toUpperCase().trim();
+  const model = (params.model || "").toUpperCase().trim();
+  const year = params.year || "";
+  const km = params.km || "";
+  const badge = params.badge || "";
+  const condition = params.condition || "good";
+  const description = params.description || "";
+  const autoRun = params.auto_run ?? (!!make && !!model && !!year && !!km);
+
+  // Build missing fields list
+  const missing: string[] = [];
+  if (!make) missing.push("make");
+  if (!model) missing.push("model");
+  if (!year) missing.push("year");
+  if (!km) missing.push("kilometres");
+
+  return {
+    form_fill: {
+      make,
+      model,
+      year: String(year),
+      km: String(km),
+      badge,
+      condition,
+      description,
+      autoRun: missing.length === 0 && autoRun,
+    },
+    missing_fields: missing,
+    message: missing.length > 0
+      ? `I need a few more details: ${missing.join(", ")}. Can you fill those in?`
+      : `Filling in ${year} ${make} ${model}${badge ? ` ${badge}` : ""} with ${Number(km).toLocaleString()} km. Running the valuation now.`,
+  };
+}
+
 // ============================================================================
 // Safe tool executor wrapper — guarantees no exceptions leak to AI as errors
 // ============================================================================
@@ -1004,6 +1068,8 @@ async function safeExecuteTool(funcName: string, args: any, dealerProfileId: str
         return await executeSearchMarket(args);
       case "valor_quick_appraise":
         return await executeValorQuickAppraise(args, dealerProfileId, supabase);
+      case "start_valo":
+        return executeStartValo(args);
       default:
         return { results: [], message: "No data available for that request." };
     }
