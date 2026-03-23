@@ -292,6 +292,12 @@ export function BobContextProvider({ children }: { children: React.ReactNode }) 
             // Handle tool results event
             if (parsed.type === "tool_results") {
               toolResults = parsed.results || [];
+              // Check for valo_form_fill tool results
+              for (const tr of toolResults) {
+                if (tr.tool === "start_valo" && tr.result?.form_fill && valoFormFillRef.current) {
+                  valoFormFillRef.current(tr.result.form_fill);
+                }
+              }
               continue;
             }
 
