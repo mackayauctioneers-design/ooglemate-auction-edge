@@ -302,7 +302,7 @@ function isToyotaLandCruiserNotPrado(parsed: ParsedIntent): boolean {
 
 /** Detect which series a listing belongs to (LC + Prado + Ranger + Patrol) */
 function detectListingSeries(l: InternalMatch): string | null {
-  const text = [l.model, l.variant_raw, l.id, l.listing_url, (l as any).cab_type, (l as any).body_type]
+  const text = [l.model, l.variant_raw, l.id, l.listing_url]
     .filter(Boolean).join(" ").toUpperCase();
   // Prado must be checked FIRST
   if (text.includes("PRADO")) {
