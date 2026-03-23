@@ -9,7 +9,7 @@ export interface TTSDebugInfo {
 }
 
 // Hook for Bob's Text-to-Speech with iOS audio unlock
-export function useBobTTS() {
+export function useBobTTS(options?: { onSpeakingEnd?: () => void }) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
