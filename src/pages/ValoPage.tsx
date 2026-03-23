@@ -349,7 +349,11 @@ export default function ValoPage() {
     }
   };
 
-  // ── MODO Photo Handling ──
+  // Keep ref updated for Bob auto-run
+  useEffect(() => {
+    handleRunValoRef.current = handleRunValo;
+  });
+
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     const validFiles = files.filter(f => f.type.startsWith('image/')).slice(0, 6 - modoPhotos.length);
