@@ -153,7 +153,28 @@ export default function ValoPage() {
     return () => { document.title = 'OogleMate'; };
   }, []);
 
-  const toggleAccessory = (acc: string) => {
+  // Bob form fill listener
+  useEffect(() => {
+    const handleBobFormFill = (data: ValoFormFillData) => {
+      if (data.make) setMake(data.make);
+      if (data.model) setModel(data.model);
+      if (data.year) setYear(data.year);
+      if (data.km) setKm(data.km);
+      if (data.badge) setBadge(data.badge);
+      if (data.condition) setCondition(data.condition);
+      if (data.description) setDescription(data.description);
+      toast.success(`Bob filled: ${data.year || ''} ${data.make || ''} ${data.model || ''}`.trim());
+      // Auto-run after a brief delay to let state settle
+      if (data.autoRun) {
+        setTimeout(() => {
+          handleRunValoRef.current?.();
+        }, 300);
+      }
+    };
+    onValoFormFill(handleBobFormFill);
+    return () => onValoFormFill(null);
+  }, [onValoFormFill]);
+
     setSelectedAccessories(prev =>
       prev.includes(acc) ? prev.filter(a => a !== acc) : [...prev, acc]
     );
