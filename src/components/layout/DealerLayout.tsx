@@ -139,6 +139,8 @@ export function DealerLayout({ children }: DealerLayoutProps) {
         <main className="flex-1 overflow-auto">
           {children}
         </main>
+
+        {user && <BobPanel />}
       </div>
 
       <AuthModal open={showAuthModal} onOpenChange={setShowAuthModal} />
