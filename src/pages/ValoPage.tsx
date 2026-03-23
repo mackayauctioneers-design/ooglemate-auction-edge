@@ -69,7 +69,8 @@ const CONFIDENCE_INFO: Record<string, { label: string; color: string; explanatio
 export default function ValoPage() {
   const { currentUser, isAdmin, dealerProfile } = useAuth();
   const [searchParams] = useSearchParams();
-
+  const { onValoFormFill } = useBob();
+  const handleRunValoRef = useRef<(() => void) | null>(null);
   // Structured identity
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
