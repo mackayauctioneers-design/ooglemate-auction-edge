@@ -35,6 +35,15 @@ export function useBobTTS(options?: { onSpeakingEnd?: () => void }) {
     setPendingAudioUrl(null);
   }, []);
 
+  // Fire onSpeakingEnd callback when speaking transitions to false
+  const wasSpeakingRef = useRef(false);
+  useEffect(() => {
+    if (wasSpeakingRef.current && !isSpeaking) {
+      options?.onSpeakingEnd?.();
+    }
+    wasSpeakingRef.current = isSpeaking;
+  }, [isSpeaking, options?.onSpeakingEnd]);
+
   // Clean up any existing audio
   const stopSpeaking = useCallback(() => {
     if (audioRef.current) {
