@@ -316,11 +316,14 @@ export function BobPanel() {
 
   const [input, setInput] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [callMode, setCallMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastAssistantMsgRef = useRef<string>('');
+  const callModeRef = useRef(false);
 
-  const { speak, isSpeaking, stopSpeaking, isLoading: ttsLoading } = useBobTTS();
+  // Keep ref in sync for use in callbacks
+  callModeRef.current = callMode;
 
   const onSpeechResult = useCallback((transcript: string) => {
     if (transcript.trim()) {
@@ -333,6 +336,20 @@ export function BobPanel() {
     onResult: onSpeechResult,
     lang: 'en-AU',
   });
+
+  // Auto-listen after Bob finishes speaking in call mode
+  const onSpeakingEnd = useCallback(() => {
+    if (callModeRef.current && sttSupported) {
+      // Small delay to avoid audio feedback
+      setTimeout(() => {
+        if (callModeRef.current) {
+          toggleListening();
+        }
+      }, 400);
+    }
+  }, [sttSupported, toggleListening]);
+
+  const { speak, isSpeaking, stopSpeaking, isLoading: ttsLoading } = useBobTTS({ onSpeakingEnd });
 
   // Auto-scroll
   useEffect(() => {
