@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { AuthModal } from '@/components/auth/AuthModal';
+import { BobPanel } from '@/components/bob/BobPanel';
 
 const dealerNav = [
   { path: '/ooglebot', label: 'OogleBot', icon: Bot },
