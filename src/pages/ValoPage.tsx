@@ -329,6 +329,7 @@ export default function ValoPage() {
         expected_gross_band: grossMin != null && grossMax != null
           ? { min: grossMin, max: grossMax }
           : null,
+        cheapest_trade_guide: valoData.cheapest_trade_guide ?? null,
         typical_days_to_sell: null,
         confidence: valoData.confidence === 'HIGH' ? 'HIGH' : valoData.confidence === 'MED' ? 'MEDIUM' : 'LOW',
         tier: 'dealer',
