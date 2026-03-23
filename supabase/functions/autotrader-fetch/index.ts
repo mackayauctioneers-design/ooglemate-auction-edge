@@ -11,6 +11,9 @@ const corsHeaders = {
 const TIME_BUDGET_MS = 25000;
 const LOCK_DURATION_MS = 60000; // 1 minute lock per run
 
+// Minimum model year to ingest — anything older is irrelevant to wholesale arbitrage
+const MIN_YEAR = 2015;
+
 interface MappedListing {
   source: string;
   source_listing_id: string;
@@ -136,7 +139,7 @@ function mapAutotraderItem(rawItem: Record<string, unknown>): MappedListing | nu
     if (!listingId) return null;
 
     const year = (item.manu_year || item.year) as number;
-    if (!year || year < 2000) return null;
+    if (!year || year < MIN_YEAR) return null;
 
     const vehicle = (item.vehicle || {}) as Record<string, unknown>;
     const make = ((item.make || vehicle.make || "") as string).toUpperCase().trim();
@@ -277,7 +280,7 @@ function mapCarsalesItem(rawItem: Record<string, unknown>): MappedListing | null
     let year = 0;
     if (typeof item.year === "number") year = item.year;
     else if (typeof item.year === "string") year = parseInt(item.year, 10) || 0;
-    if (!year || year < 2000) return null;
+    if (!year || year < MIN_YEAR) return null;
 
     // Make/Model - carsales uses lowercase
     const make = ((item.make || "") as string).toUpperCase().trim();
@@ -438,7 +441,7 @@ function mapGumtreeItem(rawItem: Record<string, unknown>): MappedListing | null 
     // Year
     const yearRaw = item.year || attrs.year || attrs.caryear || attrs["car year"];
     const year = typeof yearRaw === "number" ? yearRaw : parseInt(String(yearRaw || "0"), 10);
-    if (!year || year < 2000) return null;
+    if (!year || year < MIN_YEAR) return null;
 
     // Make/Model - try top-level then attributes
     const make = ((item.make || attrs.make || attrs.carmake || "") as string).toUpperCase().trim();
@@ -510,7 +513,7 @@ function mapSlatteryItem(rawItem: Record<string, unknown>): MappedListing | null
     if (!listingId) return null;
 
     const year = (item.year || 0) as number;
-    if (!year || year < 2000) return null;
+    if (!year || year < MIN_YEAR) return null;
 
     const make = ((item.make || "") as string).toUpperCase().trim();
     const model = ((item.model || "") as string).toUpperCase().trim();
@@ -567,7 +570,7 @@ function mapUltimateCarItem(rawItem: Record<string, unknown>): MappedListing | n
 
     // Year
     const year = Number(item.year || 0);
-    if (!year || year < 2000) return null;
+    if (!year || year < MIN_YEAR) return null;
 
     // Make/Model — actor uses "brand" not "make"
     const make = ((item.brand || "") as string).toUpperCase().trim();
@@ -663,7 +666,7 @@ function mapFbMarketplaceItem(rawItem: Record<string, unknown>): MappedListing |
       const ym = title.match(/\b(20[0-2]\d)\b/);
       if (ym) year = parseInt(ym[1], 10);
     }
-    if (!year || year < 2000) return null;
+    if (!year || year < MIN_YEAR) return null;
 
     // Make/Model — from attributes or title parse
     let make = (attrs.make || attrs.manufacturer || "").toUpperCase().trim();
@@ -802,7 +805,7 @@ function mapEasyAutoItem(rawItem: Record<string, unknown>): MappedListing | null
       const ym = title.match(/\b(20[0-2]\d)\b/);
       if (ym) year = parseInt(ym[1], 10);
     }
-    if (!year || year < 2000) return null;
+    if (!year || year < MIN_YEAR) return null;
 
     // Make/Model
     const make = ((item.make || item.brand || "") as string).toUpperCase().trim();

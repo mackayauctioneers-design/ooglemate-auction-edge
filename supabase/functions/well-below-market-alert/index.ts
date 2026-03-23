@@ -6,12 +6,22 @@ const corsHeaders = {
 };
 
 /**
- * Well Below Market Alert v1.0
+ * Well Below Market Alert v1.1
  *
  * Called by pg_net from a DB trigger on retail_listings when price_badge = 'well below market'.
  * Cross-checks dealer_sales for make+model+variant median sell price.
  * Sends WhatsApp alert via existing Twilio setup if listing is 15%+ below median.
+ *
+ * v1.1 changes:
+ *   - Added MIN_YEAR guard (2015) — old cars are irrelevant to wholesale arbitrage
+ *   - Zero-comparable listings no longer auto-alert (was generating pure noise)
+ *   - Require at least 1 comparable sale to trigger an alert
  */
+
+// Cars older than this are not worth alerting on — noise filter
+const MIN_YEAR = 2015;
+// Require at least this many comparable sales to send an alert
+const MIN_COMPS = 1;
 
 interface ListingPayload {
   listing_id: string;
@@ -49,6 +59,20 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ success: false, error: "Missing required fields" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ── Year guard — skip old cars that shouldn't trigger alerts ──
+    if (year != null && year < MIN_YEAR) {
+      console.log(`Skipping listing ${listing_id}: year ${year} < ${MIN_YEAR}`);
+      await supabase.from("well_below_market_alerts_sent").insert({
+        listing_id,
+        alerted: false,
+        reason: `Year ${year} below minimum ${MIN_YEAR}`,
+      });
+      return new Response(
+        JSON.stringify({ success: true, alerted: false, reason: `year_too_old: ${year}` }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -105,9 +129,20 @@ Deno.serve(async (req) => {
       passesThreshold = price < medianSell * 0.85; // 15% below
     }
 
-    // If no comparables at all, alert with thin-data flag
-    if (compCount === 0) {
-      passesThreshold = true; // Alert anyway, no data to filter against
+    // If no comparables at all, do NOT alert — zero-comp alerts are pure noise
+    if (compCount < MIN_COMPS) {
+      console.log(`Listing ${listing_id}: only ${compCount} comps (need ${MIN_COMPS}) — suppressing alert`);
+      await supabase.from("well_below_market_alerts_sent").insert({
+        listing_id,
+        alerted: false,
+        reason: `Insufficient comps: ${compCount} (need ${MIN_COMPS})`,
+        comp_count: compCount,
+        thin_data: true,
+      });
+      return new Response(
+        JSON.stringify({ success: true, alerted: false, reason: "insufficient_comps", comp_count: compCount }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     if (!passesThreshold) {
