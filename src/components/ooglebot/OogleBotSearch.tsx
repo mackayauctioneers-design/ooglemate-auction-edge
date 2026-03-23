@@ -259,7 +259,7 @@ const OUTWARD_TIMEOUT_MS = 5 * 60 * 1000;
 const TERMINAL_STATUSES = new Set(["complete", "failed", "timeout"]);
 
 /** Detect which series a result belongs to (LC + Prado + Ranger + Patrol) */
-function detectSeriesFromText(text: string): string | null {
+function detectSeriesFromText(text: string, year?: number | null): string | null {
   const t = text.toUpperCase();
   // Prado must be checked FIRST (before LC) because "LandCruiser Prado 250" contains "250"
   if (t.includes("PRADO")) {
@@ -267,10 +267,10 @@ function detectSeriesFromText(text: string): string | null {
     if (/\b150\b|PRADO[\-_\s]?150/.test(t)) return "PRADO_150";
     return null; // Prado but unknown generation
   }
-  // LC70
+  // LC70 — explicit chassis/body codes only on 70 series
   if (
     /\b7[0689]\b/.test(t) ||
-    /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]|VDJL79R|GDJL79R|TROOPY|TROOPCARRIER|WORKMATE/.test(t) ||
+    /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]|VDJL79R|GDJL79R|TROOPY|TROOPCARRIER/.test(t) ||
     /DOUBLE[\-_\s]?CAB|CAB[\-_\s]?CHASSIS/.test(t) ||
     /LCMILITARY|LANDCRUISERMILITARY/.test(t)
   ) return "LC70";
@@ -281,6 +281,13 @@ function detectSeriesFromText(text: string): string | null {
   // Patrol
   if (/\bY62\b/.test(t)) return "PATROL_Y62";
   if (/\bY61\b|\bGU\b/.test(t)) return "PATROL_Y61";
+
+  // Year-based inference for ambiguous LandCruiser listings
+  if (t.includes("LANDCRUISER") || t.includes("LAND CRUISER")) {
+    if (year && year >= 2022) return "LC300";
+    if (year && year >= 2008 && year <= 2021) return "LC200";
+  }
+
   return null;
 }
 
@@ -324,14 +331,14 @@ function mergeAllResults(
   // Series gate helper — reject cross-generation results AND cross-platform contamination
   const isLCIntent = intentSeries?.startsWith("LC");
   const isPradoIntent = intentSeries?.startsWith("PRADO");
-  const matchesSeries = (r: { title?: string; variant?: string | null; id?: string; url?: string | null; model?: string | null }): boolean => {
+  const matchesSeries = (r: { title?: string; variant?: string | null; id?: string; url?: string | null; model?: string | null; year?: number | null }): boolean => {
     if (!intentSeries) return true;
     const allText = [r.title, r.variant, r.id, r.url, r.model].filter(Boolean).join(" ");
     // Hard gate: LC intent must exclude Prado, and vice versa
     const textUpper = allText.toUpperCase();
     if (isLCIntent && textUpper.includes("PRADO")) return false;
     if (isPradoIntent && !textUpper.includes("PRADO")) return false;
-    const ls = detectSeriesFromText(allText);
+    const ls = detectSeriesFromText(allText, r.year);
     if (ls !== null) return ls === intentSeries;
     // Unknown series: reject. Ambiguous listings without identifiable series markers should not appear.
     return false;
@@ -340,7 +347,7 @@ function mergeAllResults(
   // Internal results
   for (const m of internalResults) {
     if (!matchesBadge(m.variant_raw)) continue;
-    if (!matchesSeries({ title: `${m.make} ${m.model}`, variant: m.variant_raw, id: m.id, url: m.listing_url, model: m.model })) continue;
+    if (!matchesSeries({ title: `${m.make} ${m.model}`, variant: m.variant_raw, id: m.id, url: m.listing_url, model: m.model, year: m.year })) continue;
     all.push({
       id: m.id,
       title: `${m.year ?? ""} ${m.make ?? ""} ${m.model ?? ""}`.trim(),
@@ -367,7 +374,7 @@ function mergeAllResults(
   // Scored / ooglebot-search results
   for (const r of scoredResults) {
     if (!matchesBadge(r.variant, r.listing_url)) continue;
-    if (!matchesSeries({ title: `${r.make} ${r.model}`, variant: r.variant, url: r.listing_url, model: r.model })) continue;
+    if (!matchesSeries({ title: `${r.make} ${r.model}`, variant: r.variant, url: r.listing_url, model: r.model, year: r.year })) continue;
     all.push({
       id: r.listing_id,
       title: `${r.year ?? ""} ${r.make ?? ""} ${r.model ?? ""}`.trim(),
