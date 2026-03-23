@@ -347,7 +347,7 @@ function mergeAllResults(
   // Internal results
   for (const m of internalResults) {
     if (!matchesBadge(m.variant_raw)) continue;
-    if (!matchesSeries({ title: `${m.make} ${m.model}`, variant: m.variant_raw, id: m.id, url: m.listing_url, model: m.model })) continue;
+    if (!matchesSeries({ title: `${m.make} ${m.model}`, variant: m.variant_raw, id: m.id, url: m.listing_url, model: m.model, year: m.year })) continue;
     all.push({
       id: m.id,
       title: `${m.year ?? ""} ${m.make ?? ""} ${m.model ?? ""}`.trim(),
