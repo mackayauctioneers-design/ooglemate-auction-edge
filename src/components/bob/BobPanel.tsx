@@ -453,7 +453,7 @@ export function BobPanel() {
         </div>
       )}
 
-      <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      <Sheet open={isOpen} onOpenChange={(open) => { setIsOpen(open); if (!open) setCallMode(false); }}>
         <SheetContent
           side="right"
           className="w-full sm:max-w-[420px] p-0 flex flex-col gap-0 border-l border-border"
