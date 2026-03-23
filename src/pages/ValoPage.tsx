@@ -329,6 +329,7 @@ export default function ValoPage() {
         expected_gross_band: grossMin != null && grossMax != null
           ? { min: grossMin, max: grossMax }
           : null,
+        cheapest_trade_guide: valoData.cheapest_trade_guide ?? null,
         typical_days_to_sell: null,
         confidence: valoData.confidence === 'HIGH' ? 'HIGH' : valoData.confidence === 'MED' ? 'MEDIUM' : 'LOW',
         tier: 'dealer',
@@ -884,6 +885,37 @@ export default function ValoPage() {
                 </Card>
               )}
             </div>
+
+            {/* ── Cheapest Comparable Trade Guide ── */}
+            {result.cheapest_trade_guide && (
+              <Card className="border-primary/30 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold">Trade Guide (Cheapest Comp)</span>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Cheapest comparable: {formatCurrency(result.cheapest_trade_guide.anchor_price)}
+                  {result.cheapest_trade_guide.anchor_source && ` via ${result.cheapest_trade_guide.anchor_source}`}
+                  {result.cheapest_trade_guide.anchor_location && ` (${result.cheapest_trade_guide.anchor_location})`}
+                  {result.cheapest_trade_guide.anchor_year && ` — ${result.cheapest_trade_guide.anchor_year}`}
+                  {result.cheapest_trade_guide.anchor_km != null && `, ${Math.round(result.cheapest_trade_guide.anchor_km / 1000)}k km`}
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="text-center p-2 rounded bg-background border">
+                    <div className="text-[10px] text-muted-foreground uppercase">Floor (20%)</div>
+                    <div className="text-base font-bold">{formatCurrency(result.cheapest_trade_guide.floor)}</div>
+                  </div>
+                  <div className="text-center p-2 rounded bg-primary/10 border border-primary/30">
+                    <div className="text-[10px] text-primary uppercase font-medium">Mid (15%)</div>
+                    <div className="text-base font-bold text-primary">{formatCurrency(result.cheapest_trade_guide.mid)}</div>
+                  </div>
+                  <div className="text-center p-2 rounded bg-background border">
+                    <div className="text-[10px] text-muted-foreground uppercase">Ceiling (10%)</div>
+                    <div className="text-base font-bold">{formatCurrency(result.cheapest_trade_guide.ceiling)}</div>
+                  </div>
+                </div>
+              </Card>
+            )}
 
             {/* ── Market Commentary (collapsible, CaroogleAI) ── */}
             <div className="border border-border rounded-lg overflow-hidden">

@@ -813,6 +813,16 @@ export interface ValoResult {
   suggested_buy_range: { min: number; max: number } | null;
   suggested_sell_range: { min: number; max: number } | null;
   expected_gross_band: { min: number; max: number } | null;
+  cheapest_trade_guide: {
+    anchor_price: number;
+    anchor_source: string;
+    anchor_location: string | null;
+    anchor_km: number | null;
+    anchor_year: number | null;
+    floor: number;
+    mid: number;
+    ceiling: number;
+  } | null;
   typical_days_to_sell: number | null;
   
   // Confidence and tier

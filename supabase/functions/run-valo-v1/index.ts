@@ -224,6 +224,43 @@ Deno.serve(async (req) => {
     let confidence = valo.confidence;
     confidence = applyGuardrails(valo.all_scored, confidence);
 
+    // ── 8b. Cheapest-comparable trade guide (same logic as Bob's valor_quick_appraise) ──
+    let cheapestPrice: number | null = null;
+    let cheapestComp: any = null;
+    for (const comp of valo.all_scored) {
+      const price = comp.effective_cost ?? comp.price;
+      if (price && price > 0 && (cheapestPrice === null || price < cheapestPrice)) {
+        cheapestPrice = price;
+        cheapestComp = comp;
+      }
+    }
+
+    // Also check anchor and backups
+    if (valo.anchor?.price && (cheapestPrice === null || valo.anchor.price < cheapestPrice)) {
+      cheapestPrice = valo.anchor.price;
+      cheapestComp = valo.anchor;
+    }
+    for (const backup of (valo.backups || [])) {
+      if (backup?.price && (cheapestPrice === null || backup.price < cheapestPrice)) {
+        cheapestPrice = backup.price;
+        cheapestComp = backup;
+      }
+    }
+
+    // Calculate trade guide from cheapest comparable — hard maths, no LLM
+    const cheapest_trade_guide = cheapestPrice ? {
+      anchor_price: cheapestPrice,
+      anchor_source: cheapestComp?.source ?? cheapestComp?.source_class ?? "market",
+      anchor_location: cheapestComp?.state ?? cheapestComp?.location ?? null,
+      anchor_km: cheapestComp?.km ?? null,
+      anchor_year: cheapestComp?.year ?? null,
+      floor: Math.round(cheapestPrice * 0.80 / 100) * 100,
+      mid: Math.round(cheapestPrice * 0.85 / 100) * 100,
+      ceiling: Math.round(cheapestPrice * 0.90 / 100) * 100,
+    } : null;
+
+    console.log(`VALO trade guide: cheapest $${cheapestPrice}, floor $${cheapest_trade_guide?.floor}, mid $${cheapest_trade_guide?.mid}, ceiling $${cheapest_trade_guide?.ceiling}`);
+
     // ── 9. Persist run ──
     let valoRunId: string | null = null;
     try {
@@ -236,6 +273,7 @@ Deno.serve(async (req) => {
           backups: valo.backups,
           market: valo.market,
           trade_in_offer: valo.trade_in_offer,
+          cheapest_trade_guide,
           confidence,
         })
         .select("id")
@@ -269,6 +307,7 @@ Deno.serve(async (req) => {
         backups: valo.backups,
         market: valo.market,
         trade_in_offer: valo.trade_in_offer,
+        cheapest_trade_guide,
         confidence,
         comp_count: valo.all_scored.length,
         duration_ms: durationMs,
