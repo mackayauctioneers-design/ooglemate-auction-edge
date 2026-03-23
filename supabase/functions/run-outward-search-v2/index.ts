@@ -294,7 +294,14 @@ Deno.serve(async (req) => {
   await incrementGlobalCap(sb);
 
   // Merge internal + caroogleai, apply score filter, deduplicate, sort
-  const allResults = deduplicateResults([...internalResults, ...caroogleaiResults]);
+  // Discovery results (CaroogleAI) don't have scores — assign baseline score of 75
+  // so they pass the ≥70 threshold and appear in results
+  const scoredCaroogleai = caroogleaiResults.map(r => ({
+    ...r,
+    score: r.score ?? 75,
+    source: r.source || "caroogle_ai_discovery",
+  }));
+  const allResults = deduplicateResults([...internalResults, ...scoredCaroogleai]);
   const scoredResults = filterByScore(allResults, MIN_SCORE_THRESHOLD);
   const finalResults = sortResults(scoredResults);
 
