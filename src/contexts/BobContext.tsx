@@ -379,6 +379,7 @@ export function BobContextProvider({ children }: { children: React.ReactNode }) 
       quickActions,
       dealerProfileId,
       dealerName,
+      onValoFormFill,
     }}>
       {children}
     </BobContext.Provider>
