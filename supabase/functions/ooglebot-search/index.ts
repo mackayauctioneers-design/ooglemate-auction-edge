@@ -415,14 +415,6 @@ Deno.serve(async (req) => {
         if (intentIsLC && text.includes("PRADO")) return false;
         if (intentIsPrado && !text.includes("PRADO")) return false;
 
-        // Toyota OEM sometimes stores LC70 rows as generic LANDCRUISER/GXL with no explicit series.
-        if (
-          intentSeries === "LC300" &&
-          l.source === "toyota" &&
-          (l.model || "").toUpperCase() === "LANDCRUISER" &&
-          !/\b300\b|LC300|FJA300R|GR[\-_\s]?SPORT|GR[\-_\s]?S\b/.test(text)
-        ) return false;
-
         const ls = detectListingSeries(l);
         // If we detected a specific series, it must match intent
         if (ls !== null) return ls === intentSeries;
