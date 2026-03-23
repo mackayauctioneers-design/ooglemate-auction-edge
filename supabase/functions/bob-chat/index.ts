@@ -73,14 +73,6 @@ TRADE VALUATIONS:
 - Be FAST and DIRECT. The dealer is likely standing with a customer.
 - Format: "[Year Make Model] — cheapest comparable is $XX,XXX at [source]. Trade guide: $XX,XXX floor / $XX,XXX mid / $XX,XXX ceiling. [One sentence of market context]."
 
-VALO PAGE (page_type: valuation):
-- When the dealer is on the VALO page, use the start_valo tool to fill the form.
-- Ask the dealer to describe the vehicle: make, model, year, km, and badge/variant.
-- You MUST collect at minimum: make, model, year, and km before auto-running.
-- If they give partial info (e.g. "2022 Hilux"), ask for km and badge in ONE follow-up: "Got it — 2022 Hilux. What's the km and badge? (e.g. SR5, 85,000km)"
-- Once you have enough, call start_valo with auto_run=true to fill AND trigger the valuation.
-- Don't use valor_quick_appraise on the VALO page — use start_valo instead so the form is populated.
-
 FULL DATA ACCESS:
 - You have query_database — a universal tool that can read ANY table in Carbitrage.
 - Use it when dealers ask about their sales history, past profits, fingerprints, specific deals, auction results, watches, hunts, or anything about their data.
@@ -260,27 +252,6 @@ const TOOLS = [
           limit: { type: "number", description: "Max rows to return (default 20, max 50)" }
         },
         required: ["table"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "start_valo",
-      description: "Fill the VALO trade-in valuation form on the current page. Use this when the dealer is on the VALO page and describes a vehicle they want to value. Extract make, model, year, km, badge/variant from their description and fill the form. If they haven't provided all details, ask for the missing ones (especially year, km, and badge). Once you have enough info, call this to populate the form and optionally auto-run the valuation.",
-      parameters: {
-        type: "object",
-        properties: {
-          make: { type: "string", description: "Vehicle make e.g. TOYOTA, HYUNDAI" },
-          model: { type: "string", description: "Vehicle model e.g. HILUX, TUCSON" },
-          year: { type: "string", description: "Year of the vehicle e.g. '2022'" },
-          km: { type: "string", description: "Kilometres e.g. '85000'" },
-          badge: { type: "string", description: "Badge/variant e.g. SR5, GXL, Active" },
-          condition: { type: "string", description: "Condition: excellent, good, fair, poor. Default 'good'" },
-          description: { type: "string", description: "Any extra notes about the vehicle" },
-          auto_run: { type: "boolean", description: "Whether to automatically run the VALO after filling the form. Set true when you have make, model, year, and km." }
-        },
-        required: ["make", "model"]
       }
     }
   },
@@ -972,7 +943,7 @@ async function executeValorQuickAppraise(params: any, dealerProfileId: string, s
 
   const marketResult = await executeSearchMarket({ query: marketQuery });
 
-  // Step 3: Find cheapest price from either source
+  // Step 3: Find cheapest price from internal source
   let cheapestInternal = null;
   let cheapestInternalPrice = Infinity;
   for (const listing of internalListings) {
@@ -982,60 +953,78 @@ async function executeValorQuickAppraise(params: any, dealerProfileId: string, s
     }
   }
 
+  // Step 4: Extract cheapest price from market search text
+  // Parse dollar amounts from the Perplexity response to find the actual cheapest
+  let cheapestMarketPrice = Infinity;
+  let cheapestMarketSource = "";
+  const marketText = marketResult.summary || "";
+  const priceMatches = marketText.match(/\$([\d,]+)/g) || [];
+  const parsedPrices = priceMatches
+    .map((p: string) => parseInt(p.replace(/[$,]/g, ""), 10))
+    .filter((p: number) => !isNaN(p) && p > 5000 && p < 500000); // Reasonable car price range
+
+  if (parsedPrices.length > 0) {
+    cheapestMarketPrice = Math.min(...parsedPrices);
+    cheapestMarketSource = "retail market (Carsales/AutoTrader/Drive)";
+  }
+
+  // Step 5: Determine the cheapest comparable from ALL sources
+  let anchorPrice: number | null = null;
+  let anchorSource = "";
+
+  if (cheapestInternalPrice < Infinity && cheapestMarketPrice < Infinity) {
+    // Use whichever is cheaper
+    if (cheapestInternalPrice <= cheapestMarketPrice) {
+      anchorPrice = cheapestInternalPrice;
+      anchorSource = cheapestInternal?.source || "internal";
+    } else {
+      anchorPrice = cheapestMarketPrice;
+      anchorSource = cheapestMarketSource;
+    }
+  } else if (cheapestInternalPrice < Infinity) {
+    anchorPrice = cheapestInternalPrice;
+    anchorSource = cheapestInternal?.source || "internal";
+  } else if (cheapestMarketPrice < Infinity) {
+    anchorPrice = cheapestMarketPrice;
+    anchorSource = cheapestMarketSource;
+  }
+
+  // Step 6: CALCULATE trade guide in code — never let the LLM do maths
+  let tradeGuide: { floor: number; mid: number; ceiling: number } | null = null;
+  if (anchorPrice) {
+    tradeGuide = {
+      floor: Math.round(anchorPrice * 0.80 / 100) * 100,    // 20% margin, rounded to nearest $100
+      mid: Math.round(anchorPrice * 0.85 / 100) * 100,      // 15% margin
+      ceiling: Math.round(anchorPrice * 0.90 / 100) * 100,  // 10% margin
+    };
+  }
+
   return {
     vehicle_description: `${year || ""} ${make} ${model} ${variant || ""}`.trim(),
     km: km,
-    internal_comps: internalListings.slice(0, 5),
+    // ── PRE-CALCULATED NUMBERS — Bob must use these exactly, no recalculation ──
+    anchor_price: anchorPrice,
+    anchor_source: anchorSource,
+    trade_guide: tradeGuide,
+    // Context data
     internal_cheapest: cheapestInternal ? {
       price: cheapestInternal.price,
       year: cheapestInternal.year,
       km: cheapestInternal.km,
       source: cheapestInternal.source,
       location: cheapestInternal.location,
-      url: cheapestInternal.listing_url || cheapestInternal.url || null,
     } : null,
+    market_cheapest_price: cheapestMarketPrice < Infinity ? cheapestMarketPrice : null,
     market_summary: marketResult.summary,
-    market_citations: marketResult.citations || [],
-    trade_guide_instructions: `Calculate trade guide from the cheapest comparable found:
-    - Floor = cheapest retail price × 0.80 (20% margin for wholesale)
-    - Mid = cheapest retail price × 0.85 (15% margin)
-    - Ceiling = cheapest retail price × 0.90 (10% margin, tight, only if fast seller)
-    Present the trade guide prominently.`,
-  };
-}
-
-function executeStartValo(params: any): any {
-  const make = (params.make || "").toUpperCase().trim();
-  const model = (params.model || "").toUpperCase().trim();
-  const year = params.year || "";
-  const km = params.km || "";
-  const badge = params.badge || "";
-  const condition = params.condition || "good";
-  const description = params.description || "";
-  const autoRun = params.auto_run ?? (!!make && !!model && !!year && !!km);
-
-  // Build missing fields list
-  const missing: string[] = [];
-  if (!make) missing.push("make");
-  if (!model) missing.push("model");
-  if (!year) missing.push("year");
-  if (!km) missing.push("kilometres");
-
-  return {
-    form_fill: {
-      make,
-      model,
-      year: String(year),
-      km: String(km),
-      badge,
-      condition,
-      description,
-      autoRun: missing.length === 0 && autoRun,
-    },
-    missing_fields: missing,
-    message: missing.length > 0
-      ? `I need a few more details: ${missing.join(", ")}. Can you fill those in?`
-      : `Filling in ${year} ${make} ${model}${badge ? ` ${badge}` : ""} with ${Number(km).toLocaleString()} km. Running the valuation now.`,
+    market_citations: (marketResult.citations || []).slice(0, 5),
+    // Strict instructions for the LLM
+    instructions: tradeGuide
+      ? `CRITICAL: Use EXACTLY these pre-calculated numbers. Do NOT recalculate or adjust them.
+         Cheapest comparable: $${anchorPrice!.toLocaleString()} (${anchorSource})
+         Trade guide: Floor $${tradeGuide.floor.toLocaleString()} / Mid $${tradeGuide.mid.toLocaleString()} / Ceiling $${tradeGuide.ceiling.toLocaleString()}
+         Present as: "${year || ""} ${make} ${model} — cheapest comparable is $${anchorPrice!.toLocaleString()} at ${anchorSource}. Trade guide: $${tradeGuide.floor.toLocaleString()} floor / $${tradeGuide.mid.toLocaleString()} mid / $${tradeGuide.ceiling.toLocaleString()} ceiling."
+         Add one sentence of market context from the search results. Do NOT change the numbers.`
+      : `Could not find a comparable price. Tell the dealer you couldn't find enough market data for a reliable guide and suggest they check Carsales directly.`,
   };
 }
 
@@ -1068,8 +1057,6 @@ async function safeExecuteTool(funcName: string, args: any, dealerProfileId: str
         return await executeSearchMarket(args);
       case "valor_quick_appraise":
         return await executeValorQuickAppraise(args, dealerProfileId, supabase);
-      case "start_valo":
-        return executeStartValo(args);
       default:
         return { results: [], message: "No data available for that request." };
     }
