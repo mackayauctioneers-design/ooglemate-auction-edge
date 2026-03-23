@@ -259,7 +259,7 @@ const OUTWARD_TIMEOUT_MS = 5 * 60 * 1000;
 const TERMINAL_STATUSES = new Set(["complete", "failed", "timeout"]);
 
 /** Detect which series a result belongs to (LC + Prado + Ranger + Patrol) */
-function detectSeriesFromText(text: string): string | null {
+function detectSeriesFromText(text: string, year?: number | null): string | null {
   const t = text.toUpperCase();
   // Prado must be checked FIRST (before LC) because "LandCruiser Prado 250" contains "250"
   if (t.includes("PRADO")) {
@@ -267,10 +267,10 @@ function detectSeriesFromText(text: string): string | null {
     if (/\b150\b|PRADO[\-_\s]?150/.test(t)) return "PRADO_150";
     return null; // Prado but unknown generation
   }
-  // LC70
+  // LC70 — explicit chassis/body codes only on 70 series
   if (
     /\b7[0689]\b/.test(t) ||
-    /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]|VDJL79R|GDJL79R|TROOPY|TROOPCARRIER|WORKMATE/.test(t) ||
+    /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]|VDJL79R|GDJL79R|TROOPY|TROOPCARRIER/.test(t) ||
     /DOUBLE[\-_\s]?CAB|CAB[\-_\s]?CHASSIS/.test(t) ||
     /LCMILITARY|LANDCRUISERMILITARY/.test(t)
   ) return "LC70";
@@ -281,6 +281,13 @@ function detectSeriesFromText(text: string): string | null {
   // Patrol
   if (/\bY62\b/.test(t)) return "PATROL_Y62";
   if (/\bY61\b|\bGU\b/.test(t)) return "PATROL_Y61";
+
+  // Year-based inference for ambiguous LandCruiser listings
+  if (t.includes("LANDCRUISER") || t.includes("LAND CRUISER")) {
+    if (year && year >= 2022) return "LC300";
+    if (year && year >= 2008 && year <= 2021) return "LC200";
+  }
+
   return null;
 }
 
