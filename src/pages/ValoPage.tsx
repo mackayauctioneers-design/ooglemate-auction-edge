@@ -175,11 +175,11 @@ export default function ValoPage() {
     return () => onValoFormFill(null);
   }, [onValoFormFill]);
 
+  const toggleAccessory = (acc: string) => {
     setSelectedAccessories(prev =>
       prev.includes(acc) ? prev.filter(a => a !== acc) : [...prev, acc]
     );
   };
-
   const addCustomAccessory = () => {
     const trimmed = customAccessory.trim();
     if (trimmed && !selectedAccessories.includes(trimmed)) {
