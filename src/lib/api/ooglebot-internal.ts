@@ -256,7 +256,7 @@ async function searchInternalRetailTier(parsed: ParsedIntent): Promise<InternalM
 
   let q = supabase
     .from("market_listings")
-    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, auction_house, listing_type, last_seen_at, lifecycle_status, cab_type, body_type")
+    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, auction_house, listing_type, last_seen_at, lifecycle_status")
     .in("lifecycle_status", ACTIVE_LIFECYCLE)
     .gte("last_seen_at", recencyCutoff)
     .ilike("make", `%${parsed.make}%`)
