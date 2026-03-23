@@ -996,6 +996,41 @@ async function executeValorQuickAppraise(params: any, dealerProfileId: string, s
   };
 }
 
+function executeStartValo(params: any): any {
+  const make = (params.make || "").toUpperCase().trim();
+  const model = (params.model || "").toUpperCase().trim();
+  const year = params.year || "";
+  const km = params.km || "";
+  const badge = params.badge || "";
+  const condition = params.condition || "good";
+  const description = params.description || "";
+  const autoRun = params.auto_run ?? (!!make && !!model && !!year && !!km);
+
+  // Build missing fields list
+  const missing: string[] = [];
+  if (!make) missing.push("make");
+  if (!model) missing.push("model");
+  if (!year) missing.push("year");
+  if (!km) missing.push("kilometres");
+
+  return {
+    form_fill: {
+      make,
+      model,
+      year: String(year),
+      km: String(km),
+      badge,
+      condition,
+      description,
+      autoRun: missing.length === 0 && autoRun,
+    },
+    missing_fields: missing,
+    message: missing.length > 0
+      ? `I need a few more details: ${missing.join(", ")}. Can you fill those in?`
+      : `Filling in ${year} ${make} ${model}${badge ? ` ${badge}` : ""} with ${Number(km).toLocaleString()} km. Running the valuation now.`,
+  };
+}
+
 // ============================================================================
 // Safe tool executor wrapper — guarantees no exceptions leak to AI as errors
 // ============================================================================
