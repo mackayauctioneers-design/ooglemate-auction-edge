@@ -858,25 +858,62 @@ async function executeQueryDatabase(params: any, dealerProfileId: string, supaba
 }
 
 async function executeSearchMarket(params: any): Promise<any> {
+  const sbUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const sbKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
-  if (!PERPLEXITY_API_KEY) {
-    console.error("[BOB-CHAT] PERPLEXITY_API_KEY not configured");
-    return { results: [], summary: "Market search not available." };
-  }
 
-  try {
-    const response = await fetch("https://api.perplexity.ai/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "sonar",
-        messages: [
-          {
-            role: "system",
-            content: `You are a vehicle market research assistant for Australian car dealers. Search for currently advertised vehicles matching the query.
+  // Run BOTH outward-search-v2 (structured, multi-source) AND Perplexity (web search) in parallel
+  const [outwardResult, perplexityResult] = await Promise.all([
+    // Source 1: run-outward-search-v2 — uses internal adapters, auction sites, dealer sites
+    (async () => {
+      try {
+        const resp = await fetch(`${sbUrl}/functions/v1/run-outward-search-v2`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sbKey}` },
+          body: JSON.stringify({
+            instruction: params.query,
+            initiated_by: "bob",
+            urgency: "high",
+            full_market_scan: true,
+          }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          const results = data.results ?? [];
+          console.log(`[BOB-CHAT] outward-search-v2: ${results.length} results`);
+          // Format results as readable text for the AI
+          if (results.length > 0) {
+            const lines = results.slice(0, 10).map((r: any) => {
+              const price = r.price ? `$${Number(r.price).toLocaleString()}` : "Price N/A";
+              const km = r.km ? `${Number(r.km).toLocaleString()} km` : "";
+              return `${r.year ?? ""} ${r.title ?? ""} — ${price} ${km} ${r.state ?? r.location ?? ""} (${r.source ?? "unknown"}) ${r.url ?? ""}`;
+            });
+            return { summary: `Outward search found ${results.length} listings:\n${lines.join("\n")}`, results, source: "outward_search_v2" };
+          }
+          return { summary: "", results: [], source: "outward_search_v2" };
+        } else {
+          console.error("[BOB-CHAT] outward-search-v2 error:", resp.status);
+          return { summary: "", results: [], source: "outward_search_v2" };
+        }
+      } catch (err) {
+        console.error("[BOB-CHAT] outward-search-v2 exception:", err);
+        return { summary: "", results: [], source: "outward_search_v2" };
+      }
+    })(),
+
+    // Source 2: Perplexity Sonar — live web search across Carsales, AutoTrader, Drive, CarsGuide
+    (async () => {
+      if (!PERPLEXITY_API_KEY) return { summary: "", citations: [], source: "perplexity_sonar" };
+      try {
+        const response = await fetch("https://api.perplexity.ai/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${PERPLEXITY_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "sonar",
+            messages: [
+              {
+                role: "system",
+                content: `You are a vehicle market research assistant for Australian car dealers. Search for currently advertised vehicles matching the query.
 
 RULES:
 - Only return REAL listings you find. Do NOT fabricate listings.
@@ -886,38 +923,41 @@ RULES:
 - Be specific with prices — exact dollar amounts where possible.
 - Include the source URL where you found each listing.
 - Summarise in a dealer-friendly format.`
-          },
-          { role: "user", content: params.query }
-        ],
-        temperature: 0.1,
-        search_domain_filter: [
-          "carsales.com.au",
-          "drive.com.au",
-          "autotrader.com.au",
-          "carsguide.com.au",
-        ],
-      }),
-    });
+              },
+              { role: "user", content: params.query }
+            ],
+            temperature: 0.1,
+            search_domain_filter: ["carsales.com.au", "drive.com.au", "autotrader.com.au", "carsguide.com.au"],
+          }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          return {
+            summary: data.choices?.[0]?.message?.content ?? "",
+            citations: (data.citations ?? []).slice(0, 10),
+            source: "perplexity_sonar",
+          };
+        }
+        return { summary: "", citations: [], source: "perplexity_sonar" };
+      } catch (err) {
+        console.error("[BOB-CHAT] Perplexity error:", err);
+        return { summary: "", citations: [], source: "perplexity_sonar" };
+      }
+    })(),
+  ]);
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("[BOB-CHAT] Perplexity API error:", response.status, errText);
-      return { results: [], summary: "Market search temporarily unavailable." };
-    }
+  // Combine results from both sources
+  const combinedSummary = [
+    outwardResult.summary,
+    perplexityResult.summary,
+  ].filter(Boolean).join("\n\n---\n\n");
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content ?? "";
-    const citations = data.citations ?? [];
-
-    return {
-      summary: content,
-      citations: citations.slice(0, 10),
-      source: "perplexity_sonar",
-    };
-  } catch (err) {
-    console.error("[BOB-CHAT] search_market error:", err);
-    return { results: [], summary: "Market search temporarily unavailable." };
-  }
+  return {
+    summary: combinedSummary || "No market results found.",
+    outward_results: outwardResult.results || [],
+    citations: perplexityResult.citations || [],
+    sources_used: ["outward_search_v2", "perplexity_sonar"],
+  };
 }
 
 async function executeValorQuickAppraise(params: any, dealerProfileId: string, supabase: any): Promise<any> {
