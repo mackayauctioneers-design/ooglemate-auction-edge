@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Send, Loader2, X, Trash2,
-  ExternalLink, Eye, Search, ArrowRight, Volume2, VolumeX, Mic,
+  ExternalLink, Eye, Search, ArrowRight, Volume2, VolumeX, Mic, Phone, PhoneOff,
   AlertTriangle, TrendingUp, Clock, ShieldCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -316,11 +316,14 @@ export function BobPanel() {
 
   const [input, setInput] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [callMode, setCallMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastAssistantMsgRef = useRef<string>('');
+  const callModeRef = useRef(false);
 
-  const { speak, isSpeaking, stopSpeaking, isLoading: ttsLoading } = useBobTTS();
+  // Keep ref in sync for use in callbacks
+  callModeRef.current = callMode;
 
   const onSpeechResult = useCallback((transcript: string) => {
     if (transcript.trim()) {
@@ -334,6 +337,20 @@ export function BobPanel() {
     lang: 'en-AU',
   });
 
+  // Auto-listen after Bob finishes speaking in call mode
+  const onSpeakingEnd = useCallback(() => {
+    if (callModeRef.current && sttSupported) {
+      // Small delay to avoid audio feedback
+      setTimeout(() => {
+        if (callModeRef.current) {
+          toggleListening();
+        }
+      }, 400);
+    }
+  }, [sttSupported, toggleListening]);
+
+  const { speak, isSpeaking, stopSpeaking, isLoading: ttsLoading } = useBobTTS({ onSpeakingEnd });
+
   // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -344,9 +361,10 @@ export function BobPanel() {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 200);
   }, [isOpen]);
 
-  // Auto-speak latest assistant message
+  // Auto-speak latest assistant message (always speak in call mode)
   useEffect(() => {
-    if (isStreaming || !voiceEnabled || messages.length === 0) return;
+    if (isStreaming || messages.length === 0) return;
+    if (!voiceEnabled && !callMode) return;
     const lastMsg = messages[messages.length - 1];
     if (lastMsg?.role === 'assistant' && lastMsg.content !== lastAssistantMsgRef.current) {
       lastAssistantMsgRef.current = lastMsg.content;
@@ -355,7 +373,24 @@ export function BobPanel() {
         : lastMsg.content;
       speak(speakText);
     }
-  }, [isStreaming, messages, voiceEnabled, speak]);
+  }, [isStreaming, messages, voiceEnabled, callMode, speak]);
+
+  // Start call mode handler
+  const toggleCallMode = useCallback(() => {
+    if (callMode) {
+      // End call
+      setCallMode(false);
+      stopSpeaking();
+    } else {
+      // Start call — enable voice, open panel, start listening
+      setCallMode(true);
+      setVoiceEnabled(true);
+      if (!isOpen) setIsOpen(true);
+      if (sttSupported && !isListening) {
+        setTimeout(() => toggleListening(), 300);
+      }
+    }
+  }, [callMode, stopSpeaking, isOpen, setIsOpen, sttSupported, isListening, toggleListening]);
 
   const handleSend = async () => {
     if (!input.trim() || isStreaming) return;
@@ -418,7 +453,7 @@ export function BobPanel() {
         </div>
       )}
 
-      <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      <Sheet open={isOpen} onOpenChange={(open) => { setIsOpen(open); if (!open) setCallMode(false); }}>
         <SheetContent
           side="right"
           className="w-full sm:max-w-[420px] p-0 flex flex-col gap-0 border-l border-border"
@@ -442,6 +477,17 @@ export function BobPanel() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                {sttSupported && (
+                  <Button
+                    variant={callMode ? "default" : "ghost"}
+                    size="icon"
+                    className={cn("h-8 w-8", callMode ? "bg-green-600 hover:bg-red-600 text-white" : "text-muted-foreground")}
+                    onClick={toggleCallMode}
+                    title={callMode ? "End call" : "Call Bob (hands-free)"}
+                  >
+                    {callMode ? <PhoneOff className="h-3.5 w-3.5" /> : <Phone className="h-3.5 w-3.5" />}
+                  </Button>
+                )}
                 <Button
                   variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
                   onClick={() => { setVoiceEnabled(v => !v); if (isSpeaking) stopSpeaking(); }}
@@ -546,7 +592,19 @@ export function BobPanel() {
 
           {/* Input bar */}
           <div className="border-t border-border p-3 bg-card">
-            {isListening && (
+            {callMode && (
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <Phone className="h-3 w-3 text-green-500" />
+                <span className="text-xs text-green-600 dark:text-green-400 font-medium">
+                  {isListening ? 'Listening...' : isSpeaking ? 'Bob is speaking...' : isStreaming ? 'Bob is thinking...' : 'Waiting...'}
+                </span>
+                <BobWaveform active={isListening || isSpeaking} bars={6} className="ml-auto" />
+                <button onClick={toggleCallMode} className="text-xs text-destructive hover:underline">
+                  End call
+                </button>
+              </div>
+            )}
+            {!callMode && isListening && (
               <div className="flex items-center gap-2 mb-2 px-1">
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                 <span className="text-xs text-muted-foreground">Listening...</span>

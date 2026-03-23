@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 
 // Debug state exposed to UI
 export interface TTSDebugInfo {
@@ -9,7 +9,7 @@ export interface TTSDebugInfo {
 }
 
 // Hook for Bob's Text-to-Speech with iOS audio unlock
-export function useBobTTS() {
+export function useBobTTS(options?: { onSpeakingEnd?: () => void }) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
@@ -34,6 +34,15 @@ export function useBobTTS() {
     });
     setPendingAudioUrl(null);
   }, []);
+
+  // Fire onSpeakingEnd callback when speaking transitions to false
+  const wasSpeakingRef = useRef(false);
+  useEffect(() => {
+    if (wasSpeakingRef.current && !isSpeaking) {
+      options?.onSpeakingEnd?.();
+    }
+    wasSpeakingRef.current = isSpeaking;
+  }, [isSpeaking, options?.onSpeakingEnd]);
 
   // Clean up any existing audio
   const stopSpeaking = useCallback(() => {
