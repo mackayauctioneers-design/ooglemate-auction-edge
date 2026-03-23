@@ -477,6 +477,17 @@ export function BobPanel() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                {sttSupported && (
+                  <Button
+                    variant={callMode ? "default" : "ghost"}
+                    size="icon"
+                    className={cn("h-8 w-8", callMode ? "bg-green-600 hover:bg-red-600 text-white" : "text-muted-foreground")}
+                    onClick={toggleCallMode}
+                    title={callMode ? "End call" : "Call Bob (hands-free)"}
+                  >
+                    {callMode ? <PhoneOff className="h-3.5 w-3.5" /> : <Phone className="h-3.5 w-3.5" />}
+                  </Button>
+                )}
                 <Button
                   variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
                   onClick={() => { setVoiceEnabled(v => !v); if (isSpeaking) stopSpeaking(); }}
