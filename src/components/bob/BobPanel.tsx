@@ -592,7 +592,19 @@ export function BobPanel() {
 
           {/* Input bar */}
           <div className="border-t border-border p-3 bg-card">
-            {isListening && (
+            {callMode && (
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <Phone className="h-3 w-3 text-green-500" />
+                <span className="text-xs text-green-600 dark:text-green-400 font-medium">
+                  {isListening ? 'Listening...' : isSpeaking ? 'Bob is speaking...' : isStreaming ? 'Bob is thinking...' : 'Waiting...'}
+                </span>
+                <BobWaveform active={isListening || isSpeaking} bars={6} className="ml-auto" />
+                <button onClick={toggleCallMode} className="text-xs text-destructive hover:underline">
+                  End call
+                </button>
+              </div>
+            )}
+            {!callMode && isListening && (
               <div className="flex items-center gap-2 mb-2 px-1">
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                 <span className="text-xs text-muted-foreground">Listening...</span>
