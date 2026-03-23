@@ -361,9 +361,10 @@ export function BobPanel() {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 200);
   }, [isOpen]);
 
-  // Auto-speak latest assistant message
+  // Auto-speak latest assistant message (always speak in call mode)
   useEffect(() => {
-    if (isStreaming || !voiceEnabled || messages.length === 0) return;
+    if (isStreaming || messages.length === 0) return;
+    if (!voiceEnabled && !callMode) return;
     const lastMsg = messages[messages.length - 1];
     if (lastMsg?.role === 'assistant' && lastMsg.content !== lastAssistantMsgRef.current) {
       lastAssistantMsgRef.current = lastMsg.content;
@@ -372,7 +373,24 @@ export function BobPanel() {
         : lastMsg.content;
       speak(speakText);
     }
-  }, [isStreaming, messages, voiceEnabled, speak]);
+  }, [isStreaming, messages, voiceEnabled, callMode, speak]);
+
+  // Start call mode handler
+  const toggleCallMode = useCallback(() => {
+    if (callMode) {
+      // End call
+      setCallMode(false);
+      stopSpeaking();
+    } else {
+      // Start call — enable voice, open panel, start listening
+      setCallMode(true);
+      setVoiceEnabled(true);
+      if (!isOpen) setIsOpen(true);
+      if (sttSupported && !isListening) {
+        setTimeout(() => toggleListening(), 300);
+      }
+    }
+  }, [callMode, stopSpeaking, isOpen, setIsOpen, sttSupported, isListening, toggleListening]);
 
   const handleSend = async () => {
     if (!input.trim() || isStreaming) return;
