@@ -1,0 +1,18 @@
+# Memory: technical/identity/generation-aware-platform-gating
+Updated: now
+
+To resolve platform contamination (e.g., mixing LandCruiser 300, 200, and 70 series), the system enforces a strict 'Generation Gate'. It utilizes an 'extractSeries' logic to classify specific vehicle generations—such as LC300, LC200, LC70, PRADO_250, RANGER_PY, PATROL_Y62, and HILUX_N80—from raw model text, variant signals, and listing URLs. This series acts as a mandatory filter in VALO and OogleBot pipelines; comparable listings are rejected if a specific series is detected and it mismatches the user's intent.
+
+**Year-Based Inference (v2):** When no explicit series markers are found in listing text, the system falls back to year-based generation inference for LandCruiser:
+- Year >= 2022 → LC300 (wagon/SUV body)
+- Year 2008–2021 → LC200
+- LC70 always has explicit markers (DOUBLE CAB, CAB CHASSIS, TROOPY, LCMILITARY, VDJL79R, GDJL79R, etc.)
+
+**WORKMATE Disambiguation:** "WORKMATE" is NOT treated as an LC70-only signal, since LC300 also offers a Workmate trim. It falls through to year-based inference instead.
+
+The detection logic uses expanded regex to catch generation-specific markers. The frontend display filter prioritizes explicit dropdown selection over derived text, and 'Prado' listings are hard-excluded from LandCruiser searches and vice versa.
+
+This year-aware inference is implemented in three locations:
+1. `supabase/functions/ooglebot-search/index.ts` (edge function)
+2. `src/lib/api/ooglebot-internal.ts` (client-side tiered search)
+3. `src/components/ooglebot/OogleBotSearch.tsx` (client-side merge/display filter)
