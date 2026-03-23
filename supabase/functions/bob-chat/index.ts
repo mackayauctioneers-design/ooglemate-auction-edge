@@ -71,7 +71,30 @@ TRADE VALUATIONS:
 - When a dealer describes a vehicle for trade-in valuation, use valor_quick_appraise.
 - This searches both internal and market, then you calculate the trade guide.
 - Be FAST and DIRECT. The dealer is likely standing with a customer.
-- Format: "[Year Make Model] — cheapest comparable is $XX,XXX at [source]. Trade guide: $XX,XXX floor / $XX,XXX mid / $XX,XXX ceiling. [One sentence of market context]."`;
+- Format: "[Year Make Model] — cheapest comparable is $XX,XXX at [source]. Trade guide: $XX,XXX floor / $XX,XXX mid / $XX,XXX ceiling. [One sentence of market context]."
+
+FULL DATA ACCESS:
+- You have query_database — a universal tool that can read ANY table in Carbitrage.
+- Use it when dealers ask about their sales history, past profits, fingerprints, specific deals, auction results, watches, hunts, or anything about their data.
+- Key tables you should know:
+  - sales_normalised: dealer's past sales with buy_price, sell_price, gross_profit, days_in_stock, km, make, model, variant, year, region_id, dealer_name
+  - dealer_outcomes: historical deal outcomes with gross_profit, days_to_exit, buy_price, sell_price, confidence
+  - dealer_fingerprints: buying patterns — make, model, variant_family, avg_profit, avg_days_to_sell, sales_count, fingerprint_priority, km bands
+  - dealer_profit_patterns: profit analysis by segment — median_profit, median_buy_price, median_sell_price, km_min/max, year_min/max
+  - dealer_platform_clusters: performance clusters by generation — total_flips, median_profit, avg_days_to_sell
+  - valo_runs: past trade-in valuations with intent, market data, confidence, offers
+  - vehicle_listings: all current wholesale/auction/dealer listings (active and historical)
+  - retail_listings: current retail market listings from Carsales etc
+  - winners_watchlist: top performing vehicle segments to watch
+  - sale_hunts: active vehicle hunts/searches
+  - hunt_alerts: alerts triggered by hunts
+  - bob_watch_profiles: watches you've set up for dealers
+  - verified_deals: confirmed good deals with josh_score, discount_pct
+  - alert_logs: notification history
+- ALWAYS filter by dealer_profile_id or dealer_name='Dave' or account_id to scope results to the current dealer.
+- When the dealer asks "how did I do on my last RAV4" or "what profit did I make on Hiluxes" — use query_database on sales_normalised or dealer_outcomes.
+- When they ask about fingerprints, patterns, best sellers — use the fingerprint/pattern tables.
+- Present data in dealer terms: profit, days to sell, margin %. Never dump raw data."`;
 
 // Tool definitions
 const TOOLS = [
@@ -211,6 +234,24 @@ const TOOLS = [
           query: { type: "string", description: "Natural language search query e.g. '2022 Toyota RAV4 GXL for sale Australia price' or 'cheapest BYD Atto 3 under 30000km Australia'" }
         },
         required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "query_database",
+      description: "Query any Carbitrage database table directly. Use this for: sales history, past profits, fingerprint details, deal outcomes, valuation history, hunt/watch status, alert history, retail listings, or any data question the dealer asks about their business. Always filter by dealer_profile_id or dealer_name to scope to the current dealer.",
+      parameters: {
+        type: "object",
+        properties: {
+          table: { type: "string", description: "Table name e.g. sales_normalised, dealer_outcomes, dealer_fingerprints, dealer_profit_patterns, valo_runs, vehicle_listings, retail_listings, winners_watchlist, sale_hunts, hunt_alerts, bob_watch_profiles, verified_deals, alert_logs, dealer_platform_clusters" },
+          select: { type: "string", description: "Comma-separated columns to return, or * for all. e.g. 'make, model, gross_profit, sell_price, days_in_stock'" },
+          filters: { type: "object", description: "Key-value filters. Keys are column names, values are the filter values. Use special prefixes: 'gte:' for >=, 'lte:' for <=, 'ilike:' for partial match, 'neq:' for not equal. e.g. {make: 'TOYOTA', year: 'gte:2022', gross_profit: 'gte:2000'}" },
+          order_by: { type: "string", description: "Column to sort by, prefix with '-' for descending. e.g. '-gross_profit' or 'price'" },
+          limit: { type: "number", description: "Max rows to return (default 20, max 50)" }
+        },
+        required: ["table"]
       }
     }
   },
@@ -727,6 +768,95 @@ async function executeExplainVehicleScore(params: any, dealerProfileId: string, 
   }
 }
 
+async function executeQueryDatabase(params: any, dealerProfileId: string, supabase: any): Promise<any> {
+  // Whitelist of tables Bob can read (no writes, no admin tables)
+  const ALLOWED_TABLES = new Set([
+    "sales_normalised", "dealer_sales", "dealer_outcomes", "dealer_fingerprints",
+    "dealer_profit_patterns", "dealer_platform_clusters", "dealer_profiles",
+    "valo_runs", "vehicle_listings", "retail_listings", "winners_watchlist",
+    "sale_hunts", "hunt_alerts", "hunt_matches", "bob_watch_profiles",
+    "verified_deals", "alert_logs", "dealer_match_alerts", "dealer_demands",
+    "fingerprint_performance_metrics", "fingerprint_profit_stats",
+    "opportunities", "operator_opportunities", "demand_velocity_daily",
+    "model_market_snapshot", "listing_price_history", "auction_source_events",
+    "dealer_entitlements", "dealer_notification_settings",
+  ]);
+
+  const table = params.table;
+  if (!table || !ALLOWED_TABLES.has(table)) {
+    console.error(`[BOB-CHAT] query_database: table '${table}' not allowed`);
+    return { rows: [], error: "Table not available.", total: 0 };
+  }
+
+  try {
+    const selectCols = params.select || "*";
+    const limit = Math.min(params.limit || 20, 50);
+
+    let query = supabase.from(table).select(selectCols);
+
+    // Apply filters
+    const filters = params.filters || {};
+    for (const [key, rawVal] of Object.entries(filters)) {
+      const val = String(rawVal);
+      if (val.startsWith("gte:")) {
+        query = query.gte(key, val.slice(4));
+      } else if (val.startsWith("lte:")) {
+        query = query.lte(key, val.slice(4));
+      } else if (val.startsWith("ilike:")) {
+        query = query.ilike(key, `%${val.slice(6)}%`);
+      } else if (val.startsWith("neq:")) {
+        query = query.neq(key, val.slice(4));
+      } else {
+        query = query.ilike(key, `%${val}%`);
+      }
+    }
+
+    // Auto-scope to dealer where possible (security)
+    const dealerScopedTables = new Set([
+      "sales_normalised", "dealer_sales", "dealer_outcomes", "dealer_fingerprints",
+      "dealer_profit_patterns", "dealer_platform_clusters", "valo_runs",
+      "sale_hunts", "hunt_alerts", "bob_watch_profiles", "alert_logs",
+      "dealer_match_alerts", "dealer_demands", "winners_watchlist",
+      "fingerprint_performance_metrics", "fingerprint_profit_stats",
+      "dealer_entitlements", "dealer_notification_settings",
+    ]);
+
+    if (dealerScopedTables.has(table) && dealerProfileId) {
+      // Try different column names for dealer scoping
+      if (["dealer_fingerprints", "bob_watch_profiles", "alert_logs", "dealer_notification_settings"].includes(table)) {
+        query = query.eq("dealer_profile_id", dealerProfileId);
+      } else if (["dealer_profit_patterns", "dealer_platform_clusters", "valo_runs", "winners_watchlist", "dealer_entitlements"].includes(table)) {
+        query = query.eq("account_id", dealerProfileId);
+      } else if (["sale_hunts", "hunt_alerts"].includes(table)) {
+        query = query.eq("dealer_id", dealerProfileId);
+      } else if (["sales_normalised", "dealer_sales", "dealer_outcomes"].includes(table)) {
+        // These use dealer_name = 'Dave' based on user's setup
+        query = query.eq("dealer_name", "Dave");
+      }
+    }
+
+    // Ordering
+    if (params.order_by) {
+      const desc = params.order_by.startsWith("-");
+      const col = desc ? params.order_by.slice(1) : params.order_by;
+      query = query.order(col, { ascending: !desc });
+    }
+
+    query = query.limit(limit);
+
+    const { data, error } = await query;
+    if (error) {
+      console.error(`[BOB-CHAT] query_database error on ${table}:`, error.message);
+      return { rows: [], total: 0, table, error: "Query failed." };
+    }
+
+    return { rows: data || [], total: (data || []).length, table };
+  } catch (err) {
+    console.error(`[BOB-CHAT] query_database exception:`, err);
+    return { rows: [], total: 0, table };
+  }
+}
+
 async function executeSearchMarket(params: any): Promise<any> {
   const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
   if (!PERPLEXITY_API_KEY) {
@@ -868,6 +998,8 @@ async function safeExecuteTool(funcName: string, args: any, dealerProfileId: str
         return await executeGetDealerPerformance(dealerProfileId, supabase);
       case "explain_page":
         return executeExplainPage(args);
+      case "query_database":
+        return await executeQueryDatabase(args, dealerProfileId, supabase);
       case "search_market":
         return await executeSearchMarket(args);
       case "valor_quick_appraise":
