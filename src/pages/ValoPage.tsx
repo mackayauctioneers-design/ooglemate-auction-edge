@@ -193,7 +193,6 @@ export default function ValoPage() {
   const badgeMissing = canRunValo && !badge.trim();
 
   const handleRunValo = async () => {
-    handleRunValoRef.current = handleRunValo;
     if (!make.trim() || !model.trim()) {
       toast.error('Make and Model are required for VALO');
       return;
