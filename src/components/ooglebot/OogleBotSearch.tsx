@@ -331,14 +331,14 @@ function mergeAllResults(
   // Series gate helper — reject cross-generation results AND cross-platform contamination
   const isLCIntent = intentSeries?.startsWith("LC");
   const isPradoIntent = intentSeries?.startsWith("PRADO");
-  const matchesSeries = (r: { title?: string; variant?: string | null; id?: string; url?: string | null; model?: string | null }): boolean => {
+  const matchesSeries = (r: { title?: string; variant?: string | null; id?: string; url?: string | null; model?: string | null; year?: number | null }): boolean => {
     if (!intentSeries) return true;
     const allText = [r.title, r.variant, r.id, r.url, r.model].filter(Boolean).join(" ");
     // Hard gate: LC intent must exclude Prado, and vice versa
     const textUpper = allText.toUpperCase();
     if (isLCIntent && textUpper.includes("PRADO")) return false;
     if (isPradoIntent && !textUpper.includes("PRADO")) return false;
-    const ls = detectSeriesFromText(allText);
+    const ls = detectSeriesFromText(allText, r.year);
     if (ls !== null) return ls === intentSeries;
     // Unknown series: reject. Ambiguous listings without identifiable series markers should not appear.
     return false;
