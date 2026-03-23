@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Send, Loader2, X, Trash2,
-  ExternalLink, Eye, Search, ArrowRight, Volume2, VolumeX, Mic,
+  ExternalLink, Eye, Search, ArrowRight, Volume2, VolumeX, Mic, Phone, PhoneOff,
   AlertTriangle, TrendingUp, Clock, ShieldCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
