@@ -183,6 +183,11 @@ export function BobContextProvider({ children }: { children: React.ReactNode }) 
   const [isStreaming, setIsStreaming] = useState(false);
   const [pageContextOverrides, setPageContextOverrides] = useState<Partial<BobPageContext>>({});
   const abortRef = useRef<AbortController | null>(null);
+  const valoFormFillRef = useRef<((data: ValoFormFillData) => void) | null>(null);
+
+  const onValoFormFill = useCallback((callback: ((data: ValoFormFillData) => void) | null) => {
+    valoFormFillRef.current = callback;
+  }, []);
 
   const dealerProfileId = dealerProfile?.dealer_profile_id || user?.id || null;
   const dealerName = dealerProfile?.dealer_name || 'mate';
