@@ -609,8 +609,13 @@ export function OogleBotSearch() {
   const badgeMissing = canSearch && !badge.trim();
 
   // ── Unified result merge ──
-  // Extract intent series from make + model for LC generation gating
-  const intentSeries = useMemo(() => extractSeries(make, model), [make, model]);
+  // Extract intent series from make + model OR series dropdown for LC generation gating
+  const intentSeries = useMemo(() => {
+    // If user explicitly selected a series from dropdown, use that
+    if (series && series !== "all") return series;
+    // Otherwise derive from model text (e.g. "LandCruiser 300" → LC300)
+    return extractSeries(make, model);
+  }, [make, model, series]);
   const allUnified = useMemo(() => {
     const results = mergeAllResults(internalResults, externalResponse?.results ?? [], outwardResults, badge, intentSeries);
     // Enrich with deal flags
