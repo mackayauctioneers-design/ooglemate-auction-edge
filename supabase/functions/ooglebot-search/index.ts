@@ -33,6 +33,7 @@ function detectListingSeries(l: {
   cab_type?: string | null; body_type?: string | null;
   drivetrain?: string | null; transmission?: string | null;
   listing_id?: string; listing_url?: string | null;
+  year?: number | null;
 }): string | null {
   const text = [
     l.model, l.variant_raw, l.variant_family, l.variant_used,
@@ -47,13 +48,14 @@ function detectListingSeries(l: {
     return null; // Prado but unknown generation
   }
 
-  // Strong LC70 signals
-  if (
+  // Strong LC70 signals (explicit chassis/body codes that ONLY exist on 70 series)
+  const hasLC70Signal =
     /\b7[0689]\b/.test(text) ||
-    /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]|VDJL79R|GDJL79R|TROOPY|TROOPCARRIER|WORKMATE/.test(text) ||
+    /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]|VDJL79R|GDJL79R|TROOPY|TROOPCARRIER/.test(text) ||
     /DOUBLE[\-_\s]?CAB|CAB[\-_\s]?CHASSIS/.test(text) ||
-    /LCMILITARY|LANDCRUISERMILITARY/.test(text)
-  ) return "LC70";
+    /LCMILITARY|LANDCRUISERMILITARY/.test(text);
+
+  if (hasLC70Signal) return "LC70";
 
   // Strong LC300 signals
   if (
@@ -69,6 +71,19 @@ function detectListingSeries(l: {
   // Patrol
   if (/\bY62\b/.test(text)) return "PATROL_Y62";
   if (/\bY61\b|\bGU\b/.test(text)) return "PATROL_Y61";
+
+  // ── Year-based inference for ambiguous LandCruiser listings ──
+  // If model contains LANDCRUISER (not Prado) and no explicit series marker was found,
+  // use the year to infer generation:
+  //   LC300: 2022+   (wagon/SUV body — GXL, VX, SAHARA, GR SPORT)
+  //   LC200: 2008–2021
+  //   LC70:  ongoing but always has explicit cab/chassis markers above
+  // "WORKMATE" alone is ambiguous (exists on both LC70 and LC300) — use year.
+  if (text.includes("LANDCRUISER") || text.includes("LAND CRUISER")) {
+    const year = l.year;
+    if (year && year >= 2022) return "LC300";
+    if (year && year >= 2008 && year <= 2021) return "LC200";
+  }
 
   return null;
 }
@@ -399,14 +414,6 @@ Deno.serve(async (req) => {
         // Hard model-family gate: Prado must never appear in LandCruiser results, and vice versa.
         if (intentIsLC && text.includes("PRADO")) return false;
         if (intentIsPrado && !text.includes("PRADO")) return false;
-
-        // Toyota OEM sometimes stores LC70 rows as generic LANDCRUISER/GXL with no explicit series.
-        if (
-          intentSeries === "LC300" &&
-          l.source === "toyota" &&
-          (l.model || "").toUpperCase() === "LANDCRUISER" &&
-          !/\b300\b|LC300|FJA300R|GR[\-_\s]?SPORT|GR[\-_\s]?S\b/.test(text)
-        ) return false;
 
         const ls = detectListingSeries(l);
         // If we detected a specific series, it must match intent

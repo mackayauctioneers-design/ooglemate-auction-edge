@@ -310,12 +310,26 @@ function detectListingSeries(l: InternalMatch): string | null {
     if (/\b150\b|PRADO[\-_\s]?150/.test(text)) return "PRADO_150";
     return null; // Prado but unknown generation
   }
-  if (/\b7[0689]\b/.test(text) || /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]/.test(text) || /\bWORKMATE\b/.test(text) || /DOUBLE[\-_\s]?CAB|CAB[\-_\s]?CHASSIS|TROOPY|TROOPCARRIER/.test(text)) return "LC70";
-  if (/\b300\b/.test(text) || /GR[\-_\s]?SPORT|GR[\-_\s]?S\b|LC300/.test(text)) return "LC300";
-  if (/\b200\b/.test(text) || /LC200/.test(text)) return "LC200";
+  // Strong LC70 signals (explicit chassis/body codes only on 70 series)
+  if (
+    /\b7[0689]\b/.test(text) ||
+    /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]|VDJL79R|GDJL79R|TROOPY|TROOPCARRIER/.test(text) ||
+    /DOUBLE[\-_\s]?CAB|CAB[\-_\s]?CHASSIS/.test(text) ||
+    /LCMILITARY|LANDCRUISERMILITARY/.test(text)
+  ) return "LC70";
+  if (/\b300\b/.test(text) || /GR[\-_\s]?SPORT|GR[\-_\s]?S\b|LC300|FJA300R/.test(text)) return "LC300";
+  if (/\b200\b/.test(text) || /LC200|VDJ200|UZJ200/.test(text)) return "LC200";
   if (/NEXT[\-_\s]?GEN|NEXTGEN|\bV6\b|RANGER[\-_\s]?PY/.test(text)) return "RANGER_PY";
   if (/\bY62\b/.test(text)) return "PATROL_Y62";
   if (/\bY61\b|\bGU\b/.test(text)) return "PATROL_Y61";
+
+  // Year-based inference for ambiguous LandCruiser listings
+  if (text.includes("LANDCRUISER") || text.includes("LAND CRUISER")) {
+    const year = l.year;
+    if (year && year >= 2022) return "LC300";
+    if (year && year >= 2008 && year <= 2021) return "LC200";
+  }
+
   return null;
 }
 
@@ -372,20 +386,10 @@ function applySeriesGate(results: InternalMatch[], parsed: ParsedIntent): Intern
     if (intentIsLC && text.includes("PRADO")) return false;
     if (intentIsPrado && !text.includes("PRADO")) return false;
 
-    // Toyota OEM sometimes stores LC70 rows as generic LANDCRUISER/GXL with no explicit series.
-    // For explicit LC300 searches, exclude those ambiguous generic Toyota rows unless they carry a positive LC300 signal.
-    if (
-      intentSeries === "LC300" &&
-      l.source === "toyota" &&
-      (l.model || "").toUpperCase() === "LANDCRUISER" &&
-      !/\b300\b|LC300|FJA300R|GR[\-_\s]?SPORT|GR[\-_\s]?S\b/.test(text)
-    ) return false;
-
     const ls = detectListingSeries(l);
     // If we detected a specific series, it must match intent
     if (ls !== null) return ls === intentSeries;
-    // Unknown series: reject. If the user asked for a specific generation,
-    // ambiguous listings without identifiable series markers should not appear.
+    // Unknown series: reject.
     return false;
   });
 }
