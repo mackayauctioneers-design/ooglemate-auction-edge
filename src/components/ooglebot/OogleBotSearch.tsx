@@ -333,8 +333,8 @@ function mergeAllResults(
     if (isPradoIntent && !textUpper.includes("PRADO")) return false;
     const ls = detectSeriesFromText(allText);
     if (ls !== null) return ls === intentSeries;
-    // Unknown series: allow for LC (Prado already excluded), reject for Prado
-    return isLCIntent === true;
+    // Unknown series: reject. Ambiguous listings without identifiable series markers should not appear.
+    return false;
   };
 
   // Internal results

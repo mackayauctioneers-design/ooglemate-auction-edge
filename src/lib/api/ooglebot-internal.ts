@@ -310,7 +310,7 @@ function detectListingSeries(l: InternalMatch): string | null {
     if (/\b150\b|PRADO[\-_\s]?150/.test(text)) return "PRADO_150";
     return null; // Prado but unknown generation
   }
-  if (/\b7[0689]\b/.test(text) || /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]/.test(text) || /\bWORKMATE\b/.test(text)) return "LC70";
+  if (/\b7[0689]\b/.test(text) || /70[\-_\s]?SERIES|LANDCRUISER70|LC7[0689]/.test(text) || /\bWORKMATE\b/.test(text) || /DOUBLE[\-_\s]?CAB|CAB[\-_\s]?CHASSIS|TROOPY|TROOPCARRIER/.test(text)) return "LC70";
   if (/\b300\b/.test(text) || /GR[\-_\s]?SPORT|GR[\-_\s]?S\b|LC300/.test(text)) return "LC300";
   if (/\b200\b/.test(text) || /LC200/.test(text)) return "LC200";
   if (/NEXT[\-_\s]?GEN|NEXTGEN|\bV6\b|RANGER[\-_\s]?PY/.test(text)) return "RANGER_PY";
@@ -384,9 +384,9 @@ function applySeriesGate(results: InternalMatch[], parsed: ParsedIntent): Intern
     const ls = detectListingSeries(l);
     // If we detected a specific series, it must match intent
     if (ls !== null) return ls === intentSeries;
-    // Unknown series: allow through for LC intent (Prado already excluded above),
-    // but reject for Prado intent (we need positive Prado identification)
-    return intentIsLC; // unknown LC listings are likely the right generation if Prado is excluded
+    // Unknown series: reject. If the user asked for a specific generation,
+    // ambiguous listings without identifiable series markers should not appear.
+    return false;
   });
 }
 
