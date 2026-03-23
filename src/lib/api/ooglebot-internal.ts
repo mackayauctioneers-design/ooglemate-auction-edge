@@ -363,7 +363,7 @@ function applySeriesGate(results: InternalMatch[], parsed: ParsedIntent): Intern
   const intentIsPrado = intentSeries.startsWith("PRADO");
 
   return results.filter((l) => {
-    const text = [l.model, l.variant_raw, l.listing_url, l.id, (l as any).cab_type, (l as any).body_type]
+    const text = [l.model, l.variant_raw, l.listing_url, l.id]
       .filter(Boolean)
       .join(" ")
       .toUpperCase();
