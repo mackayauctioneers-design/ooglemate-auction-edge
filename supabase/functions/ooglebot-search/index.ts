@@ -411,8 +411,9 @@ Deno.serve(async (req) => {
         const ls = detectListingSeries(l);
         // If we detected a specific series, it must match intent
         if (ls !== null) return ls === intentSeries;
-        // Unknown series: allow for LC (Prado already excluded), reject for Prado
-        return intentIsLC;
+        // Unknown series: reject. If the user asked for a specific generation (LC300/LC200/LC70),
+        // ambiguous listings without identifiable series markers should not appear.
+        return false;
       });
       console.log(`Series gate (${intentSeries}): ${beforeSeries} → ${filtered.length}`);
     }

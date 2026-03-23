@@ -384,9 +384,9 @@ function applySeriesGate(results: InternalMatch[], parsed: ParsedIntent): Intern
     const ls = detectListingSeries(l);
     // If we detected a specific series, it must match intent
     if (ls !== null) return ls === intentSeries;
-    // Unknown series: allow through for LC intent (Prado already excluded above),
-    // but reject for Prado intent (we need positive Prado identification)
-    return intentIsLC; // unknown LC listings are likely the right generation if Prado is excluded
+    // Unknown series: reject. If the user asked for a specific generation,
+    // ambiguous listings without identifiable series markers should not appear.
+    return false;
   });
 }
 
