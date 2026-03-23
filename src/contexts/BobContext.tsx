@@ -48,6 +48,18 @@ export interface BobQuickAction {
   icon?: string;
 }
 
+// VALO form fill event
+export interface ValoFormFillData {
+  make?: string;
+  model?: string;
+  year?: string;
+  km?: string;
+  badge?: string;
+  condition?: string;
+  description?: string;
+  autoRun?: boolean;
+}
+
 interface BobContextValue {
   // Panel state
   isOpen: boolean;
@@ -69,6 +81,9 @@ interface BobContextValue {
   // Dealer info
   dealerProfileId: string | null;
   dealerName: string;
+
+  // VALO form fill
+  onValoFormFill: (callback: ((data: ValoFormFillData) => void) | null) => void;
 }
 
 const BobContext = createContext<BobContextValue | null>(null);
