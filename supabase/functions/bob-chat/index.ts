@@ -1025,6 +1025,8 @@ async function safeExecuteTool(funcName: string, args: any, dealerProfileId: str
         return await executeSearchMarket(args);
       case "valor_quick_appraise":
         return await executeValorQuickAppraise(args, dealerProfileId, supabase);
+      case "start_valo":
+        return executeStartValo(args);
       default:
         return { results: [], message: "No data available for that request." };
     }
