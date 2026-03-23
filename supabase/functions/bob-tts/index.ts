@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 // ElevenLabs "Callum" — mature Australian male voice, confident & professional
-const VOICE_ID = "oUbjcKlrUrhnYf9kwdmI";
+const VOICE_ID = "QLOrGSLtlFUlfQRSaOtQ";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
