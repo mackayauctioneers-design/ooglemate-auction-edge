@@ -146,6 +146,15 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ── Auto-derive series from make+model to enable generation gate ──
+  // This prevents cross-generation contamination (e.g. LC70 in LC300 searches)
+  if (!intent.series && intent.make && intent.model) {
+    intent.series = extractSeries(intent.make, intent.model);
+    if (intent.series) {
+      console.log(`[Series Gate] Auto-derived series: ${intent.series} from ${intent.make} ${intent.model}`);
+    }
+  }
+
   // ══════════════════════════════════════════════════════════
   // LAYER 1: Internal "Sales Truth" Match
   // Sources: auctions, dealer sites, VA uploads, prior scraped listings
