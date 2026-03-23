@@ -258,6 +258,27 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "start_valo",
+      description: "Fill the VALO trade-in valuation form on the current page. Use this when the dealer is on the VALO page and describes a vehicle they want to value. Extract make, model, year, km, badge/variant from their description and fill the form. If they haven't provided all details, ask for the missing ones (especially year, km, and badge). Once you have enough info, call this to populate the form and optionally auto-run the valuation.",
+      parameters: {
+        type: "object",
+        properties: {
+          make: { type: "string", description: "Vehicle make e.g. TOYOTA, HYUNDAI" },
+          model: { type: "string", description: "Vehicle model e.g. HILUX, TUCSON" },
+          year: { type: "string", description: "Year of the vehicle e.g. '2022'" },
+          km: { type: "string", description: "Kilometres e.g. '85000'" },
+          badge: { type: "string", description: "Badge/variant e.g. SR5, GXL, Active" },
+          condition: { type: "string", description: "Condition: excellent, good, fair, poor. Default 'good'" },
+          description: { type: "string", description: "Any extra notes about the vehicle" },
+          auto_run: { type: "boolean", description: "Whether to automatically run the VALO after filling the form. Set true when you have make, model, year, and km." }
+        },
+        required: ["make", "model"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "valor_quick_appraise",
       description: "Run a quick trade-in valuation. Use when a dealer describes a vehicle they need to value for a trade-in. Searches internal database and external market for the cheapest comparable, then calculates a trade guide (floor/mid/ceiling). The dealer is likely standing with a customer — be fast and direct.",
       parameters: {
