@@ -134,6 +134,15 @@ function sourceBadgeVariant(sourceClass: string | null): "default" | "secondary"
   return "outline";
 }
 
+function getVendorPressure(listing: MarketListing): { label: string; level: "low" | "medium" | "high" } | null {
+  if (listing.source_class !== "auction" || !listing.first_seen_at) return null;
+  const daysIn = Math.floor((Date.now() - new Date(listing.first_seen_at).getTime()) / (1000 * 60 * 60 * 24));
+  if (daysIn >= 21) return { label: `${daysIn}d in auction`, level: "high" };
+  if (daysIn >= 14) return { label: `${daysIn}d in auction`, level: "medium" };
+  if (daysIn >= 7) return { label: `${daysIn}d in auction`, level: "low" };
+  return null;
+}
+
 export default function FindCarsPage() {
   useDocumentTitle(0);
 
