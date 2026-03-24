@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { DealerLayout } from '@/components/layout/DealerLayout';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Trash2, Plus } from 'lucide-react';
@@ -51,7 +51,7 @@ export default function MyHuntsPage() {
   };
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="max-w-3xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -107,6 +107,6 @@ export default function MyHuntsPage() {
           </div>
         )}
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }

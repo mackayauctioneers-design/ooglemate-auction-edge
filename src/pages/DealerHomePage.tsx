@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { AppLayout } from '@/components/layout/AppLayout';
-import { Bot, Crosshair, BarChart3, Settings, ArrowRight } from 'lucide-react';
+import { DealerLayout } from '@/components/layout/DealerLayout';
+import { Bot, Crosshair, BarChart3, Car, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface SubInfo {
@@ -37,14 +37,14 @@ export default function DealerHomePage() {
   }, [user, currentUser]);
 
   const quickLinks = [
-    { to: '/ooglebot', label: 'OogleBot', icon: Bot, desc: 'Ask your AI assistant' },
+    { to: '/find-cars', label: 'Find Cars', icon: Car, desc: 'Browse market inventory' },
     { to: '/my-hunts', label: 'My Hunts', icon: Crosshair, desc: `${huntCount} active hunts` },
     { to: '/sales-upload', label: 'My Sales', icon: BarChart3, desc: 'Upload & track' },
-    { to: '/settings', label: 'Settings', icon: Settings, desc: 'Profile & billing' },
+    { to: '/ooglebot', label: 'OogleBot', icon: Bot, desc: 'Ask your AI assistant' },
   ];
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">
@@ -77,6 +77,6 @@ export default function DealerHomePage() {
           ))}
         </div>
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }
