@@ -150,8 +150,14 @@ Deno.serve(async (req) => {
     if (!scrapeRes.ok) {
       const errText = await scrapeRes.text();
       console.error("[JOSH SCRAPE] Firecrawl error:", errText);
+      const isBlocked = scrapeRes.status === 403 || errText.includes("SCRAPE_TIMEOUT");
       return new Response(
-        JSON.stringify({ success: false, error: `Scrape failed: ${scrapeRes.status}` }),
+        JSON.stringify({ 
+          success: false, 
+          error: isBlocked 
+            ? "This site blocked the scraper. Try pasting the details manually or use a different listing URL."
+            : `Scrape failed: ${scrapeRes.status}` 
+        }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
