@@ -1,6 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { DollarSign, BarChart3, FileText, LogOut, LogIn, ChevronLeft, ChevronRight, Settings, Bot, Car } from 'lucide-react';
+import { Home, BarChart3, LogOut, LogIn, ChevronLeft, ChevronRight, Settings, Bot, Car, Crosshair, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
