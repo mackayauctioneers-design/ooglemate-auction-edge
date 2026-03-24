@@ -146,11 +146,8 @@ const App = () => (
               <Route path="/" element={<RequireAuth><DealerHomePage /></RequireAuth>} />
               <Route path="/dealer-home" element={<RequireAuth><DealerHomePage /></RequireAuth>} />
               <Route path="/find-cars" element={<RequireAuth><FindCarsPage /></RequireAuth>} />
-              <Route path="/trading-desk" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
               <Route path="/sales-upload" element={<RequireAuth><SalesUploadPage /></RequireAuth>} />
               <Route path="/sales-insights" element={<RequireAuth><SalesInsightsPage /></RequireAuth>} />
-              <Route path="/deals" element={<RequireAuth><DealsPage /></RequireAuth>} />
-              <Route path="/deals/:dealId" element={<RequireAuth><DealDetailPage /></RequireAuth>} />
               <Route path="/valo" element={<RequireAuth><ValoPage /></RequireAuth>} />
               <Route path="/scan-guide" element={<RequireAuth><ScanGuidePage /></RequireAuth>} />
               <Route path="/ooglebot" element={<RequireAuth><DealerOogleBotPage /></RequireAuth>} />
@@ -232,6 +229,9 @@ const App = () => (
               <Route path="/operator/trading-desk" element={<OperatorGuard><OperatorTradingDeskPage /></OperatorGuard>} />
               <Route path="/operator/crosssafe" element={<OperatorGuard><CrossSafeMonitorPage /></OperatorGuard>} />
               <Route path="/operator/dealer-upload" element={<OperatorGuard><OperatorDealerUploadPage /></OperatorGuard>} />
+              <Route path="/operator/deals" element={<OperatorGuard><DealsPage /></OperatorGuard>} />
+              <Route path="/operator/deals/:dealId" element={<OperatorGuard><DealDetailPage /></OperatorGuard>} />
+              <Route path="/trading-desk" element={<OperatorGuard><TradingDeskPage /></OperatorGuard>} />
               <Route path="/operator/manual-intake" element={<OperatorGuard><ManualIntakePage /></OperatorGuard>} />
               <Route path="/operator/ooglebot" element={<OperatorGuard><OogleBotPage /></OperatorGuard>} />
               <Route path="/operator/alerts-matches" element={<OperatorGuard><AlertsMatchesPage /></OperatorGuard>} />
