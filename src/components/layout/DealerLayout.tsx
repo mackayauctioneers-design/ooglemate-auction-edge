@@ -49,7 +49,7 @@ export function DealerLayout({ children }: DealerLayoutProps) {
                 <span className="font-semibold text-foreground text-sm">Carbitrage</span>
               )}
             </div>
-            {!collapsed && user && <NotificationBell />}
+            {user && <NotificationBell />}
           </div>
 
           {/* Nav */}
