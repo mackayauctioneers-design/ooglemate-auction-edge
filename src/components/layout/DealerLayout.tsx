@@ -1,6 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { DollarSign, BarChart3, FileText, LogOut, LogIn, ChevronLeft, ChevronRight, Settings, Bot, Car } from 'lucide-react';
+import { Home, BarChart3, LogOut, LogIn, ChevronLeft, ChevronRight, Settings, Bot, Car, Crosshair, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -9,11 +9,12 @@ import { AuthModal } from '@/components/auth/AuthModal';
 import { BobPanel } from '@/components/bob/BobPanel';
 
 const dealerNav = [
+  { path: '/dealer-home', label: 'Home', icon: Home },
   { path: '/find-cars', label: 'Find Cars', icon: Car },
-  { path: '/ooglebot', label: 'OogleBot', icon: Bot },
-  { path: '/trading-desk', label: 'Trading Desk', icon: DollarSign },
+  { path: '/my-hunts', label: 'My Hunts', icon: Crosshair },
+  { path: '/valo', label: 'Do A Valo', icon: Sparkles },
   { path: '/sales-upload', label: 'My Sales', icon: BarChart3 },
-  { path: '/deals', label: 'Transparency Ledger', icon: FileText },
+  { path: '/ooglebot', label: 'OogleBot', icon: Bot },
 ];
 
 interface DealerLayoutProps {
