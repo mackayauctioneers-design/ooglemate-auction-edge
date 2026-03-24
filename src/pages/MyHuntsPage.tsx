@@ -58,7 +58,7 @@ export default function MyHuntsPage() {
             <h1 className="text-2xl font-bold text-foreground">My Hunts</h1>
             <p className="text-sm text-muted-foreground">{hunts.length} hunt{hunts.length !== 1 ? 's' : ''}</p>
           </div>
-          <Link to="/trading-desk">
+          <Link to="/find-cars">
             <Button size="sm">
               <Plus className="h-4 w-4 mr-1" /> New Hunt
             </Button>
@@ -70,7 +70,7 @@ export default function MyHuntsPage() {
         ) : hunts.length === 0 ? (
           <div className="text-center py-16 border border-dashed border-border rounded-xl">
             <p className="text-muted-foreground mb-3">No hunts yet</p>
-            <Link to="/trading-desk">
+            <Link to="/find-cars">
               <Button variant="outline">Create your first hunt</Button>
             </Link>
           </div>
