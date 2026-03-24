@@ -145,6 +145,7 @@ const App = () => (
               {/* === DEALER ROUTES === */}
               <Route path="/" element={<RequireAuth><DealerHomePage /></RequireAuth>} />
               <Route path="/dealer-home" element={<RequireAuth><DealerHomePage /></RequireAuth>} />
+              <Route path="/find-cars" element={<RequireAuth><FindCarsPage /></RequireAuth>} />
               <Route path="/trading-desk" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
               <Route path="/sales-upload" element={<RequireAuth><SalesUploadPage /></RequireAuth>} />
               <Route path="/sales-insights" element={<RequireAuth><SalesInsightsPage /></RequireAuth>} />
