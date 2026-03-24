@@ -135,7 +135,7 @@ export default function FindCarsPage() {
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ["find-cars", appliedFilters, page],
     queryFn: () => searchMarketListings(appliedFilters, page),
-    placeholderData: (prev) => prev,
+    placeholderData: (prev: typeof data) => prev,
   });
 
   const listings = data?.listings || [];
