@@ -278,6 +278,7 @@ export default function FindCarsPage() {
                       <SelectItem key={b} value={b}>{b}</SelectItem>
                     ))}
                   </SelectContent>
+                </Select>
                 <Select value={filters.sortBy} onValueChange={(v) => updateFilter("sortBy", v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Sort by" />
