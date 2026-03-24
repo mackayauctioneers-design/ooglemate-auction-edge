@@ -50,6 +50,7 @@ interface Filters {
   priceMax: string;
   state: string;
   sourceClass: string;
+  priceBadge: string;
   sortBy: string;
 }
 
