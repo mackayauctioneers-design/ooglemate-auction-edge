@@ -229,6 +229,9 @@ const App = () => (
               <Route path="/operator/trading-desk" element={<OperatorGuard><OperatorTradingDeskPage /></OperatorGuard>} />
               <Route path="/operator/crosssafe" element={<OperatorGuard><CrossSafeMonitorPage /></OperatorGuard>} />
               <Route path="/operator/dealer-upload" element={<OperatorGuard><OperatorDealerUploadPage /></OperatorGuard>} />
+              <Route path="/operator/deals" element={<OperatorGuard><DealsPage /></OperatorGuard>} />
+              <Route path="/operator/deals/:dealId" element={<OperatorGuard><DealDetailPage /></OperatorGuard>} />
+              <Route path="/trading-desk" element={<OperatorGuard><TradingDeskPage /></OperatorGuard>} />
               <Route path="/operator/manual-intake" element={<OperatorGuard><ManualIntakePage /></OperatorGuard>} />
               <Route path="/operator/ooglebot" element={<OperatorGuard><OogleBotPage /></OperatorGuard>} />
               <Route path="/operator/alerts-matches" element={<OperatorGuard><AlertsMatchesPage /></OperatorGuard>} />
