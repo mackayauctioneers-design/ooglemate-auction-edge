@@ -54,6 +54,13 @@ interface Filters {
   sortBy: string;
 }
 
+const PRICE_BADGES = [
+  "Well Below Market",
+  "Below Market",
+  "Fair Price",
+  "Above Market",
+];
+
 const defaultFilters: Filters = {
   make: "",
   model: "",
@@ -63,6 +70,7 @@ const defaultFilters: Filters = {
   priceMax: "",
   state: "all",
   sourceClass: "all",
+  priceBadge: "all",
   sortBy: "recent",
 };
 
