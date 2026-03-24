@@ -90,6 +90,7 @@ async function searchMarketListings(filters: Filters, page: number) {
   if (filters.priceMax) q = q.lte("asking_price", parseInt(filters.priceMax));
   if (filters.state !== "all") q = q.eq("state", filters.state);
   if (filters.sourceClass !== "all") q = q.eq("source_class", filters.sourceClass);
+  if (filters.priceBadge !== "all") q = q.ilike("price_badge", `${filters.priceBadge}%`);
 
   // Sort
   if (filters.sortBy === "price_asc") {
