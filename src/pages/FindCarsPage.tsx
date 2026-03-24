@@ -125,7 +125,7 @@ function sourceBadgeVariant(sourceClass: string | null): "default" | "secondary"
 }
 
 export default function FindCarsPage() {
-  useDocumentTitle("Find Cars | Carbitrage");
+  useDocumentTitle(0);
 
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState<Filters>(defaultFilters);
