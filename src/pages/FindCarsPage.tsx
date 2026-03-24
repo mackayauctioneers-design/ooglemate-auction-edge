@@ -268,6 +268,16 @@ export default function FindCarsPage() {
                     <SelectItem value="retail">Retail Only</SelectItem>
                   </SelectContent>
                 </Select>
+                <Select value={filters.priceBadge} onValueChange={(v) => updateFilter("priceBadge", v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Price Badge" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Badges</SelectItem>
+                    {PRICE_BADGES.map((b) => (
+                      <SelectItem key={b} value={b}>{b}</SelectItem>
+                    ))}
+                  </SelectContent>
                 <Select value={filters.sortBy} onValueChange={(v) => updateFilter("sortBy", v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Sort by" />
