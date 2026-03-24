@@ -171,6 +171,8 @@ Deno.serve(async (req) => {
 
     if (LOVABLE_API_KEY) {
       try {
+        const aiController = new AbortController();
+        const aiTimeout = setTimeout(() => aiController.abort(), 12000);
         const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -178,14 +180,16 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
+            model: "google/gemini-2.5-flash-lite",
             messages: [
               { role: "system", content: EXTRACTION_PROMPT },
-              { role: "user", content: `Webpage content:\n${markdown.slice(0, 8000)}` },
+              { role: "user", content: `Webpage content:\n${markdown.slice(0, 4000)}` },
             ],
             temperature: 0.1,
           }),
+          signal: aiController.signal,
         });
+        clearTimeout(aiTimeout);
 
         if (aiRes.ok) {
           const aiData = await aiRes.json();
