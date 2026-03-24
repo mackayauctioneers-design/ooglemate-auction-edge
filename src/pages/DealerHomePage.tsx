@@ -44,7 +44,7 @@ export default function DealerHomePage() {
   ];
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">
