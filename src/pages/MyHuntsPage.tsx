@@ -376,10 +376,7 @@ export default function MyHuntsPage() {
     setScanningHunts(prev => { const n = new Set(prev); n.delete(hunt.id); return n; });
   };
 
-  const toggleSource = (_source: string) => {
-    // No-op: all sources always enabled
-    );
-  };
+  // toggleSource removed - all sources always enabled
 
   const toggleState = (state: string) => {
     setSelectedStates(prev =>
