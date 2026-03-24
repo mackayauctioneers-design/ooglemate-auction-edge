@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Loader2, ExternalLink, X, SlidersHorizontal, Car } from "lucide-react";
+import { Search, Loader2, ExternalLink, X, SlidersHorizontal, Car, AlertTriangle } from "lucide-react";
 import { DealerLayout } from "@/components/layout/DealerLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,8 +50,16 @@ interface Filters {
   priceMax: string;
   state: string;
   sourceClass: string;
+  priceBadge: string;
   sortBy: string;
 }
+
+const PRICE_BADGES = [
+  "Well Below Market",
+  "Below Market",
+  "Fair Price",
+  "Above Market",
+];
 
 const defaultFilters: Filters = {
   make: "",
@@ -62,6 +70,7 @@ const defaultFilters: Filters = {
   priceMax: "",
   state: "all",
   sourceClass: "all",
+  priceBadge: "all",
   sortBy: "recent",
 };
 
@@ -81,6 +90,7 @@ async function searchMarketListings(filters: Filters, page: number) {
   if (filters.priceMax) q = q.lte("asking_price", parseInt(filters.priceMax));
   if (filters.state !== "all") q = q.eq("state", filters.state);
   if (filters.sourceClass !== "all") q = q.eq("source_class", filters.sourceClass);
+  if (filters.priceBadge !== "all") q = q.ilike("price_badge", `${filters.priceBadge}%`);
 
   // Sort
   if (filters.sortBy === "price_asc") {
@@ -122,6 +132,15 @@ function sourceBadgeVariant(sourceClass: string | null): "default" | "secondary"
   if (sourceClass === "auction") return "default";
   if (sourceClass === "retail") return "secondary";
   return "outline";
+}
+
+function getVendorPressure(listing: MarketListing): { label: string; level: "low" | "medium" | "high" } | null {
+  if (listing.source_class !== "auction" || !listing.first_seen_at) return null;
+  const daysIn = Math.floor((Date.now() - new Date(listing.first_seen_at).getTime()) / (1000 * 60 * 60 * 24));
+  if (daysIn >= 21) return { label: `${daysIn}d in auction`, level: "high" };
+  if (daysIn >= 14) return { label: `${daysIn}d in auction`, level: "medium" };
+  if (daysIn >= 7) return { label: `${daysIn}d in auction`, level: "low" };
+  return null;
 }
 
 export default function FindCarsPage() {
@@ -258,6 +277,17 @@ export default function FindCarsPage() {
                     <SelectItem value="retail">Retail Only</SelectItem>
                   </SelectContent>
                 </Select>
+                <Select value={filters.priceBadge} onValueChange={(v) => updateFilter("priceBadge", v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Price Badge" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Badges</SelectItem>
+                    {PRICE_BADGES.map((b) => (
+                      <SelectItem key={b} value={b}>{b}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Select value={filters.sortBy} onValueChange={(v) => updateFilter("sortBy", v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Sort by" />
@@ -318,6 +348,25 @@ export default function FindCarsPage() {
                               {l.price_badge}
                             </Badge>
                           )}
+                          {(() => {
+                            const pressure = getVendorPressure(l);
+                            if (!pressure) return null;
+                            return (
+                              <Badge
+                                variant="outline"
+                                className={
+                                  pressure.level === "high"
+                                    ? "border-destructive text-destructive bg-destructive/10"
+                                    : pressure.level === "medium"
+                                    ? "border-orange-500 text-orange-600 bg-orange-50 dark:bg-orange-950/30"
+                                    : "border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/30"
+                                }
+                              >
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                {pressure.label}
+                              </Badge>
+                            );
+                          })()}
                         </div>
                         {l.variant_raw && (
                           <p className="text-sm text-muted-foreground mt-0.5 truncate">{l.variant_raw}</p>
