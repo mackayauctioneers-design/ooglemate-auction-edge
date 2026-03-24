@@ -1,6 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { DollarSign, BarChart3, FileText, LogOut, LogIn, ChevronLeft, ChevronRight, Settings, Bot } from 'lucide-react';
+import { DollarSign, BarChart3, FileText, LogOut, LogIn, ChevronLeft, ChevronRight, Settings, Bot, Car } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -9,6 +9,7 @@ import { AuthModal } from '@/components/auth/AuthModal';
 import { BobPanel } from '@/components/bob/BobPanel';
 
 const dealerNav = [
+  { path: '/find-cars', label: 'Find Cars', icon: Car },
   { path: '/ooglebot', label: 'OogleBot', icon: Bot },
   { path: '/trading-desk', label: 'Trading Desk', icon: DollarSign },
   { path: '/sales-upload', label: 'My Sales', icon: BarChart3 },
