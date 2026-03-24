@@ -70,7 +70,7 @@ export default function MyHuntsPage() {
         ) : hunts.length === 0 ? (
           <div className="text-center py-16 border border-dashed border-border rounded-xl">
             <p className="text-muted-foreground mb-3">No hunts yet</p>
-            <Link to="/trading-desk">
+            <Link to="/find-cars">
               <Button variant="outline">Create your first hunt</Button>
             </Link>
           </div>
