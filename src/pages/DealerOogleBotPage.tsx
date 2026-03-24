@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { DealerLayout } from "@/components/layout/DealerLayout";
 import { OogleBotSearch } from "@/components/ooglebot/OogleBotSearch";
 import { Bot } from "lucide-react";
 
