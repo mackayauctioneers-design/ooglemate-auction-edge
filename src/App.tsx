@@ -146,11 +146,8 @@ const App = () => (
               <Route path="/" element={<RequireAuth><DealerHomePage /></RequireAuth>} />
               <Route path="/dealer-home" element={<RequireAuth><DealerHomePage /></RequireAuth>} />
               <Route path="/find-cars" element={<RequireAuth><FindCarsPage /></RequireAuth>} />
-              <Route path="/trading-desk" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
               <Route path="/sales-upload" element={<RequireAuth><SalesUploadPage /></RequireAuth>} />
               <Route path="/sales-insights" element={<RequireAuth><SalesInsightsPage /></RequireAuth>} />
-              <Route path="/deals" element={<RequireAuth><DealsPage /></RequireAuth>} />
-              <Route path="/deals/:dealId" element={<RequireAuth><DealDetailPage /></RequireAuth>} />
               <Route path="/valo" element={<RequireAuth><ValoPage /></RequireAuth>} />
               <Route path="/scan-guide" element={<RequireAuth><ScanGuidePage /></RequireAuth>} />
               <Route path="/ooglebot" element={<RequireAuth><DealerOogleBotPage /></RequireAuth>} />
