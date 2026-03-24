@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
   );
 
   try {
-    const { listing_id } = await req.json();
+    const { listing_id, account_id } = await req.json();
     if (!listing_id) {
       return new Response(
         JSON.stringify({ error: "listing_id is required" }),
