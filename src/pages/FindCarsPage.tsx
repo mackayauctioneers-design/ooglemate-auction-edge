@@ -348,6 +348,25 @@ export default function FindCarsPage() {
                               {l.price_badge}
                             </Badge>
                           )}
+                          {(() => {
+                            const pressure = getVendorPressure(l);
+                            if (!pressure) return null;
+                            return (
+                              <Badge
+                                variant="outline"
+                                className={
+                                  pressure.level === "high"
+                                    ? "border-destructive text-destructive bg-destructive/10"
+                                    : pressure.level === "medium"
+                                    ? "border-orange-500 text-orange-600 bg-orange-50 dark:bg-orange-950/30"
+                                    : "border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/30"
+                                }
+                              >
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                {pressure.label}
+                              </Badge>
+                            );
+                          })()}
                         </div>
                         {l.variant_raw && (
                           <p className="text-sm text-muted-foreground mt-0.5 truncate">{l.variant_raw}</p>
