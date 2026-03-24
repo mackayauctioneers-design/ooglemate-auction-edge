@@ -56,15 +56,9 @@ Deno.serve(async (req) => {
       if (trimClass) {
         updates.push({ id: row.id, trim_class: trimClass, badge: extracted.badge });
       } else {
-        // For records with no variant text and no badge, derive from model
-        // e.g. "BMW X3" → trim_class = "BASE"
-        // But only if we have a variant to parse
-        skipped.push({
-          id: row.id,
-          make: row.make,
-          model: row.model,
-          variant: row.variant,
-        });
+        // Assign "BASE" for records with no extractable badge
+        // This lets the scoring engine match on platform_class without trim gating
+        updates.push({ id: row.id, trim_class: "BASE", badge: null });
       }
     }
 
