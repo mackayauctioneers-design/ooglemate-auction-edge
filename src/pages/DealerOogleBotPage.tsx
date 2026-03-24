@@ -19,6 +19,6 @@ export default function DealerOogleBotPage() {
 
         <OogleBotSearch />
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }

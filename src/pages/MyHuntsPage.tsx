@@ -107,6 +107,6 @@ export default function MyHuntsPage() {
           </div>
         )}
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }

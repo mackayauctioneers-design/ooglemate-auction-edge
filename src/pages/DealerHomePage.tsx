@@ -77,6 +77,6 @@ export default function DealerHomePage() {
           ))}
         </div>
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }
