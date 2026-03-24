@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { DealerLayout } from '@/components/layout/DealerLayout';
-import { Bot, Crosshair, BarChart3, Settings, ArrowRight } from 'lucide-react';
+import { Bot, Crosshair, BarChart3, Car, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface SubInfo {
