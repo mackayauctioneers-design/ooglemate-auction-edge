@@ -967,104 +967,91 @@ async function executeValorQuickAppraise(params: any, dealerProfileId: string, s
   const year = params.year || null;
   const km = params.km || null;
 
-  // Step 1: Search internal DB for comparables
-  const internalParams: any = { make, limit: 10 };
-  if (model) internalParams.model = model;
-  if (year) { internalParams.year_min = year - 2; internalParams.year_max = year + 1; }
-  if (km) internalParams.km_max = Math.round(km * 1.5);
+  // Build the same instruction string the VALO form would use
+  const parts = [year, make, model, variant].filter(Boolean);
+  const instruction = parts.join(" ");
 
-  const internalResult = await executeSearchVehicles(internalParams, dealerProfileId, supabase);
-  const internalListings = internalResult?.results || [];
-
-  // Step 2: Search external market for cheapest comparable
-  const yearStr = year ? `${year}` : "";
-  const kmStr = km ? `under ${Math.round(km * 1.3).toLocaleString()} km` : "";
-  const marketQuery = `cheapest ${yearStr} ${make} ${model} ${variant || ""} for sale Australia ${kmStr} price`.trim();
-
-  const marketResult = await executeSearchMarket({ query: marketQuery });
-
-  // Step 3: Find cheapest price from internal source
-  let cheapestInternal = null;
-  let cheapestInternalPrice = Infinity;
-  for (const listing of internalListings) {
-    if (listing.price && listing.price < cheapestInternalPrice) {
-      cheapestInternalPrice = listing.price;
-      cheapestInternal = listing;
-    }
+  // Look up the dealer's account_id from their profile
+  let accountId: string | null = null;
+  if (dealerProfileId) {
+    const { data: profile } = await supabase
+      .from("dealer_profiles")
+      .select("account_id")
+      .eq("id", dealerProfileId)
+      .maybeSingle();
+    accountId = profile?.account_id ?? null;
   }
 
-  // Step 4: Extract cheapest price from market search text
-  // Parse dollar amounts from the Perplexity response to find the actual cheapest
-  let cheapestMarketPrice = Infinity;
-  let cheapestMarketSource = "";
-  const marketText = marketResult.summary || "";
-  const priceMatches = marketText.match(/\$([\d,]+)/g) || [];
-  const parsedPrices = priceMatches
-    .map((p: string) => parseInt(p.replace(/[$,]/g, ""), 10))
-    .filter((p: number) => !isNaN(p) && p > 5000 && p < 500000); // Reasonable car price range
+  // Call run-valo-v1 — the SAME pipeline the Do A Valo form uses
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-  if (parsedPrices.length > 0) {
-    cheapestMarketPrice = Math.min(...parsedPrices);
-    cheapestMarketSource = "retail market (Carsales/AutoTrader/Drive)";
-  }
+  try {
+    const valoResp = await fetch(`${supabaseUrl}/functions/v1/run-valo-v1`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({
+        instruction,
+        km: km ?? undefined,
+        account_id: accountId,
+        initiated_by: "bob_chat",
+        full_market_scan: true,
+        filters: variant ? { variant } : undefined,
+      }),
+    });
 
-  // Step 5: Determine the cheapest comparable from ALL sources
-  let anchorPrice: number | null = null;
-  let anchorSource = "";
-
-  if (cheapestInternalPrice < Infinity && cheapestMarketPrice < Infinity) {
-    // Use whichever is cheaper
-    if (cheapestInternalPrice <= cheapestMarketPrice) {
-      anchorPrice = cheapestInternalPrice;
-      anchorSource = cheapestInternal?.source || "internal";
+    if (!valoResp.ok) {
+      const errText = await valoResp.text();
+      console.error("Bob→VALO call failed:", valoResp.status, errText);
+      // Fall through to fallback below
     } else {
-      anchorPrice = cheapestMarketPrice;
-      anchorSource = cheapestMarketSource;
+      const valoData = await valoResp.json();
+
+      // Extract the cheapest_trade_guide from the VALO result
+      const ctg = valoData.cheapest_trade_guide;
+      const anchor = valoData.anchor;
+      const compCount = valoData.comp_count ?? 0;
+
+      if (ctg && ctg.anchor_price) {
+        return {
+          vehicle_description: `${year || ""} ${make} ${model} ${variant || ""}`.trim(),
+          km,
+          anchor_price: ctg.anchor_price,
+          anchor_source: ctg.anchor_source ?? "market",
+          anchor_location: ctg.anchor_location ?? null,
+          anchor_year: ctg.anchor_year ?? null,
+          anchor_km: ctg.anchor_km ?? null,
+          trade_guide: {
+            floor: ctg.floor,
+            mid: ctg.mid,
+            ceiling: ctg.ceiling,
+          },
+          comp_count: compCount,
+          confidence: valoData.confidence ?? "UNKNOWN",
+          instructions: `CRITICAL: Use EXACTLY these pre-calculated numbers. Do NOT recalculate or adjust them.
+             Cheapest comparable: $${ctg.anchor_price.toLocaleString()} (${ctg.anchor_source}${ctg.anchor_location ? ", " + ctg.anchor_location : ""}${ctg.anchor_year ? " — " + ctg.anchor_year : ""}${ctg.anchor_km != null ? ", " + Math.round(ctg.anchor_km / 1000) + "k km" : ""})
+             Trade guide: Floor $${ctg.floor.toLocaleString()} / Mid $${ctg.mid.toLocaleString()} / Ceiling $${ctg.ceiling.toLocaleString()}
+             Confidence: ${valoData.confidence ?? "UNKNOWN"} (${compCount} comps)
+             Present as: "${year || ""} ${make} ${model} — cheapest comparable is $${ctg.anchor_price.toLocaleString()} at ${ctg.anchor_source}. Trade guide: $${ctg.floor.toLocaleString()} floor / $${ctg.mid.toLocaleString()} mid / $${ctg.ceiling.toLocaleString()} ceiling."
+             Add one sentence of market context. Do NOT change the numbers.`,
+        };
+      }
     }
-  } else if (cheapestInternalPrice < Infinity) {
-    anchorPrice = cheapestInternalPrice;
-    anchorSource = cheapestInternal?.source || "internal";
-  } else if (cheapestMarketPrice < Infinity) {
-    anchorPrice = cheapestMarketPrice;
-    anchorSource = cheapestMarketSource;
+  } catch (err) {
+    console.error("Bob→VALO call error:", err);
   }
 
-  // Step 6: CALCULATE trade guide in code — never let the LLM do maths
-  let tradeGuide: { floor: number; mid: number; ceiling: number } | null = null;
-  if (anchorPrice) {
-    tradeGuide = {
-      floor: Math.round(anchorPrice * 0.80 / 100) * 100,    // 20% margin, rounded to nearest $100
-      mid: Math.round(anchorPrice * 0.85 / 100) * 100,      // 15% margin
-      ceiling: Math.round(anchorPrice * 0.90 / 100) * 100,  // 10% margin
-    };
-  }
-
+  // Fallback: couldn't get VALO result
   return {
     vehicle_description: `${year || ""} ${make} ${model} ${variant || ""}`.trim(),
-    km: km,
-    // ── PRE-CALCULATED NUMBERS — Bob must use these exactly, no recalculation ──
-    anchor_price: anchorPrice,
-    anchor_source: anchorSource,
-    trade_guide: tradeGuide,
-    // Context data
-    internal_cheapest: cheapestInternal ? {
-      price: cheapestInternal.price,
-      year: cheapestInternal.year,
-      km: cheapestInternal.km,
-      source: cheapestInternal.source,
-      location: cheapestInternal.location,
-    } : null,
-    market_cheapest_price: cheapestMarketPrice < Infinity ? cheapestMarketPrice : null,
-    market_summary: marketResult.summary,
-    market_citations: (marketResult.citations || []).slice(0, 5),
-    // Strict instructions for the LLM
-    instructions: tradeGuide
-      ? `CRITICAL: Use EXACTLY these pre-calculated numbers. Do NOT recalculate or adjust them.
-         Cheapest comparable: $${anchorPrice!.toLocaleString()} (${anchorSource})
-         Trade guide: Floor $${tradeGuide.floor.toLocaleString()} / Mid $${tradeGuide.mid.toLocaleString()} / Ceiling $${tradeGuide.ceiling.toLocaleString()}
-         Present as: "${year || ""} ${make} ${model} — cheapest comparable is $${anchorPrice!.toLocaleString()} at ${anchorSource}. Trade guide: $${tradeGuide.floor.toLocaleString()} floor / $${tradeGuide.mid.toLocaleString()} mid / $${tradeGuide.ceiling.toLocaleString()} ceiling."
-         Add one sentence of market context from the search results. Do NOT change the numbers.`
-      : `Could not find a comparable price. Tell the dealer you couldn't find enough market data for a reliable guide and suggest they check Carsales directly.`,
+    km,
+    anchor_price: null,
+    anchor_source: null,
+    trade_guide: null,
+    instructions: `Could not find a comparable price. Tell the dealer you couldn't find enough market data for a reliable guide and suggest they use the Do A Valo form for a full valuation.`,
   };
 }
 
