@@ -58,7 +58,7 @@ export default function MyHuntsPage() {
             <h1 className="text-2xl font-bold text-foreground">My Hunts</h1>
             <p className="text-sm text-muted-foreground">{hunts.length} hunt{hunts.length !== 1 ? 's' : ''}</p>
           </div>
-          <Link to="/trading-desk">
+          <Link to="/find-cars">
             <Button size="sm">
               <Plus className="h-4 w-4 mr-1" /> New Hunt
             </Button>
