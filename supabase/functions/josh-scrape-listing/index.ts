@@ -16,6 +16,7 @@ function detectSource(url: string): string {
   if (url.includes("pickles.com.au")) return "pickles";
   if (url.includes("manheim.com.au")) return "manheim";
   if (url.includes("grays.com")) return "grays";
+  if (url.includes("facebook.com") || url.includes("fb.com")) return "fbmarketplace";
   return "dealer";
 }
 
@@ -23,20 +24,35 @@ function detectSource(url: string): string {
 function extractListingId(url: string, source: string): string {
   try {
     const u = new URL(url);
-    // Carsales: /cars/details/.../{ID}/
     if (source === "carsales") {
       const match = u.pathname.match(/(OAG-AD-\d+|SSE-AD-\d+)/);
       if (match) return match[1];
     }
-    // Autotrader: /car/.../{ID}
     if (source === "autotrader") {
       const match = u.pathname.match(/\/(\d{5,})/);
       if (match) return `AT-${match[1]}`;
     }
-    // Fallback: hash of URL
     return `MANUAL-${btoa(u.pathname).slice(0, 20)}`;
   } catch {
     return `MANUAL-${Date.now()}`;
+  }
+}
+
+// Try to parse car details from a Carsales URL path
+function parseFromCarsalesUrl(url: string): Record<string, unknown> | null {
+  try {
+    const u = new URL(url);
+    // /cars/details/2025-toyota-landcruiser-gxl-manual-4x4-double-cab/OAG-AD-25685749/
+    const match = u.pathname.match(/\/cars\/details\/(\d{4})-([a-z]+)-([a-z0-9-]+)\//i);
+    if (!match) return null;
+    const year = parseInt(match[1]);
+    const make = match[2].charAt(0).toUpperCase() + match[2].slice(1);
+    const modelParts = match[3].split("-");
+    const model = modelParts[0].charAt(0).toUpperCase() + modelParts[0].slice(1);
+    const variant = modelParts.length > 1 ? modelParts.slice(1).join(" ").toUpperCase() : null;
+    return { year, make, model, variant };
+  } catch {
+    return null;
   }
 }
 
@@ -72,7 +88,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate URL format
     let cleanUrl = url.trim();
     if (!cleanUrl.startsWith("http")) cleanUrl = `https://${cleanUrl}`;
     try { new URL(cleanUrl); } catch {
@@ -85,7 +100,6 @@ Deno.serve(async (req) => {
     const source = detectSource(cleanUrl);
     const listingId = extractListingId(cleanUrl, source);
 
-    // Init Supabase
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -108,127 +122,168 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Scrape with Firecrawl
-    const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
-    if (!firecrawlKey) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Firecrawl not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    console.log(`[JOSH SCRAPE] Scraping: ${cleanUrl}`);
-    const scrapeController = new AbortController();
-    const scrapeTimeout = setTimeout(() => scrapeController.abort(), 20000);
-    let scrapeRes: Response;
-    try {
-      scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${firecrawlKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          url: cleanUrl,
-          formats: ["markdown"],
-          onlyMainContent: true,
-          waitFor: 5000,
-          timeout: 15000,
-        }),
-        signal: scrapeController.signal,
-      });
-    } catch (e) {
-      clearTimeout(scrapeTimeout);
-      console.error("[JOSH SCRAPE] Firecrawl timeout/abort:", e);
-      return new Response(
-        JSON.stringify({ success: false, error: "Scrape timed out — try again or use a different URL" }),
-        { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    clearTimeout(scrapeTimeout);
-
-    if (!scrapeRes.ok) {
-      const errText = await scrapeRes.text();
-      console.error("[JOSH SCRAPE] Firecrawl error:", errText);
-      const isBlocked = scrapeRes.status === 403 || errText.includes("SCRAPE_TIMEOUT");
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: isBlocked 
-            ? "This site blocked the scraper. Try pasting the details manually or use a different listing URL."
-            : `Scrape failed: ${scrapeRes.status}` 
-        }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const scrapeData = await scrapeRes.json();
-    const markdown = scrapeData?.data?.markdown || scrapeData?.markdown || "";
-
-    if (!markdown || markdown.length < 50) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Could not extract content from page" }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Use Lovable AI gateway to extract structured data
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     let extracted: Record<string, unknown> = {};
+    let marketPrice: number | null = null;
+    let discountPct: number | null = null;
 
-    if (LOVABLE_API_KEY) {
+    // ─── Strategy 1: DB lookup for Carsales/Autotrader (we already crawl these) ───
+    if (source === "carsales" || source === "autotrader") {
+      console.log(`[JOSH SCRAPE] DB lookup for ${source} listing: ${listingId}`);
+
+      // Try vehicle_listings first
+      const { data: dbListing } = await supabase
+        .from("vehicle_listings")
+        .select("make, model, variant_used, year, km, asking_price, location, seller_type, listing_url, source")
+        .or(`listing_id.eq.${listingId},listing_url.ilike.%${listingId}%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (dbListing) {
+        console.log(`[JOSH SCRAPE] Found in vehicle_listings: ${dbListing.make} ${dbListing.model}`);
+        extracted = {
+          make: dbListing.make,
+          model: dbListing.model,
+          variant: dbListing.variant_used,
+          year: dbListing.year,
+          km: dbListing.km,
+          price: dbListing.asking_price,
+          location: dbListing.location,
+          seller_type: dbListing.seller_type || "Unknown",
+        };
+      } else {
+        // Parse from URL as fallback for Carsales
+        if (source === "carsales") {
+          const urlParsed = parseFromCarsalesUrl(cleanUrl);
+          if (urlParsed) {
+            console.log(`[JOSH SCRAPE] Parsed from URL: ${JSON.stringify(urlParsed)}`);
+            extracted = urlParsed;
+          }
+        }
+
+        if (!extracted.make) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: `Listing not found in our database yet. It may not have been crawled. Try again later or paste details manually.`,
+            }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+    }
+    // ─── Strategy 2: Firecrawl for other sites ───
+    else {
+      const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
+      if (!firecrawlKey) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Scraping not configured for this site" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log(`[JOSH SCRAPE] Firecrawl scraping: ${cleanUrl}`);
+      const scrapeController = new AbortController();
+      const scrapeTimeout = setTimeout(() => scrapeController.abort(), 20000);
+      let scrapeRes: Response;
       try {
-        const aiController = new AbortController();
-        const aiTimeout = setTimeout(() => aiController.abort(), 12000);
-        const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            Authorization: `Bearer ${firecrawlKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash-lite",
-            messages: [
-              { role: "system", content: EXTRACTION_PROMPT },
-              { role: "user", content: `Webpage content:\n${markdown.slice(0, 4000)}` },
-            ],
-            temperature: 0.1,
+            url: cleanUrl,
+            formats: ["markdown"],
+            onlyMainContent: true,
+            waitFor: 5000,
+            timeout: 15000,
           }),
-          signal: aiController.signal,
+          signal: scrapeController.signal,
         });
-        clearTimeout(aiTimeout);
-
-        if (aiRes.ok) {
-          const aiData = await aiRes.json();
-          const text = aiData?.choices?.[0]?.message?.content || "";
-          console.log("[JOSH SCRAPE] AI extraction response:", text.slice(0, 500));
-          // Extract JSON from response
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            extracted = JSON.parse(jsonMatch[0]);
-          }
-        } else {
-          const errText = await aiRes.text();
-          console.error("[JOSH SCRAPE] AI gateway error:", aiRes.status, errText);
-        }
       } catch (e) {
-        console.error("[JOSH SCRAPE] AI extraction failed:", e);
+        clearTimeout(scrapeTimeout);
+        console.error("[JOSH SCRAPE] Firecrawl timeout/abort:", e);
+        return new Response(
+          JSON.stringify({ success: false, error: "Scrape timed out — try again or use a different URL" }),
+          { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
-    } else {
-      console.error("[JOSH SCRAPE] LOVABLE_API_KEY not configured");
+      clearTimeout(scrapeTimeout);
+
+      if (!scrapeRes.ok) {
+        const errText = await scrapeRes.text();
+        console.error("[JOSH SCRAPE] Firecrawl error:", errText);
+        const isBlocked = scrapeRes.status === 403 || errText.includes("SCRAPE_TIMEOUT") || errText.includes("do not support");
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: isBlocked
+              ? "This site blocked the scraper. Try a Carsales or Autotrader link instead."
+              : `Scrape failed: ${scrapeRes.status}`,
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const scrapeData = await scrapeRes.json();
+      const markdown = scrapeData?.data?.markdown || scrapeData?.markdown || "";
+
+      if (!markdown || markdown.length < 50) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Could not extract content from page" }),
+          { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Use AI to extract structured data
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      if (LOVABLE_API_KEY) {
+        try {
+          const aiController = new AbortController();
+          const aiTimeout = setTimeout(() => aiController.abort(), 12000);
+          const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash-lite",
+              messages: [
+                { role: "system", content: EXTRACTION_PROMPT },
+                { role: "user", content: `Webpage content:\n${markdown.slice(0, 4000)}` },
+              ],
+              temperature: 0.1,
+            }),
+            signal: aiController.signal,
+          });
+          clearTimeout(aiTimeout);
+
+          if (aiRes.ok) {
+            const aiData = await aiRes.json();
+            const text = aiData?.choices?.[0]?.message?.content || "";
+            console.log("[JOSH SCRAPE] AI extraction response:", text.slice(0, 500));
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              extracted = JSON.parse(jsonMatch[0]);
+            }
+          } else {
+            console.error("[JOSH SCRAPE] AI gateway error:", aiRes.status);
+          }
+        } catch (e) {
+          console.error("[JOSH SCRAPE] AI extraction failed:", e);
+        }
+      }
     }
 
-    // Compute market comparison against Carsales baseline
-    let marketPrice: number | null = null;
-    let discountPct: number | null = null;
+    // Compute market comparison
     const price = extracted.price as number | null;
     const make = extracted.make as string | null;
     const model = extracted.model as string | null;
     const year = extracted.year as number | null;
-    const km = extracted.km as number | null;
 
     if (price && make && model && year) {
-      // Query Carsales median from retail_listings or cheap_car_queue
       const { data: comps } = await supabase
         .from("cheap_car_queue")
         .select("market_price")
