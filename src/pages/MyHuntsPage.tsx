@@ -74,7 +74,7 @@ export default function MyHuntsPage() {
   const [yearMin, setYearMin] = useState(new Date().getFullYear() - 3);
   const [yearMax, setYearMax] = useState(new Date().getFullYear());
   const [kmTarget, setKmTarget] = useState('');
-  const [selectedSources, setSelectedSources] = useState<string[]>([...AUCTION_SOURCES]);
+  const selectedSources = ALL_SOURCES;
   const [selectedStates, setSelectedStates] = useState<string[]>([...AU_STATES]);
   const [makeSearch, setMakeSearch] = useState('');
 
@@ -331,7 +331,7 @@ export default function MyHuntsPage() {
     setYearMin(new Date().getFullYear() - 3);
     setYearMax(new Date().getFullYear());
     setKmTarget('');
-    setSelectedSources([...AUCTION_SOURCES]);
+    // selectedSources is now always ALL_SOURCES
     setSelectedStates([...AU_STATES]);
     setMakeSearch('');
   };
@@ -376,11 +376,7 @@ export default function MyHuntsPage() {
     setScanningHunts(prev => { const n = new Set(prev); n.delete(hunt.id); return n; });
   };
 
-  const toggleSource = (source: string) => {
-    setSelectedSources(prev =>
-      prev.includes(source) ? prev.filter(s => s !== source) : [...prev, source]
-    );
-  };
+  // toggleSource removed - all sources always enabled
 
   const toggleState = (state: string) => {
     setSelectedStates(prev =>
@@ -463,21 +459,10 @@ export default function MyHuntsPage() {
                 <Input type="number" placeholder="e.g. 80000" value={kmTarget} onChange={(e) => setKmTarget(e.target.value)} />
               </div>
 
-              {/* Sources */}
-              <div className="space-y-1.5">
-                <Label>Sources</Label>
-                <div className="flex flex-wrap gap-3">
-                  {ALL_SOURCES.map(s => (
-                    <label key={s} className="flex items-center gap-1.5 text-sm">
-                      <Checkbox
-                        checked={selectedSources.includes(s)}
-                        onCheckedChange={() => toggleSource(s)}
-                      />
-                      <span className="capitalize">{s.replace(/_/g, ' ')}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+              {/* Sources - always all, no user selection needed */}
+              <p className="text-sm text-muted-foreground">
+                We search all auctions, dealers, and marketplaces automatically.
+              </p>
 
               {/* States */}
               <div className="space-y-1.5">
