@@ -144,6 +144,7 @@ Return as JSON with fields: listing_url, vehicle, current_status, current_price,
       search_url: listing.listing_url,
       status: "dispatched",
       dispatched_at: new Date().toISOString(),
+      account_id: account_id || null,
     }).then(({ error }) => {
       if (error) console.warn("[lindy] Audit insert failed:", error.message);
     });
