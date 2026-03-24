@@ -9,11 +9,12 @@ import { AuthModal } from '@/components/auth/AuthModal';
 import { BobPanel } from '@/components/bob/BobPanel';
 
 const dealerNav = [
+  { path: '/dealer-home', label: 'Home', icon: Home },
   { path: '/find-cars', label: 'Find Cars', icon: Car },
-  { path: '/ooglebot', label: 'OogleBot', icon: Bot },
-  { path: '/trading-desk', label: 'Trading Desk', icon: DollarSign },
+  { path: '/my-hunts', label: 'My Hunts', icon: Crosshair },
+  { path: '/valo', label: 'Do A Valo', icon: Sparkles },
   { path: '/sales-upload', label: 'My Sales', icon: BarChart3 },
-  { path: '/deals', label: 'Transparency Ledger', icon: FileText },
+  { path: '/ooglebot', label: 'OogleBot', icon: Bot },
 ];
 
 interface DealerLayoutProps {
