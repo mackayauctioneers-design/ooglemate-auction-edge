@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
 
     console.log(`[JOSH SCRAPE] Scraping: ${cleanUrl}`);
     const scrapeController = new AbortController();
-    const scrapeTimeout = setTimeout(() => scrapeController.abort(), 15000);
+    const scrapeTimeout = setTimeout(() => scrapeController.abort(), 20000);
     let scrapeRes: Response;
     try {
       scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
@@ -132,7 +132,8 @@ Deno.serve(async (req) => {
           url: cleanUrl,
           formats: ["markdown"],
           onlyMainContent: true,
-          waitFor: 2000,
+          waitFor: 5000,
+          timeout: 15000,
         }),
         signal: scrapeController.signal,
       });
