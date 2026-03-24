@@ -37,10 +37,10 @@ export default function DealerHomePage() {
   }, [user, currentUser]);
 
   const quickLinks = [
-    { to: '/ooglebot', label: 'OogleBot', icon: Bot, desc: 'Ask your AI assistant' },
+    { to: '/find-cars', label: 'Find Cars', icon: Car, desc: 'Browse market inventory' },
     { to: '/my-hunts', label: 'My Hunts', icon: Crosshair, desc: `${huntCount} active hunts` },
     { to: '/sales-upload', label: 'My Sales', icon: BarChart3, desc: 'Upload & track' },
-    { to: '/settings', label: 'Settings', icon: Settings, desc: 'Profile & billing' },
+    { to: '/ooglebot', label: 'OogleBot', icon: Bot, desc: 'Ask your AI assistant' },
   ];
 
   return (
