@@ -26,7 +26,7 @@ import NotFound from "./pages/NotFound";
 import ArchitectureOverviewPage from "./pages/ArchitectureOverviewPage";
 import ValoPage from "./pages/ValoPage";
 import ScanGuidePage from "./pages/ScanGuidePage";
-
+import FindCarsPage from "./pages/FindCarsPage";
 
 // Operator pages
 import OperatorDashboardPage from "./pages/operator/OperatorDashboardPage";
