@@ -986,6 +986,47 @@ Deno.serve(async (req) => {
             .then(() => console.log(`Queued ${enrichmentUpserts.length} for enrichment`));
         }
 
+        // Auto-trigger Lindy for auction BUY alerts
+        const AUCTION_SOURCES_LINDY = ['pickles', 'grays', 'manheim', 'slattery', 'auto_auctions', 'vma', 'bidsonline'];
+        const auctionBuyAlerts = alertInserts.filter((a: any) => {
+          const source = (a.payload?.source || '').toLowerCase();
+          return a.alert_type === 'BUY' && AUCTION_SOURCES_LINDY.some(s => source.includes(s));
+        });
+
+        if (auctionBuyAlerts.length > 0) {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+          // Look up account_id from dealer_profiles for this dealer
+          let accountId: string | null = null;
+          if (hunt.dealer_id) {
+            const { data: dp } = await supabase
+              .from('dealer_profiles')
+              .select('account_id')
+              .eq('id', hunt.dealer_id)
+              .single();
+            accountId = dp?.account_id || null;
+          }
+
+          for (const alert of auctionBuyAlerts) {
+            const listingId = alert.listing_id;
+            const funcUrl = `${supabaseUrl}/functions/v1/lindy-star-watch`;
+            fetch(funcUrl, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ listing_id: listingId, account_id: accountId }),
+            }).then(res => {
+              console.log(`[hunt-scan] Lindy watch triggered for listing ${listingId}: ${res.status}`);
+            }).catch(err => {
+              console.warn(`[hunt-scan] Failed to trigger Lindy for ${listingId}: ${err}`);
+            });
+          }
+          console.log(`[hunt-scan] Triggered Lindy for ${auctionBuyAlerts.length} auction BUY alerts`);
+        }
+
         // Update scan record
         await supabase
           .from('hunt_scans')
