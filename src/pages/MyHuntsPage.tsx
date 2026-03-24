@@ -51,7 +51,7 @@ export default function MyHuntsPage() {
   };
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="max-w-3xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
