@@ -118,19 +118,33 @@ Deno.serve(async (req) => {
     }
 
     console.log(`[JOSH SCRAPE] Scraping: ${cleanUrl}`);
-    const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${firecrawlKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        url: cleanUrl,
-        formats: ["markdown"],
-        onlyMainContent: true,
-        waitFor: 3000,
-      }),
-    });
+    const scrapeController = new AbortController();
+    const scrapeTimeout = setTimeout(() => scrapeController.abort(), 15000);
+    let scrapeRes: Response;
+    try {
+      scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${firecrawlKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: cleanUrl,
+          formats: ["markdown"],
+          onlyMainContent: true,
+          waitFor: 2000,
+        }),
+        signal: scrapeController.signal,
+      });
+    } catch (e) {
+      clearTimeout(scrapeTimeout);
+      console.error("[JOSH SCRAPE] Firecrawl timeout/abort:", e);
+      return new Response(
+        JSON.stringify({ success: false, error: "Scrape timed out — try again or use a different URL" }),
+        { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    clearTimeout(scrapeTimeout);
 
     if (!scrapeRes.ok) {
       const errText = await scrapeRes.text();
