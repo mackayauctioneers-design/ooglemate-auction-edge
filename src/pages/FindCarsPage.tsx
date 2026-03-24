@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Loader2, ExternalLink, X, SlidersHorizontal, Car } from "lucide-react";
+import { Search, Loader2, ExternalLink, X, SlidersHorizontal, Car, AlertTriangle } from "lucide-react";
 import { DealerLayout } from "@/components/layout/DealerLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
