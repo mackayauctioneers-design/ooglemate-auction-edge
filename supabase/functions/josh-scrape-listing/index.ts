@@ -126,8 +126,8 @@ Deno.serve(async (req) => {
     let marketPrice: number | null = null;
     let discountPct: number | null = null;
 
-    // ─── Strategy 1: DB lookup for Carsales/Autotrader (we already crawl these) ───
-    if (source === "carsales" || source === "autotrader") {
+    // ─── Strategy 1: DB lookup for Carsales/Autotrader/Gumtree (we crawl these) ───
+    if (source === "carsales" || source === "autotrader" || source === "gumtree") {
       console.log(`[JOSH SCRAPE] DB lookup for ${source} listing: ${listingId}`);
 
       // Try vehicle_listings first
