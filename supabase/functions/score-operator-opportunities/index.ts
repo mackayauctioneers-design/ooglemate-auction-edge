@@ -54,6 +54,7 @@ const PRODUCTION_SOURCES = [
   "pickles","grays","manheim","caroogle_shadow",
   "autotrader","carsales","easyauto","slattery",
   "toyota","toyota_used","nsw_regional","vma","bidsonline",
+  "gumtree",
 ];
 
 function isProductionSource(src: string): boolean {
@@ -63,7 +64,7 @@ function isProductionSource(src: string): boolean {
   return PRODUCTION_SOURCES.includes(s) || s.startsWith("dealer_site:");
 }
 
-const RETAIL_SOURCES = ["autotrader","drive","easyauto","toyota","toyota_used","carsales"];
+const RETAIL_SOURCES = ["autotrader","drive","easyauto","toyota","toyota_used","carsales","gumtree"];
 function isRetailSource(src: string): boolean {
   if (!src) return false;
   return RETAIL_SOURCES.includes(src.toLowerCase());
