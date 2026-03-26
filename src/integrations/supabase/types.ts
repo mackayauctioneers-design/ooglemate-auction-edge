@@ -613,6 +613,57 @@ export type Database = {
         }
         Relationships: []
       }
+      buyer_fingerprints: {
+        Row: {
+          account_id: string | null
+          avg_purchase_price: number | null
+          buyer_email: string | null
+          buyer_name: string
+          created_at: string | null
+          id: string
+          last_purchase_date: string | null
+          makes_purchased: string[] | null
+          models_purchased: string[] | null
+          price_band_max: number | null
+          price_band_min: number | null
+          recent_vehicles: Json | null
+          total_purchases: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          avg_purchase_price?: number | null
+          buyer_email?: string | null
+          buyer_name: string
+          created_at?: string | null
+          id?: string
+          last_purchase_date?: string | null
+          makes_purchased?: string[] | null
+          models_purchased?: string[] | null
+          price_band_max?: number | null
+          price_band_min?: number | null
+          recent_vehicles?: Json | null
+          total_purchases?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          avg_purchase_price?: number | null
+          buyer_email?: string | null
+          buyer_name?: string
+          created_at?: string | null
+          id?: string
+          last_purchase_date?: string | null
+          makes_purchased?: string[] | null
+          models_purchased?: string[] | null
+          price_band_max?: number | null
+          price_band_min?: number | null
+          recent_vehicles?: Json | null
+          total_purchases?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       caroogle_finds: {
         Row: {
           auction_arbitrage_gap: number | null
