@@ -1,0 +1,16 @@
+# Memory: operations/ingestion/caroogle-unified-api-sources
+Updated: now
+
+Fady's Caroogle API (`https://backend.caroogle.codesorbit.net/api/ads`) now serves 4 sources from one endpoint via `?source=` param: `pickles`, `toyota`, `autotrader`, `gumtree`. All use `page` and `limit` params for pagination.
+
+## Cron Functions (all every 2 hours):
+- `caroogle-shadow-cron` → pickles (source_class=auction, seller_type=auction_house)
+- `caroogle-toyota-cron` → toyota (source_class=oem_used, seller_type=oem_dealer)
+- `caroogle-gumtree-cron` → gumtree (source_class=private_and_dealer, seller_type=inferred)
+- `caroogle-autotrader-cron` → autotrader (source_class=retail, seller_type=dealer, listing_id prefixed `caroogle-autotrader:` to avoid collision with direct API ingest)
+
+## First Run Results (26 Mar 2026):
+- Gumtree: 1,243 received → 1,219 upserted (1,217 with price)
+- Autotrader: 1,355 received → 1,352 upserted (all with price)
+
+Both `gumtree` and `autotrader` are whitelisted in the scorer (PRODUCTION_SOURCES + RETAIL_SOURCES) and added as Caroogle API adapters in `run-mandates`.
