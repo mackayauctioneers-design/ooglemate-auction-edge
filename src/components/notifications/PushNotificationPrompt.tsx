@@ -150,7 +150,7 @@ export function PushNotificationPrompt({ showOnMount = false }: PushNotification
               </div>
               <div className="flex items-start gap-3">
                 <span className="text-primary font-bold">🌙</span>
-                <span>Quiet hours: 7PM-7AM AEST (no overnight pings)</span>
+                <span>Quiet hours: 7PM–7AM AEST (no overnight pings)</span>
               </div>
             </div>
 
