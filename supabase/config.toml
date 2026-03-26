@@ -366,6 +366,16 @@ verify_jwt = false
 schedule = "0 */2 * * *"
 # Toyota Used Vehicles feed via Caroogle API (writes to vehicle_listings)
 
+[functions.caroogle-gumtree-cron]
+verify_jwt = false
+schedule = "0 */2 * * *"
+# Gumtree listings feed via Caroogle API (writes to vehicle_listings)
+
+[functions.caroogle-autotrader-cron]
+verify_jwt = false
+schedule = "0 */2 * * *"
+# Autotrader listings feed via Caroogle API (writes to vehicle_listings)
+
 [functions.caroogle-shadow-promotion]
 verify_jwt = false
 schedule = "*/30 * * * *"

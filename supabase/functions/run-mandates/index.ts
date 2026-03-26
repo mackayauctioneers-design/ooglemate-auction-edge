@@ -212,9 +212,75 @@ async function fetchToyota(mandate: Mandate): Promise<NormalizedListing[]> {
   return results;
 }
 
+async function fetchGumtree(mandate: Mandate): Promise<NormalizedListing[]> {
+  const url = "https://backend.caroogle.codesorbit.net/api/ads?source=gumtree&limit=5000";
+  const resp = await fetch(url);
+  if (!resp.ok) { console.error(`Gumtree API ${resp.status}`); return []; }
+  const payload = await resp.json();
+  const ads: Record<string, unknown>[] = Array.isArray(payload) ? payload : (payload.data || payload.ads || payload.results || []);
+  const results: NormalizedListing[] = [];
+  for (const ad of ads) {
+    const make = String(ad.make || "").toUpperCase();
+    const model = String(ad.vehicleModel || ad.vehicle_model || ad.model || "").toUpperCase();
+    const year = parseInt(String(ad.year || "0"));
+    const km = parseInt(String(ad.odometer || ad.km || "0").replace(/[,\s]/g, "")) || null;
+    const price = typeof ad.price === "number" ? ad.price : parseFloat(String(ad.price || "0").replace(/[,$\s]/g, "")) || null;
+    if (!make || !model || !year || !price) continue;
+    if (mandate.make && make !== mandate.make.toUpperCase()) continue;
+    if (mandate.model && model !== mandate.model.toUpperCase()) continue;
+    if (mandate.year_min && year < mandate.year_min) continue;
+    if (mandate.year_max && year > mandate.year_max) continue;
+    if (mandate.km_max && km && km > mandate.km_max) continue;
+    if (mandate.price_max && price > mandate.price_max) continue;
+    results.push({
+      source: "gumtree",
+      listing_id: `gumtree:${ad.lotId || ad.lot_id || ad.id}`,
+      make, model, year, km, price,
+      variant: String(ad.variant || "").toUpperCase() || null,
+      location: String(ad.location || ad.suburb || "") || null,
+      listing_url: String(ad.listingUrl || ad.listing_url || ad.link || "") || null,
+    });
+  }
+  return results;
+}
+
+async function fetchAutotrader(mandate: Mandate): Promise<NormalizedListing[]> {
+  const url = "https://backend.caroogle.codesorbit.net/api/ads?source=autotrader&limit=5000";
+  const resp = await fetch(url);
+  if (!resp.ok) { console.error(`Autotrader API ${resp.status}`); return []; }
+  const payload = await resp.json();
+  const ads: Record<string, unknown>[] = Array.isArray(payload) ? payload : (payload.data || payload.ads || payload.results || []);
+  const results: NormalizedListing[] = [];
+  for (const ad of ads) {
+    const make = String(ad.make || "").toUpperCase();
+    const model = String(ad.vehicleModel || ad.vehicle_model || ad.model || "").toUpperCase();
+    const year = parseInt(String(ad.year || "0"));
+    const km = parseInt(String(ad.odometer || ad.km || "0").replace(/[,\s]/g, "")) || null;
+    const price = typeof ad.price === "number" ? ad.price : parseFloat(String(ad.price || "0").replace(/[,$\s]/g, "")) || null;
+    if (!make || !model || !year || !price) continue;
+    if (mandate.make && make !== mandate.make.toUpperCase()) continue;
+    if (mandate.model && model !== mandate.model.toUpperCase()) continue;
+    if (mandate.year_min && year < mandate.year_min) continue;
+    if (mandate.year_max && year > mandate.year_max) continue;
+    if (mandate.km_max && km && km > mandate.km_max) continue;
+    if (mandate.price_max && price > mandate.price_max) continue;
+    results.push({
+      source: "autotrader",
+      listing_id: `caroogle-autotrader:${ad.lotId || ad.lot_id || ad.id}`,
+      make, model, year, km, price,
+      variant: String(ad.variant || "").toUpperCase() || null,
+      location: String(ad.location || ad.suburb || "") || null,
+      listing_url: String(ad.listingUrl || ad.listing_url || ad.link || "") || null,
+    });
+  }
+  return results;
+}
+
 const ADAPTERS: Record<string, (m: Mandate) => Promise<NormalizedListing[]>> = {
   pickles: fetchPickles,
   toyota: fetchToyota,
+  gumtree: fetchGumtree,
+  autotrader: fetchAutotrader,
 };
 
 // ─── Lindy Discovery Dispatch ───────────────────────────────────────────────
