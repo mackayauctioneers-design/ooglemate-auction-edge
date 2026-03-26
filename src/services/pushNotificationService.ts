@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 
-const VAPID_PUBLIC_KEY = 'BLBSNvdFIW9P9y3dg4Br4k8gxlPNZGZOSwFfVfvZXxNlzJJwN0xN1rXuJCVT3C4wjqvK5c5TgFCYKqWfJqLXnw8';
+const VAPID_PUBLIC_KEY = 'BH8R8XwYBlOYs5qtEtAvZ4lgzONINSuFa0NmVjWYKCR7IgLd51rhDbU9L1dZJpy6I_9gf8_HfuRSgP6prQkE1z8';
 
 // Check if push notifications are supported
 export function isPushSupported(): boolean {
