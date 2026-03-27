@@ -14,7 +14,8 @@
 
 // @ts-nocheck
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import nodemailer from "npm:nodemailer@6.9.12";
+// @deno-types="npm:@types/nodemailer@6.4.14"
+import nodemailer from "https://esm.sh/nodemailer@6.9.12";
 import type { ParsedIntent } from "./types.ts";
 
 const MAX_CONCURRENT_SESSIONS = 3;
