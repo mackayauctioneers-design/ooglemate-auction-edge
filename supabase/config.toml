@@ -458,7 +458,7 @@ verify_jwt = false
 
 [functions.gumtree-scan-cron]
 verify_jwt = false
-schedule = "30 */2 * * *"
+# schedule removed 2026-03-27 — disabled Apify Gumtree, replaced by Fady's Gumtree API (via Lovable)
 
 [functions.ultimate-car-scan]
 verify_jwt = false
