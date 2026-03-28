@@ -910,6 +910,13 @@ export type Database = {
             foreignKeyName: "clearance_events_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
+            referencedRelation: "auction_watch_pickles_sydney_gov"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clearance_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
             referencedRelation: "listing_presence_by_run"
             referencedColumns: ["id"]
           },
@@ -1731,6 +1738,13 @@ export type Database = {
           year?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "dealer_match_alerts_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "auction_watch_pickles_sydney_gov"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "dealer_match_alerts_listing_uuid_fkey"
             columns: ["listing_uuid"]
@@ -2622,6 +2636,13 @@ export type Database = {
             columns: ["dealer_spec_id"]
             isOneToOne: false
             referencedRelation: "dealer_specs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_spec_matches_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
+            referencedRelation: "auction_watch_pickles_sydney_gov"
             referencedColumns: ["id"]
           },
           {
@@ -5787,6 +5808,13 @@ export type Database = {
             foreignKeyName: "listing_events_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
+            referencedRelation: "auction_watch_pickles_sydney_gov"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listing_events_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
             referencedRelation: "listing_presence_by_run"
             referencedColumns: ["id"]
           },
@@ -5899,6 +5927,13 @@ export type Database = {
           status?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "listing_snapshots_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "auction_watch_pickles_sydney_gov"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "listing_snapshots_listing_id_fkey"
             columns: ["listing_id"]
@@ -8221,6 +8256,13 @@ export type Database = {
             foreignKeyName: "retail_listing_sightings_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
+            referencedRelation: "auction_watch_pickles_sydney_gov"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "retail_listing_sightings_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
             referencedRelation: "listing_presence_by_run"
             referencedColumns: ["id"]
           },
@@ -10016,6 +10058,13 @@ export type Database = {
             foreignKeyName: "sourcing_watchlist_linked_listing_id_fkey"
             columns: ["linked_listing_id"]
             isOneToOne: false
+            referencedRelation: "auction_watch_pickles_sydney_gov"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sourcing_watchlist_linked_listing_id_fkey"
+            columns: ["linked_listing_id"]
+            isOneToOne: false
             referencedRelation: "listing_presence_by_run"
             referencedColumns: ["id"]
           },
@@ -11279,6 +11328,13 @@ export type Database = {
             foreignKeyName: "va_tasks_listing_uuid_fkey"
             columns: ["listing_uuid"]
             isOneToOne: false
+            referencedRelation: "auction_watch_pickles_sydney_gov"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_tasks_listing_uuid_fkey"
+            columns: ["listing_uuid"]
+            isOneToOne: false
             referencedRelation: "listing_presence_by_run"
             referencedColumns: ["id"]
           },
@@ -11477,6 +11533,13 @@ export type Database = {
             columns: ["batch_id"]
             isOneToOne: false
             referencedRelation: "va_upload_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "va_upload_rows_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "auction_watch_pickles_sydney_gov"
             referencedColumns: ["id"]
           },
           {
@@ -12819,6 +12882,66 @@ export type Database = {
       }
     }
     Views: {
+      auction_watch_pickles_sydney_gov: {
+        Row: {
+          ask_price: number | null
+          auction_datetime: string | null
+          auction_lot_number: string | null
+          days_to_sell_est: number | null
+          expected_gross_margin: number | null
+          id: string | null
+          lifecycle_state: string | null
+          listing_url: string | null
+          location: string | null
+          lot_id: string | null
+          make: string | null
+          model: string | null
+          odometer_km: number | null
+          profit_per_day: number | null
+          risk_multiplier: number | null
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          ask_price?: number | null
+          auction_datetime?: string | null
+          auction_lot_number?: string | null
+          days_to_sell_est?: number | null
+          expected_gross_margin?: number | null
+          id?: string | null
+          lifecycle_state?: string | null
+          listing_url?: string | null
+          location?: string | null
+          lot_id?: string | null
+          make?: string | null
+          model?: string | null
+          odometer_km?: number | null
+          profit_per_day?: number | null
+          risk_multiplier?: number | null
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          ask_price?: number | null
+          auction_datetime?: string | null
+          auction_lot_number?: string | null
+          days_to_sell_est?: number | null
+          expected_gross_margin?: number | null
+          id?: string | null
+          lifecycle_state?: string | null
+          listing_url?: string | null
+          location?: string | null
+          lot_id?: string | null
+          make?: string | null
+          model?: string | null
+          odometer_km?: number | null
+          profit_per_day?: number | null
+          risk_multiplier?: number | null
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       dealer_crawl_jobs: {
         Row: {
           attempts: number | null
