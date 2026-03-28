@@ -10327,6 +10327,117 @@ export type Database = {
         }
         Relationships: []
       }
+      trades: {
+        Row: {
+          account_id: string | null
+          body_type: string | null
+          colour: string | null
+          created_at: string | null
+          dealer_abn: string | null
+          dealer_email: string | null
+          dealer_name: string | null
+          direction: string | null
+          fees_breakdown: Json | null
+          fees_total: number | null
+          fingerprint: string | null
+          fuel_type: string | null
+          gst_amount: number | null
+          hold_deposit: number | null
+          id: string
+          internal_notes: string | null
+          invoice_date: string | null
+          invoice_number: string | null
+          make: string | null
+          model: string | null
+          odometer_km: number | null
+          raw_email_id: string | null
+          rego: string | null
+          sell_price_ex_gst: number | null
+          sell_price_inc_gst: number | null
+          series: string | null
+          source_system: string | null
+          state: string | null
+          stock_number: string | null
+          trade_in_value: number | null
+          transmission: string | null
+          variant: string | null
+          vin: string | null
+          year: number | null
+        }
+        Insert: {
+          account_id?: string | null
+          body_type?: string | null
+          colour?: string | null
+          created_at?: string | null
+          dealer_abn?: string | null
+          dealer_email?: string | null
+          dealer_name?: string | null
+          direction?: string | null
+          fees_breakdown?: Json | null
+          fees_total?: number | null
+          fingerprint?: string | null
+          fuel_type?: string | null
+          gst_amount?: number | null
+          hold_deposit?: number | null
+          id?: string
+          internal_notes?: string | null
+          invoice_date?: string | null
+          invoice_number?: string | null
+          make?: string | null
+          model?: string | null
+          odometer_km?: number | null
+          raw_email_id?: string | null
+          rego?: string | null
+          sell_price_ex_gst?: number | null
+          sell_price_inc_gst?: number | null
+          series?: string | null
+          source_system?: string | null
+          state?: string | null
+          stock_number?: string | null
+          trade_in_value?: number | null
+          transmission?: string | null
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Update: {
+          account_id?: string | null
+          body_type?: string | null
+          colour?: string | null
+          created_at?: string | null
+          dealer_abn?: string | null
+          dealer_email?: string | null
+          dealer_name?: string | null
+          direction?: string | null
+          fees_breakdown?: Json | null
+          fees_total?: number | null
+          fingerprint?: string | null
+          fuel_type?: string | null
+          gst_amount?: number | null
+          hold_deposit?: number | null
+          id?: string
+          internal_notes?: string | null
+          invoice_date?: string | null
+          invoice_number?: string | null
+          make?: string | null
+          model?: string | null
+          odometer_km?: number | null
+          raw_email_id?: string | null
+          rego?: string | null
+          sell_price_ex_gst?: number | null
+          sell_price_inc_gst?: number | null
+          series?: string | null
+          source_system?: string | null
+          state?: string | null
+          stock_number?: string | null
+          trade_in_value?: number | null
+          transmission?: string | null
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       trap_crawl_jobs: {
         Row: {
           attempts: number
