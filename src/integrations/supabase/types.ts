@@ -12068,6 +12068,8 @@ export type Database = {
           content_hash: string | null
           created_at: string
           damage_noted: boolean | null
+          days_to_sell_est: number | null
+          dealer_exposure: Json | null
           dealer_name: string | null
           dealer_url: string | null
           delisted_at: string | null
@@ -12078,6 +12080,7 @@ export type Database = {
           exclude_from_alerts: boolean | null
           excluded_keyword: string | null
           excluded_reason: string | null
+          expected_gross_margin: number | null
           external_id: string | null
           fingerprint: string | null
           fingerprint_confidence: number
@@ -12117,6 +12120,7 @@ export type Database = {
           platform_class: string | null
           postcode: string | null
           price_type: string | null
+          profit_per_day: number | null
           reappeared: boolean
           reappeared_at: string | null
           relist_count: number
@@ -12126,6 +12130,7 @@ export type Database = {
           reserve_status: string | null
           risk_flag: boolean
           risk_flags: string[] | null
+          risk_multiplier: number
           sa2_code: string | null
           sa2_name: string | null
           sale_close_at: string | null
@@ -12183,6 +12188,8 @@ export type Database = {
           content_hash?: string | null
           created_at?: string
           damage_noted?: boolean | null
+          days_to_sell_est?: number | null
+          dealer_exposure?: Json | null
           dealer_name?: string | null
           dealer_url?: string | null
           delisted_at?: string | null
@@ -12193,6 +12200,7 @@ export type Database = {
           exclude_from_alerts?: boolean | null
           excluded_keyword?: string | null
           excluded_reason?: string | null
+          expected_gross_margin?: number | null
           external_id?: string | null
           fingerprint?: string | null
           fingerprint_confidence?: number
@@ -12232,6 +12240,7 @@ export type Database = {
           platform_class?: string | null
           postcode?: string | null
           price_type?: string | null
+          profit_per_day?: number | null
           reappeared?: boolean
           reappeared_at?: string | null
           relist_count?: number
@@ -12241,6 +12250,7 @@ export type Database = {
           reserve_status?: string | null
           risk_flag?: boolean
           risk_flags?: string[] | null
+          risk_multiplier?: number
           sa2_code?: string | null
           sa2_name?: string | null
           sale_close_at?: string | null
@@ -12298,6 +12308,8 @@ export type Database = {
           content_hash?: string | null
           created_at?: string
           damage_noted?: boolean | null
+          days_to_sell_est?: number | null
+          dealer_exposure?: Json | null
           dealer_name?: string | null
           dealer_url?: string | null
           delisted_at?: string | null
@@ -12308,6 +12320,7 @@ export type Database = {
           exclude_from_alerts?: boolean | null
           excluded_keyword?: string | null
           excluded_reason?: string | null
+          expected_gross_margin?: number | null
           external_id?: string | null
           fingerprint?: string | null
           fingerprint_confidence?: number
@@ -12347,6 +12360,7 @@ export type Database = {
           platform_class?: string | null
           postcode?: string | null
           price_type?: string | null
+          profit_per_day?: number | null
           reappeared?: boolean
           reappeared_at?: string | null
           relist_count?: number
@@ -12356,6 +12370,7 @@ export type Database = {
           reserve_status?: string | null
           risk_flag?: boolean
           risk_flags?: string[] | null
+          risk_multiplier?: number
           sa2_code?: string | null
           sa2_name?: string | null
           sale_close_at?: string | null
