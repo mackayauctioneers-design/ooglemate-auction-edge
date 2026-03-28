@@ -12057,6 +12057,9 @@ export type Database = {
           auction_datetime: string | null
           auction_history: Json | null
           auction_house: string | null
+          auction_location: string | null
+          auction_lot_number: string | null
+          auction_segment: string | null
           auction_status: string
           avoid_reason: string | null
           buy_method: string | null
@@ -12169,6 +12172,9 @@ export type Database = {
           auction_datetime?: string | null
           auction_history?: Json | null
           auction_house?: string | null
+          auction_location?: string | null
+          auction_lot_number?: string | null
+          auction_segment?: string | null
           auction_status?: string
           avoid_reason?: string | null
           buy_method?: string | null
@@ -12281,6 +12287,9 @@ export type Database = {
           auction_datetime?: string | null
           auction_history?: Json | null
           auction_house?: string | null
+          auction_location?: string | null
+          auction_lot_number?: string | null
+          auction_segment?: string | null
           auction_status?: string
           avoid_reason?: string | null
           buy_method?: string | null
