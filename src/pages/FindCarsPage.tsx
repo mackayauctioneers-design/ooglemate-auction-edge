@@ -80,7 +80,8 @@ async function searchMarketListings(filters: Filters, page: number) {
     .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, state, auction_house, listing_type, last_seen_at, first_seen_at, lifecycle_status, seller_name, price_badge, transmission, fuel_type, colour", { count: "exact" })
     .in("lifecycle_status", ACTIVE_LIFECYCLE)
     .eq("is_historical_result", false)
-    .not("asking_price", "is", null);
+    .not("asking_price", "is", null)
+    .neq("source", "autograb-retail");
 
   if (filters.make) q = q.ilike("make", `%${filters.make.trim()}%`);
   if (filters.model) q = q.ilike("model", `%${filters.model.trim()}%`);

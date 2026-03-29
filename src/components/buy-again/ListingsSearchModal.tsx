@@ -50,6 +50,7 @@ export function ListingsSearchModal({ target, open, onOpenChange }: Props) {
         .gte("last_seen_at", freshCutoff)
         .ilike("make", target.make)
         .ilike("model", target.model)
+        .neq("source", "autograb-retail")
         .order("asking_price", { ascending: true, nullsFirst: false })
         .limit(40);
 

@@ -19,7 +19,7 @@ const AUCTION_SOURCE_ALLOWLIST = [
 ];
 
 /** These sources are permanently dead — never query them */
-const SOURCE_BLOCKLIST = ["pickles_crawl"];
+const SOURCE_BLOCKLIST = ["pickles_crawl", "autograb-retail"];
 
 /** Listings older than this are excluded */
 const RECENCY_DAYS = 14;
