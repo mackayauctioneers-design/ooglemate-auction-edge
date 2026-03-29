@@ -111,16 +111,16 @@ Deno.serve(async (req) => {
       const [make, model] = mm.split("|");
       const { data: truth } = await supabase
         .from("vehicle_sales_truth")
-        .select("buy_price, sell_price")
+        .select("buy_price, sale_price")
         .ilike("make", make)
         .ilike("model", model)
-        .not("sell_price", "is", null)
+        .not("sale_price", "is", null)
         .not("buy_price", "is", null)
         .order("sold_at", { ascending: false })
         .limit(30);
 
       if (truth?.length >= 2) {
-        const sellPrices = truth.map((t: any) => t.sell_price).sort((a: number, b: number) => a - b);
+        const sellPrices = truth.map((t: any) => t.sale_price).sort((a: number, b: number) => a - b);
         const buyPrices = truth.map((t: any) => t.buy_price).sort((a: number, b: number) => a - b);
         truthMedians.set(mm, {
           median_sell: sellPrices[Math.floor(sellPrices.length / 2)],
