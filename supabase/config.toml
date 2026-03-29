@@ -469,3 +469,7 @@ schedule = "15 */2 * * *"
 
 [functions.pipeline-cleanup-oneshot]
 verify_jwt = false
+
+[functions.feed-josh-multi-source]
+verify_jwt = false
+schedule = "*/30 * * * *"
