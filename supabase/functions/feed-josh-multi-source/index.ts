@@ -15,8 +15,10 @@ const corsHeaders = {
  * Sources: autotrader, gumtree, autograb-retail, easyauto, toyota, f3
  * Filters: year >= 2020, km <= 120k, has asking_price
  *
- * Scoring: Uses operator_opportunities margin data when available,
- * otherwise estimates from vehicle_sales_truth median sell prices.
+ * Scoring approach:
+ *   1. Check operator_opportunities for pre-scored margin data
+ *   2. Check vehicle_sales_truth for historical sell prices to estimate margin
+ *   3. Feed anything with estimated margin > $1k OR discount > 3%
  *
  * Runs on cron every 30 minutes.
  */
@@ -74,7 +76,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Filter out already-queued listings
+    // Filter out already-queued listings (check both listing_id and uuid id)
     const newListings = listings.filter(
       (l: any) => !existingSet.has(l.listing_id) && !existingSet.has(l.id)
     );
@@ -86,75 +88,87 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 3. Check operator_opportunities for pre-scored margins
-    const listingIds = newListings.map((l: any) => l.id);
+    // 3. Check operator_opportunities for pre-scored margins (uses listing_id text)
+    const textIds = newListings.map((l: any) => l.listing_id);
     const { data: opps } = await supabase
       .from("operator_opportunities")
-      .select("listing_id, best_expected_margin, best_under_buy, tier, anchor_sale_sell_price")
-      .in("listing_id", listingIds);
+      .select("listing_id, best_expected_margin, best_under_buy, tier, anchor_sale_sell_price, anchor_sale_buy_price")
+      .in("listing_id", textIds.slice(0, 200));
 
     const oppMap = new Map(
       (opps || []).map((o: any) => [o.listing_id, o])
     );
 
-    // 4. For listings without opp scores, try to get median sell from vehicle_sales_truth
+    // 4. Get median sell prices from vehicle_sales_truth for make/model combos
     const makeModels = [
       ...new Set(
-        newListings
-          .filter((l: any) => !oppMap.has(l.id))
-          .map((l: any) => `${l.make}|${l.model}`)
+        newListings.map((l: any) => `${(l.make || "").toUpperCase()}|${(l.model || "").toUpperCase()}`)
       ),
-    ];
+    ].filter((mm) => mm !== "|");
 
-    const truthMedians = new Map<string, number>();
-    for (const mm of makeModels.slice(0, 20)) {
+    const truthMedians = new Map<string, { median_sell: number; median_buy: number }>();
+    for (const mm of makeModels.slice(0, 30)) {
       const [make, model] = mm.split("|");
       const { data: truth } = await supabase
         .from("vehicle_sales_truth")
-        .select("sell_price")
+        .select("buy_price, sell_price")
         .ilike("make", make)
         .ilike("model", model)
         .not("sell_price", "is", null)
+        .not("buy_price", "is", null)
         .order("sold_at", { ascending: false })
-        .limit(20);
+        .limit(30);
 
-      if (truth?.length >= 3) {
-        const prices = truth.map((t: any) => t.sell_price).sort((a: number, b: number) => a - b);
-        const median = prices[Math.floor(prices.length / 2)];
-        truthMedians.set(mm, median);
+      if (truth?.length >= 2) {
+        const sellPrices = truth.map((t: any) => t.sell_price).sort((a: number, b: number) => a - b);
+        const buyPrices = truth.map((t: any) => t.buy_price).sort((a: number, b: number) => a - b);
+        truthMedians.set(mm, {
+          median_sell: sellPrices[Math.floor(sellPrices.length / 2)],
+          median_buy: buyPrices[Math.floor(buyPrices.length / 2)],
+        });
       }
     }
 
     // 5. Score and insert into cheap_car_queue
-    let fed = 0;
     const inserts: any[] = [];
 
     for (const l of newListings) {
-      const opp = oppMap.get(l.id);
+      if (!l.make || !l.model || !l.asking_price) continue;
+
+      const opp = oppMap.get(l.listing_id);
+      const truthKey = `${l.make.toUpperCase()}|${l.model.toUpperCase()}`;
+      const truth = truthMedians.get(truthKey);
+
       let marketPrice: number | null = null;
       let discountPct: number | null = null;
+      let estimatedMargin: number | null = null;
       let dealScore: number | null = null;
       let dealTag: string | null = null;
 
-      if (opp?.anchor_sale_sell_price && l.asking_price) {
-        // Use operator opp data
-        marketPrice = opp.anchor_sale_sell_price;
-        discountPct = ((l.asking_price - marketPrice) / marketPrice) * 100;
-      } else {
-        // Use truth median
-        const key = `${l.make}|${l.model}`;
-        const median = truthMedians.get(key);
-        if (median && l.asking_price) {
-          marketPrice = median;
-          discountPct = ((l.asking_price - median) / median) * 100;
+      // Priority 1: Use opp data
+      if (opp) {
+        if (opp.anchor_sale_sell_price) {
+          marketPrice = opp.anchor_sale_sell_price;
+          estimatedMargin = opp.best_expected_margin || (marketPrice - l.asking_price);
+          discountPct = ((l.asking_price - marketPrice) / marketPrice) * 100;
         }
       }
 
-      // Only queue if there's a meaningful discount or opp score
-      if (discountPct !== null && discountPct > -3) continue; // Not cheap enough
-      if (discountPct === null && !opp) continue; // No data to score
+      // Priority 2: Use truth median
+      if (!marketPrice && truth) {
+        marketPrice = truth.median_sell;
+        estimatedMargin = truth.median_sell - l.asking_price;
+        discountPct = ((l.asking_price - truth.median_sell) / truth.median_sell) * 100;
+      }
 
-      // Compute deal score (same logic as carsales pipeline)
+      // Qualification gate: need either margin > $1k or discount > 3% or opp tier
+      const hasMargin = estimatedMargin !== null && estimatedMargin > 1000;
+      const hasDiscount = discountPct !== null && discountPct < -3;
+      const hasOppTier = opp && ["CODE_RED", "HIGH", "BUY", "RETAIL_BUY"].includes(opp.tier);
+
+      if (!hasMargin && !hasDiscount && !hasOppTier) continue;
+
+      // Compute deal score
       if (discountPct !== null) {
         let ps = 0;
         if (discountPct <= -20) ps = 10;
@@ -162,24 +176,25 @@ Deno.serve(async (req) => {
         else if (discountPct <= -12) ps = 6;
         else if (discountPct <= -8) ps = 4;
         else if (discountPct <= -5) ps = 2;
-        else if (discountPct <= -3) ps = 1;
+        else ps = 1;
 
-        // Source bonus
         const sourceBonus = l.source === "autograb-retail" ? 2 : 1;
-        dealScore = ps + sourceBonus + 3; // +3 for freshness (< 7 days)
+        dealScore = ps + sourceBonus + 3; // +3 for freshness
       }
 
       // Tag
-      if (discountPct !== null) {
+      if (opp?.tier === "CODE_RED") {
+        dealTag = "CODE RED";
+        dealScore = Math.max(dealScore || 0, 10);
+      } else if (opp?.tier === "HIGH") {
+        dealTag = "High Priority";
+        dealScore = Math.max(dealScore || 0, 8);
+      } else if (discountPct !== null) {
         if (discountPct <= -15) dealTag = "Well Below Market";
         else if (discountPct <= -8) dealTag = "Below Market";
         else if (discountPct <= -3) dealTag = "Good Deal";
-      }
-
-      // Tier from opp if available
-      if (opp?.tier === "CODE_RED" || opp?.tier === "HIGH") {
-        dealTag = dealTag || opp.tier;
-        dealScore = Math.max(dealScore || 0, 8);
+      } else if (hasMargin) {
+        dealTag = `Est. Margin $${Math.round(estimatedMargin! / 1000)}k`;
       }
 
       inserts.push({
@@ -209,6 +224,7 @@ Deno.serve(async (req) => {
     }
 
     // Batch upsert
+    let fed = 0;
     if (inserts.length > 0) {
       const { error: upsertErr } = await supabase
         .from("cheap_car_queue")
@@ -221,8 +237,14 @@ Deno.serve(async (req) => {
       fed = inserts.length;
     }
 
+    const sourceCounts: Record<string, number> = {};
+    for (const i of inserts) {
+      sourceCounts[i.source] = (sourceCounts[i.source] || 0) + 1;
+    }
+
     console.log(
-      `[FEED-JOSH] Processed ${newListings.length} listings, fed ${fed} to Josh queue. Sources: ${[...new Set(inserts.map((i) => i.source))].join(", ")}`
+      `[FEED-JOSH] Processed ${newListings.length} listings, fed ${fed} to Josh queue.`,
+      sourceCounts
     );
 
     return new Response(
@@ -230,7 +252,7 @@ Deno.serve(async (req) => {
         ok: true,
         processed: newListings.length,
         fed,
-        sources: [...new Set(inserts.map((i) => i.source))],
+        by_source: sourceCounts,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
