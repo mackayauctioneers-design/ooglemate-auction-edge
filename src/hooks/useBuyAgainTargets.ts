@@ -297,6 +297,7 @@ export function useBuyAgainTargets(_accountId?: string) {
         .select("id, make, model, variant_raw, variant_family, year, km, asking_price, listing_url, source, status, first_seen_at, drivetrain")
         .in("status", ["catalogue", "listed"])
         .gte("last_seen_at", freshCutoff)
+        .neq("source", "autograb-retail")
         .order("asking_price", { ascending: true, nullsFirst: false })
         .limit(1000);
       if (lErr) throw lErr;

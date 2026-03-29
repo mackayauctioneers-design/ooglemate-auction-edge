@@ -135,6 +135,7 @@ export default function DealerOpportunityFeedPage() {
           .in("make", makes)
           .in("model", models)
           .is("delisted_at", null)
+          .neq("source", "autograb-retail")
           .order("first_seen_at", { ascending: false })
           .limit(500),
         supabase
@@ -143,6 +144,7 @@ export default function DealerOpportunityFeedPage() {
           .in("make", makes)
           .in("model", models)
           .not("status", "in", '("sold","excluded","delisted")')
+          .neq("source", "autograb-retail")
           .order("first_seen_at", { ascending: false })
           .limit(200),
       ]);
