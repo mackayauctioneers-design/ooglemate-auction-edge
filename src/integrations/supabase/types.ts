@@ -6270,6 +6270,48 @@ export type Database = {
           },
         ]
       }
+      manus_task_results: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          easycars_updates: Json | null
+          id: string
+          logs: Json | null
+          status: string | null
+          task_id: string
+          task_type: string | null
+          trade_batch_id: string | null
+          warnings: Json | null
+          xero_postings: Json | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          easycars_updates?: Json | null
+          id?: string
+          logs?: Json | null
+          status?: string | null
+          task_id: string
+          task_type?: string | null
+          trade_batch_id?: string | null
+          warnings?: Json | null
+          xero_postings?: Json | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          easycars_updates?: Json | null
+          id?: string
+          logs?: Json | null
+          status?: string | null
+          task_id?: string
+          task_type?: string | null
+          trade_batch_id?: string | null
+          warnings?: Json | null
+          xero_postings?: Json | null
+        }
+        Relationships: []
+      }
       market_listing_history: {
         Row: {
           dealer: string | null
@@ -10400,6 +10442,9 @@ export type Database = {
           model: string | null
           odometer_km: number | null
           raw_email_id: string | null
+          reconciled: boolean | null
+          reconciled_at: string | null
+          reconciled_by: string | null
           rego: string | null
           sell_price_ex_gst: number | null
           sell_price_inc_gst: number | null
@@ -10436,6 +10481,9 @@ export type Database = {
           model?: string | null
           odometer_km?: number | null
           raw_email_id?: string | null
+          reconciled?: boolean | null
+          reconciled_at?: string | null
+          reconciled_by?: string | null
           rego?: string | null
           sell_price_ex_gst?: number | null
           sell_price_inc_gst?: number | null
@@ -10472,6 +10520,9 @@ export type Database = {
           model?: string | null
           odometer_km?: number | null
           raw_email_id?: string | null
+          reconciled?: boolean | null
+          reconciled_at?: string | null
+          reconciled_by?: string | null
           rego?: string | null
           sell_price_ex_gst?: number | null
           sell_price_inc_gst?: number | null
