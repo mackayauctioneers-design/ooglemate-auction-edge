@@ -512,6 +512,24 @@ export default function JoshDealDeskPage() {
 
           {reviewCar && (
             <div className="space-y-5">
+              {/* Listing Link — TOP of modal so Josh always sees it */}
+              {reviewCar.listing_url ? (
+                <Button asChild className="w-full" size="lg">
+                  <a
+                    href={reviewCar.listing_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open Listing
+                  </a>
+                </Button>
+              ) : (
+                <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                  No direct listing URL stored for this car.
+                </div>
+              )}
+
               {/* Vehicle Summary */}
               <div className="grid grid-cols-2 gap-3 p-4 bg-muted rounded-lg text-sm">
                 <div><span className="text-muted-foreground">Price:</span> <span className="font-mono font-semibold">{fmtPrice(reviewCar.price)}</span></div>
@@ -529,36 +547,6 @@ export default function JoshDealDeskPage() {
                 <div><span className="text-muted-foreground">Badge:</span> {reviewCar.price_badge || "—"}</div>
                 <div><span className="text-muted-foreground">Detected:</span> {formatDistanceToNow(new Date(reviewCar.detected_at), { addSuffix: true })}</div>
               </div>
-
-              {reviewCar.listing_url ? (
-                <div className="space-y-2">
-                  <Button asChild variant="outline" size="sm" className="w-full">
-                    <a
-                      href={reviewCar.listing_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      View Listing
-                    </a>
-                  </Button>
-                  <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm">
-                    <div className="text-muted-foreground">Listing URL</div>
-                    <a
-                      href={reviewCar.listing_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 block break-all font-mono text-foreground underline underline-offset-2"
-                    >
-                      {reviewCar.listing_url}
-                    </a>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                  No direct listing URL is stored for this car yet.
-                </div>
-              )}
 
               {/* Checklist */}
               <div className="space-y-3">
