@@ -531,16 +531,29 @@ export default function JoshDealDeskPage() {
               </div>
 
               {reviewCar.listing_url ? (
-                <Button asChild variant="outline" size="sm" className="w-full">
-                  <a
-                    href={reviewCar.listing_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    View Listing
-                  </a>
-                </Button>
+                <div className="space-y-2">
+                  <Button asChild variant="outline" size="sm" className="w-full">
+                    <a
+                      href={reviewCar.listing_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      View Listing
+                    </a>
+                  </Button>
+                  <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm">
+                    <div className="text-muted-foreground">Listing URL</div>
+                    <a
+                      href={reviewCar.listing_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 block break-all font-mono text-foreground underline underline-offset-2"
+                    >
+                      {reviewCar.listing_url}
+                    </a>
+                  </div>
+                </div>
               ) : (
                 <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
                   No direct listing URL is stored for this car yet.
