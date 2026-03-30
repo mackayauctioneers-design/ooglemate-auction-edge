@@ -542,16 +542,9 @@ export default function JoshDealDeskPage() {
                   </a>
                 </Button>
               ) : (
-                <Button asChild variant="outline" size="sm" className="w-full border-amber-500/30 text-amber-600 hover:bg-amber-500/10">
-                  <a
-                    href={`https://www.google.com/search?q=${encodeURIComponent(`${reviewCar.year} ${reviewCar.make} ${reviewCar.model} ${reviewCar.variant || ''} ${reviewCar.location || ''} site:carsales.com.au OR site:autotrader.com.au OR site:gumtree.com.au`)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Search for Listing
-                  </a>
-                </Button>
+                <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                  No direct listing URL is stored for this car yet.
+                </div>
               )}
 
               {/* Checklist */}
