@@ -530,7 +530,7 @@ export default function JoshDealDeskPage() {
                 <div><span className="text-muted-foreground">Detected:</span> {formatDistanceToNow(new Date(reviewCar.detected_at), { addSuffix: true })}</div>
               </div>
 
-              {reviewCar.listing_url && (
+              {reviewCar.listing_url ? (
                 <a
                   href={reviewCar.listing_url}
                   target="_blank"
@@ -539,6 +539,16 @@ export default function JoshDealDeskPage() {
                 >
                   <ExternalLink className="h-4 w-4" />
                   View Listing
+                </a>
+              ) : (
+                <a
+                  href={`https://www.google.com/search?q=${encodeURIComponent(`${reviewCar.year} ${reviewCar.make} ${reviewCar.model} ${reviewCar.variant || ''} ${reviewCar.location || ''} site:carsales.com.au OR site:autotrader.com.au OR site:gumtree.com.au`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm text-amber-600 hover:underline"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Search for Listing
                 </a>
               )}
 
