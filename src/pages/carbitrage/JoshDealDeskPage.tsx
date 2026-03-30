@@ -101,6 +101,7 @@ export default function JoshDealDeskPage() {
       let q = supabase
         .from("cheap_car_queue")
         .select("*")
+        .not("listing_url", "is", null)
         .order("deal_score", { ascending: false, nullsFirst: false })
         .order("discount_pct", { ascending: true })
         .limit(50);
@@ -125,10 +126,10 @@ export default function JoshDealDeskPage() {
     queryKey: ["cheap-car-stats"],
     queryFn: async () => {
       const [detected, reviewed, verified, rejected] = await Promise.all([
-        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }),
-        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).in("status", ["VERIFIED", "REJECTED", "SOLD"]),
-        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).eq("status", "VERIFIED"),
-        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).eq("status", "REJECTED"),
+        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).not("listing_url", "is", null),
+        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).not("listing_url", "is", null).in("status", ["VERIFIED", "REJECTED", "SOLD"]),
+        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).not("listing_url", "is", null).eq("status", "VERIFIED"),
+        supabase.from("cheap_car_queue").select("id", { count: "exact", head: true }).not("listing_url", "is", null).eq("status", "REJECTED"),
       ]);
       return {
         detected: detected.count || 0,

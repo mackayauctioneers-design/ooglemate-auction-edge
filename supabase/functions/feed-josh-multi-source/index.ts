@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
       .gte("year", 2020)
       .lte("km", 120000)
       .not("asking_price", "is", null)
+      .not("listing_url", "is", null)
       .gte("first_seen_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
       .order("first_seen_at", { ascending: false })
       .limit(500);
