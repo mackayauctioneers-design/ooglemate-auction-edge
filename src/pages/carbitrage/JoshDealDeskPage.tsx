@@ -531,25 +531,27 @@ export default function JoshDealDeskPage() {
               </div>
 
               {reviewCar.listing_url ? (
-                <a
-                  href={reviewCar.listing_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  View Listing
-                </a>
+                <Button asChild variant="outline" size="sm" className="w-full">
+                  <a
+                    href={reviewCar.listing_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    View Listing
+                  </a>
+                </Button>
               ) : (
-                <a
-                  href={`https://www.google.com/search?q=${encodeURIComponent(`${reviewCar.year} ${reviewCar.make} ${reviewCar.model} ${reviewCar.variant || ''} ${reviewCar.location || ''} site:carsales.com.au OR site:autotrader.com.au OR site:gumtree.com.au`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-amber-600 hover:underline"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Search for Listing
-                </a>
+                <Button asChild variant="outline" size="sm" className="w-full border-amber-500/30 text-amber-600 hover:bg-amber-500/10">
+                  <a
+                    href={`https://www.google.com/search?q=${encodeURIComponent(`${reviewCar.year} ${reviewCar.make} ${reviewCar.model} ${reviewCar.variant || ''} ${reviewCar.location || ''} site:carsales.com.au OR site:autotrader.com.au OR site:gumtree.com.au`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Search for Listing
+                  </a>
+                </Button>
               )}
 
               {/* Checklist */}
