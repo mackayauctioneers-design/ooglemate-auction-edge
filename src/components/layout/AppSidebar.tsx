@@ -42,6 +42,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 // ============================================================================
 const dealerNavItems = [
   { path: '/dealer-home', label: 'Home', icon: DollarSign, authOnly: true },
+  { path: '/today', label: 'Today', icon: Target, authOnly: true },
   { path: '/ooglebot', label: 'OogleBot', icon: Bot, authOnly: true },
   { path: '/valo', label: 'Do A Valo', icon: Sparkles, authOnly: true },
   { path: '/my-hunts', label: 'My Hunts', icon: Crosshair, authOnly: true },
