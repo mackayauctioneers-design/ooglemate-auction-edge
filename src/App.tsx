@@ -177,7 +177,7 @@ const App = () => (
               <Route path="/live-alerts" element={<OperatorGuard><LiveAlertsPage /></OperatorGuard>} />
               <Route path="/retail-signals" element={<OperatorGuard><RetailSignalsPage /></OperatorGuard>} />
               <Route path="/opportunities" element={<OperatorGuard><OpportunitiesPage /></OperatorGuard>} />
-              <Route path="/today" element={<OperatorGuard><TodayPage /></OperatorGuard>} />
+              <Route path="/today" element={<RequireAuth><TodayPage /></RequireAuth>} />
               <Route path="/dealer-dashboard" element={<OperatorGuard><DealerDashboardPage /></OperatorGuard>} />
               <Route path="/fingerprints-legacy" element={<OperatorGuard><FingerprintsPage /></OperatorGuard>} />
               <Route path="/buyer-review" element={<OperatorGuard><BuyerReviewQueuePage /></OperatorGuard>} />
