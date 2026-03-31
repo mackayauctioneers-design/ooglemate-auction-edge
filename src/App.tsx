@@ -219,6 +219,7 @@ const App = () => (
               <Route path="/operator/feeding-mode" element={<OperatorGuard><FeedingModeReportPage /></OperatorGuard>} />
               <Route path="/operator/auction-queue" element={<OperatorGuard><AuctionEnrichmentQueuePage /></OperatorGuard>} />
               <Route path="/operator/fingerprints" element={<RequireAdmin><FingerprintsExplorerPage /></RequireAdmin>} />
+              <Route path="/operator/fingerprint-alerts" element={<OperatorGuard><FingerprintAlertTogglePage /></OperatorGuard>} />
               <Route path="/operator/benchmark-gaps" element={<RequireAdmin><BenchmarkGapPanel /></RequireAdmin>} />
               <Route path="/operator/benchmark-watchlist" element={<RequireAdmin><BenchmarkWatchlistPage /></RequireAdmin>} />
               <Route path="/operator/dealer-specs" element={<RequireAdmin><OperatorDealerSpecsPage /></RequireAdmin>} />

@@ -104,6 +104,7 @@ const operatorSections: NavSection[] = [
     title: 'Matching Engine',
     items: [
       { path: '/operator/fingerprints', label: 'Fingerprints Explorer', icon: Fingerprint },
+      { path: '/operator/fingerprint-alerts', label: 'Alert Controls', icon: Bell },
       { path: '/operator/targets', label: 'Targets Pool', icon: Crosshair },
       { path: '/operator/benchmark-gaps', label: 'Benchmark Gaps', icon: Target },
       { path: '/operator/trigger-qa', label: 'Trigger QA', icon: FlaskConical },
