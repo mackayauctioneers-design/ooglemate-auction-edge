@@ -5418,6 +5418,117 @@ export type Database = {
         }
         Relationships: []
       }
+      invoice_emails: {
+        Row: {
+          body_type: string | null
+          buyer_abn: string | null
+          buyer_name: string | null
+          colour: string | null
+          created_at: string | null
+          direction: string | null
+          easycars_stock_id: string | null
+          error_message: string | null
+          fees: Json | null
+          fingerprint: string | null
+          gmail_date: string | null
+          gmail_from: string | null
+          gmail_message_id: string
+          gmail_subject: string | null
+          gst_amount: number | null
+          id: string
+          invoice_date: string | null
+          invoice_number: string | null
+          make: string | null
+          model: string | null
+          odo_km: number | null
+          purchase_price_ex_gst: number | null
+          purchase_price_inc_gst: number | null
+          raw_pdf_text: string | null
+          rego: string | null
+          status: string
+          stock_number: string | null
+          supplier_abn: string | null
+          supplier_name: string | null
+          transmission: string | null
+          updated_at: string | null
+          variant: string | null
+          vin: string | null
+          year: number | null
+        }
+        Insert: {
+          body_type?: string | null
+          buyer_abn?: string | null
+          buyer_name?: string | null
+          colour?: string | null
+          created_at?: string | null
+          direction?: string | null
+          easycars_stock_id?: string | null
+          error_message?: string | null
+          fees?: Json | null
+          fingerprint?: string | null
+          gmail_date?: string | null
+          gmail_from?: string | null
+          gmail_message_id: string
+          gmail_subject?: string | null
+          gst_amount?: number | null
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string | null
+          make?: string | null
+          model?: string | null
+          odo_km?: number | null
+          purchase_price_ex_gst?: number | null
+          purchase_price_inc_gst?: number | null
+          raw_pdf_text?: string | null
+          rego?: string | null
+          status?: string
+          stock_number?: string | null
+          supplier_abn?: string | null
+          supplier_name?: string | null
+          transmission?: string | null
+          updated_at?: string | null
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Update: {
+          body_type?: string | null
+          buyer_abn?: string | null
+          buyer_name?: string | null
+          colour?: string | null
+          created_at?: string | null
+          direction?: string | null
+          easycars_stock_id?: string | null
+          error_message?: string | null
+          fees?: Json | null
+          fingerprint?: string | null
+          gmail_date?: string | null
+          gmail_from?: string | null
+          gmail_message_id?: string
+          gmail_subject?: string | null
+          gst_amount?: number | null
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string | null
+          make?: string | null
+          model?: string | null
+          odo_km?: number | null
+          purchase_price_ex_gst?: number | null
+          purchase_price_inc_gst?: number | null
+          raw_pdf_text?: string | null
+          rego?: string | null
+          status?: string
+          stock_number?: string | null
+          supplier_abn?: string | null
+          supplier_name?: string | null
+          transmission?: string | null
+          updated_at?: string | null
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       josh_alerts: {
         Row: {
           account_id: string
