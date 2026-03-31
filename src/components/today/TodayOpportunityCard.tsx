@@ -19,7 +19,7 @@ interface Props {
   actionLoading?: boolean;
 }
 
-export function TodayOpportunityCard({ opportunity: opp, existingDealId, onCreateDeal, creating }: Props) {
+export function TodayOpportunityCard({ opportunity: opp, existingDealId, onCreateDeal, creating, onDealerAction, actionLoading }: Props) {
   const vehicle = [opp.year, opp.make, opp.model].filter(Boolean).join(" ");
   const km = opp.km != null ? `${Math.round(opp.km / 1000)}k km` : null;
 
