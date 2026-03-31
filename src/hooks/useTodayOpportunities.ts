@@ -60,9 +60,9 @@ export function useTodayOpportunities(accountId: string) {
         // Section A: Open matched opportunities
         supabase
           .from("matched_opportunities_v1")
-          .select("id, account_id, listing_norm_id, url_canonical, make, model, year, km, asking_price, fingerprint_make, fingerprint_model, sales_count, km_band, price_band, match_score, reasons, status, created_at, source_searched")
+          .select("id, account_id, listing_norm_id, url_canonical, make, model, year, km, asking_price, fingerprint_make, fingerprint_model, sales_count, km_band, price_band, match_score, reasons, status, created_at, source_searched, dealer_action, dealer_action_at")
           .eq("account_id", accountId)
-          .eq("status", "open")
+          .in("status", ["open", "interested", "bidding"])
           .order("match_score", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(10),
