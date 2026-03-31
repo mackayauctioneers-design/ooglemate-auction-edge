@@ -117,7 +117,10 @@ export function TodayOpportunityCard({ opportunity: opp, existingDealId, onCreat
           </Badge>
         )}
 
-        {/* Actions */}
+        {/* Enrichment panel — shows after Interested click */}
+        <OpportunityEnrichmentPanel enrichment={enrichment || null} loading={enrichmentLoading} />
+
+
         <div className="flex items-center gap-2 pt-1">
           <Link to="/matches-inbox" className="flex-1">
             <Button variant="outline" size="sm" className="w-full text-xs">
