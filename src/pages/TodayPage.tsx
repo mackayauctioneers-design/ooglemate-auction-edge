@@ -61,6 +61,29 @@ export default function TodayPage() {
     setConfirmOpp(opp);
   };
 
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const handleDealerAction = async (opp: TodayOpportunity, action: string) => {
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('matched_opportunities_v1')
+        .update({
+          dealer_action: action,
+          dealer_action_at: new Date().toISOString(),
+          status: action === 'pass' ? 'passed' : action === 'bidding' ? 'bidding' : 'interested',
+        })
+        .eq('id', opp.id);
+      if (error) throw error;
+      toast.success(action === 'pass' ? 'Marked as pass' : action === 'bidding' ? 'Marked as already bidding' : 'Marked as interested');
+      refetch();
+    } catch (err) {
+      toast.error('Failed to record action');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const confirmCreateDeal = async () => {
     if (!confirmOpp) return;
     const opp = confirmOpp;
