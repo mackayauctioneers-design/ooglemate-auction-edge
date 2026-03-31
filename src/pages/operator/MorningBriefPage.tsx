@@ -520,6 +520,9 @@ export default function MorningBriefPage() {
             </Tabs>
           </>
         )}
+
+        {/* Auction Coverage Metrics */}
+        <AuctionCoverageMetrics />
       </div>
     </OperatorLayout>
   );
