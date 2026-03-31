@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { KitingIndicator } from '@/components/kiting/KitingIndicator';
 import { cn } from '@/lib/utils';
+import { AuctionCoverageMetrics } from '@/components/operator/AuctionCoverageMetrics';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
