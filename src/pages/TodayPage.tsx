@@ -63,6 +63,42 @@ export default function TodayPage() {
   };
 
   const [actionLoading, setActionLoading] = useState(false);
+  const [enrichments, setEnrichments] = useState<Record<string, EnrichmentData>>({});
+  const [enrichingFor, setEnrichingFor] = useState<string | null>(null);
+
+  // Fetch existing enrichments for loaded opportunities
+  useEffect(() => {
+    if (opportunities.length === 0) return;
+    const ids = opportunities.map(o => o.id);
+    supabase
+      .from("opportunity_enrichments")
+      .select("*")
+      .in("matched_opportunity_id", ids)
+      .then(({ data }) => {
+        if (data) {
+          const map: Record<string, EnrichmentData> = {};
+          data.forEach((e: any) => { map[e.matched_opportunity_id] = e; });
+          setEnrichments(prev => ({ ...prev, ...map }));
+        }
+      });
+  }, [opportunities]);
+
+  const triggerEnrichment = async (oppId: string) => {
+    setEnrichingFor(oppId);
+    try {
+      const { data, error } = await supabase.functions.invoke("enrich-opportunity", {
+        body: { matched_opportunity_id: oppId },
+      });
+      if (error) throw error;
+      if (data?.enrichment) {
+        setEnrichments(prev => ({ ...prev, [oppId]: data.enrichment }));
+      }
+    } catch (err) {
+      console.error("Enrichment failed:", err);
+    } finally {
+      setEnrichingFor(null);
+    }
+  };
 
   const handleDealerAction = async (opp: TodayOpportunity, action: string) => {
     setActionLoading(true);
@@ -77,6 +113,12 @@ export default function TodayPage() {
         .eq('id', opp.id);
       if (error) throw error;
       toast.success(action === 'pass' ? 'Marked as pass' : action === 'bidding' ? 'Marked as already bidding' : 'Marked as interested');
+      
+      // Trigger enrichment when dealer clicks Interested
+      if (action === 'interested') {
+        triggerEnrichment(opp.id);
+      }
+      
       refetch();
     } catch (err) {
       toast.error('Failed to record action');
