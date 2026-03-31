@@ -72,6 +72,48 @@ export function TodayOpportunityCard({ opportunity: opp, existingDealId, onCreat
           View listing <ExternalLink className="h-3 w-3" />
         </a>
 
+        {/* Dealer quick actions */}
+        {onDealerAction && !(opp as any).dealer_action && (
+          <div className="flex items-center gap-2 pt-1 border-t border-border">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs gap-1 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+              onClick={() => onDealerAction(opp, 'interested')}
+              disabled={actionLoading}
+            >
+              <ThumbsUp className="h-3 w-3" /> Interested
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs gap-1 text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+              onClick={() => onDealerAction(opp, 'bidding')}
+              disabled={actionLoading}
+            >
+              <Gavel className="h-3 w-3" /> Already Bidding
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs gap-1 text-muted-foreground"
+              onClick={() => onDealerAction(opp, 'pass')}
+              disabled={actionLoading}
+            >
+              <ThumbsDown className="h-3 w-3" /> Pass
+            </Button>
+          </div>
+        )}
+
+        {/* Show action badge if already acted */}
+        {(opp as any).dealer_action && (
+          <Badge variant="outline" className="text-xs">
+            {(opp as any).dealer_action === 'interested' ? '👍 Interested' :
+             (opp as any).dealer_action === 'bidding' ? '🔨 Already Bidding' :
+             '👎 Passed'}
+          </Badge>
+        )}
+
         {/* Actions */}
         <div className="flex items-center gap-2 pt-1">
           <Link to="/matches-inbox" className="flex-1">
