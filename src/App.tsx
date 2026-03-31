@@ -118,6 +118,7 @@ import AJHReportPage from "./pages/dealer/AJHReportPage";
 import DealerOpportunityFeedPage from "./pages/dealer/DealerOpportunityFeedPage";
 import BuyerTerminalPage from "./pages/fleet/BuyerTerminalPage";
 import FleetDashboardPage from "./pages/fleet/FleetDashboardPage";
+import FingerprintAlertTogglePage from "./pages/operator/FingerprintAlertTogglePage";
 
 const queryClient = new QueryClient();
 
