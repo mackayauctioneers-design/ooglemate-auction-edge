@@ -224,6 +224,8 @@ export default function TodayPage() {
                       creating={creatingDealFor === opp.id}
                       onDealerAction={handleDealerAction}
                       actionLoading={actionLoading}
+                      enrichment={enrichments[opp.id] || null}
+                      enrichmentLoading={enrichingFor === opp.id}
                     />
                   ))}
                 </div>
