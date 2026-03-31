@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, FileText, Loader2, Crosshair } from "lucide-react";
+import { ExternalLink, FileText, Loader2, Crosshair, ThumbsUp, ThumbsDown, Gavel } from "lucide-react";
 import type { TodayOpportunity } from "@/hooks/useTodayOpportunities";
 
 // ============================================================================
