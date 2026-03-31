@@ -179,6 +179,8 @@ export default function TodayPage() {
                       existingDealId={existingDealMap[opp.id]}
                       onCreateDeal={handleCreateDeal}
                       creating={creatingDealFor === opp.id}
+                      onDealerAction={handleDealerAction}
+                      actionLoading={actionLoading}
                     />
                   ))}
                 </div>
