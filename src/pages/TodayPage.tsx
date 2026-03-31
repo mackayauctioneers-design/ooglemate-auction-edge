@@ -12,6 +12,7 @@ import { CreateDealConfirmDialog } from "@/components/today/CreateDealConfirmDia
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Target, FileText, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import type { EnrichmentData } from "@/components/today/OpportunityEnrichmentPanel";
 
 // ============================================================================
 // TODAY'S OPPORTUNITIES — Dealer Default Landing Page
