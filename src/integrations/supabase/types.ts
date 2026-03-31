@@ -6502,6 +6502,9 @@ export type Database = {
           asking_price: number | null
           body_type: string | null
           created_at: string
+          dealer_action: string | null
+          dealer_action_at: string | null
+          dealer_action_note: string | null
           drive_type: string | null
           fingerprint_make: string
           fingerprint_model: string
@@ -6536,6 +6539,9 @@ export type Database = {
           asking_price?: number | null
           body_type?: string | null
           created_at?: string
+          dealer_action?: string | null
+          dealer_action_at?: string | null
+          dealer_action_note?: string | null
           drive_type?: string | null
           fingerprint_make: string
           fingerprint_model: string
@@ -6570,6 +6576,9 @@ export type Database = {
           asking_price?: number | null
           body_type?: string | null
           created_at?: string
+          dealer_action?: string | null
+          dealer_action_at?: string | null
+          dealer_action_note?: string | null
           drive_type?: string | null
           fingerprint_make?: string
           fingerprint_model?: string
