@@ -15,6 +15,8 @@ interface Props {
   existingDealId?: string;
   onCreateDeal: (opp: TodayOpportunity) => void;
   creating: boolean;
+  onDealerAction?: (opp: TodayOpportunity, action: string) => void;
+  actionLoading?: boolean;
 }
 
 export function TodayOpportunityCard({ opportunity: opp, existingDealId, onCreateDeal, creating }: Props) {
