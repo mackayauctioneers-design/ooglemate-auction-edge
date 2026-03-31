@@ -7159,6 +7159,89 @@ export type Database = {
           },
         ]
       }
+      opportunity_enrichments: {
+        Row: {
+          account_id: string
+          ajh_median_days_in_stock: number | null
+          ajh_median_gross: number | null
+          ajh_median_sell_price: number | null
+          ajh_sales_count: number | null
+          auction_guide_price: number | null
+          comps_sample: Json | null
+          created_at: string
+          estimated_landed_cost: number | null
+          estimated_recon_cost: number | null
+          gross_vs_ajh_median_pct: number | null
+          id: string
+          liquidity_band: string | null
+          market_median_price: number | null
+          market_price_high: number | null
+          market_price_low: number | null
+          matched_opportunity_id: string
+          price_vs_market_pct: number | null
+          profit_band: string | null
+          projected_gross: number | null
+          summary_text: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          ajh_median_days_in_stock?: number | null
+          ajh_median_gross?: number | null
+          ajh_median_sell_price?: number | null
+          ajh_sales_count?: number | null
+          auction_guide_price?: number | null
+          comps_sample?: Json | null
+          created_at?: string
+          estimated_landed_cost?: number | null
+          estimated_recon_cost?: number | null
+          gross_vs_ajh_median_pct?: number | null
+          id?: string
+          liquidity_band?: string | null
+          market_median_price?: number | null
+          market_price_high?: number | null
+          market_price_low?: number | null
+          matched_opportunity_id: string
+          price_vs_market_pct?: number | null
+          profit_band?: string | null
+          projected_gross?: number | null
+          summary_text?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          ajh_median_days_in_stock?: number | null
+          ajh_median_gross?: number | null
+          ajh_median_sell_price?: number | null
+          ajh_sales_count?: number | null
+          auction_guide_price?: number | null
+          comps_sample?: Json | null
+          created_at?: string
+          estimated_landed_cost?: number | null
+          estimated_recon_cost?: number | null
+          gross_vs_ajh_median_pct?: number | null
+          id?: string
+          liquidity_band?: string | null
+          market_median_price?: number | null
+          market_price_high?: number | null
+          market_price_low?: number | null
+          matched_opportunity_id?: string
+          price_vs_market_pct?: number | null
+          profit_band?: string | null
+          projected_gross?: number | null
+          summary_text?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opportunity_enrichments_matched_opportunity_id_fkey"
+            columns: ["matched_opportunity_id"]
+            isOneToOne: true
+            referencedRelation: "matched_opportunities_v1"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       outward_browse_queue: {
         Row: {
           attempt_count: number

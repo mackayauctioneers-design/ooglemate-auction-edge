@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, FileText, Loader2, Crosshair, ThumbsUp, ThumbsDown, Gavel } from "lucide-react";
 import type { TodayOpportunity } from "@/hooks/useTodayOpportunities";
+import { OpportunityEnrichmentPanel, type EnrichmentData } from "./OpportunityEnrichmentPanel";
 
 // ============================================================================
 // OPPORTUNITY CARD: Single matched opportunity for Today's page
@@ -17,9 +18,11 @@ interface Props {
   creating: boolean;
   onDealerAction?: (opp: TodayOpportunity, action: string) => void;
   actionLoading?: boolean;
+  enrichment?: EnrichmentData | null;
+  enrichmentLoading?: boolean;
 }
 
-export function TodayOpportunityCard({ opportunity: opp, existingDealId, onCreateDeal, creating, onDealerAction, actionLoading }: Props) {
+export function TodayOpportunityCard({ opportunity: opp, existingDealId, onCreateDeal, creating, onDealerAction, actionLoading, enrichment, enrichmentLoading }: Props) {
   const vehicle = [opp.year, opp.make, opp.model].filter(Boolean).join(" ");
   const km = opp.km != null ? `${Math.round(opp.km / 1000)}k km` : null;
 
@@ -114,7 +117,10 @@ export function TodayOpportunityCard({ opportunity: opp, existingDealId, onCreat
           </Badge>
         )}
 
-        {/* Actions */}
+        {/* Enrichment panel — shows after Interested click */}
+        <OpportunityEnrichmentPanel enrichment={enrichment || null} loading={enrichmentLoading} />
+
+
         <div className="flex items-center gap-2 pt-1">
           <Link to="/matches-inbox" className="flex-1">
             <Button variant="outline" size="sm" className="w-full text-xs">
