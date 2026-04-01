@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Globe, Link2, Rocket, Building2, Upload } from 'lucide-react';
+import { Loader2, Globe, Link2, Rocket, Upload } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface DealerOnboardingProps {
@@ -20,6 +20,11 @@ interface DealerProfile {
   org_id: string | null;
   region_id: string;
   account_id: string | null;
+}
+
+interface UnlinkedUser {
+  user_id: string;
+  email: string;
 }
 
 const REGIONS = [
@@ -51,19 +56,21 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [dealerProfiles, setDealerProfiles] = useState<DealerProfile[]>([]);
+  const [unlinkedUsers, setUnlinkedUsers] = useState<UnlinkedUser[]>([]);
   
-  // Add dealer form — just name + URL
+  // Add dealer form
   const [dealerName, setDealerName] = useState('');
   const [dealerWebsite, setDealerWebsite] = useState('');
   const [regionId, setRegionId] = useState('');
   
   // Link user form
   const [selectedProfileId, setSelectedProfileId] = useState('');
-  const [authUserId, setAuthUserId] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState('');
   const [role, setRole] = useState<'dealer' | 'admin' | 'internal'>('dealer');
 
   useEffect(() => {
     loadDealerProfiles();
+    loadUnlinkedUsers();
   }, []);
 
   const loadDealerProfiles = async () => {
@@ -72,6 +79,34 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
       .select('id, dealer_name, org_id, region_id, account_id')
       .order('dealer_name');
     if (!error && data) setDealerProfiles(data);
+  };
+
+  const loadUnlinkedUsers = async () => {
+    try {
+      // Get all linked user IDs
+      const { data: links } = await supabase
+        .from('dealer_profile_user_links')
+        .select('user_id');
+      const linkedIds = new Set(links?.map(l => l.user_id) || []);
+
+      // Get all profiles (which have user_id + email-like info)
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, display_name, email')
+        .order('email');
+
+      if (profiles) {
+        const unlinked = profiles
+          .filter(p => !linkedIds.has(p.id))
+          .map(p => ({
+            user_id: p.id,
+            email: p.email || p.display_name || p.id.slice(0, 8),
+          }));
+        setUnlinkedUsers(unlinked);
+      }
+    } catch (err) {
+      console.error('Error loading unlinked users:', err);
+    }
   };
 
   const dispatchCaroogleProfiling = async (profileId: string, name: string, website: string) => {
@@ -97,7 +132,6 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
       return;
     }
 
-    // Ensure URL has protocol
     let website = dealerWebsite.trim();
     if (!website.startsWith('http://') && !website.startsWith('https://')) {
       website = `https://${website}`;
@@ -118,8 +152,6 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
       if (error) throw error;
 
       toast.success(`Created: ${dealerName}`);
-
-      // Dispatch Lindy to crawl & build fingerprints
       await dispatchCaroogleProfiling(profileId, dealerName.trim(), website);
 
       setDealerName('');
@@ -135,13 +167,8 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
   };
 
   const handleLinkUser = async () => {
-    if (!selectedProfileId || !authUserId.trim()) {
-      toast.error('Select a dealer and enter the user ID');
-      return;
-    }
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(authUserId.trim())) {
-      toast.error('Invalid user ID format (must be UUID)');
+    if (!selectedProfileId || !selectedUserId) {
+      toast.error('Select a dealer and a user');
       return;
     }
 
@@ -149,24 +176,26 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
     try {
       const { error: linkError } = await supabase
         .from('dealer_profile_user_links')
-        .insert({ dealer_profile_id: selectedProfileId, user_id: authUserId.trim(), linked_by: 'admin' });
+        .insert({ dealer_profile_id: selectedProfileId, user_id: selectedUserId, linked_by: 'admin' });
 
       if (linkError) {
-        if (linkError.code === '23503') throw new Error('User ID not found — user must sign up first');
+        if (linkError.code === '23503') throw new Error('User not found');
         if (linkError.code === '23505') throw new Error('Already linked');
         throw linkError;
       }
 
       const { error: roleError } = await supabase
         .from('user_roles')
-        .upsert({ user_id: authUserId.trim(), role }, { onConflict: 'user_id' });
+        .upsert({ user_id: selectedUserId, role }, { onConflict: 'user_id' });
       if (roleError) throw roleError;
 
       const profile = dealerProfiles.find(p => p.id === selectedProfileId);
-      toast.success(`Linked ${profile?.dealer_name || 'dealer'} → ${role}`);
+      const user = unlinkedUsers.find(u => u.user_id === selectedUserId);
+      toast.success(`Linked ${user?.email} → ${profile?.dealer_name} (${role})`);
       setSelectedProfileId('');
-      setAuthUserId('');
+      setSelectedUserId('');
       setRole('dealer');
+      loadUnlinkedUsers();
       onComplete?.();
     } catch (error) {
       toast.error('Failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
@@ -199,7 +228,6 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
             </TabsTrigger>
           </TabsList>
 
-          {/* TAB 1: Add dealer — name + website, Lindy does the rest */}
           <TabsContent value="add" className="space-y-4">
             <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
               <p className="text-sm text-primary font-medium">How it works</p>
@@ -252,10 +280,9 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
             </Button>
           </TabsContent>
 
-          {/* TAB 2: Link existing profile to auth user */}
           <TabsContent value="link" className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Link an existing dealer to an authenticated user.
+              Link a signed-up user to a dealer profile by selecting their email.
             </p>
 
             <div>
@@ -271,12 +298,19 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
             </div>
 
             <div>
-              <Label>Auth User ID *</Label>
-              <Input
-                placeholder="UUID from auth"
-                value={authUserId}
-                onChange={(e) => setAuthUserId(e.target.value)}
-              />
+              <Label>User *</Label>
+              {unlinkedUsers.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">No unlinked users — waiting for someone to sign up via your invite link.</p>
+              ) : (
+                <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                  <SelectTrigger><SelectValue placeholder="Select user by email..." /></SelectTrigger>
+                  <SelectContent>
+                    {unlinkedUsers.map((u) => (
+                      <SelectItem key={u.user_id} value={u.user_id}>{u.email}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div>
@@ -291,7 +325,7 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
               </Select>
             </div>
 
-            <Button onClick={handleLinkUser} className="w-full gap-2" disabled={isLoading || !selectedProfileId || !authUserId.trim()}>
+            <Button onClick={handleLinkUser} className="w-full gap-2" disabled={isLoading || !selectedProfileId || !selectedUserId}>
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
               Link User
             </Button>
