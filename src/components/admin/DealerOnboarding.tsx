@@ -325,11 +325,21 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
                     variant="ghost"
                     size="sm"
                     className="h-7 gap-1.5 text-xs"
-                    onClick={() => {
+                    onClick={async () => {
                       if (p.account_id) {
                         navigate(`/operator/dealer-upload?account=${p.account_id}`);
                       } else {
-                        toast.error(`${p.dealer_name} has no linked account yet — link one first`);
+                        const slug = p.dealer_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                        const { data: newAcct, error: err } = await supabase
+                          .from('accounts')
+                          .insert({ display_name: p.dealer_name, slug })
+                          .select('id')
+                          .single();
+                        if (err) { toast.error('Failed to create account: ' + err.message); return; }
+                        await supabase.from('dealer_profiles').update({ account_id: newAcct.id } as any).eq('id', p.id);
+                        toast.success(`Created account for ${p.dealer_name}`);
+                        loadDealerProfiles();
+                        navigate(`/operator/dealer-upload?account=${newAcct.id}`);
                       }
                     }}
                   >
