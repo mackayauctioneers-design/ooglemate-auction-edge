@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -6,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Globe, Link2, Rocket, Building2 } from 'lucide-react';
+import { Loader2, Globe, Link2, Rocket, Building2, Upload } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface DealerOnboardingProps {
@@ -18,6 +19,7 @@ interface DealerProfile {
   dealer_name: string;
   org_id: string | null;
   region_id: string;
+  account_id: string | null;
 }
 
 const REGIONS = [
