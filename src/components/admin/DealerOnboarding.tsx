@@ -301,9 +301,26 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
         {dealerProfiles.length > 0 && (
           <div className="mt-6 pt-4 border-t">
             <p className="text-xs font-medium text-muted-foreground mb-2">Existing dealers ({dealerProfiles.length})</p>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="space-y-1.5">
               {dealerProfiles.map(p => (
-                <span key={p.id} className="text-xs bg-muted px-2 py-0.5 rounded-full">{p.dealer_name}</span>
+                <div key={p.id} className="flex items-center justify-between rounded-md bg-muted px-3 py-1.5">
+                  <span className="text-sm font-medium">{p.dealer_name}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 text-xs"
+                    onClick={() => {
+                      if (p.account_id) {
+                        navigate(`/operator/dealer-upload?account=${p.account_id}`);
+                      } else {
+                        toast.error(`${p.dealer_name} has no linked account yet — link one first`);
+                      }
+                    }}
+                  >
+                    <Upload className="h-3 w-3" />
+                    Upload Sales
+                  </Button>
+                </div>
               ))}
             </div>
           </div>

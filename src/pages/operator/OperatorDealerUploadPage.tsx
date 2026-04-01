@@ -31,8 +31,9 @@ type UploadStep = "idle" | "parsing" | "mapping" | "importing";
 type UploadMode = "single" | "merge";
 
 export default function OperatorDealerUploadPage() {
+  const [searchParams] = useSearchParams();
   const { data: accounts } = useAccounts();
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(searchParams.get("account") || "");
   const [step, setStep] = useState<UploadStep>("idle");
   const [uploadMode, setUploadMode] = useState<UploadMode>("single");
   const [parsedHeaders, setParsedHeaders] = useState<string[]>([]);
