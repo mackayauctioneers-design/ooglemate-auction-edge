@@ -48,6 +48,7 @@ const ROLES = [
 ];
 
 export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [dealerProfiles, setDealerProfiles] = useState<DealerProfile[]>([]);
   
