@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { OperatorLayout } from "@/components/layout/OperatorLayout";
@@ -31,8 +31,9 @@ type UploadStep = "idle" | "parsing" | "mapping" | "importing";
 type UploadMode = "single" | "merge";
 
 export default function OperatorDealerUploadPage() {
+  const [searchParams] = useSearchParams();
   const { data: accounts } = useAccounts();
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(searchParams.get("account") || "");
   const [step, setStep] = useState<UploadStep>("idle");
   const [uploadMode, setUploadMode] = useState<UploadMode>("single");
   const [parsedHeaders, setParsedHeaders] = useState<string[]>([]);
