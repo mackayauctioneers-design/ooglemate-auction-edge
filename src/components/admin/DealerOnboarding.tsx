@@ -69,7 +69,7 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
   const loadDealerProfiles = async () => {
     const { data, error } = await supabase
       .from('dealer_profiles')
-      .select('id, dealer_name, org_id, region_id')
+      .select('id, dealer_name, org_id, region_id, account_id')
       .order('dealer_name');
     if (!error && data) setDealerProfiles(data);
   };
