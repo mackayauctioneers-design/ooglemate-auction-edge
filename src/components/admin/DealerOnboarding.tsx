@@ -83,27 +83,9 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
 
   const loadUnlinkedUsers = async () => {
     try {
-      // Get all linked user IDs
-      const { data: links } = await supabase
-        .from('dealer_profile_user_links')
-        .select('user_id');
-      const linkedIds = new Set(links?.map(l => l.user_id) || []);
-
-      // Get all profiles (which have user_id + email-like info)
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, display_name, email')
-        .order('email');
-
-      if (profiles) {
-        const unlinked = profiles
-          .filter(p => !linkedIds.has(p.id))
-          .map(p => ({
-            user_id: p.id,
-            email: p.email || p.display_name || p.id.slice(0, 8),
-          }));
-        setUnlinkedUsers(unlinked);
-      }
+      const { data, error } = await supabase.functions.invoke('list-unlinked-users');
+      if (error) throw error;
+      setUnlinkedUsers(data || []);
     } catch (err) {
       console.error('Error loading unlinked users:', err);
     }
