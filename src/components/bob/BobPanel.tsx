@@ -426,7 +426,7 @@ export function BobPanel() {
     <>
       {/* Floating trigger */}
       {!isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-2">
+        <div className="fixed top-1/2 -translate-y-1/2 right-6 z-50 flex flex-col items-center gap-2">
           {sttSupported && (
             <BobVoiceButtonWrapped
               isListening={isListening}
