@@ -4,7 +4,7 @@ import { OperatorLayout } from '@/components/layout/OperatorLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Building2, Globe, MapPin, Fingerprint, Package, ChevronDown, ChevronUp, Rocket, Loader2, BarChart3, Shield, Eye, AlertTriangle, Target } from 'lucide-react';
+import { Building2, Globe, MapPin, Fingerprint, Package, ChevronDown, ChevronUp, Rocket, Loader2, BarChart3, Shield, Eye, AlertTriangle, Target, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
@@ -18,6 +18,7 @@ interface DealerProfile {
   dealer_phone: string | null;
   region_id: string;
   created_at: string;
+  account_id: string | null;
 }
 
 interface DealerFingerprint {
@@ -62,6 +63,77 @@ export default function DealerProfilesPage() {
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [profilingIds, setProfilingIds] = useState<Set<string>>(new Set());
+  const [uploadingIds, setUploadingIds] = useState<Set<string>>(new Set());
+
+  const buildAccountSlug = (dealer: DealerWithFingerprints) => {
+    const base = dealer.dealer_name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+
+    return base || `dealer-${dealer.id.slice(0, 8)}`;
+  };
+
+  const openSalesUpload = async (dealer: DealerWithFingerprints) => {
+    setUploadingIds((prev) => new Set(prev).add(dealer.id));
+
+    try {
+      let accountId = dealer.account_id;
+
+      if (!accountId) {
+        const baseSlug = buildAccountSlug(dealer);
+
+        let { data: account, error: accountError } = await supabase
+          .from('accounts')
+          .insert({
+            display_name: dealer.dealer_name,
+            slug: baseSlug,
+          })
+          .select('id')
+          .single();
+
+        if (accountError?.code === '23505') {
+          ({ data: account, error: accountError } = await supabase
+            .from('accounts')
+            .insert({
+              display_name: dealer.dealer_name,
+              slug: `${baseSlug}-${dealer.id.slice(0, 8)}`,
+            })
+            .select('id')
+            .single());
+        }
+
+        if (accountError || !account) {
+          throw accountError || new Error('Failed to create account');
+        }
+
+        accountId = account.id;
+
+        const { error: profileError } = await supabase
+          .from('dealer_profiles')
+          .update({ account_id: accountId } as never)
+          .eq('id', dealer.id);
+
+        if (profileError) throw profileError;
+
+        setDealers((prev) => prev.map((item) => (
+          item.id === dealer.id ? { ...item, account_id: accountId } : item
+        )));
+
+        toast.success(`Sales upload ready for ${dealer.dealer_name}`);
+      }
+
+      navigate(`/operator/dealer-upload?account=${accountId}`);
+    } catch (err) {
+      toast.error('Could not open sales upload: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setUploadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(dealer.id);
+        return next;
+      });
+    }
+  };
 
   const triggerProfiling = async (dealer: DealerWithFingerprints) => {
     if (!dealer.dealer_website) {
@@ -257,6 +329,25 @@ export default function DealerProfilesPage() {
                             <span className="text-muted-foreground text-xs">Added</span>
                             <p>{new Date(dealer.created_at).toLocaleDateString()}</p>
                           </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            className="gap-2"
+                            disabled={uploadingIds.has(dealer.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void openSalesUpload(dealer);
+                            }}
+                          >
+                            {uploadingIds.has(dealer.id) ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Upload className="h-4 w-4" />
+                            )}
+                            Upload Sales
+                          </Button>
                         </div>
 
                         {/* Report Link */}
