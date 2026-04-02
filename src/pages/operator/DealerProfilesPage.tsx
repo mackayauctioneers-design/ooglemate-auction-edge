@@ -125,7 +125,8 @@ export default function DealerProfilesPage() {
 
       navigate(`/operator/dealer-upload?account=${accountId}`);
     } catch (err) {
-      toast.error('Could not open sales upload: ' + (err instanceof Error ? err.message : String(err)));
+      const msg = err instanceof Error ? err.message : (err as any)?.message || JSON.stringify(err);
+      toast.error('Could not open sales upload: ' + msg);
     } finally {
       setUploadingIds((prev) => {
         const next = new Set(prev);
