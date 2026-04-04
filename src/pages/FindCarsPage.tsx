@@ -476,8 +476,8 @@ export default function FindCarsPage() {
                   {selectedListing.transmission && (
                     <div><span className="text-muted-foreground">Trans:</span> {selectedListing.transmission}</div>
                   )}
-                  {(selectedListing.fuel_type || selectedListing.fuel) && (
-                    <div><span className="text-muted-foreground">Fuel:</span> {selectedListing.fuel_type || selectedListing.fuel}</div>
+                  {selectedListing.fuel_type && (
+                    <div><span className="text-muted-foreground">Fuel:</span> {selectedListing.fuel_type}</div>
                   )}
                   {selectedListing.drivetrain && (
                     <div><span className="text-muted-foreground">Drive:</span> {selectedListing.drivetrain}</div>
