@@ -40,9 +40,7 @@ interface MarketListing {
   transmission: string | null;
   fuel_type: string | null;
   colour: string | null;
-  image_url: string | null;
   drivetrain: string | null;
-  fuel: string | null;
 }
 
 interface Filters {
