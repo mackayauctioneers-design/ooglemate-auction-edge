@@ -40,9 +40,7 @@ interface MarketListing {
   transmission: string | null;
   fuel_type: string | null;
   colour: string | null;
-  image_url: string | null;
   drivetrain: string | null;
-  fuel: string | null;
 }
 
 interface Filters {
@@ -81,7 +79,7 @@ const defaultFilters: Filters = {
 async function searchMarketListings(filters: Filters, page: number) {
   let q = supabase
     .from("market_listings")
-    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, state, auction_house, listing_type, last_seen_at, first_seen_at, lifecycle_status, seller_name, price_badge, transmission, fuel_type, colour, image_url, drivetrain, fuel", { count: "exact" })
+    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, state, auction_house, listing_type, last_seen_at, first_seen_at, lifecycle_status, seller_name, price_badge, transmission, fuel_type, colour, drivetrain", { count: "exact" })
     .in("lifecycle_status", ACTIVE_LIFECYCLE)
     .eq("is_historical_result", false)
     .not("asking_price", "is", null)
@@ -461,14 +459,6 @@ export default function FindCarsPage() {
               </SheetHeader>
 
               <div className="mt-4 space-y-4">
-                {selectedListing.image_url && (
-                  <img
-                    src={selectedListing.image_url}
-                    alt={`${selectedListing.year} ${selectedListing.make} ${selectedListing.model}`}
-                    className="w-full h-48 object-cover rounded-lg bg-muted"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
-                )}
 
                 {selectedListing.variant_raw && (
                   <p className="text-sm text-muted-foreground">{selectedListing.variant_raw}</p>
@@ -486,8 +476,8 @@ export default function FindCarsPage() {
                   {selectedListing.transmission && (
                     <div><span className="text-muted-foreground">Trans:</span> {selectedListing.transmission}</div>
                   )}
-                  {(selectedListing.fuel_type || selectedListing.fuel) && (
-                    <div><span className="text-muted-foreground">Fuel:</span> {selectedListing.fuel_type || selectedListing.fuel}</div>
+                  {selectedListing.fuel_type && (
+                    <div><span className="text-muted-foreground">Fuel:</span> {selectedListing.fuel_type}</div>
                   )}
                   {selectedListing.drivetrain && (
                     <div><span className="text-muted-foreground">Drive:</span> {selectedListing.drivetrain}</div>
