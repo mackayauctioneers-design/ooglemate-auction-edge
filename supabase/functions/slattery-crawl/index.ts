@@ -526,7 +526,6 @@ Deno.serve(async (req) => {
               fuel,
               transmission,
               drivetrain,
-              colour,
               vin,
               location,
               state,

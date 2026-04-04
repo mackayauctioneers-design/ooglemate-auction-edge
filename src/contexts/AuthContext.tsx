@@ -165,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Fallback for users without linked dealer profile
     id: user.id,
     email: user.email,
-    dealer_name: user.email || 'Unknown',
+    dealer_name: user.email?.split('@')[0] || 'Dealer',
     region_id: 'UNKNOWN',
     role: role,
   } : null;

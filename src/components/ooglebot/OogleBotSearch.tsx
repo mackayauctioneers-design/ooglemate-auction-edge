@@ -1195,6 +1195,10 @@ export function OogleBotSearch() {
       }
     } catch (err) {
       console.error("Search error:", err);
+      sonnerToast.error("Search failed — please try again", {
+        description: err instanceof Error ? err.message : "An unexpected error occurred",
+        action: { label: "Retry", onClick: () => handleStructuredSearch() },
+      });
     } finally {
       setInternalLoading(false);
     }

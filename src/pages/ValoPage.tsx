@@ -67,7 +67,7 @@ const CONFIDENCE_INFO: Record<string, { label: string; color: string; explanatio
 // ============================================================================
 
 export default function ValoPage() {
-  const { currentUser, isAdmin, dealerProfile } = useAuth();
+  const { currentUser, isAdmin, dealerProfile, user } = useAuth();
   const [searchParams] = useSearchParams();
   const { onValoFormFill } = useBob();
   const handleRunValoRef = useRef<(() => void) | null>(null);
@@ -188,7 +188,7 @@ export default function ValoPage() {
     }
   };
 
-  const authReady = !!(dealerProfile?.account_id);
+  const authReady = !!user;
   const canRunValo = make.trim().length > 0 && model.trim().length > 0 && year.trim().length > 0 && km.trim().length > 0;
   const badgeMissing = canRunValo && !badge.trim();
 

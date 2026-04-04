@@ -1,20 +1,23 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, BarChart3, LogOut, LogIn, ChevronLeft, ChevronRight, Settings, Bot, Car, Crosshair, Sparkles } from 'lucide-react';
+import { Home, BarChart3, LogOut, LogIn, ChevronLeft, ChevronRight, Settings, Bot, Car, Crosshair, Sparkles, Target, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { BobPanel } from '@/components/bob/BobPanel';
 
 const dealerNav = [
   { path: '/dealer-home', label: 'Home', icon: Home },
+  { path: '/today', label: 'Today', icon: Target },
   { path: '/find-cars', label: 'Find Cars', icon: Car },
   { path: '/my-hunts', label: 'My Hunts', icon: Crosshair },
   { path: '/valo', label: 'Do A Valo', icon: Sparkles },
   { path: '/sales-upload', label: 'My Sales', icon: BarChart3 },
   { path: '/ooglebot', label: 'OogleBot', icon: Bot },
+  { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
 interface DealerLayoutProps {
@@ -24,16 +27,46 @@ interface DealerLayoutProps {
 export function DealerLayout({ children }: DealerLayoutProps) {
   const location = useLocation();
   const { currentUser, user, isLoading, isAdmin, logout } = useAuth();
+  const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Auto-collapse on mobile
+  useEffect(() => {
+    if (isMobile) setCollapsed(true);
+  }, [isMobile]);
 
   return (
     <>
       <div className="flex min-h-screen w-full bg-background">
+        {/* Mobile overlay backdrop */}
+        {isMobile && !collapsed && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => setCollapsed(true)}
+          />
+        )}
+
+        {/* Mobile hamburger */}
+        {isMobile && collapsed && (
+          <div className="fixed top-0 left-0 right-0 z-30 flex items-center h-14 px-4 bg-sidebar border-b border-sidebar-border">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setCollapsed(false)}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            <span className="ml-3 font-semibold text-foreground text-sm">Carbitrage</span>
+            <div className="ml-auto">{user && <NotificationBell />}</div>
+          </div>
+        )}
+
         <aside
           className={cn(
             "flex flex-col h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300",
-            collapsed ? "w-16" : "w-56"
+            isMobile ? (collapsed ? "-translate-x-full fixed z-50" : "fixed z-50 w-56") : (collapsed ? "w-16" : "w-56")
           )}
         >
           {/* Brand */}
@@ -58,7 +91,7 @@ export function DealerLayout({ children }: DealerLayoutProps) {
               if (!user) return null;
               const isActive = location.pathname === item.path;
               return (
-                <Link key={item.path} to={item.path}>
+                <Link key={item.path} to={item.path} onClick={() => isMobile && setCollapsed(true)}>
                   <Button
                     variant={isActive ? "default" : "ghost"}
                     className={cn(
@@ -138,7 +171,7 @@ export function DealerLayout({ children }: DealerLayoutProps) {
           </div>
         </aside>
 
-        <main className="flex-1 overflow-auto">
+        <main className={cn("flex-1 overflow-auto", isMobile && "pt-14")}>
           {children}
         </main>
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { DealerLayout } from '@/components/layout/DealerLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -68,7 +68,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-8">
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
 
@@ -148,6 +148,6 @@ export default function SettingsPage() {
           <LogOut className="mr-2 h-4 w-4" /> Sign Out
         </Button>
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { DealerLayout } from "@/components/layout/DealerLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/contexts/AuthContext";
@@ -160,7 +160,7 @@ export default function TodayPage() {
   const activeDealsCount = dealsInProgress.length;
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="p-4 sm:p-6 space-y-8 max-w-5xl">
         {/* Header */}
         <div>
@@ -273,6 +273,6 @@ export default function TodayPage() {
         }
         onConfirm={confirmCreateDeal}
       />
-    </AppLayout>
+    </DealerLayout>
   );
 }

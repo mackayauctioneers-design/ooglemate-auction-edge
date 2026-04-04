@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Loader2, ExternalLink, X, SlidersHorizontal, Car, AlertTriangle } from "lucide-react";
+import { Search, Loader2, ExternalLink, X, SlidersHorizontal, Car, AlertTriangle, MapPin, Calendar, Gauge } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { DealerLayout } from "@/components/layout/DealerLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,9 @@ interface MarketListing {
   transmission: string | null;
   fuel_type: string | null;
   colour: string | null;
+  image_url: string | null;
+  drivetrain: string | null;
+  fuel: string | null;
 }
 
 interface Filters {
@@ -77,10 +81,11 @@ const defaultFilters: Filters = {
 async function searchMarketListings(filters: Filters, page: number) {
   let q = supabase
     .from("market_listings")
-    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, state, auction_house, listing_type, last_seen_at, first_seen_at, lifecycle_status, seller_name, price_badge, transmission, fuel_type, colour", { count: "exact" })
+    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, state, auction_house, listing_type, last_seen_at, first_seen_at, lifecycle_status, seller_name, price_badge, transmission, fuel_type, colour, image_url, drivetrain, fuel", { count: "exact" })
     .in("lifecycle_status", ACTIVE_LIFECYCLE)
     .eq("is_historical_result", false)
     .not("asking_price", "is", null)
+    .gte("last_seen_at", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
     .neq("source", "autograb-retail");
 
   if (filters.make) q = q.ilike("make", `%${filters.make.trim()}%`);
@@ -151,6 +156,7 @@ export default function FindCarsPage() {
   const [appliedFilters, setAppliedFilters] = useState<Filters>(defaultFilters);
   const [page, setPage] = useState(0);
   const [showFilters, setShowFilters] = useState(true);
+  const [selectedListing, setSelectedListing] = useState<MarketListing | null>(null);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ["find-cars", appliedFilters, page],
@@ -333,7 +339,7 @@ export default function FindCarsPage() {
           <>
             <div className="space-y-2">
               {listings.map((l) => (
-                <Card key={l.id} className="hover:bg-muted/30 transition-colors">
+                <Card key={l.id} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setSelectedListing(l)}>
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
@@ -378,7 +384,7 @@ export default function FindCarsPage() {
                           {l.location && <span>{l.location}</span>}
                           {l.state && <span className="font-medium">{l.state}</span>}
                           {l.auction_house && <span>{l.auction_house}</span>}
-                          {l.seller_name && l.source_class === "retail" && <span>{l.seller_name}</span>}
+                          {l.seller_name && l.source_class === "retail" && !/^agc-seller/i.test(l.seller_name) && <span>{l.seller_name}</span>}
                           {l.last_seen_at && (
                             <span className="text-xs">
                               Seen {formatDistanceToNow(new Date(l.last_seen_at), { addSuffix: true })}
@@ -394,6 +400,7 @@ export default function FindCarsPage() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-1"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             View <ExternalLink className="h-3 w-3" />
                           </a>
@@ -441,6 +448,101 @@ export default function FindCarsPage() {
           </div>
         )}
       </div>
+
+      {/* Detail slide-over */}
+      <Sheet open={!!selectedListing} onOpenChange={(open) => !open && setSelectedListing(null)}>
+        <SheetContent className="overflow-y-auto sm:max-w-lg">
+          {selectedListing && (
+            <>
+              <SheetHeader>
+                <SheetTitle>
+                  {selectedListing.year} {selectedListing.make} {selectedListing.model}
+                </SheetTitle>
+              </SheetHeader>
+
+              <div className="mt-4 space-y-4">
+                {selectedListing.image_url && (
+                  <img
+                    src={selectedListing.image_url}
+                    alt={`${selectedListing.year} ${selectedListing.make} ${selectedListing.model}`}
+                    className="w-full h-48 object-cover rounded-lg bg-muted"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                )}
+
+                {selectedListing.variant_raw && (
+                  <p className="text-sm text-muted-foreground">{selectedListing.variant_raw}</p>
+                )}
+
+                <div className="text-2xl font-bold text-foreground">
+                  {formatCurrency(selectedListing.asking_price)}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Gauge className="h-4 w-4 text-muted-foreground" />
+                    <span>{formatKm(selectedListing.km)}</span>
+                  </div>
+                  {selectedListing.transmission && (
+                    <div><span className="text-muted-foreground">Trans:</span> {selectedListing.transmission}</div>
+                  )}
+                  {(selectedListing.fuel_type || selectedListing.fuel) && (
+                    <div><span className="text-muted-foreground">Fuel:</span> {selectedListing.fuel_type || selectedListing.fuel}</div>
+                  )}
+                  {selectedListing.drivetrain && (
+                    <div><span className="text-muted-foreground">Drive:</span> {selectedListing.drivetrain}</div>
+                  )}
+                  {selectedListing.colour && (
+                    <div><span className="text-muted-foreground">Colour:</span> {selectedListing.colour}</div>
+                  )}
+                  {selectedListing.source && (
+                    <div><span className="text-muted-foreground">Source:</span> {selectedListing.source}</div>
+                  )}
+                </div>
+
+                {(selectedListing.location || selectedListing.state) && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span>{[selectedListing.location, selectedListing.state].filter(Boolean).join(', ')}</span>
+                  </div>
+                )}
+
+                {selectedListing.seller_name && !/^agc-seller/i.test(selectedListing.seller_name) && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Seller:</span> {selectedListing.seller_name}
+                  </div>
+                )}
+
+                <div className="flex gap-4 text-xs text-muted-foreground">
+                  {selectedListing.first_seen_at && (
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      First seen {formatDistanceToNow(new Date(selectedListing.first_seen_at), { addSuffix: true })}
+                    </div>
+                  )}
+                  {selectedListing.last_seen_at && (
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      Last seen {formatDistanceToNow(new Date(selectedListing.last_seen_at), { addSuffix: true })}
+                    </div>
+                  )}
+                </div>
+
+                {selectedListing.listing_url && (
+                  <a
+                    href={selectedListing.listing_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-sm text-primary hover:underline mt-2"
+                  >
+                    View Original Listing <ExternalLink className="h-4 w-4" />
+                  </a>
+                )}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </DealerLayout>
   );
 }

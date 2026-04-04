@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { DealerLayout } from "@/components/layout/DealerLayout";
@@ -591,9 +591,12 @@ export default function SalesUploadPage() {
 
         {/* Guard — no linked account */}
         {!selectedAccountId && step === "idle" && (
-          <div className="rounded-lg border border-dashed border-border bg-muted/20 p-12 text-center">
-            <p className="text-lg font-medium text-muted-foreground">No dealer account linked</p>
-            <p className="text-sm text-muted-foreground/60 mt-1">Contact your admin to link your account</p>
+          <div className="rounded-lg border border-dashed border-border bg-muted/20 p-12 text-center space-y-3">
+            <p className="text-lg font-medium text-muted-foreground">Complete your dealer profile to start uploading sales</p>
+            <p className="text-sm text-muted-foreground/60">Your profile needs to be linked to a dealer account first.</p>
+            <Link to="/settings">
+              <Button className="mt-2">Set Up Profile</Button>
+            </Link>
           </div>
         )}
 

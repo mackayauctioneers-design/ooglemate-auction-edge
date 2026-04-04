@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { DealerLayout } from '@/components/layout/DealerLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -75,7 +75,7 @@ export default function DealerWelcomePage() {
   const dealerName = currentUser?.dealer_name || dealerProfile?.dealer_name || 'Dealer';
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
         {/* Welcome Header */}
         <div className="text-center space-y-2">
@@ -209,6 +209,6 @@ export default function DealerWelcomePage() {
           </div>
         )}
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { DealerLayout } from "@/components/layout/DealerLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -158,7 +158,7 @@ export default function HuntsPage() {
       toast.success(`Scan complete: ${data.results?.[0]?.matches || 0} matches, ${data.results?.[0]?.alerts || 0} alerts`);
     },
     onError: (err) => {
-      toast.error(`Scan failed: ${err.message}`);
+      toast.error('Hunt scan failed — please try again later');
     }
   });
 
@@ -173,7 +173,7 @@ export default function HuntsPage() {
   };
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -331,6 +331,6 @@ export default function HuntsPage() {
           </div>
         )}
       </div>
-    </AppLayout>
+    </DealerLayout>
   );
 }

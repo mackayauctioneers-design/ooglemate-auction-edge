@@ -362,7 +362,7 @@ export default function MyHuntsPage() {
     });
 
     if (error) {
-      toast.error('Scan failed');
+      toast.error('Hunt scan failed — please try again later');
     } else {
       toast.success(`Found ${data?.results?.[0]?.matches || 0} matches`);
       // Refresh matches

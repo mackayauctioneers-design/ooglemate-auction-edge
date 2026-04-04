@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { DealerLayout } from "@/components/layout/DealerLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -187,7 +187,7 @@ export default function HuntDetailPage() {
       toast.success(`Scan complete: ${total} matches (${buy} BUY, ${watch} WATCH, ${unverified} UNVERIFIED)`);
     },
     onError: (error) => {
-      toast.error(`Scan failed: ${error.message}`);
+      toast.error('Hunt scan failed — please try again later');
     }
   });
 
@@ -239,7 +239,7 @@ export default function HuntDetailPage() {
 
   if (huntLoading) {
     return (
-      <AppLayout>
+      <DealerLayout>
         <div className="space-y-6">
           <Skeleton className="h-32 w-full" />
           <div className="grid grid-cols-4 gap-4">
@@ -250,20 +250,20 @@ export default function HuntDetailPage() {
           </div>
           <Skeleton className="h-96 w-full" />
         </div>
-      </AppLayout>
+      </DealerLayout>
     );
   }
 
   if (!hunt) {
     return (
-      <AppLayout>
+      <DealerLayout>
         <div className="text-center py-12">
           <h2 className="text-xl font-semibold">Hunt not found</h2>
           <Button className="mt-4" onClick={() => navigate('/hunts')}>
             Back to Hunts
           </Button>
         </div>
-      </AppLayout>
+      </DealerLayout>
     );
   }
 
@@ -404,7 +404,7 @@ export default function HuntDetailPage() {
   );
 
   return (
-    <AppLayout>
+    <DealerLayout>
       <div className="space-y-6">
         {/* Header */}
         <HuntHeader
@@ -1066,6 +1066,6 @@ export default function HuntDetailPage() {
           hunt={hunt}
         />
       )}
-    </AppLayout>
+    </DealerLayout>
   );
 }
