@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   Target, Crosshair, FileText, CheckCircle2, Car, Bot,
   ArrowRight, ExternalLink, Loader2, Activity, Clock,
-  TrendingUp, BarChart3, Sparkles, RefreshCw
+  TrendingUp, BarChart3, Sparkles, RefreshCw, Zap, Radio
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -30,13 +30,90 @@ function ScoreBadge({ score }: { score: number }) {
   return <Badge variant="secondary" className="text-xs">{score}</Badge>;
 }
 
+// Heat bar — visual "alive" indicator showing match distribution
+function HeatBar({ opportunities }: { opportunities: DealerOpp[] }) {
+  const hot = opportunities.filter(o => o.match_score >= 85).length;
+  const warm = opportunities.filter(o => o.match_score >= 70 && o.match_score < 85).length;
+  const cool = opportunities.filter(o => o.match_score < 70).length;
+  const total = opportunities.length || 1;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <Radio className="h-3 w-3 text-emerald-400 animate-pulse" />
+          Match Heat
+        </span>
+        <span>{opportunities.length} active</span>
+      </div>
+      <div className="h-2.5 rounded-full bg-muted overflow-hidden flex">
+        {hot > 0 && (
+          <div
+            className="bg-emerald-500 transition-all duration-700"
+            style={{ width: `${(hot / total) * 100}%` }}
+          />
+        )}
+        {warm > 0 && (
+          <div
+            className="bg-amber-500 transition-all duration-700"
+            style={{ width: `${(warm / total) * 100}%` }}
+          />
+        )}
+        {cool > 0 && (
+          <div
+            className="bg-muted-foreground/30 transition-all duration-700"
+            style={{ width: `${(cool / total) * 100}%` }}
+          />
+        )}
+      </div>
+      <div className="flex gap-4 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> {hot} hot</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> {warm} warm</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-muted-foreground/30 inline-block" /> {cool} cool</span>
+      </div>
+    </div>
+  );
+}
+
+// Live ticker strip
+function LiveTicker({ opportunities }: { opportunities: DealerOpp[] }) {
+  if (opportunities.length === 0) return null;
+  const recent = opportunities.slice(0, 5);
+
+  return (
+    <div className="relative overflow-hidden rounded-lg border border-border bg-card/50 p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+        </span>
+        <span className="text-xs font-medium text-muted-foreground">Latest Matches</span>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        {recent.map((opp) => (
+          <div
+            key={opp.id}
+            className="flex-shrink-0 px-3 py-1.5 rounded-md bg-muted/50 border border-border text-xs flex items-center gap-2"
+          >
+            <ScoreBadge score={opp.match_score} />
+            <span className="text-foreground font-medium whitespace-nowrap">
+              {opp.year} {opp.make} {opp.model}
+            </span>
+            <span className="text-muted-foreground">{fmt$(opp.asking_price)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function DealerHomePage() {
   const { currentUser } = useAuth();
   const { pulse, opportunities, activity, loading, refetch } = useDealerDashboard();
 
   return (
     <DealerLayout>
-      <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
         {/* ── Header ── */}
         <div className="flex items-center justify-between">
           <div>
@@ -48,8 +125,12 @@ export default function DealerHomePage() {
               {pulse.lastScanAt ? (
                 <>
                   Last scan {formatDistanceToNow(new Date(pulse.lastScanAt), { addSuffix: true })}
-                  <span className={pulse.lastScanOk ? "text-emerald-400" : "text-destructive"}>
-                    {pulse.lastScanOk ? "● Live" : "● Issue"}
+                  <span className={`flex items-center gap-1 ${pulse.lastScanOk ? "text-emerald-400" : "text-destructive"}`}>
+                    <span className="relative flex h-1.5 w-1.5">
+                      {pulse.lastScanOk && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />}
+                      <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${pulse.lastScanOk ? "bg-emerald-500" : "bg-destructive"}`} />
+                    </span>
+                    {pulse.lastScanOk ? "Live" : "Issue"}
                   </span>
                 </>
               ) : (
@@ -62,31 +143,15 @@ export default function DealerHomePage() {
           </Button>
         </div>
 
+        {/* ── Live Ticker ── */}
+        <LiveTicker opportunities={opportunities} />
+
         {/* ── KPI Cards ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <KPICard
-            icon={<Crosshair className="h-4 w-4" />}
-            label="Active Hunts"
-            value={pulse.activeHunts}
-            to="/my-hunts"
-          />
-          <KPICard
-            icon={<Target className="h-4 w-4" />}
-            label="Open Matches"
-            value={pulse.openOpportunities}
-            to="/today"
-            highlight={pulse.openOpportunities > 0}
-          />
-          <KPICard
-            icon={<FileText className="h-4 w-4" />}
-            label="Deals In Progress"
-            value={pulse.dealsInProgress}
-          />
-          <KPICard
-            icon={<CheckCircle2 className="h-4 w-4" />}
-            label="Closed (30d)"
-            value={pulse.closedDeals30d}
-          />
+          <KPICard icon={<Crosshair className="h-4 w-4" />} label="Active Hunts" value={pulse.activeHunts} to="/my-hunts" />
+          <KPICard icon={<Target className="h-4 w-4" />} label="Open Matches" value={pulse.openOpportunities} to="/today" highlight={pulse.openOpportunities > 0} />
+          <KPICard icon={<FileText className="h-4 w-4" />} label="Deals In Progress" value={pulse.dealsInProgress} />
+          <KPICard icon={<CheckCircle2 className="h-4 w-4" />} label="Closed (30d)" value={pulse.closedDeals30d} />
         </div>
 
         {/* ── Main Content ── */}
@@ -140,8 +205,21 @@ export default function DealerHomePage() {
             )}
           </div>
 
-          {/* Right: Activity Feed + Quick Actions */}
+          {/* Right sidebar */}
           <div className="space-y-4">
+            {/* Heat Map */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Zap className="h-3.5 w-3.5 text-amber-400" />
+                  Market Heat
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <HeatBar opportunities={opportunities} />
+              </CardContent>
+            </Card>
+
             {/* Quick Actions */}
             <Card>
               <CardHeader className="pb-2">
@@ -210,6 +288,12 @@ function KPICard({ icon, label, value, to, highlight }: {
           <p className="text-2xl font-bold text-foreground leading-none">{value}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
         </div>
+        {highlight && value > 0 && (
+          <span className="relative flex h-2 w-2 ml-auto">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+          </span>
+        )}
       </CardContent>
     </Card>
   );
@@ -218,9 +302,14 @@ function KPICard({ icon, label, value, to, highlight }: {
 
 function OpportunityRow({ opp }: { opp: DealerOpp }) {
   const age = formatDistanceToNow(new Date(opp.created_at), { addSuffix: true });
+  const tierColor = opp.match_score >= 85
+    ? "border-l-emerald-500"
+    : opp.match_score >= 70
+      ? "border-l-amber-500"
+      : "border-l-muted-foreground/30";
 
   return (
-    <Card className="hover:border-foreground/20 transition-all">
+    <Card className={`hover:border-foreground/20 transition-all border-l-[3px] ${tierColor}`}>
       <CardContent className="p-3 flex items-center gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -240,13 +329,7 @@ function OpportunityRow({ opp }: { opp: DealerOpp }) {
           </div>
         </div>
         {opp.url_canonical && (
-          <a
-            href={opp.url_canonical}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <a href={opp.url_canonical} target="_blank" rel="noopener noreferrer" className="shrink-0" onClick={(e) => e.stopPropagation()}>
             <Button variant="ghost" size="icon" className="h-7 w-7">
               <ExternalLink className="h-3.5 w-3.5" />
             </Button>
