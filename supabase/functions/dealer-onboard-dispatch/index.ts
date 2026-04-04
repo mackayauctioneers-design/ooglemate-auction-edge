@@ -6,7 +6,7 @@
  */
 
 // @ts-nocheck
-import nodemailer from "npm:nodemailer@6.9.10";
+import nodemailer from "npm:nodemailer@6";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
