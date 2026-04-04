@@ -79,7 +79,7 @@ const defaultFilters: Filters = {
 async function searchMarketListings(filters: Filters, page: number) {
   let q = supabase
     .from("market_listings")
-    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, state, auction_house, listing_type, last_seen_at, first_seen_at, lifecycle_status, seller_name, price_badge, transmission, fuel_type, colour, drivetrain, fuel", { count: "exact" })
+    .select("id, make, model, variant_raw, year, km, asking_price, source, source_class, listing_url, location, state, auction_house, listing_type, last_seen_at, first_seen_at, lifecycle_status, seller_name, price_badge, transmission, fuel_type, colour, drivetrain", { count: "exact" })
     .in("lifecycle_status", ACTIVE_LIFECYCLE)
     .eq("is_historical_result", false)
     .not("asking_price", "is", null)
