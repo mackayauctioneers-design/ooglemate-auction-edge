@@ -459,14 +459,6 @@ export default function FindCarsPage() {
               </SheetHeader>
 
               <div className="mt-4 space-y-4">
-                {selectedListing.image_url && (
-                  <img
-                    src={selectedListing.image_url}
-                    alt={`${selectedListing.year} ${selectedListing.make} ${selectedListing.model}`}
-                    className="w-full h-48 object-cover rounded-lg bg-muted"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
-                )}
 
                 {selectedListing.variant_raw && (
                   <p className="text-sm text-muted-foreground">{selectedListing.variant_raw}</p>
