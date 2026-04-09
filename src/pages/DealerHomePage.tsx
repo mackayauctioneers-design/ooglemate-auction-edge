@@ -108,8 +108,9 @@ function LiveTicker({ opportunities }: { opportunities: DealerOpp[] }) {
 }
 
 export default function DealerHomePage() {
-  const { currentUser } = useAuth();
+  const { currentUser, dealerProfile } = useAuth();
   const { pulse, opportunities, activity, loading, refetch } = useDealerDashboard();
+  const isNewDealer = !dealerProfile;
 
   return (
     <DealerLayout>
@@ -142,6 +143,20 @@ export default function DealerHomePage() {
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
+
+        {/* ── New dealer banner ── */}
+        {isNewDealer && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 flex items-center gap-3">
+            <Sparkles className="h-5 w-5 text-primary shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-foreground">Welcome — here's what's moving on the market right now</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Complete your profile to get matches tailored to your dealership.</p>
+            </div>
+            <Link to="/onboarding/win-flow">
+              <Button size="sm" variant="default">Get Started</Button>
+            </Link>
+          </div>
+        )}
 
         {/* ── Live Ticker ── */}
         <LiveTicker opportunities={opportunities} />
