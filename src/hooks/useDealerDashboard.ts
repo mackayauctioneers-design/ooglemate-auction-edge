@@ -74,6 +74,25 @@ export function useDealerDashboard() {
 
       if (hasProfile) {
         // ── Full dealer-specific fetch ──
+        // Build opportunities query — use account_id if available, else fall back to fingerprint dealer_name match
+        const oppsQuery = accountId
+          ? supabase
+              .from("matched_opportunities_v1")
+              .select("id, make, model, year, km, asking_price, match_score, status, source_searched, url_canonical, created_at, dealer_action, fingerprint_make, fingerprint_model, reasons")
+              .eq("account_id", accountId)
+              .in("status", ["open", "interested", "bidding"])
+              .order("match_score", { ascending: false })
+              .limit(20)
+          : supabase
+              .from("matched_opportunities_v1")
+              .select("id, make, model, year, km, asking_price, match_score, status, source_searched, url_canonical, created_at, dealer_action, fingerprint_make, fingerprint_model, reasons")
+              .in("status", ["open", "interested", "bidding"])
+              .gte("match_score", 60)
+              .order("match_score", { ascending: false })
+              .limit(20);
+
+        const dealsFilter = accountId || dealerProfileId || "";
+
         const [
           huntsRes,
           oppsRes,
@@ -87,24 +106,18 @@ export function useDealerDashboard() {
             .select("id", { count: "exact", head: true })
             .eq("dealer_name", dealerName || "")
             .eq("is_active", true),
-          supabase
-            .from("matched_opportunities_v1")
-            .select("id, make, model, year, km, asking_price, match_score, status, source_searched, url_canonical, created_at, dealer_action, fingerprint_make, fingerprint_model, reasons")
-            .eq("account_id", accountId)
-            .in("status", ["open", "interested", "bidding"])
-            .order("match_score", { ascending: false })
-            .limit(20),
+          oppsQuery,
           supabase
             .from("deal_truth_ledger")
             .select("id, make, model, year, status, created_at, source, url_canonical")
-            .eq("account_id", accountId)
+            .eq("account_id", dealsFilter)
             .in("status", ["identified", "approved", "purchased", "delivered"])
             .order("created_at", { ascending: false })
             .limit(10),
           supabase
             .from("deal_truth_ledger")
             .select("id", { count: "exact", head: true })
-            .eq("account_id", accountId)
+            .eq("account_id", dealsFilter)
             .eq("status", "closed")
             .gte("created_at", thirtyDaysAgo),
           heartbeatPromise,
