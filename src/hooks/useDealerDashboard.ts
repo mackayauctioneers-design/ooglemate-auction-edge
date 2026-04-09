@@ -49,7 +49,8 @@ const DEFAULT_PULSE: DealerPulse = {
 
 export function useDealerDashboard() {
   const { dealerProfile, currentUser } = useAuth();
-  const accountId = dealerProfile?.dealer_profile_id || null;
+  const accountId = dealerProfile?.account_id || null;
+  const dealerProfileId = dealerProfile?.dealer_profile_id || null;
   const dealerName = currentUser?.dealer_name || null;
 
   const [pulse, setPulse] = useState<DealerPulse>(DEFAULT_PULSE);
