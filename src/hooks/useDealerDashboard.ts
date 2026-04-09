@@ -60,7 +60,7 @@ export function useDealerDashboard() {
 
   const fetch = useCallback(async () => {
     setLoading(true);
-    const hasProfile = !!accountId;
+    const hasProfile = !!accountId || !!dealerProfileId;
 
     try {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -111,7 +111,7 @@ export function useDealerDashboard() {
           supabase
             .from("alert_logs")
             .select("id, alert_type, message_text, created_at, status")
-            .eq("dealer_profile_id", accountId)
+            .eq("dealer_profile_id", dealerProfileId || "")
             .order("created_at", { ascending: false })
             .limit(5),
         ]);
@@ -194,7 +194,7 @@ export function useDealerDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [accountId, dealerName]);
+  }, [accountId, dealerProfileId, dealerName]);
 
   useEffect(() => { fetch(); }, [fetch]);
 
