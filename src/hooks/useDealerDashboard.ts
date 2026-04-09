@@ -49,7 +49,8 @@ const DEFAULT_PULSE: DealerPulse = {
 
 export function useDealerDashboard() {
   const { dealerProfile, currentUser } = useAuth();
-  const accountId = dealerProfile?.dealer_profile_id || null;
+  const accountId = dealerProfile?.account_id || null;
+  const dealerProfileId = dealerProfile?.dealer_profile_id || null;
   const dealerName = currentUser?.dealer_name || null;
 
   const [pulse, setPulse] = useState<DealerPulse>(DEFAULT_PULSE);
@@ -59,7 +60,7 @@ export function useDealerDashboard() {
 
   const fetch = useCallback(async () => {
     setLoading(true);
-    const hasProfile = !!accountId;
+    const hasProfile = !!accountId || !!dealerProfileId;
 
     try {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -73,6 +74,25 @@ export function useDealerDashboard() {
 
       if (hasProfile) {
         // ── Full dealer-specific fetch ──
+        // Build opportunities query — use account_id if available, else fall back to fingerprint dealer_name match
+        const oppsQuery = accountId
+          ? supabase
+              .from("matched_opportunities_v1")
+              .select("id, make, model, year, km, asking_price, match_score, status, source_searched, url_canonical, created_at, dealer_action, fingerprint_make, fingerprint_model, reasons")
+              .eq("account_id", accountId)
+              .in("status", ["open", "interested", "bidding"])
+              .order("match_score", { ascending: false })
+              .limit(20)
+          : supabase
+              .from("matched_opportunities_v1")
+              .select("id, make, model, year, km, asking_price, match_score, status, source_searched, url_canonical, created_at, dealer_action, fingerprint_make, fingerprint_model, reasons")
+              .in("status", ["open", "interested", "bidding"])
+              .gte("match_score", 60)
+              .order("match_score", { ascending: false })
+              .limit(20);
+
+        const dealsFilter = accountId || dealerProfileId || "";
+
         const [
           huntsRes,
           oppsRes,
@@ -86,31 +106,25 @@ export function useDealerDashboard() {
             .select("id", { count: "exact", head: true })
             .eq("dealer_name", dealerName || "")
             .eq("is_active", true),
-          supabase
-            .from("matched_opportunities_v1")
-            .select("id, make, model, year, km, asking_price, match_score, status, source_searched, url_canonical, created_at, dealer_action, fingerprint_make, fingerprint_model, reasons")
-            .eq("account_id", accountId)
-            .in("status", ["open", "interested", "bidding"])
-            .order("match_score", { ascending: false })
-            .limit(20),
+          oppsQuery,
           supabase
             .from("deal_truth_ledger")
             .select("id, make, model, year, status, created_at, source, url_canonical")
-            .eq("account_id", accountId)
+            .eq("account_id", dealsFilter)
             .in("status", ["identified", "approved", "purchased", "delivered"])
             .order("created_at", { ascending: false })
             .limit(10),
           supabase
             .from("deal_truth_ledger")
             .select("id", { count: "exact", head: true })
-            .eq("account_id", accountId)
+            .eq("account_id", dealsFilter)
             .eq("status", "closed")
             .gte("created_at", thirtyDaysAgo),
           heartbeatPromise,
           supabase
             .from("alert_logs")
             .select("id, alert_type, message_text, created_at, status")
-            .eq("dealer_profile_id", accountId)
+            .eq("dealer_profile_id", dealerProfileId || "")
             .order("created_at", { ascending: false })
             .limit(5),
         ]);
@@ -193,7 +207,7 @@ export function useDealerDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [accountId, dealerName]);
+  }, [accountId, dealerProfileId, dealerName]);
 
   useEffect(() => { fetch(); }, [fetch]);
 
