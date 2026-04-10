@@ -532,7 +532,6 @@ Deno.serve(async (req) => {
               auction_house: "slattery",
               source_class: "auction",
               status: "active",
-              first_seen_at: new Date().toISOString(),
               last_seen_at: new Date().toISOString(),
             },
             {
@@ -542,6 +541,7 @@ Deno.serve(async (req) => {
           );
 
         if (upsertError) {
+          console.error(`[SLATTERY] Upsert FAILED for listing ${listingId}: ${upsertError.message} (code=${upsertError.code}, details=${upsertError.details})`);
           if (metrics.errors.length < 20)
             metrics.errors.push(
               `Upsert ${item.id}: ${upsertError.message}`

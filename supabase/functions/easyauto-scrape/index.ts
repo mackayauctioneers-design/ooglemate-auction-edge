@@ -23,6 +23,8 @@ const EASYAUTO_CONFIG = {
   startUrl: "https://www.easyauto123.com.au/used-cars",
 };
 
+const STALE_RUN_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 async function hasActiveRun(supabase: any): Promise<{ locked: boolean; runId?: string }> {
   const { data, error } = await supabase
     .from("apify_runs_queue")
@@ -38,6 +40,11 @@ async function hasActiveRun(supabase: any): Promise<{ locked: boolean; runId?: s
   }
 
   if (data && data.length > 0) {
+    const runAge = Date.now() - new Date(data[0].created_at).getTime();
+    if (runAge > STALE_RUN_THRESHOLD_MS) {
+      console.warn(`[EASYAUTO] Ignoring stale run ${data[0].run_id || data[0].id} (age: ${Math.round(runAge / 3600000)}h) — treating as unlocked`);
+      return { locked: false };
+    }
     return { locked: true, runId: data[0].run_id || data[0].id };
   }
 
