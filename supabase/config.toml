@@ -103,11 +103,13 @@ schedule = "30 20 * * *"
 
 [functions.f3-crawl]
 verify_jwt = false
-schedule = "45 20 * * *"
+# schedule disabled 2026-04-10 — ingestion audit: connection reset by peer, site blocking
+# schedule = "45 20 * * *"
 
 [functions.valley-crawl]
 verify_jwt = false
-schedule = "50 20 * * *"
+# schedule disabled 2026-04-10 — ingestion audit: no heartbeat data, never produces
+# schedule = "50 20 * * *"
 
 [functions.nsw-regional-ingest]
 verify_jwt = false
@@ -378,7 +380,8 @@ schedule = "0 */2 * * *"
 
 [functions.caroogle-shadow-promotion]
 verify_jwt = false
-schedule = "*/30 * * * *"
+# schedule disabled 2026-04-10 — ingestion audit: last ran Feb 19, abandoned
+# schedule = "*/30 * * * *"
 
 [functions.score-operator-opportunities]
 verify_jwt = false

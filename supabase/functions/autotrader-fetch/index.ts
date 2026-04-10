@@ -1206,9 +1206,21 @@ Deno.serve(async (req) => {
           itemsFetchedThisRun += items.length;
 
           // Map items using source-specific mapper
-          const listings = items
-            .map((item: Record<string, unknown>) => mapItemForSource(runSource, item))
-            .filter((l: MappedListing | null): l is MappedListing => l !== null);
+          const listings: MappedListing[] = [];
+          for (const rawItem of items as Record<string, unknown>[]) {
+            const mapped = mapItemForSource(runSource, rawItem);
+            if (mapped) {
+              listings.push(mapped);
+            } else {
+              const src = (rawItem._source as Record<string, unknown>) || rawItem;
+              const id = src.id || src.listingId || src.networkId || "?";
+              const yr = src.manu_year || src.year || "no-year";
+              const mk = src.make || "no-make";
+              const md = src.model || "no-model";
+              const pr = typeof src.price === "object" ? JSON.stringify(src.price) : src.price;
+              console.warn(`[${runSource.toUpperCase()} MAP-REJECT] id=${id} year=${yr} make=${mk} model=${md} price=${pr}`);
+            }
+          }
 
           console.log(`[${runSource.toUpperCase()} UPSERT] Batch: ${items.length} raw → ${listings.length} mapped (${items.length - listings.length} rejected)`);
           
