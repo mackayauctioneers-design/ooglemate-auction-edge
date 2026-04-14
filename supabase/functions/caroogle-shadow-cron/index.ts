@@ -372,72 +372,40 @@ Deno.serve(async (req) => {
 
     console.log(`[${CRON_NAME}] Built ${rows.length} valid rows (skipped ${skipped}, normalized ${normCount})`);
 
-    // ── Page Status Gate: validate a sample of listings ──
-    // For new listings (not already in DB), validate their URLs
-    // For performance, we batch-check up to 50 new URLs per run
+    // ── Relist detection (lightweight — no HTTP checks) ──
     const existingIds = new Set<string>();
-    const PAGE_CHECK_LIMIT = 50;
-
-    // Fetch existing listing_ids to know which are new
     const allListingIds = rows.map(r => r.listing_id);
     for (let i = 0; i < allListingIds.length; i += 500) {
       const batch = allListingIds.slice(i, i + 500);
       const { data: existing } = await sb
         .from("vehicle_listings")
-        .select("listing_id, auction_status, lifecycle_state, relist_count")
+        .select("listing_id")
         .in("listing_id", batch);
       for (const e of existing || []) {
         existingIds.add(e.listing_id);
       }
     }
 
-    // Classify new listings via page status gate
-    const statusMap = new Map<string, { status: AuctionStatus; reason: string }>();
-    let checksPerformed = 0;
-    let filteredSold = 0;
-    let filteredWithdrawn = 0;
-    let filteredInvalid = 0;
-
-    // Also detect relists — listings that were previously DEAD/SOLD now reappearing
     const relistDetected: string[] = [];
-    
-    // Check existing records for relist detection
+    // Check for relists (previously DEAD/STALE now reappearing)
     for (let i = 0; i < allListingIds.length; i += 500) {
       const batch = allListingIds.slice(i, i + 500);
       const { data: deadOnes } = await sb
         .from("vehicle_listings")
-        .select("listing_id, relist_count, lifecycle_state, auction_status")
+        .select("listing_id")
         .in("listing_id", batch)
-        .in("lifecycle_state", ["DEAD", "STALE"])
-        .in("auction_status", ["sold", "withdrawn", "invalid"]);
-      
+        .in("lifecycle_state", ["DEAD", "STALE"]);
       for (const d of deadOnes || []) {
         relistDetected.push(d.listing_id);
       }
     }
 
-    // Page-check new listings (capped for performance)
-    const newListingIds = rows
-      .filter(r => !existingIds.has(r.listing_id))
-      .map(r => r.listing_id);
-
-    for (const row of rows) {
-      if (existingIds.has(row.listing_id)) continue; // skip existing, they'll just update
-      if (checksPerformed >= PAGE_CHECK_LIMIT) break;
-
-      const result = await classifyPageStatus(row.listing_url);
-      statusMap.set(row.listing_id, result);
-      checksPerformed++;
-
-      if (result.status !== "active") {
-        console.log(`[${CRON_NAME}] PAGE GATE: ${row.listing_id} → ${result.status} (${result.reason})`);
-      }
-
-      // Small delay between checks to be polite
-      if (checksPerformed % 10 === 0) {
-        await new Promise(r => setTimeout(r, 500));
-      }
-    }
+    // NOTE: Page status gate (HTTP URL checks) disabled — was causing timeouts.
+    // All Caroogle API records are trusted as active; lifecycle managed by reconcile job.
+    let checksPerformed = 0;
+    let filteredSold = 0;
+    let filteredWithdrawn = 0;
+    let filteredInvalid = 0;
 
     // Filter rows: only upsert active listings (or existing ones being updated)
     const activeRows: any[] = [];
