@@ -37,6 +37,7 @@ const BASE_URL = "https://slatteryauctions.com.au";
 const API_BASE = `${BASE_URL}/api/slattery`;
 const PAGE_SIZE = 100;
 const CRON_NAME = "slattery-crawl";
+const TIME_BUDGET_MS = 130_000; // 130s budget — leave 20s for DB writes + heartbeat (150s edge limit)
 
 // Motor vehicle category keywords (auction names to include)
 const MV_KEYWORDS = [
@@ -315,7 +316,7 @@ Deno.serve(async (req) => {
       console.log(`[SLATTERY] Auctions page ${auctionPage}: ${auctionsResp.data.length} auctions (total: ${allAuctions.length}, hasNext: ${hasMoreAuctions})`);
       auctionPage++;
 
-      if (hasMoreAuctions) await sleep(200);
+      if (hasMoreAuctions) await sleep(100);
     }
 
     metrics.auctions_found = allAuctions.length;
@@ -369,7 +370,7 @@ Deno.serve(async (req) => {
         page++;
 
         // Be respectful
-        if (hasNext) await sleep(200);
+        if (hasNext) await sleep(100);
       }
 
       console.log(
@@ -421,6 +422,11 @@ Deno.serve(async (req) => {
     const taxonomyDeps = createTaxonomyDeps(supabase);
 
     for (const { item, auctionName } of yearFilteredLots) {
+      // ── TIME BUDGET CHECK ──
+      if (Date.now() - startTime > TIME_BUDGET_MS) {
+        console.log(`[SLATTERY] Time budget exhausted at ${Date.now() - startTime}ms — processed ${metrics.upserted} of ${yearFilteredLots.length} lots`);
+        break;
+      }
       try {
         // Parse basic year/make/model from list API
         let year: number | null = null;
