@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { normalizeVehicleIdentity } from "../_shared/taxonomy/normalizeVehicleIdentity.ts";
-import { createTaxonomyDeps } from "../_shared/taxonomy/taxonomyRepo.ts";
+// Taxonomy normalization skipped for now to fit 150s edge limit
+// import { normalizeVehicleIdentity } from "../_shared/taxonomy/normalizeVehicleIdentity.ts";
+// import { createTaxonomyDeps } from "../_shared/taxonomy/taxonomyRepo.ts";
 
 /**
  * SLATTERY CRAWL v2 — Direct JSON API scraper for slatteryauctions.com.au
@@ -36,8 +37,10 @@ const MIN_YEAR = 2016;
 const BASE_URL = "https://slatteryauctions.com.au";
 const API_BASE = `${BASE_URL}/api/slattery`;
 const PAGE_SIZE = 100;
+const MAX_LOT_PAGES = 3; // Cap pages per auction — Slattery API sometimes returns hasNext=true forever
 const CRON_NAME = "slattery-crawl";
 const TIME_BUDGET_MS = 130_000; // 130s budget — leave 20s for DB writes + heartbeat (150s edge limit)
+
 
 // Motor vehicle category keywords (auction names to include)
 const MV_KEYWORDS = [
@@ -173,15 +176,19 @@ function respond(status: number, body: unknown) {
   });
 }
 
-async function fetchJson<T>(url: string): Promise<T | null> {
+async function fetchJson<T>(url: string, timeoutMs = 15_000): Promise<T | null> {
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const res = await fetch(url, {
+      signal: controller.signal,
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
         Accept: "application/json",
       },
     });
+    clearTimeout(timer);
     if (!res.ok) {
       console.error(`[SLATTERY] API ${res.status} for ${url.substring(0, 100)}`);
       return null;
@@ -189,7 +196,8 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     const json = await res.json();
     return json as T;
   } catch (e) {
-    console.error(`[SLATTERY] Fetch error for ${url.substring(0, 100)}:`, e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[SLATTERY] Fetch error for ${url.substring(0, 100)}: ${msg}`);
     return null;
   }
 }
@@ -248,6 +256,21 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** Process items in batches with concurrency limit */
+async function mapConcurrent<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  concurrency: number
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const batchResults = await Promise.all(batch.map(fn));
+    results.push(...batchResults);
+  }
+  return results;
+}
+
 // ── Main handler ───────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -269,7 +292,6 @@ Deno.serve(async (req) => {
 
   const dryRun = body.dry_run === true;
   const debug = body.debug === true;
-  const fetchDetails = body.fetch_details !== false; // default true
   const filterAuctionIds = Array.isArray(body.auction_ids)
     ? (body.auction_ids as number[])
     : null;
@@ -291,9 +313,9 @@ Deno.serve(async (req) => {
   };
 
   try {
-    // ── STEP 1: Fetch all current auctions (paginated) ──
+    // ── STEP 1: Fetch all current auctions (paginated + deduplicated) ──
     console.log("[SLATTERY] Fetching auctions list...");
-    const allAuctions: SlatteryAuction[] = [];
+    const auctionMap = new Map<number, SlatteryAuction>(); // dedup by id
     let auctionPage = 1;
     let hasMoreAuctions = true;
 
@@ -311,16 +333,30 @@ Deno.serve(async (req) => {
         break;
       }
 
-      allAuctions.push(...auctionsResp.data);
+      let newCount = 0;
+      for (const a of auctionsResp.data) {
+        if (!auctionMap.has(a.id)) {
+          auctionMap.set(a.id, a);
+          newCount++;
+        }
+      }
+
       hasMoreAuctions = auctionsResp.metadata?.hasNext ?? false;
-      console.log(`[SLATTERY] Auctions page ${auctionPage}: ${auctionsResp.data.length} auctions (total: ${allAuctions.length}, hasNext: ${hasMoreAuctions})`);
+      console.log(`[SLATTERY] Auctions page ${auctionPage}: ${auctionsResp.data.length} returned, ${newCount} new unique (total unique: ${auctionMap.size}, hasNext: ${hasMoreAuctions})`);
       auctionPage++;
+
+      // If no new unique auctions on this page, stop — API is returning duplicates
+      if (newCount === 0) {
+        console.log(`[SLATTERY] No new auctions on page ${auctionPage - 1}, stopping pagination`);
+        break;
+      }
 
       if (hasMoreAuctions) await sleep(100);
     }
 
+    const allAuctions = Array.from(auctionMap.values());
     metrics.auctions_found = allAuctions.length;
-    console.log(`[SLATTERY] Found ${allAuctions.length} auctions across ${auctionPage - 1} page(s)`);
+    console.log(`[SLATTERY] Found ${allAuctions.length} unique auctions across ${auctionPage - 1} page(s)`);
 
     // Filter to motor vehicle auctions
     let mvAuctions = allAuctions.filter((a) => isMvAuction(a.name));
@@ -334,48 +370,56 @@ Deno.serve(async (req) => {
     metrics.auction_names = mvAuctions.map((a) => `${a.id}:${a.name}`);
     console.log(`[SLATTERY] ${mvAuctions.length} motor vehicle auctions to process`);
 
-    // ── STEP 2: Fetch all lots for each auction ──
+    // ── STEP 2: Fetch all lots for each MV auction (sequential to avoid rate limits) ──
     const allLots: Array<{ item: SlatteryListItem; auctionName: string }> = [];
+    const seenLotIds = new Set<number>(); // dedup — Slattery API sometimes returns same lots on multiple pages
 
     for (const auction of mvAuctions) {
+      if (Date.now() - startTime > TIME_BUDGET_MS * 0.6) {
+        console.log(`[SLATTERY] Time budget 60% used, stopping lot fetches`);
+        break;
+      }
+
       let page = 1;
       let hasNext = true;
-
       while (hasNext) {
         const url = `${API_BASE}/assets?auctionId=${auction.id}&page=${page}&pageSize=${PAGE_SIZE}`;
         const lotsResp = await fetchJson<{
-          ok: boolean;
-          data: SlatteryListItem[];
+          ok: boolean; data: SlatteryListItem[];
           metadata: { hasNext: boolean; totalCount: number; totalPages: number };
         }>(url);
 
         metrics.pages_fetched++;
-
         if (!lotsResp?.data) {
-          if (metrics.errors.length < 20)
-            metrics.errors.push(`Failed to fetch lots for auction ${auction.id} page ${page}`);
+          if (metrics.errors.length < 20) metrics.errors.push(`Failed lots auction ${auction.id} page ${page}`);
           break;
         }
 
-        // Only keep Motor Vehicles category (categoryId = 1) if mixed auction
         const mvLots = lotsResp.data.filter(
           (lot) => !lot.categoryId || lot.categoryId === 1 || lot.categoryId === 2
         );
-
+        let newInPage = 0;
         for (const item of mvLots) {
-          allLots.push({ item, auctionName: auction.name });
+          if (!seenLotIds.has(item.id)) {
+            seenLotIds.add(item.id);
+            allLots.push({ item, auctionName: auction.name });
+            newInPage++;
+          }
+        }
+        // If no new lots on this page, pagination is cycling — stop
+        if (newInPage === 0) {
+          console.log(`[SLATTERY] Auction ${auction.id} page ${page}: 0 new lots, stopping pagination`);
+          break;
         }
 
         hasNext = lotsResp.metadata?.hasNext ?? false;
         page++;
-
-        // Be respectful
-        if (hasNext) await sleep(100);
+        if (page > MAX_LOT_PAGES) {
+          console.log(`[SLATTERY] Auction ${auction.id}: hit page cap (${MAX_LOT_PAGES}), stopping`);
+          break;
+        }
       }
-
-      console.log(
-        `[SLATTERY] Auction "${auction.name}" (${auction.id}): fetched lots`
-      );
+      console.log(`[SLATTERY] Auction "${auction.name}" (${auction.id}): fetched lots`);
     }
 
     metrics.raw_listings = allLots.length;
@@ -418,195 +462,87 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── STEP 4: Fetch detail + normalize + upsert ──
-    const taxonomyDeps = createTaxonomyDeps(supabase);
+    // ── STEP 4: Build listing rows (no detail fetch, lightweight normalize) + BATCH upsert ──
+    const now = new Date().toISOString();
+    const listingRows: Record<string, unknown>[] = [];
+    const stubRows: Record<string, unknown>[] = [];
 
-    for (const { item, auctionName } of yearFilteredLots) {
-      // ── TIME BUDGET CHECK ──
-      if (Date.now() - startTime > TIME_BUDGET_MS) {
-        console.log(`[SLATTERY] Time budget exhausted at ${Date.now() - startTime}ms — processed ${metrics.upserted} of ${yearFilteredLots.length} lots`);
-        break;
-      }
+    for (const { item } of yearFilteredLots) {
       try {
-        // Parse basic year/make/model from list API
         let year: number | null = null;
-        let make = item.make || null;
-        let model = item.model || null;
+        const make = (item.make || "").toUpperCase() || null;
+        const model = item.model || null;
         let variantRaw: string | null = null;
-        let vin: string | null = null;
-        let colour: string | null = null;
-        let fuel = normalizeFuel(item.summaryAttributes?.fueltype);
-        let transmission = normalizeTransmission(item.summaryAttributes?.transmission);
-        let drivetrain = normalizeDrivetrain(item.summaryAttributes?.drivetype);
+        const fuel = normalizeFuel(item.summaryAttributes?.fueltype);
+        const transmission = normalizeTransmission(item.summaryAttributes?.transmission);
+        const drivetrain = normalizeDrivetrain(item.summaryAttributes?.drivetype);
         let km = item.odometer ?? null;
         const currentBid = item.currentBidAmount ?? null;
         const location = item.pickupLocation || null;
 
-        // Parse year from title
         const yearMatch = item.name.match(/^(\d{4})\s/);
         if (yearMatch) year = parseInt(yearMatch[1], 10);
-
-        // Parse KM from summaryAttributes if not in top-level
         if (!km && item.summaryAttributes?.odometer) {
           km = parseInt(item.summaryAttributes.odometer.replace(/,/g, ""), 10) || null;
         }
+        if (!year || year < MIN_YEAR) { metrics.year_filtered++; continue; }
 
-        // ── Fetch detail API for full data (VIN, colour, year, engine) ──
-        if (fetchDetails) {
-          const detail = await fetchJson<{ ok: boolean; data: SlatteryDetail }>(
-            `${API_BASE}/assets/${item.id}`
-          );
-
-          if (detail?.data) {
-            metrics.details_fetched++;
-            const d = detail.data;
-            const da = d.detailAttributes || {};
-
-            // Prefer detail data over list data
-            if (d.manufactureYear) year = d.manufactureYear;
-            if (d.make) make = d.make;
-            if (d.model) model = d.model;
-            if (d.odometer) km = d.odometer;
-            if (da.vin) vin = da.vin;
-            if (da.colour) colour = da.colour;
-            if (da.series) variantRaw = da.series;
-            if (da.fueltype) fuel = normalizeFuel(da.fueltype);
-            if (da.transmission) transmission = normalizeTransmission(da.transmission);
-            if (da.drivetype) drivetrain = normalizeDrivetrain(da.drivetype);
-          } else {
-            metrics.details_failed++;
-          }
-
-          // Polite delay between detail requests
-          await sleep(100);
-        }
-
-        // Double-check year filter after detail enrichment
-        if (!year || year < MIN_YEAR) {
-          metrics.year_filtered++;
-          continue;
-        }
-
-        // Build variant_raw from title if not from detail
-        if (!variantRaw) {
-          // Title format: "2024 Toyota Camry SX Hybrid-Petrol (Auto)"
-          const titleParts = item.name
-            .replace(/^\d{4}\s+/, "")          // remove year
-            .replace(/\([^)]*\)\s*$/g, "")     // remove trailing (Auto) etc
-            .replace(/\b(Petrol|Diesel|Hybrid-Petrol|Hybrid|Electric)\b/gi, "")
-            .trim()
-            .split(/\s+/);
-          // First word = make, second = model, rest = variant
-          if (titleParts.length > 2) {
-            variantRaw = titleParts.slice(2).join(" ").trim() || null;
-          }
-        }
-
-        // ── Normalize via taxonomy ──
-        let makeNorm = make?.toUpperCase() || null;
-        let modelNorm = model || null;
-        let variantFamily: string | null = null;
-
-        try {
-          const normResult = await normalizeVehicleIdentity(taxonomyDeps, {
-            makeRaw: make || "",
-            modelRaw: model || "",
-            variantRaw: variantRaw || undefined,
-            year,
-            km,
-            title: item.name,
-            source: "slattery",
-          });
-          if (normResult.make) makeNorm = normResult.make;
-          if (normResult.model) modelNorm = normResult.model;
-          if (normResult.familyKey) variantFamily = normResult.familyKey;
-        } catch (normErr) {
-          console.warn(
-            `[SLATTERY] Normalization failed for ${item.name}:`,
-            normErr
-          );
-        }
+        // Extract variant from title ("2024 Toyota Camry SX Hybrid" → "SX")
+        const titleParts = item.name
+          .replace(/^\d{4}\s+/, "").replace(/\([^)]*\)\s*$/g, "")
+          .replace(/\b(Petrol|Diesel|Hybrid-Petrol|Hybrid|Electric)\b/gi, "").trim().split(/\s+/);
+        if (titleParts.length > 2) variantRaw = titleParts.slice(2).join(" ").trim() || null;
 
         const listingId = `slattery:${item.id}`;
         const detailUrl = `${BASE_URL}/assets/${item.id}?auctionId=${item.auctionId}`;
         const state = extractState(location);
 
-        // ── Upsert to vehicle_listings ──
-        const { error: upsertError } = await supabase
-          .from("vehicle_listings")
-          .upsert(
-            {
-              listing_id: listingId,
-              source: "slattery",
-              listing_url: detailUrl,
-              make: makeNorm,
-              model: modelNorm,
-              year,
-              variant_raw: variantRaw || item.name,
-              variant_family: variantFamily,
-              km,
-              asking_price: currentBid,
-              fuel,
-              transmission,
-              drivetrain,
-              vin,
-              location,
-              state,
-              auction_house: "slattery",
-              source_class: "auction",
-              status: "active",
-              first_seen_at: new Date().toISOString(),
-              last_seen_at: new Date().toISOString(),
-            },
-            {
-              onConflict: "listing_id,source",
-              ignoreDuplicates: false,
-            }
-          );
+        listingRows.push({
+          listing_id: listingId, source: "slattery", listing_url: detailUrl,
+          make, model, year, variant_raw: variantRaw || item.name,
+          km, asking_price: currentBid, fuel, transmission,
+          drivetrain, location, state, auction_house: "slattery",
+          source_class: "auction", status: "active",
+          first_seen_at: now, last_seen_at: now,
+        });
 
-        if (upsertError) {
-          if (metrics.errors.length < 20)
-            metrics.errors.push(
-              `Upsert ${item.id}: ${upsertError.message}`
-            );
-          continue;
-        }
-        metrics.upserted++;
-
-        // ── Create stub anchor for hunt matching ──
-        const stubPayload = [
-          {
-            source_stock_id: String(item.id),
-            detail_url: detailUrl,
-            year,
-            make_raw: makeNorm,
-            model_raw: modelNorm,
-            location,
-            raw_text: item.name,
-          },
-        ];
-
-        const { error: stubError } = await supabase.rpc(
-          "upsert_stub_anchor_batch",
-          {
-            p_source: "slattery",
-            p_stubs: stubPayload,
-          }
-        );
-
-        if (stubError) {
-          console.warn(
-            `[SLATTERY] Stub error for ${item.id}:`,
-            stubError.message
-          );
-        } else {
-          metrics.stubs_created++;
-        }
+        stubRows.push({
+          source_stock_id: String(item.id), detail_url: detailUrl, year,
+          make_raw: make, model_raw: model, location, raw_text: item.name,
+        });
       } catch (itemErr) {
         if (metrics.errors.length < 20)
-          metrics.errors.push(
-            `Item ${item.id}: ${itemErr instanceof Error ? itemErr.message : String(itemErr)}`
-          );
+          metrics.errors.push(`Item ${item.id}: ${itemErr instanceof Error ? itemErr.message : String(itemErr)}`);
+      }
+    }
+
+    metrics.valid_listings = listingRows.length;
+    console.log(`[SLATTERY] Built ${listingRows.length} listing rows in ${Date.now() - startTime}ms. Batch upserting...`);
+
+    // ── Batch upsert vehicle_listings (chunks of 50) ──
+    const UPSERT_BATCH = 50;
+    for (let i = 0; i < listingRows.length; i += UPSERT_BATCH) {
+      const chunk = listingRows.slice(i, i + UPSERT_BATCH);
+      const { error: upsertError } = await supabase
+        .from("vehicle_listings")
+        .upsert(chunk, { onConflict: "listing_id,source", ignoreDuplicates: false });
+
+      if (upsertError) {
+        if (metrics.errors.length < 20) metrics.errors.push(`Batch upsert ${i}: ${upsertError.message}`);
+      } else {
+        metrics.upserted += chunk.length;
+      }
+    }
+
+    // ── Batch stub anchors ──
+    if (stubRows.length > 0) {
+      const { error: stubError } = await supabase.rpc("upsert_stub_anchor_batch", {
+        p_source: "slattery", p_stubs: stubRows,
+      });
+      if (stubError) {
+        console.warn(`[SLATTERY] Batch stub error:`, stubError.message);
+      } else {
+        metrics.stubs_created = stubRows.length;
       }
     }
 
