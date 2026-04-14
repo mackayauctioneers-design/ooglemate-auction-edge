@@ -131,11 +131,13 @@ Deno.serve(async (req) => {
         resp = await fetch(pageUrl, { signal: ac.signal });
       } catch (e) {
         clearTimeout(timeout);
-        throw new Error(`Caroogle API fetch failed on page ${currentPage}: ${e instanceof Error ? e.message : String(e)}`);
+        console.error(`[${CRON_NAME}] Fetch failed on page ${currentPage}: ${e instanceof Error ? e.message : String(e)}`);
+        break; // Process what we have instead of crashing
       }
       clearTimeout(timeout);
       if (!resp.ok) {
-        throw new Error(`Caroogle API returned ${resp.status} on page ${currentPage}: ${await resp.text()}`);
+        console.error(`[${CRON_NAME}] API returned ${resp.status} on page ${currentPage}`);
+        break;
       }
 
       const payload = await resp.json();
