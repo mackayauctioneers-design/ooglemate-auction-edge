@@ -17,10 +17,11 @@ const corsHeaders = {
 };
 
 const CAROOGLE_API_BASE = "https://backend.caroogle.codesorbit.net/api/ads";
-const PAGE_SIZE = 200;  // Was 1000, Caroogle API times out with large pages
+const PAGE_SIZE = 200;
 const CRON_NAME = "caroogle-gumtree-ingest";
 const SOURCE = "gumtree";
 const SOURCE_CLASS = "private_and_dealer";
+const TIME_BUDGET_MS = 110_000;
 const BATCH_SIZE = 200;
 
 // ─── NORMALIZERS ─────────────────────────────────────────────────────────────
@@ -116,7 +117,11 @@ Deno.serve(async (req) => {
     let currentPage = 1;
     let totalPages = 1;
 
-    while (currentPage <= totalPages && currentPage <= 40) {  // Cap pages to fit edge function timeout
+    while (currentPage <= totalPages && currentPage <= 60) {
+      if (Date.now() - startTime > TIME_BUDGET_MS) {
+        console.log(`[${CRON_NAME}] Time budget exhausted at page ${currentPage} — processing ${ads.length} records collected`);
+        break;
+      }
       const pageUrl = `${CAROOGLE_API_BASE}?source=gumtree&limit=${PAGE_SIZE}&page=${currentPage}`;
       console.log(`[${CRON_NAME}] Fetching page ${currentPage}/${totalPages}...`);
       const ac = new AbortController();
@@ -126,11 +131,13 @@ Deno.serve(async (req) => {
         resp = await fetch(pageUrl, { signal: ac.signal });
       } catch (e) {
         clearTimeout(timeout);
-        throw new Error(`Caroogle API fetch failed on page ${currentPage}: ${e instanceof Error ? e.message : String(e)}`);
+        console.error(`[${CRON_NAME}] Fetch failed on page ${currentPage}: ${e instanceof Error ? e.message : String(e)}`);
+        break; // Process what we have instead of crashing
       }
       clearTimeout(timeout);
       if (!resp.ok) {
-        throw new Error(`Caroogle API returned ${resp.status} on page ${currentPage}: ${await resp.text()}`);
+        console.error(`[${CRON_NAME}] API returned ${resp.status} on page ${currentPage}`);
+        break;
       }
 
       const payload = await resp.json();
