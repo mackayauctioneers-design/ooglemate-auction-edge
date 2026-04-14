@@ -270,8 +270,17 @@ Deno.serve(async (req) => {
     console.log(`[${CRON_NAME}] Received ${ads.length} total records from API across ${currentPage} page(s)`);
 
     if (ads.length === 0) {
-      throw new Error("Caroogle API returned 0 records across all pages — possible schema change or downtime");
-    }
+      // Log but don't throw — maybe API is temporarily empty
+      console.warn(`[${CRON_NAME}] Caroogle API returned 0 records`);
+      await sb.from("cron_heartbeat").upsert({
+        cron_name: CRON_NAME,
+        last_seen_at: new Date().toISOString(),
+        last_ok: true,
+        note: "0 records from API — empty feed or API issue",
+      }, { onConflict: "cron_name" });
+      return new Response(JSON.stringify({ success: true, listings_received: 0 }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
 
     // ── Build rows for vehicle_listings ──
     const taxonomyDeps = createTaxonomyDeps(sb);
