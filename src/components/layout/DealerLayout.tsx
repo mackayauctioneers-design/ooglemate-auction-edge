@@ -10,7 +10,7 @@ import { AuthModal } from '@/components/auth/AuthModal';
 import { BobPanel } from '@/components/bob/BobPanel';
 
 const dealerNav = [
-  { path: '/dealer-home', label: 'Home', icon: Home },
+  { path: '/dealer-home', label: 'Trading Desk', icon: Home },
   { path: '/today', label: 'Today', icon: Target },
   { path: '/find-cars', label: 'Find Cars', icon: Car },
   { path: '/my-hunts', label: 'My Hunts', icon: Crosshair },

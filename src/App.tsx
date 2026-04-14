@@ -144,8 +144,8 @@ const App = () => (
             <Sonner />
             <Routes>
               {/* === DEALER ROUTES === */}
-              <Route path="/" element={<RequireAuth><DealerHomePage /></RequireAuth>} />
-              <Route path="/dealer-home" element={<RequireAuth><DealerHomePage /></RequireAuth>} />
+              <Route path="/" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
+              <Route path="/dealer-home" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
               <Route path="/find-cars" element={<RequireAuth><FindCarsPage /></RequireAuth>} />
               <Route path="/sales-upload" element={<RequireAuth><SalesUploadPage /></RequireAuth>} />
               <Route path="/sales-insights" element={<RequireAuth><SalesInsightsPage /></RequireAuth>} />
@@ -233,7 +233,7 @@ const App = () => (
               <Route path="/operator/dealer-upload" element={<OperatorGuard><OperatorDealerUploadPage /></OperatorGuard>} />
               <Route path="/operator/deals" element={<OperatorGuard><DealsPage /></OperatorGuard>} />
               <Route path="/operator/deals/:dealId" element={<OperatorGuard><DealDetailPage /></OperatorGuard>} />
-              <Route path="/trading-desk" element={<OperatorGuard><TradingDeskPage /></OperatorGuard>} />
+              <Route path="/trading-desk" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
               <Route path="/operator/manual-intake" element={<OperatorGuard><ManualIntakePage /></OperatorGuard>} />
               <Route path="/operator/ooglebot" element={<OperatorGuard><OogleBotPage /></OperatorGuard>} />
               <Route path="/operator/alerts-matches" element={<OperatorGuard><AlertsMatchesPage /></OperatorGuard>} />
