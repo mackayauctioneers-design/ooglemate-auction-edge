@@ -424,7 +424,7 @@ Deno.serve(async (req) => {
     }
 
     console.log(`[${CRON_NAME}] Active rows for upsert: ${activeRows.length}, relists: ${relistDetected.length}`);
-    console.log(`[${CRON_NAME}] Active rows for upsert: ${activeRows.length}, filtered: ${nonActiveRows.length}, relists: ${relistDetected.length}`);
+    console.log(`[${CRON_NAME}] Active rows for upsert: ${activeRows.length}, relists: ${relistDetected.length}`);
 
     // ── Batch upsert ACTIVE rows into vehicle_listings ──
     let totalNew = 0;
@@ -466,18 +466,7 @@ Deno.serve(async (req) => {
         .gte("relist_count", 2);
     }
 
-    // ── Update non-active records' auction_status (if they exist) ──
-    for (const row of nonActiveRows) {
-      await sb
-        .from("vehicle_listings")
-        .update({
-          auction_status: row.auction_status,
-          lifecycle_state: "DEAD",
-          status: row.auction_status === "sold" ? "sold" : "inactive",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("listing_id", row.listing_id);
-    }
+    // Page gate disabled — no non-active rows to update
 
     const runtimeMs = Date.now() - startTime;
     const result = {
