@@ -407,37 +407,23 @@ Deno.serve(async (req) => {
     let filteredWithdrawn = 0;
     let filteredInvalid = 0;
 
-    // Filter rows: only upsert active listings (or existing ones being updated)
+    // All rows are active (page gate disabled for performance)
     const activeRows: any[] = [];
-    const nonActiveRows: any[] = [];
 
     for (const row of rows) {
-      const pageResult = statusMap.get(row.listing_id);
-      
-      if (pageResult && pageResult.status !== "active") {
-        // New listing that failed page gate — track but don't insert
-        row.auction_status = pageResult.status;
-        nonActiveRows.push(row);
-        if (pageResult.status === "sold") filteredSold++;
-        else if (pageResult.status === "withdrawn") filteredWithdrawn++;
-        else filteredInvalid++;
-        continue;
-      }
-
-      // Active or existing — set auction_status
       row.auction_status = "active";
 
       // Relist detection
       if (relistDetected.includes(row.listing_id)) {
-        row.relist_count = 1; // Will be incremented via SQL below
-        row.lifecycle_state = "NEW"; // Revive
+        row.relist_count = 1;
+        row.lifecycle_state = "NEW";
         console.log(`[${CRON_NAME}] RELIST DETECTED: ${row.listing_id}`);
       }
 
       activeRows.push(row);
     }
 
-    console.log(`[${CRON_NAME}] Page gate: ${checksPerformed} checked, ${filteredSold} sold, ${filteredWithdrawn} withdrawn, ${filteredInvalid} invalid`);
+    console.log(`[${CRON_NAME}] Active rows for upsert: ${activeRows.length}, relists: ${relistDetected.length}`);
     console.log(`[${CRON_NAME}] Active rows for upsert: ${activeRows.length}, filtered: ${nonActiveRows.length}, relists: ${relistDetected.length}`);
 
     // ── Batch upsert ACTIVE rows into vehicle_listings ──
