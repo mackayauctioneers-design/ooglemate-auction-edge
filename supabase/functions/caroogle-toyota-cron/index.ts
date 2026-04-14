@@ -17,7 +17,7 @@ const corsHeaders = {
 };
 
 const CAROOGLE_API_BASE = "https://backend.caroogle.codesorbit.net/api/ads";
-const PAGE_SIZE = 1000;
+const PAGE_SIZE = 200;  // Was 1000, Caroogle API times out with large pages
 const CRON_NAME = "caroogle-toyota-ingest";
 const SOURCE = "toyota";
 const SOURCE_CLASS = "oem_used";
@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
     let currentPage = 1;
     let totalPages = 1;
 
-    while (currentPage <= totalPages) {
+    while (currentPage <= totalPages && currentPage <= 40) {  // Cap pages to fit edge function timeout
       const pageUrl = `${CAROOGLE_API_BASE}?source=toyota&limit=${PAGE_SIZE}&page=${currentPage}`;
       console.log(`[${CRON_NAME}] Fetching page ${currentPage}/${totalPages}...`);
       const ac = new AbortController();

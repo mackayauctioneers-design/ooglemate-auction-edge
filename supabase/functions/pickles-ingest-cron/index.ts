@@ -102,7 +102,7 @@ function parseListingsFromMarkdown(markdown: string): ExtractedListing[] {
   // - Price patterns like $XX,XXX or $XX XXX
   // - KM patterns like XX,XXX km or XXXkm
   
-  const urlPattern = /https?:\/\/(?:www\.)?pickles\.com\.au\/used\/(?:details|item)\/(\d{4})-([a-z]+)-([a-z0-9-]+)\/(\d+)/gi;
+  const urlPattern = /https?:\/\/(?:www\.)?pickles\.com\.au\/used\/(?:details|item)\/(?:cars\/)?(\d{4})-([a-z]+)-([a-z0-9-]+)\/(\d+)/gi;
   let match: RegExpExecArray | null;
   
   while ((match = urlPattern.exec(markdown)) !== null) {

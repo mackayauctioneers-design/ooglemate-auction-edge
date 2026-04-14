@@ -290,19 +290,36 @@ Deno.serve(async (req) => {
   };
 
   try {
-    // ── STEP 1: Fetch all current auctions ──
+    // ── STEP 1: Fetch all current auctions (paginated) ──
     console.log("[SLATTERY] Fetching auctions list...");
-    const auctionsResp = await fetchJson<{ ok: boolean; data: SlatteryAuction[] }>(
-      `${API_BASE}/auctions`
-    );
+    const allAuctions: SlatteryAuction[] = [];
+    let auctionPage = 1;
+    let hasMoreAuctions = true;
 
-    if (!auctionsResp?.data) {
-      throw new Error("Failed to fetch auctions list from Slattery API");
+    while (hasMoreAuctions) {
+      const auctionsResp = await fetchJson<{
+        ok: boolean;
+        data: SlatteryAuction[];
+        metadata?: { hasNext: boolean; totalPages: number; totalCount: number };
+      }>(`${API_BASE}/auctions?page=${auctionPage}`);
+
+      if (!auctionsResp?.data) {
+        if (auctionPage === 1) {
+          throw new Error("Failed to fetch auctions list from Slattery API");
+        }
+        break;
+      }
+
+      allAuctions.push(...auctionsResp.data);
+      hasMoreAuctions = auctionsResp.metadata?.hasNext ?? false;
+      console.log(`[SLATTERY] Auctions page ${auctionPage}: ${auctionsResp.data.length} auctions (total: ${allAuctions.length}, hasNext: ${hasMoreAuctions})`);
+      auctionPage++;
+
+      if (hasMoreAuctions) await sleep(200);
     }
 
-    const allAuctions = auctionsResp.data;
     metrics.auctions_found = allAuctions.length;
-    console.log(`[SLATTERY] Found ${allAuctions.length} auctions`);
+    console.log(`[SLATTERY] Found ${allAuctions.length} auctions across ${auctionPage - 1} page(s)`);
 
     // Filter to motor vehicle auctions
     let mvAuctions = allAuctions.filter((a) => isMvAuction(a.name));

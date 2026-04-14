@@ -19,7 +19,7 @@ const corsHeaders = {
 };
 
 const CAROOGLE_API_BASE = "https://backend.caroogle.codesorbit.net/api/ads";
-const PAGE_SIZE = 1000;
+const PAGE_SIZE = 200;  // Was 1000, but Caroogle API times out with large pages (>30s for 500+)
 const CRON_NAME = "caroogle-pickles-ingest";
 const SOURCE = "pickles";
 const SOURCE_CLASS = "auction";
@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
     let currentPage = 1;
     let totalPages = 1;
 
-    while (currentPage <= totalPages && currentPage <= 10) {
+    while (currentPage <= totalPages && currentPage <= 20) {  // 20 pages × 200 = 4000 records max (fits edge function timeout)
       const pageUrl = `${CAROOGLE_API_BASE}?source=pickles&limit=${PAGE_SIZE}&page=${currentPage}`;
       console.log(`[${CRON_NAME}] Fetching page ${currentPage}/${totalPages}...`);
       const ac = new AbortController();
