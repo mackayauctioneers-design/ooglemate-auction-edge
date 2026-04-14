@@ -19,12 +19,13 @@ const corsHeaders = {
 };
 
 const CAROOGLE_API_BASE = "https://backend.caroogle.codesorbit.net/api/ads";
-const PAGE_SIZE = 200;  // Was 1000, but Caroogle API times out with large pages (>30s for 500+)
+const PAGE_SIZE = 200;
 const CRON_NAME = "caroogle-pickles-ingest";
 const SOURCE = "pickles";
 const SOURCE_CLASS = "auction";
 const AUCTION_HOUSE = "pickles";
 const BATCH_SIZE = 200;
+const TIME_BUDGET_MS = 110_000; // Stop fetching at 110s to leave time for upsert
 
 // ─── PAGE STATUS CLASSIFIER ──────────────────────────────────────────────────
 

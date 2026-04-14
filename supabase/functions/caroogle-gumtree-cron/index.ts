@@ -17,10 +17,11 @@ const corsHeaders = {
 };
 
 const CAROOGLE_API_BASE = "https://backend.caroogle.codesorbit.net/api/ads";
-const PAGE_SIZE = 200;  // Was 1000, Caroogle API times out with large pages
+const PAGE_SIZE = 200;
 const CRON_NAME = "caroogle-gumtree-ingest";
 const SOURCE = "gumtree";
 const SOURCE_CLASS = "private_and_dealer";
+const TIME_BUDGET_MS = 110_000;
 const BATCH_SIZE = 200;
 
 // ─── NORMALIZERS ─────────────────────────────────────────────────────────────
