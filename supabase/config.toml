@@ -473,3 +473,13 @@ verify_jwt = false
 [functions.feed-josh-multi-source]
 verify_jwt = false
 schedule = "*/30 * * * *"
+
+[functions.ops-guardian]
+verify_jwt = false
+schedule = "*/10 * * * *"
+# Self-healing health check — monitors all crons, auto-heals stale ones, alerts Slack on failures
+
+[functions.recompute-fingerprint-performance]
+verify_jwt = false
+schedule = "0 18 * * *"
+# Nightly fingerprint performance recomputation (4am AEST = 18:00 UTC)
