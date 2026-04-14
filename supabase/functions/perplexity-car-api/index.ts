@@ -14,7 +14,8 @@
  *   clearances     — Sold/delisted events with days-on-market
  *   opportunities  — Matched opportunities + caroogle finds + deal flags
  *   sales_truth    — Verified historical sale outcomes
- *   schema         — System overview with table counts
+ *   ingestion      — Live ingestion health: cron heartbeats, source registry, failure diagnostics
+ *   schema         — System overview with table counts and ingestion architecture
  *
  * Auth: Bearer token (LINDY_WEBHOOK_SECRET or a dedicated API key)
  */
