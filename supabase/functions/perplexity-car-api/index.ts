@@ -14,7 +14,8 @@
  *   clearances     — Sold/delisted events with days-on-market
  *   opportunities  — Matched opportunities + caroogle finds + deal flags
  *   sales_truth    — Verified historical sale outcomes
- *   schema         — System overview with table counts
+ *   ingestion      — Live ingestion health: cron heartbeats, source registry, failure diagnostics
+ *   schema         — System overview with table counts and ingestion architecture
  *
  * Auth: Bearer token (LINDY_WEBHOOK_SECRET or a dedicated API key)
  */
@@ -84,10 +85,12 @@ Deno.serve(async (req) => {
         return await handleOpportunities(supabase, url);
       case "sales_truth":
         return await handleSalesTruth(supabase, url);
+      case "ingestion":
+        return await handleIngestion(supabase, url);
       case "schema":
         return await handleSchema(supabase);
       default:
-        return json({ error: `Unknown endpoint: ${endpoint}`, available: ["listings", "retail", "search", "fingerprints", "analytics", "deals", "audit", "history", "clearances", "opportunities", "sales_truth", "schema"] }, 400);
+        return json({ error: `Unknown endpoint: ${endpoint}`, available: ["listings", "retail", "search", "fingerprints", "analytics", "deals", "audit", "history", "clearances", "opportunities", "sales_truth", "ingestion", "schema"] }, 400);
     }
   } catch (err) {
     console.error("perplexity-car-api error:", err);
@@ -584,6 +587,121 @@ async function handleSalesTruth(supabase: any, url: URL) {
   return json({ endpoint: "sales_truth", count: data?.length ?? 0, data });
 }
 
+// ========== INGESTION (Live health & diagnostics) ==========
+async function handleIngestion(supabase: any, url: URL) {
+  const source = url.searchParams.get("source"); // filter to one cron
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 200);
+
+  // Heartbeats
+  let hbQuery = supabase
+    .from("cron_heartbeat")
+    .select("cron_name, last_seen_at, last_ok, note, rows_inserted")
+    .order("last_seen_at", { ascending: false })
+    .limit(limit);
+  if (source) hbQuery = hbQuery.ilike("cron_name", `%${source}%`);
+  const { data: heartbeats } = await hbQuery;
+
+  // Ingestion sources registry
+  const { data: sources } = await supabase
+    .from("ingestion_sources")
+    .select("*")
+    .order("last_seen_at", { ascending: false })
+    .limit(100);
+
+  // Recent audit log failures
+  const { data: recentFails } = await supabase
+    .from("cron_audit_log")
+    .select("cron_name, run_at, success, error, result")
+    .eq("success", false)
+    .order("run_at", { ascending: false })
+    .limit(20);
+
+  // Apify runs queue status
+  const { data: apifyRuns } = await supabase
+    .from("apify_runs_queue")
+    .select("id, source, status, started_at, completed_at, items_fetched, items_upserted, last_error")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  return json({
+    endpoint: "ingestion",
+    heartbeats: heartbeats ?? [],
+    ingestion_sources: sources ?? [],
+    recent_failures: recentFails ?? [],
+    apify_runs: apifyRuns ?? [],
+    external_apis: {
+      caroogle_api: {
+        base_url: "https://backend.caroogle.codesorbit.net/api/ads",
+        description: "Fady's unified Caroogle API — serves 4 Australian vehicle marketplace sources from a single endpoint",
+        pagination: "?page=N&limit=N (default limit varies by source)",
+        sources: {
+          pickles: {
+            param: "?source=pickles",
+            cron: "caroogle-shadow-cron (every 2h)",
+            heartbeat_key: "caroogle-pickles-ingest",
+            source_class: "auction",
+            seller_type: "auction_house",
+            writes_to: "vehicle_listings",
+            notes: "Primary Pickles feed — replaced legacy Firecrawl scraping"
+          },
+          toyota: {
+            param: "?source=toyota",
+            cron: "caroogle-toyota-cron (every 2h)",
+            heartbeat_key: "caroogle-toyota-ingest",
+            source_class: "oem_used",
+            seller_type: "oem_dealer",
+            writes_to: "vehicle_listings",
+            notes: "Toyota Used Vehicles — OEM certified pre-owned inventory"
+          },
+          gumtree: {
+            param: "?source=gumtree",
+            cron: "caroogle-gumtree-cron (every 2h)",
+            heartbeat_key: "caroogle-gumtree-ingest",
+            source_class: "private_and_dealer",
+            seller_type: "inferred",
+            writes_to: "vehicle_listings",
+            notes: "Gumtree classifieds — replaced expensive Apify scraper ($45/day savings)"
+          },
+          autotrader: {
+            param: "?source=autotrader",
+            cron: "caroogle-autotrader-cron (every 2h)",
+            heartbeat_key: "caroogle-autotrader-ingest",
+            source_class: "retail",
+            seller_type: "dealer",
+            writes_to: "vehicle_listings",
+            listing_id_prefix: "caroogle-autotrader:",
+            notes: "Autotrader via Caroogle — listing_id prefixed to avoid collision with direct API ingest"
+          }
+        },
+        troubleshooting: {
+          "0_records_returned": "Check if API is up: curl https://backend.caroogle.codesorbit.net/api/ads?source=pickles&page=1&limit=5 — if empty, contact Fady (API maintainer)",
+          "schema_change": "Compare returned JSON fields with expected: title, price, odometer, year, make, model, location, url, image_url",
+          "rate_limiting": "API has no documented rate limits but runs should be staggered (crons offset by source)"
+        }
+      },
+      autotrader_direct: {
+        base_url: "https://listings.platform.autotrader.com.au/api/v3/search",
+        cron: "autotrader-api-cron (every 5min)",
+        description: "Direct Autotrader Australia search API — cursor-based crawl across make/state segments",
+        writes_to: "vehicle_listings (via autotrader_raw_payloads)",
+        notes: "Runs alongside Caroogle Autotrader; direct API listings use standard IDs, Caroogle uses 'caroogle-autotrader:' prefix"
+      },
+      carsales_apify: {
+        description: "Carsales via Apify actors — 32 segments (8 states × 4 price bands)",
+        cron: "carsales-micro-cron (every 2h)",
+        writes_to: "retail_listings",
+        notes: "Tiered priority: High=2h, Medium=6h, Low=12h. Cost guard aborts runs >$5 or >25min"
+      },
+      easyauto123: {
+        description: "EasyAuto123 dealer scrape",
+        cron: "easyauto-scrape (every 3h)",
+        writes_to: "retail_listings"
+      }
+    },
+    note: "Use ?source=caroogle to filter heartbeats to Caroogle crons. Check 'recent_failures' for error details."
+  });
+}
+
 // ========== SCHEMA ==========
 async function handleSchema(supabase: any) {
   const tables = [
@@ -606,8 +724,8 @@ async function handleSchema(supabase: any) {
     total_tables: 231,
     key_tables: counts,
     table_roles: {
-      "vehicle_listings": "Auction + OEM listings (Pickles, Manheim, Toyota, etc.)",
-      "retail_listings": "Retail pricing backbone (Carsales 61k, Autotrader 67k, Drive, EasyAuto)",
+      "vehicle_listings": "Auction + OEM + Caroogle API listings (Pickles, Manheim, Toyota, Gumtree, Autotrader via Caroogle)",
+      "retail_listings": "Retail pricing backbone (Carsales 61k, Autotrader direct 67k, Drive, EasyAuto)",
       "dealer_fingerprints": "Dealer buying pattern profiles",
       "cheap_car_queue": "Scored deal opportunities",
       "vehicle_sales_truth": "Historical verified sale outcomes",
@@ -621,6 +739,13 @@ async function handleSchema(supabase: any) {
       "demand_opportunities": "Demand-supply gap opportunities",
       "matched_opportunities_v1": "Matched dealer specs to listings",
     },
+    ingestion_architecture: {
+      description: "5-layer pipeline: Source → Raw → Normalisation → Deduplication → Lifecycle → Master Table",
+      primary_external_api: "Fady's Caroogle API (backend.caroogle.codesorbit.net/api/ads) — serves pickles, toyota, gumtree, autotrader via ?source= param",
+      caroogle_crons: ["caroogle-shadow-cron (pickles)", "caroogle-toyota-cron", "caroogle-gumtree-cron", "caroogle-autotrader-cron"],
+      other_sources: ["autotrader-api-cron (direct API)", "carsales-micro-cron (Apify)", "easyauto-scrape", "manheim-html-ingest", "dealer-outbound-crawl"],
+      health_monitoring: "Use ?endpoint=ingestion for live heartbeats, failure logs, and source registry"
+    },
     available_endpoints: {
       "listings": "Auction/OEM listings (vehicle_listings). Filters: make, model, year_min, year_max, km_max, price_max, source, status, location",
       "retail": "Retail listings (Carsales, Autotrader, etc). Filters: make, model, year_min, year_max, km_max, price_min, price_max, source, state, badge, seller_type",
@@ -631,11 +756,12 @@ async function handleSchema(supabase: any) {
       "clearances": "Sold/delisted events with days-on-market. Filters: make, model, source",
       "opportunities": "Matched opportunities + caroogle finds + deal flags. Filters: make, model, type=matched|caroogle|flags",
       "sales_truth": "Verified historical sale outcomes. Filters: make, model, year_min, year_max, source",
+      "ingestion": "Live ingestion health: cron heartbeats, source registry, recent failures, Caroogle API details. Filters: source",
       "fingerprints": "Dealer buying pattern profiles. Filters: dealer_name, make, model, active_only",
       "analytics": "Market summary stats. Filters: make, model",
-      "schema": "This endpoint — system overview"
+      "schema": "This endpoint — system overview with ingestion architecture"
     },
-    note: "All endpoints support limit= (up to 1000) and most support offset= for pagination."
+    note: "All endpoints support limit= (up to 1000) and most support offset= for pagination. Use ?endpoint=ingestion for real-time ingestion diagnostics."
   });
 }
 
