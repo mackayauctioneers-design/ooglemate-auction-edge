@@ -210,7 +210,11 @@ Deno.serve(async (req) => {
     let currentPage = 1;
     let totalPages = 1;
 
-    while (currentPage <= totalPages && currentPage <= 20) {  // 20 pages × 200 = 4000 records max (fits edge function timeout)
+    while (currentPage <= totalPages && currentPage <= 60) {  // 60 pages × 200 = 12000 records max
+      if (Date.now() - startTime > TIME_BUDGET_MS) {
+        console.log(`[${CRON_NAME}] Time budget exhausted at page ${currentPage} — processing ${ads.length} records collected`);
+        break;
+      }
       const pageUrl = `${CAROOGLE_API_BASE}?source=pickles&limit=${PAGE_SIZE}&page=${currentPage}`;
       console.log(`[${CRON_NAME}] Fetching page ${currentPage}/${totalPages}...`);
       const ac = new AbortController();
