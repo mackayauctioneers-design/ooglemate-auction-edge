@@ -198,6 +198,13 @@ Deno.serve(async (req) => {
     console.log(`[STALE-SWEEP] Checking ${batch.length} trading desk opportunities`);
 
     if (batch.length === 0) {
+      await sb.from("cron_heartbeat").upsert({
+        cron_name: "trading-desk-stale-sweep",
+        last_seen_at: new Date().toISOString(),
+        last_ok: true,
+        note: "checked=0 expired=0 empty_batch=true",
+      });
+
       return new Response(JSON.stringify({ ok: true, message: "nothing_to_check", took_ms: Date.now() - started }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
