@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import nodemailer from "npm:nodemailer@6.9.12";
+import nodemailer from "https://esm.sh/nodemailer@6.9.12";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -296,6 +296,17 @@ Deno.serve(async (req) => {
     }
 
     if (!rows || rows.length === 0) {
+      const elapsed = Date.now() - startTime;
+      await supabase.from("cron_heartbeat").upsert(
+        {
+          cron_name: "pre-josh-filter",
+          last_seen_at: new Date().toISOString(),
+          last_ok: true,
+          note: `processed=0 rejected=0 pre_approved=0 kept=0 alerts=0 ms=${elapsed} empty=true`,
+        },
+        { onConflict: "cron_name" }
+      );
+
       return new Response(
         JSON.stringify({ success: true, processed: 0, auto_rejected: 0, pre_approved: 0, kept: 0, alerts_dispatched: 0 }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -372,6 +383,24 @@ Deno.serve(async (req) => {
     );
   } catch (err) {
     console.error("[PRE-JOSH] Error:", err);
+
+    try {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      await supabase.from("cron_heartbeat").upsert(
+        {
+          cron_name: "pre-josh-filter",
+          last_seen_at: new Date().toISOString(),
+          last_ok: false,
+          note: `FATAL: ${String(err).slice(0, 100)}`,
+        },
+        { onConflict: "cron_name" }
+      );
+    } catch (_) {
+    }
+
     return new Response(
       JSON.stringify({ success: false, error: String(err) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -13,6 +13,15 @@ const corsHeaders = {
  * Re-triggers check-internal-demand for each, updating opportunities.
  */
 
+async function writeHeartbeat(supabase: any, last_ok: boolean, note: string) {
+  await supabase.from("cron_heartbeat").upsert({
+    cron_name: "nightly-demand-recon",
+    last_seen_at: new Date().toISOString(),
+    last_ok,
+    note,
+  }, { onConflict: "cron_name" });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -46,6 +55,13 @@ Deno.serve(async (req) => {
     });
 
     if (dueDemands.length === 0) {
+      const durationMs = Date.now() - startTime;
+      await writeHeartbeat(
+        sb,
+        true,
+        JSON.stringify({ demands_total: demands?.length || 0, processed: 0, totalMatches: 0, durationMs, no_due_demands: true }),
+      );
+
       return new Response(JSON.stringify({ success: true, processed: 0, message: "No demands due for search" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -91,12 +107,7 @@ Deno.serve(async (req) => {
     const durationMs = Date.now() - startTime;
 
     // Audit
-    await sb.from("cron_heartbeat").upsert({
-      cron_name: "nightly-demand-recon",
-      last_seen_at: new Date().toISOString(),
-      last_ok: true,
-      note: JSON.stringify({ processed, totalMatches, durationMs }),
-    }, { onConflict: "cron_name" });
+    await writeHeartbeat(sb, true, JSON.stringify({ processed, totalMatches, durationMs }));
 
     console.log(`[nightly-demand-recon] Done: ${processed}/${demands.length} demands, ${totalMatches} total matches, ${durationMs}ms`);
 
@@ -113,6 +124,12 @@ Deno.serve(async (req) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[nightly-demand-recon] Error:", msg);
+
+    try {
+      await writeHeartbeat(sb, false, `FATAL: ${msg.slice(0, 100)}`);
+    } catch (_) {
+    }
+
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
