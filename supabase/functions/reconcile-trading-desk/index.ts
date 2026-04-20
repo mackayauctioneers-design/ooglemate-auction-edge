@@ -43,21 +43,29 @@ Deno.serve(async (req) => {
 
   try {
     // ── 1. Expire auction opportunities whose auction has passed ──
-    // 2h grace period. Only expire if listing is no longer ACTIVE.
-    const pastAuction = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
+    // Two windows:
+    //   a) >2h past + listing no longer ACTIVE  → expire (even if starred — stars don't override physics)
+    //   b) >24h past, regardless of lifecycle  → hard expire (auction is over, full stop)
+    // Stars are a bookmark, not a force-keep-alive on dead auctions.
+    const past2h = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
+    const past24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
     const { data: auctionCandidates } = await supabase
       .from("operator_opportunities")
-      .select("id, listing_id")
+      .select("id, listing_id, auction_datetime")
       .in("status", ACTIONABLE_STATES)
-      .eq("is_starred", false)
       .not("auction_datetime", "is", null)
-      .lt("auction_datetime", pastAuction);
+      .lt("auction_datetime", past2h);
 
     const auctionExpireIds: string[] = [];
     if (auctionCandidates && auctionCandidates.length > 0) {
-      // Cross-check: only expire if vehicle_listings is NOT still ACTIVE
       for (const c of auctionCandidates) {
+        // Hard expire: auction was >24h ago, no debate
+        if (c.auction_datetime && c.auction_datetime < past24h) {
+          auctionExpireIds.push(c.id);
+          continue;
+        }
+        // Soft expire (2-24h window): only if listing is no longer ACTIVE
         const { data: vl } = await supabase
           .from("vehicle_listings")
           .select("lifecycle_state")
@@ -68,10 +76,12 @@ Deno.serve(async (req) => {
         }
       }
       if (auctionExpireIds.length > 0) {
-        await supabase
-          .from("operator_opportunities")
-          .update({ status: "expired", updated_at: now.toISOString() })
-          .in("id", auctionExpireIds);
+        for (let i = 0; i < auctionExpireIds.length; i += 50) {
+          await supabase
+            .from("operator_opportunities")
+            .update({ status: "expired", updated_at: now.toISOString() })
+            .in("id", auctionExpireIds.slice(i, i + 50));
+        }
       }
     }
     results.expired_auction = auctionExpireIds.length;
@@ -84,11 +94,11 @@ Deno.serve(async (req) => {
     results.expired_stale = deadListings ?? 0;
 
     // ── 3. Expire opportunities whose underlying listing is lemon-flagged or has dead auction_status ──
+    // Star protection removed: a starred opportunity on a sold/withdrawn lot is still dead.
     const { data: activeOpps } = await supabase
       .from("operator_opportunities")
       .select("id, listing_id")
-      .in("status", ACTIONABLE_STATES)
-      .eq("is_starred", false);
+      .in("status", ACTIONABLE_STATES);
 
     const lemonExpireIds: string[] = [];
     if (activeOpps && activeOpps.length > 0) {
