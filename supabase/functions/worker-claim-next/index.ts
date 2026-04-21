@@ -17,11 +17,15 @@ Deno.serve(async (req) => {
 
   const expected = Deno.env.get("WORKER_TOKEN");
   if (!expected) return json({ error: "Server misconfigured" }, 500);
-  // Accept token via x-worker-token header OR Authorization: Bearer <token>
   const auth = req.headers.get("Authorization") ?? "";
   const headerToken = req.headers.get("x-worker-token") ?? "";
   const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   const provided = headerToken || bearerToken;
+  console.log("[worker-claim-next] auth", {
+    exp_len: expected.length, exp_pre: expected.slice(0,4), exp_suf: expected.slice(-4),
+    got_len: provided.length, got_pre: provided.slice(0,4), got_suf: provided.slice(-4),
+    match: provided === expected,
+  });
   if (provided !== expected) return json({ error: "Unauthorized" }, 401);
 
   const supabase = createClient(
