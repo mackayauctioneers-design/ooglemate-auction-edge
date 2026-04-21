@@ -1,0 +1,1 @@
+DELETE FROM public.pending_stock_entry WHERE source = 'test';
