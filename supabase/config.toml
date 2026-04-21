@@ -483,3 +483,15 @@ schedule = "*/10 * * * *"
 verify_jwt = false
 schedule = "0 18 * * *"
 # Nightly fingerprint performance recomputation (4am AEST = 18:00 UTC)
+
+[functions.lindy-stock-intake]
+verify_jwt = false
+
+[functions.worker-claim-next]
+verify_jwt = false
+
+[functions.worker-complete]
+verify_jwt = false
+
+[functions.worker-error]
+verify_jwt = false
