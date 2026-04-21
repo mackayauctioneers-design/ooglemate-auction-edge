@@ -8,7 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-worker-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -19,7 +19,10 @@ Deno.serve(async (req) => {
   const expected = Deno.env.get("WORKER_TOKEN");
   if (!expected) return json({ error: "Server misconfigured" }, 500);
   const auth = req.headers.get("Authorization") ?? "";
-  if (auth !== `Bearer ${expected}`) return json({ error: "Unauthorized" }, 401);
+  const headerToken = req.headers.get("x-worker-token") ?? "";
+  const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  const provided = headerToken || bearerToken;
+  if (provided !== expected) return json({ error: "Unauthorized" }, 401);
 
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON body" }, 400); }
