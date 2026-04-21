@@ -7760,6 +7760,54 @@ export type Database = {
           },
         ]
       }
+      pending_stock_entry: {
+        Row: {
+          attempts: number
+          created_at: string
+          easycars_stock_id: string | null
+          error_message: string | null
+          id: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          payload: Json
+          ppsr_purchased: boolean | null
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          easycars_stock_id?: string | null
+          error_message?: string | null
+          id?: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          payload?: Json
+          ppsr_purchased?: boolean | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          easycars_stock_id?: string | null
+          error_message?: string | null
+          id?: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          payload?: Json
+          ppsr_purchased?: boolean | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       pickles_buy_now_listings: {
         Row: {
           first_seen_at: string
@@ -14524,6 +14572,30 @@ export type Database = {
           run_type: string
           trap_slug: string
         }[]
+      }
+      claim_next_pending_stock_entry: {
+        Args: { _locked_by: string }
+        Returns: {
+          attempts: number
+          created_at: string
+          easycars_stock_id: string | null
+          error_message: string | null
+          id: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          payload: Json
+          ppsr_purchased: boolean | null
+          source: string
+          status: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "pending_stock_entry"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       claim_pickles_detail_batch: {
         Args: {
