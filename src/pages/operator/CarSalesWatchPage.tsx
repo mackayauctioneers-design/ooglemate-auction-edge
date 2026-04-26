@@ -8,6 +8,7 @@ import { ChevronDown, ChevronRight, ExternalLink, Loader2, TrendingDown } from '
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDistanceToNow } from 'date-fns';
+import { useBobPagePublisher } from '@/hooks/useBobPagePublisher';
 
 interface RetailListing {
   id: string;
