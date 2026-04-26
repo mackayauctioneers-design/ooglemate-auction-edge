@@ -254,7 +254,7 @@ export function BobPanel() {
     messages, isStreaming,
     sendMessage, clearMessages,
     quickActions, dealerName,
-    pageContext,
+    pageContext, setPageContext,
   } = useBob();
 
   const [input, setInput] = useState('');
