@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/contexts/AuthContext";
 import { createDealFromOpportunity } from "@/hooks/useDeals";
+import { useBobPagePublisher } from "@/hooks/useBobPagePublisher";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";

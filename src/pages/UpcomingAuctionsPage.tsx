@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
+import { useBobPagePublisher } from '@/hooks/useBobPagePublisher';
 import { ProfitScoreBadge } from '@/components/auction/ProfitScoreBadge';
 import { 
   HeatBadge, 

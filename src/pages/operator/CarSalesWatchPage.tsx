@@ -229,6 +229,17 @@ export default function CarSalesWatchPage() {
   const sortedRealDeals = useMemo(() => sortListings(filterByRecency(realDeals, recency), sortBy), [realDeals, sortBy, recency]);
   const sortedBadgeDeals = useMemo(() => sortListings(filterByRecency(badgeDeals, recency), sortBy), [badgeDeals, sortBy, recency]);
 
+  // Publish to Bob
+  useBobPagePublisher({
+    filters: { recency, source: 'carsales', year_min: 2020, km_max: 120000 },
+    sortState: sortBy,
+    metrics: {
+      well_below_count: sortedRealDeals.length,
+      below_count: sortedBadgeDeals.length,
+      total_listings: sortedRealDeals.length + sortedBadgeDeals.length,
+    },
+  });
+
   useEffect(() => {
     document.title = 'Car Sales Watch | Operator';
     loadListings();
