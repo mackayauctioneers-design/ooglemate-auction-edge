@@ -1126,13 +1126,34 @@ Deno.serve(async (req) => {
       if (page_context.page_type) contextBlock += `\n- Page type: ${page_context.page_type}`;
       if (page_context.page_title) contextBlock += `\n- Page title: ${page_context.page_title}`;
       if (page_context.vehicle_ids?.length) contextBlock += `\n- Vehicles visible: ${page_context.vehicle_ids.length}`;
-      if (page_context.filters) contextBlock += `\n- Active filters: ${JSON.stringify(page_context.filters)}`;
+      if (page_context.filters) {
+        const activeFilters = Object.entries(page_context.filters)
+          .filter(([_, v]) => v !== null && v !== undefined && v !== '' && v !== 'all' && v !== 'ALL')
+          .map(([k, v]) => `${k}=${v}`);
+        if (activeFilters.length) contextBlock += `\n- Active filters: ${activeFilters.join(', ')}`;
+      }
+      if (page_context.search_terms) contextBlock += `\n- Search terms: "${page_context.search_terms}"`;
+      if (page_context.sort_state) contextBlock += `\n- Sort: ${page_context.sort_state}`;
       if (page_context.selected_vehicle) contextBlock += `\n- Selected vehicle: ${JSON.stringify(page_context.selected_vehicle)}`;
       if (page_context.metrics) contextBlock += `\n- Page metrics: ${JSON.stringify(page_context.metrics)}`;
     }
     if (dealer_profile_id) contextBlock += `\n\nDEALER ID: ${dealer_profile_id}`;
 
-    const systemMessage = SYSTEM_PROMPT + contextBlock;
+    // Voice mode shapes the response style for TTS playback
+    const voiceMode = page_context?.voice_mode;
+    let voiceBlock = "";
+    if (voiceMode && voiceMode !== 'off') {
+      voiceBlock = `\n\nVOICE MODE ACTIVE (${voiceMode}):
+- Your response will be spoken aloud by text-to-speech. Write for the EAR, not the eye.
+- Keep responses SHORT and SPOKEN. Max 2-3 sentences for the main answer.
+- Use natural Australian dealer language. Conversational, not written.
+- After presenting results, give a quick spoken summary: "Found 4 Hiluxes under 80k — top one's a 2021 SR5 in Brisbane for 52 grand."
+- Don't list every vehicle — highlight the TOP 1-2 and mention how many total.
+- No markdown, no bullet lists, no headings. Plain prose only.
+- Don't say "here is" or "the following" — just speak the answer.`;
+    }
+
+    const systemMessage = SYSTEM_PROMPT + contextBlock + voiceBlock;
 
     // Pass 1: Non-streaming tool selection
     console.log("[BOB-CHAT] Starting tool selection pass");
