@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback, forwardRef } from 'react';
+import { useRef, useEffect, useState, useCallback, forwardRef, useMemo } from 'react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,23 +6,24 @@ import { Badge } from '@/components/ui/badge';
 import {
   Send, Loader2, X, Trash2,
   ExternalLink, Eye, Search, ArrowRight, Volume2, VolumeX, Mic, Phone, PhoneOff,
-  AlertTriangle, TrendingUp, Clock, ShieldCheck
+  AlertTriangle, TrendingUp, Clock, ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useBob, BobMessage } from '@/contexts/BobContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useSpeechToText } from '@/hooks/useSpeechToText';
-import { useBobTTS } from '@/hooks/useBobTTS';
+import { useBobVoiceAgent } from '@/hooks/useBobVoiceAgent';
 import { BobAvatar } from './BobAvatar';
 import { BobWaveform } from './BobWaveform';
+import { BobVoiceFAB } from './BobVoiceFAB';
+import { BobVoiceOverlay } from './BobVoiceOverlay';
 import ReactMarkdown from 'react-markdown';
-import bobAvatarImg from '@/assets/bob-avatar.png';
 
 // ============================================================================
-// BOB PANEL v4 — AI Co-Pilot with Enhanced Vehicle Cards
+// BOB PANEL v5 — AI Co-Pilot with Voice Agent (text · push-to-talk · hands-free)
 // ============================================================================
 
-// Confidence badge
+// --- Sub-components (unchanged from v4) -----------------------------------
+
 function ConfidenceBadge({ level }: { level: string | null }) {
   if (!level || level === 'none') return null;
   const config = {
@@ -44,9 +45,7 @@ function VehicleResultCard({ vehicle, onAction }: { vehicle: any; onAction?: (ac
   const profitFormatted = vehicle.estimated_profit
     ? `~$${Number(vehicle.estimated_profit).toLocaleString()}`
     : null;
-  const dtsFormatted = vehicle.avg_days_to_sell
-    ? `${vehicle.avg_days_to_sell}d avg`
-    : null;
+  const dtsFormatted = vehicle.avg_days_to_sell ? `${vehicle.avg_days_to_sell}d avg` : null;
 
   return (
     <div className="border border-border rounded-lg p-3 bg-card hover:bg-accent/30 transition-all duration-200 animate-fade-in">
@@ -57,7 +56,6 @@ function VehicleResultCard({ vehicle, onAction }: { vehicle: any; onAction?: (ac
           </div>
         )}
         <div className="flex-1 min-w-0">
-          {/* Title row */}
           <div className="flex items-start justify-between gap-1">
             <h4 className="font-semibold text-sm text-foreground truncate">
               {vehicle.year} {vehicle.make} {vehicle.model}
@@ -72,14 +70,12 @@ function VehicleResultCard({ vehicle, onAction }: { vehicle: any; onAction?: (ac
             </div>
           </div>
 
-          {/* Price + KM + Location */}
           <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
             <span className="font-semibold text-foreground">{priceFormatted}</span>
             {kmFormatted && <span>• {kmFormatted}</span>}
             {vehicle.location && <span>• {vehicle.location}</span>}
           </div>
 
-          {/* Source + metrics row */}
           <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
             {vehicle.source && (
               <span className="capitalize bg-muted px-1.5 py-0.5 rounded text-[10px]">{vehicle.source}</span>
@@ -97,7 +93,6 @@ function VehicleResultCard({ vehicle, onAction }: { vehicle: any; onAction?: (ac
             <ConfidenceBadge level={vehicle.confidence} />
           </div>
 
-          {/* Risk flags */}
           {vehicle.risk_flags?.length > 0 && (
             <div className="flex gap-1 mt-1 flex-wrap">
               {vehicle.risk_flags.map((flag: string, i: number) => (
@@ -108,14 +103,12 @@ function VehicleResultCard({ vehicle, onAction }: { vehicle: any; onAction?: (ac
             </div>
           )}
 
-          {/* Fit reason */}
           {vehicle.fit_reason && (
             <p className="text-[11px] text-muted-foreground mt-1 italic leading-tight">{vehicle.fit_reason}</p>
           )}
         </div>
       </div>
 
-      {/* Action buttons */}
       <div className="flex gap-1.5 mt-2 border-t border-border/50 pt-2">
         {vehicle.listing_url && (
           <Button variant="ghost" size="sm" className="h-6 text-xs px-2" asChild>
@@ -124,16 +117,10 @@ function VehicleResultCard({ vehicle, onAction }: { vehicle: any; onAction?: (ac
             </a>
           </Button>
         )}
-        <Button
-          variant="ghost" size="sm" className="h-6 text-xs px-2"
-          onClick={() => onAction?.('similar', vehicle)}
-        >
+        <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => onAction?.('similar', vehicle)}>
           <Search className="h-3 w-3 mr-1" />Similar
         </Button>
-        <Button
-          variant="ghost" size="sm" className="h-6 text-xs px-2"
-          onClick={() => onAction?.('watch', vehicle)}
-        >
+        <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => onAction?.('watch', vehicle)}>
           <Eye className="h-3 w-3 mr-1" />Watch
         </Button>
       </div>
@@ -150,7 +137,6 @@ function ToolResultsDisplay({ toolResults, onVehicleAction }: { toolResults: any
         const result = tr.result;
         if (!result) return null;
 
-        // Vehicle search results
         if (tr.function_name === 'search_vehicles' && result.results?.length) {
           return (
             <div key={i} className="space-y-2">
@@ -166,7 +152,6 @@ function ToolResultsDisplay({ toolResults, onVehicleAction }: { toolResults: any
           );
         }
 
-        // Buy recommendations
         if (tr.function_name === 'get_buy_recommendations' && result.recommendations?.length) {
           return (
             <div key={i} className="space-y-2">
@@ -177,7 +162,6 @@ function ToolResultsDisplay({ toolResults, onVehicleAction }: { toolResults: any
           );
         }
 
-        // Replacements
         if (tr.function_name === 'find_replacement' && result.replacements?.length) {
           return (
             <div key={i}>
@@ -193,7 +177,6 @@ function ToolResultsDisplay({ toolResults, onVehicleAction }: { toolResults: any
           );
         }
 
-        // Watch created
         if (tr.function_name === 'create_watch' && result.watch_id) {
           return (
             <div key={i} className="border border-border rounded-lg p-3 bg-card animate-fade-in">
@@ -216,11 +199,10 @@ function ToolResultsDisplay({ toolResults, onVehicleAction }: { toolResults: any
   );
 }
 
-function MessageBubble({ message, isSpeaking, onVehicleAction }: { 
+function MessageBubble({ message, isSpeaking, onVehicleAction }: {
   message: BobMessage; isSpeaking?: boolean; onVehicleAction?: (action: string, vehicle: any) => void;
 }) {
   const isUser = message.role === 'user';
-
   return (
     <div className={cn("flex gap-2.5 animate-fade-in", isUser ? "flex-row-reverse" : "flex-row")}>
       {!isUser && <BobAvatar size="sm" isSpeaking={isSpeaking} className="mt-0.5" />}
@@ -228,7 +210,7 @@ function MessageBubble({ message, isSpeaking, onVehicleAction }: {
         "max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm",
         isUser
           ? "bg-foreground text-background rounded-br-sm"
-          : "bg-muted text-foreground rounded-bl-sm"
+          : "bg-muted text-foreground rounded-bl-sm",
       )}>
         {isUser ? (
           <p className="whitespace-pre-wrap">{message.content}</p>
@@ -263,46 +245,7 @@ function ThinkingIndicator() {
   );
 }
 
-// ForwardRef wrapper for BobVoiceButton to fix ref warnings
-const BobVoiceButtonWrapped = forwardRef<HTMLButtonElement, {
-  isListening: boolean;
-  isSupported: boolean;
-  onClick: () => void;
-  size?: 'sm' | 'lg';
-  className?: string;
-}>(({ isListening, isSupported, onClick, size = 'sm', className }, ref) => {
-  if (!isSupported) return null;
-  const isSm = size === 'sm';
-
-  return (
-    <button
-      ref={ref}
-      onClick={onClick}
-      className={cn(
-        "relative flex items-center justify-center rounded-full transition-all duration-200",
-        isSm ? "w-10 h-10" : "w-14 h-14",
-        isListening
-          ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
-          : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground",
-        className
-      )}
-      aria-label={isListening ? "Stop listening" : "Start voice input"}
-    >
-      {isListening && (
-        <>
-          <span className="absolute inset-0 rounded-full bg-red-500/40 animate-ping" />
-          <span className="absolute inset-[-4px] rounded-full border-2 border-red-500/30 animate-pulse" />
-        </>
-      )}
-      {isListening ? (
-        <Mic className={cn(isSm ? "h-4 w-4" : "h-6 w-6", "relative z-10")} />
-      ) : (
-        <Mic className={cn(isSm ? "h-4 w-4" : "h-6 w-6", "relative z-10")} />
-      )}
-    </button>
-  );
-});
-BobVoiceButtonWrapped.displayName = 'BobVoiceButtonWrapped';
+// --- MAIN PANEL ---------------------------------------------------------------
 
 export function BobPanel() {
   const { user } = useAuth();
@@ -315,41 +258,34 @@ export function BobPanel() {
   } = useBob();
 
   const [input, setInput] = useState('');
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [callMode, setCallMode] = useState(false);
+  const [voiceMuted, setVoiceMuted] = useState(false);
+  const [overlayOpen, setOverlayOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const lastAssistantMsgRef = useRef<string>('');
-  const callModeRef = useRef(false);
 
-  // Keep ref in sync for use in callbacks
-  callModeRef.current = callMode;
-
-  const onSpeechResult = useCallback((transcript: string) => {
-    if (transcript.trim()) {
-      setInput('');
-      sendMessage(transcript);
+  // Latest assistant message for voice playback
+  const latestAssistant = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') return messages[i];
     }
-  }, [sendMessage]);
+    return null;
+  }, [messages]);
 
-  const { isListening, isSupported: sttSupported, toggle: toggleListening } = useSpeechToText({
-    onResult: onSpeechResult,
-    lang: 'en-AU',
+  const voiceAgent = useBobVoiceAgent({
+    sendMessage,
+    isStreaming,
+    latestAssistantMessage: voiceMuted ? null : latestAssistant?.content || null,
+    latestAssistantMessageId: latestAssistant?.id || null,
   });
 
-  // Auto-listen after Bob finishes speaking in call mode
-  const onSpeakingEnd = useCallback(() => {
-    if (callModeRef.current && sttSupported) {
-      // Small delay to avoid audio feedback
-      setTimeout(() => {
-        if (callModeRef.current) {
-          toggleListening();
-        }
-      }, 400);
+  // Open the panel automatically when entering hands-free mode
+  useEffect(() => {
+    if (voiceAgent.mode === 'agent') {
+      setOverlayOpen(true);
+    } else {
+      setOverlayOpen(false);
     }
-  }, [sttSupported, toggleListening]);
-
-  const { speak, isSpeaking, stopSpeaking, isLoading: ttsLoading } = useBobTTS({ onSpeakingEnd });
+  }, [voiceAgent.mode]);
 
   // Auto-scroll
   useEffect(() => {
@@ -361,51 +297,19 @@ export function BobPanel() {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 200);
   }, [isOpen]);
 
-  // Auto-speak latest assistant message (always speak in call mode)
-  useEffect(() => {
-    if (isStreaming || messages.length === 0) return;
-    if (!voiceEnabled && !callMode) return;
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg?.role === 'assistant' && lastMsg.content !== lastAssistantMsgRef.current) {
-      lastAssistantMsgRef.current = lastMsg.content;
-      const speakText = lastMsg.content.length > 300
-        ? lastMsg.content.substring(0, 300) + '...'
-        : lastMsg.content;
-      speak(speakText);
-    }
-  }, [isStreaming, messages, voiceEnabled, callMode, speak]);
-
-  // Start call mode handler
-  const toggleCallMode = useCallback(() => {
-    if (callMode) {
-      // End call
-      setCallMode(false);
-      stopSpeaking();
-    } else {
-      // Start call — enable voice, open panel, start listening
-      setCallMode(true);
-      setVoiceEnabled(true);
-      if (!isOpen) setIsOpen(true);
-      if (sttSupported && !isListening) {
-        setTimeout(() => toggleListening(), 300);
-      }
-    }
-  }, [callMode, stopSpeaking, isOpen, setIsOpen, sttSupported, isListening, toggleListening]);
-
   const handleSend = async () => {
     if (!input.trim() || isStreaming) return;
     const text = input;
     setInput('');
-    stopSpeaking();
+    voiceAgent.stopSpeaking();
     await sendMessage(text);
   };
 
   const handleQuickAction = async (prompt: string) => {
-    stopSpeaking();
+    voiceAgent.stopSpeaking();
     await sendMessage(prompt);
   };
 
-  // Vehicle card actions
   const handleVehicleAction = useCallback((action: string, vehicle: any) => {
     switch (action) {
       case 'similar':
@@ -421,39 +325,47 @@ export function BobPanel() {
 
   const lastMessage = messages[messages.length - 1];
   const isLastAssistant = lastMessage?.role === 'assistant';
+  const showInterimInInput = voiceAgent.isListening && !!voiceAgent.interimText && voiceAgent.mode !== 'agent';
 
   return (
     <>
-      {/* Floating trigger */}
-      {!isOpen && (
-        <div className="fixed top-1/2 -translate-y-1/2 right-6 z-50 flex flex-col items-center gap-2">
-          {sttSupported && (
-            <BobVoiceButtonWrapped
-              isListening={isListening}
-              isSupported={sttSupported}
-              onClick={() => {
-                if (!isListening) setIsOpen(true);
-                toggleListening();
-              }}
-              size="sm"
-              className="shadow-md"
-            />
-          )}
-          <button
-            onClick={() => setIsOpen(true)}
-            className={cn(
-              "w-14 h-14 rounded-full shadow-lg overflow-hidden",
-              "hover:scale-105 active:scale-95 transition-all duration-200",
-              "border-2 border-background ring-2 ring-foreground/10"
-            )}
-            aria-label="Open Bob"
-          >
-            <img src={bobAvatarImg} alt="Bob" className="w-full h-full object-cover" />
-          </button>
-        </div>
+      {/* FAB stack — only when panel and overlay are closed */}
+      {!isOpen && !overlayOpen && (
+        <BobVoiceFAB
+          voiceState={voiceAgent.state}
+          sttSupported={voiceAgent.sttSupported}
+          isListening={voiceAgent.isListening}
+          onOpenPanel={() => setIsOpen(true)}
+          onPushToTalk={voiceAgent.togglePushToTalk}
+          onStartAgent={voiceAgent.startAgentMode}
+        />
       )}
 
-      <Sheet open={isOpen} onOpenChange={(open) => { setIsOpen(open); if (!open) setCallMode(false); }}>
+      {/* Hands-free full-screen overlay */}
+      <BobVoiceOverlay
+        isOpen={overlayOpen}
+        state={voiceAgent.state}
+        interimText={voiceAgent.interimText}
+        lastBobMessage={latestAssistant?.content || null}
+        dealerName={dealerName}
+        onEndCall={() => {
+          voiceAgent.endAgentMode();
+          setOverlayOpen(false);
+        }}
+        onMuteToggle={() => setVoiceMuted((m) => !m)}
+        isMuted={voiceMuted}
+      />
+
+      {/* Chat sheet */}
+      <Sheet
+        open={isOpen}
+        onOpenChange={(open) => {
+          setIsOpen(open);
+          if (!open && voiceAgent.mode !== 'agent') {
+            voiceAgent.stopSpeaking();
+          }
+        }}
+      >
         <SheetContent
           side="right"
           className="w-full sm:max-w-[420px] p-0 flex flex-col gap-0 border-l border-border"
@@ -462,12 +374,16 @@ export function BobPanel() {
           <div className="px-4 py-3 border-b border-border bg-card">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <BobAvatar size="sm" isThinking={isStreaming} isSpeaking={isSpeaking} />
+                <BobAvatar
+                  size="sm"
+                  isThinking={isStreaming}
+                  isSpeaking={voiceAgent.isSpeaking}
+                />
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="font-semibold text-sm text-foreground">Bob</h2>
-                    {isSpeaking && <BobWaveform active bars={4} className="ml-1" />}
-                    {isStreaming && !isSpeaking && (
+                    {voiceAgent.isSpeaking && <BobWaveform active bars={4} className="ml-1" />}
+                    {isStreaming && !voiceAgent.isSpeaking && (
                       <span className="text-[10px] text-muted-foreground animate-pulse">searching...</span>
                     )}
                   </div>
@@ -477,28 +393,33 @@ export function BobPanel() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                {sttSupported && (
+                {voiceAgent.sttSupported && (
                   <Button
-                    variant={callMode ? "default" : "ghost"}
+                    variant="ghost"
                     size="icon"
-                    className={cn("h-8 w-8", callMode ? "bg-green-600 hover:bg-red-600 text-white" : "text-muted-foreground")}
-                    onClick={toggleCallMode}
-                    title={callMode ? "End call" : "Call Bob (hands-free)"}
+                    className="h-8 w-8 text-green-600 hover:text-green-700"
+                    onClick={voiceAgent.startAgentMode}
+                    title="Start hands-free conversation"
                   >
-                    {callMode ? <PhoneOff className="h-3.5 w-3.5" /> : <Phone className="h-3.5 w-3.5" />}
+                    <Phone className="h-3.5 w-3.5" />
                   </Button>
                 )}
                 <Button
-                  variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
-                  onClick={() => { setVoiceEnabled(v => !v); if (isSpeaking) stopSpeaking(); }}
-                  title={voiceEnabled ? "Mute voice" : "Enable voice"}
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground"
+                  onClick={() => {
+                    setVoiceMuted((m) => !m);
+                    if (voiceAgent.isSpeaking) voiceAgent.stopSpeaking();
+                  }}
+                  title={voiceMuted ? "Enable voice" : "Mute voice"}
                 >
-                  {voiceEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                  {voiceMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
                 </Button>
                 {messages.length > 0 && (
                   <Button
                     variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
-                    onClick={() => { clearMessages(); stopSpeaking(); }}
+                    onClick={() => { clearMessages(); voiceAgent.stopSpeaking(); }}
                     title="Clear conversation"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -517,7 +438,6 @@ export function BobPanel() {
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto">
             <div className="p-4 space-y-4">
-              {/* Empty state */}
               {messages.length === 0 && (
                 <div className="space-y-5">
                   <div className="text-center py-4">
@@ -528,9 +448,9 @@ export function BobPanel() {
                     <p className="text-sm text-muted-foreground mt-1">
                       What do you need?
                     </p>
-                    {sttSupported && (
+                    {voiceAgent.sttSupported && (
                       <p className="text-xs text-muted-foreground mt-2 flex items-center justify-center gap-1">
-                        <Mic className="h-3 w-3" /> Tap the mic to talk
+                        <Mic className="h-3 w-3" /> Tap the mic to talk, or the phone for hands-free
                       </p>
                     )}
                   </div>
@@ -556,17 +476,15 @@ export function BobPanel() {
                 </div>
               )}
 
-              {/* Conversation */}
               {messages.map((msg, idx) => (
                 <MessageBubble
                   key={msg.id}
                   message={msg}
-                  isSpeaking={isSpeaking && msg.role === 'assistant' && idx === messages.length - 1}
+                  isSpeaking={voiceAgent.isSpeaking && msg.role === 'assistant' && idx === messages.length - 1}
                   onVehicleAction={handleVehicleAction}
                 />
               ))}
 
-              {/* Thinking */}
               {isStreaming && (!isLastAssistant || !lastMessage?.content) && (
                 <ThinkingIndicator />
               )}
@@ -592,40 +510,62 @@ export function BobPanel() {
 
           {/* Input bar */}
           <div className="border-t border-border p-3 bg-card">
-            {callMode && (
+            {voiceAgent.isSpeaking && (
               <div className="flex items-center gap-2 mb-2 px-1">
-                <Phone className="h-3 w-3 text-green-500" />
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                 <span className="text-xs text-green-600 dark:text-green-400 font-medium">
-                  {isListening ? 'Listening...' : isSpeaking ? 'Bob is speaking...' : isStreaming ? 'Bob is thinking...' : 'Waiting...'}
+                  Bob is speaking…
                 </span>
-                <BobWaveform active={isListening || isSpeaking} bars={6} className="ml-auto" />
-                <button onClick={toggleCallMode} className="text-xs text-destructive hover:underline">
-                  End call
+                <BobWaveform active bars={6} className="ml-auto" />
+                <button onClick={voiceAgent.stopSpeaking} className="text-xs text-destructive hover:underline">
+                  Stop
                 </button>
               </div>
             )}
-            {!callMode && isListening && (
+            {voiceAgent.isListening && !voiceAgent.isSpeaking && (
               <div className="flex items-center gap-2 mb-2 px-1">
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-xs text-muted-foreground">Listening...</span>
+                <span className="text-xs text-muted-foreground">
+                  {voiceAgent.interimText ? `"${voiceAgent.interimText}"` : 'Listening…'}
+                </span>
                 <BobWaveform active bars={6} className="ml-auto" />
               </div>
             )}
             <div className="flex gap-2 items-center">
-              <BobVoiceButtonWrapped
-                isListening={isListening}
-                isSupported={sttSupported}
-                onClick={toggleListening}
-                size="sm"
-              />
+              {voiceAgent.sttSupported && (
+                <button
+                  onClick={voiceAgent.togglePushToTalk}
+                  className={cn(
+                    "relative flex items-center justify-center rounded-full transition-all duration-200 w-10 h-10 flex-shrink-0",
+                    voiceAgent.isListening
+                      ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
+                      : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                  aria-label={voiceAgent.isListening ? "Stop listening" : "Start voice input"}
+                >
+                  {voiceAgent.isListening && (
+                    <span className="absolute inset-0 rounded-full bg-red-500/40 animate-ping" />
+                  )}
+                  <Mic className="h-4 w-4 relative z-10" />
+                </button>
+              )}
               <Input
                 ref={inputRef}
-                placeholder={isListening ? "Listening..." : "Ask Bob anything..."}
+                placeholder={
+                  showInterimInInput
+                    ? voiceAgent.interimText
+                    : voiceAgent.isListening
+                    ? "Listening…"
+                    : "Ask Bob anything…"
+                }
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-                className="flex-1 bg-background"
-                disabled={isStreaming || isListening}
+                className={cn(
+                  "flex-1 bg-background",
+                  showInterimInInput && "italic text-muted-foreground",
+                )}
+                disabled={isStreaming || voiceAgent.isListening}
               />
               <Button
                 onClick={handleSend}
