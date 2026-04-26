@@ -32,6 +32,9 @@ export interface BobPageContext {
   sort_state?: string;
   // Page metrics
   metrics?: Record<string, any>;
+  // Voice agent mode (off | push-to-talk | agent) — when set, bob-chat is told
+  // to respond in a short, spoken style suitable for TTS.
+  voice_mode?: 'off' | 'push-to-talk' | 'agent';
 }
 
 export interface BobMessage {
