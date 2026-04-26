@@ -310,9 +310,9 @@ async function executeSearchVehicles(params: any, dealerProfileId: string, supab
       // If we got results, return them (with info about broadened search for AI context)
       if (result.results && result.results.length > 0) {
         if (droppedParams.length > 0) {
-          result._broadened = true;
-          result._dropped_params = droppedParams;
-          result._original_params = params;
+          (result as any)._broadened = true;
+          (result as any)._dropped_params = droppedParams;
+          (result as any)._original_params = params;
           console.log(`[BOB-CHAT] Search succeeded after dropping: ${droppedParams.join(", ")}`);
         }
         return result;
