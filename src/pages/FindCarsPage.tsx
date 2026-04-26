@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useBobPagePublisher } from "@/hooks/useBobPagePublisher";
 import { formatDistanceToNow } from "date-fns";
 
 const ACTIVE_LIFECYCLE = ["NEW", "ACTIVE", "WATCH", "BUY", "RELISTED"];
@@ -165,6 +166,26 @@ export default function FindCarsPage() {
   const listings = data?.listings || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  // Publish current view into Bob's context
+  useBobPagePublisher({
+    filters: appliedFilters,
+    selectedVehicle: selectedListing
+      ? {
+          id: selectedListing.id,
+          make: selectedListing.make || undefined,
+          model: selectedListing.model || undefined,
+          variant: selectedListing.variant_raw || undefined,
+          year: selectedListing.year || undefined,
+          km: selectedListing.km || undefined,
+          price: selectedListing.asking_price || undefined,
+          source: selectedListing.source_class || undefined,
+        }
+      : null,
+    searchTerms: [appliedFilters.make, appliedFilters.model].filter(Boolean).join(" "),
+    sortState: appliedFilters.sortBy,
+    metrics: { total_results: total, page: page + 1, total_pages: totalPages },
+  });
 
   const applyFilters = useCallback(() => {
     setPage(0);

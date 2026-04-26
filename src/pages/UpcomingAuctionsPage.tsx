@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
+import { useBobPagePublisher } from '@/hooks/useBobPagePublisher';
 import { ProfitScoreBadge } from '@/components/auction/ProfitScoreBadge';
 import { 
   HeatBadge, 
@@ -151,6 +152,16 @@ export default function UpcomingAuctionsPage() {
       return true;
     });
   }, [auctions, auctionHouseFilter, locationFilter]);
+
+  // Publish to Bob
+  useBobPagePublisher({
+    filters: { auction_house: auctionHouseFilter, location: locationFilter },
+    metrics: {
+      total_auctions: filteredAuctions.length,
+      total_lots: filteredAuctions.reduce((s, a) => s + (a.total_lots || 0), 0),
+      matching_lots: filteredAuctions.reduce((s, a) => s + (a.matching_lots || 0), 0),
+    },
+  });
 
   // Group auctions by date
   const groupedAuctions = useMemo(() => {

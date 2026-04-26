@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/contexts/AuthContext";
 import { createDealFromOpportunity } from "@/hooks/useDeals";
+import { useBobPagePublisher } from "@/hooks/useBobPagePublisher";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -141,6 +142,16 @@ export default function TradingDeskPage() {
   const [existingDealMap, setExistingDealMap] = useState<Record<string, string>>({});
   const [creatingDeal, setCreatingDeal] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<"all" | "auction">("all");
+
+  // Publish to Bob
+  useBobPagePublisher({
+    filters: { source: sourceFilter, account_id: accountId },
+    metrics: {
+      total_opportunities: opps.length,
+      high_conviction: opps.filter(o => o.match_score >= 85).length,
+      below_median: opps.filter(o => o.price_band === "below").length,
+    },
+  });
 
   useEffect(() => {
     if (dealerProfile?.account_id) {
