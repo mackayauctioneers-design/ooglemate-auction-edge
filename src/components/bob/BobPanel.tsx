@@ -287,6 +287,12 @@ export function BobPanel() {
     }
   }, [voiceAgent.mode]);
 
+  // Publish voice mode into Bob's page context so bob-chat shapes the response
+  // for the ear when TTS is in play.
+  useEffect(() => {
+    setPageContext({ voice_mode: voiceAgent.mode });
+  }, [voiceAgent.mode, setPageContext]);
+
   // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
