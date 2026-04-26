@@ -143,6 +143,16 @@ export default function TradingDeskPage() {
   const [creatingDeal, setCreatingDeal] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<"all" | "auction">("all");
 
+  // Publish to Bob
+  useBobPagePublisher({
+    filters: { source: sourceFilter, account_id: accountId },
+    metrics: {
+      total_opportunities: opps.length,
+      high_conviction: opps.filter(o => o.match_score >= 85).length,
+      below_median: opps.filter(o => o.price_band === "below").length,
+    },
+  });
+
   useEffect(() => {
     if (dealerProfile?.account_id) {
       setAccountId(dealerProfile.account_id);

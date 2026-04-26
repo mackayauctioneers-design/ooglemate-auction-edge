@@ -153,6 +153,16 @@ export default function UpcomingAuctionsPage() {
     });
   }, [auctions, auctionHouseFilter, locationFilter]);
 
+  // Publish to Bob
+  useBobPagePublisher({
+    filters: { auction_house: auctionHouseFilter, location: locationFilter },
+    metrics: {
+      total_auctions: filteredAuctions.length,
+      total_lots: filteredAuctions.reduce((s, a) => s + (a.total_lots || 0), 0),
+      matching_lots: filteredAuctions.reduce((s, a) => s + (a.matching_lots || 0), 0),
+    },
+  });
+
   // Group auctions by date
   const groupedAuctions = useMemo(() => {
     const groups: Record<string, AuctionSummary[]> = {};
