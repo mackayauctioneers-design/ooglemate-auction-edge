@@ -70,11 +70,12 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
+    // Fire-and-forget telemetry: never fail the caller. Log + return 200.
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[notify-login] ❌", msg);
+    console.error("[notify-login] ❌ (swallowed)", msg);
     return new Response(
-      JSON.stringify({ error: msg }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({ success: false, swallowed: true, error: msg }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
