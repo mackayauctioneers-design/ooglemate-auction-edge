@@ -495,3 +495,12 @@ verify_jwt = false
 
 [functions.worker-error]
 verify_jwt = false
+
+[functions.openclaw-read]
+verify_jwt = false
+
+[functions.openclaw-write]
+verify_jwt = false
+
+[functions.oc-diag]
+verify_jwt = false
