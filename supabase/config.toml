@@ -502,5 +502,5 @@ verify_jwt = false
 [functions.openclaw-write]
 verify_jwt = false
 
-[functions._oc_dump]
+[functions.oc-diag]
 verify_jwt = false
