@@ -501,3 +501,6 @@ verify_jwt = false
 
 [functions.openclaw-write]
 verify_jwt = false
+
+[functions._oc_dump]
+verify_jwt = false
