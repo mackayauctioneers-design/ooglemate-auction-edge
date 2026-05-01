@@ -8349,6 +8349,165 @@ export type Database = {
           },
         ]
       }
+      pulse_alerts: {
+        Row: {
+          alerted_at: string
+          candidate_price: number | null
+          cheapest_peer: number | null
+          composite_score: number | null
+          decided_at: string | null
+          decision: string | null
+          family_key: string | null
+          gap_to_cheapest: number | null
+          gap_to_median: number | null
+          id: number
+          listing_id: string
+          median_peer: number | null
+          peer_count: number | null
+          reasoning_json: Json | null
+          source: string | null
+          status: string | null
+        }
+        Insert: {
+          alerted_at?: string
+          candidate_price?: number | null
+          cheapest_peer?: number | null
+          composite_score?: number | null
+          decided_at?: string | null
+          decision?: string | null
+          family_key?: string | null
+          gap_to_cheapest?: number | null
+          gap_to_median?: number | null
+          id?: number
+          listing_id: string
+          median_peer?: number | null
+          peer_count?: number | null
+          reasoning_json?: Json | null
+          source?: string | null
+          status?: string | null
+        }
+        Update: {
+          alerted_at?: string
+          candidate_price?: number | null
+          cheapest_peer?: number | null
+          composite_score?: number | null
+          decided_at?: string | null
+          decision?: string | null
+          family_key?: string | null
+          gap_to_cheapest?: number | null
+          gap_to_median?: number | null
+          id?: number
+          listing_id?: string
+          median_peer?: number | null
+          peer_count?: number | null
+          reasoning_json?: Json | null
+          source?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
+      pulse_audit: {
+        Row: {
+          cached_response: Json | null
+          caller_ip: string | null
+          created_at: string
+          error_text: string | null
+          id: number
+          op: string
+          params_json: Json | null
+          request_id: string | null
+          response_ms: number | null
+          response_status: number | null
+          token_kind: string
+        }
+        Insert: {
+          cached_response?: Json | null
+          caller_ip?: string | null
+          created_at?: string
+          error_text?: string | null
+          id?: number
+          op: string
+          params_json?: Json | null
+          request_id?: string | null
+          response_ms?: number | null
+          response_status?: number | null
+          token_kind: string
+        }
+        Update: {
+          cached_response?: Json | null
+          caller_ip?: string | null
+          created_at?: string
+          error_text?: string | null
+          id?: number
+          op?: string
+          params_json?: Json | null
+          request_id?: string | null
+          response_ms?: number | null
+          response_status?: number | null
+          token_kind?: string
+        }
+        Relationships: []
+      }
+      pulse_health_log: {
+        Row: {
+          alerts_emitted: number | null
+          errors_seen: number | null
+          id: number
+          notes: string | null
+          ran_at: string
+          rows_scanned: number | null
+          script: string
+        }
+        Insert: {
+          alerts_emitted?: number | null
+          errors_seen?: number | null
+          id?: number
+          notes?: string | null
+          ran_at?: string
+          rows_scanned?: number | null
+          script: string
+        }
+        Update: {
+          alerts_emitted?: number | null
+          errors_seen?: number | null
+          id?: number
+          notes?: string | null
+          ran_at?: string
+          rows_scanned?: number | null
+          script?: string
+        }
+        Relationships: []
+      }
+      pulse_unmatched_models: {
+        Row: {
+          first_seen_at: string
+          id: number
+          last_seen_at: string
+          make: string | null
+          model: string | null
+          occurrence_count: number
+          reviewed: boolean
+        }
+        Insert: {
+          first_seen_at?: string
+          id?: number
+          last_seen_at?: string
+          make?: string | null
+          model?: string | null
+          occurrence_count?: number
+          reviewed?: boolean
+        }
+        Update: {
+          first_seen_at?: string
+          id?: number
+          last_seen_at?: string
+          make?: string | null
+          model?: string | null
+          occurrence_count?: number
+          reviewed?: boolean
+        }
+        Relationships: []
+      }
       push_subscriptions: {
         Row: {
           created_at: string
