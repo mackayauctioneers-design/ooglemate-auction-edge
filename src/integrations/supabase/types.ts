@@ -8352,6 +8352,7 @@ export type Database = {
       pulse_alerts: {
         Row: {
           alert_band: string
+          auction_close_at: string | null
           benchmark_n: number | null
           benchmark_value: number | null
           composite_score: number | null
@@ -8359,6 +8360,7 @@ export type Database = {
           created_at: string
           delivered_at: string | null
           delivered_via: string | null
+          effective_price: number | null
           first_seen_at: string | null
           gap: number | null
           id: string
@@ -8370,6 +8372,7 @@ export type Database = {
           model: string
           price: number | null
           source: string | null
+          source_class: string | null
           source_listing_id: string | null
           status: string | null
           tier: number | null
@@ -8377,6 +8380,7 @@ export type Database = {
         }
         Insert: {
           alert_band: string
+          auction_close_at?: string | null
           benchmark_n?: number | null
           benchmark_value?: number | null
           composite_score?: number | null
@@ -8384,6 +8388,7 @@ export type Database = {
           created_at?: string
           delivered_at?: string | null
           delivered_via?: string | null
+          effective_price?: number | null
           first_seen_at?: string | null
           gap?: number | null
           id?: string
@@ -8395,6 +8400,7 @@ export type Database = {
           model: string
           price?: number | null
           source?: string | null
+          source_class?: string | null
           source_listing_id?: string | null
           status?: string | null
           tier?: number | null
@@ -8402,6 +8408,7 @@ export type Database = {
         }
         Update: {
           alert_band?: string
+          auction_close_at?: string | null
           benchmark_n?: number | null
           benchmark_value?: number | null
           composite_score?: number | null
@@ -8409,6 +8416,7 @@ export type Database = {
           created_at?: string
           delivered_at?: string | null
           delivered_via?: string | null
+          effective_price?: number | null
           first_seen_at?: string | null
           gap?: number | null
           id?: string
@@ -8420,6 +8428,7 @@ export type Database = {
           model?: string
           price?: number | null
           source?: string | null
+          source_class?: string | null
           source_listing_id?: string | null
           status?: string | null
           tier?: number | null
