@@ -8351,58 +8351,79 @@ export type Database = {
       }
       pulse_alerts: {
         Row: {
-          alerted_at: string
-          candidate_price: number | null
-          cheapest_peer: number | null
+          alert_band: string
+          benchmark_n: number | null
+          benchmark_value: number | null
           composite_score: number | null
-          decided_at: string | null
-          decision: string | null
-          family_key: string | null
-          gap_to_cheapest: number | null
-          gap_to_median: number | null
-          id: number
-          listing_id: string
-          median_peer: number | null
-          peer_count: number | null
-          reasoning_json: Json | null
+          conf_score: number | null
+          created_at: string
+          delivered_at: string | null
+          delivered_via: string | null
+          first_seen_at: string | null
+          gap: number | null
+          id: string
+          km: number | null
+          listing_url: string | null
+          make: string
+          margin_score: number | null
+          market_listing_id: string | null
+          model: string
+          price: number | null
           source: string | null
+          source_listing_id: string | null
           status: string | null
+          tier: number | null
+          year: number | null
         }
         Insert: {
-          alerted_at?: string
-          candidate_price?: number | null
-          cheapest_peer?: number | null
+          alert_band: string
+          benchmark_n?: number | null
+          benchmark_value?: number | null
           composite_score?: number | null
-          decided_at?: string | null
-          decision?: string | null
-          family_key?: string | null
-          gap_to_cheapest?: number | null
-          gap_to_median?: number | null
-          id?: number
-          listing_id: string
-          median_peer?: number | null
-          peer_count?: number | null
-          reasoning_json?: Json | null
+          conf_score?: number | null
+          created_at?: string
+          delivered_at?: string | null
+          delivered_via?: string | null
+          first_seen_at?: string | null
+          gap?: number | null
+          id?: string
+          km?: number | null
+          listing_url?: string | null
+          make: string
+          margin_score?: number | null
+          market_listing_id?: string | null
+          model: string
+          price?: number | null
           source?: string | null
+          source_listing_id?: string | null
           status?: string | null
+          tier?: number | null
+          year?: number | null
         }
         Update: {
-          alerted_at?: string
-          candidate_price?: number | null
-          cheapest_peer?: number | null
+          alert_band?: string
+          benchmark_n?: number | null
+          benchmark_value?: number | null
           composite_score?: number | null
-          decided_at?: string | null
-          decision?: string | null
-          family_key?: string | null
-          gap_to_cheapest?: number | null
-          gap_to_median?: number | null
-          id?: number
-          listing_id?: string
-          median_peer?: number | null
-          peer_count?: number | null
-          reasoning_json?: Json | null
+          conf_score?: number | null
+          created_at?: string
+          delivered_at?: string | null
+          delivered_via?: string | null
+          first_seen_at?: string | null
+          gap?: number | null
+          id?: string
+          km?: number | null
+          listing_url?: string | null
+          make?: string
+          margin_score?: number | null
+          market_listing_id?: string | null
+          model?: string
+          price?: number | null
           source?: string | null
+          source_listing_id?: string | null
           status?: string | null
+          tier?: number | null
+          year?: number | null
         }
         Relationships: []
       }
