@@ -62,6 +62,7 @@ type Row = {
   id: string; source: string|null; source_listing_id: string|null; listing_url: string|null;
   make: string; model: string; year: number; km: number; price: number;
   status: string|null; first_seen_at: string|null; is_dealer_grade: boolean|null;
+  source_class: string | null; auction_datetime: string | null;
 };
 
 async function fetchPeers(sb: any, make: string, model: string): Promise<Row[]> {
