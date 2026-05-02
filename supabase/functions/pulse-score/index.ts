@@ -72,7 +72,7 @@ async function fetchPeers(sb: any, make: string, model: string): Promise<Row[]> 
   const PAGE = 1000;
   while (true) {
     const { data, error } = await sb.from("market_listings")
-      .select("id,source,source_listing_id,listing_url,make,model,year,km,kilometres,price,asking_price,status,first_seen_at,is_dealer_grade,exclude_from_alerts")
+      .select("id,source,source_listing_id,listing_url,make,model,year,km,kilometres,price,asking_price,status,first_seen_at,is_dealer_grade,exclude_from_alerts,source_class,auction_datetime")
       .eq("make", make.toUpperCase())
       .eq("model", model.toUpperCase())
       .range(from, from + PAGE - 1);
@@ -90,6 +90,7 @@ async function fetchPeers(sb: any, make: string, model: string): Promise<Row[]> 
         id: r.id, source: r.source, source_listing_id: r.source_listing_id, listing_url: r.listing_url,
         make: r.make, model: r.model, year: Number(r.year), km: Number(km), price: Number(price),
         status: r.status, first_seen_at: r.first_seen_at, is_dealer_grade: r.is_dealer_grade,
+        source_class: r.source_class ?? null, auction_datetime: r.auction_datetime ?? null,
       });
     }
     if (data.length < PAGE) break;
