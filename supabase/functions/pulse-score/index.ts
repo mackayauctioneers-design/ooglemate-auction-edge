@@ -68,11 +68,13 @@ async function fetchPeers(sb: any, make: string, model: string): Promise<Row[]> 
   let from = 0;
   const PAGE = 1000;
   while (true) {
+    const mkU = make.toUpperCase(), mkL = make.toLowerCase();
+    const mdU = model.toUpperCase(), mdL = model.toLowerCase();
     const { data, error } = await sb.from("market_listings")
       .select("id,source,source_listing_id,listing_url,make,model,year,km,kilometres,price,asking_price,status,first_seen_at,is_dealer_grade,exclude_from_alerts")
-      .ilike("make", make)
-      .ilike("model", model)
-      .gte("first_seen_at", sinceIso)
+      .or(`make.eq.${make},make.eq.${mkU},make.eq.${mkL}`)
+      .or(`model.eq.${model},model.eq.${mdU},model.eq.${mdL}`)
+      .or(`first_seen_at.gte.${sinceIso},first_seen_at.is.null`)
       .range(from, from + PAGE - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
