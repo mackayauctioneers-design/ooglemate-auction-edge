@@ -18,6 +18,8 @@ const RECENCY_DAYS = 7;
 const ALERT_THRESHOLD = 80;
 const HOT_THRESHOLD = 90;
 const BUYABLE = ["active","listed","inprep","catalogue","relisted","prepcompleted"];
+const AUCTION_UPLIFT = 1.18;
+const AUCTION_CLOSE_WINDOW_HOURS = 8;
 
 function jres(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
