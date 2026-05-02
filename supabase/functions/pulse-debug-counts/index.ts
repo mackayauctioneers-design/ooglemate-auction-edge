@@ -38,9 +38,6 @@ Deno.serve(async (req) => {
 
   // Single fetch: pull all candidate rows (case variants) with the columns we need,
   // then compute every count in-memory. Avoids slow exact-count plans on multi-OR queries.
-  const mkU = make.toUpperCase(), mkL = make.toLowerCase();
-  const mdU = model.toUpperCase(), mdL = model.toLowerCase();
-
   try {
     const all: any[] = [];
     let from = 0;
@@ -48,8 +45,8 @@ Deno.serve(async (req) => {
     while (true) {
       const { data, error } = await sb.from("market_listings")
         .select("status,exclude_from_alerts,price,asking_price,year,km,kilometres,first_seen_at")
-        .or(`make.eq.${make},make.eq.${mkU},make.eq.${mkL}`)
-        .or(`model.eq.${model},model.eq.${mdU},model.eq.${mdL}`)
+        .eq("make", make.toUpperCase())
+        .eq("model", model.toUpperCase())
         .range(from, from + PAGE - 1);
       if (error) return jres(500, { error: error.message, stage: "fetch" });
       if (!data || data.length === 0) break;
