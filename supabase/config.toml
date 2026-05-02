@@ -513,3 +513,6 @@ verify_jwt = false
 
 [functions.pulse-mark-delivered]
 verify_jwt = false
+
+[functions.pulse-debug-counts]
+verify_jwt = false
