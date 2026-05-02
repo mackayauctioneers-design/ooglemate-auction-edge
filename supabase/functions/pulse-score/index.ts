@@ -106,6 +106,7 @@ type ScoredAlert = {
   composite_score: number; tier: number; margin_score: number; conf_score: number; gap: number;
   benchmark_value: number; benchmark_n: number; alert_band: "HOT"|"WARM";
   first_seen_at: string|null;
+  source_class: string|null; effective_price: number; auction_close_at: string|null;
 };
 
 function scoreModel(rows: Row[]): ScoredAlert[] {
