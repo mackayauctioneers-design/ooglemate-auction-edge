@@ -125,6 +125,10 @@ function scoreModel(rows: Row[]): ScoredAlert[] {
   const out: ScoredAlert[] = [];
 
   for (const cand of rows) {
+    const isAuction = cand.source_class === 'auction';
+    const rawPrice = Number(cand.price);
+    const effectivePrice = isAuction ? Math.round(rawPrice * AUCTION_UPLIFT) : rawPrice;
+
     // data quality skip
     if (cand.km === 0 && cand.year < 2025) continue;
     if (!cand.first_seen_at) continue;
@@ -133,7 +137,7 @@ function scoreModel(rows: Row[]): ScoredAlert[] {
     let t1: { composite: number; margin: number; conf: number; gap: number; med: number; n: number } | null = null;
     const coh = cohortMedian.get(cand.year);
     if (coh) {
-      const norm = cand.price + (cand.km - KM_BASELINE) * KM_DEPRECIATION;
+      const norm = effectivePrice + (cand.km - KM_BASELINE) * KM_DEPRECIATION;
       const gap = coh.med - norm;
       if (gap >= 0) {
         const m = tier1MarginScore(gap);
@@ -152,7 +156,7 @@ function scoreModel(rows: Row[]): ScoredAlert[] {
     if (peers.length >= 5) {
       const normPeers = peers.map(p => p.price + (p.km - cand.km) * KM_DEPRECIATION);
       const cheapest = Math.min(...normPeers);
-      const gap = cheapest - cand.price;
+      const gap = cheapest - effectivePrice;
       if (gap >= 0) {
         const m = tier2MarginScore(gap);
         const c = tier2ConfScore(peers.length);
@@ -169,6 +173,13 @@ function scoreModel(rows: Row[]): ScoredAlert[] {
     if (!chosen) continue;
     if (chosen.composite < ALERT_THRESHOLD) continue;
 
+    if (isAuction) {
+      if (!cand.auction_datetime) continue;
+      const closeAt = new Date(cand.auction_datetime);
+      const hoursToClose = (closeAt.getTime() - Date.now()) / 36e5;
+      if (hoursToClose < 0 || hoursToClose > AUCTION_CLOSE_WINDOW_HOURS) continue;
+    }
+
     out.push({
       market_listing_id: cand.id,
       source: cand.source, source_listing_id: cand.source_listing_id, listing_url: cand.listing_url,
@@ -179,6 +190,9 @@ function scoreModel(rows: Row[]): ScoredAlert[] {
       benchmark_value: chosen.bench, benchmark_n: chosen.n,
       alert_band: chosen.composite >= HOT_THRESHOLD ? "HOT" : "WARM",
       first_seen_at: cand.first_seen_at,
+      source_class: cand.source_class,
+      effective_price: effectivePrice,
+      auction_close_at: cand.auction_datetime,
     });
   }
   return out;
