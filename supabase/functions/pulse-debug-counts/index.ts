@@ -10,22 +10,12 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const PULSE_TOKEN = Deno.env.get("PULSE_BEARER_TOKEN")!;
 
-const BUYABLE = ["active","listed","inprep","catalogue","relisted","prepcompleted"];
+const BUYABLE = new Set(["active","listed","inprep","catalogue","relisted","prepcompleted"]);
 
 function jres(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status, headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function makeOrFilter(field: string, val: string) {
-  return `${field}.eq.${val},${field}.eq.${val.toUpperCase()},${field}.eq.${val.toLowerCase()}`;
-}
-
-async function countOnly(qb: any): Promise<number> {
-  const { count, error } = await qb;
-  if (error) throw error;
-  return count ?? 0;
 }
 
 Deno.serve(async (req) => {
@@ -43,46 +33,57 @@ Deno.serve(async (req) => {
   if (!make || !model) return jres(400, { error: "make_and_model_required" });
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-  const sinceIso = new Date(Date.now() - 60*86_400_000).toISOString();
+  const sinceMs = Date.now() - 60*86_400_000;
+  const sinceIso = new Date(sinceMs).toISOString();
 
-  const base = () => sb.from("market_listings")
-    .select("*", { count: 'exact', head: true })
-    .or(makeOrFilter("make", make))
-    .or(makeOrFilter("model", model));
+  // Single fetch: pull all candidate rows (case variants) with the columns we need,
+  // then compute every count in-memory. Avoids slow exact-count plans on multi-OR queries.
+  const mkU = make.toUpperCase(), mkL = make.toLowerCase();
+  const mdU = model.toUpperCase(), mdL = model.toLowerCase();
 
   try {
-    const [
-      total,
-      withStatus,
-      withStatusNotExcluded,
-      withPrice,
-      withYearKm,
-      with60d,
-      withNullOr60d,
-      statusSampleRes,
-      ageSampleRes,
-    ] = await Promise.all([
-      countOnly(base()),
-      countOnly(base().in("status", BUYABLE)),
-      countOnly(base().in("status", BUYABLE).or("exclude_from_alerts.is.null,exclude_from_alerts.eq.false")),
-      countOnly(base().in("status", BUYABLE).or("exclude_from_alerts.is.null,exclude_from_alerts.eq.false").or("price.gt.1000,asking_price.gt.1000")),
-      countOnly(base().in("status", BUYABLE).or("exclude_from_alerts.is.null,exclude_from_alerts.eq.false").or("price.gt.1000,asking_price.gt.1000").not("year","is",null).or("km.not.is.null,kilometres.not.is.null")),
-      countOnly(base().in("status", BUYABLE).or("exclude_from_alerts.is.null,exclude_from_alerts.eq.false").or("price.gt.1000,asking_price.gt.1000").not("year","is",null).or("km.not.is.null,kilometres.not.is.null").gte("first_seen_at", sinceIso)),
-      countOnly(base().in("status", BUYABLE).or("exclude_from_alerts.is.null,exclude_from_alerts.eq.false").or("price.gt.1000,asking_price.gt.1000").not("year","is",null).or("km.not.is.null,kilometres.not.is.null").or(`first_seen_at.gte.${sinceIso},first_seen_at.is.null`)),
-      sb.from("market_listings").select("status").or(makeOrFilter("make", make)).or(makeOrFilter("model", model)).limit(500),
-      sb.from("market_listings").select("first_seen_at").or(makeOrFilter("make", make)).or(makeOrFilter("model", model)).limit(5),
-    ]);
-
-    const statusSet = new Set<string>();
-    for (const r of (statusSampleRes.data ?? [])) {
-      statusSet.add(String((r as any).status ?? "<null>"));
-      if (statusSet.size >= 20) break;
+    const all: any[] = [];
+    let from = 0;
+    const PAGE = 1000;
+    while (true) {
+      const { data, error } = await sb.from("market_listings")
+        .select("status,exclude_from_alerts,price,asking_price,year,km,kilometres,first_seen_at")
+        .or(`make.eq.${make},make.eq.${mkU},make.eq.${mkL}`)
+        .or(`model.eq.${model},model.eq.${mdU},model.eq.${mdL}`)
+        .range(from, from + PAGE - 1);
+      if (error) return jres(500, { error: error.message, stage: "fetch" });
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+      if (from > 50000) break;
     }
-    const now = Date.now();
-    const ages = (ageSampleRes.data ?? []).map((r: any) => {
-      if (!r.first_seen_at) return null;
-      return Math.round((now - new Date(r.first_seen_at).getTime()) / 86_400_000);
-    });
+
+    let total = all.length;
+    let withStatus = 0, withStatusNotExcluded = 0, withPrice = 0, withYearKm = 0, with60d = 0, withNullOr60d = 0;
+    const statusSet = new Set<string>();
+    const ageSamples: (number|null)[] = [];
+
+    for (const r of all) {
+      if (statusSet.size < 20) statusSet.add(String(r.status ?? "<null>"));
+      if (ageSamples.length < 5) {
+        ageSamples.push(r.first_seen_at ? Math.round((Date.now() - new Date(r.first_seen_at).getTime())/86_400_000) : null);
+      }
+      const status = String(r.status ?? "").toLowerCase();
+      if (!BUYABLE.has(status)) continue;
+      withStatus++;
+      if (r.exclude_from_alerts === true) continue;
+      withStatusNotExcluded++;
+      const price = r.price ?? r.asking_price;
+      if (price == null || price <= 1000) continue;
+      withPrice++;
+      const km = r.km ?? r.kilometres;
+      if (r.year == null || km == null) continue;
+      withYearKm++;
+      const fsMs = r.first_seen_at ? new Date(r.first_seen_at).getTime() : null;
+      if (fsMs != null && fsMs >= sinceMs) with60d++;
+      if (fsMs == null || fsMs >= sinceMs) withNullOr60d++;
+    }
 
     return jres(200, {
       total,
@@ -93,7 +94,7 @@ Deno.serve(async (req) => {
       with_first_seen_60d: with60d,
       with_first_seen_null_or_60d: withNullOr60d,
       sample_status_values: [...statusSet],
-      sample_first_seen_ages_days: ages,
+      sample_first_seen_ages_days: ageSamples,
     });
   } catch (e) {
     return jres(500, { error: (e as Error).message });
