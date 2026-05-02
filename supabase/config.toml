@@ -504,3 +504,12 @@ verify_jwt = false
 
 [functions.oc-diag]
 verify_jwt = false
+
+[functions.pulse-score]
+verify_jwt = false
+
+[functions.pulse-fetch-pending]
+verify_jwt = false
+
+[functions.pulse-mark-delivered]
+verify_jwt = false
