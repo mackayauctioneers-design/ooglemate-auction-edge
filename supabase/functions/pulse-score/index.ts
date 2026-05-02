@@ -18,6 +18,8 @@ const RECENCY_DAYS = 7;
 const ALERT_THRESHOLD = 80;
 const HOT_THRESHOLD = 90;
 const BUYABLE = ["active","listed","inprep","catalogue","relisted","prepcompleted"];
+const AUCTION_UPLIFT = 1.18;
+const AUCTION_CLOSE_WINDOW_HOURS = 8;
 
 function jres(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -60,6 +62,7 @@ type Row = {
   id: string; source: string|null; source_listing_id: string|null; listing_url: string|null;
   make: string; model: string; year: number; km: number; price: number;
   status: string|null; first_seen_at: string|null; is_dealer_grade: boolean|null;
+  source_class: string | null; auction_datetime: string | null;
 };
 
 async function fetchPeers(sb: any, make: string, model: string): Promise<Row[]> {
@@ -69,7 +72,7 @@ async function fetchPeers(sb: any, make: string, model: string): Promise<Row[]> 
   const PAGE = 1000;
   while (true) {
     const { data, error } = await sb.from("market_listings")
-      .select("id,source,source_listing_id,listing_url,make,model,year,km,kilometres,price,asking_price,status,first_seen_at,is_dealer_grade,exclude_from_alerts")
+      .select("id,source,source_listing_id,listing_url,make,model,year,km,kilometres,price,asking_price,status,first_seen_at,is_dealer_grade,exclude_from_alerts,source_class,auction_datetime")
       .eq("make", make.toUpperCase())
       .eq("model", model.toUpperCase())
       .range(from, from + PAGE - 1);
@@ -87,6 +90,7 @@ async function fetchPeers(sb: any, make: string, model: string): Promise<Row[]> 
         id: r.id, source: r.source, source_listing_id: r.source_listing_id, listing_url: r.listing_url,
         make: r.make, model: r.model, year: Number(r.year), km: Number(km), price: Number(price),
         status: r.status, first_seen_at: r.first_seen_at, is_dealer_grade: r.is_dealer_grade,
+        source_class: r.source_class ?? null, auction_datetime: r.auction_datetime ?? null,
       });
     }
     if (data.length < PAGE) break;
@@ -102,6 +106,7 @@ type ScoredAlert = {
   composite_score: number; tier: number; margin_score: number; conf_score: number; gap: number;
   benchmark_value: number; benchmark_n: number; alert_band: "HOT"|"WARM";
   first_seen_at: string|null;
+  source_class: string|null; effective_price: number; auction_close_at: string|null;
 };
 
 function scoreModel(rows: Row[]): ScoredAlert[] {
@@ -121,6 +126,10 @@ function scoreModel(rows: Row[]): ScoredAlert[] {
   const out: ScoredAlert[] = [];
 
   for (const cand of rows) {
+    const isAuction = cand.source_class === 'auction';
+    const rawPrice = Number(cand.price);
+    const effectivePrice = isAuction ? Math.round(rawPrice * AUCTION_UPLIFT) : rawPrice;
+
     // data quality skip
     if (cand.km === 0 && cand.year < 2025) continue;
     if (!cand.first_seen_at) continue;
@@ -129,7 +138,7 @@ function scoreModel(rows: Row[]): ScoredAlert[] {
     let t1: { composite: number; margin: number; conf: number; gap: number; med: number; n: number } | null = null;
     const coh = cohortMedian.get(cand.year);
     if (coh) {
-      const norm = cand.price + (cand.km - KM_BASELINE) * KM_DEPRECIATION;
+      const norm = effectivePrice + (cand.km - KM_BASELINE) * KM_DEPRECIATION;
       const gap = coh.med - norm;
       if (gap >= 0) {
         const m = tier1MarginScore(gap);
@@ -148,7 +157,7 @@ function scoreModel(rows: Row[]): ScoredAlert[] {
     if (peers.length >= 5) {
       const normPeers = peers.map(p => p.price + (p.km - cand.km) * KM_DEPRECIATION);
       const cheapest = Math.min(...normPeers);
-      const gap = cheapest - cand.price;
+      const gap = cheapest - effectivePrice;
       if (gap >= 0) {
         const m = tier2MarginScore(gap);
         const c = tier2ConfScore(peers.length);
@@ -165,6 +174,13 @@ function scoreModel(rows: Row[]): ScoredAlert[] {
     if (!chosen) continue;
     if (chosen.composite < ALERT_THRESHOLD) continue;
 
+    if (isAuction) {
+      if (!cand.auction_datetime) continue;
+      const closeAt = new Date(cand.auction_datetime);
+      const hoursToClose = (closeAt.getTime() - Date.now()) / 36e5;
+      if (hoursToClose < 0 || hoursToClose > AUCTION_CLOSE_WINDOW_HOURS) continue;
+    }
+
     out.push({
       market_listing_id: cand.id,
       source: cand.source, source_listing_id: cand.source_listing_id, listing_url: cand.listing_url,
@@ -175,6 +191,9 @@ function scoreModel(rows: Row[]): ScoredAlert[] {
       benchmark_value: chosen.bench, benchmark_n: chosen.n,
       alert_band: chosen.composite >= HOT_THRESHOLD ? "HOT" : "WARM",
       first_seen_at: cand.first_seen_at,
+      source_class: cand.source_class,
+      effective_price: effectivePrice,
+      auction_close_at: cand.auction_datetime,
     });
   }
   return out;
