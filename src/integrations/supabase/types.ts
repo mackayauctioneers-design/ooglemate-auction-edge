@@ -517,6 +517,39 @@ export type Database = {
         }
         Relationships: []
       }
+      backfill_log: {
+        Row: {
+          batch_number: number
+          created_at: string
+          cross_references_matched: number
+          emails_processed: number
+          errors: number
+          id: string
+          run_id: string
+          sold_vehicles_written: number
+        }
+        Insert: {
+          batch_number: number
+          created_at?: string
+          cross_references_matched?: number
+          emails_processed?: number
+          errors?: number
+          id?: string
+          run_id: string
+          sold_vehicles_written?: number
+        }
+        Update: {
+          batch_number?: number
+          created_at?: string
+          cross_references_matched?: number
+          emails_processed?: number
+          errors?: number
+          id?: string
+          run_id?: string
+          sold_vehicles_written?: number
+        }
+        Relationships: []
+      }
       bob_chat_context_log: {
         Row: {
           created_at: string | null
@@ -10325,6 +10358,87 @@ export type Database = {
           windscreen_vin_path?: string | null
         }
         Relationships: []
+      }
+      sold_vehicles: {
+        Row: {
+          buy_invoice_id: string | null
+          created_at: string
+          days_to_sell: number | null
+          dealer_id: string
+          id: string
+          invoice_email_id: string | null
+          make: string
+          margin_achieved: number | null
+          model: string
+          odometer: number
+          sale_date: string
+          sale_price: number
+          series: string | null
+          source: string | null
+          tier: string
+          updated_at: string
+          variant: string | null
+          vin: string | null
+          year: number
+        }
+        Insert: {
+          buy_invoice_id?: string | null
+          created_at?: string
+          days_to_sell?: number | null
+          dealer_id: string
+          id?: string
+          invoice_email_id?: string | null
+          make: string
+          margin_achieved?: number | null
+          model: string
+          odometer: number
+          sale_date: string
+          sale_price: number
+          series?: string | null
+          source?: string | null
+          tier?: string
+          updated_at?: string
+          variant?: string | null
+          vin?: string | null
+          year: number
+        }
+        Update: {
+          buy_invoice_id?: string | null
+          created_at?: string
+          days_to_sell?: number | null
+          dealer_id?: string
+          id?: string
+          invoice_email_id?: string | null
+          make?: string
+          margin_achieved?: number | null
+          model?: string
+          odometer?: number
+          sale_date?: string
+          sale_price?: number
+          series?: string | null
+          source?: string | null
+          tier?: string
+          updated_at?: string
+          variant?: string | null
+          vin?: string | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sold_vehicles_buy_invoice_id_fkey"
+            columns: ["buy_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sold_vehicles_invoice_email_id_fkey"
+            columns: ["invoice_email_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_emails"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       source_lane_map: {
         Row: {
