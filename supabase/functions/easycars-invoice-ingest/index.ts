@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { derivePlatform, extractBadge, extractSeries } from "../_shared/taxonomy/derivePlatform.ts";
+import { writeSoldVehicle } from "../_shared/sales-truth/writeSoldVehicle.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -35,12 +36,15 @@ async function extractFromPdf(pdfBase64: string): Promise<any[]> {
   const systemPrompt = `You are an Australian automotive invoice data extractor. Given a PDF invoice from EasyCars (mailer@easycars.com.au), extract ALL vehicle sale records.
 
 For EACH vehicle, return a JSON object with these fields:
+- seller_name: string (the SELLING dealer/person — appears as "From"/"Vendor"/"Seller")
+- seller_abn: string or null (ABN of the seller; digits only OK)
 - buyer_name: string (the purchasing dealer/person)
 - buyer_email: string or null
+- buyer_abn: string or null
 - make: string (vehicle make e.g. "FORD")
 - model: string (vehicle model e.g. "RANGER")
 - variant: string or null (trim/badge e.g. "XLT")
-- year: number (manufacture year)
+- year: number (manufacture year, derived from build_date MM/YY if needed)
 - vin: string or null
 - rego_plate: string or null
 - sale_price: number (GST-inclusive selling price in dollars)
@@ -316,10 +320,14 @@ Deno.serve(async (req) => {
           ]
             .filter(Boolean)
             .join(" | ") || null,
-          // Keep buyer info for fingerprint upsert (not stored in vehicle_sales_truth)
+          // Internal fields (not stored in vehicle_sales_truth) — used for downstream
+          // buyer-fingerprint upsert and Mackay sold_vehicles write.
           _buyer_name: s.buyer_name || null,
           _buyer_email: s.buyer_email || null,
           _resolved_account_id: resolveAccountId(s.account_id),
+          _seller_abn: s.seller_abn || null,
+          _vin: s.vin || null,
+          _odo: s.km || s.kilometres || null,
         };
       });
 
@@ -331,7 +339,7 @@ Deno.serve(async (req) => {
     }
 
     // ── Insert into vehicle_sales_truth (strip internal fields) ──
-    const dbRecords = records.map(({ _buyer_name, _buyer_email, _resolved_account_id, ...rest }) => rest);
+    const dbRecords = records.map(({ _buyer_name, _buyer_email, _resolved_account_id, _seller_abn, _vin, _odo, ...rest }) => rest);
 
     const { error } = await supabase
       .from("vehicle_sales_truth")
@@ -360,6 +368,29 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Mackay sales-truth: write qualifying sales to sold_vehicles ──
+    let soldVehiclesWritten = 0;
+    let crossReferences = 0;
+    for (const r of records) {
+      const result = await writeSoldVehicle(supabase, {
+        seller_abn: r._seller_abn,
+        make: r.make,
+        model: r.model,
+        series: r.series,
+        variant: r.variant,
+        year: r.year,
+        odometer: r._odo,
+        sale_price: r.sale_price,
+        sale_date: r.sold_at,
+        vin: r._vin,
+        source: r.source,
+      });
+      if (result.qualified && result.sold_vehicle_id) {
+        soldVehiclesWritten++;
+        if (result.cross_referenced) crossReferences++;
+      }
+    }
+
     // ── Trigger matching engine ──
     let matchResult = null;
     if (fingerprintsUpserted > 0) {
@@ -373,6 +404,8 @@ Deno.serve(async (req) => {
         inserted: dbRecords.length,
         pdf_extracted: pdfSales.length,
         fingerprints_upserted: fingerprintsUpserted,
+        sold_vehicles_written: soldVehiclesWritten,
+        cross_references_matched: crossReferences,
         match_triggered: !!matchResult,
         sales: dbRecords.map((r) => `${r.year} ${r.make} ${r.model}`),
       }),
