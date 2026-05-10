@@ -4608,6 +4608,48 @@ export type Database = {
         }
         Relationships: []
       }
+      gmail_backfill_state: {
+        Row: {
+          errors: number
+          finished_at: string | null
+          messages_ingested: number
+          messages_seen: number
+          messages_skipped: number
+          page_token: string | null
+          query: string | null
+          run_id: string | null
+          source: string
+          total_estimate: number | null
+          updated_at: string
+        }
+        Insert: {
+          errors?: number
+          finished_at?: string | null
+          messages_ingested?: number
+          messages_seen?: number
+          messages_skipped?: number
+          page_token?: string | null
+          query?: string | null
+          run_id?: string | null
+          source: string
+          total_estimate?: number | null
+          updated_at?: string
+        }
+        Update: {
+          errors?: number
+          finished_at?: string | null
+          messages_ingested?: number
+          messages_seen?: number
+          messages_skipped?: number
+          page_token?: string | null
+          query?: string | null
+          run_id?: string | null
+          source?: string
+          total_estimate?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       grok_missions: {
         Row: {
           account_id: string
