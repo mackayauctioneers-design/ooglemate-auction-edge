@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { derivePlatform, extractBadge, extractSeries } from "../_shared/taxonomy/derivePlatform.ts";
+import { writeSoldVehicle } from "../_shared/sales-truth/writeSoldVehicle.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
