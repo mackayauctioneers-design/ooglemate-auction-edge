@@ -35,12 +35,15 @@ async function extractFromPdf(pdfBase64: string): Promise<any[]> {
   const systemPrompt = `You are an Australian automotive invoice data extractor. Given a PDF invoice from EasyCars (mailer@easycars.com.au), extract ALL vehicle sale records.
 
 For EACH vehicle, return a JSON object with these fields:
+- seller_name: string (the SELLING dealer/person — appears as "From"/"Vendor"/"Seller")
+- seller_abn: string or null (ABN of the seller; digits only OK)
 - buyer_name: string (the purchasing dealer/person)
 - buyer_email: string or null
+- buyer_abn: string or null
 - make: string (vehicle make e.g. "FORD")
 - model: string (vehicle model e.g. "RANGER")
 - variant: string or null (trim/badge e.g. "XLT")
-- year: number (manufacture year)
+- year: number (manufacture year, derived from build_date MM/YY if needed)
 - vin: string or null
 - rego_plate: string or null
 - sale_price: number (GST-inclusive selling price in dollars)
