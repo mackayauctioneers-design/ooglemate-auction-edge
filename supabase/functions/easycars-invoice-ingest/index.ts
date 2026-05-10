@@ -320,10 +320,14 @@ Deno.serve(async (req) => {
           ]
             .filter(Boolean)
             .join(" | ") || null,
-          // Keep buyer info for fingerprint upsert (not stored in vehicle_sales_truth)
+          // Internal fields (not stored in vehicle_sales_truth) — used for downstream
+          // buyer-fingerprint upsert and Mackay sold_vehicles write.
           _buyer_name: s.buyer_name || null,
           _buyer_email: s.buyer_email || null,
           _resolved_account_id: resolveAccountId(s.account_id),
+          _seller_abn: s.seller_abn || null,
+          _vin: s.vin || null,
+          _odo: s.km || s.kilometres || null,
         };
       });
 
