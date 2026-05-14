@@ -3360,6 +3360,45 @@ export type Database = {
         }
         Relationships: []
       }
+      external_listings: {
+        Row: {
+          created_at: string
+          id: string
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          mileage: number | null
+          model: string | null
+          price: number | null
+          received_at: string
+          year: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          mileage?: number | null
+          model?: string | null
+          price?: number | null
+          received_at?: string
+          year?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          mileage?: number | null
+          model?: string | null
+          price?: number | null
+          received_at?: string
+          year?: number | null
+        }
+        Relationships: []
+      }
       feeding_mode_reports: {
         Row: {
           created_at: string
