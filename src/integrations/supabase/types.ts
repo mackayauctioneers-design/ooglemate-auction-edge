@@ -10239,6 +10239,81 @@ export type Database = {
           },
         ]
       }
+      scanned_deals: {
+        Row: {
+          created_at: string
+          id: string
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          mileage: number | null
+          model: string | null
+          price: number | null
+          source: string
+          status: string
+          year: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          mileage?: number | null
+          model?: string | null
+          price?: number | null
+          source?: string
+          status?: string
+          year?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          listing_url?: string | null
+          location?: string | null
+          make?: string | null
+          mileage?: number | null
+          model?: string | null
+          price?: number | null
+          source?: string
+          status?: string
+          year?: number | null
+        }
+        Relationships: []
+      }
+      scanner_logs: {
+        Row: {
+          created_at: string
+          endpoint: string | null
+          error: string | null
+          id: string
+          ip: string | null
+          method: string | null
+          payload: Json | null
+          status_code: number | null
+        }
+        Insert: {
+          created_at?: string
+          endpoint?: string | null
+          error?: string | null
+          id?: string
+          ip?: string | null
+          method?: string | null
+          payload?: Json | null
+          status_code?: number | null
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string | null
+          error?: string | null
+          id?: string
+          ip?: string | null
+          method?: string | null
+          payload?: Json | null
+          status_code?: number | null
+        }
+        Relationships: []
+      }
       scorer_cursors: {
         Row: {
           job_name: string
