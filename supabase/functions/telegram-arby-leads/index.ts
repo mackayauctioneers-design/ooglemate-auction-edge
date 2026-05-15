@@ -49,8 +49,8 @@ Deno.serve(async (req) => {
     const p: LeadPayload = await req.json();
 
     // DIAGNOSTIC MODE: ?diag=1 returns getMe + getChat info without sending
-    const url = new URL(req.url);
-    if (url.searchParams.get("diag") === "1") {
+    const reqUrl = new URL(req.url);
+    if (reqUrl.searchParams.get("diag") === "1") {
       const meRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getMe`);
       const me = await meRes.json();
       const chatRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getChat?chat_id=${encodeURIComponent(CHAT_ID)}`);
