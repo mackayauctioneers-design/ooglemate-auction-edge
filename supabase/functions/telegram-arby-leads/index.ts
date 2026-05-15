@@ -39,8 +39,9 @@ Deno.serve(async (req) => {
 
   try {
     const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN");
-    const CHAT_ID = Deno.env.get("TELEGRAM_ARBY_CHAT_ID");
-    if (!BOT_TOKEN || !CHAT_ID) {
+    // Hardcoded — bypassing secret because env value kept reverting to 'telegram'
+    const CHAT_ID = "-1003777997970";
+    if (!BOT_TOKEN) {
       return new Response(JSON.stringify({ error: "telegram_not_configured" }), {
         status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
