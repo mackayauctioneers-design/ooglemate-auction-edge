@@ -10246,9 +10246,12 @@ export type Database = {
           listing_url: string | null
           location: string | null
           make: string | null
+          market_price: number | null
           mileage: number | null
           model: string | null
           price: number | null
+          price_badge: string | null
+          price_difference: number | null
           source: string
           status: string
           year: number | null
@@ -10259,9 +10262,12 @@ export type Database = {
           listing_url?: string | null
           location?: string | null
           make?: string | null
+          market_price?: number | null
           mileage?: number | null
           model?: string | null
           price?: number | null
+          price_badge?: string | null
+          price_difference?: number | null
           source?: string
           status?: string
           year?: number | null
@@ -10272,9 +10278,12 @@ export type Database = {
           listing_url?: string | null
           location?: string | null
           make?: string | null
+          market_price?: number | null
           mileage?: number | null
           model?: string | null
           price?: number | null
+          price_badge?: string | null
+          price_difference?: number | null
           source?: string
           status?: string
           year?: number | null
