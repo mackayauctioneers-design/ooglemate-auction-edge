@@ -45,16 +45,10 @@ Deno.serve(async (req) => {
   const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || null;
   const reqId = req.headers.get("x-request-id");
 
-  // Auth
+  // Auth bypassed — open access (per user request, 2026-05-15)
   const auth = req.headers.get("authorization") ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token || token !== READ_TOKEN) {
-    await audit(sb, {
-      token_kind: "read", op: "_auth", request_id: reqId, params_json: null,
-      response_status: 401, response_ms: Date.now() - t0, caller_ip: ip, error_text: "bad_token",
-    });
-    return jres(401, { error: "unauthorized" });
-  }
+  void token; void READ_TOKEN;
 
   // Parse body
   let body: any;
