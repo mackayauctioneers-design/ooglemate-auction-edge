@@ -129,18 +129,42 @@ Deno.serve(async (req) => {
       passesThreshold = price < medianSell * 0.85; // 15% below
     }
 
-    // If no comparables at all, do NOT alert — zero-comp alerts are pure noise
+    // ── Telegram fan-out fires for ALL year-passing WBM hits ─────
+    // (Carsales' "well below market" badge IS the signal; dealer comps
+    //  are confirmation only. WhatsApp/Slack still gate on comps below.)
+    try {
+      const tgUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/telegram-arby-leads`;
+      await fetch(tgUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({
+          listing_id, make, model, variant, year, price, km,
+          median_sell_price: medianSell || null,
+          below_pct: belowPct || null,
+          comp_count: compCount,
+          state, listing_url,
+          source_table: (payload as any).source_table ?? null,
+        }),
+      });
+    } catch (e) {
+      console.error("telegram fan-out error (pre-comps):", e);
+    }
+
+    // If no comparables, record but skip WhatsApp/Slack (Telegram already sent above)
     if (compCount < MIN_COMPS) {
-      console.log(`Listing ${listing_id}: only ${compCount} comps (need ${MIN_COMPS}) — suppressing alert`);
+      console.log(`Listing ${listing_id}: ${compCount} comps — Telegram sent, WhatsApp/Slack suppressed`);
       await supabase.from("well_below_market_alerts_sent").insert({
         listing_id,
-        alerted: false,
-        reason: `Insufficient comps: ${compCount} (need ${MIN_COMPS})`,
+        alerted: true,
+        reason: `Telegram only — ${compCount} comps`,
         comp_count: compCount,
         thin_data: true,
       });
       return new Response(
-        JSON.stringify({ success: true, alerted: false, reason: "insufficient_comps", comp_count: compCount }),
+        JSON.stringify({ success: true, alerted: true, channel: "telegram_only", comp_count: compCount }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -237,6 +261,8 @@ Deno.serve(async (req) => {
         console.error("Slack alert error:", e);
       }
     }
+
+    // (Telegram fan-out already happened earlier — before the comps gate)
 
     // ── Record dedup ─────────────────────────────────────────────
     await supabase.from("well_below_market_alerts_sent").insert({
