@@ -47,6 +47,25 @@ Deno.serve(async (req) => {
     }
 
     const p: LeadPayload = await req.json();
+
+    // DIAGNOSTIC MODE: ?diag=1 returns getMe + getChat info without sending
+    const reqUrl = new URL(req.url);
+    if (reqUrl.searchParams.get("diag") === "1") {
+      const meRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getMe`);
+      const me = await meRes.json();
+      const chatRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getChat?chat_id=${encodeURIComponent(CHAT_ID)}`);
+      const chat = await chatRes.json();
+      return new Response(JSON.stringify({
+        chat_id_value: CHAT_ID,
+        chat_id_length: CHAT_ID.length,
+        chat_id_first_char: CHAT_ID.charCodeAt(0),
+        bot_token_length: BOT_TOKEN.length,
+        bot_token_prefix: BOT_TOKEN.slice(0, 10),
+        getMe: me,
+        getChat: chat,
+      }, null, 2), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     if (!p?.listing_id || !p?.make || !p?.model) {
       return new Response(JSON.stringify({ error: "missing_fields" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
