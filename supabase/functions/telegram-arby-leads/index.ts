@@ -53,8 +53,10 @@ Deno.serve(async (req) => {
       });
     }
 
+    const esc = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const buyBox = isBuyBox(p);
-    const flag = buyBox ? "🎯 BUY-BOX MATCH\n" : "";
+    const flag = buyBox ? "🎯 <b>BUY-BOX MATCH</b>\n" : "";
     const km = p.km ? `${(p.km / 1000).toFixed(0)}k km` : "km unknown";
     const price = p.price ? `$${Number(p.price).toLocaleString()}` : "price n/a";
     const median = p.median_sell_price
@@ -62,14 +64,26 @@ Deno.serve(async (req) => {
         (p.below_pct ? ` (${p.below_pct}% below)` : "")
       : "";
     const comps = p.comp_count != null ? `\n📦 Comps: ${p.comp_count}` : "";
-    const loc = p.state || p.location ? `\n📍 ${p.state ?? p.location}` : "";
-    const src = p.source_table ? `\n_src: ${p.source_table}_` : "";
+    const loc = p.state || p.location ? `\n📍 ${esc(String(p.state ?? p.location))}` : "";
+    const src = p.source_table ? `\n<i>src: ${esc(p.source_table)}</i>` : "";
     const url = p.listing_url ? `\n\n${p.listing_url}` : "";
 
+    const headline = `${p.year ?? "?"} ${p.make} ${p.model} ${p.variant ?? ""}`.trim();
     const text =
-      `${flag}🟢 *Well Below Market*\n` +
-      `*${p.year ?? "?"} ${p.make} ${p.model}* ${p.variant ?? ""}`.trim() +
+      `${flag}🟢 <b>Well Below Market</b>\n` +
+      `<b>${esc(headline)}</b>` +
       `\n${km} • ${price}${median}${comps}${loc}${src}${url}`;
+
+    const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: CHAT_ID,
+        text,
+        parse_mode: "HTML",
+        disable_web_page_preview: false,
+      }),
+    });
 
     const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: "POST",
