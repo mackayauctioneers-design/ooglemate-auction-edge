@@ -262,28 +262,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Fan out to Telegram @arbycarleads ────────────────────────
-    try {
-      const tgUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/telegram-arby-leads`;
-      const tgRes = await fetch(tgUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-        },
-        body: JSON.stringify({
-          listing_id, make, model, variant, year, price, km,
-          median_sell_price: medianSell || null,
-          below_pct: belowPct || null,
-          comp_count: compCount,
-          state, listing_url,
-          source_table: (payload as any).source_table ?? null,
-        }),
-      });
-      if (!tgRes.ok) console.error("telegram fan-out failed:", tgRes.status, await tgRes.text());
-    } catch (e) {
-      console.error("telegram fan-out error:", e);
-    }
+    // (Telegram fan-out already happened earlier — before the comps gate)
 
     // ── Record dedup ─────────────────────────────────────────────
     await supabase.from("well_below_market_alerts_sent").insert({
