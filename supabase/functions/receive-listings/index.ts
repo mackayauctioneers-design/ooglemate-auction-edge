@@ -17,16 +17,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
 
-  // API key check
-  const expected = Deno.env.get("API_KEY");
-  if (!expected) {
-    console.error("[receive-listings] API_KEY secret not configured");
-    return json({ success: false, error: "Server misconfigured" }, 500);
-  }
-  const provided = req.headers.get("x-api-key") ?? "";
-  if (provided !== expected) {
-    return json({ success: false, error: "Unauthorized" }, 401);
-  }
+  // API key check bypassed (per user request, 2026-05-15) — open ingestion
+  void Deno.env.get("API_KEY");
 
   let body: any;
   try {
