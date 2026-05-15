@@ -40,6 +40,10 @@ function mapItem(it: any): Record<string, unknown> | null {
   const price = pickNumber(it.price ?? it.priceValue ?? it.priceTotal);
   const mileage = pickNumber(it.odometer ?? it.kilometres ?? it.mileage);
   const location = it.location || it.suburb || it.state || null;
+  // Preserve Carsales price badge / assessment ("Well Below Market", "Below Market", etc.)
+  const price_badge =
+    it.priceAssessment || it.priceBadge || it.price_badge || it.priceAssessmentText || null;
+  const market_price = pickNumber(it.marketPrice ?? it.market_price ?? it.priceComparison);
 
   if (!listing_url || !make || !model || !year || !price) return null;
 
@@ -52,6 +56,8 @@ function mapItem(it: any): Record<string, unknown> | null {
     location: location ? String(location) : null,
     listing_url: String(listing_url),
     source: "Apify_carsales-monitor",
+    price_badge: price_badge ? String(price_badge) : null,
+    market_price,
   };
 }
 
