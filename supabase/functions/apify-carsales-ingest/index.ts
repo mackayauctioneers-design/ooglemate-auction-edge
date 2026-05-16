@@ -181,6 +181,23 @@ Deno.serve(async (req) => {
       const runData = await runResp.json();
       runId = runData?.data?.id ?? null;
       datasetId = runData?.data?.defaultDatasetId ?? null;
+      const finishedAt = runData?.data?.finishedAt;
+      // Freshness guard — refuse to re-process stale datasets (>6h old).
+      // Otherwise we keep fanning out week-old "WBM" leads that may be sold.
+      if (finishedAt) {
+        const ageMs = Date.now() - new Date(finishedAt).getTime();
+        if (ageMs > 6 * 60 * 60 * 1000) {
+          return json(200, {
+            ok: true,
+            skipped: "latest SUCCEEDED run is stale",
+            run_id: runId,
+            finished_at: finishedAt,
+            age_hours: +(ageMs / 3.6e6).toFixed(1),
+            triggered_run_id: triggeredRunId,
+            hint: "fresh run triggered — re-invoke in a few minutes",
+          });
+        }
+      }
       if (!datasetId) {
         return json(200, {
           ok: true,
