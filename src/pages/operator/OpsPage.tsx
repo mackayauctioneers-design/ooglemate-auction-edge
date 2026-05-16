@@ -396,6 +396,14 @@ function OpsPageInner() {
           <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs">
             <div className="font-medium text-destructive mb-1">Last browser error</div>
             <p className="break-words">{lastBrowserError.message}</p>
+            {lastBrowserError.data?.screenshot_ref && (
+              <p className="text-muted-foreground truncate">
+                screenshot: <span className="font-mono">{lastBrowserError.data.screenshot_ref}</span>
+              </p>
+            )}
+            {lastBrowserError.data?.url && (
+              <p className="text-muted-foreground truncate">url: {lastBrowserError.data.url}</p>
+            )}
             <p className="text-muted-foreground truncate">
               task: {lastBrowserError.task_id} · {fmtTime(lastBrowserError.created_at)}
             </p>
