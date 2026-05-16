@@ -245,6 +245,7 @@ const App = () => (
               <Route path="/operator/auction-sources" element={<OperatorGuard><AuctionSourcesPage /></OperatorGuard>} />
               <Route path="/operator/morning-brief" element={<OperatorGuard><MorningBriefPage /></OperatorGuard>} />
               <Route path="/operator/ops" element={<OperatorGuard><OpsPage /></OperatorGuard>} />
+              <Route path="/operator/easycars-posting" element={<OperatorGuard><EasyCarsPostingPage /></OperatorGuard>} />
               <Route path="/operator/fingerprint-performance" element={<OperatorGuard><FingerprintPerformancePage /></OperatorGuard>} />
               <Route path="/operator/demand-desk" element={<OperatorGuard><DealerDemandDeskPage /></OperatorGuard>} />
               <Route path="/operator/car-sales-watch" element={<OperatorGuard><CarSalesWatchPage /></OperatorGuard>} />
