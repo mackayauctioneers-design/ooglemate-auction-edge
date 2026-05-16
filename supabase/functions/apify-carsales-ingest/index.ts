@@ -228,8 +228,48 @@ Deno.serve(async (req) => {
         const payload = mapItem(raw);
         if (!payload) { invalid++; continue; }
 
-        if (payload.price_badge && /well\s+below|below\s+market|great\s+price/i.test(String(payload.price_badge))) {
+        // ── WBM fan-out → well-below-market-alert → telegram-arby-leads ──
+        // We bypass receive-deals (which drops price_badge) and push WBM hits
+        // straight to the alert function so @arbycarleads gets fresh leads.
+        const badge = payload.price_badge ? String(payload.price_badge) : "";
+        const isWbm = /well\s+below\s+market/i.test(badge);
+        const isBelow = /^below\s+market|^\s*below\s+market/i.test(badge);
+        if (isWbm || isBelow) {
           wbmCount++;
+          // Year guard mirrors well-below-market-alert (MIN_YEAR=2015)
+          const yr = Number(payload.year);
+          if (yr >= 2015) {
+            // Stable synthetic listing_id from listing_url for dedupe
+            const urlStr = String(payload.listing_url);
+            const enc = new TextEncoder().encode(urlStr);
+            const hashBuf = await crypto.subtle.digest("SHA-256", enc);
+            const listing_id = "cs-" + Array.from(new Uint8Array(hashBuf))
+              .slice(0, 16).map((b) => b.toString(16).padStart(2, "0")).join("");
+            try {
+              await fetch(`${SUPABASE_URL}/functions/v1/well-below-market-alert`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${SERVICE_ROLE}`,
+                },
+                body: JSON.stringify({
+                  listing_id,
+                  make: payload.make,
+                  model: payload.model,
+                  variant: null,
+                  year: yr,
+                  price: payload.price,
+                  km: payload.mileage,
+                  listing_url: payload.listing_url,
+                  state: payload.location,
+                  price_badge: badge,
+                  source_table: "apify_carsales_cheerio",
+                }),
+              });
+            } catch (e) {
+              console.error("WBM fan-out failed:", e);
+            }
+          }
         }
 
         try {
