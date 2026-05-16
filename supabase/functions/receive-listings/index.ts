@@ -64,5 +64,37 @@ Deno.serve(async (req) => {
     return json({ success: false, error: error.message }, 500);
   }
 
-  return json({ success: true, id: data.id });
+  // ── WBM fan-out → well-below-market-alert → @arbycarleads ──
+  // Fire-and-forget so the actor's POST stays fast. Any Carsales badge
+  // matching "well below market" or "below market" triggers the chain.
+  const badge = market_indicator ? String(market_indicator) : "";
+  const isWbm = /well\s+below\s+market/i.test(badge);
+  const isBelow = !isWbm && /below\s+market/i.test(badge);
+  if ((isWbm || isBelow) && listing_url && make && model && year && price) {
+    try {
+      const enc = new TextEncoder().encode(String(listing_url));
+      const hashBuf = await crypto.subtle.digest("SHA-256", enc);
+      const listing_id = "el-" + Array.from(new Uint8Array(hashBuf))
+        .slice(0, 16).map((b) => b.toString(16).padStart(2, "0")).join("");
+      fetch(`${supabaseUrl}/functions/v1/well-below-market-alert`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({
+          listing_id,
+          make, model, variant: null,
+          year, price, km: mileage ?? null,
+          listing_url, state: location ?? null,
+          price_badge: badge,
+          source_table: source ?? "external_listings",
+        }),
+      }).catch((e) => console.error("[receive-listings] WBM fan-out error:", e));
+    } catch (e) {
+      console.error("[receive-listings] WBM hash error:", e);
+    }
+  }
+
+  return json({ success: true, id: data.id, wbm_dispatched: isWbm || isBelow });
 });
