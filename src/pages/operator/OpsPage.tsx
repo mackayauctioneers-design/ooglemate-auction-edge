@@ -266,6 +266,37 @@ function OpsPageInner() {
         ))}
       </div>
 
+      {/* EasyCars Manual Posting */}
+      <Link to="/operator/easycars-posting" className="block">
+        <section className="rounded-lg border border-border bg-card p-4 hover:border-primary/50 transition-colors">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-medium">EasyCars Manual Posting</h2>
+              <p className="text-xs text-muted-foreground">Operator fallback queue — automation parked.</p>
+            </div>
+            <span className="text-xs text-primary">Open queue →</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-md border p-3">
+              <div className="text-xs text-muted-foreground">Pending</div>
+              <div className="text-2xl font-semibold mt-1">{ecCounts.pending}</div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-xs text-muted-foreground">Manual ready</div>
+              <div className="text-2xl font-semibold mt-1 text-amber-600">{ecCounts.manual_ready}</div>
+            </div>
+            <div className={`rounded-md border p-3 ${ecCounts.stale_ready > 0 ? 'border-destructive/50' : ''}`}>
+              <div className="text-xs text-muted-foreground">Ready &gt; 1 day</div>
+              <div className={`text-2xl font-semibold mt-1 ${ecCounts.stale_ready > 0 ? 'text-destructive' : ''}`}>{ecCounts.stale_ready}</div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-xs text-muted-foreground">Posted today</div>
+              <div className="text-2xl font-semibold mt-1 text-green-600">{ecCounts.manual_posted_today}</div>
+            </div>
+          </div>
+        </section>
+      </Link>
+
       {/* Watcher fleet */}
       <section className="rounded-lg border border-border bg-card p-4">
         <h2 className="font-medium mb-3">Watcher Fleet</h2>
