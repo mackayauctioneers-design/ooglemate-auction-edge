@@ -87,6 +87,11 @@ Deno.serve(async (req) => {
           message: result.summary || 'Task completed',
           data: result,
         });
+        await supabase.from('workers').update({
+          last_heartbeat_at: new Date().toISOString(),
+          last_success_at: new Date().toISOString(),
+          status: 'idle',
+        }).eq('worker_name', task.assigned_worker);
         categoryCounts[category] += result.deferred ? 0 : 1;
         dispatched.push({ task_id: task.task_id, worker: task.assigned_worker, result });
       } catch (workerError) {
