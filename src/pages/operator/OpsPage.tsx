@@ -48,6 +48,14 @@ const WATCHER_WORKERS = new Set([
   'worker-carbitrage-ingestion',
 ]);
 
+const DATA_WORKERS = new Set([
+  'worker-invoice-parser',
+  'worker-rego2stock-prepare',
+  'worker-duplicate-detection',
+]);
+
+const DATA_TASK_TYPES = ['invoice_parse', 'rego2stock_prepare', 'duplicate_detection'];
+
 function fmtTime(ts: string | null | undefined) {
   if (!ts) return '—';
   try {
