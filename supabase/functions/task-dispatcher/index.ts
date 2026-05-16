@@ -116,6 +116,10 @@ Deno.serve(async (req) => {
           message: 'Task execution failed',
           data: { error: String(workerError.message || workerError), failure },
         });
+        await supabase.from('workers').update({
+          last_heartbeat_at: new Date().toISOString(),
+          last_failure_at: new Date().toISOString(),
+        }).eq('worker_name', task.assigned_worker);
         if (failure.create_exception_diagnosis && task.task_type !== 'exception_diagnosis') {
           await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/task-ingress`, {
             method: 'POST',
