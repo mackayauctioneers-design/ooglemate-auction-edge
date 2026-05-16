@@ -335,6 +335,19 @@ function OpsPageInner() {
       {/* Browser Pipeline */}
       <section className="rounded-lg border border-border bg-card p-4">
         <h2 className="font-medium mb-3">Browser Pipeline</h2>
+        <div className="flex flex-wrap gap-2 mb-3 text-xs">
+          <span className="px-2 py-1 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+            Live: {browserModeCounts.live}
+          </span>
+          <span className="px-2 py-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
+            Deferred: {browserModeCounts.deferred}
+          </span>
+          {lastStockNumber && (
+            <span className="px-2 py-1 rounded bg-muted">
+              Last stock #: <span className="font-mono">{lastStockNumber.stock_number}</span>
+            </span>
+          )}
+        </div>
         <div className="grid grid-cols-3 gap-3 mb-4">
           {BROWSER_TASK_TYPES.map((tt) => (
             <div key={tt} className="rounded-md border border-border p-3">
