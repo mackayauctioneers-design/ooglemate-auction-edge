@@ -11,7 +11,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ACTOR_ID = "memo23~carsales-monitor";
+// memo23/carsales-monitor was deleted (May 2026). abotapi/carsales-au-scraper is the
+// current source — different schema (marketIndicator, badges[], odometer, listingId, url).
+const ACTOR_ID = "abotapi~carsales-au-scraper";
 const PAGE_SIZE = 500;
 const TIME_BUDGET_MS = 110_000;
 
