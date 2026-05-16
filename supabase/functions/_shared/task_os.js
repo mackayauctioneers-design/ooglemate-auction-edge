@@ -40,6 +40,11 @@ export function classifyTask(input) {
     duplicate_detection: { worker_category: 'data', assigned_worker: 'worker-duplicate-detection', route_reason: 'duplicate_detection' },
     autograb_health_alert: { worker_category: 'data', assigned_worker: 'worker-duplicate-detection', route_reason: 'duplicate_detection_alert' },
     carbitrage_ingestion_alert: { worker_category: 'data', assigned_worker: 'worker-duplicate-detection', route_reason: 'duplicate_detection_alert' },
+    easycars_upload: { worker_category: 'browser', assigned_worker: 'worker-easycars-upload', route_reason: 'easycars_upload' },
+    easycars_stock_entry: { worker_category: 'browser', assigned_worker: 'worker-stock-entry-browser', route_reason: 'easycars_stock_entry' },
+    easycars_invoice_upload: { worker_category: 'browser', assigned_worker: 'worker-invoice-upload', route_reason: 'easycars_invoice_upload' },
+    invoice_upload: { worker_category: 'browser', assigned_worker: 'worker-invoice-upload', route_reason: 'invoice_upload' },
+    stock_entry_browser: { worker_category: 'browser', assigned_worker: 'worker-stock-entry-browser', route_reason: 'stock_entry_browser' },
   };
   if (directMap[input.task_type]) return directMap[input.task_type];
   if (/(heartbeat|cron|freshness|polling|health check|health_check)/.test(text)) {

@@ -56,6 +56,18 @@ const DATA_WORKERS = new Set([
 
 const DATA_TASK_TYPES = ['invoice_parse', 'rego2stock_prepare', 'duplicate_detection'];
 
+const BROWSER_WORKERS = new Set([
+  'worker-easycars-upload',
+  'worker-invoice-upload',
+  'worker-stock-entry-browser',
+]);
+
+const BROWSER_TASK_TYPES = [
+  'easycars_upload',
+  'invoice_upload',
+  'stock_entry_browser',
+];
+
 function fmtTime(ts: string | null | undefined) {
   if (!ts) return '—';
   try {
@@ -156,11 +168,36 @@ function OpsPageInner() {
     return counts;
   }, [tasks]);
 
+  const browserFleet = useMemo(
+    () => workers.filter((w) => BROWSER_WORKERS.has(w.worker_name) || w.worker_category === 'browser'),
+    [workers],
+  );
+
+  const browserCounts = useMemo(() => {
+    const counts: Record<string, number> = { easycars_upload: 0, invoice_upload: 0, stock_entry_browser: 0 };
+    for (const t of tasks) {
+      if (counts[t.task_type] !== undefined) counts[t.task_type] += 1;
+    }
+    return counts;
+  }, [tasks]);
+
+  const browserTaskIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const t of tasks) {
+      if (t.assigned_worker && BROWSER_WORKERS.has(t.assigned_worker)) ids.add(t.task_id);
+    }
+    return ids;
+  }, [tasks]);
+
+  const lastBrowserError = useMemo(() => {
+    return watcherLogs.find((l) => browserTaskIds.has(l.task_id) && l.level === 'error') || null;
+  }, [watcherLogs, browserTaskIds]);
+
   return (
     <div className="p-6 space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">Ops Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Phase 2B — task OS with watchers + data pipeline.</p>
+        <p className="text-sm text-muted-foreground">Phase 2C — watchers + data + browser pipeline.</p>
       </div>
 
       {/* Stat cards */}
@@ -268,6 +305,64 @@ function OpsPageInner() {
             <p className="text-xs text-muted-foreground">No data workers registered.</p>
           )}
         </div>
+      </section>
+
+      {/* Browser Pipeline */}
+      <section className="rounded-lg border border-border bg-card p-4">
+        <h2 className="font-medium mb-3">Browser Pipeline</h2>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {BROWSER_TASK_TYPES.map((tt) => (
+            <div key={tt} className="rounded-md border border-border p-3">
+              <div className="text-xs text-muted-foreground">{tt}</div>
+              <div className="text-xl font-semibold mt-1">{browserCounts[tt] ?? 0}</div>
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mb-3">
+          {browserFleet.map((worker) => {
+            const stale =
+              worker.last_heartbeat_at &&
+              Date.now() - Date.parse(worker.last_heartbeat_at) > 15 * 60 * 1000;
+            return (
+              <div key={worker.worker_name} className="rounded-md border border-border p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">{worker.worker_name}</div>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded ${
+                      stale ? 'bg-destructive/20 text-destructive' : 'bg-muted'
+                    }`}
+                  >
+                    {stale ? 'stale' : worker.status}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {worker.worker_category} · cap {worker.concurrency_limit}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Running {worker.running_count}/{worker.concurrency_limit} · Queued {worker.queued_count}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Last heartbeat: {fmtTime(worker.last_heartbeat_at)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Last failure: {fmtTime(worker.last_failure_at)}
+                </p>
+              </div>
+            );
+          })}
+          {!browserFleet.length && (
+            <p className="text-xs text-muted-foreground">No browser workers registered.</p>
+          )}
+        </div>
+        {lastBrowserError && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs">
+            <div className="font-medium text-destructive mb-1">Last browser error</div>
+            <p className="break-words">{lastBrowserError.message}</p>
+            <p className="text-muted-foreground truncate">
+              task: {lastBrowserError.task_id} · {fmtTime(lastBrowserError.created_at)}
+            </p>
+          </div>
+        )}
       </section>
 
       {/* Watcher activity */}
