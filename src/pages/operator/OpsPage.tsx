@@ -94,7 +94,7 @@ function OpsPageInner() {
         (supabase as any).from('ops_worker_health').select('*').order('worker_name'),
         (supabase as any)
           .from('task_logs')
-          .select('task_id,level,message,created_at')
+          .select('task_id,level,message,created_at,data')
           .order('created_at', { ascending: false })
           .limit(50),
       ]);
