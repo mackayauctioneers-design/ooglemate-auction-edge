@@ -83,6 +83,29 @@ function OpsPageInner() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [watcherLogs, setWatcherLogs] = useState<TaskLog[]>([]);
+  const [ecCounts, setEcCounts] = useState({ pending: 0, manual_ready: 0, manual_posted_today: 0, stale_ready: 0 });
+
+  useEffect(() => {
+    const loadEc = async () => {
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+      const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const [p, r, pt, stale] = await Promise.all([
+        (supabase as any).from('trades').select('id', { count: 'exact', head: true }).eq('easycars_post_status', 'pending'),
+        (supabase as any).from('trades').select('id', { count: 'exact', head: true }).eq('easycars_post_status', 'manual_ready'),
+        (supabase as any).from('trades').select('id', { count: 'exact', head: true }).eq('easycars_post_status', 'manual_posted').gte('easycars_posted_at', todayStart.toISOString()),
+        (supabase as any).from('trades').select('id', { count: 'exact', head: true }).eq('easycars_post_status', 'manual_ready').lt('easycars_ready_at', dayAgo),
+      ]);
+      setEcCounts({
+        pending: p.count ?? 0,
+        manual_ready: r.count ?? 0,
+        manual_posted_today: pt.count ?? 0,
+        stale_ready: stale.count ?? 0,
+      });
+    };
+    loadEc();
+    const i = setInterval(loadEc, 30000);
+    return () => clearInterval(i);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
