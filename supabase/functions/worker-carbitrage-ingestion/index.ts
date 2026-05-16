@@ -29,9 +29,10 @@ Deno.serve(async (req) => {
         title: `Carbitrage ingestion stale (batch ${batchId || 'unknown'})`,
         source: 'worker-carbitrage-ingestion',
         priority: 'P1',
+        dedupe_key: `carbitrage_alert:${source || 'unknown'}:${batchId || 'unknown'}`,
         payload: {
-          batch_id: batchId,
-          carbitrage_source: source,
+          batch_id_ref: batchId,
+          carbitrage_source_ref: source,
           last_ingestion_at: lastIngestionAt,
           age_minutes: age,
           max_age_minutes: maxAgeMin,
