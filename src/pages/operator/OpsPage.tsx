@@ -194,6 +194,30 @@ function OpsPageInner() {
     return watcherLogs.find((l) => browserTaskIds.has(l.task_id) && l.level === 'error') || null;
   }, [watcherLogs, browserTaskIds]);
 
+  const browserModeCounts = useMemo(() => {
+    let live = 0, deferred = 0;
+    for (const l of watcherLogs) {
+      if (!browserTaskIds.has(l.task_id)) continue;
+      const d = l.data || {};
+      if (d.result === 'no_session' || /deferred/i.test(l.message)) deferred += 1;
+      else if (d.result === 'success' && d.step === 'result') live += 1;
+    }
+    return { live, deferred };
+  }, [watcherLogs, browserTaskIds]);
+
+  const lastStockNumber = useMemo(() => {
+    for (const t of tasks) {
+      const sn = (t as any).payload?.easycars_stock_number;
+      if (sn) return { stock_number: sn, task_id: t.task_id, when: t.started_at };
+    }
+    // fall back to logs
+    for (const l of watcherLogs) {
+      const sn = l.data?.stock_number;
+      if (sn) return { stock_number: sn, task_id: l.task_id, when: l.created_at };
+    }
+    return null;
+  }, [tasks, watcherLogs]);
+
   return (
     <div className="p-6 space-y-8">
       <div>
