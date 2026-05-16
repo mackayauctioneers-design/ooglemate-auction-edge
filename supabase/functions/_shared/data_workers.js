@@ -19,7 +19,7 @@ export const DATA_TASK_TYPE_TO_WORKER = {
 const FIELD_PATTERNS = {
   supplier: /^\s*Supplier\s*[:\-]\s*(.+)$/im,
   abn: /\bABN\s*[:\-]?\s*([\d\s]{11,16})/i,
-  invoice_number: /(?:Invoice\s*(?:Number|No\.?|#)|INV[#\s-]*)\s*[:\-]?\s*([A-Z0-9\-\/]+)/i,
+  invoice_number: /(?:Invoice\s*(?:Number|No\.?|#)\s*[:\-]?\s*|\bINV[-#]\s*)([A-Z0-9][A-Z0-9\-\/]*)/i,
   invoice_date: /\b(?:Invoice\s*Date|Date)\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
   rego: /\bRego(?:istration)?\s*[:\-]?\s*([A-Z0-9]{3,8})/i,
   vin: /\b(?:VIN|Chassis)\s*[:\-]?\s*([A-HJ-NPR-Z0-9]{11,17})/i,
