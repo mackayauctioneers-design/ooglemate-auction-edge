@@ -168,11 +168,36 @@ function OpsPageInner() {
     return counts;
   }, [tasks]);
 
+  const browserFleet = useMemo(
+    () => workers.filter((w) => BROWSER_WORKERS.has(w.worker_name) || w.worker_category === 'browser'),
+    [workers],
+  );
+
+  const browserCounts = useMemo(() => {
+    const counts: Record<string, number> = { easycars_upload: 0, invoice_upload: 0, stock_entry_browser: 0 };
+    for (const t of tasks) {
+      if (counts[t.task_type] !== undefined) counts[t.task_type] += 1;
+    }
+    return counts;
+  }, [tasks]);
+
+  const browserTaskIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const t of tasks) {
+      if (t.assigned_worker && BROWSER_WORKERS.has(t.assigned_worker)) ids.add(t.task_id);
+    }
+    return ids;
+  }, [tasks]);
+
+  const lastBrowserError = useMemo(() => {
+    return watcherLogs.find((l) => browserTaskIds.has(l.task_id) && l.level === 'error') || null;
+  }, [watcherLogs, browserTaskIds]);
+
   return (
     <div className="p-6 space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">Ops Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Phase 2B — task OS with watchers + data pipeline.</p>
+        <p className="text-sm text-muted-foreground">Phase 2C — watchers + data + browser pipeline.</p>
       </div>
 
       {/* Stat cards */}
