@@ -1,6 +1,8 @@
 import { getSupabaseAdmin } from '../_shared/supabase.js';
 import { ACTIVE_STATUSES, CONCURRENCY_LIMITS, createJsonResponse, handleFailure, sortTasks } from '../_shared/task_os.js';
 import { WORKER_FUNCTION_MAP } from '../_shared/watchers.js';
+import { DATA_WORKER_FUNCTION_MAP } from '../_shared/data_workers.js';
+const FN_MAP = { ...WORKER_FUNCTION_MAP, ...DATA_WORKER_FUNCTION_MAP };
 
 async function invokeWorker(functionName, payload) {
   const baseUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/${functionName}`;

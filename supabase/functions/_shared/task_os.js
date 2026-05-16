@@ -35,6 +35,11 @@ export function classifyTask(input) {
     autograb_health_check: { worker_category: 'watcher', assigned_worker: 'worker-autograb-health', route_reason: 'autograb_watcher' },
     carbitrage_ingestion_check: { worker_category: 'watcher', assigned_worker: 'worker-carbitrage-ingestion', route_reason: 'carbitrage_watcher' },
     heartbeat_check: { worker_category: 'watcher', assigned_worker: 'worker-heartbeat-check', route_reason: 'watcher' },
+    invoice_parse: { worker_category: 'data', assigned_worker: 'worker-invoice-parser', route_reason: 'invoice_parser' },
+    rego2stock_prepare: { worker_category: 'data', assigned_worker: 'worker-rego2stock-prepare', route_reason: 'rego2stock' },
+    duplicate_detection: { worker_category: 'data', assigned_worker: 'worker-duplicate-detection', route_reason: 'duplicate_detection' },
+    autograb_health_alert: { worker_category: 'data', assigned_worker: 'worker-duplicate-detection', route_reason: 'duplicate_detection_alert' },
+    carbitrage_ingestion_alert: { worker_category: 'data', assigned_worker: 'worker-duplicate-detection', route_reason: 'duplicate_detection_alert' },
   };
   if (directMap[input.task_type]) return directMap[input.task_type];
   if (/(heartbeat|cron|freshness|polling|health check|health_check)/.test(text)) {
