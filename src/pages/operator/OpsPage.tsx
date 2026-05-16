@@ -221,6 +221,55 @@ function OpsPageInner() {
         </div>
       </section>
 
+      {/* Data Worker Pipeline */}
+      <section className="rounded-lg border border-border bg-card p-4">
+        <h2 className="font-medium mb-3">Data Worker Pipeline</h2>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {DATA_TASK_TYPES.map((tt) => (
+            <div key={tt} className="rounded-md border border-border p-3">
+              <div className="text-xs text-muted-foreground">{tt}</div>
+              <div className="text-xl font-semibold mt-1">{dataCounts[tt] ?? 0}</div>
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {dataFleet.map((worker) => {
+            const stale =
+              worker.last_heartbeat_at &&
+              Date.now() - Date.parse(worker.last_heartbeat_at) > 15 * 60 * 1000;
+            return (
+              <div key={worker.worker_name} className="rounded-md border border-border p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">{worker.worker_name}</div>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded ${
+                      stale ? 'bg-destructive/20 text-destructive' : 'bg-muted'
+                    }`}
+                  >
+                    {stale ? 'stale' : worker.status}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {worker.worker_category} · cap {worker.concurrency_limit}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Running {worker.running_count}/{worker.concurrency_limit} · Queued {worker.queued_count}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Last heartbeat: {fmtTime(worker.last_heartbeat_at)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Last success: {fmtTime(worker.last_success_at)}
+                </p>
+              </div>
+            );
+          })}
+          {!dataFleet.length && (
+            <p className="text-xs text-muted-foreground">No data workers registered.</p>
+          )}
+        </div>
+      </section>
+
       {/* Watcher activity */}
       <section className="rounded-lg border border-border bg-card p-4">
         <h2 className="font-medium mb-3">Watcher Activity</h2>
