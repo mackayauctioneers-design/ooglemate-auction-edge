@@ -4772,6 +4772,54 @@ export type Database = {
         }
         Relationships: []
       }
+      human_reviews: {
+        Row: {
+          decided_at: string | null
+          decided_by: string | null
+          decision: string | null
+          notes: string | null
+          reason: string
+          review_id: string
+          review_payload: Json
+          task_id: string
+        }
+        Insert: {
+          decided_at?: string | null
+          decided_by?: string | null
+          decision?: string | null
+          notes?: string | null
+          reason: string
+          review_id?: string
+          review_payload?: Json
+          task_id: string
+        }
+        Update: {
+          decided_at?: string | null
+          decided_by?: string | null
+          decision?: string | null
+          notes?: string | null
+          reason?: string
+          review_id?: string
+          review_payload?: Json
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "human_reviews_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "ops_active_tasks"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "human_reviews_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["task_id"]
+          },
+        ]
+      }
       hunt_alerts: {
         Row: {
           acknowledged_at: string | null
@@ -10323,6 +10371,48 @@ export type Database = {
         }
         Relationships: []
       }
+      schedules: {
+        Row: {
+          created_at: string
+          cron_expr: string | null
+          enabled: boolean
+          interval_seconds: number | null
+          next_run_at: string | null
+          payload_template: Json
+          priority: string
+          schedule_id: string
+          task_type: string
+          updated_at: string
+          worker_name: string
+        }
+        Insert: {
+          created_at?: string
+          cron_expr?: string | null
+          enabled?: boolean
+          interval_seconds?: number | null
+          next_run_at?: string | null
+          payload_template?: Json
+          priority?: string
+          schedule_id?: string
+          task_type: string
+          updated_at?: string
+          worker_name: string
+        }
+        Update: {
+          created_at?: string
+          cron_expr?: string | null
+          enabled?: boolean
+          interval_seconds?: number | null
+          next_run_at?: string | null
+          payload_template?: Json
+          priority?: string
+          schedule_id?: string
+          task_type?: string
+          updated_at?: string
+          worker_name?: string
+        }
+        Relationships: []
+      }
       scorer_cursors: {
         Row: {
           job_name: string
@@ -11071,6 +11161,229 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "plans"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_logs: {
+        Row: {
+          data: Json
+          level: string
+          log_id: number
+          message: string
+          run_id: string | null
+          task_id: string
+          ts: string
+        }
+        Insert: {
+          data?: Json
+          level: string
+          log_id?: never
+          message: string
+          run_id?: string | null
+          task_id: string
+          ts?: string
+        }
+        Update: {
+          data?: Json
+          level?: string
+          log_id?: never
+          message?: string
+          run_id?: string | null
+          task_id?: string
+          ts?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_logs_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "task_runs"
+            referencedColumns: ["run_id"]
+          },
+          {
+            foreignKeyName: "task_logs_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "ops_active_tasks"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "task_logs_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["task_id"]
+          },
+        ]
+      }
+      task_runs: {
+        Row: {
+          attempt_no: number
+          completed_at: string | null
+          duration_ms: number | null
+          error_message: string | null
+          logs_ref: string | null
+          metadata: Json
+          result_summary: string | null
+          run_id: string
+          started_at: string
+          status: string
+          task_id: string
+          worker_category: string
+          worker_name: string
+        }
+        Insert: {
+          attempt_no: number
+          completed_at?: string | null
+          duration_ms?: number | null
+          error_message?: string | null
+          logs_ref?: string | null
+          metadata?: Json
+          result_summary?: string | null
+          run_id?: string
+          started_at?: string
+          status: string
+          task_id: string
+          worker_category: string
+          worker_name: string
+        }
+        Update: {
+          attempt_no?: number
+          completed_at?: string | null
+          duration_ms?: number | null
+          error_message?: string | null
+          logs_ref?: string | null
+          metadata?: Json
+          result_summary?: string | null
+          run_id?: string
+          started_at?: string
+          status?: string
+          task_id?: string
+          worker_category?: string
+          worker_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_runs_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "ops_active_tasks"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "task_runs_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["task_id"]
+          },
+        ]
+      }
+      tasks: {
+        Row: {
+          assigned_worker: string | null
+          completed_at: string | null
+          created_at: string
+          dedupe_key: string | null
+          error_message: string | null
+          escalation_rule: string | null
+          human_review_condition: string | null
+          last_heartbeat_at: string | null
+          last_log_message: string | null
+          log_reference: string | null
+          logs_url: string | null
+          max_retries: number
+          merge_key: string | null
+          parent_task_id: string | null
+          payload: Json
+          priority: string
+          related_entity_id: string | null
+          related_entity_type: string | null
+          result_summary: string | null
+          retry_count: number
+          retry_delay_seconds: number
+          scheduled_at: string | null
+          source: string
+          started_at: string | null
+          status: string
+          task_id: string
+          task_type: string
+          title: string
+        }
+        Insert: {
+          assigned_worker?: string | null
+          completed_at?: string | null
+          created_at?: string
+          dedupe_key?: string | null
+          error_message?: string | null
+          escalation_rule?: string | null
+          human_review_condition?: string | null
+          last_heartbeat_at?: string | null
+          last_log_message?: string | null
+          log_reference?: string | null
+          logs_url?: string | null
+          max_retries?: number
+          merge_key?: string | null
+          parent_task_id?: string | null
+          payload?: Json
+          priority: string
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          result_summary?: string | null
+          retry_count?: number
+          retry_delay_seconds?: number
+          scheduled_at?: string | null
+          source: string
+          started_at?: string | null
+          status?: string
+          task_id?: string
+          task_type: string
+          title: string
+        }
+        Update: {
+          assigned_worker?: string | null
+          completed_at?: string | null
+          created_at?: string
+          dedupe_key?: string | null
+          error_message?: string | null
+          escalation_rule?: string | null
+          human_review_condition?: string | null
+          last_heartbeat_at?: string | null
+          last_log_message?: string | null
+          log_reference?: string | null
+          logs_url?: string | null
+          max_retries?: number
+          merge_key?: string | null
+          parent_task_id?: string | null
+          payload?: Json
+          priority?: string
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          result_summary?: string | null
+          retry_count?: number
+          retry_delay_seconds?: number
+          scheduled_at?: string | null
+          source?: string
+          started_at?: string | null
+          status?: string
+          task_id?: string
+          task_type?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "ops_active_tasks"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "tasks_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["task_id"]
           },
         ]
       }
@@ -13650,6 +13963,90 @@ export type Database = {
         }
         Relationships: []
       }
+      worker_locks: {
+        Row: {
+          acquired_at: string
+          expires_at: string
+          lock_key: string
+          task_id: string | null
+          worker_name: string
+        }
+        Insert: {
+          acquired_at?: string
+          expires_at: string
+          lock_key: string
+          task_id?: string | null
+          worker_name: string
+        }
+        Update: {
+          acquired_at?: string
+          expires_at?: string
+          lock_key?: string
+          task_id?: string | null
+          worker_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worker_locks_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "ops_active_tasks"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "worker_locks_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["task_id"]
+          },
+        ]
+      }
+      workers: {
+        Row: {
+          avg_run_ms: number | null
+          capabilities: Json
+          concurrency_limit: number
+          config: Json
+          enabled: boolean
+          heartbeat_timeout_seconds: number
+          last_failure_at: string | null
+          last_heartbeat_at: string | null
+          last_success_at: string | null
+          status: string
+          worker_category: string
+          worker_name: string
+        }
+        Insert: {
+          avg_run_ms?: number | null
+          capabilities?: Json
+          concurrency_limit: number
+          config?: Json
+          enabled?: boolean
+          heartbeat_timeout_seconds?: number
+          last_failure_at?: string | null
+          last_heartbeat_at?: string | null
+          last_success_at?: string | null
+          status?: string
+          worker_category: string
+          worker_name: string
+        }
+        Update: {
+          avg_run_ms?: number | null
+          capabilities?: Json
+          concurrency_limit?: number
+          config?: Json
+          enabled?: boolean
+          heartbeat_timeout_seconds?: number
+          last_failure_at?: string | null
+          last_heartbeat_at?: string | null
+          last_success_at?: string | null
+          status?: string
+          worker_category?: string
+          worker_name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       auction_watch_pickles_sydney_gov: {
@@ -14377,6 +14774,64 @@ export type Database = {
           sa3: string | null
           state: string | null
           suburb: string | null
+        }
+        Relationships: []
+      }
+      ops_active_tasks: {
+        Row: {
+          age_seconds: number | null
+          assigned_worker: string | null
+          created_at: string | null
+          last_heartbeat_at: string | null
+          last_log_message: string | null
+          priority: string | null
+          started_at: string | null
+          status: string | null
+          task_id: string | null
+          task_type: string | null
+          title: string | null
+        }
+        Insert: {
+          age_seconds?: never
+          assigned_worker?: string | null
+          created_at?: string | null
+          last_heartbeat_at?: string | null
+          last_log_message?: string | null
+          priority?: string | null
+          started_at?: string | null
+          status?: string | null
+          task_id?: string | null
+          task_type?: string | null
+          title?: string | null
+        }
+        Update: {
+          age_seconds?: never
+          assigned_worker?: string | null
+          created_at?: string | null
+          last_heartbeat_at?: string | null
+          last_log_message?: string | null
+          priority?: string | null
+          started_at?: string | null
+          status?: string | null
+          task_id?: string | null
+          task_type?: string | null
+          title?: string | null
+        }
+        Relationships: []
+      }
+      ops_worker_health: {
+        Row: {
+          avg_run_ms: number | null
+          concurrency_limit: number | null
+          enabled: boolean | null
+          last_failure_at: string | null
+          last_heartbeat_at: string | null
+          last_success_at: string | null
+          queued_count: number | null
+          running_count: number | null
+          status: string | null
+          worker_category: string | null
+          worker_name: string | null
         }
         Relationships: []
       }
