@@ -30,6 +30,13 @@ export function classifyTask(input) {
   if (retryCount >= 2 || stalled || text.includes('exception_diagnosis')) {
     return { worker_category: 'exception', assigned_worker: 'agent-exception-diagnosis-placeholder', route_reason: 'exception_diagnosis' };
   }
+  const directMap = {
+    gmail_invoice_detected: { worker_category: 'watcher', assigned_worker: 'worker-gmail-invoice-watcher', route_reason: 'gmail_watcher' },
+    autograb_health_check: { worker_category: 'watcher', assigned_worker: 'worker-autograb-health', route_reason: 'autograb_watcher' },
+    carbitrage_ingestion_check: { worker_category: 'watcher', assigned_worker: 'worker-carbitrage-ingestion', route_reason: 'carbitrage_watcher' },
+    heartbeat_check: { worker_category: 'watcher', assigned_worker: 'worker-heartbeat-check', route_reason: 'watcher' },
+  };
+  if (directMap[input.task_type]) return directMap[input.task_type];
   if (/(heartbeat|cron|freshness|polling|health check|health_check)/.test(text)) {
     return { worker_category: 'watcher', assigned_worker: 'worker-heartbeat-check', route_reason: 'watcher' };
   }
