@@ -147,6 +147,7 @@ Deno.serve(async (req) => {
           comp_count: compCount,
           state, listing_url,
           source_table: (payload as any).source_table ?? null,
+          price_badge: (payload as any).price_badge ?? null,
         }),
       });
     } catch (e) {
