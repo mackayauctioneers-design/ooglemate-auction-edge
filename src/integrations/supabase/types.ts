@@ -11460,6 +11460,13 @@ export type Database = {
           dealer_email: string | null
           dealer_name: string | null
           direction: string | null
+          easycars_post_note: string | null
+          easycars_post_status: string
+          easycars_posted_at: string | null
+          easycars_posted_by: string | null
+          easycars_ready_at: string | null
+          easycars_ready_by: string | null
+          easycars_stock_number_manual: string | null
           fees_breakdown: Json | null
           fees_total: number | null
           fingerprint: string | null
@@ -11499,6 +11506,13 @@ export type Database = {
           dealer_email?: string | null
           dealer_name?: string | null
           direction?: string | null
+          easycars_post_note?: string | null
+          easycars_post_status?: string
+          easycars_posted_at?: string | null
+          easycars_posted_by?: string | null
+          easycars_ready_at?: string | null
+          easycars_ready_by?: string | null
+          easycars_stock_number_manual?: string | null
           fees_breakdown?: Json | null
           fees_total?: number | null
           fingerprint?: string | null
@@ -11538,6 +11552,13 @@ export type Database = {
           dealer_email?: string | null
           dealer_name?: string | null
           direction?: string | null
+          easycars_post_note?: string | null
+          easycars_post_status?: string
+          easycars_posted_at?: string | null
+          easycars_posted_by?: string | null
+          easycars_ready_at?: string | null
+          easycars_ready_by?: string | null
+          easycars_stock_number_manual?: string | null
           fees_breakdown?: Json | null
           fees_total?: number | null
           fingerprint?: string | null
