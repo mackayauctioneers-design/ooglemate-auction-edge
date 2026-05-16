@@ -1,7 +1,11 @@
 // apify-carsales-ingest
-// Pulls latest SUCCEEDED run from memo23/carsales-monitor, paginates the dataset,
-// maps each item to the receive-deals payload, and POSTs them.
-// Triggered every 30 min via pg_cron. Dedup is handled by receive-deals (24h window
+// Pulls latest SUCCEEDED run from memo23/carsales-cheerio (re-published May 2026
+// after memo23/carsales-monitor was deleted), paginates the dataset, maps each
+// item to the receive-deals payload, and POSTs them. Also auto-triggers a new
+// run if none are pending/running, biased toward WBM-rich queries (used, 2020+,
+// nationwide, dealer + private).
+//
+// Triggered every 30 min via pg_cron. Dedup handled by receive-deals (24h window
 // on listing_url), so re-posting items is safe & cheap.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -11,11 +15,31 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// memo23/carsales-monitor was deleted (May 2026). abotapi/carsales-au-scraper is the
-// current source — different schema (marketIndicator, badges[], odometer, listingId, url).
-const ACTOR_ID = "abotapi~carsales-au-scraper";
+// memo23/carsales-cheerio — new (May 2026), $0.0009/result, auto-quarters
+// large queries by price so >1k matches still complete fully.
+const ACTOR_ID = "memo23~carsales-cheerio";
 const PAGE_SIZE = 500;
 const TIME_BUDGET_MS = 110_000;
+
+// WBM-rich coverage. Memo23 cheerio actor auto-splits these by price band
+// internally, so a single broad URL still returns the full national pool.
+// We focus on used 2020+ where WBM badges concentrate.
+const WBM_START_URLS = [
+  // Used Toyota Hilux 2020+
+  "https://www.carsales.com.au/cars/?q=%28And.Service.Carsales._.Condition.Used._.%28C.Make.Toyota._.Model.HiLux.%29_.Year.range%282020..%29.%29",
+  // Used Toyota RAV4 2020+
+  "https://www.carsales.com.au/cars/?q=%28And.Service.Carsales._.Condition.Used._.%28C.Make.Toyota._.Model.RAV4.%29_.Year.range%282020..%29.%29",
+  // Used Toyota LandCruiser 2020+
+  "https://www.carsales.com.au/cars/?q=%28And.Service.Carsales._.Condition.Used._.%28C.Make.Toyota._.Model.LandCruiser.%29_.Year.range%282020..%29.%29",
+  // Used Toyota Prado 2020+
+  "https://www.carsales.com.au/cars/?q=%28And.Service.Carsales._.Condition.Used._.%28C.Make.Toyota._.Model.Prado.%29_.Year.range%282020..%29.%29",
+  // Used Ford Ranger 2020+
+  "https://www.carsales.com.au/cars/?q=%28And.Service.Carsales._.Condition.Used._.%28C.Make.Ford._.Model.Ranger.%29_.Year.range%282020..%29.%29",
+  // Used Ford Everest 2020+
+  "https://www.carsales.com.au/cars/?q=%28And.Service.Carsales._.Condition.Used._.%28C.Make.Ford._.Model.Everest.%29_.Year.range%282020..%29.%29",
+  // Used Isuzu D-MAX / MU-X 2020+
+  "https://www.carsales.com.au/cars/?q=%28And.Service.Carsales._.Condition.Used._.%28C.Make.Isuzu%20Ute.%29_.Year.range%282020..%29.%29",
+];
 
 const json = (s: number, b: unknown) =>
   new Response(JSON.stringify(b), {
@@ -33,22 +57,37 @@ function pickNumber(v: unknown): number | null {
 }
 
 function mapItem(it: any): Record<string, unknown> | null {
-  // abotapi/carsales-au-scraper item shape (with legacy memo23 fallbacks)
+  // memo23/carsales-cheerio shape:
+  //   link / canonicalUrl, make, model, year, price, specs.odometer,
+  //   specs.colour, specs.fuelType, specs.transmission, marketIndicator
+  // Legacy fallbacks kept for abotapi / memo23-monitor.
+  const specs = (it.specs && typeof it.specs === "object") ? it.specs : {};
+
   const listing_url =
-    it.url || it.canonicalUrl || it.detailsUrl || it.link || null;
+    it.link || it.canonicalUrl || it.url || it.detailsUrl || null;
   const make = it.make || it.makeName || it.manufacturer || null;
   const model = it.model || it.modelName || null;
   const year = pickNumber(it.year ?? it.modelYear ?? it.yearOfManufacture);
   const price = pickNumber(it.price ?? it.priceValue ?? it.priceTotal);
-  const mileage = pickNumber(it.odometer ?? it.kilometres ?? it.mileage);
-  const location = it.location || it.suburb || it.state || null;
-  // Preserve Carsales price badge / assessment ("Well below market price", etc.)
-  // abotapi exposes it as `marketIndicator` and inside `badges[]`.
+  const mileage = pickNumber(
+    specs.odometer ?? it.odometer ?? it.kilometres ?? it.mileage,
+  );
+  const location =
+    it.location || it.suburb || it.state || specs.location || null;
+
+  // Carsales price badge / market assessment. memo23/cheerio surfaces it as
+  // `marketIndicator` ("Well below market price", "Below market price",
+  // "Around market price", "Above market price"). Legacy fallbacks retained.
   const badgesArr: string[] = Array.isArray(it.badges) ? it.badges.map(String) : [];
-  const badgeFromArr = badgesArr.find((b) => /market price|special offer|great price/i.test(b)) || null;
+  const badgeFromArr =
+    badgesArr.find((b) => /market price|special offer|great price/i.test(b)) || null;
   const price_badge =
-    it.marketIndicator || it.priceAssessment || it.priceBadge || it.price_badge || it.priceAssessmentText || badgeFromArr || null;
-  const market_price = pickNumber(it.marketPrice ?? it.market_price ?? it.priceComparison);
+    it.marketIndicator || it.priceAssessment || it.priceBadge ||
+    it.price_badge || it.priceAssessmentText || badgeFromArr || null;
+
+  const market_price = pickNumber(
+    it.marketPrice ?? it.market_price ?? it.priceComparison,
+  );
 
   if (!listing_url || !make || !model || !year || !price) return null;
 
@@ -60,10 +99,40 @@ function mapItem(it: any): Record<string, unknown> | null {
     mileage,
     location: location ? String(location) : null,
     listing_url: String(listing_url),
-    source: "Apify_carsales-monitor",
+    source: "Apify_carsales-cheerio",
     price_badge: price_badge ? String(price_badge) : null,
     market_price,
   };
+}
+
+async function maybeStartRun(token: string): Promise<string | null> {
+  // Don't pile up runs — check if anything is already in-flight.
+  const listResp = await fetch(
+    `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${token}&limit=5&desc=true`,
+  );
+  if (listResp.ok) {
+    const data = await listResp.json();
+    const items: any[] = data?.data?.items ?? [];
+    const inflight = items.find((r) =>
+      ["READY", "RUNNING"].includes(r.status)
+    );
+    if (inflight) return null;
+  }
+
+  const startResp = await fetch(
+    `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${token}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "url",
+        startUrls: WBM_START_URLS.map((url) => ({ url })),
+      }),
+    },
+  );
+  if (!startResp.ok) return null;
+  const startData = await startResp.json();
+  return startData?.data?.id ?? null;
 }
 
 Deno.serve(async (req) => {
@@ -81,7 +150,7 @@ Deno.serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
   const receiveUrl = `${SUPABASE_URL}/functions/v1/receive-deals`;
 
-  // Optional override: { run_id, dataset_id }
+  // Optional override: { run_id, dataset_id, start?: true }
   let override: any = {};
   if (req.method === "POST") {
     try { override = await req.json(); } catch { /* ignore */ }
@@ -90,8 +159,14 @@ Deno.serve(async (req) => {
   try {
     let datasetId: string | null = override.dataset_id ?? null;
     let runId: string | null = override.run_id ?? null;
+    let triggeredRunId: string | null = null;
 
-    // 1. If no override, get latest SUCCEEDED run
+    // 1. If no override, fire a new run (if none in flight) to keep WBM fresh.
+    if (!datasetId && !runId) {
+      triggeredRunId = await maybeStartRun(APIFY_TOKEN);
+    }
+
+    // 2. Pull the latest SUCCEEDED run for processing
     if (!datasetId) {
       const runResp = await fetch(
         `https://api.apify.com/v2/acts/${ACTOR_ID}/runs/last?status=SUCCEEDED&token=${APIFY_TOKEN}`,
@@ -103,26 +178,38 @@ Deno.serve(async (req) => {
       const runData = await runResp.json();
       runId = runData?.data?.id ?? null;
       datasetId = runData?.data?.defaultDatasetId ?? null;
-      if (!datasetId) return json(200, { ok: true, skipped: "no successful run yet" });
+      if (!datasetId) {
+        return json(200, {
+          ok: true,
+          skipped: "no successful run yet",
+          triggered_run_id: triggeredRunId,
+        });
+      }
     }
 
-    // 2. Skip if we've already processed this run
+    // 3. Skip if we've already processed this run
     const { data: lastSeen } = await supabase
       .from("cron_heartbeat")
       .select("note")
       .eq("cron_name", "apify-carsales-ingest")
       .maybeSingle();
     if (runId && lastSeen?.note?.includes(`run:${runId}`)) {
-      return json(200, { ok: true, skipped: "run already processed", run_id: runId });
+      return json(200, {
+        ok: true,
+        skipped: "run already processed",
+        run_id: runId,
+        triggered_run_id: triggeredRunId,
+      });
     }
 
-    // 3. Paginate dataset & POST to receive-deals
+    // 4. Paginate dataset & POST to receive-deals
     let offset = 0;
     let totalFetched = 0;
     let posted = 0;
     let duplicates = 0;
     let invalid = 0;
     let errors = 0;
+    let wbmCount = 0;
 
     while (Date.now() - start < TIME_BUDGET_MS) {
       const dsResp = await fetch(
@@ -140,6 +227,10 @@ Deno.serve(async (req) => {
         if (Date.now() - start > TIME_BUDGET_MS) break;
         const payload = mapItem(raw);
         if (!payload) { invalid++; continue; }
+
+        if (payload.price_badge && /well\s+below|below\s+market|great\s+price/i.test(String(payload.price_badge))) {
+          wbmCount++;
+        }
 
         try {
           const r = await fetch(receiveUrl, {
@@ -163,13 +254,13 @@ Deno.serve(async (req) => {
       offset += PAGE_SIZE;
     }
 
-    // 4. Heartbeat + remember run
+    // 5. Heartbeat + remember run
     await supabase.from("cron_heartbeat").upsert(
       {
         cron_name: "apify-carsales-ingest",
         last_seen_at: new Date().toISOString(),
         last_ok: errors === 0,
-        note: `run:${runId} fetched=${totalFetched} posted=${posted} dupes=${duplicates} invalid=${invalid} errors=${errors}`,
+        note: `run:${runId} fetched=${totalFetched} posted=${posted} dupes=${duplicates} invalid=${invalid} errors=${errors} wbm=${wbmCount}`,
       },
       { onConflict: "cron_name" },
     );
@@ -178,11 +269,13 @@ Deno.serve(async (req) => {
       ok: true,
       run_id: runId,
       dataset_id: datasetId,
+      triggered_run_id: triggeredRunId,
       fetched: totalFetched,
       posted,
       duplicates,
       invalid,
       errors,
+      wbm_badges_seen: wbmCount,
       elapsed_ms: Date.now() - start,
     });
   } catch (err) {
