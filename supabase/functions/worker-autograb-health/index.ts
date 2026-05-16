@@ -28,8 +28,9 @@ Deno.serve(async (req) => {
         title: `AutoGrab freshness stale for ${window || 'unknown window'}`,
         source: 'worker-autograb-health',
         priority: 'P1',
+        dedupe_key: `autograb_alert:${window || 'unknown'}`,
         payload: {
-          autograb_window: window,
+          autograb_window_ref: window,
           last_success_at: lastSuccessAt,
           age_minutes: age,
           max_age_minutes: maxAgeMin,
