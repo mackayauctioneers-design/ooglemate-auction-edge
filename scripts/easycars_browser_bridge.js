@@ -39,6 +39,7 @@ const CRED_FILE = process.env.EASYCARS_CREDENTIALS_FILE
   || '/data/.openclaw/workspace/data/easycars_credentials.env';
 const SCRIPT_PATH = process.env.EASYCARS_SCRIPT_PATH
   || path.resolve(__dirname, '..', 'skills', 'easycars-playwright', 'scripts', 'easycars-final-v4.js');
+const EASYCARS_BASE_URL = (process.env.EASYCARS_BASE_URL || 'https://my.easycars.net.au').replace(/\/+$/, '');
 
 try { fs.mkdirSync(SCREENSHOT_DIR, { recursive: true }); } catch {}
 
@@ -175,7 +176,7 @@ async function handleEnsureLoggedIn() {
 
 async function handleOpenEasyCars(body) {
   const target = body && body.path ? String(body.path) : '/';
-  lastKnownUrl = `https://app.easycars.com.au${target.startsWith('/') ? '' : '/'}${target}`;
+  lastKnownUrl = `${EASYCARS_BASE_URL}${target.startsWith('/') ? '' : '/'}${target}`;
   return { ok: true, url: lastKnownUrl };
 }
 
