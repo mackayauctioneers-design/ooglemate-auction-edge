@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '../_shared/supabase.js';
 import { ACTIVE_STATUSES, CONCURRENCY_LIMITS, createJsonResponse, handleFailure, sortTasks } from '../_shared/task_os.js';
+import { WORKER_FUNCTION_MAP } from '../_shared/watchers.js';
 
 async function invokeWorker(functionName, payload) {
   const baseUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/${functionName}`;
@@ -60,14 +61,13 @@ Deno.serve(async (req) => {
       }).select('*').single();
       try {
         let result;
-        if (task.assigned_worker === 'worker-heartbeat-check') {
-          result = await invokeWorker('worker-heartbeat-check', { task_id: task.task_id, run_id: run.run_id });
-        } else if (task.assigned_worker === 'agent-exception-diagnosis-placeholder') {
-          result = await invokeWorker('agent-exception-diagnosis-placeholder', { task_id: task.task_id, run_id: run.run_id });
-        } else if (task.payload?.simulate_failure) {
+        const fnName = WORKER_FUNCTION_MAP[task.assigned_worker];
+        if (task.payload?.simulate_failure) {
           throw new Error(`Simulated failure for ${task.task_type}`);
+        } else if (fnName) {
+          result = await invokeWorker(fnName, { task_id: task.task_id, run_id: run.run_id, task });
         } else {
-          result = { ok: true, deferred: true, summary: 'Phase 1 routed task successfully; execution deferred to later worker implementation.' };
+          result = { ok: true, deferred: true, summary: `No worker function mapped for ${task.assigned_worker}; deferred.` };
         }
         await supabase.from('task_runs').update({
           status: 'succeeded',
@@ -87,6 +87,11 @@ Deno.serve(async (req) => {
           message: result.summary || 'Task completed',
           data: result,
         });
+        await supabase.from('workers').update({
+          last_heartbeat_at: new Date().toISOString(),
+          last_success_at: new Date().toISOString(),
+          status: 'idle',
+        }).eq('worker_name', task.assigned_worker);
         categoryCounts[category] += result.deferred ? 0 : 1;
         dispatched.push({ task_id: task.task_id, worker: task.assigned_worker, result });
       } catch (workerError) {
@@ -111,6 +116,10 @@ Deno.serve(async (req) => {
           message: 'Task execution failed',
           data: { error: String(workerError.message || workerError), failure },
         });
+        await supabase.from('workers').update({
+          last_heartbeat_at: new Date().toISOString(),
+          last_failure_at: new Date().toISOString(),
+        }).eq('worker_name', task.assigned_worker);
         if (failure.create_exception_diagnosis && task.task_type !== 'exception_diagnosis') {
           await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/task-ingress`, {
             method: 'POST',
