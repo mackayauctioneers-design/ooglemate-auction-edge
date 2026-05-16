@@ -119,8 +119,11 @@ async function maybeStartRun(token: string): Promise<string | null> {
     if (inflight) return null;
   }
 
+  // 90s default timeout is way too short for 7 broad national queries —
+  // every run since May 11 TIMED-OUT, leaving us re-processing the stale
+  // May 9 dataset. Bump to 10 min + 2GB memory so runs actually complete.
   const startResp = await fetch(
-    `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${token}`,
+    `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${token}&timeout=600&memory=2048`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
