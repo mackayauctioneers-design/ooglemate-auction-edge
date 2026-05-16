@@ -28,6 +28,14 @@ Deno.serve(async (req) => {
   }
 
   const { make, model, year, price, mileage, location, listing_url } = body ?? {};
+  // Accept badge text under any of the keys the Carsales actor / our internal pushers use
+  const market_indicator =
+    body?.market_indicator ??
+    body?.marketIndicator ??
+    body?.price_badge ??
+    body?.priceBadge ??
+    null;
+  const source = body?.source ?? null;
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -45,6 +53,8 @@ Deno.serve(async (req) => {
       mileage: mileage ?? null,
       location: location ?? null,
       listing_url: listing_url ?? null,
+      market_indicator,
+      source,
     })
     .select("id")
     .single();
