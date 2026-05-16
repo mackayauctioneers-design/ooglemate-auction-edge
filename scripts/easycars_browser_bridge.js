@@ -176,7 +176,7 @@ async function handleEnsureLoggedIn() {
 
 async function handleOpenEasyCars(body) {
   const target = body && body.path ? String(body.path) : '/';
-  lastKnownUrl = `https://app.easycars.com.au${target.startsWith('/') ? '' : '/'}${target}`;
+  lastKnownUrl = `${EASYCARS_BASE_URL}${target.startsWith('/') ? '' : '/'}${target}`;
   return { ok: true, url: lastKnownUrl };
 }
 
