@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { OperatorGuard } from '@/components/guards/OperatorGuard';
 
@@ -82,6 +83,29 @@ function OpsPageInner() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [watcherLogs, setWatcherLogs] = useState<TaskLog[]>([]);
+  const [ecCounts, setEcCounts] = useState({ pending: 0, manual_ready: 0, manual_posted_today: 0, stale_ready: 0 });
+
+  useEffect(() => {
+    const loadEc = async () => {
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+      const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const [p, r, pt, stale] = await Promise.all([
+        (supabase as any).from('trades').select('id', { count: 'exact', head: true }).eq('easycars_post_status', 'pending'),
+        (supabase as any).from('trades').select('id', { count: 'exact', head: true }).eq('easycars_post_status', 'manual_ready'),
+        (supabase as any).from('trades').select('id', { count: 'exact', head: true }).eq('easycars_post_status', 'manual_posted').gte('easycars_posted_at', todayStart.toISOString()),
+        (supabase as any).from('trades').select('id', { count: 'exact', head: true }).eq('easycars_post_status', 'manual_ready').lt('easycars_ready_at', dayAgo),
+      ]);
+      setEcCounts({
+        pending: p.count ?? 0,
+        manual_ready: r.count ?? 0,
+        manual_posted_today: pt.count ?? 0,
+        stale_ready: stale.count ?? 0,
+      });
+    };
+    loadEc();
+    const i = setInterval(loadEc, 30000);
+    return () => clearInterval(i);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -241,6 +265,37 @@ function OpsPageInner() {
           </div>
         ))}
       </div>
+
+      {/* EasyCars Manual Posting */}
+      <Link to="/operator/easycars-posting" className="block">
+        <section className="rounded-lg border border-border bg-card p-4 hover:border-primary/50 transition-colors">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-medium">EasyCars Manual Posting</h2>
+              <p className="text-xs text-muted-foreground">Operator fallback queue — automation parked.</p>
+            </div>
+            <span className="text-xs text-primary">Open queue →</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-md border p-3">
+              <div className="text-xs text-muted-foreground">Pending</div>
+              <div className="text-2xl font-semibold mt-1">{ecCounts.pending}</div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-xs text-muted-foreground">Manual ready</div>
+              <div className="text-2xl font-semibold mt-1 text-amber-600">{ecCounts.manual_ready}</div>
+            </div>
+            <div className={`rounded-md border p-3 ${ecCounts.stale_ready > 0 ? 'border-destructive/50' : ''}`}>
+              <div className="text-xs text-muted-foreground">Ready &gt; 1 day</div>
+              <div className={`text-2xl font-semibold mt-1 ${ecCounts.stale_ready > 0 ? 'text-destructive' : ''}`}>{ecCounts.stale_ready}</div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-xs text-muted-foreground">Posted today</div>
+              <div className="text-2xl font-semibold mt-1 text-green-600">{ecCounts.manual_posted_today}</div>
+            </div>
+          </div>
+        </section>
+      </Link>
 
       {/* Watcher fleet */}
       <section className="rounded-lg border border-border bg-card p-4">
