@@ -89,10 +89,11 @@ Deno.serve(async (req) => {
     const url = p.listing_url ? `\n\n${p.listing_url}` : "";
 
     const headline = `${p.year ?? "?"} ${p.make} ${p.model} ${p.variant ?? ""}`.trim();
+    const badge = (p as any).price_badge ? `\n🏷️ Carsales tag: <i>${esc(String((p as any).price_badge))}</i>` : "";
     const text =
       `${flag}🟢 <b>Well Below Market</b>\n` +
       `<b>${esc(headline)}</b>` +
-      `\n${km} • ${price}${median}${comps}${loc}${src}${url}`;
+      `\n${km} • ${price}${badge}${median}${comps}${loc}${src}${url}`;
 
     const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: "POST",
