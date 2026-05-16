@@ -11,7 +11,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ACTOR_ID = "memo23~carsales-monitor";
+// memo23/carsales-monitor was deleted (May 2026). abotapi/carsales-au-scraper is the
+// current source — different schema (marketIndicator, badges[], odometer, listingId, url).
+const ACTOR_ID = "abotapi~carsales-au-scraper";
 const PAGE_SIZE = 500;
 const TIME_BUDGET_MS = 110_000;
 
@@ -31,18 +33,21 @@ function pickNumber(v: unknown): number | null {
 }
 
 function mapItem(it: any): Record<string, unknown> | null {
-  // memo23/carsales-monitor item shape (best-effort mapping)
+  // abotapi/carsales-au-scraper item shape (with legacy memo23 fallbacks)
   const listing_url =
-    it.canonicalUrl || it.url || it.detailsUrl || it.link || null;
+    it.url || it.canonicalUrl || it.detailsUrl || it.link || null;
   const make = it.make || it.makeName || it.manufacturer || null;
   const model = it.model || it.modelName || null;
   const year = pickNumber(it.year ?? it.modelYear ?? it.yearOfManufacture);
   const price = pickNumber(it.price ?? it.priceValue ?? it.priceTotal);
   const mileage = pickNumber(it.odometer ?? it.kilometres ?? it.mileage);
   const location = it.location || it.suburb || it.state || null;
-  // Preserve Carsales price badge / assessment ("Well Below Market", "Below Market", etc.)
+  // Preserve Carsales price badge / assessment ("Well below market price", etc.)
+  // abotapi exposes it as `marketIndicator` and inside `badges[]`.
+  const badgesArr: string[] = Array.isArray(it.badges) ? it.badges.map(String) : [];
+  const badgeFromArr = badgesArr.find((b) => /market price|special offer|great price/i.test(b)) || null;
   const price_badge =
-    it.priceAssessment || it.priceBadge || it.price_badge || it.priceAssessmentText || null;
+    it.marketIndicator || it.priceAssessment || it.priceBadge || it.price_badge || it.priceAssessmentText || badgeFromArr || null;
   const market_price = pickNumber(it.marketPrice ?? it.market_price ?? it.priceComparison);
 
   if (!listing_url || !make || !model || !year || !price) return null;
