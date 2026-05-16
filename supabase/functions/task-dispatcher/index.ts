@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
       }).select('*').single();
       try {
         let result;
-        const fnName = WORKER_FUNCTION_MAP[task.assigned_worker];
+        const fnName = FN_MAP[task.assigned_worker];
         if (task.payload?.simulate_failure) {
           throw new Error(`Simulated failure for ${task.task_type}`);
         } else if (fnName) {
