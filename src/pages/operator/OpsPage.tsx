@@ -56,6 +56,18 @@ const DATA_WORKERS = new Set([
 
 const DATA_TASK_TYPES = ['invoice_parse', 'rego2stock_prepare', 'duplicate_detection'];
 
+const BROWSER_WORKERS = new Set([
+  'worker-easycars-upload',
+  'worker-invoice-upload',
+  'worker-stock-entry-browser',
+]);
+
+const BROWSER_TASK_TYPES = [
+  'easycars_upload',
+  'invoice_upload',
+  'stock_entry_browser',
+];
+
 function fmtTime(ts: string | null | undefined) {
   if (!ts) return '—';
   try {
