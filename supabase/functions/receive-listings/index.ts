@@ -53,6 +53,8 @@ Deno.serve(async (req) => {
       mileage: mileage ?? null,
       location: location ?? null,
       listing_url: listing_url ?? null,
+      market_indicator,
+      source,
     })
     .select("id")
     .single();
