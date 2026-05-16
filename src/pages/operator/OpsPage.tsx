@@ -143,11 +143,24 @@ function OpsPageInner() {
     [watcherLogs, watcherTaskIds],
   );
 
+  const dataFleet = useMemo(
+    () => workers.filter((w) => DATA_WORKERS.has(w.worker_name) || w.worker_category === 'data'),
+    [workers],
+  );
+
+  const dataCounts = useMemo(() => {
+    const counts: Record<string, number> = { invoice_parse: 0, rego2stock_prepare: 0, duplicate_detection: 0 };
+    for (const t of tasks) {
+      if (counts[t.task_type] !== undefined) counts[t.task_type] += 1;
+    }
+    return counts;
+  }, [tasks]);
+
   return (
     <div className="p-6 space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">Ops Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Phase 2A — task OS with live watcher fleet.</p>
+        <p className="text-sm text-muted-foreground">Phase 2B — task OS with watchers + data pipeline.</p>
       </div>
 
       {/* Stat cards */}
