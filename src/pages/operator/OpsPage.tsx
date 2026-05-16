@@ -32,6 +32,7 @@ type TaskLog = {
   level: string;
   message: string;
   created_at: string;
+  data?: any;
 };
 
 const groupLabels: Record<string, string> = {
