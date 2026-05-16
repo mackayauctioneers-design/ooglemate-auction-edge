@@ -67,6 +67,7 @@ export function assignPriority(input) {
 }
 
 export function buildDedupeKey(input) {
+  if (input.dedupe_key) return input.dedupe_key;
   const payload = input.payload || {};
   if (payload.gmail_message_id) return `gmail:${payload.gmail_message_id}`;
   if (payload.invoice_number && payload.rego) return `invoice_rego:${payload.invoice_number}:${String(payload.rego).toUpperCase()}`;
