@@ -32,6 +32,7 @@ type TaskLog = {
   level: string;
   message: string;
   created_at: string;
+  data?: any;
 };
 
 const groupLabels: Record<string, string> = {
@@ -93,7 +94,7 @@ function OpsPageInner() {
         (supabase as any).from('ops_worker_health').select('*').order('worker_name'),
         (supabase as any)
           .from('task_logs')
-          .select('task_id,level,message,created_at')
+          .select('task_id,level,message,created_at,data')
           .order('created_at', { ascending: false })
           .limit(50),
       ]);
@@ -192,6 +193,30 @@ function OpsPageInner() {
   const lastBrowserError = useMemo(() => {
     return watcherLogs.find((l) => browserTaskIds.has(l.task_id) && l.level === 'error') || null;
   }, [watcherLogs, browserTaskIds]);
+
+  const browserModeCounts = useMemo(() => {
+    let live = 0, deferred = 0;
+    for (const l of watcherLogs) {
+      if (!browserTaskIds.has(l.task_id)) continue;
+      const d = l.data || {};
+      if (d.result === 'no_session' || /deferred/i.test(l.message)) deferred += 1;
+      else if (d.result === 'success' && d.step === 'result') live += 1;
+    }
+    return { live, deferred };
+  }, [watcherLogs, browserTaskIds]);
+
+  const lastStockNumber = useMemo(() => {
+    for (const t of tasks) {
+      const sn = (t as any).payload?.easycars_stock_number;
+      if (sn) return { stock_number: sn, task_id: t.task_id, when: t.started_at };
+    }
+    // fall back to logs
+    for (const l of watcherLogs) {
+      const sn = l.data?.stock_number;
+      if (sn) return { stock_number: sn, task_id: l.task_id, when: l.created_at };
+    }
+    return null;
+  }, [tasks, watcherLogs]);
 
   return (
     <div className="p-6 space-y-8">
@@ -310,6 +335,19 @@ function OpsPageInner() {
       {/* Browser Pipeline */}
       <section className="rounded-lg border border-border bg-card p-4">
         <h2 className="font-medium mb-3">Browser Pipeline</h2>
+        <div className="flex flex-wrap gap-2 mb-3 text-xs">
+          <span className="px-2 py-1 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+            Live: {browserModeCounts.live}
+          </span>
+          <span className="px-2 py-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
+            Deferred: {browserModeCounts.deferred}
+          </span>
+          {lastStockNumber && (
+            <span className="px-2 py-1 rounded bg-muted">
+              Last stock #: <span className="font-mono">{lastStockNumber.stock_number}</span>
+            </span>
+          )}
+        </div>
         <div className="grid grid-cols-3 gap-3 mb-4">
           {BROWSER_TASK_TYPES.map((tt) => (
             <div key={tt} className="rounded-md border border-border p-3">
@@ -358,6 +396,14 @@ function OpsPageInner() {
           <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs">
             <div className="font-medium text-destructive mb-1">Last browser error</div>
             <p className="break-words">{lastBrowserError.message}</p>
+            {lastBrowserError.data?.screenshot_ref && (
+              <p className="text-muted-foreground truncate">
+                screenshot: <span className="font-mono">{lastBrowserError.data.screenshot_ref}</span>
+              </p>
+            )}
+            {lastBrowserError.data?.url && (
+              <p className="text-muted-foreground truncate">url: {lastBrowserError.data.url}</p>
+            )}
             <p className="text-muted-foreground truncate">
               task: {lastBrowserError.task_id} · {fmtTime(lastBrowserError.created_at)}
             </p>

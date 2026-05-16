@@ -2,20 +2,17 @@ import { getSupabaseAdmin } from '../_shared/supabase.js';
 import { createJsonResponse } from '../_shared/task_os.js';
 import {
   validateInvoicePayload,
-  detectBrowserSession,
   logBrowserStep,
 } from '../_shared/browser_workers.js';
-
-// Deterministic EasyCars invoice upload flow.
-// Selector script kept simple; AI escalation only on repeated failures.
-const STEPS = [
-  { step: 'open_easycars', url_template: '{base}/stock/{target}', selector: null },
-  { step: 'open_documents_tab', url_template: '{base}/stock/{target}/documents', selector: 'a[data-tab="documents"]' },
-  { step: 'click_upload_button', url_template: '{base}/stock/{target}/documents', selector: 'button#upload-invoice' },
-  { step: 'attach_file', url_template: '{base}/stock/{target}/documents', selector: 'input[type=file][name=invoice]' },
-  { step: 'submit_upload', url_template: '{base}/stock/{target}/documents', selector: 'button[type=submit].upload-submit' },
-  { step: 'verify_uploaded', url_template: '{base}/stock/{target}/documents', selector: '.documents-list .invoice-row' },
-];
+import {
+  isLiveMode,
+  ensureLoggedIn,
+  openEasyCars,
+  uploadInvoice,
+  captureScreenshot,
+  currentUrl,
+  runSteps,
+} from '../_shared/easycars_browser_driver.js';
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return createJsonResponse({ error: 'POST required' }, 405);
@@ -33,48 +30,62 @@ Deno.serve(async (req) => {
       throw new Error(`missing_required_fields: ${v.missing.join(',')}`);
     }
 
-    const session = detectBrowserSession();
-    const baseUrl = session.ok ? session.sessionUrl : 'about:no-session';
-    const target = payload.easycars_target || payload.stock_draft_id || 'draft-unknown';
-
-    // If no live browser session, log clean blocker and exit gracefully (not a failure)
-    if (!session.ok) {
+    // Deferred mode preserved when env not set
+    if (!isLiveMode()) {
       await logBrowserStep(supabase, {
         task_id, run_id, level: 'warn', step: 'session_check',
-        url: baseUrl, result: 'no_session',
-        message: `Blocked: ${session.reason}`,
+        result: 'no_session',
+        message: 'Blocked: no_easycars_browser_session_configured',
       });
       return createJsonResponse({
         ok: true,
         deferred: true,
-        summary: `Invoice upload deferred: ${session.reason}`,
+        mode: 'deferred',
+        summary: 'Invoice upload deferred: no_easycars_browser_session_configured',
       });
     }
 
-    // Walk deterministic steps
-    let lastUrl = baseUrl;
-    for (const s of STEPS) {
-      const url = s.url_template.replace('{base}', baseUrl).replace('{target}', String(target));
-      lastUrl = url;
+    const target = payload.easycars_target || payload.stock_draft_id || null;
+    const log = (entry) => logBrowserStep(supabase, { task_id, run_id, ...entry });
+
+    const seq = await runSteps([
+      { name: 'ensureLoggedIn', fn: () => ensureLoggedIn() },
+      { name: 'openEasyCars', fn: () => openEasyCars(target ? `/stock/${target}/documents` : '/stock') },
+      { name: 'uploadInvoice', fn: () => uploadInvoice({
+          invoice_number: payload.invoice_number,
+          attachment_name: payload.attachment_name,
+          attachment_url: payload.invoice_pdf_url || payload.attachment_url || null,
+          target,
+        }) },
+    ], log);
+
+    if (!seq.ok) {
+      // capture screenshot on failure for diagnosis
+      const shot = await captureScreenshot(`invoice_upload_fail_${seq.lastStep}`);
+      const url = (await currentUrl())?.url || seq.failure?.url || null;
       await logBrowserStep(supabase, {
-        task_id, run_id, step: s.step, url, selector: s.selector,
-        result: 'started', message: `step ${s.step} started`,
+        task_id, run_id, level: 'error', step: 'failure_capture',
+        url, selector: seq.failure?.selector || null,
+        screenshot_ref: shot?.screenshot_ref || seq.failure?.screenshot_ref || null,
+        result: 'failed',
+        message: `Invoice upload failed at ${seq.lastStep}: ${seq.failure?.error}`,
+        extra: { last_step: seq.lastStep },
       });
-      // NOTE: real browser driver integration not wired here; this worker
-      // emits structured logs and contracts with an external browser session
-      // service via the configured EASYCARS_BROWSER_SESSION_URL. Until that
-      // service responds, we mark each step succeeded as a placeholder.
-      await logBrowserStep(supabase, {
-        task_id, run_id, step: s.step, url, selector: s.selector,
-        result: 'success', message: `step ${s.step} ok`,
-      });
+      throw new Error(`invoice_upload_failed_at_${seq.lastStep}: ${seq.failure?.error}`);
     }
 
-    const summary = `Invoice uploaded (target=${target}, invoice=${payload.invoice_number})`;
+    const last = seq.results[seq.results.length - 1] || {};
+    const summary = `Invoice uploaded mode=live invoice=${payload.invoice_number}${target ? ` target=${target}` : ''}`;
     return createJsonResponse({
       ok: true,
+      mode: 'live',
       summary,
-      uploaded: { invoice_number: payload.invoice_number, target, last_url: lastUrl },
+      uploaded: {
+        invoice_number: payload.invoice_number,
+        target,
+        document_id: last.document_id || null,
+        url: last.url || null,
+      },
     });
   } catch (error) {
     return createJsonResponse({ ok: false, error: String((error as any)?.message || error) }, 500);

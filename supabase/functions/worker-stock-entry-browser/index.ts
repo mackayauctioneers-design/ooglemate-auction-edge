@@ -3,22 +3,17 @@ import { createJsonResponse } from '../_shared/task_os.js';
 import {
   validateStockPayload,
   isDuplicateRisk,
-  detectBrowserSession,
   logBrowserStep,
 } from '../_shared/browser_workers.js';
-
-// Deterministic EasyCars stock entry flow.
-const STEPS = [
-  { step: 'open_new_stock', url_suffix: '/stock/new', selector: 'form#new-stock' },
-  { step: 'fill_rego', url_suffix: '/stock/new', selector: 'input[name=rego]', field: 'rego' },
-  { step: 'fill_vin', url_suffix: '/stock/new', selector: 'input[name=vin]', field: 'vin' },
-  { step: 'fill_supplier', url_suffix: '/stock/new', selector: 'input[name=supplier_name]', field: 'supplier_name' },
-  { step: 'fill_acquisition_cost', url_suffix: '/stock/new', selector: 'input[name=acquisition_cost]', field: 'acquisition_cost' },
-  { step: 'fill_invoice_number', url_suffix: '/stock/new', selector: 'input[name=invoice_number]', field: 'invoice_number' },
-  { step: 'fill_invoice_date', url_suffix: '/stock/new', selector: 'input[name=invoice_date]', field: 'invoice_date' },
-  { step: 'submit_form', url_suffix: '/stock/new', selector: 'button[type=submit].create-stock' },
-  { step: 'verify_created', url_suffix: '/stock/last', selector: '.stock-number-confirmation' },
-];
+import {
+  isLiveMode,
+  ensureLoggedIn,
+  openEasyCars,
+  createStockEntry,
+  captureScreenshot,
+  currentUrl,
+  runSteps,
+} from '../_shared/easycars_browser_driver.js';
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return createJsonResponse({ error: 'POST required' }, 405);
@@ -27,7 +22,6 @@ Deno.serve(async (req) => {
     const supabase = getSupabaseAdmin();
     const payload = task?.payload || {};
 
-    // Required-field validation
     const v = validateStockPayload(payload);
     if (!v.ok) {
       await logBrowserStep(supabase, {
@@ -37,7 +31,6 @@ Deno.serve(async (req) => {
       throw new Error(`missing_required_fields: ${v.missing.join(',')}`);
     }
 
-    // Never submit on duplicate risk
     if (isDuplicateRisk(payload)) {
       await logBrowserStep(supabase, {
         task_id, run_id, level: 'warn', step: 'duplicate_guard',
@@ -49,51 +42,68 @@ Deno.serve(async (req) => {
       throw new Error('duplicate_money_risk: stock entry refused');
     }
 
-    const session = detectBrowserSession();
-    if (!session.ok) {
+    if (!isLiveMode()) {
       await logBrowserStep(supabase, {
         task_id, run_id, level: 'warn', step: 'session_check',
-        result: 'no_session', message: `Blocked: ${session.reason}`,
+        result: 'no_session', message: 'Blocked: no_easycars_browser_session_configured',
       });
       return createJsonResponse({
         ok: true,
         deferred: true,
-        summary: `Stock entry deferred: ${session.reason}`,
-      });
-    }
-    const baseUrl = session.sessionUrl;
-
-    let lastUrl = baseUrl;
-    for (const s of STEPS) {
-      const url = `${baseUrl}${s.url_suffix}`;
-      lastUrl = url;
-      const fieldValue = s.field ? payload[s.field] : null;
-      await logBrowserStep(supabase, {
-        task_id, run_id, step: s.step, url, selector: s.selector,
-        result: 'started',
-        message: `step ${s.step}${s.field ? ` value=${fieldValue}` : ''}`,
-      });
-      // Placeholder for real browser driver call. Emits success log so the
-      // dispatcher sees a deterministic completion path. Real failures will
-      // be thrown by the driver integration once wired.
-      await logBrowserStep(supabase, {
-        task_id, run_id, step: s.step, url, selector: s.selector,
-        result: 'success', message: `step ${s.step} ok`,
+        mode: 'deferred',
+        summary: 'Stock entry deferred: no_easycars_browser_session_configured',
       });
     }
 
-    // Simulated stock number; real driver will return the actual one
-    const stock_number = `EC-${Date.now().toString(36).toUpperCase()}`;
-    const summary = `Stock created stock_number=${stock_number} rego=${payload.rego}`;
+    const fields = {
+      rego: payload.rego,
+      vin: payload.vin,
+      supplier_name: payload.supplier_name,
+      acquisition_cost: payload.acquisition_cost,
+      invoice_number: payload.invoice_number,
+      invoice_date: payload.invoice_date || null,
+    };
+    const log = (entry) => logBrowserStep(supabase, { task_id, run_id, ...entry });
+
+    const seq = await runSteps([
+      { name: 'ensureLoggedIn', fn: () => ensureLoggedIn() },
+      { name: 'openEasyCars', fn: () => openEasyCars('/stock/new') },
+      { name: 'createStockEntry', fn: () => createStockEntry(fields) },
+    ], log);
+
+    if (!seq.ok) {
+      const shot = await captureScreenshot(`stock_entry_fail_${seq.lastStep}`);
+      const url = (await currentUrl())?.url || seq.failure?.url || null;
+      await logBrowserStep(supabase, {
+        task_id, run_id, level: 'error', step: 'failure_capture',
+        url, selector: seq.failure?.selector || null,
+        screenshot_ref: shot?.screenshot_ref || seq.failure?.screenshot_ref || null,
+        result: 'failed',
+        message: `Stock entry failed at ${seq.lastStep}: ${seq.failure?.error}`,
+        extra: { last_step: seq.lastStep },
+      });
+      throw new Error(`stock_entry_failed_at_${seq.lastStep}: ${seq.failure?.error}`);
+    }
+
+    const created = seq.results.find((r: any) => r.step === 'createStockEntry') || {};
+    const stock_number = created.stock_number || created.id || null;
+    const summary = `Stock created mode=live stock_number=${stock_number || 'unknown'} rego=${payload.rego}`;
+
     await logBrowserStep(supabase, {
-      task_id, run_id, step: 'result', url: lastUrl,
-      result: 'success', message: summary,
-      extra: { stock_number },
+      task_id, run_id, step: 'result', url: created.url || null,
+      result: 'success', message: summary, extra: { stock_number },
     });
+
+    // Persist stock_number on task payload for UI visibility
+    await supabase.from('tasks').update({
+      payload: { ...payload, easycars_stock_number: stock_number, easycars_stock_url: created.url || null },
+    }).eq('task_id', task_id);
+
     return createJsonResponse({
       ok: true,
+      mode: 'live',
       summary,
-      stock: { stock_number, rego: payload.rego, vin: payload.vin },
+      stock: { stock_number, rego: payload.rego, vin: payload.vin, url: created.url || null },
     });
   } catch (error) {
     return createJsonResponse({ ok: false, error: String((error as any)?.message || error) }, 500);
