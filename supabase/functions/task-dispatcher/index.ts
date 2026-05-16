@@ -61,14 +61,13 @@ Deno.serve(async (req) => {
       }).select('*').single();
       try {
         let result;
-        if (task.assigned_worker === 'worker-heartbeat-check') {
-          result = await invokeWorker('worker-heartbeat-check', { task_id: task.task_id, run_id: run.run_id });
-        } else if (task.assigned_worker === 'agent-exception-diagnosis-placeholder') {
-          result = await invokeWorker('agent-exception-diagnosis-placeholder', { task_id: task.task_id, run_id: run.run_id });
-        } else if (task.payload?.simulate_failure) {
+        const fnName = WORKER_FUNCTION_MAP[task.assigned_worker];
+        if (task.payload?.simulate_failure) {
           throw new Error(`Simulated failure for ${task.task_type}`);
+        } else if (fnName) {
+          result = await invokeWorker(fnName, { task_id: task.task_id, run_id: run.run_id, task });
         } else {
-          result = { ok: true, deferred: true, summary: 'Phase 1 routed task successfully; execution deferred to later worker implementation.' };
+          result = { ok: true, deferred: true, summary: `No worker function mapped for ${task.assigned_worker}; deferred.` };
         }
         await supabase.from('task_runs').update({
           status: 'succeeded',
