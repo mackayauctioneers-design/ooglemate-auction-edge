@@ -31,6 +31,7 @@ import FindCarsPage from "./pages/FindCarsPage";
 // Operator pages
 import OperatorDashboardPage from "./pages/operator/OperatorDashboardPage";
 import OpsPage from "./pages/operator/OpsPage";
+import EasyCarsPostingPage from "./pages/operator/EasyCarsPostingPage";
 import OperatorIngestionHealthPage from "./pages/operator/OperatorIngestionHealthPage";
 import IngestionAuditPage from "./pages/operator/IngestionAuditPage";
 import CronAuditPage from "./pages/operator/CronAuditPage";
