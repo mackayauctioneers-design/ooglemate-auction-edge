@@ -25,8 +25,9 @@ Deno.serve(async (req) => {
         title: `Parse invoice from gmail ${gmailId}`,
         source: 'worker-gmail-invoice-watcher',
         priority: 'P1',
+        dedupe_key: `invoice_parse:${gmailId}`,
         payload: {
-          gmail_message_id: gmailId,
+          gmail_message_id_ref: gmailId,
           subject,
           parent_task_id: task_id,
           ...(payload.attachments ? { attachments: payload.attachments } : {}),
