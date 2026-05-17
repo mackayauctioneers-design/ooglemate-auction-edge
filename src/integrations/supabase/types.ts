@@ -10969,6 +10969,57 @@ export type Database = {
           },
         ]
       }
+      star_watch_jobs: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          debug_artifact: string | null
+          finished_at: string | null
+          id: string
+          job_id: string
+          last_error: string | null
+          listing_id: string
+          listing_url: string
+          locked_at: string | null
+          locked_by: string | null
+          source: string | null
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          debug_artifact?: string | null
+          finished_at?: string | null
+          id?: string
+          job_id: string
+          last_error?: string | null
+          listing_id: string
+          listing_url: string
+          locked_at?: string | null
+          locked_by?: string | null
+          source?: string | null
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          debug_artifact?: string | null
+          finished_at?: string | null
+          id?: string
+          job_id?: string
+          last_error?: string | null
+          listing_id?: string
+          listing_url?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          source?: string | null
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       stub_anchors: {
         Row: {
           best_match_score: number | null
@@ -15543,6 +15594,31 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "pending_stock_entry"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_next_star_watch_jobs: {
+        Args: { _limit?: number; _locked_by?: string }
+        Returns: {
+          attempt_count: number
+          created_at: string
+          debug_artifact: string | null
+          finished_at: string | null
+          id: string
+          job_id: string
+          last_error: string | null
+          listing_id: string
+          listing_url: string
+          locked_at: string | null
+          locked_by: string | null
+          source: string | null
+          started_at: string | null
+          status: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "star_watch_jobs"
           isOneToOne: false
           isSetofReturn: true
         }
