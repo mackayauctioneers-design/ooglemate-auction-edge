@@ -1,13 +1,14 @@
 /**
  * Shared ingest helper for star-watch results.
- * Used by both worker-star-watch-browser (internal) and lindy-results-webhook
- * (external compatibility). Writes to outward_search_results, updates
- * outward_jobs, then runs scoreListingsForDealer().
+ * Mirrors the lindy-results-webhook write+score pattern so internal worker
+ * and external webhook can share one downstream path.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { scoreListingsForDealer } from "../fingerprint/matchListingToFingerprint.ts";
-import type { StagedListing } from "../fingerprint/matchListingToFingerprint.ts";
+import {
+  scoreListingsForDealer,
+  type StagedListing,
+} from "../fingerprint/matchListingToFingerprint.ts";
 
 export interface IngestListing {
   listing_url: string;
@@ -21,14 +22,11 @@ export interface IngestListing {
   condition_grade?: string | null;
   condition_score?: number | null;
   major_defects?: string | null;
-  interior_notes?: string | null;
-  exterior_notes?: string | null;
-  mechanical_notes?: string | null;
 }
 
 export interface IngestPayload {
   job_id: string;
-  source_key: string;            // e.g. "star_watch", "carsales"
+  source_key: string;
   account_id?: string | null;
   job_status: "complete" | "failed" | "blocked" | "removed";
   listings: IngestListing[];
@@ -39,6 +37,7 @@ export interface IngestResult {
   ok: boolean;
   inserted: number;
   scored: number;
+  no_match: number;
   error?: string;
 }
 
@@ -47,24 +46,21 @@ export async function ingestStarWatchResult(payload: IngestPayload): Promise<Ing
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
-
   const now = new Date().toISOString();
 
-  // ── 1) update outward_jobs (audit + status mirror) ───────────────────────
+  // ── Mirror terminal status onto outward_jobs ─────────────────────────────
   await sb.from("outward_jobs").update({
     status: payload.job_status,
     completed_at: now,
-    error_message: payload.error || null,
+    error: payload.error || null,
     result_count: payload.listings.length,
-  }).eq("id", payload.job_id).then(({ error }) => {
-    if (error) console.warn("[star-watch ingest] outward_jobs update:", error.message);
-  });
+  }).eq("id", payload.job_id);
 
   if (payload.job_status !== "complete" || payload.listings.length === 0) {
-    return { ok: true, inserted: 0, scored: 0 };
+    return { ok: true, inserted: 0, scored: 0, no_match: 0 };
   }
 
-  // ── 2) insert into outward_search_results ────────────────────────────────
+  // ── Insert results ───────────────────────────────────────────────────────
   const rows = payload.listings.map((l) => ({
     job_id: payload.job_id,
     search_run_id: payload.job_id,
@@ -76,45 +72,62 @@ export async function ingestStarWatchResult(payload: IngestPayload): Promise<Ing
     year: l.year,
     state: l.state,
     source_id: l.source_id,
-    seller_name: l.seller_name ?? null,
     condition_grade: l.condition_grade ?? null,
     condition_score: l.condition_score ?? null,
     major_defects: l.major_defects ?? null,
-    interior_notes: l.interior_notes ?? null,
-    exterior_notes: l.exterior_notes ?? null,
-    mechanical_notes: l.mechanical_notes ?? null,
-    created_at: now,
+    status: "pending_score",
   }));
 
   const { error: insErr } = await sb.from("outward_search_results").insert(rows);
   if (insErr) {
-    console.error("[star-watch ingest] outward_search_results insert failed:", insErr.message);
-    return { ok: false, inserted: 0, scored: 0, error: insErr.message };
+    console.error("[star-watch ingest] insert failed:", insErr.message);
+    await sb.from("outward_jobs").update({
+      status: "failed",
+      error: `Insert failed: ${insErr.message}`,
+      completed_at: now,
+    }).eq("id", payload.job_id);
+    return { ok: false, inserted: 0, scored: 0, no_match: 0, error: insErr.message };
   }
 
-  // ── 3) score against dealer fingerprints (silent on failure) ─────────────
+  // ── Score against dealer fingerprints (skipped if no account_id) ─────────
   let scored = 0;
-  try {
-    const staged: StagedListing[] = rows.map((r) => ({
-      listing_url: r.listing_url,
-      title: r.title,
-      price_aud: r.price_aud,
-      odometer_km: r.odometer_km,
-      year: r.year,
-      state: r.state,
-      source_id: r.source_id,
-    })) as unknown as StagedListing[];
+  let no_match = 0;
+  if (payload.account_id) {
+    try {
+      const { data: profile } = await sb
+        .from("dealer_profiles")
+        .select("id")
+        .eq("account_id", payload.account_id)
+        .limit(1)
+        .maybeSingle();
 
-    const scoreOut = await scoreListingsForDealer(sb, {
-      account_id: payload.account_id ?? null,
-      listings: staged,
-      source_key: payload.source_key,
-      job_id: payload.job_id,
-    } as any);
-    scored = (scoreOut as any)?.matched ?? 0;
-  } catch (err) {
-    console.warn("[star-watch ingest] scoring failed (silent):", (err as Error).message);
+      if (profile?.id) {
+        const { data: staged } = await sb
+          .from("outward_search_results")
+          .select("id, make_norm, model_norm, variant_family, year, odometer_km, price_aud, listing_url")
+          .eq("job_id", payload.job_id)
+          .eq("status", "pending_score");
+
+        if (staged?.length) {
+          const list: StagedListing[] = staged.map((r) => ({
+            id: r.id,
+            make_norm: r.make_norm,
+            model_norm: r.model_norm,
+            variant_family: r.variant_family,
+            year: r.year,
+            odometer_km: r.odometer_km ? Number(r.odometer_km) : null,
+            price_aud: r.price_aud ? Number(r.price_aud) : null,
+            listing_url: r.listing_url,
+          }));
+          const res = await scoreListingsForDealer(sb, profile.id, list);
+          scored = res.scored;
+          no_match = res.no_match;
+        }
+      }
+    } catch (err) {
+      console.warn("[star-watch ingest] scoring failed (silent):", (err as Error).message);
+    }
   }
 
-  return { ok: true, inserted: rows.length, scored };
+  return { ok: true, inserted: rows.length, scored, no_match };
 }
