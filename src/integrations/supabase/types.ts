@@ -7738,6 +7738,51 @@ export type Database = {
         }
         Relationships: []
       }
+      outward_search_decisions: {
+        Row: {
+          ai_assisted: boolean
+          bucket: string
+          confidence_score: number | null
+          created_at: string
+          id: string
+          layer: string
+          normalized: Json | null
+          raw: Json
+          rejection_reason: string | null
+          rules_fired: string[]
+          search_run_id: string | null
+          source: string
+        }
+        Insert: {
+          ai_assisted?: boolean
+          bucket: string
+          confidence_score?: number | null
+          created_at?: string
+          id?: string
+          layer: string
+          normalized?: Json | null
+          raw: Json
+          rejection_reason?: string | null
+          rules_fired?: string[]
+          search_run_id?: string | null
+          source: string
+        }
+        Update: {
+          ai_assisted?: boolean
+          bucket?: string
+          confidence_score?: number | null
+          created_at?: string
+          id?: string
+          layer?: string
+          normalized?: Json | null
+          raw?: Json
+          rejection_reason?: string | null
+          rules_fired?: string[]
+          search_run_id?: string | null
+          source?: string
+        }
+        Relationships: []
+      }
       outward_search_results: {
         Row: {
           condition_grade: string | null
