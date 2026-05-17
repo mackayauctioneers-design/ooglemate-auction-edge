@@ -75,12 +75,15 @@ export function useStarVehicle() {
         setStarredIds((prev) => new Set(prev).add(lid));
         toast.success("⭐ Starred — added to Trading Desk");
 
-        // Dispatch CaroogleAI watch for new stars
-        supabase.functions.invoke('lindy-star-watch', {
+        // Dispatch internal star-watch (replaces Lindy/email path).
+        // NOTE: This runs only on a fresh insert. Un-starring then re-starring
+        // an existing row toggles is_starred but does NOT re-dispatch — intentional,
+        // keeps the audit trail (outward_jobs) one-per-star-event.
+        supabase.functions.invoke('star-watch-dispatch', {
           body: { listing_id: lid },
         }).then(({ error: watchErr }) => {
-          if (watchErr) console.warn("[useStarVehicle] lindy-star-watch failed:", watchErr);
-          else console.log("[useStarVehicle] lindy-star-watch dispatched for", lid);
+          if (watchErr) console.warn("[useStarVehicle] star-watch-dispatch failed:", watchErr);
+          else console.log("[useStarVehicle] star-watch-dispatch queued for", lid);
         });
       }
     } catch (err: any) {
