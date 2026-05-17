@@ -69,8 +69,7 @@ Deno.serve(async (req) => {
   // matching "well below market" or "below market" triggers the chain.
   const badge = market_indicator ? String(market_indicator) : "";
   const isWbm = /well\s+below\s+market/i.test(badge);
-  const isBelow = !isWbm && /below\s+market/i.test(badge);
-  if ((isWbm || isBelow) && listing_url && make && model && year && price) {
+  if (isWbm && listing_url && make && model && year && price) {
     try {
       const enc = new TextEncoder().encode(String(listing_url));
       const hashBuf = await crypto.subtle.digest("SHA-256", enc);
@@ -96,5 +95,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ success: true, id: data.id, wbm_dispatched: isWbm || isBelow });
+  return json({ success: true, id: data.id, wbm_dispatched: isWbm });
 });
