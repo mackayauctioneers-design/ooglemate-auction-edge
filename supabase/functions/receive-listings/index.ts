@@ -95,5 +95,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ success: true, id: data.id, wbm_dispatched: isWbm || isBelow });
+  return json({ success: true, id: data.id, wbm_dispatched: isWbm });
 });
