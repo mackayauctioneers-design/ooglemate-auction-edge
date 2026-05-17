@@ -3367,10 +3367,12 @@ export type Database = {
           listing_url: string | null
           location: string | null
           make: string | null
+          market_indicator: string | null
           mileage: number | null
           model: string | null
           price: number | null
           received_at: string
+          source: string | null
           year: number | null
         }
         Insert: {
@@ -3379,10 +3381,12 @@ export type Database = {
           listing_url?: string | null
           location?: string | null
           make?: string | null
+          market_indicator?: string | null
           mileage?: number | null
           model?: string | null
           price?: number | null
           received_at?: string
+          source?: string | null
           year?: number | null
         }
         Update: {
@@ -3391,10 +3395,12 @@ export type Database = {
           listing_url?: string | null
           location?: string | null
           make?: string | null
+          market_indicator?: string | null
           mileage?: number | null
           model?: string | null
           price?: number | null
           received_at?: string
+          source?: string | null
           year?: number | null
         }
         Relationships: []
