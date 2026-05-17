@@ -1,152 +1,161 @@
 
-# Replace Lindy with internal Star Watch worker
+## Strict Outward Search v3 — Dealer-Safe Federated Search
 
-## Goal
-Keep every downstream behaviour (`operator_opportunities`, `outward_jobs`, `outward_search_results`, `scoreListingsForDealer`, Hunts, Trading Desk, alerts) — but cut Lindy + Gmail SMTP out of the starred-vehicle path.
+Builds on the existing v2 engine (`run-outward-search-v2`, `_shared/outward-search/*`, `taxonomy/normalizeVehicleIdentity`) rather than replacing it. Adds a strict intent parser, deterministic gating, candidate classifier, and an operator debug view. AI (Gemini via Lovable AI Gateway) is used only for extraction/normalization on messy raw text — never as match authority.
 
-## Architecture (after change)
+### Architecture (3 layers, federated)
 
 ```text
-useStarVehicle.ts
-        │  (fresh insert only)
-        ▼
-star-watch-dispatch  (NEW edge fn)
-   ├─ load listing from vehicle_listings
-   ├─ insert outward_jobs row (source_key='star_watch', status='dispatched')
-   └─ insert star_watch_jobs row (status='queued')
-
-star-watch-runner    (NEW cron edge fn, every 1 min)
-   └─ claims N queued jobs (FOR UPDATE SKIP LOCKED via RPC)
-        └─ invokes worker-star-watch-browser per job
-
-worker-star-watch-browser  (NEW edge fn)
-   ├─ fetch listing URL (source-aware parser)
-   ├─ detect status: active | sold | removed | blocked
-   ├─ extract: title, price, km, year, state, seller, source_id, notes
-   └─ POST normalized payload → ingestStarWatchResult() (shared helper)
-
-_shared/star-watch/ingest.ts  (NEW, extracted from lindy-results-webhook)
-   ├─ validateListings()
-   ├─ filterDeadListings()
-   ├─ write outward_search_results
-   ├─ update outward_jobs (complete / failed / blocked / removed)
-   └─ scoreListingsForDealer()  ← unchanged downstream
+                ┌─────────────────────────────────────────┐
+ user query →   │ strict-intent-parser (regex + Gemini    │
+                │ with low-temp + uncertainty flags)      │
+                └────────────────┬────────────────────────┘
+                                 ▼
+                ┌─────────────────────────────────────────┐
+                │ federated-search orchestrator           │
+                │  L1 internal index (market/retail/vehicle_listings)
+                │  L2 operator/shadow (AutoGrab — hidden provenance)
+                │  L3 outward live (Carsales, Autotrader,  │
+                │     Gumtree, EasyAuto123, dealer sites)  │
+                └────────────────┬────────────────────────┘
+                                 ▼
+                ┌─────────────────────────────────────────┐
+                │ candidate-normalizer (taxonomy + opt    │
+                │ Gemini extraction on raw text only)     │
+                └────────────────┬────────────────────────┘
+                                 ▼
+                ┌─────────────────────────────────────────┐
+                │ deterministic gates                     │
+                │  make / model-family / generation /     │
+                │  body / variant / year                  │
+                └────────────────┬────────────────────────┘
+                                 ▼
+                ┌─────────────────────────────────────────┐
+                │ classifier → exact_match | near_match | │
+                │ ambiguous | rejected (+reason codes)    │
+                └────────────────┬────────────────────────┘
+                                 ▼
+              dealer UI: exact + safe near_match only
+              operator debug: all buckets + rule trace
 ```
 
-`lindy-results-webhook` stays mounted for backward compatibility but its body becomes a thin wrapper around the new `ingestStarWatchResult` helper.
+### Files to create
 
-## Files
+| File | Purpose |
+|---|---|
+| `supabase/functions/_shared/outward-search/strict-intent.ts` | Hybrid regex-first / Gemini-fallback parser → `StrictIntent` with per-field confidence + `ambiguous_tokens[]` |
+| `supabase/functions/_shared/outward-search/normalize-candidate.ts` | Maps any source row (internal/AutoGrab/scraped) to canonical `NormalizedCandidate` shape using `normalizeVehicleIdentity` |
+| `supabase/functions/_shared/outward-search/gates.ts` | Deterministic gate functions: `gateMake`, `gateModelFamily`, `gateGeneration`, `gateBody`, `gateVariant`, `gateYear`. Each returns `{ passed, reason_code }` |
+| `supabase/functions/_shared/outward-search/classifier.ts` | Runs all gates → `{ bucket, confidence_score, rules_fired[], rejection_reason }` |
+| `supabase/functions/_shared/outward-search/gemini-extract.ts` | Constrained Gemini extraction (low temp, JSON schema, ONLY allowed to fill missing fields from raw text; never overrides confirmed taxonomy hits) |
+| `supabase/functions/_shared/outward-search/adapters/autograb.ts` | Layer 2 adapter — strips provenance for dealer-facing output |
+| `supabase/functions/federated-search/index.ts` | New entrypoint — orchestrates L1→L2→L3 with strict gating; persists run + per-candidate decisions to `outward_search_decisions` |
+| `supabase/functions/_shared/outward-search/banned-substitutions.ts` | Hard-coded reject pairs: WRX↔Forester, LC300↔Prado, LC300↔LC200, Tiguan↔Touareg, Silverado↔Sierra, sedan↔wagon when body specified, etc. |
 
-### Create
-- `supabase/functions/star-watch-dispatch/index.ts`
-- `supabase/functions/star-watch-runner/index.ts` (cron-driven dispatcher)
-- `supabase/functions/worker-star-watch-browser/index.ts`
-- `supabase/functions/_shared/star-watch/ingest.ts` (shared helper)
-- `supabase/functions/_shared/star-watch/parsers.ts` (per-source extractors: carsales, autotrader, gumtree, pickles, grays, generic dealer)
-- SQL migration: `star_watch_jobs` table + `claim_next_star_watch_jobs(_limit int)` RPC + cron schedule
+### Files to modify
 
-### Edit
-- `src/hooks/useStarVehicle.ts` → invoke `star-watch-dispatch` instead of `lindy-star-watch`
-- `supabase/functions/lindy-results-webhook/index.ts` → delegate to shared `ingestStarWatchResult` (no behaviour change for existing Lindy posts during cutover)
+| File | Change |
+|---|---|
+| `supabase/functions/run-outward-search-v2/index.ts` | Wire through new gating layer before returning results (back-compat) |
+| `_shared/outward-search/adapters/internal-db.ts` | Emit raw `source_class` + body/series fields needed by gates |
+| `src/lib/api/ooglebot.ts` / `OogleBotSearch.tsx` | Call `federated-search` endpoint; render bucketed UI: Exact / Likely / Hidden ambiguous link |
+| `src/pages/operator/...` | Add `OperatorSearchDebugPage` reading `outward_search_decisions` |
 
-### Leave untouched
-- `lindy-star-watch` function (kept deployed for one release as fallback, deleted in follow-up)
-- `watch-scan`, `refresh-watch-statuses`, `scoreListingsForDealer`, `outward_jobs`, `outward_search_results`, `operator_opportunities`
-
-## SQL migration
+### DB migration
 
 ```sql
-create table public.star_watch_jobs (
+create table public.outward_search_decisions (
   id uuid primary key default gen_random_uuid(),
-  job_id uuid not null unique,
-  listing_id text not null,
-  listing_url text not null,
-  source text,
-  status text not null default 'queued'
-    check (status in ('queued','running','complete','failed','blocked','removed')),
-  attempt_count int not null default 0,
-  last_error text,
-  debug_artifact text,
-  created_at timestamptz not null default now(),
-  started_at timestamptz,
-  finished_at timestamptz,
-  locked_at timestamptz,
-  locked_by text
+  search_run_id uuid references outward_search_runs(id) on delete cascade,
+  source text not null,
+  layer text not null check (layer in ('internal','shadow','outward')),
+  raw jsonb not null,
+  normalized jsonb,
+  bucket text not null check (bucket in ('exact_match','near_match','ambiguous','rejected')),
+  confidence_score numeric,
+  rules_fired text[] default '{}',
+  rejection_reason text,
+  ai_assisted boolean default false,
+  created_at timestamptz default now()
 );
-create index on public.star_watch_jobs (status, created_at);
-
-alter table public.star_watch_jobs enable row level security;
-create policy "service role only" on public.star_watch_jobs for all
-  using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
-
-create or replace function public.claim_next_star_watch_jobs(_limit int default 5, _locked_by text default 'star-watch-runner')
-returns setof public.star_watch_jobs
-language plpgsql security definer set search_path = public as $$
-begin
-  return query
-  with picked as (
-    select id from public.star_watch_jobs
-    where status = 'queued'
-       or (status = 'running' and locked_at < now() - interval '5 minutes')
-    order by created_at
-    for update skip locked
-    limit _limit
-  )
-  update public.star_watch_jobs j
-     set status='running', locked_at=now(), locked_by=_locked_by,
-         attempt_count=j.attempt_count+1, started_at=coalesce(j.started_at, now())
-   from picked where j.id = picked.id
-   returning j.*;
-end $$;
-
--- pg_cron
-select cron.schedule('star-watch-runner','*/1 * * * *',
-  $$ select net.http_post(
-    url := 'https://xznchxsbuwngfmwvsvhq.functions.supabase.co/star-watch-runner',
-    headers := '{"Content-Type":"application/json"}'::jsonb
-  ) $$);
+alter table public.outward_search_decisions enable row level security;
+create policy "operators read all" on public.outward_search_decisions
+  for select to authenticated using (has_role(auth.uid(),'admin'));
 ```
 
-## Worker implementation notes
+### How deterministic gating works
 
-- Uses `fetch()` with realistic UA — no headless Chrome needed for Day-1 (Carsales/Autotrader/Gumtree all expose enough HTML/JSON-LD for status + price + km).
-- Status decision tree: HTTP 404/410 → `removed`; body matches `REMOVED_PATTERNS` (already in webhook) → `removed`; body contains "SOLD"/"under offer" markers → `sold`; Cloudflare/captcha markers → `blocked` (capture body snippet to `debug_artifact`); else `active`.
-- Source detection by URL hostname. Each parser returns `{ title, price_aud, odometer_km, year, state, seller_name, source_id, condition_notes }`. Parsers extract from `<script type="application/ld+json">` first, fall back to regex.
-- Respects 110 s `TIME_BUDGET_MS`: runner processes max ~8 jobs per tick, worker has 25 s per fetch.
-- Retries: `failed` jobs with `attempt_count < 3` are re-claimed by the cron after 5 min; `blocked` jobs retry up to 5×; `removed`/`complete` are terminal.
+Each candidate runs through gates in order. **First failure = rejected** with a reason code from this fixed set:
 
-## Frontend change
+`wrong_make` · `wrong_model_family` · `banned_substitution` · `wrong_generation` · `wrong_body` · `variant_conflict` · `year_out_of_tolerance` · `insufficient_identity_confidence` · `missing_required_fields`
 
-```ts
-// useStarVehicle.ts — only the dispatch call changes
-supabase.functions.invoke('star-watch-dispatch', { body: { listing_id: lid } })
-```
+Gates are pure functions over `(intent, candidate)`. No AI calls inside gates.
 
-Star toggle on/off and "fresh insert only" semantics preserved. Documented quirk: re-starring an existing un-starred row currently does NOT re-dispatch (fresh insert only). Keep behaviour, add a code comment so it isn't mistaken for a bug.
+- **Make**: exact equality after `normalizeVehicleIdentity.make_canonical`
+- **Model family**: exact equality on `family_key` from `taxonomy_models`; cross-checked against `banned-substitutions.ts`
+- **Generation**: uses existing `extractSeries` / `valo-series-generation-gate`; if intent has series → candidate must match or be unknown-but-year-compatible; mismatch = reject
+- **Body**: only enforced if intent body is non-null; uses taxonomy body keys (wagon, sedan, ute, suv, hatch, coupe)
+- **Variant**: token-boundary match (re-uses `badgeMatchesVariant` from v2); substring fallback never reaches dealer UI
+- **Year**: exact when intent specifies single year; ±1 only if confidence < HIGH
 
-## Failure handling
-- Worker never throws to UI — all errors land in `star_watch_jobs.last_error` and mirrored in `outward_jobs.status`.
-- Dealer-facing surfaces continue reading from `outward_search_results` / fingerprint matches only — they never see `star_watch_jobs` directly.
-- Operator debug: new operator route can be added later (out of scope) to inspect `star_watch_jobs`.
+### How Gemini is constrained
 
-## Compatibility notes
-- `lindy-results-webhook` stays callable; any in-flight Lindy emails after deploy still land cleanly.
-- `outward_jobs.source_key = 'star_watch'` unchanged — Trading Desk/My Hunts/Hunt Matches queries untouched.
-- `scoreListingsForDealer` invoked with the same payload shape as today.
+- Model: `google/gemini-3-flash-preview` via Lovable AI Gateway (`X-Lovable-AIG-SDK: vercel-ai-sdk`)
+- Two narrow jobs only:
+  1. **Intent extraction fallback** — when regex parser confidence < 0.7. JSON schema output (Zod via AI SDK `Output.object`). Required to return `ambiguous_tokens[]` for anything it could not resolve.
+  2. **Raw listing field extraction** — only fields missing after deterministic parse. Returns `{ field, value, source_snippet, model_confidence }`. Output is fed back into normalizer; **never** bypasses gates.
+- System prompt explicitly forbids inventing model/variant names; instructs to return `null` + add to `ambiguous_tokens` when unsure.
+- `temperature: 0`, response validated against schema, ai_assisted flag stamped on candidate.
 
-## Risks / assumptions
-- **Risk:** Some sources (Pickles auctions, dealer JS-rendered sites) won't yield clean data from pure `fetch`. Mitigation: parsers return `status='active'` + partial fields; downstream scoring already tolerates nulls.
-- **Risk:** Cloudflare on Carsales may return `blocked` more often than Lindy did. Mitigation: retry budget + UA rotation; if persistent, follow-up ticket to route blocked jobs to an external headless browser (Browserless/Apify) using the same worker contract.
-- **Assumption:** `pg_cron` + `pg_net` already enabled (other crons in repo prove this).
-- **Assumption:** No RLS read needed on `star_watch_jobs` from the client.
+### How ambiguous queries are handled
 
-## Unclear in current code (flagged, not changed)
-- `useStarVehicle.ts` dispatches Lindy only on **insert**, not on un-star→re-star. Intentional but undocumented. Will add comment.
-- `lindy-results-webhook` does a constant-time compare against a static secret rather than HMAC. Keeping same model for `worker-star-watch-browser` → ingest path (internal-only invoke, service role).
+If parser yields `ambiguous_tokens.length > 0` OR top-level confidence < 0.6:
+1. Frontend shows a clarification chip strip ("Did you mean: WRX sedan / WRX Sportswagon / Levorg?") built from `taxonomy_models` aliases.
+2. If dealer proceeds anyway, search runs in **constrained mode**: only L1 + L2, no outward live calls; results explicitly flagged `low_confidence_query`.
 
-## Deliverables order
-1. Migration (star_watch_jobs + RPC + cron)
-2. `_shared/star-watch/ingest.ts` + `parsers.ts`
-3. `star-watch-dispatch`, `star-watch-runner`, `worker-star-watch-browser`
-4. `useStarVehicle.ts` switch
-5. Refactor `lindy-results-webhook` to delegate to shared helper
+### Operator vs dealer-facing
+
+| Surface | Shows |
+|---|---|
+| Dealer UI (`OogleBotSearch`) | `exact_match` always; `near_match` if confidence ≥ 75; AutoGrab provenance stripped; no rejection reasons visible |
+| Operator debug page | All 4 buckets, raw + normalized JSON, rules fired, AI-assist flag, source provenance intact |
+
+### Rollout
+
+1. Migration + new shared modules (no behaviour change yet)
+2. Deploy `federated-search` edge function alongside v2 (dark)
+3. Add feature flag `use_federated_search` (per-account); test on Mackay Traders
+4. Cut frontend `OogleBotSearch` to new endpoint when flag on
+5. Add operator debug page
+6. Flip flag globally; deprecate v2 entry after 7-day clean window
+
+### Reusing current code
+
+- `normalizeVehicleIdentity` + taxonomy tables (identity governance rule already enforces single source)
+- `extractSeries` / generation gate (LC300/LC200/Prado etc. — already in `ooglebot-search` and `valo`)
+- `badgeMatchesVariant` token-boundary matcher from v2
+- `outward_search_runs` telemetry table
+- Quota / global cap in `_shared/outward-search/quota.ts`
+- Lovable AI Gateway helper pattern (per `ai-sdk-lovable-gateway` knowledge)
+
+### Risks / assumptions
+
+- AutoGrab adapter assumes the existing `autograb_listings` ingestion table is current; if stale, L2 will under-perform.
+- Outward live scraping (L3) for new sites beyond Carsales/Autotrader needs the worker-fetch pattern from the recently shipped `worker-star-watch-browser`; reusing that fetch+JSON-LD parser keeps surface area small.
+- Banned-substitution list is hand-maintained; will need operator UI later (out of scope for this round).
+- Gemini extraction adds ~400ms per messy listing — capped to top 20 candidates per source.
+
+### Unclear in current code (flagged during exploration)
+
+- `run-outward-search-v2/dispatchLoop.ts` still enqueues Lindy browse tasks via `outward_browse_queue` — needs to either be repointed at the new internal worker or left in place as a fallback. Plan: leave untouched this round, federated-search uses direct adapters only.
+- `ooglebot-search` already does some series gating client-side and server-side; we'll consolidate into the new `gates.ts` so there's one source of truth.
+
+### Order of implementation
+
+1. Migration (`outward_search_decisions`)
+2. `banned-substitutions.ts`, `gates.ts`, `classifier.ts`, `normalize-candidate.ts`
+3. `strict-intent.ts` + `gemini-extract.ts`
+4. `adapters/autograb.ts`
+5. `federated-search` edge function
+6. Frontend wiring + operator debug page
+7. Feature flag + rollout
