@@ -102,9 +102,9 @@ Deno.serve(async (req) => {
     const modelsForMake = top_models.length > 0 ? top_models : ["ALL"];
     for (const model of modelsForMake) {
       fingerprints.push({
-        fingerprint_id: `auto-${dealer_profile_id}-${make}-${model}`.toLowerCase().replace(/\s+/g, "-"),
+        fingerprint_id: `auto-${slug}-${make}-${model}`.toLowerCase().replace(/\s+/g, "-"),
         dealer_name,
-        dealer_profile_id,
+        dealer_profile_id: resolvedProfileUuid,
         make: String(make).toUpperCase(),
         model: String(model).toUpperCase(),
         year_min: year_band?.min || 2018,
