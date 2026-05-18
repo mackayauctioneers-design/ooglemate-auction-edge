@@ -77,14 +77,34 @@ Deno.serve(async (req) => {
 
   console.log(`[arby-intake] ${dealer_name} (${dealer_profile_id}) — makes: ${primary_makes.join(",")} | models: ${top_models.join(",")} | conf: ${confidence}`);
 
+  // dealer_profile_id may arrive as a UUID or as a slug (e.g. "patrick_auto_group").
+  // The DB column is uuid, so resolve slug -> UUID via dealer_name lookup; null if not found.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const slug = String(dealer_profile_id);
+  let resolvedProfileUuid: string | null = UUID_RE.test(slug) ? slug : null;
+
+  if (!resolvedProfileUuid) {
+    const { data: prof } = await sb
+      .from("dealer_profiles")
+      .select("id")
+      .ilike("dealer_name", dealer_name)
+      .maybeSingle();
+    if (prof?.id) {
+      resolvedProfileUuid = prof.id;
+      console.log(`[arby-intake] Resolved slug "${slug}" -> uuid ${resolvedProfileUuid} via dealer_name`);
+    } else {
+      console.warn(`[arby-intake] Could not resolve slug "${slug}" to a dealer_profiles.id — storing fingerprints with dealer_profile_id=null`);
+    }
+  }
+
   const fingerprints: any[] = [];
   for (const make of primary_makes) {
     const modelsForMake = top_models.length > 0 ? top_models : ["ALL"];
     for (const model of modelsForMake) {
       fingerprints.push({
-        fingerprint_id: `auto-${dealer_profile_id}-${make}-${model}`.toLowerCase().replace(/\s+/g, "-"),
+        fingerprint_id: `auto-${slug}-${make}-${model}`.toLowerCase().replace(/\s+/g, "-"),
         dealer_name,
-        dealer_profile_id,
+        dealer_profile_id: resolvedProfileUuid,
         make: String(make).toUpperCase(),
         model: String(model).toUpperCase(),
         year_min: year_band?.min || 2018,
