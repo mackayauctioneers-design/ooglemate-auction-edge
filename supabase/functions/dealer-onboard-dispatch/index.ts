@@ -1,12 +1,11 @@
 /**
- * dealer-onboard-dispatch — Dispatches a new dealer to CaroogleAI for auto-profiling.
+ * dealer-onboard-dispatch — Dispatches a new dealer to Arby (OpenClaw) for auto-profiling.
  *
- * Sends a JSON payload via email to the CaroogleAI LindyMail trigger address.
- * Uses nodemailer (npm) for reliable STARTTLS — same pattern as lindy-star-watch.
+ * POSTs directly to the Arby dispatch HTTP endpoint. Arby performs inventory + days-in-stock
+ * + business analysis and posts results back to `arby-dealer-profile-intake`.
  */
 
 // @ts-nocheck
-import nodemailer from "https://esm.sh/nodemailer@6.9.12";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,15 +13,15 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const LINDY_EMAIL = "caroogleai-dealer-profile@lindymail.ai";
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-  const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/dealer-fingerprint-webhook`;
+  const ARBY_DISPATCH_URL = Deno.env.get("ARBY_DISPATCH_URL");
+  const ARBY_DISPATCH_KEY = Deno.env.get("ARBY_DISPATCH_KEY");
+  const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/arby-dealer-profile-intake`;
 
   let body: any;
   try {
@@ -41,60 +40,61 @@ Deno.serve(async (req) => {
     );
   }
 
-  const emailPayload = {
+  if (!ARBY_DISPATCH_URL || !ARBY_DISPATCH_KEY) {
+    return new Response(
+      JSON.stringify({ error: "ARBY_DISPATCH_URL / ARBY_DISPATCH_KEY not configured" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const payload = {
     dealer_profile_id: body.dealer_profile_id,
     dealer_name: body.dealer_name,
-    dealer_website: body.dealer_website,
+    website_url: body.dealer_website,
     dealer_email: body.dealer_email || null,
+    scope: body.scope || ["inventory", "days_in_stock", "business_analysis"],
     callback_url: CALLBACK_URL,
   };
 
-  console.log(`[dealer-onboard-dispatch] Sending profiling request for: ${body.dealer_name} → ${body.dealer_website}`);
+  console.log(`[dealer-onboard-dispatch] → Arby: ${body.dealer_name} (${body.dealer_website})`);
 
   try {
-    const smtpHost = Deno.env.get("SMTP_HOST");
-    const smtpPort = Number(Deno.env.get("SMTP_PORT") || "587");
-    const smtpUser = Deno.env.get("SMTP_USERNAME");
-    const smtpPass = Deno.env.get("SMTP_PASSWORD");
-    const smtpFrom = Deno.env.get("SMTP_FROM");
+    const res = await fetch(ARBY_DISPATCH_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ARBY_DISPATCH_KEY}`,
+      },
+      body: JSON.stringify(payload),
+    });
 
-    if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
+    const responseText = await res.text();
+    let parsed: any = null;
+    try { parsed = JSON.parse(responseText); } catch { parsed = { raw: responseText }; }
+
+    if (!res.ok) {
+      console.error(`[dealer-onboard-dispatch] Arby returned ${res.status}:`, responseText);
       return new Response(
-        JSON.stringify({ error: "SMTP credentials not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Arby dispatch failed", status: res.status, detail: parsed }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
-      auth: { user: smtpUser, pass: smtpPass },
-    });
-
-    await transporter.sendMail({
-      from: smtpFrom,
-      to: LINDY_EMAIL,
-      subject: `dealer_profile — ${body.dealer_name}`,
-      text: JSON.stringify(emailPayload, null, 2),
-      html: `<pre>${JSON.stringify(emailPayload, null, 2)}</pre>`,
-    });
-
-    console.log(`[dealer-onboard-dispatch] Email dispatched to ${LINDY_EMAIL}`);
+    console.log(`[dealer-onboard-dispatch] Arby accepted profile job for ${body.dealer_profile_id}`);
 
     return new Response(
       JSON.stringify({
         status: "dispatched",
-        method: "email",
+        method: "arby_http",
         dealer_profile_id: body.dealer_profile_id,
-        message: `CaroogleAI profiling dispatched via email to ${LINDY_EMAIL}.`,
+        arby_response: parsed,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
-    console.error("[dealer-onboard-dispatch] Email dispatch error:", err);
+    console.error("[dealer-onboard-dispatch] HTTP dispatch error:", err);
     return new Response(
-      JSON.stringify({ error: "Email dispatch failed", detail: String(err) }),
+      JSON.stringify({ error: "Arby HTTP dispatch failed", detail: String(err) }),
       { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
