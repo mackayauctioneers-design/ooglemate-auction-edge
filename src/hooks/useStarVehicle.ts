@@ -76,15 +76,30 @@ export function useStarVehicle() {
         toast.success("⭐ Starred — added to Trading Desk");
 
         // Dispatch internal star-watch (replaces Lindy/email path).
-        // NOTE: This runs only on a fresh insert. Un-starring then re-starring
-        // an existing row toggles is_starred but does NOT re-dispatch — intentional,
-        // keeps the audit trail (outward_jobs) one-per-star-event.
+        const { data: { user } } = await supabase.auth.getUser();
         supabase.functions.invoke('star-watch-dispatch', {
-          body: { listing_id: lid },
+          body: { listing_id: lid, account_id: user?.id ?? null },
         }).then(({ error: watchErr }) => {
           if (watchErr) console.warn("[useStarVehicle] star-watch-dispatch failed:", watchErr);
-          else console.log("[useStarVehicle] star-watch-dispatch queued for", lid);
         });
+
+        // Fire instant ack alert (email/telegram) — silent on error.
+        if (user?.id) {
+          const vehicleStr = [vehicle.year, vehicle.make, vehicle.model, vehicle.variant].filter(Boolean).join(" ");
+          supabase.functions.invoke('dispatch-star-alert', {
+            body: {
+              dealer_id: user.id,
+              event_type: 'star_acknowledged',
+              subject: `⭐ Watching ${vehicleStr || 'vehicle'}`,
+              body_text: `You starred ${vehicleStr || lid}${vehicle.asking_price ? ` at $${vehicle.asking_price.toLocaleString()}` : ''}. Carbitrage will scrape it now and alert you on price drops and auction reminders.`,
+              listing_url: vehicle.source_url ?? undefined,
+              context: { listing_id: lid, asking_price: vehicle.asking_price ?? null },
+            },
+          }).then(({ error }) => {
+            if (error) console.warn("[useStarVehicle] dispatch-star-alert ack failed:", error);
+          });
+        }
+
       }
     } catch (err: any) {
       console.error("[useStarVehicle]", err);

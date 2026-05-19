@@ -111,6 +111,40 @@ Deno.serve(async (req) => {
     if (error) console.warn("[star-watch-result] outward_jobs:", error.message);
   });
 
+  // Fan out alert to the dealer that originally starred this (best-effort).
+  try {
+    const { data: ow } = await sb
+      .from("outward_jobs")
+      .select("account_id")
+      .eq("id", job_id)
+      .maybeSingle();
+    const dealer_id = ow?.account_id;
+    if (dealer_id && status === "complete") {
+      const vehicle = [d.year, d.make, d.model, d.variant].filter(Boolean).join(" ");
+      const price = d.price_aud ? `$${Number(d.price_aud).toLocaleString()}` : null;
+      const lines = [
+        vehicle ? `Vehicle: ${vehicle}` : null,
+        d.odometer_km ? `Odo: ${Number(d.odometer_km).toLocaleString()} km` : null,
+        price ? `Price: ${price}` : null,
+        d.auction_date ? `Auction: ${d.auction_date}` : null,
+        d.seller_name ? `Seller: ${d.seller_name}` : null,
+        d.current_status ? `Status: ${d.current_status}` : null,
+      ].filter(Boolean).join("\n");
+      await sb.functions.invoke("dispatch-star-alert", {
+        body: {
+          dealer_id,
+          event_type: "star_scrape_complete",
+          subject: `📊 Scrape complete — ${vehicle || 'starred car'}`,
+          body_text: lines || "Scrape complete.",
+          listing_url: url,
+          context: { job_id, scrape_status: status },
+        },
+      });
+    }
+  } catch (e) {
+    console.warn("[star-watch-result] dispatch-star-alert failed:", (e as Error).message);
+  }
+
   return json({ ok: true, job_id, status });
 });
 
