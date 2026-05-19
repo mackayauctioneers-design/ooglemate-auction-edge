@@ -2,6 +2,7 @@ import { ReactNode, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AppSidebar } from './AppSidebar';
 import { BobPanel } from '@/components/bob/BobPanel';
+import { WelcomeGreeter } from '@/components/bob/WelcomeGreeter';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsNestedLayout, LayoutNestingProvider } from './LayoutContext';
 
