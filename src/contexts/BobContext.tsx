@@ -221,6 +221,19 @@ export function BobContextProvider({ children }: { children: React.ReactNode }) 
     setMessages([]);
   }, []);
 
+  const greet = useCallback((text: string) => {
+    setMessages(prev => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: text,
+        timestamp: Date.now(),
+      },
+    ]);
+    setIsOpen(true);
+  }, []);
+
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || !dealerProfileId) return;
 
