@@ -177,6 +177,7 @@ export function DealerLayout({ children }: DealerLayoutProps) {
         </main>
 
         {user && <BobPanel />}
+        {user && <WelcomeGreeter />}
       </div>
 
       <AuthModal open={showAuthModal} onOpenChange={setShowAuthModal} />
