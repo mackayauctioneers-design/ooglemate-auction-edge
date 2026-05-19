@@ -399,6 +399,7 @@ export function BobContextProvider({ children }: { children: React.ReactNode }) 
       isStreaming,
       sendMessage,
       clearMessages,
+      greet,
       quickActions,
       dealerProfileId,
       dealerName,
