@@ -8,6 +8,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { BobPanel } from '@/components/bob/BobPanel';
+import { WelcomeGreeter } from '@/components/bob/WelcomeGreeter';
 
 const dealerNav = [
   { path: '/dealer-home', label: 'Trading Desk', icon: Home },
