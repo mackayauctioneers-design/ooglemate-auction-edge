@@ -77,6 +77,7 @@ interface BobContextValue {
   isStreaming: boolean;
   sendMessage: (text: string) => Promise<void>;
   clearMessages: () => void;
+  greet: (text: string) => void;
   
   // Quick actions
   quickActions: BobQuickAction[];
