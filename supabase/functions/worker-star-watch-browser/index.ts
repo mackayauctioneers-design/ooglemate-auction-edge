@@ -52,7 +52,11 @@ Deno.serve(async (req) => {
     return json({ error: "job not found", detail: jErr?.message }, 404);
   }
 
-  const dispatchUrlBase = (Deno.env.get("ARBY_DISPATCH_URL") || "").replace(/\/+$/, "");
+  // Strip trailing slashes and any leftover path segments (e.g. /dealer-profile, /star-watch)
+  // so this works whether the secret is set to the base URL or to a sibling endpoint.
+  const dispatchUrlBase = (Deno.env.get("ARBY_DISPATCH_URL") || "")
+    .replace(/\/+$/, "")
+    .replace(/\/(dealer-profile|star-watch|health)$/i, "");
   const dispatchKey = Deno.env.get("ARBY_DISPATCH_KEY");
   const ingestKey = Deno.env.get("ARBY_INGEST_KEY");
   const supaUrl = Deno.env.get("SUPABASE_URL")!;
