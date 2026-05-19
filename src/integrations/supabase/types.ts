@@ -11065,6 +11065,81 @@ export type Database = {
         }
         Relationships: []
       }
+      star_watch_results: {
+        Row: {
+          auction_date: string | null
+          current_status: string | null
+          error: string | null
+          http_status: number | null
+          id: string
+          job_id: string
+          listing_id: string | null
+          listing_url: string
+          make: string | null
+          model: string | null
+          notes: string | null
+          odometer_km: number | null
+          price_aud: number | null
+          raw: Json | null
+          received_at: string
+          scrape_status: string | null
+          seller_name: string | null
+          source: string | null
+          state: string | null
+          title: string | null
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          auction_date?: string | null
+          current_status?: string | null
+          error?: string | null
+          http_status?: number | null
+          id?: string
+          job_id: string
+          listing_id?: string | null
+          listing_url: string
+          make?: string | null
+          model?: string | null
+          notes?: string | null
+          odometer_km?: number | null
+          price_aud?: number | null
+          raw?: Json | null
+          received_at?: string
+          scrape_status?: string | null
+          seller_name?: string | null
+          source?: string | null
+          state?: string | null
+          title?: string | null
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          auction_date?: string | null
+          current_status?: string | null
+          error?: string | null
+          http_status?: number | null
+          id?: string
+          job_id?: string
+          listing_id?: string | null
+          listing_url?: string
+          make?: string | null
+          model?: string | null
+          notes?: string | null
+          odometer_km?: number | null
+          price_aud?: number | null
+          raw?: Json | null
+          received_at?: string
+          scrape_status?: string | null
+          seller_name?: string | null
+          source?: string | null
+          state?: string | null
+          title?: string | null
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       stub_anchors: {
         Row: {
           best_match_score: number | null
