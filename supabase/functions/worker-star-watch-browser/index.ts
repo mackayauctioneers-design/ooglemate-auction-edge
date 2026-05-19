@@ -1,27 +1,28 @@
 /**
- * worker-star-watch-browser — Internal browser/fetch worker that replaces Lindy.
- * Fetches the original listing URL, parses status + structured fields,
- * delegates to the shared ingest helper, and writes terminal state to
- * star_watch_jobs.
+ * worker-star-watch-browser — Dispatches starred listings to the Arby
+ * external scraper (residential network) and lets it call back into
+ * star-watch-result. We no longer fetch from the edge function IP —
+ * Cloudflare blocks it on Autotrader/Carsales/Toyota.
  *
  * POST { id: string (star_watch_jobs.id), job_id: string }
  *
- * Silent-error policy: never throws to dealer UI. All failures land in
- * star_watch_jobs.last_error + outward_jobs.error_message.
+ * Required secrets:
+ *   ARBY_DISPATCH_URL  e.g. http://76.13.213.71:3458
+ *   ARBY_DISPATCH_KEY  bearer token Arby expects
+ *   ARBY_INGEST_KEY    bearer token Arby uses when calling us back
+ *
+ * Silent-error policy: never throws to dealer UI. Failures land in
+ * star_watch_jobs.last_error.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { parseListingHtml } from "../_shared/star-watch/parsers.ts";
-import { ingestStarWatchResult } from "../_shared/star-watch/ingest.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const FETCH_TIMEOUT_MS = 25_000;
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
+const DISPATCH_TIMEOUT_MS = 15_000;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -44,83 +45,86 @@ Deno.serve(async (req) => {
 
   const { data: job, error: jErr } = await sb
     .from("star_watch_jobs")
-    .select("id, job_id, listing_id, listing_url")
+    .select("id, job_id, listing_id, listing_url, source")
     .eq("id", id)
     .maybeSingle();
   if (jErr || !job) {
     return json({ error: "job not found", detail: jErr?.message }, 404);
   }
 
-  // ── Fetch the listing ────────────────────────────────────────────────────
-  let status = 0;
-  let html = "";
-  let fetchErr: string | null = null;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const resp = await fetch(job.listing_url, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": UA,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-AU,en;q=0.9",
-      },
-    });
-    clearTimeout(timer);
-    status = resp.status;
-    html = await resp.text();
-  } catch (e) {
-    fetchErr = (e as Error).message;
+  const dispatchUrlBase = (Deno.env.get("ARBY_DISPATCH_URL") || "").replace(/\/+$/, "");
+  const dispatchKey = Deno.env.get("ARBY_DISPATCH_KEY");
+  const ingestKey = Deno.env.get("ARBY_INGEST_KEY");
+  const supaUrl = Deno.env.get("SUPABASE_URL")!;
+
+  if (!dispatchUrlBase || !dispatchKey) {
+    const msg = "ARBY_DISPATCH_URL / ARBY_DISPATCH_KEY not configured";
+    await sb.from("star_watch_jobs").update({
+      status: "failed",
+      finished_at: new Date().toISOString(),
+      last_error: msg,
+    }).eq("id", job.id);
+    return json({ error: msg }, 500);
   }
 
-  // ── Parse ────────────────────────────────────────────────────────────────
-  let parsed;
-  let terminalStatus: "complete" | "failed" | "blocked" | "removed";
-  if (fetchErr) {
-    parsed = null;
-    terminalStatus = "failed";
-  } else {
-    parsed = parseListingHtml(job.listing_url, status, html);
-    terminalStatus =
-      parsed.status === "removed" ? "removed" :
-      parsed.status === "blocked" ? "blocked" :
-      "complete";
-  }
+  const callbackUrl = `${supaUrl}/functions/v1/star-watch-result`;
+  const payload = {
+    job_id: job.job_id,
+    listing_id: job.listing_id,
+    listing_url: job.listing_url,
+    source: job.source || null,
+    callback_url: callbackUrl,
+    callback_auth: ingestKey || null,
+  };
 
-  // ── Update queue row ─────────────────────────────────────────────────────
+  // Mark running
   await sb.from("star_watch_jobs").update({
-    status: terminalStatus,
-    finished_at: new Date().toISOString(),
-    last_error: fetchErr,
-    debug_artifact: parsed?.debug || null,
+    status: "running",
+    started_at: new Date().toISOString(),
+    locked_at: new Date().toISOString(),
+    locked_by: "arby-dispatcher",
   }).eq("id", job.id);
 
-  // ── Ingest into shared downstream pipeline ───────────────────────────────
+  // Fire dispatch to Arby
+  let dispatchOk = false;
+  let dispatchErr: string | null = null;
+  let dispatchStatus = 0;
   try {
-    await ingestStarWatchResult({
-      job_id: job.job_id,
-      source_key: "star_watch",
-      account_id: null,
-      job_status: terminalStatus,
-      error: fetchErr,
-      listings: parsed && terminalStatus === "complete" ? [{
-        listing_url: job.listing_url,
-        title: parsed.title,
-        price_aud: parsed.price_aud,
-        odometer_km: parsed.odometer_km,
-        year: parsed.year,
-        state: parsed.state,
-        source_id: parsed.source_id,
-        seller_name: parsed.seller_name,
-      }] : [],
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DISPATCH_TIMEOUT_MS);
+    const resp = await fetch(`${dispatchUrlBase}/star-watch`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${dispatchKey}`,
+      },
+      body: JSON.stringify(payload),
     });
+    clearTimeout(timer);
+    dispatchStatus = resp.status;
+    dispatchOk = resp.ok;
+    if (!resp.ok) {
+      dispatchErr = `Arby dispatch returned ${resp.status}: ${(await resp.text()).slice(0, 300)}`;
+    } else {
+      // consume body
+      await resp.text();
+    }
   } catch (e) {
-    console.error("[worker-star-watch-browser] ingest threw (silent):", (e as Error).message);
+    dispatchErr = (e as Error).message;
   }
 
-  return json({ ok: true, terminal: terminalStatus, status, source: parsed?.source });
+  if (!dispatchOk) {
+    await sb.from("star_watch_jobs").update({
+      status: "failed",
+      finished_at: new Date().toISOString(),
+      last_error: dispatchErr || `dispatch http ${dispatchStatus}`,
+    }).eq("id", job.id);
+    return json({ ok: false, error: dispatchErr, status: dispatchStatus }, 502);
+  }
+
+  // Leave status = running; star-watch-result will set terminal state on callback.
+  return json({ ok: true, dispatched: true, job_id: job.job_id });
 });
 
 function json(body: unknown, status = 200) {

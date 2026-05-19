@@ -516,3 +516,6 @@ verify_jwt = false
 
 [functions.pulse-debug-counts]
 verify_jwt = false
+
+[functions.star-watch-result]
+verify_jwt = false
