@@ -519,3 +519,10 @@ verify_jwt = false
 
 [functions.star-watch-result]
 verify_jwt = false
+
+[functions.telegram-link]
+verify_jwt = false
+
+[functions.dispatch-star-alert]
+verify_jwt = false
+
