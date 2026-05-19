@@ -9,6 +9,8 @@ import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { BobPanel } from '@/components/bob/BobPanel';
 import { WelcomeGreeter } from '@/components/bob/WelcomeGreeter';
+import { NotificationSetupModal } from '@/components/notifications/NotificationSetupModal';
+
 
 const dealerNav = [
   { path: '/dealer-home', label: 'Trading Desk', icon: Home },
@@ -178,6 +180,8 @@ export function DealerLayout({ children }: DealerLayoutProps) {
 
         {user && <BobPanel />}
         {user && <WelcomeGreeter />}
+        {user && <NotificationSetupModal />}
+
       </div>
 
       <AuthModal open={showAuthModal} onOpenChange={setShowAuthModal} />

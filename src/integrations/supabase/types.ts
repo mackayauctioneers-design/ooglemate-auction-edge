@@ -1348,6 +1348,48 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_alert_log: {
+        Row: {
+          body: string | null
+          channel: string
+          context: Json | null
+          created_at: string
+          dealer_id: string
+          error: string | null
+          event_type: string
+          id: string
+          recipient: string | null
+          status: string
+          subject: string | null
+        }
+        Insert: {
+          body?: string | null
+          channel: string
+          context?: Json | null
+          created_at?: string
+          dealer_id: string
+          error?: string | null
+          event_type: string
+          id?: string
+          recipient?: string | null
+          status?: string
+          subject?: string | null
+        }
+        Update: {
+          body?: string | null
+          channel?: string
+          context?: Json | null
+          created_at?: string
+          dealer_id?: string
+          error?: string | null
+          event_type?: string
+          id?: string
+          recipient?: string | null
+          status?: string
+          subject?: string | null
+        }
+        Relationships: []
+      }
       dealer_demands: {
         Row: {
           auction_only: boolean | null
@@ -1911,11 +1953,18 @@ export type Database = {
           dealer_id: string
           email: string | null
           notify_buy: boolean | null
+          notify_star: boolean
           notify_watch: boolean | null
           phone: string | null
+          preferred_channels: string[]
+          push_enabled: boolean
           quiet_hours_end: number | null
           quiet_hours_start: number | null
+          setup_completed_at: string | null
           slack_webhook_url: string | null
+          telegram_chat_id: string | null
+          telegram_link_code: string | null
+          telegram_linked_at: string | null
           updated_at: string | null
         }
         Insert: {
@@ -1923,11 +1972,18 @@ export type Database = {
           dealer_id: string
           email?: string | null
           notify_buy?: boolean | null
+          notify_star?: boolean
           notify_watch?: boolean | null
           phone?: string | null
+          preferred_channels?: string[]
+          push_enabled?: boolean
           quiet_hours_end?: number | null
           quiet_hours_start?: number | null
+          setup_completed_at?: string | null
           slack_webhook_url?: string | null
+          telegram_chat_id?: string | null
+          telegram_link_code?: string | null
+          telegram_linked_at?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -1935,11 +1991,18 @@ export type Database = {
           dealer_id?: string
           email?: string | null
           notify_buy?: boolean | null
+          notify_star?: boolean
           notify_watch?: boolean | null
           phone?: string | null
+          preferred_channels?: string[]
+          push_enabled?: boolean
           quiet_hours_end?: number | null
           quiet_hours_start?: number | null
+          setup_completed_at?: string | null
           slack_webhook_url?: string | null
+          telegram_chat_id?: string | null
+          telegram_link_code?: string | null
+          telegram_linked_at?: string | null
           updated_at?: string | null
         }
         Relationships: []
