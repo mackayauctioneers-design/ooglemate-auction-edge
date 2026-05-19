@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Mail, Send, Bell, Copy, ExternalLink, CheckCircle2 } from "lucide-react";
 
-const TELEGRAM_BOT_USERNAME = "carbitrage_alerts_bot"; // change if your bot handle differs
+const TELEGRAM_BOT_USERNAME = "Lovablemackabot";
 
 function genCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
