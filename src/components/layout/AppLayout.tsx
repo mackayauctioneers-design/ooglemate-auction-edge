@@ -27,6 +27,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         
         {/* Bob AI Assistant — available on all pages for logged-in users */}
         {user && <BobPanel />}
+        {user && <WelcomeGreeter />}
       </div>
     </LayoutNestingProvider>
   );
