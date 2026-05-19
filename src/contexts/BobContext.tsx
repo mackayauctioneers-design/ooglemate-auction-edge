@@ -77,6 +77,7 @@ interface BobContextValue {
   isStreaming: boolean;
   sendMessage: (text: string) => Promise<void>;
   clearMessages: () => void;
+  greet: (text: string) => void;
   
   // Quick actions
   quickActions: BobQuickAction[];
@@ -218,6 +219,19 @@ export function BobContextProvider({ children }: { children: React.ReactNode }) 
 
   const clearMessages = useCallback(() => {
     setMessages([]);
+  }, []);
+
+  const greet = useCallback((text: string) => {
+    setMessages(prev => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: text,
+        timestamp: Date.now(),
+      },
+    ]);
+    setIsOpen(true);
   }, []);
 
   const sendMessage = useCallback(async (text: string) => {
@@ -385,6 +399,7 @@ export function BobContextProvider({ children }: { children: React.ReactNode }) 
       isStreaming,
       sendMessage,
       clearMessages,
+      greet,
       quickActions,
       dealerProfileId,
       dealerName,
