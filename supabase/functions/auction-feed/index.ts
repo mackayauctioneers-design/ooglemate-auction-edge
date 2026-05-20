@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
   let q = sb.from("vehicle_listings")
-    .select("id, source, make, model, variant_raw, year, km, price, asking_price, location, auction_datetime, listing_url, created_at, status")
+    .select("id, source, make, model, variant_raw, year, km, highest_bid, asking_price, guide_price, reserve_price, sold_price, location, auction_datetime, listing_url, created_at, status")
     .gte("created_at", sinceIso)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
     year: r.year,
     variant: r.variant_raw,
     km: r.km,
-    price: r.price ?? r.asking_price,
+    price: r.highest_bid ?? r.asking_price ?? r.guide_price ?? r.reserve_price ?? r.sold_price ?? null,
     location: r.location,
     auction_date: r.auction_datetime,
     url: r.listing_url,

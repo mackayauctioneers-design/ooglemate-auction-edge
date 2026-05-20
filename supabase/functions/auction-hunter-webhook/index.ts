@@ -35,20 +35,27 @@ Deno.serve(async (req) => {
     return j(400, { error: "bot_token_chat_id_message_required" });
   }
 
-  const tgRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-    }),
-  });
-
-  const tgJson = await tgRes.json().catch(() => ({}));
-  if (!tgRes.ok || !tgJson.ok) {
-    return j(502, { sent: false, telegram: tgJson });
+  try {
+    const tgRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+      }),
+    });
+    const tgJson = await tgRes.json().catch(() => ({}));
+    if (!tgRes.ok || !tgJson.ok) {
+      return j(200, {
+        sent: false,
+        error: tgJson?.description ?? `telegram_http_${tgRes.status}`,
+        telegram_status: tgRes.status,
+      });
+    }
+    return j(200, { sent: true, message_id: tgJson.result?.message_id });
+  } catch (e) {
+    return j(200, { sent: false, error: (e as Error).message ?? "telegram_fetch_failed" });
   }
-  return j(200, { sent: true, message_id: tgJson.result?.message_id });
 });
