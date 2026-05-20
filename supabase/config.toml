@@ -529,3 +529,12 @@ verify_jwt = false
 [functions.dispatch-star-alert]
 verify_jwt = false
 
+[functions.auction-feed]
+verify_jwt = false
+
+[functions.valuation-data]
+verify_jwt = false
+
+[functions.auction-hunter-webhook]
+verify_jwt = false
+
