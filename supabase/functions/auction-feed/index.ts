@@ -63,21 +63,35 @@ Deno.serve(async (req) => {
   const { data, error } = await q;
   if (error) return j(500, { error: error.message });
 
-  const listings = (data ?? []).map((r: any) => ({
-    id: r.id,
-    source: r.source,
-    make: r.make,
-    model: r.model,
-    year: r.year,
-    variant: r.variant_raw,
-    km: r.km,
-    price: r.highest_bid ?? r.asking_price ?? r.guide_price ?? r.reserve_price ?? r.sold_price ?? null,
-    location: r.location,
-    auction_date: r.auction_datetime,
-    url: r.listing_url,
-    status: r.status,
-    created_at: r.created_at,
-  }));
+  // Price hygiene: prefer hammer/sold > asking > guide > reserve > highest_bid.
+  // Reject anything < $1000 (deposits, fees, junk data) — set to null and filter out.
+  const MIN_PRICE = 1000;
+  const pickPrice = (r: any): number | null => {
+    const candidates = [r.sold_price, r.asking_price, r.guide_price, r.reserve_price, r.highest_bid];
+    for (const v of candidates) {
+      const n = typeof v === "number" ? v : (v != null ? Number(v) : NaN);
+      if (Number.isFinite(n) && n >= MIN_PRICE) return n;
+    }
+    return null;
+  };
+
+  const listings = (data ?? [])
+    .map((r: any) => ({
+      id: r.id,
+      source: r.source,
+      make: r.make,
+      model: r.model,
+      year: r.year,
+      variant: r.variant_raw,
+      km: r.km,
+      price: pickPrice(r),
+      location: r.location,
+      auction_date: r.auction_datetime,
+      url: r.listing_url,
+      status: r.status,
+      created_at: r.created_at,
+    }))
+    .filter((l: any) => l.price !== null);
 
   return j(200, { count: listings.length, listings });
 });
