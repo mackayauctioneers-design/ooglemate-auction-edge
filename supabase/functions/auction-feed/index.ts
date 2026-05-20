@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
     year: r.year,
     variant: r.variant_raw,
     km: r.km,
-    price: r.price ?? r.asking_price,
+    price: r.highest_bid ?? r.asking_price ?? r.guide_price ?? r.reserve_price ?? r.sold_price ?? null,
     location: r.location,
     auction_date: r.auction_datetime,
     url: r.listing_url,
