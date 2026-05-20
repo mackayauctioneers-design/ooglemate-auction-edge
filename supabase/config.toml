@@ -499,6 +499,9 @@ verify_jwt = false
 [functions.openclaw-read]
 verify_jwt = false
 
+[functions.openclaw-market-read]
+verify_jwt = false
+
 [functions.openclaw-write]
 verify_jwt = false
 
