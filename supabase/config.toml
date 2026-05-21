@@ -538,3 +538,13 @@ verify_jwt = false
 [functions.auction-hunter-webhook]
 verify_jwt = false
 
+[functions.dealer-replacement-match]
+verify_jwt = false
+schedule = "0 21,9 * * *"
+# Twice daily: 07:00 AEST (21:00 UTC) and 19:00 AEST (09:00 UTC)
+
+[functions.dealer-daily-report]
+verify_jwt = false
+schedule = "30 21 * * *"
+# 07:30 AEST (21:30 UTC) — morning digest
+
