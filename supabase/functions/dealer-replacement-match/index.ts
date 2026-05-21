@@ -157,10 +157,46 @@ Deno.serve(async (req) => {
       }
       stats.candidates_scanned += candidates.length;
 
-      for (const c of candidates) {
+      // Rank candidates by closeness to the fingerprint (variant, year, km/price headroom)
+      const fpVariants = (fp.variant ?? "")
+        .split(",")
+        .map((v) => v.trim().toLowerCase())
+        .filter(Boolean);
+
+      const scoreCloseness = (c: CandidateListing): number => {
+        let score = 0;
+        if (fpVariants.length === 0) {
+          score += 10;
+        } else if (c.variant) {
+          const cv = c.variant.toLowerCase();
+          const tokens = cv.split(/[\s,/-]+/);
+          const exact = fpVariants.some((v) => tokens.includes(v));
+          const partial = fpVariants.some((v) => cv.includes(v));
+          score += exact ? 40 : partial ? 20 : 0;
+        }
+        if (c.year && fp.year_min) {
+          score += Math.min(20, Math.max(0, (c.year - fp.year_min) * 4));
+        }
+        if (c.km != null && fp.max_km) {
+          score += Math.max(0, Math.round((1 - c.km / fp.max_km) * 20));
+        }
+        if (c.price != null && fp.max_price) {
+          score += Math.max(0, Math.round((1 - c.price / fp.max_price) * 20));
+        }
+        return score;
+      };
+
+      const ranked = candidates
+        .map((c) => ({ c, closeness: scoreCloseness(c) }))
+        .sort((a, b) => b.closeness - a.closeness);
+
+      for (const { c, closeness } of ranked) {
         if (c.price! > fp.max_price) continue;
         if ((c.km ?? Infinity) > fp.max_km) continue;
-        if (fp.variant && c.variant && !c.variant.toLowerCase().includes(fp.variant.toLowerCase())) continue;
+        if (fpVariants.length && c.variant) {
+          const cv = c.variant.toLowerCase();
+          if (!fpVariants.some((v) => cv.includes(v))) continue;
+        }
 
         const expectedSale = fp.expected_sale_price ?? fp.max_price + fp.min_margin;
         const margin = expectedSale - c.price!;
