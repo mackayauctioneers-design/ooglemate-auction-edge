@@ -98,7 +98,8 @@ Deno.serve(async (req) => {
     const { data: fps, error: fpErr } = await supabase
       .from("dealer_replacement_fingerprints")
       .select("*")
-      .eq("active", true);
+      .eq("active", true)
+      .eq("status", "confirmed");
     if (fpErr) throw fpErr;
     const fingerprints = (fps ?? []) as Fingerprint[];
     stats.fingerprints = fingerprints.length;
