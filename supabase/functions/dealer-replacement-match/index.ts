@@ -212,6 +212,7 @@ Deno.serve(async (req) => {
       // First filter by hard rules, then rank by closeness, then top 3 (≥50)
       const eligible: { c: CandidateListing; closeness: number; expectedSale: number; margin: number; marginPct: number }[] = [];
       for (const c of candidates) {
+        if (!c.listing_url) continue; // must have a clickable URL
         if (c.price! > fp.max_price) continue;
         if ((c.km ?? Infinity) > fp.max_km) continue;
         if (fpVariants.length && c.variant) {
