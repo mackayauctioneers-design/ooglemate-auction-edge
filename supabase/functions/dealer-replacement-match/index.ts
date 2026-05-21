@@ -157,55 +157,81 @@ Deno.serve(async (req) => {
       }
       stats.candidates_scanned += candidates.length;
 
-      // Rank candidates by closeness to the fingerprint (variant, year, km/price headroom)
+      // Fetch the most recent matching SOLD car for this fingerprint (sold reference)
+      let soldQuery = supabase
+        .from("vehicle_sales_truth")
+        .select("year, make, model, variant, km, sale_price, sold_at")
+        .ilike("make", fp.make)
+        .ilike("model", `%${fp.model}%`)
+        .order("sold_at", { ascending: false })
+        .limit(1);
+      if (fp.account_id) soldQuery = soldQuery.eq("account_id", fp.account_id);
+      const { data: soldRows } = await soldQuery;
+      const sold = soldRows?.[0] ?? null;
+
       const fpVariants = (fp.variant ?? "")
         .split(",")
         .map((v) => v.trim().toLowerCase())
         .filter(Boolean);
 
+      // Arby v2 closeness scoring vs the sold reference:
+      // year 30 / model 25 / variant 20 / km close 15 / price close 10  (max 100)
       const scoreCloseness = (c: CandidateListing): number => {
-        let score = 0;
-        if (fpVariants.length === 0) {
-          score += 10;
-        } else if (c.variant) {
+        let score = 25; // model already matched via ilike filter
+        if (sold?.year && c.year) {
+          const diff = Math.abs(c.year - sold.year);
+          score += diff === 0 ? 30 : diff === 1 ? 18 : diff === 2 ? 8 : 0;
+        } else if (c.year && fp.year_min) {
+          score += Math.min(15, Math.max(0, (c.year - fp.year_min) * 3));
+        }
+        const variantTarget = (sold?.variant ?? "").toLowerCase() || fpVariants[0] || "";
+        if (variantTarget && c.variant) {
           const cv = c.variant.toLowerCase();
-          const tokens = cv.split(/[\s,/-]+/);
-          const exact = fpVariants.some((v) => tokens.includes(v));
-          const partial = fpVariants.some((v) => cv.includes(v));
-          score += exact ? 40 : partial ? 20 : 0;
+          const tokens = cv.split(/[\s,/-]+/).filter(Boolean);
+          const targetTokens = variantTarget.split(/[\s,/-]+/).filter(Boolean);
+          const exact = targetTokens.some((t) => tokens.includes(t));
+          const partial = targetTokens.some((t) => cv.includes(t));
+          score += exact ? 20 : partial ? 12 : 0;
         }
-        if (c.year && fp.year_min) {
-          score += Math.min(20, Math.max(0, (c.year - fp.year_min) * 4));
+        const kmTarget = sold?.km ?? fp.max_km;
+        if (c.km != null && kmTarget) {
+          const gap = Math.abs(c.km - kmTarget) / Math.max(kmTarget, 1);
+          score += Math.max(0, Math.round((1 - Math.min(gap, 1)) * 15));
         }
-        if (c.km != null && fp.max_km) {
-          score += Math.max(0, Math.round((1 - c.km / fp.max_km) * 20));
-        }
-        if (c.price != null && fp.max_price) {
-          score += Math.max(0, Math.round((1 - c.price / fp.max_price) * 20));
+        const priceTarget = sold?.sale_price ?? fp.expected_sale_price ?? fp.max_price;
+        if (c.price != null && priceTarget) {
+          const gap = Math.abs(c.price - priceTarget) / Math.max(priceTarget, 1);
+          score += Math.max(0, Math.round((1 - Math.min(gap, 1)) * 10));
         }
         return score;
       };
 
-      const ranked = candidates
-        .map((c) => ({ c, closeness: scoreCloseness(c) }))
-        .sort((a, b) => b.closeness - a.closeness);
-
-      for (const { c, closeness } of ranked) {
+      // First filter by hard rules, then rank by closeness, then top 3 (≥50)
+      const eligible: { c: CandidateListing; closeness: number; expectedSale: number; margin: number; marginPct: number }[] = [];
+      for (const c of candidates) {
         if (c.price! > fp.max_price) continue;
         if ((c.km ?? Infinity) > fp.max_km) continue;
         if (fpVariants.length && c.variant) {
           const cv = c.variant.toLowerCase();
           if (!fpVariants.some((v) => cv.includes(v))) continue;
         }
-
         const expectedSale = fp.expected_sale_price ?? fp.max_price + fp.min_margin;
         const margin = expectedSale - c.price!;
         const marginPct = (margin / c.price!) * 100;
-
         if (margin < fp.min_margin) continue;
         if (marginPct < fp.min_margin_pct) continue;
+        const closeness = scoreCloseness(c);
+        if (closeness < 50) continue;
+        eligible.push({ c, closeness, expectedSale, margin, marginPct });
+      }
+      eligible.sort((a, b) => b.closeness - a.closeness);
+      const topMatches = eligible.slice(0, 3);
+      stats.matches += topMatches.length;
 
-        stats.matches++;
+      const medals = ["🥇", "🥈", "🥉"];
+      for (let i = 0; i < topMatches.length; i++) {
+        const { c, closeness, expectedSale, margin, marginPct } = topMatches[i];
+        const rank = medals[i];
 
         // Insert (idempotent via unique constraint)
         const { data: inserted, error: insErr } = await supabase
@@ -222,7 +248,7 @@ Deno.serve(async (req) => {
             expected_sale_price: expectedSale,
             est_margin: Math.round(margin),
             est_margin_pct: Number(marginPct.toFixed(1)),
-            match_reason: `closeness ${closeness} · ≤${fmt$(fp.max_price)}, ≤${fmtKm(fp.max_km)}km, margin ${fmt$(margin)} (${marginPct.toFixed(1)}%)`,
+            match_reason: `rank ${i + 1}/3 · closeness ${closeness}/100 · margin ${fmt$(margin)} (${marginPct.toFixed(1)}%)`,
           })
           .select("id")
           .maybeSingle();
@@ -237,13 +263,22 @@ Deno.serve(async (req) => {
         if (!inserted) continue;
         stats.new_alerts++;
 
+        const soldBlock = sold
+          ? `<b>${fp.dealer_name} just sold:</b>\n` +
+            `  ${sold.year ?? ""} ${sold.make ?? ""} ${sold.model ?? ""}${sold.variant ? " " + sold.variant : ""}\n` +
+            `  ${fmt$(sold.sale_price)} | ${fmtKm(sold.km)}km\n` +
+            `  Sold: ${sold.sold_at ?? "?"}\n\n`
+          : `<b>${fp.dealer_name} target profile:</b>\n` +
+            `  ${fp.make} ${fp.model}${fp.variant ? " " + fp.variant : ""} · ≤${fmt$(fp.max_price)} · ≤${fmtKm(fp.max_km)}km\n\n`;
+
         const html =
-          `🎯 <b>REPLACEMENT MATCH — ${fp.dealer_name}</b>  <i>closeness ${closeness}</i>\n` +
-          `<b>${c.year ?? ""} ${c.make ?? ""} ${c.model ?? ""}${c.variant ? " " + c.variant : ""}</b>\n` +
-          `Price: <b>${fmt$(c.price)}</b>  |  KM: ${fmtKm(c.km)}\n` +
-          `Expected sale: ${fmt$(expectedSale)}  |  Est margin: <b>${fmt$(margin)}</b> (${marginPct.toFixed(1)}%)\n` +
-          `Source: ${c.source.replace("_", " ")}\n` +
-          (c.listing_url ? `<a href="${c.listing_url}">View listing</a>` : "");
+          `${rank} <b>REPLACEMENT MATCH</b>  <i>closeness ${closeness}/100</i>\n\n` +
+          soldBlock +
+          `<b>Found replacement:</b>\n` +
+          `  ${c.year ?? ""} ${c.make ?? ""} ${c.model ?? ""}${c.variant ? " " + c.variant : ""}\n` +
+          `  ${fmt$(c.price)} | ${fmtKm(c.km)}km · ${c.source.replace("_", " ")}\n` +
+          `  Expected sale ${fmt$(expectedSale)} → margin <b>${fmt$(margin)}</b> (${marginPct.toFixed(1)}%)\n` +
+          (c.listing_url ? `  <a href="${c.listing_url}">View listing</a>` : "");
 
         const tg = await sendTelegram(html);
         await supabase
