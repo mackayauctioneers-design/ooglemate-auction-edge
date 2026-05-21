@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
             expected_sale_price: expectedSale,
             est_margin: Math.round(margin),
             est_margin_pct: Number(marginPct.toFixed(1)),
-            match_reason: `≤${fmt$(fp.max_price)}, ≤${fmtKm(fp.max_km)}km, margin ${fmt$(margin)} (${marginPct.toFixed(1)}%)`,
+            match_reason: `closeness ${closeness} · ≤${fmt$(fp.max_price)}, ≤${fmtKm(fp.max_km)}km, margin ${fmt$(margin)} (${marginPct.toFixed(1)}%)`,
           })
           .select("id")
           .maybeSingle();
@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
         stats.new_alerts++;
 
         const html =
-          `🎯 <b>REPLACEMENT MATCH — ${fp.dealer_name}</b>\n` +
+          `🎯 <b>REPLACEMENT MATCH — ${fp.dealer_name}</b>  <i>closeness ${closeness}</i>\n` +
           `<b>${c.year ?? ""} ${c.make ?? ""} ${c.model ?? ""}${c.variant ? " " + c.variant : ""}</b>\n` +
           `Price: <b>${fmt$(c.price)}</b>  |  KM: ${fmtKm(c.km)}\n` +
           `Expected sale: ${fmt$(expectedSale)}  |  Est margin: <b>${fmt$(margin)}</b> (${marginPct.toFixed(1)}%)\n` +
