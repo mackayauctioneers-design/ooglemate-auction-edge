@@ -225,14 +225,10 @@ Deno.serve(async (req) => {
         eligible.push({ c, closeness, expectedSale, margin, marginPct });
       }
       eligible.sort((a, b) => b.closeness - a.closeness);
-      const topMatches = eligible.slice(0, 3);
+      const topMatches = eligible.slice(0, 1); // v3: ONE alert per fingerprint
       stats.matches += topMatches.length;
 
-      const medals = ["🥇", "🥈", "🥉"];
-      for (let i = 0; i < topMatches.length; i++) {
-        const { c, closeness, expectedSale, margin, marginPct } = topMatches[i];
-        const rank = medals[i];
-
+      for (const { c, closeness, expectedSale, margin, marginPct } of topMatches) {
         // Insert (idempotent via unique constraint)
         const { data: inserted, error: insErr } = await supabase
           .from("dealer_replacement_alerts")
@@ -248,7 +244,7 @@ Deno.serve(async (req) => {
             expected_sale_price: expectedSale,
             est_margin: Math.round(margin),
             est_margin_pct: Number(marginPct.toFixed(1)),
-            match_reason: `rank ${i + 1}/3 · closeness ${closeness}/100 · margin ${fmt$(margin)} (${marginPct.toFixed(1)}%)`,
+            match_reason: `closest match · score ${closeness}/100 · margin ${fmt$(margin)} (${marginPct.toFixed(1)}%)`,
           })
           .select("id")
           .maybeSingle();
@@ -272,13 +268,16 @@ Deno.serve(async (req) => {
             `  ${fp.make} ${fp.model}${fp.variant ? " " + fp.variant : ""} · ≤${fmt$(fp.max_price)} · ≤${fmtKm(fp.max_km)}km\n\n`;
 
         const html =
-          `${rank} <b>REPLACEMENT MATCH</b>  <i>closeness ${closeness}/100</i>\n\n` +
+          `🟢 <b>[${fp.dealer_name.toUpperCase()}] — ${fp.model}${fp.variant ? " " + fp.variant.split(",")[0].trim() : ""} Replacement</b>\n\n` +
           soldBlock +
-          `<b>Found replacement:</b>\n` +
+          `<b>Closest match:</b>\n` +
           `  ${c.year ?? ""} ${c.make ?? ""} ${c.model ?? ""}${c.variant ? " " + c.variant : ""}\n` +
           `  ${fmt$(c.price)} | ${fmtKm(c.km)}km · ${c.source.replace("_", " ")}\n` +
-          `  Expected sale ${fmt$(expectedSale)} → margin <b>${fmt$(margin)}</b> (${marginPct.toFixed(1)}%)\n` +
-          (c.listing_url ? `  <a href="${c.listing_url}">View listing</a>` : "");
+          `  Match score: <b>${closeness}%</b>\n\n` +
+          `Buy ceiling: ${fmt$(fp.max_price)}\n` +
+          `Expected sale: ${fmt$(expectedSale)}\n` +
+          `Margin: <b>${fmt$(margin)}</b> (${marginPct.toFixed(1)}%)\n\n` +
+          (c.listing_url ? `<a href="${c.listing_url}">View listing</a>` : "");
 
         const tg = await sendTelegram(html);
         await supabase
