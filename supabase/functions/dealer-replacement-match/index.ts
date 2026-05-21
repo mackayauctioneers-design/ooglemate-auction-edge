@@ -111,23 +111,26 @@ Deno.serve(async (req) => {
       const [vl, ml] = await Promise.all([
         supabase
           .from("vehicle_listings")
-          .select("id, make, model, variant_raw, year, km, sold_price, asking_price, guide_price, reserve, highest_bid, listing_url")
+          .select("id, make, model, variant_raw, year, km, sold_price, asking_price, guide_price, reserve, highest_bid, listing_url, source")
           .ilike("make", fp.make)
           .ilike("model", `%${fp.model}%`)
           .gte("year", yearMin)
           .lte("year", yearMax)
           .lte("km", fp.max_km)
+          .not("listing_url", "is", null)
           .order("last_seen_at", { ascending: false })
           .limit(500),
         supabase
           .from("market_listings")
-          .select("id, make, model, variant_raw, year, km, price, asking_price, listing_url, status")
+          .select("id, make, model, variant_raw, year, km, price, asking_price, listing_url, status, source")
           .ilike("make", fp.make)
           .ilike("model", `%${fp.model}%`)
           .gte("year", yearMin)
           .lte("year", yearMax)
           .lte("km", fp.max_km)
           .in("status", ["active", "listed", "relisted"])
+          .not("listing_url", "is", null)
+          .not("source", "ilike", "autograb%")
           .order("last_seen_at", { ascending: false })
           .limit(500),
       ]);
@@ -209,6 +212,7 @@ Deno.serve(async (req) => {
       // First filter by hard rules, then rank by closeness, then top 3 (≥50)
       const eligible: { c: CandidateListing; closeness: number; expectedSale: number; margin: number; marginPct: number }[] = [];
       for (const c of candidates) {
+        if (!c.listing_url) continue; // must have a clickable URL
         if (c.price! > fp.max_price) continue;
         if ((c.km ?? Infinity) > fp.max_km) continue;
         if (fpVariants.length && c.variant) {
@@ -277,7 +281,7 @@ Deno.serve(async (req) => {
           `Buy ceiling: ${fmt$(fp.max_price)}\n` +
           `Expected sale: ${fmt$(expectedSale)}\n` +
           `Margin: <b>${fmt$(margin)}</b> (${marginPct.toFixed(1)}%)\n\n` +
-          (c.listing_url ? `<a href="${c.listing_url}">View listing</a>` : "");
+          `🔗 <a href="${c.listing_url}"><b>View listing</b></a>\n${c.listing_url}`;
 
         const tg = await sendTelegram(html);
         await supabase
