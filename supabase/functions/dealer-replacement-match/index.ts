@@ -111,23 +111,26 @@ Deno.serve(async (req) => {
       const [vl, ml] = await Promise.all([
         supabase
           .from("vehicle_listings")
-          .select("id, make, model, variant_raw, year, km, sold_price, asking_price, guide_price, reserve, highest_bid, listing_url")
+          .select("id, make, model, variant_raw, year, km, sold_price, asking_price, guide_price, reserve, highest_bid, listing_url, source")
           .ilike("make", fp.make)
           .ilike("model", `%${fp.model}%`)
           .gte("year", yearMin)
           .lte("year", yearMax)
           .lte("km", fp.max_km)
+          .not("listing_url", "is", null)
           .order("last_seen_at", { ascending: false })
           .limit(500),
         supabase
           .from("market_listings")
-          .select("id, make, model, variant_raw, year, km, price, asking_price, listing_url, status")
+          .select("id, make, model, variant_raw, year, km, price, asking_price, listing_url, status, source")
           .ilike("make", fp.make)
           .ilike("model", `%${fp.model}%`)
           .gte("year", yearMin)
           .lte("year", yearMax)
           .lte("km", fp.max_km)
           .in("status", ["active", "listed", "relisted"])
+          .not("listing_url", "is", null)
+          .not("source", "ilike", "autograb%")
           .order("last_seen_at", { ascending: false })
           .limit(500),
       ]);
