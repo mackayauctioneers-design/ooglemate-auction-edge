@@ -2505,6 +2505,7 @@ export type Database = {
           min_margin_pct: number
           model: string
           notes: string | null
+          status: string
           updated_at: string
           variant: string | null
           year_max: number | null
@@ -2524,6 +2525,7 @@ export type Database = {
           min_margin_pct?: number
           model: string
           notes?: string | null
+          status?: string
           updated_at?: string
           variant?: string | null
           year_max?: number | null
@@ -2543,6 +2545,7 @@ export type Database = {
           min_margin_pct?: number
           model?: string
           notes?: string | null
+          status?: string
           updated_at?: string
           variant?: string | null
           year_max?: number | null
