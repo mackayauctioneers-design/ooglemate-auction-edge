@@ -2410,6 +2410,154 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_replacement_alerts: {
+        Row: {
+          account_id: string | null
+          created_at: string
+          dealer_name: string
+          est_margin: number | null
+          est_margin_pct: number | null
+          expected_sale_price: number | null
+          fingerprint_id: string
+          id: string
+          km: number | null
+          listing_id: string
+          listing_source: string
+          listing_url: string | null
+          make: string | null
+          match_reason: string | null
+          model: string | null
+          price: number
+          telegram_error: string | null
+          telegram_message_id: string | null
+          telegram_sent: boolean
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          account_id?: string | null
+          created_at?: string
+          dealer_name: string
+          est_margin?: number | null
+          est_margin_pct?: number | null
+          expected_sale_price?: number | null
+          fingerprint_id: string
+          id?: string
+          km?: number | null
+          listing_id: string
+          listing_source: string
+          listing_url?: string | null
+          make?: string | null
+          match_reason?: string | null
+          model?: string | null
+          price: number
+          telegram_error?: string | null
+          telegram_message_id?: string | null
+          telegram_sent?: boolean
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          account_id?: string | null
+          created_at?: string
+          dealer_name?: string
+          est_margin?: number | null
+          est_margin_pct?: number | null
+          expected_sale_price?: number | null
+          fingerprint_id?: string
+          id?: string
+          km?: number | null
+          listing_id?: string
+          listing_source?: string
+          listing_url?: string | null
+          make?: string | null
+          match_reason?: string | null
+          model?: string | null
+          price?: number
+          telegram_error?: string | null
+          telegram_message_id?: string | null
+          telegram_sent?: boolean
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_replacement_alerts_fingerprint_id_fkey"
+            columns: ["fingerprint_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_replacement_fingerprints"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_replacement_fingerprints: {
+        Row: {
+          account_id: string | null
+          active: boolean
+          created_at: string
+          dealer_name: string
+          expected_sale_price: number | null
+          id: string
+          make: string
+          max_km: number
+          max_price: number
+          min_margin: number
+          min_margin_pct: number
+          model: string
+          notes: string | null
+          updated_at: string
+          variant: string | null
+          year_max: number | null
+          year_min: number | null
+        }
+        Insert: {
+          account_id?: string | null
+          active?: boolean
+          created_at?: string
+          dealer_name: string
+          expected_sale_price?: number | null
+          id?: string
+          make: string
+          max_km: number
+          max_price: number
+          min_margin?: number
+          min_margin_pct?: number
+          model: string
+          notes?: string | null
+          updated_at?: string
+          variant?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          account_id?: string | null
+          active?: boolean
+          created_at?: string
+          dealer_name?: string
+          expected_sale_price?: number | null
+          id?: string
+          make?: string
+          max_km?: number
+          max_price?: number
+          min_margin?: number
+          min_margin_pct?: number
+          model?: string
+          notes?: string | null
+          updated_at?: string
+          variant?: string | null
+          year_max?: number | null
+          year_min?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_replacement_fingerprints_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_sales: {
         Row: {
           buy_price: number | null
