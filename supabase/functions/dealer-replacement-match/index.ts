@@ -281,7 +281,7 @@ Deno.serve(async (req) => {
           `Buy ceiling: ${fmt$(fp.max_price)}\n` +
           `Expected sale: ${fmt$(expectedSale)}\n` +
           `Margin: <b>${fmt$(margin)}</b> (${marginPct.toFixed(1)}%)\n\n` +
-          (c.listing_url ? `<a href="${c.listing_url}">View listing</a>` : "");
+          `🔗 <a href="${c.listing_url}"><b>View listing</b></a>\n${c.listing_url}`;
 
         const tg = await sendTelegram(html);
         await supabase
