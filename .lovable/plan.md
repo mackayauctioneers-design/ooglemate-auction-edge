@@ -1,161 +1,89 @@
+# OpenClaw → Carbitrage Intelligence Layer
 
-## Strict Outward Search v3 — Dealer-Safe Federated Search
+Make Carbitrage (Supabase + Lovable) the permanent memory & UI. OpenClaw stays as the automation/execution layer that writes structured data back on every meaningful event.
 
-Builds on the existing v2 engine (`run-outward-search-v2`, `_shared/outward-search/*`, `taxonomy/normalizeVehicleIdentity`) rather than replacing it. Adds a strict intent parser, deterministic gating, candidate classifier, and an operator debug view. AI (Gemini via Lovable AI Gateway) is used only for extraction/normalization on messy raw text — never as match authority.
+## 1. Database (migration)
 
-### Architecture (3 layers, federated)
+Create 4 new tables in `public`, all with RLS:
 
-```text
-                ┌─────────────────────────────────────────┐
- user query →   │ strict-intent-parser (regex + Gemini    │
-                │ with low-temp + uncertainty flags)      │
-                └────────────────┬────────────────────────┘
-                                 ▼
-                ┌─────────────────────────────────────────┐
-                │ federated-search orchestrator           │
-                │  L1 internal index (market/retail/vehicle_listings)
-                │  L2 operator/shadow (AutoGrab — hidden provenance)
-                │  L3 outward live (Carsales, Autotrader,  │
-                │     Gumtree, EasyAuto123, dealer sites)  │
-                └────────────────┬────────────────────────┘
-                                 ▼
-                ┌─────────────────────────────────────────┐
-                │ candidate-normalizer (taxonomy + opt    │
-                │ Gemini extraction on raw text only)     │
-                └────────────────┬────────────────────────┘
-                                 ▼
-                ┌─────────────────────────────────────────┐
-                │ deterministic gates                     │
-                │  make / model-family / generation /     │
-                │  body / variant / year                  │
-                └────────────────┬────────────────────────┘
-                                 ▼
-                ┌─────────────────────────────────────────┐
-                │ classifier → exact_match | near_match | │
-                │ ambiguous | rejected (+reason codes)    │
-                └────────────────┬────────────────────────┘
-                                 ▼
-              dealer UI: exact + safe near_match only
-              operator debug: all buckets + rule trace
-```
+**`dealer_sales_truth`** — confirmed/likely sold vehicles
+- `dealer_id` (uuid → dealer_profiles), `stock_number`, `vin`, `make`, `model`, `variant`, `year`, `km`, `colour`, `listed_price`, `first_seen`, `last_seen`, `sold_date`, `days_online`, `sale_confidence` (0-1), `source`, `raw_snapshot` (jsonb)
+- Unique: (dealer_id, stock_number) where stock_number not null; else (dealer_id, vin); else (dealer_id, make, model, variant, year, listed_price)
+- Indexes on dealer_id, sold_date desc
 
-### Files to create
+**`dealer_replacement_fingerprints_v2`** — auto-built from sold behaviour (we already have `dealer_replacement_fingerprints`; add a derived/rolled-up table or add columns. **Decision**: extend existing table with new columns rather than create v2, to keep the working alert pipeline intact.)
+- ADD: `avg_sell_price`, `avg_days_to_sell`, `sales_velocity`, `confidence_score`, `preferred_sources` (text[]), `freight_tolerance`, `auto_built` (bool), `last_rebuilt_at`
 
-| File | Purpose |
-|---|---|
-| `supabase/functions/_shared/outward-search/strict-intent.ts` | Hybrid regex-first / Gemini-fallback parser → `StrictIntent` with per-field confidence + `ambiguous_tokens[]` |
-| `supabase/functions/_shared/outward-search/normalize-candidate.ts` | Maps any source row (internal/AutoGrab/scraped) to canonical `NormalizedCandidate` shape using `normalizeVehicleIdentity` |
-| `supabase/functions/_shared/outward-search/gates.ts` | Deterministic gate functions: `gateMake`, `gateModelFamily`, `gateGeneration`, `gateBody`, `gateVariant`, `gateYear`. Each returns `{ passed, reason_code }` |
-| `supabase/functions/_shared/outward-search/classifier.ts` | Runs all gates → `{ bucket, confidence_score, rules_fired[], rejection_reason }` |
-| `supabase/functions/_shared/outward-search/gemini-extract.ts` | Constrained Gemini extraction (low temp, JSON schema, ONLY allowed to fill missing fields from raw text; never overrides confirmed taxonomy hits) |
-| `supabase/functions/_shared/outward-search/adapters/autograb.ts` | Layer 2 adapter — strips provenance for dealer-facing output |
-| `supabase/functions/federated-search/index.ts` | New entrypoint — orchestrates L1→L2→L3 with strict gating; persists run + per-candidate decisions to `outward_search_decisions` |
-| `supabase/functions/_shared/outward-search/banned-substitutions.ts` | Hard-coded reject pairs: WRX↔Forester, LC300↔Prado, LC300↔LC200, Tiguan↔Touareg, Silverado↔Sierra, sedan↔wagon when body specified, etc. |
+**`dealer_live_opportunities`** — ranked live replacement stock
+- `dealer_id`, `source`, `listing_id`, `make`, `model`, `variant`, `year`, `km`, `price`, `estimated_margin`, `freight_cost`, `fingerprint_id`, `fingerprint_match_score`, `confidence`, `auction_date`, `listing_url`, `status` (new/seen/dismissed/won/lost), `why_json` (jsonb — reasons), `created_at`
+- Unique: (dealer_id, source, listing_id)
 
-### Files to modify
+**`dealer_daily_snapshots`** — morning intelligence rollups
+- `dealer_id`, `snapshot_date`, `sold_count`, `fast_movers` (jsonb), `aged_stock_cleared` (jsonb), `replacement_targets` (jsonb), `opportunities_found`, `notes`
+- Unique: (dealer_id, snapshot_date)
 
-| File | Change |
-|---|---|
-| `supabase/functions/run-outward-search-v2/index.ts` | Wire through new gating layer before returning results (back-compat) |
-| `_shared/outward-search/adapters/internal-db.ts` | Emit raw `source_class` + body/series fields needed by gates |
-| `src/lib/api/ooglebot.ts` / `OogleBotSearch.tsx` | Call `federated-search` endpoint; render bucketed UI: Exact / Likely / Hidden ambiguous link |
-| `src/pages/operator/...` | Add `OperatorSearchDebugPage` reading `outward_search_decisions` |
+RLS: dealers read their own (via `dealer_profiles.account_id` → `accounts` membership); operators read all; service role writes.
 
-### DB migration
+## 2. Secure ingestion endpoint for OpenClaw
 
-```sql
-create table public.outward_search_decisions (
-  id uuid primary key default gen_random_uuid(),
-  search_run_id uuid references outward_search_runs(id) on delete cascade,
-  source text not null,
-  layer text not null check (layer in ('internal','shadow','outward')),
-  raw jsonb not null,
-  normalized jsonb,
-  bucket text not null check (bucket in ('exact_match','near_match','ambiguous','rejected')),
-  confidence_score numeric,
-  rules_fired text[] default '{}',
-  rejection_reason text,
-  ai_assisted boolean default false,
-  created_at timestamptz default now()
-);
-alter table public.outward_search_decisions enable row level security;
-create policy "operators read all" on public.outward_search_decisions
-  for select to authenticated using (has_role(auth.uid(),'admin'));
-```
+New edge function `openclaw-intelligence-write` (auth: Bearer `OPENCLAW_WRITE_TOKEN` — already exists). Single endpoint, op-based:
 
-### How deterministic gating works
+- `op: "record_sold"` → upsert into `dealer_sales_truth`, recompute `days_online`
+- `op: "record_opportunity"` → upsert into `dealer_live_opportunities` (rejects rows without price, margin, fingerprint_match_score ≥ threshold)
+- `op: "rebuild_fingerprints"` → triggers fingerprint rollup for a dealer from last N sales
+- `op: "write_daily_snapshot"` → upsert into `dealer_daily_snapshots`
 
-Each candidate runs through gates in order. **First failure = rejected** with a reason code from this fixed set:
+Hard validation gates (matches the "alert rules" section):
+- Price > 0 required for opportunities
+- `fingerprint_match_score ≥ 50` required
+- `estimated_margin ≥ $1,000` required
+- Else → 400 with reason; logged in `pulse_audit`
 
-`wrong_make` · `wrong_model_family` · `banned_substitution` · `wrong_generation` · `wrong_body` · `variant_conflict` · `year_out_of_tolerance` · `insufficient_identity_confidence` · `missing_required_fields`
+## 3. Fingerprint auto-build (DB function)
 
-Gates are pure functions over `(intent, candidate)`. No AI calls inside gates.
+`rebuild_dealer_fingerprints(p_dealer_id uuid)` — aggregates `dealer_sales_truth` rows by (make, model, variant, year_range, km_band) and upserts into `dealer_replacement_fingerprints` with computed `avg_sell_price`, `avg_days_to_sell`, `sales_velocity`, `confidence_score` (based on sample size + recency). Sets `auto_built=true`. Called by OpenClaw post-ingest.
 
-- **Make**: exact equality after `normalizeVehicleIdentity.make_canonical`
-- **Model family**: exact equality on `family_key` from `taxonomy_models`; cross-checked against `banned-substitutions.ts`
-- **Generation**: uses existing `extractSeries` / `valo-series-generation-gate`; if intent has series → candidate must match or be unknown-but-year-compatible; mismatch = reject
-- **Body**: only enforced if intent body is non-null; uses taxonomy body keys (wagon, sedan, ute, suv, hatch, coupe)
-- **Variant**: token-boundary match (re-uses `badgeMatchesVariant` from v2); substring fallback never reaches dealer UI
-- **Year**: exact when intent specifies single year; ±1 only if confidence < HIGH
+## 4. Daily snapshot RPC
 
-### How Gemini is constrained
+`get_dealer_intelligence(p_dealer_id uuid)` returns JSON with: sold yesterday, sold this week, fast movers, aged cleared, replacement targets, opportunities, fingerprints summary. Used by UI.
 
-- Model: `google/gemini-3-flash-preview` via Lovable AI Gateway (`X-Lovable-AIG-SDK: vercel-ai-sdk`)
-- Two narrow jobs only:
-  1. **Intent extraction fallback** — when regex parser confidence < 0.7. JSON schema output (Zod via AI SDK `Output.object`). Required to return `ambiguous_tokens[]` for anything it could not resolve.
-  2. **Raw listing field extraction** — only fields missing after deterministic parse. Returns `{ field, value, source_snippet, model_confidence }`. Output is fed back into normalizer; **never** bypasses gates.
-- System prompt explicitly forbids inventing model/variant names; instructs to return `null` + add to `ambiguous_tokens` when unsure.
-- `temperature: 0`, response validated against schema, ai_assisted flag stamped on candidate.
+## 5. UI — Dealer Intelligence page
 
-### How ambiguous queries are handled
+New page `src/pages/operator/DealerIntelligencePage.tsx` at route `/operator/dealers/:dealerId/intelligence`. Tabs:
+- Sold Yesterday
+- Sold This Week
+- Fast Movers
+- Aged Stock Cleared
+- Current Opportunities (ranked by margin × confidence)
+- Fingerprints (auto-built + manual)
+- Auction Targets (subset of opportunities where source ∈ pickles/manheim/grays/etc.)
+- Live Alerts (recent `dealer_replacement_alerts`)
 
-If parser yields `ambiguous_tokens.length > 0` OR top-level confidence < 0.6:
-1. Frontend shows a clarification chip strip ("Did you mean: WRX sedan / WRX Sportswagon / Levorg?") built from `taxonomy_models` aliases.
-2. If dealer proceeds anyway, search runs in **constrained mode**: only L1 + L2, no outward live calls; results explicitly flagged `low_confidence_query`.
+Add entry from `DealerManagementPage` ("Intelligence" button per dealer row).
 
-### Operator vs dealer-facing
+## 6. Wire existing `dealer-replacement-match` to new layer
 
-| Surface | Shows |
-|---|---|
-| Dealer UI (`OogleBotSearch`) | `exact_match` always; `near_match` if confidence ≥ 75; AutoGrab provenance stripped; no rejection reasons visible |
-| Operator debug page | All 4 buckets, raw + normalized JSON, rules fired, AI-assist flag, source provenance intact |
+- Read fingerprints (already does, keep `status='confirmed'` filter)
+- On match → also upsert into `dealer_live_opportunities` (not just alert_logs)
+- Apply the same gates (price/margin/score) before alerting
 
-### Rollout
+## 7. Docs
 
-1. Migration + new shared modules (no behaviour change yet)
-2. Deploy `federated-search` edge function alongside v2 (dark)
-3. Add feature flag `use_federated_search` (per-account); test on Mackay Traders
-4. Cut frontend `OogleBotSearch` to new endpoint when flag on
-5. Add operator debug page
-6. Flip flag globally; deprecate v2 entry after 7-day clean window
+Update `mem://architecture/carbitrage/` with new memory: `openclaw-execution-carbitrage-memory-split-v1` documenting the boundary.
 
-### Reusing current code
+## Out of scope (handled by OpenClaw side, not Lovable)
 
-- `normalizeVehicleIdentity` + taxonomy tables (identity governance rule already enforces single source)
-- `extractSeries` / generation gate (LC300/LC200/Prado etc. — already in `ooglebot-search` and `valo`)
-- `badgeMatchesVariant` token-boundary matcher from v2
-- `outward_search_runs` telemetry table
-- Quota / global cap in `_shared/outward-search/quota.ts`
-- Lovable AI Gateway helper pattern (per `ai-sdk-lovable-gateway` knowledge)
+- Building the actual scrapers / monitors
+- The OpenClaw task scheduler
+- Outward-search workers themselves
 
-### Risks / assumptions
+Lovable delivers: the database, the secure write endpoint, the UI, and the matching pipeline gates. OpenClaw is told to call `openclaw-intelligence-write` on every sold/opportunity event.
 
-- AutoGrab adapter assumes the existing `autograb_listings` ingestion table is current; if stale, L2 will under-perform.
-- Outward live scraping (L3) for new sites beyond Carsales/Autotrader needs the worker-fetch pattern from the recently shipped `worker-star-watch-browser`; reusing that fetch+JSON-LD parser keeps surface area small.
-- Banned-substitution list is hand-maintained; will need operator UI later (out of scope for this round).
-- Gemini extraction adds ~400ms per messy listing — capped to top 20 candidates per source.
+## Technical notes
 
-### Unclear in current code (flagged during exploration)
+- All new tables: `created_at`, `updated_at` with trigger using existing `update_updated_at_column()`
+- RLS uses existing `has_role()` + dealer/account membership helpers
+- Edge function follows `openclaw-write` pattern (Bearer auth, audit logging, idempotency via `x-request-id`)
+- No changes to working `dealer-replacement-match` alert format — only adds an extra write to `dealer_live_opportunities`
 
-- `run-outward-search-v2/dispatchLoop.ts` still enqueues Lindy browse tasks via `outward_browse_queue` — needs to either be repointed at the new internal worker or left in place as a fallback. Plan: leave untouched this round, federated-search uses direct adapters only.
-- `ooglebot-search` already does some series gating client-side and server-side; we'll consolidate into the new `gates.ts` so there's one source of truth.
-
-### Order of implementation
-
-1. Migration (`outward_search_decisions`)
-2. `banned-substitutions.ts`, `gates.ts`, `classifier.ts`, `normalize-candidate.ts`
-3. `strict-intent.ts` + `gemini-extract.ts`
-4. `adapters/autograb.ts`
-5. `federated-search` edge function
-6. Frontend wiring + operator debug page
-7. Feature flag + rollout
+Approve and I'll execute in this order: migration → edge function → match-pipeline wiring → UI page → memory doc.
