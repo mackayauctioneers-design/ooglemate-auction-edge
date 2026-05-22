@@ -116,7 +116,6 @@ import FingerprintPerformancePage from "./pages/operator/FingerprintPerformanceP
 import DealerDemandDeskPage from "./pages/operator/DealerDemandDeskPage";
 import CarSalesWatchPage from "./pages/operator/CarSalesWatchPage";
 import DealerManagementPage from "./pages/operator/DealerManagementPage";
-import DealerIntelligencePage from "./pages/operator/DealerIntelligencePage";
 import AJHReportPage from "./pages/dealer/AJHReportPage";
 import DealerOpportunityFeedPage from "./pages/dealer/DealerOpportunityFeedPage";
 import BuyerTerminalPage from "./pages/fleet/BuyerTerminalPage";
