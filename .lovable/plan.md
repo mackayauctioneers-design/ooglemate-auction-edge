@@ -1,89 +1,103 @@
-# OpenClaw → Carbitrage Intelligence Layer
+## Always-On Dealer Mandate Engine
 
-Make Carbitrage (Supabase + Lovable) the permanent memory & UI. OpenClaw stays as the automation/execution layer that writes structured data back on every meaningful event.
+Most tables you listed already exist. The gap is **dealer ownership, automatic matching after every ingestion run, scoring against proven sales fingerprints, alerts, and a dealer-facing radar UI**. I'll extend, not duplicate.
 
-## 1. Database (migration)
+### What already exists (reuse as-is)
+- `active_mandates`, `mandate_feed_items`, `mandate_runs`, `mandate_alerts`
+- `dealer_fingerprints`, `dealer_sales_fingerprints`, `dealer_liquidity_profiles`
+- `demand_opportunities`, `dealer_demands`, `dealer_live_opportunities`
+- `ingestion_runs`, `ingestion_source_health`
+- `dealer_profiles` (Patrick Auto Group: `79ee6123-0065-4201-8150-2ccb247e5a85`)
 
-Create 4 new tables in `public`, all with RLS:
+### What's missing → what I'll build
 
-**`dealer_sales_truth`** — confirmed/likely sold vehicles
-- `dealer_id` (uuid → dealer_profiles), `stock_number`, `vin`, `make`, `model`, `variant`, `year`, `km`, `colour`, `listed_price`, `first_seen`, `last_seen`, `sold_date`, `days_online`, `sale_confidence` (0-1), `source`, `raw_snapshot` (jsonb)
-- Unique: (dealer_id, stock_number) where stock_number not null; else (dealer_id, vin); else (dealer_id, make, model, variant, year, listed_price)
-- Indexes on dealer_id, sold_date desc
+**1. Schema additions (single migration)**
 
-**`dealer_replacement_fingerprints_v2`** — auto-built from sold behaviour (we already have `dealer_replacement_fingerprints`; add a derived/rolled-up table or add columns. **Decision**: extend existing table with new columns rather than create v2, to keep the working alert pipeline intact.)
-- ADD: `avg_sell_price`, `avg_days_to_sell`, `sales_velocity`, `confidence_score`, `preferred_sources` (text[]), `freight_tolerance`, `auto_built` (bool), `last_rebuilt_at`
+Extend `active_mandates` with the dealer-ownership + rule columns you listed:
+- `dealer_id uuid` (FK → dealer_profiles), `account_id uuid`
+- `target_variants text[]`, `km_min int`, `buy_price_min int`
+- `preferred_body_types text[]`, `preferred_fuel text[]`, `preferred_transmission text[]`
+- `min_expected_gp int default 1500`, `high_priority_gp int default 3000`
+- `confidence_threshold text default 'medium'` (low|medium|high)
+- `excluded_makes text[]`, `excluded_models text[]`, `excluded_conditions text[]`
+- `source_priority text[]`, `alert_channels text[] default '{push,email}'`
+- `created_from_fingerprint_id uuid`
 
-**`dealer_live_opportunities`** — ranked live replacement stock
-- `dealer_id`, `source`, `listing_id`, `make`, `model`, `variant`, `year`, `km`, `price`, `estimated_margin`, `freight_cost`, `fingerprint_id`, `fingerprint_match_score`, `confidence`, `auction_date`, `listing_url`, `status` (new/seen/dismissed/won/lost), `why_json` (jsonb — reasons), `created_at`
-- Unique: (dealer_id, source, listing_id)
+Add `dealer_mandate_rules` (optional per-mandate rule overrides: condition exclusions, freight caps, manual approval flags).
 
-**`dealer_daily_snapshots`** — morning intelligence rollups
-- `dealer_id`, `snapshot_date`, `sold_count`, `fast_movers` (jsonb), `aged_stock_cleared` (jsonb), `replacement_targets` (jsonb), `opportunities_found`, `notes`
-- Unique: (dealer_id, snapshot_date)
+Extend `mandate_feed_items` with scoring columns if absent:
+- `dealer_fit_score numeric`, `confidence text`, `max_buy_price int`
+- `freight_estimate int`, `recommendation text` (BUY|WATCH|AVOID), `match_reason text`
 
-RLS: dealers read their own (via `dealer_profiles.account_id` → `accounts` membership); operators read all; service role writes.
+Add `alert_events` (unified channel-agnostic event log: dealer_id, mandate_id, feed_item_id, severity, payload, dispatched_at, channels[]).
+Add `alert_subscriptions` (dealer_id, channel, address, quiet_hours, severity_min).
 
-## 2. Secure ingestion endpoint for OpenClaw
+RLS: dealers see only rows where `dealer_id = their dealer_profile.id`; operators see all.
 
-New edge function `openclaw-intelligence-write` (auth: Bearer `OPENCLAW_WRITE_TOKEN` — already exists). Single endpoint, op-based:
+**2. Post-ingestion matcher edge function: `match-mandates-on-ingest`**
 
-- `op: "record_sold"` → upsert into `dealer_sales_truth`, recompute `days_online`
-- `op: "record_opportunity"` → upsert into `dealer_live_opportunities` (rejects rows without price, margin, fingerprint_match_score ≥ threshold)
-- `op: "rebuild_fingerprints"` → triggers fingerprint rollup for a dealer from last N sales
-- `op: "write_daily_snapshot"` → upsert into `dealer_daily_snapshots`
+Trigger sources:
+- Fires automatically at the tail of every ingestion run (Pickles, Manheim, Grays, BidsOnline, Carsales, Autotrader, dealer-site, wholesale, AutoGrab) via an `after_ingest` hook — each ingestion edge function POSTs `{run_id, source, listing_ids[]}` to it.
+- Also runnable manually + on a 10-min safety cron.
 
-Hard validation gates (matches the "alert rules" section):
-- Price > 0 required for opportunities
-- `fingerprint_match_score ≥ 50` required
-- `estimated_margin ≥ $1,000` required
-- Else → 400 with reason; logged in `pulse_audit`
+Per listing, per active mandate:
+1. Normalise via existing `normalizeVehicleIdentity` + `extractSeries`.
+2. Structural gate: make/model/variant/year/km/body/fuel/transmission/exclusions.
+3. Score: `dealer_fit_score` = make/model match (40) + variant (15) + year band (15) + km band (15) + body/fuel/trans (15).
+4. Anchor to dealer fingerprint: pull `dealer_sales_fingerprints` for that dealer+model → use proven historical buy price + avg GP. If no fingerprint → fall back to market median from `market_listings`.
+5. `expected_gp = anchor_retail - asking_price - recon_buffer - freight_estimate`.
+6. `max_buy_price = anchor_retail - desired_gp - recon - freight`.
+7. `confidence` = function of (fingerprint sample size, identity confidence, source trust).
+8. `recommendation`:
+   - BUY if `expected_gp >= high_priority_gp` AND `confidence >= medium` AND price ≤ max_buy.
+   - WATCH if `expected_gp >= min_expected_gp` OR auction closing >48h.
+   - AVOID if excluded condition / negative GP / confidence low.
+9. Upsert into `mandate_feed_items` (existing dedup on mandate_id+source+listing_id).
+10. If BUY or (WATCH + auction <48h) → insert `alert_events`; dispatcher fans out to push/email/Slack/WhatsApp via existing `notifier-default-logic`.
 
-## 3. Fingerprint auto-build (DB function)
+Time-budgeted (110s), capped per run (3k listings, 300 alerts), cursor-tracked in `scorer_cursors`.
 
-`rebuild_dealer_fingerprints(p_dealer_id uuid)` — aggregates `dealer_sales_truth` rows by (make, model, variant, year_range, km_band) and upserts into `dealer_replacement_fingerprints` with computed `avg_sell_price`, `avg_days_to_sell`, `sales_velocity`, `confidence_score` (based on sample size + recency). Sets `auto_built=true`. Called by OpenClaw post-ingest.
+**3. Patrick Isuzu Acquisition Radar mandate (data)**
 
-## 4. Daily snapshot RPC
+Update the two mandates created earlier with the new columns: dealer_id, km_min=60000, min_expected_gp=1500, high_priority_gp=3000, confidence_threshold='medium', source_priority=[pickles,manheim,grays,bidsonline,carsales,autotrader,dealer_sites], alert_channels=[push,email,whatsapp], preferred_body_types=[ute,wagon,cab_chassis], preferred_fuel=[diesel], excluded_conditions=[damaged,statutory_writeoff].
 
-`get_dealer_intelligence(p_dealer_id uuid)` returns JSON with: sold yesterday, sold this week, fast movers, aged cleared, replacement targets, opportunities, fingerprints summary. Used by UI.
+**4. Dealer Radar UI: `/dealer/radar`**
 
-## 5. UI — Dealer Intelligence page
+New page (`src/pages/dealer/DealerRadarPage.tsx`) gated by dealer auth:
+- Header: active mandate chips with last-scan timestamp + "Pause/Resume".
+- Three columns / tabs:
+  - **High Confidence (BUY)** — top 20 by `expected_gp DESC`.
+  - **Auction Closing <48h** — sorted by closing_at.
+  - **Watch / New Today** — first_seen_at within 24h.
+- Each row: year/make/model/variant, km, location + freight badge, asking price, max buy price, expected GP, confidence pill, source badge, "View listing" link, recommendation pill.
+- Filters: source, model, recommendation.
+- "Why matched" tooltip: anchor fingerprint id + sample size + comparison.
 
-New page `src/pages/operator/DealerIntelligencePage.tsx` at route `/operator/dealers/:dealerId/intelligence`. Tabs:
-- Sold Yesterday
-- Sold This Week
-- Fast Movers
-- Aged Stock Cleared
-- Current Opportunities (ranked by margin × confidence)
-- Fingerprints (auto-built + manual)
-- Auction Targets (subset of opportunities where source ∈ pickles/manheim/grays/etc.)
-- Live Alerts (recent `dealer_replacement_alerts`)
+**5. Daily radar digest: `daily-dealer-radar-digest`**
 
-Add entry from `DealerManagementPage` ("Intelligence" button per dealer row).
+Cron 07:00 AEST per active dealer:
+- Best 5 opportunities (expected_gp DESC, last 24h).
+- New listings since yesterday count + top 10.
+- Urgent auction lots (closing 24-72h, BUY only).
+- Avoided list (exclusion-triggered) with reason.
+- Supply gaps: active mandates with zero matches in 7d → flagged for sourcing.
+- Sent via email (Resend) + Slack to dealer-configured channels.
 
-## 6. Wire existing `dealer-replacement-match` to new layer
+**6. Manual search preserved**
 
-- Read fingerprints (already does, keep `status='confirmed'` filter)
-- On match → also upsert into `dealer_live_opportunities` (not just alert_logs)
-- Apply the same gates (price/margin/score) before alerting
+Existing `/mandate-feed` page stays. Patrick's radar at `/dealer/radar` is the always-on view; manual hunts route into the same `mandate_feed_items` table.
 
-## 7. Docs
+### Out of scope (explicitly deferred)
+- Wiring brand-new ingestion adapters (BidsOnline, Valley Auctions, Drive) — mandate engine is source-agnostic; those adapters land in a separate task.
+- Per-mandate AI commentary (can be enriched later via Bob).
 
-Update `mem://architecture/carbitrage/` with new memory: `openclaw-execution-carbitrage-memory-split-v1` documenting the boundary.
+### Order of execution
+1. Migration (schema additions + RLS + indexes).
+2. `match-mandates-on-ingest` edge function + cron.
+3. Hook into existing ingestion functions (single shared helper call).
+4. Patrick mandate update (data backfill via insert tool).
+5. `/dealer/radar` page + route.
+6. `daily-dealer-radar-digest` edge function + cron.
+7. Smoke test end-to-end: trigger a Pickles ingest → confirm feed_items + alert_events appear for Patrick.
 
-## Out of scope (handled by OpenClaw side, not Lovable)
-
-- Building the actual scrapers / monitors
-- The OpenClaw task scheduler
-- Outward-search workers themselves
-
-Lovable delivers: the database, the secure write endpoint, the UI, and the matching pipeline gates. OpenClaw is told to call `openclaw-intelligence-write` on every sold/opportunity event.
-
-## Technical notes
-
-- All new tables: `created_at`, `updated_at` with trigger using existing `update_updated_at_column()`
-- RLS uses existing `has_role()` + dealer/account membership helpers
-- Edge function follows `openclaw-write` pattern (Bearer auth, audit logging, idempotency via `x-request-id`)
-- No changes to working `dealer-replacement-match` alert format — only adds an extra write to `dealer_live_opportunities`
-
-Approve and I'll execute in this order: migration → edge function → match-pipeline wiring → UI page → memory doc.
+Approve and I'll start with the migration.
