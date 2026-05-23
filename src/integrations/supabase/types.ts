@@ -1390,6 +1390,56 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_daily_snapshots: {
+        Row: {
+          aged_stock_cleared: Json | null
+          created_at: string
+          dealer_id: string
+          fast_movers: Json | null
+          id: string
+          notes: string | null
+          opportunities_found: number
+          replacement_targets: Json | null
+          snapshot_date: string
+          sold_count: number
+          updated_at: string
+        }
+        Insert: {
+          aged_stock_cleared?: Json | null
+          created_at?: string
+          dealer_id: string
+          fast_movers?: Json | null
+          id?: string
+          notes?: string | null
+          opportunities_found?: number
+          replacement_targets?: Json | null
+          snapshot_date: string
+          sold_count?: number
+          updated_at?: string
+        }
+        Update: {
+          aged_stock_cleared?: Json | null
+          created_at?: string
+          dealer_id?: string
+          fast_movers?: Json | null
+          id?: string
+          notes?: string | null
+          opportunities_found?: number
+          replacement_targets?: Json | null
+          snapshot_date?: string
+          sold_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_daily_snapshots_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_demands: {
         Row: {
           auction_only: boolean | null
@@ -1732,6 +1782,93 @@ export type Database = {
           year_min?: number
         }
         Relationships: []
+      }
+      dealer_live_opportunities: {
+        Row: {
+          auction_date: string | null
+          confidence: string | null
+          created_at: string
+          dealer_id: string
+          estimated_margin: number | null
+          fingerprint_id: string | null
+          fingerprint_match_score: number | null
+          freight_cost: number | null
+          id: string
+          km: number | null
+          listing_id: string
+          listing_url: string | null
+          make: string | null
+          model: string | null
+          price: number | null
+          source: string
+          status: string
+          updated_at: string
+          variant: string | null
+          why_json: Json | null
+          year: number | null
+        }
+        Insert: {
+          auction_date?: string | null
+          confidence?: string | null
+          created_at?: string
+          dealer_id: string
+          estimated_margin?: number | null
+          fingerprint_id?: string | null
+          fingerprint_match_score?: number | null
+          freight_cost?: number | null
+          id?: string
+          km?: number | null
+          listing_id: string
+          listing_url?: string | null
+          make?: string | null
+          model?: string | null
+          price?: number | null
+          source: string
+          status?: string
+          updated_at?: string
+          variant?: string | null
+          why_json?: Json | null
+          year?: number | null
+        }
+        Update: {
+          auction_date?: string | null
+          confidence?: string | null
+          created_at?: string
+          dealer_id?: string
+          estimated_margin?: number | null
+          fingerprint_id?: string | null
+          fingerprint_match_score?: number | null
+          freight_cost?: number | null
+          id?: string
+          km?: number | null
+          listing_id?: string
+          listing_url?: string | null
+          make?: string | null
+          model?: string | null
+          price?: number | null
+          source?: string
+          status?: string
+          updated_at?: string
+          variant?: string | null
+          why_json?: Json | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_live_opportunities_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_live_opportunities_fingerprint_id_fkey"
+            columns: ["fingerprint_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_replacement_fingerprints"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dealer_match_alerts: {
         Row: {
@@ -2494,10 +2631,16 @@ export type Database = {
         Row: {
           account_id: string | null
           active: boolean
+          auto_built: boolean
+          avg_days_to_sell: number | null
+          avg_sell_price: number | null
+          confidence_score: number | null
           created_at: string
           dealer_name: string
           expected_sale_price: number | null
+          freight_tolerance: number | null
           id: string
+          last_rebuilt_at: string | null
           make: string
           max_km: number
           max_price: number
@@ -2505,6 +2648,9 @@ export type Database = {
           min_margin_pct: number
           model: string
           notes: string | null
+          preferred_sources: string[] | null
+          sales_count: number | null
+          sales_velocity: number | null
           status: string
           updated_at: string
           variant: string | null
@@ -2514,10 +2660,16 @@ export type Database = {
         Insert: {
           account_id?: string | null
           active?: boolean
+          auto_built?: boolean
+          avg_days_to_sell?: number | null
+          avg_sell_price?: number | null
+          confidence_score?: number | null
           created_at?: string
           dealer_name: string
           expected_sale_price?: number | null
+          freight_tolerance?: number | null
           id?: string
+          last_rebuilt_at?: string | null
           make: string
           max_km: number
           max_price: number
@@ -2525,6 +2677,9 @@ export type Database = {
           min_margin_pct?: number
           model: string
           notes?: string | null
+          preferred_sources?: string[] | null
+          sales_count?: number | null
+          sales_velocity?: number | null
           status?: string
           updated_at?: string
           variant?: string | null
@@ -2534,10 +2689,16 @@ export type Database = {
         Update: {
           account_id?: string | null
           active?: boolean
+          auto_built?: boolean
+          avg_days_to_sell?: number | null
+          avg_sell_price?: number | null
+          confidence_score?: number | null
           created_at?: string
           dealer_name?: string
           expected_sale_price?: number | null
+          freight_tolerance?: number | null
           id?: string
+          last_rebuilt_at?: string | null
           make?: string
           max_km?: number
           max_price?: number
@@ -2545,6 +2706,9 @@ export type Database = {
           min_margin_pct?: number
           model?: string
           notes?: string | null
+          preferred_sources?: string[] | null
+          sales_count?: number | null
+          sales_velocity?: number | null
           status?: string
           updated_at?: string
           variant?: string | null
@@ -2746,6 +2910,83 @@ export type Database = {
           year_to?: number | null
         }
         Relationships: []
+      }
+      dealer_sales_truth: {
+        Row: {
+          colour: string | null
+          created_at: string
+          days_online: number | null
+          dealer_id: string
+          first_seen: string | null
+          id: string
+          km: number | null
+          last_seen: string | null
+          listed_price: number | null
+          make: string | null
+          model: string | null
+          raw_snapshot: Json | null
+          sale_confidence: number | null
+          sold_date: string | null
+          source: string | null
+          stock_number: string | null
+          updated_at: string
+          variant: string | null
+          vin: string | null
+          year: number | null
+        }
+        Insert: {
+          colour?: string | null
+          created_at?: string
+          days_online?: number | null
+          dealer_id: string
+          first_seen?: string | null
+          id?: string
+          km?: number | null
+          last_seen?: string | null
+          listed_price?: number | null
+          make?: string | null
+          model?: string | null
+          raw_snapshot?: Json | null
+          sale_confidence?: number | null
+          sold_date?: string | null
+          source?: string | null
+          stock_number?: string | null
+          updated_at?: string
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Update: {
+          colour?: string | null
+          created_at?: string
+          days_online?: number | null
+          dealer_id?: string
+          first_seen?: string | null
+          id?: string
+          km?: number | null
+          last_seen?: string | null
+          listed_price?: number | null
+          make?: string | null
+          model?: string | null
+          raw_snapshot?: Json | null
+          sale_confidence?: number | null
+          sold_date?: string | null
+          source?: string | null
+          stock_number?: string | null
+          updated_at?: string
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_sales_truth_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dealer_settings: {
         Row: {
@@ -16705,6 +16946,7 @@ export type Database = {
           count: number
         }[]
       }
+      get_dealer_intelligence: { Args: { p_dealer_id: string }; Returns: Json }
       get_dealer_profile: {
         Args: { _user_id: string }
         Returns: {
@@ -17142,6 +17384,10 @@ export type Database = {
         Returns: {
           fingerprints_updated: number
         }[]
+      }
+      rebuild_dealer_fingerprints: {
+        Args: { p_dealer_id: string }
+        Returns: number
       }
       rebuild_platform_clusters: {
         Args: { p_account_id: string }
