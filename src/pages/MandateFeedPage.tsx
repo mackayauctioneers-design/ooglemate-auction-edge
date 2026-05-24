@@ -362,6 +362,16 @@ export default function MandateFeedPage() {
           <Button
             size="sm"
             variant="outline"
+            onClick={() => regenerateMandates.mutate()}
+            disabled={regenerateMandates.isPending}
+            title="Rebuild mandates from each dealer's sold-stock fingerprints"
+          >
+            <Sparkles className={`h-4 w-4 mr-1 ${regenerateMandates.isPending ? "animate-pulse" : ""}`} />
+            Refresh from Sales
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => triggerRun.mutate()}
             disabled={triggerRun.isPending}
           >
