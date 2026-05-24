@@ -37,63 +37,195 @@ export type Database = {
       }
       active_mandates: {
         Row: {
+          account_id: string | null
+          alert_channels: string[]
+          buy_price_min: number | null
+          confidence_threshold: string
           created_at: string
+          created_from_fingerprint_id: string | null
+          dealer_id: string | null
+          excluded_conditions: string[] | null
+          excluded_makes: string[] | null
+          excluded_models: string[] | null
+          high_priority_gp: number
           id: string
           is_active: boolean
           km_max: number | null
+          km_min: number | null
           last_run_at: string | null
           make: string
+          min_expected_gp: number
           model: string
           name: string
           next_run_at: string | null
+          preferred_body_types: string[] | null
+          preferred_fuel: string[] | null
+          preferred_transmission: string[] | null
           price_max: number | null
           priority: string
           run_frequency_minutes: number
           source_mask: string[]
+          source_priority: string[] | null
+          target_variants: string[] | null
           updated_at: string
           variant_family: string | null
           year_max: number | null
           year_min: number | null
         }
         Insert: {
+          account_id?: string | null
+          alert_channels?: string[]
+          buy_price_min?: number | null
+          confidence_threshold?: string
           created_at?: string
+          created_from_fingerprint_id?: string | null
+          dealer_id?: string | null
+          excluded_conditions?: string[] | null
+          excluded_makes?: string[] | null
+          excluded_models?: string[] | null
+          high_priority_gp?: number
           id?: string
           is_active?: boolean
           km_max?: number | null
+          km_min?: number | null
           last_run_at?: string | null
           make: string
+          min_expected_gp?: number
           model: string
           name: string
           next_run_at?: string | null
+          preferred_body_types?: string[] | null
+          preferred_fuel?: string[] | null
+          preferred_transmission?: string[] | null
           price_max?: number | null
           priority?: string
           run_frequency_minutes?: number
           source_mask?: string[]
+          source_priority?: string[] | null
+          target_variants?: string[] | null
           updated_at?: string
           variant_family?: string | null
           year_max?: number | null
           year_min?: number | null
         }
         Update: {
+          account_id?: string | null
+          alert_channels?: string[]
+          buy_price_min?: number | null
+          confidence_threshold?: string
           created_at?: string
+          created_from_fingerprint_id?: string | null
+          dealer_id?: string | null
+          excluded_conditions?: string[] | null
+          excluded_makes?: string[] | null
+          excluded_models?: string[] | null
+          high_priority_gp?: number
           id?: string
           is_active?: boolean
           km_max?: number | null
+          km_min?: number | null
           last_run_at?: string | null
           make?: string
+          min_expected_gp?: number
           model?: string
           name?: string
           next_run_at?: string | null
+          preferred_body_types?: string[] | null
+          preferred_fuel?: string[] | null
+          preferred_transmission?: string[] | null
           price_max?: number | null
           priority?: string
           run_frequency_minutes?: number
           source_mask?: string[]
+          source_priority?: string[] | null
+          target_variants?: string[] | null
           updated_at?: string
           variant_family?: string | null
           year_max?: number | null
           year_min?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "active_mandates_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      alert_events: {
+        Row: {
+          body: string | null
+          channels: string[]
+          created_at: string
+          dealer_id: string | null
+          dedup_key: string | null
+          dispatch_result: Json | null
+          dispatched_at: string | null
+          event_type: string
+          feed_item_id: string | null
+          id: string
+          mandate_id: string | null
+          payload: Json
+          severity: string
+          title: string
+        }
+        Insert: {
+          body?: string | null
+          channels?: string[]
+          created_at?: string
+          dealer_id?: string | null
+          dedup_key?: string | null
+          dispatch_result?: Json | null
+          dispatched_at?: string | null
+          event_type: string
+          feed_item_id?: string | null
+          id?: string
+          mandate_id?: string | null
+          payload?: Json
+          severity?: string
+          title: string
+        }
+        Update: {
+          body?: string | null
+          channels?: string[]
+          created_at?: string
+          dealer_id?: string | null
+          dedup_key?: string | null
+          dispatch_result?: Json | null
+          dispatched_at?: string | null
+          event_type?: string
+          feed_item_id?: string | null
+          id?: string
+          mandate_id?: string | null
+          payload?: Json
+          severity?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_events_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alert_events_feed_item_id_fkey"
+            columns: ["feed_item_id"]
+            isOneToOne: false
+            referencedRelation: "mandate_feed_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alert_events_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "active_mandates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       alert_logs: {
         Row: {
@@ -184,6 +316,53 @@ export type Database = {
           {
             foreignKeyName: "alert_logs_dealer_profile_id_fkey"
             columns: ["dealer_profile_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      alert_subscriptions: {
+        Row: {
+          address: string
+          channel: string
+          created_at: string
+          dealer_id: string
+          id: string
+          is_active: boolean
+          quiet_hours_end: string | null
+          quiet_hours_start: string | null
+          severity_min: string
+          updated_at: string
+        }
+        Insert: {
+          address: string
+          channel: string
+          created_at?: string
+          dealer_id: string
+          id?: string
+          is_active?: boolean
+          quiet_hours_end?: string | null
+          quiet_hours_start?: string | null
+          severity_min?: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string
+          channel?: string
+          created_at?: string
+          dealer_id?: string
+          id?: string
+          is_active?: boolean
+          quiet_hours_end?: string | null
+          quiet_hours_start?: string | null
+          severity_min?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_subscriptions_dealer_id_fkey"
+            columns: ["dealer_id"]
             isOneToOne: false
             referencedRelation: "dealer_profiles"
             referencedColumns: ["id"]
@@ -6793,9 +6972,14 @@ export type Database = {
           anchor_context: Json | null
           anchor_sale_id: string | null
           asking_price: number | null
+          closing_at: string | null
+          confidence: string | null
           created_at: string
+          dealer_fit_score: number | null
+          dealer_id: string | null
           expected_margin: number | null
           first_seen_at: string
+          freight_estimate: number | null
           id: string
           km: number | null
           last_price: number | null
@@ -6804,11 +6988,15 @@ export type Database = {
           location: string | null
           make: string | null
           mandate_id: string
+          match_reason: string | null
+          max_buy_price: number | null
           model: string | null
           price_changed_at: string | null
           price_delta: number | null
           raw: Json | null
+          recommendation: string | null
           score: number | null
+          scored_at: string | null
           source: string
           source_url: string | null
           under_buy: number | null
@@ -6819,9 +7007,14 @@ export type Database = {
           anchor_context?: Json | null
           anchor_sale_id?: string | null
           asking_price?: number | null
+          closing_at?: string | null
+          confidence?: string | null
           created_at?: string
+          dealer_fit_score?: number | null
+          dealer_id?: string | null
           expected_margin?: number | null
           first_seen_at?: string
+          freight_estimate?: number | null
           id?: string
           km?: number | null
           last_price?: number | null
@@ -6830,11 +7023,15 @@ export type Database = {
           location?: string | null
           make?: string | null
           mandate_id: string
+          match_reason?: string | null
+          max_buy_price?: number | null
           model?: string | null
           price_changed_at?: string | null
           price_delta?: number | null
           raw?: Json | null
+          recommendation?: string | null
           score?: number | null
+          scored_at?: string | null
           source: string
           source_url?: string | null
           under_buy?: number | null
@@ -6845,9 +7042,14 @@ export type Database = {
           anchor_context?: Json | null
           anchor_sale_id?: string | null
           asking_price?: number | null
+          closing_at?: string | null
+          confidence?: string | null
           created_at?: string
+          dealer_fit_score?: number | null
+          dealer_id?: string | null
           expected_margin?: number | null
           first_seen_at?: string
+          freight_estimate?: number | null
           id?: string
           km?: number | null
           last_price?: number | null
@@ -6856,11 +7058,15 @@ export type Database = {
           location?: string | null
           make?: string | null
           mandate_id?: string
+          match_reason?: string | null
+          max_buy_price?: number | null
           model?: string | null
           price_changed_at?: string | null
           price_delta?: number | null
           raw?: Json | null
+          recommendation?: string | null
           score?: number | null
+          scored_at?: string | null
           source?: string
           source_url?: string | null
           under_buy?: number | null
@@ -16530,6 +16736,21 @@ export type Database = {
             }
             Returns: string
           }
+      enqueue_alert_event: {
+        Args: {
+          _body: string
+          _channels: string[]
+          _dealer_id: string
+          _dedup_key: string
+          _event_type: string
+          _feed_item_id: string
+          _mandate_id: string
+          _payload: Json
+          _severity: string
+          _title: string
+        }
+        Returns: string
+      }
       escalate_stale_va_tasks: { Args: never; Returns: Json }
       evaluate_and_emit_trigger: {
         Args: { p_config_version: string; p_listing_id: string }
@@ -17731,6 +17952,7 @@ export type Database = {
           updated_count: number
         }[]
       }
+      user_owns_dealer: { Args: { _dealer_id: string }; Returns: boolean }
       year_to_band: {
         Args: { p_year: number }
         Returns: {

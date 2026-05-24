@@ -1,103 +1,61 @@
-## Always-On Dealer Mandate Engine
+# Dynamic Mandate Generation from Sold-Stock Fingerprints
 
-Most tables you listed already exist. The gap is **dealer ownership, automatic matching after every ingestion run, scoring against proven sales fingerprints, alerts, and a dealer-facing radar UI**. I'll extend, not duplicate.
+## Goal
+Stop hand-creating one mandate per model. Instead, every dealer's `dealer_fingerprints` rows automatically become `active_mandates` whenever they meet a profitability/repeatability threshold. `run-mandates` (already scheduled) then continuously scans market supply against them.
 
-### What already exists (reuse as-is)
-- `active_mandates`, `mandate_feed_items`, `mandate_runs`, `mandate_alerts`
-- `dealer_fingerprints`, `dealer_sales_fingerprints`, `dealer_liquidity_profiles`
-- `demand_opportunities`, `dealer_demands`, `dealer_live_opportunities`
-- `ingestion_runs`, `ingestion_source_health`
-- `dealer_profiles` (Patrick Auto Group: `79ee6123-0065-4201-8150-2ccb247e5a85`)
+No new tables. No Patrick-specific logic. No parallel matcher. Reuses the existing pipeline:
 
-### What's missing → what I'll build
+```
+vehicle_sales_truth
+  → recompute-fingerprint-performance (existing daily cron)
+  → dealer_fingerprints (avg_profit, sales_count, fingerprint_priority)
+  → generate-dealer-mandates  ← NEW (daily)
+  → active_mandates
+  → run-mandates  (existing, every 15 min)
+  → mandate_feed_items / mandate_alerts
+  → dealer dashboard (existing)
+```
 
-**1. Schema additions (single migration)**
+## Changes
 
-Extend `active_mandates` with the dealer-ownership + rule columns you listed:
-- `dealer_id uuid` (FK → dealer_profiles), `account_id uuid`
-- `target_variants text[]`, `km_min int`, `buy_price_min int`
-- `preferred_body_types text[]`, `preferred_fuel text[]`, `preferred_transmission text[]`
-- `min_expected_gp int default 1500`, `high_priority_gp int default 3000`
-- `confidence_threshold text default 'medium'` (low|medium|high)
-- `excluded_makes text[]`, `excluded_models text[]`, `excluded_conditions text[]`
-- `source_priority text[]`, `alert_channels text[] default '{push,email}'`
-- `created_from_fingerprint_id uuid`
+### 1. New edge function: `generate-dealer-mandates`
+For every dealer with rows in `dealer_fingerprints`:
+- Select fingerprints where `is_active = true`, `sales_count >= 2`, `avg_profit >= 1500`.
+- For each, upsert into `active_mandates` keyed on `(dealer_id, make, model, variant_family)`:
+  - `make`, `model`, `variant_family` from the fingerprint
+  - `year_min/max` from fingerprint `year_min/year_max` (widen ±1 year)
+  - `km_min/km_max` from fingerprint `min_km/max_km` (widen +20k upper)
+  - `min_expected_gp = max(1500, round(avg_profit * 0.5))`
+  - `high_priority_gp = round(avg_profit * 0.8)`
+  - `priority` ← map from `fingerprint_priority` (HIGH=1, MEDIUM=2, LOW=3)
+  - `source_mask` / `source_priority` ← project defaults (pickles, manheim, grays, bidsonline, carsales, autotrader, dealer_sites)
+  - `alert_channels = ['push','email']`
+  - `created_from_fingerprint_id` ← fingerprint id
+  - `is_active = true`, `run_frequency_minutes = 60`
+- For mandates previously auto-generated whose source fingerprint no longer qualifies (sales_count dropped, marked is_active=false), set `is_active = false`. Never delete — preserves history.
+- Returns `{ dealers_processed, mandates_created, mandates_updated, mandates_deactivated }`.
 
-Add `dealer_mandate_rules` (optional per-mandate rule overrides: condition exclusions, freight caps, manual approval flags).
+Time-budgeted (110 s cap), batched per dealer.
 
-Extend `mandate_feed_items` with scoring columns if absent:
-- `dealer_fit_score numeric`, `confidence text`, `max_buy_price int`
-- `freight_estimate int`, `recommendation text` (BUY|WATCH|AVOID), `match_reason text`
+### 2. Schedule
+Add `pg_cron` job `generate-dealer-mandates-daily` at `15 3 * * *` (15 min after the existing `recompute-fingerprint-performance-daily` at `0 3 * * *`).
 
-Add `alert_events` (unified channel-agnostic event log: dealer_id, mandate_id, feed_item_id, severity, payload, dispatched_at, channels[]).
-Add `alert_subscriptions` (dealer_id, channel, address, quiet_hours, severity_min).
+### 3. Manual trigger
+Wire a "Refresh mandates from sales history" button into the existing operator mandates page (no new page). Calls the same function.
 
-RLS: dealers see only rows where `dealer_id = their dealer_profile.id`; operators see all.
+### 4. Dashboard
+No code change — dealer dashboard already reads `mandate_feed_items` filtered by `mandate_id → active_mandates.dealer_id`. New mandates flow through automatically.
 
-**2. Post-ingestion matcher edge function: `match-mandates-on-ingest`**
+## Out of scope
+- Building new dashboards or alert channels.
+- Adapter changes — `run-mandates` already handles all sources.
+- Backfilling Patrick's sales data — that's a separate sold-stock upload task (blocker: 0 rows in `vehicle_sales_truth` for Patrick's account).
 
-Trigger sources:
-- Fires automatically at the tail of every ingestion run (Pickles, Manheim, Grays, BidsOnline, Carsales, Autotrader, dealer-site, wholesale, AutoGrab) via an `after_ingest` hook — each ingestion edge function POSTs `{run_id, source, listing_ids[]}` to it.
-- Also runnable manually + on a 10-min safety cron.
+## Patrick blocker (will not be resolved by this change)
+Patrick's account `d8ed6d5c-3284-4b76-a17e-f1f000afe827` has 0 rows in `vehicle_sales_truth` and 0 `dealer_fingerprints`. Until his sold-stock CSV/invoices are ingested via the existing `dealer-sales-upload` flow, generation will produce 0 mandates for him. The two hardcoded Isuzu mandates from the previous step remain as placeholders and will keep running every 15 min via the cron we already added.
 
-Per listing, per active mandate:
-1. Normalise via existing `normalizeVehicleIdentity` + `extractSeries`.
-2. Structural gate: make/model/variant/year/km/body/fuel/transmission/exclusions.
-3. Score: `dealer_fit_score` = make/model match (40) + variant (15) + year band (15) + km band (15) + body/fuel/trans (15).
-4. Anchor to dealer fingerprint: pull `dealer_sales_fingerprints` for that dealer+model → use proven historical buy price + avg GP. If no fingerprint → fall back to market median from `market_listings`.
-5. `expected_gp = anchor_retail - asking_price - recon_buffer - freight_estimate`.
-6. `max_buy_price = anchor_retail - desired_gp - recon - freight`.
-7. `confidence` = function of (fingerprint sample size, identity confidence, source trust).
-8. `recommendation`:
-   - BUY if `expected_gp >= high_priority_gp` AND `confidence >= medium` AND price ≤ max_buy.
-   - WATCH if `expected_gp >= min_expected_gp` OR auction closing >48h.
-   - AVOID if excluded condition / negative GP / confidence low.
-9. Upsert into `mandate_feed_items` (existing dedup on mandate_id+source+listing_id).
-10. If BUY or (WATCH + auction <48h) → insert `alert_events`; dispatcher fans out to push/email/Slack/WhatsApp via existing `notifier-default-logic`.
+Once his sales data lands, the next 03:15 run auto-generates mandates for every profitable model in his history (Amarok, Silverado, Santa Fe, CX-5, Vitara, etc.) without any per-dealer code.
 
-Time-budgeted (110s), capped per run (3k listings, 300 alerts), cursor-tracked in `scorer_cursors`.
-
-**3. Patrick Isuzu Acquisition Radar mandate (data)**
-
-Update the two mandates created earlier with the new columns: dealer_id, km_min=60000, min_expected_gp=1500, high_priority_gp=3000, confidence_threshold='medium', source_priority=[pickles,manheim,grays,bidsonline,carsales,autotrader,dealer_sites], alert_channels=[push,email,whatsapp], preferred_body_types=[ute,wagon,cab_chassis], preferred_fuel=[diesel], excluded_conditions=[damaged,statutory_writeoff].
-
-**4. Dealer Radar UI: `/dealer/radar`**
-
-New page (`src/pages/dealer/DealerRadarPage.tsx`) gated by dealer auth:
-- Header: active mandate chips with last-scan timestamp + "Pause/Resume".
-- Three columns / tabs:
-  - **High Confidence (BUY)** — top 20 by `expected_gp DESC`.
-  - **Auction Closing <48h** — sorted by closing_at.
-  - **Watch / New Today** — first_seen_at within 24h.
-- Each row: year/make/model/variant, km, location + freight badge, asking price, max buy price, expected GP, confidence pill, source badge, "View listing" link, recommendation pill.
-- Filters: source, model, recommendation.
-- "Why matched" tooltip: anchor fingerprint id + sample size + comparison.
-
-**5. Daily radar digest: `daily-dealer-radar-digest`**
-
-Cron 07:00 AEST per active dealer:
-- Best 5 opportunities (expected_gp DESC, last 24h).
-- New listings since yesterday count + top 10.
-- Urgent auction lots (closing 24-72h, BUY only).
-- Avoided list (exclusion-triggered) with reason.
-- Supply gaps: active mandates with zero matches in 7d → flagged for sourcing.
-- Sent via email (Resend) + Slack to dealer-configured channels.
-
-**6. Manual search preserved**
-
-Existing `/mandate-feed` page stays. Patrick's radar at `/dealer/radar` is the always-on view; manual hunts route into the same `mandate_feed_items` table.
-
-### Out of scope (explicitly deferred)
-- Wiring brand-new ingestion adapters (BidsOnline, Valley Auctions, Drive) — mandate engine is source-agnostic; those adapters land in a separate task.
-- Per-mandate AI commentary (can be enriched later via Bob).
-
-### Order of execution
-1. Migration (schema additions + RLS + indexes).
-2. `match-mandates-on-ingest` edge function + cron.
-3. Hook into existing ingestion functions (single shared helper call).
-4. Patrick mandate update (data backfill via insert tool).
-5. `/dealer/radar` page + route.
-6. `daily-dealer-radar-digest` edge function + cron.
-7. Smoke test end-to-end: trigger a Pickles ingest → confirm feed_items + alert_events appear for Patrick.
-
-Approve and I'll start with the migration.
+## Files
+- `supabase/functions/generate-dealer-mandates/index.ts` (new, ~250 lines)
+- Insert call: `cron.schedule('generate-dealer-mandates-daily', ...)`
