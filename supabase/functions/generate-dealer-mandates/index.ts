@@ -52,7 +52,7 @@ function priorityRank(p: string | null): string {
   switch ((p || "").toUpperCase()) {
     case "HIGH": return "high";
     case "LOW": return "low";
-    default: return "medium";
+    default: return "med";
   }
 }
 
