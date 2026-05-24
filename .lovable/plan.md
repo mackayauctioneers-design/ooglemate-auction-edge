@@ -1,61 +1,152 @@
-# Dynamic Mandate Generation from Sold-Stock Fingerprints
 
-## Goal
-Stop hand-creating one mandate per model. Instead, every dealer's `dealer_fingerprints` rows automatically become `active_mandates` whenever they meet a profitability/repeatability threshold. `run-mandates` (already scheduled) then continuously scans market supply against them.
+# Patrick Auto Group — Dealer Activation Pipeline
 
-No new tables. No Patrick-specific logic. No parallel matcher. Reuses the existing pipeline:
+Goal: turn Patrick from "manual demo script" into a live, self-running acquisition engine using the canonical pipeline:
 
 ```
-vehicle_sales_truth
-  → recompute-fingerprint-performance (existing daily cron)
-  → dealer_fingerprints (avg_profit, sales_count, fingerprint_priority)
-  → generate-dealer-mandates  ← NEW (daily)
-  → active_mandates
-  → run-mandates  (existing, every 15 min)
-  → mandate_feed_items / mandate_alerts
-  → dealer dashboard (existing)
+sales upload → vehicle_sales_truth → dealer_fingerprints
+   → active_mandates → run-mandates (cron) → mandate_feed_items
+   → mandate_alerts → Dealer Radar UI + daily digest
 ```
 
-## Changes
+No new pipeline. No Patrick-specific code. Patrick is row #1 of the multi-tenant flow; every step must work identically for dealer #2..#N.
 
-### 1. New edge function: `generate-dealer-mandates`
-For every dealer with rows in `dealer_fingerprints`:
-- Select fingerprints where `is_active = true`, `sales_count >= 2`, `avg_profit >= 1500`.
-- For each, upsert into `active_mandates` keyed on `(dealer_id, make, model, variant_family)`:
-  - `make`, `model`, `variant_family` from the fingerprint
-  - `year_min/max` from fingerprint `year_min/year_max` (widen ±1 year)
-  - `km_min/km_max` from fingerprint `min_km/max_km` (widen +20k upper)
-  - `min_expected_gp = max(1500, round(avg_profit * 0.5))`
-  - `high_priority_gp = round(avg_profit * 0.8)`
-  - `priority` ← map from `fingerprint_priority` (HIGH=1, MEDIUM=2, LOW=3)
-  - `source_mask` / `source_priority` ← project defaults (pickles, manheim, grays, bidsonline, carsales, autotrader, dealer_sites)
-  - `alert_channels = ['push','email']`
-  - `created_from_fingerprint_id` ← fingerprint id
-  - `is_active = true`, `run_frequency_minutes = 60`
-- For mandates previously auto-generated whose source fingerprint no longer qualifies (sales_count dropped, marked is_active=false), set `is_active = false`. Never delete — preserves history.
-- Returns `{ dealers_processed, mandates_created, mandates_updated, mandates_deactivated }`.
+---
 
-Time-budgeted (110 s cap), batched per dealer.
+## 1. Required tables (all already exist — reuse, do not recreate)
 
-### 2. Schedule
-Add `pg_cron` job `generate-dealer-mandates-daily` at `15 3 * * *` (15 min after the existing `recompute-fingerprint-performance-daily` at `0 3 * * *`).
+| Table | Role |
+|---|---|
+| `vehicle_sales_truth` | Patrick's full sold-stock history (append-only) |
+| `dealer_fingerprints` | Profitable repeat patterns per dealer |
+| `active_mandates` | Buying lanes generated from fingerprints |
+| `mandate_runs` | Audit log of each `run-mandates` execution |
+| `mandate_feed_items` | Scored live matches per mandate |
+| `mandate_alerts` | Dispatched alerts (push/email/whatsapp) |
+| `market_listings` (view) | Unified live supply across all sources |
+| `dealer_profiles`, `accounts` | Tenant identity |
 
-### 3. Manual trigger
-Wire a "Refresh mandates from sales history" button into the existing operator mandates page (no new page). Calls the same function.
+**New columns only (additive, multi-tenant):**
+- `active_mandates.lane` (`core` \| `shortage`) — already proposed in prior turn
+- `mandate_feed_items.final_score`, `lane`, `alert_tier`, `rejection_reason` — already proposed
 
-### 4. Dashboard
-No code change — dealer dashboard already reads `mandate_feed_items` filtered by `mandate_id → active_mandates.dealer_id`. New mandates flow through automatically.
+No new tables.
 
-## Out of scope
-- Building new dashboards or alert channels.
-- Adapter changes — `run-mandates` already handles all sources.
-- Backfilling Patrick's sales data — that's a separate sold-stock upload task (blocker: 0 rows in `vehicle_sales_truth` for Patrick's account).
+---
 
-## Patrick blocker (will not be resolved by this change)
-Patrick's account `d8ed6d5c-3284-4b76-a17e-f1f000afe827` has 0 rows in `vehicle_sales_truth` and 0 `dealer_fingerprints`. Until his sold-stock CSV/invoices are ingested via the existing `dealer-sales-upload` flow, generation will produce 0 mandates for him. The two hardcoded Isuzu mandates from the previous step remain as placeholders and will keep running every 15 min via the cron we already added.
+## 2. Existing functions/scripts to reuse or modify
 
-Once his sales data lands, the next 03:15 run auto-generates mandates for every profitable model in his history (Amarok, Silverado, Santa Fe, CX-5, Vitara, etc.) without any per-dealer code.
+| Edge function | Change |
+|---|---|
+| `dealer-sales-upload` | None. Use as-is to ingest Patrick's full XLSX/CSV. |
+| `recompute-fingerprint-performance` | None. Already daily 03:00 UTC. |
+| `generate-dealer-mandates` | Emit `core` + `shortage` rows per qualifying fingerprint. |
+| `run-mandates` | Already scheduled every 15 min. Confirm `dealer_id` filter works; add `final_score` write-through. |
+| `notifier` (existing alert dispatcher) | Reuse. Confirm Patrick `alert_channels` populated. |
+| **NEW (only one):** `dealer-daily-digest` | Pure aggregator: reads `mandate_feed_items` from last 24h per dealer, emits one email/Slack/WhatsApp digest. Generic, dealer-agnostic. |
 
-## Files
-- `supabase/functions/generate-dealer-mandates/index.ts` (new, ~250 lines)
-- Insert call: `cron.schedule('generate-dealer-mandates-daily', ...)`
+No new matcher. No Patrick-only function.
+
+---
+
+## 3. Cron / service design
+
+All in `pg_cron`, all generic (no dealer filter):
+
+| Job | Schedule (UTC) | Function |
+|---|---|---|
+| `recompute-fingerprint-performance-daily` | 03:00 | existing |
+| `generate-dealer-mandates-daily` | 03:15 | existing (jobid 68) |
+| `run-mandates-15min` | `*/15 * * * *` | existing |
+| `dealer-daily-digest` | 22:00 (08:00 AEST) | **NEW, generic** |
+| `recompute-dealer-inventory-position` | 04:00 | proposed prior turn |
+
+Patrick activates simply by having rows in `vehicle_sales_truth` — no scheduler change required.
+
+---
+
+## 4. Scoring logic (already specified, just enforce)
+
+Inside `run-mandates`, 5 weighted components → `final_score` / 100:
+
+| Component | Weight |
+|---|---|
+| `dealer_shortage_weight` | 25 |
+| `model_fit_score` (fingerprint match strength) | 25 |
+| `price_opportunity_score` (vs sales-truth buy price) | 25 |
+| `age_km_fit_score` | 15 |
+| `sales_confidence_score` (sales_count, recency) | 10 |
+
+Tier mapping:
+- `A+` ≥ 80 → instant alert
+- `A` 70–79 → digest
+- `Watch` 60–69 → feed only
+- `Reject` < 60 → store with `rejection_reason`, no alert
+
+---
+
+## 5. Alert thresholds
+
+| Channel | Trigger |
+|---|---|
+| Push + WhatsApp | `final_score ≥ 80` AND not previously alerted for `(mandate_id, listing_id)` |
+| Email | included in daily digest if `final_score ≥ 70` |
+| Suppression | dedupe on `(dealer_id, listing_id)` for 7 days; respect dealer quiet hours |
+
+No new alerts table — `mandate_alerts` already handles this.
+
+---
+
+## 6. Dashboard / feed output
+
+**Generic route:** `/dealer/:dealerId/radar` (works for all dealers).
+
+Sections, all reading existing tables filtered by Patrick's `dealer_id`:
+1. **Activation status banner** — sales rows / fingerprints / active mandates / last `run-mandates` run.
+2. **Today's Top 10** — `mandate_feed_items` last 24h, `final_score` desc.
+3. **By model lane** — grouped by fingerprint make/model.
+4. **Shortage radar** — mandates where dealer inventory < threshold.
+5. **Rejected with reason** — debugging visibility for operator.
+6. **Alert history** — last 7 days from `mandate_alerts`.
+
+---
+
+## 7. Activation steps for Patrick (one-time, reusable for every dealer)
+
+1. Upload Patrick's full sales XLSX via existing `/operator/dealer-sales-upload` (account pre-filled, all rows, not one).
+2. Confirm `vehicle_sales_truth` row count > 0 for Patrick `account_id`.
+3. Trigger `recompute-fingerprint-performance` once manually (don't wait for 03:00).
+4. Trigger `generate-dealer-mandates` once manually — auto-creates `core` + `shortage` mandates for every qualifying fingerprint (Isuzu, Amarok, Mazda, Hyundai, Suzuki, etc. — whichever pass `sales_count ≥ 2`, `avg_profit ≥ 1500`).
+5. Trigger `run-mandates` once manually — populates `mandate_feed_items`.
+6. Open `/dealer/79ee6123…/radar` — verify Top 10 renders.
+7. Verify next `dealer-daily-digest` (22:00 UTC) emits one digest email to Patrick's contact.
+
+Steps 3–5 are buttons that already exist on operator pages. No scripts to write.
+
+---
+
+## 8. Rollback plan
+
+Every step is reversible because nothing is destructive:
+
+| If broken | Action |
+|---|---|
+| Bad fingerprints | `UPDATE dealer_fingerprints SET is_active = false WHERE dealer_profile_id = $patrick` |
+| Bad mandates | `UPDATE active_mandates SET is_active = false WHERE dealer_id = $patrick` — stops scoring + alerts within 15 min |
+| Bad alerts | Disable `dealer-daily-digest` cron; flush `mandate_alerts` queue |
+| Bad sales data | Re-upload via `dealer-sales-upload` (idempotent on stock_no) — fingerprints will recompute next 03:00 |
+| Whole activation | Toggle `dealer_profiles.is_active = false` — Radar hides, crons skip dealer |
+
+No schema changes to revert. No code paths forked off the canonical pipeline.
+
+---
+
+## What this plan deliberately does NOT do
+
+- No new matcher, scorer, or alert table.
+- No Patrick-specific cron, function, route, or branch.
+- No restructuring of existing services.
+- No renaming.
+- No directory cleanup.
+
+The only new code is one generic `dealer-daily-digest` edge function. Everything else is wiring + data + a generic Radar page.

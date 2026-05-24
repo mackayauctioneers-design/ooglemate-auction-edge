@@ -52,6 +52,7 @@ export type Database = {
           is_active: boolean
           km_max: number | null
           km_min: number | null
+          lane: string | null
           last_run_at: string | null
           make: string
           min_expected_gp: number
@@ -64,6 +65,9 @@ export type Database = {
           price_max: number | null
           priority: string
           run_frequency_minutes: number
+          shortage_km_max: number | null
+          shortage_year_max: number | null
+          shortage_year_min: number | null
           source_mask: string[]
           source_priority: string[] | null
           target_variants: string[] | null
@@ -88,6 +92,7 @@ export type Database = {
           is_active?: boolean
           km_max?: number | null
           km_min?: number | null
+          lane?: string | null
           last_run_at?: string | null
           make: string
           min_expected_gp?: number
@@ -100,6 +105,9 @@ export type Database = {
           price_max?: number | null
           priority?: string
           run_frequency_minutes?: number
+          shortage_km_max?: number | null
+          shortage_year_max?: number | null
+          shortage_year_min?: number | null
           source_mask?: string[]
           source_priority?: string[] | null
           target_variants?: string[] | null
@@ -124,6 +132,7 @@ export type Database = {
           is_active?: boolean
           km_max?: number | null
           km_min?: number | null
+          lane?: string | null
           last_run_at?: string | null
           make?: string
           min_expected_gp?: number
@@ -136,6 +145,9 @@ export type Database = {
           price_max?: number | null
           priority?: string
           run_frequency_minutes?: number
+          shortage_km_max?: number | null
+          shortage_year_max?: number | null
+          shortage_year_min?: number | null
           source_mask?: string[]
           source_priority?: string[] | null
           target_variants?: string[] | null
@@ -6969,6 +6981,8 @@ export type Database = {
       }
       mandate_feed_items: {
         Row: {
+          age_km_fit_score: number | null
+          alert_tier: string | null
           anchor_context: Json | null
           anchor_sale_id: string | null
           asking_price: number | null
@@ -6977,11 +6991,14 @@ export type Database = {
           created_at: string
           dealer_fit_score: number | null
           dealer_id: string | null
+          dealer_shortage_weight: number | null
           expected_margin: number | null
+          final_score: number | null
           first_seen_at: string
           freight_estimate: number | null
           id: string
           km: number | null
+          lane: string | null
           last_price: number | null
           last_seen_at: string
           listing_id: string
@@ -6991,10 +7008,14 @@ export type Database = {
           match_reason: string | null
           max_buy_price: number | null
           model: string | null
+          model_fit_score: number | null
           price_changed_at: string | null
           price_delta: number | null
+          price_opportunity_score: number | null
           raw: Json | null
           recommendation: string | null
+          rejection_reason: string | null
+          sales_confidence_score: number | null
           score: number | null
           scored_at: string | null
           source: string
@@ -7004,6 +7025,8 @@ export type Database = {
           year: number | null
         }
         Insert: {
+          age_km_fit_score?: number | null
+          alert_tier?: string | null
           anchor_context?: Json | null
           anchor_sale_id?: string | null
           asking_price?: number | null
@@ -7012,11 +7035,14 @@ export type Database = {
           created_at?: string
           dealer_fit_score?: number | null
           dealer_id?: string | null
+          dealer_shortage_weight?: number | null
           expected_margin?: number | null
+          final_score?: number | null
           first_seen_at?: string
           freight_estimate?: number | null
           id?: string
           km?: number | null
+          lane?: string | null
           last_price?: number | null
           last_seen_at?: string
           listing_id: string
@@ -7026,10 +7052,14 @@ export type Database = {
           match_reason?: string | null
           max_buy_price?: number | null
           model?: string | null
+          model_fit_score?: number | null
           price_changed_at?: string | null
           price_delta?: number | null
+          price_opportunity_score?: number | null
           raw?: Json | null
           recommendation?: string | null
+          rejection_reason?: string | null
+          sales_confidence_score?: number | null
           score?: number | null
           scored_at?: string | null
           source: string
@@ -7039,6 +7069,8 @@ export type Database = {
           year?: number | null
         }
         Update: {
+          age_km_fit_score?: number | null
+          alert_tier?: string | null
           anchor_context?: Json | null
           anchor_sale_id?: string | null
           asking_price?: number | null
@@ -7047,11 +7079,14 @@ export type Database = {
           created_at?: string
           dealer_fit_score?: number | null
           dealer_id?: string | null
+          dealer_shortage_weight?: number | null
           expected_margin?: number | null
+          final_score?: number | null
           first_seen_at?: string
           freight_estimate?: number | null
           id?: string
           km?: number | null
+          lane?: string | null
           last_price?: number | null
           last_seen_at?: string
           listing_id?: string
@@ -7061,10 +7096,14 @@ export type Database = {
           match_reason?: string | null
           max_buy_price?: number | null
           model?: string | null
+          model_fit_score?: number | null
           price_changed_at?: string | null
           price_delta?: number | null
+          price_opportunity_score?: number | null
           raw?: Json | null
           recommendation?: string | null
+          rejection_reason?: string | null
+          sales_confidence_score?: number | null
           score?: number | null
           scored_at?: string | null
           source?: string
