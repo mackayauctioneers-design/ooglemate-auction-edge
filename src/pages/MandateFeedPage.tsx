@@ -317,6 +317,21 @@ export default function MandateFeedPage() {
     onError: (e) => toast.error(`Run failed: ${e.message}`),
   });
 
+  const regenerateMandates = useMutation({
+    mutationFn: async () => {
+      const resp = await supabase.functions.invoke("generate-dealer-mandates");
+      if (resp.error) throw resp.error;
+      return resp.data;
+    },
+    onSuccess: (d) => {
+      toast.success(
+        `Generated from sales: ${d.mandates_created} new, ${d.mandates_updated} updated, ${d.mandates_deactivated} retired (${d.dealers_processed} dealers)`,
+      );
+      qc.invalidateQueries({ queryKey: ["mandates"] });
+    },
+    onError: (e) => toast.error(`Regenerate failed: ${e.message}`),
+  });
+
   const filteredItems = useMemo(() => {
     if (!feedItems) return [];
     let items = feedItems;
@@ -344,6 +359,16 @@ export default function MandateFeedPage() {
         </div>
         <div className="flex items-center gap-2">
           <CreateMandateDialog onCreated={() => qc.invalidateQueries({ queryKey: ["mandates"] })} />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => regenerateMandates.mutate()}
+            disabled={regenerateMandates.isPending}
+            title="Rebuild mandates from each dealer's sold-stock fingerprints"
+          >
+            <Sparkles className={`h-4 w-4 mr-1 ${regenerateMandates.isPending ? "animate-pulse" : ""}`} />
+            Refresh from Sales
+          </Button>
           <Button
             size="sm"
             variant="outline"
