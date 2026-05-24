@@ -205,10 +205,15 @@ export default function TradingDeskPage() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [altExpandedRows, setAltExpandedRows] = useState<Set<string>>(new Set());
 
-  const [filterAccount, setFilterAccount] = useState<string>('all');
+  // Persist dealer/account selection across scoring runs and reloads.
+  // Dealer isolation is critical — never silently fall back to 'all' (which
+  // makes Mackay dominate visually because it has the deepest sales-truth).
+  const [filterAccount, setFilterAccount] = useState<string>(() => {
+    try { return localStorage.getItem('td.filterAccount') ?? 'all'; } catch { return 'all'; }
+  });
   const [filterTier, setFilterTier] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
-  
+
   const [filterStatus, setFilterStatus] = useState<string>('active');
   const [filterDealerSearch, setFilterDealerSearch] = useState<string>('');
   const [filterKmMax, setFilterKmMax] = useState<string>('120000');
@@ -216,8 +221,12 @@ export default function TradingDeskPage() {
   const [sortField, setSortField] = useState<SortField>('best_under_buy');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+  useEffect(() => {
+    try { localStorage.setItem('td.filterAccount', filterAccount); } catch { /* ignore */ }
+  }, [filterAccount]);
+
+  // Only the secondary filters get reset — never the dealer/account selection.
   const resetFilters = useCallback(() => {
-    setFilterAccount('all');
     setFilterTier('all');
     setFilterSource('all');
     setFilterStatus('active');
@@ -257,12 +266,24 @@ export default function TradingDeskPage() {
 
   const runScoring = async () => {
     setScoring(true);
+    // Capture the selected dealer so post-run reload cannot drift to another tenant.
+    const dealerScopeBefore = filterAccount;
     try {
-      const { error } = await supabase.functions.invoke('score-operator-opportunities');
+      const { error } = await supabase.functions.invoke('score-operator-opportunities', {
+        body: dealerScopeBefore !== 'all' ? { focus_account_id: dealerScopeBefore } : {},
+      });
       if (error) throw error;
-      resetFilters();
+      // Do NOT call resetFilters() — that would wipe the dealer context the
+      // operator just chose, which the shared scoring pass would otherwise
+      // mask by surfacing whichever tenant (typically Mackay) has the deepest
+      // sales-truth. Keep the dealer filter sticky.
       await fetchData();
-      toast.success('Scoring complete — Trading Desk refreshed');
+      // Re-assert the dealer scope in case any upstream change cleared it.
+      if (dealerScopeBefore !== filterAccount) setFilterAccount(dealerScopeBefore);
+      const label = dealerScopeBefore === 'all'
+        ? 'all accounts'
+        : (accounts.find(a => a.id === dealerScopeBefore)?.display_name ?? 'selected dealer');
+      toast.success(`Scoring complete — Trading Desk refreshed (scope: ${label})`);
     } catch (err: any) {
       toast.error(err.message || 'Scoring failed');
     } finally {
