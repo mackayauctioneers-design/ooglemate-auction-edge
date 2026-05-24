@@ -69,12 +69,21 @@ Deno.serve(async (req) => {
     try {
       const { data: profile } = await supabase
         .from("dealer_profiles")
-        .select("id, name, contact_email")
+        .select("id, dealer_name, dealer_email")
         .eq("id", dealerId)
         .maybeSingle();
 
-      const dealerName = profile?.name ?? "Dealer";
-      const recipient = profile?.contact_email ?? null;
+      // pick an anchor mandate (mandate_alerts has no dealer_id column)
+      const { data: anchor } = await supabase
+        .from("active_mandates")
+        .select("id")
+        .eq("dealer_id", dealerId)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+
+      const dealerName = profile?.dealer_name ?? "Dealer";
+      const recipient = profile?.dealer_email ?? null;
 
       items.sort((a, b) => Number(b.final_score ?? b.score ?? 0) - Number(a.final_score ?? a.score ?? 0));
       const top = items.slice(0, 10);
@@ -89,15 +98,23 @@ Deno.serve(async (req) => {
 
       const body = `Top ${top.length} opportunities scored ≥ ${MIN_SCORE_DIGEST} in the last 24h:\n\n${lines.join("\n\n")}\n\nOpen the dealer radar to review and act.`;
 
-      // record alert (always — even if email fails)
-      await supabase.from("mandate_alerts").insert({
-        dealer_id: dealerId,
-        channel: "email",
-        status: recipient ? "queued" : "skipped_no_recipient",
-        subject,
-        body,
-        payload: { item_ids: top.map(t => t.id), total_eligible: items.length },
-      });
+      if (anchor?.id) {
+        await supabase.from("mandate_alerts").insert({
+          mandate_id: anchor.id,
+          alert_type: "daily_digest",
+          severity: "info",
+          reason: subject,
+          reason_json: {
+            dealer_id: dealerId,
+            dealer_name: dealerName,
+            recipient,
+            item_ids: top.map(t => t.id),
+            total_eligible: items.length,
+            body,
+          },
+          sent_at: recipient && RESEND_API_KEY ? new Date().toISOString() : null,
+        });
+      }
 
       if (recipient && RESEND_API_KEY) {
         const r = await fetch("https://api.resend.com/emails", {
@@ -106,19 +123,14 @@ Deno.serve(async (req) => {
             Authorization: `Bearer ${RESEND_API_KEY}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            from: FROM,
-            to: recipient,
-            subject,
-            text: body,
-          }),
+          body: JSON.stringify({ from: FROM, to: recipient, subject, text: body }),
         });
         if (!r.ok) {
           (result.errors as unknown[]).push({ dealerId, status: r.status, text: await r.text() });
         }
       }
 
-      (result.dealers as unknown[]).push({ dealerId, dealerName, items: top.length });
+      (result.dealers as unknown[]).push({ dealerId, dealerName, items: top.length, sent: !!recipient });
     } catch (e) {
       (result.errors as unknown[]).push({ dealerId, error: String(e) });
     }

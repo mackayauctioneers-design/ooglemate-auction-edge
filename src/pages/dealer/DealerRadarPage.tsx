@@ -33,19 +33,16 @@ interface FeedItem {
   lane: string | null;
   expected_margin: number | null;
   recommendation: string | null;
-  created_at: string;
-}
-
-interface RejectedItem extends FeedItem {
   rejection_reason: string | null;
+  created_at: string;
 }
 
 interface AlertRow {
   id: string;
   created_at: string;
-  channel: string | null;
-  status: string | null;
-  subject: string | null;
+  alert_type: string | null;
+  severity: string | null;
+  reason: string | null;
 }
 
 const tierColor = (tier: string | null) => {
@@ -63,8 +60,8 @@ export default function DealerRadarPage() {
   const [dealerName, setDealerName] = useState<string>("");
   const [stats, setStats] = useState<ActivationStats | null>(null);
   const [topToday, setTopToday] = useState<FeedItem[]>([]);
-  const [byLane, setByLane] = useState<Record<string, FeedItem[]>>({});
-  const [rejected, setRejected] = useState<RejectedItem[]>([]);
+  const [byModel, setByModel] = useState<Record<string, FeedItem[]>>({});
+  const [rejected, setRejected] = useState<FeedItem[]>([]);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
 
   const load = async () => {
@@ -74,57 +71,72 @@ export default function DealerRadarPage() {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const since7d  = new Date(Date.now() - 7  * 24 * 60 * 60 * 1000).toISOString();
 
-    const [
-      profileRes,
-      salesRes,
-      fpRes,
-      mandRes,
-      lastRunRes,
-      feedRes,
-      rejRes,
-      alertsRes,
-      feed24Res,
-      alert7Res,
-    ] = await Promise.all([
-      supabase.from("dealer_profiles").select("name").eq("id", dealerId).maybeSingle(),
-      supabase.from("vehicle_sales_truth").select("id", { count: "exact", head: true }).eq("dealer_id", dealerId),
-      supabase.from("dealer_fingerprints").select("id", { count: "exact", head: true }).eq("dealer_profile_id", dealerId).eq("is_active", true),
-      supabase.from("active_mandates").select("id, make, model, lane", { count: "exact" }).eq("dealer_id", dealerId).eq("is_active", true),
-      supabase.from("active_mandates").select("last_run_at").eq("dealer_id", dealerId).order("last_run_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle(),
-      supabase.from("mandate_feed_items")
-        .select("id, make, model, variant, year, km, asking_price, source, source_url, location, final_score, score, alert_tier, lane, expected_margin, recommendation, created_at")
-        .eq("dealer_id", dealerId)
-        .gte("created_at", since24h)
-        .order("final_score", { ascending: false, nullsFirst: false })
-        .limit(60),
-      supabase.from("mandate_feed_items")
-        .select("id, make, model, variant, year, km, asking_price, source, source_url, location, final_score, score, alert_tier, lane, expected_margin, recommendation, created_at, rejection_reason")
-        .eq("dealer_id", dealerId)
-        .eq("alert_tier", "Reject")
-        .gte("created_at", since24h)
-        .order("created_at", { ascending: false })
-        .limit(25),
-      supabase.from("mandate_alerts")
-        .select("id, created_at, channel, status, subject")
-        .eq("dealer_id", dealerId)
-        .gte("created_at", since7d)
-        .order("created_at", { ascending: false })
-        .limit(50),
-      supabase.from("mandate_feed_items").select("id", { count: "exact", head: true }).eq("dealer_id", dealerId).gte("created_at", since24h),
-      supabase.from("mandate_alerts").select("id", { count: "exact", head: true }).eq("dealer_id", dealerId).gte("created_at", since7d),
+    // 1. Dealer profile
+    const profileRes: any = await supabase
+      .from("dealer_profiles")
+      .select("dealer_name")
+      .eq("id", dealerId)
+      .maybeSingle();
+    setDealerName(profileRes.data?.dealer_name ?? "Dealer");
+
+    // 2. Counters
+    const [salesRes, fpRes, mandRes, lastRunRes, feed24Res] = await Promise.all([
+      (supabase.from("vehicle_sales_truth") as any).select("id", { count: "exact", head: true }).eq("dealer_id", dealerId),
+      (supabase.from("dealer_fingerprints") as any).select("id", { count: "exact", head: true }).eq("dealer_profile_id", dealerId).eq("is_active", true),
+      (supabase.from("active_mandates") as any).select("id", { count: "exact", head: true }).eq("dealer_id", dealerId).eq("is_active", true),
+      (supabase.from("active_mandates") as any).select("last_run_at").eq("dealer_id", dealerId).order("last_run_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle(),
+      (supabase.from("mandate_feed_items") as any).select("id", { count: "exact", head: true }).eq("dealer_id", dealerId).gte("created_at", since24h),
     ]);
 
-    setDealerName(profileRes.data?.name ?? "Dealer");
+    // 3. Feed items + rejected
+    const feedRes: any = await (supabase.from("mandate_feed_items") as any)
+      .select("*")
+      .eq("dealer_id", dealerId)
+      .gte("created_at", since24h)
+      .order("final_score", { ascending: false, nullsFirst: false })
+      .limit(60);
+    const feed = (feedRes.data ?? []) as FeedItem[];
+
+    const rejRes: any = await (supabase.from("mandate_feed_items") as any)
+      .select("*")
+      .eq("dealer_id", dealerId)
+      .eq("alert_tier", "Reject")
+      .gte("created_at", since24h)
+      .order("created_at", { ascending: false })
+      .limit(25);
+
+    // 4. Alerts — join via active_mandates (mandate_alerts has no dealer_id)
+    const mandateIdRes: any = await (supabase.from("active_mandates") as any)
+      .select("id")
+      .eq("dealer_id", dealerId);
+    const mandateIds = (mandateIdRes.data ?? []).map((m: any) => m.id);
+
+    let alertRows: AlertRow[] = [];
+    let alertCount = 0;
+    if (mandateIds.length > 0) {
+      const alertsRes: any = await (supabase.from("mandate_alerts") as any)
+        .select("id, created_at, alert_type, severity, reason")
+        .in("mandate_id", mandateIds)
+        .gte("created_at", since7d)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      alertRows = (alertsRes.data ?? []) as AlertRow[];
+      const alert7Res: any = await (supabase.from("mandate_alerts") as any)
+        .select("id", { count: "exact", head: true })
+        .in("mandate_id", mandateIds)
+        .gte("created_at", since7d);
+      alertCount = alert7Res.count ?? 0;
+    }
+
     setStats({
       sales_count: salesRes.count ?? 0,
       fingerprint_count: fpRes.count ?? 0,
       active_mandate_count: mandRes.count ?? 0,
       last_run_at: lastRunRes.data?.last_run_at ?? null,
       feed_24h: feed24Res.count ?? 0,
-      alerts_7d: alert7Res.count ?? 0,
+      alerts_7d: alertCount,
     });
 
-    const feed = (feedRes.data ?? []) as FeedItem[];
     setTopToday(feed.slice(0, 10));
 
     const groups: Record<string, FeedItem[]> = {};
@@ -132,10 +144,10 @@ export default function DealerRadarPage() {
       const key = `${item.make ?? "?"} ${item.model ?? "?"}`.trim();
       (groups[key] ||= []).push(item);
     }
-    setByLane(groups);
+    setByModel(groups);
 
-    setRejected((rejRes.data ?? []) as RejectedItem[]);
-    setAlerts((alertsRes.data ?? []) as AlertRow[]);
+    setRejected((rejRes.data ?? []) as FeedItem[]);
+    setAlerts(alertRows);
     setLoading(false);
   };
 
@@ -157,13 +169,10 @@ export default function DealerRadarPage() {
         </Button>
       </div>
 
-      {/* Activation banner */}
       <Card>
         <CardHeader><CardTitle>Activation status</CardTitle></CardHeader>
         <CardContent>
-          {loading || !stats ? (
-            <Skeleton className="h-16 w-full" />
-          ) : (
+          {loading || !stats ? <Skeleton className="h-16 w-full" /> : (
             <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
               <Stat label="Sales rows" value={stats.sales_count} />
               <Stat label="Active fingerprints" value={stats.fingerprint_count} />
@@ -176,7 +185,6 @@ export default function DealerRadarPage() {
         </CardContent>
       </Card>
 
-      {/* Top 10 today */}
       <Card>
         <CardHeader><CardTitle>Top 10 today</CardTitle></CardHeader>
         <CardContent>
@@ -186,14 +194,13 @@ export default function DealerRadarPage() {
         </CardContent>
       </Card>
 
-      {/* By model lane */}
       <Card>
         <CardHeader><CardTitle>By model</CardTitle></CardHeader>
         <CardContent>
           {loading ? <Skeleton className="h-40 w-full" /> :
-            Object.keys(byLane).length === 0 ? <Empty msg="Nothing grouped yet." /> :
+            Object.keys(byModel).length === 0 ? <Empty msg="Nothing grouped yet." /> :
             <div className="space-y-6">
-              {Object.entries(byLane).map(([key, items]) => (
+              {Object.entries(byModel).map(([key, items]) => (
                 <div key={key}>
                   <h3 className="text-sm font-semibold mb-2">{key} <span className="text-muted-foreground">({items.length})</span></h3>
                   <div className="space-y-2">{items.slice(0, 5).map(i => <Row key={i.id} item={i} />)}</div>
@@ -203,12 +210,11 @@ export default function DealerRadarPage() {
         </CardContent>
       </Card>
 
-      {/* Rejected with reason */}
       <Card>
         <CardHeader><CardTitle>Rejected (last 24h)</CardTitle></CardHeader>
         <CardContent>
           {loading ? <Skeleton className="h-32 w-full" /> :
-            rejected.length === 0 ? <Empty msg="Nothing rejected. Either scoring is clean or run-mandates hasn't tagged rejections yet." /> :
+            rejected.length === 0 ? <Empty msg="Nothing tagged as rejected yet." /> :
             <div className="space-y-2">
               {rejected.map(r => (
                 <div key={r.id} className="text-sm flex justify-between border-b py-1">
@@ -220,7 +226,6 @@ export default function DealerRadarPage() {
         </CardContent>
       </Card>
 
-      {/* Alert history */}
       <Card>
         <CardHeader><CardTitle>Alert history (7d)</CardTitle></CardHeader>
         <CardContent>
@@ -229,8 +234,8 @@ export default function DealerRadarPage() {
             <div className="space-y-1 text-sm">
               {alerts.map(a => (
                 <div key={a.id} className="flex justify-between border-b py-1">
-                  <span>{new Date(a.created_at).toLocaleString()} — {a.channel ?? "—"}</span>
-                  <span className="text-muted-foreground">{a.subject ?? a.status ?? ""}</span>
+                  <span>{new Date(a.created_at).toLocaleString()} — {a.alert_type ?? "—"} {a.severity ? `(${a.severity})` : ""}</span>
+                  <span className="text-muted-foreground truncate max-w-[60%]">{a.reason ?? ""}</span>
                 </div>
               ))}
             </div>}
