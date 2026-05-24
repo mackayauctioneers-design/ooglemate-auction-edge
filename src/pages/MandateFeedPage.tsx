@@ -317,6 +317,21 @@ export default function MandateFeedPage() {
     onError: (e) => toast.error(`Run failed: ${e.message}`),
   });
 
+  const regenerateMandates = useMutation({
+    mutationFn: async () => {
+      const resp = await supabase.functions.invoke("generate-dealer-mandates");
+      if (resp.error) throw resp.error;
+      return resp.data;
+    },
+    onSuccess: (d) => {
+      toast.success(
+        `Generated from sales: ${d.mandates_created} new, ${d.mandates_updated} updated, ${d.mandates_deactivated} retired (${d.dealers_processed} dealers)`,
+      );
+      qc.invalidateQueries({ queryKey: ["mandates"] });
+    },
+    onError: (e) => toast.error(`Regenerate failed: ${e.message}`),
+  });
+
   const filteredItems = useMemo(() => {
     if (!feedItems) return [];
     let items = feedItems;
