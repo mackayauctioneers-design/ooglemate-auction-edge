@@ -14243,6 +14243,7 @@ export type Database = {
       }
       vehicle_listings: {
         Row: {
+          account_id: string | null
           anomaly_sold_returned: boolean | null
           asking_price: number | null
           assigned_at: string | null
@@ -14261,12 +14262,14 @@ export type Database = {
           avoid_reason: string | null
           buy_method: string | null
           buy_window_at: string | null
+          colour: string | null
           condition_notes: string[] | null
           content_hash: string | null
           created_at: string
           damage_noted: boolean | null
           days_to_sell_est: number | null
           dealer_exposure: Json | null
+          dealer_id: string | null
           dealer_name: string | null
           dealer_url: string | null
           delisted_at: string | null
@@ -14355,6 +14358,7 @@ export type Database = {
           variant_raw: string | null
           variant_source: string | null
           variant_used: string | null
+          vin: string | null
           visible_to_dealers: boolean
           watch_confidence: string | null
           watch_reason: string | null
@@ -14363,6 +14367,7 @@ export type Database = {
           year: number
         }
         Insert: {
+          account_id?: string | null
           anomaly_sold_returned?: boolean | null
           asking_price?: number | null
           assigned_at?: string | null
@@ -14381,12 +14386,14 @@ export type Database = {
           avoid_reason?: string | null
           buy_method?: string | null
           buy_window_at?: string | null
+          colour?: string | null
           condition_notes?: string[] | null
           content_hash?: string | null
           created_at?: string
           damage_noted?: boolean | null
           days_to_sell_est?: number | null
           dealer_exposure?: Json | null
+          dealer_id?: string | null
           dealer_name?: string | null
           dealer_url?: string | null
           delisted_at?: string | null
@@ -14475,6 +14482,7 @@ export type Database = {
           variant_raw?: string | null
           variant_source?: string | null
           variant_used?: string | null
+          vin?: string | null
           visible_to_dealers?: boolean
           watch_confidence?: string | null
           watch_reason?: string | null
@@ -14483,6 +14491,7 @@ export type Database = {
           year: number
         }
         Update: {
+          account_id?: string | null
           anomaly_sold_returned?: boolean | null
           asking_price?: number | null
           assigned_at?: string | null
@@ -14501,12 +14510,14 @@ export type Database = {
           avoid_reason?: string | null
           buy_method?: string | null
           buy_window_at?: string | null
+          colour?: string | null
           condition_notes?: string[] | null
           content_hash?: string | null
           created_at?: string
           damage_noted?: boolean | null
           days_to_sell_est?: number | null
           dealer_exposure?: Json | null
+          dealer_id?: string | null
           dealer_name?: string | null
           dealer_url?: string | null
           delisted_at?: string | null
@@ -14595,6 +14606,7 @@ export type Database = {
           variant_raw?: string | null
           variant_source?: string | null
           variant_used?: string | null
+          vin?: string | null
           visible_to_dealers?: boolean
           watch_confidence?: string | null
           watch_reason?: string | null

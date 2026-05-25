@@ -228,7 +228,7 @@ Deno.serve(async (req) => {
       incomingIds.push(cleanId);
 
       const row: Record<string, unknown> = {
-        source_listing_id: cleanId,
+        listing_id: cleanId,
         source: source,
         source_class: "dealer_site",
         account_id: resolvedAccountId,
@@ -260,7 +260,7 @@ Deno.serve(async (req) => {
 
       const { error } = await sb
         .from("vehicle_listings")
-        .upsert(row, { onConflict: "source_listing_id", ignoreDuplicates: false });
+        .upsert(row, { onConflict: "listing_id", ignoreDuplicates: false });
       if (error) {
         errors.push(`${cleanId}: ${error.message}`);
       } else {
@@ -305,16 +305,16 @@ Deno.serve(async (req) => {
     const { data: gone } = await sb
       .from("vehicle_listings")
       .select(
-        "source_listing_id, make, model, variant_raw, year, km, asking_price, listing_url, first_seen_at",
+        "listing_id, make, model, variant_raw, year, km, asking_price, listing_url, first_seen_at",
       )
-      .in("source_listing_id", disappeared);
+      .in("listing_id", disappeared);
 
     for (const v of gone || []) {
       // Mark listing as DEAD/SOLD
       await sb
         .from("vehicle_listings")
         .update({ lifecycle_state: "SOLD", status: "sold", updated_at: now })
-        .eq("source_listing_id", v.source_listing_id);
+        .eq("listing_id", v.listing_id);
       disappearedInferred++;
 
       // Promote to vehicle_sales_truth (inferred / low confidence)
