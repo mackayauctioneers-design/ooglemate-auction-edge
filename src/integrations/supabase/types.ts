@@ -1899,6 +1899,63 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_inventory_snapshots: {
+        Row: {
+          account_id: string
+          adapter: string | null
+          created_at: string
+          dealer_id: string | null
+          id: string
+          listing_count: number
+          listing_ids: string[]
+          raw_meta: Json | null
+          snapshot_at: string
+          source: string
+          worker_run_id: string | null
+        }
+        Insert: {
+          account_id: string
+          adapter?: string | null
+          created_at?: string
+          dealer_id?: string | null
+          id?: string
+          listing_count?: number
+          listing_ids?: string[]
+          raw_meta?: Json | null
+          snapshot_at?: string
+          source: string
+          worker_run_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          adapter?: string | null
+          created_at?: string
+          dealer_id?: string | null
+          id?: string
+          listing_count?: number
+          listing_ids?: string[]
+          raw_meta?: Json | null
+          snapshot_at?: string
+          source?: string
+          worker_run_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_inventory_snapshots_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_inventory_snapshots_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_liquidity_profiles: {
         Row: {
           badge: string | null
@@ -3592,6 +3649,71 @@ export type Database = {
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "dealer_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_unmapped_sources: {
+        Row: {
+          adapter: string | null
+          created_at: string
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          notes: string | null
+          occurrences: number
+          resolved_account_id: string | null
+          resolved_at: string | null
+          sample_payload: Json | null
+          source: string
+          source_label: string | null
+          source_slug: string
+          source_url: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          adapter?: string | null
+          created_at?: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          notes?: string | null
+          occurrences?: number
+          resolved_account_id?: string | null
+          resolved_at?: string | null
+          sample_payload?: Json | null
+          source: string
+          source_label?: string | null
+          source_slug: string
+          source_url?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          adapter?: string | null
+          created_at?: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          notes?: string | null
+          occurrences?: number
+          resolved_account_id?: string | null
+          resolved_at?: string | null
+          sample_payload?: Json | null
+          source?: string
+          source_label?: string | null
+          source_slug?: string
+          source_url?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_unmapped_sources_resolved_account_id_fkey"
+            columns: ["resolved_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
         ]
