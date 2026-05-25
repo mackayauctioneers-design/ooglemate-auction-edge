@@ -305,16 +305,16 @@ Deno.serve(async (req) => {
     const { data: gone } = await sb
       .from("vehicle_listings")
       .select(
-        "source_listing_id, make, model, variant_raw, year, km, asking_price, listing_url, first_seen_at",
+        "listing_id, make, model, variant_raw, year, km, asking_price, listing_url, first_seen_at",
       )
-      .in("source_listing_id", disappeared);
+      .in("listing_id", disappeared);
 
     for (const v of gone || []) {
       // Mark listing as DEAD/SOLD
       await sb
         .from("vehicle_listings")
         .update({ lifecycle_state: "SOLD", status: "sold", updated_at: now })
-        .eq("source_listing_id", v.source_listing_id);
+        .eq("listing_id", v.listing_id);
       disappearedInferred++;
 
       // Promote to vehicle_sales_truth (inferred / low confidence)
