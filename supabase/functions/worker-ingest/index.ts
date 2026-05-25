@@ -228,7 +228,7 @@ Deno.serve(async (req) => {
       incomingIds.push(cleanId);
 
       const row: Record<string, unknown> = {
-        source_listing_id: cleanId,
+        listing_id: cleanId,
         source: source,
         source_class: "dealer_site",
         account_id: resolvedAccountId,
@@ -260,7 +260,7 @@ Deno.serve(async (req) => {
 
       const { error } = await sb
         .from("vehicle_listings")
-        .upsert(row, { onConflict: "source_listing_id", ignoreDuplicates: false });
+        .upsert(row, { onConflict: "listing_id", ignoreDuplicates: false });
       if (error) {
         errors.push(`${cleanId}: ${error.message}`);
       } else {
