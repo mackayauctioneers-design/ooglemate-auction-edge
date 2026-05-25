@@ -14900,6 +14900,54 @@ export type Database = {
           },
         ]
       }
+      worker_runs: {
+        Row: {
+          action: string
+          created_at: string
+          dealer_id: string
+          duration_ms: number | null
+          error: string | null
+          finished_at: string | null
+          http_status: number | null
+          id: string
+          invoked_by: string | null
+          request_payload: Json | null
+          response_payload: Json | null
+          started_at: string
+          status: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          dealer_id: string
+          duration_ms?: number | null
+          error?: string | null
+          finished_at?: string | null
+          http_status?: number | null
+          id?: string
+          invoked_by?: string | null
+          request_payload?: Json | null
+          response_payload?: Json | null
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          dealer_id?: string
+          duration_ms?: number | null
+          error?: string | null
+          finished_at?: string | null
+          http_status?: number | null
+          id?: string
+          invoked_by?: string | null
+          request_payload?: Json | null
+          response_payload?: Json | null
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       workers: {
         Row: {
           avg_run_ms: number | null
