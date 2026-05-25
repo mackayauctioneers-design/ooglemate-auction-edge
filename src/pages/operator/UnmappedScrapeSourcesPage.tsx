@@ -36,19 +36,20 @@ export default function UnmappedScrapeSourcesPage() {
 
   const load = async () => {
     setLoading(true);
+    const sb = supabase as any;
     const [u, a] = await Promise.all([
-      supabase
-        .from("dealer_unmapped_sources" as any)
+      sb
+        .from("dealer_unmapped_sources")
         .select("*")
         .eq("status", "open")
         .order("last_seen_at", { ascending: false }),
-      supabase
+      sb
         .from("accounts")
         .select("id, slug, display_name")
         .order("display_name", { ascending: true }),
     ]);
-    setRows(((u.data as UnmappedRow[]) ?? []) as UnmappedRow[]);
-    setAccounts((a.data as Account[]) ?? []);
+    setRows(((u.data as UnmappedRow[] | null) ?? []));
+    setAccounts(((a.data as Account[] | null) ?? []));
     setLoading(false);
   };
 

@@ -42,7 +42,10 @@ interface SoldRow {
 interface FeedRow {
   id: string;
   created_at: string;
-  vehicle_label: string | null;
+  make: string | null;
+  model: string | null;
+  variant: string | null;
+  year: number | null;
   expected_margin: number | null;
 }
 
@@ -58,29 +61,30 @@ export function DealerScrapePanel({ accountId, dealerName }: Props) {
 
   const load = async () => {
     setLoading(true);
+    const sb = supabase as any;
     const [h, s, f] = await Promise.all([
-      supabase
-        .from("dealer_scrape_health" as any)
+      sb
+        .from("dealer_scrape_health")
         .select("*")
         .eq("account_id", accountId)
         .maybeSingle(),
-      supabase
+      sb
         .from("sold_vehicles")
         .select("id, make, model, variant, year, km, listed_price, sold_date, last_seen")
         .eq("dealer_id", accountId)
         .not("sold_date", "is", null)
         .order("sold_date", { ascending: false })
         .limit(10),
-      supabase
+      sb
         .from("mandate_feed_items")
-        .select("id, created_at, vehicle_label, expected_margin")
+        .select("id, created_at, make, model, variant, year, expected_margin")
         .eq("dealer_id", accountId)
         .order("created_at", { ascending: false })
         .limit(5),
     ]);
-    setHealth((h.data as ScrapeHealth) ?? null);
-    setRecentSold((s.data as SoldRow[]) ?? []);
-    setFeed((f.data as FeedRow[]) ?? []);
+    setHealth((h.data as ScrapeHealth | null) ?? null);
+    setRecentSold(((s.data as SoldRow[] | null) ?? []));
+    setFeed(((f.data as FeedRow[] | null) ?? []));
     setLoading(false);
   };
 
@@ -216,7 +220,9 @@ export function DealerScrapePanel({ accountId, dealerName }: Props) {
                   <ul className="space-y-1 text-xs">
                     {feed.map((f) => (
                       <li key={f.id} className="flex justify-between gap-2">
-                        <span className="truncate">{f.vehicle_label ?? f.id}</span>
+                        <span className="truncate">
+                          {f.year ?? ""} {f.make} {f.model} {f.variant ?? ""}
+                        </span>
                         <span className="text-muted-foreground whitespace-nowrap">
                           {f.expected_margin ? `$${f.expected_margin}` : ""}
                         </span>
