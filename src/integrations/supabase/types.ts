@@ -12512,11 +12512,14 @@ export type Database = {
       }
       trap_crawl_runs: {
         Row: {
+          account_id: string | null
           created_at: string
           dealer_name: string
+          disappeared_listings: number | null
           drop_reasons: Json | null
           error: string | null
           id: string
+          new_listings: number | null
           parser_mode: string
           run_completed_at: string | null
           run_date: string
@@ -12525,13 +12528,17 @@ export type Database = {
           vehicles_dropped: number
           vehicles_found: number
           vehicles_ingested: number
+          worker_name: string | null
         }
         Insert: {
+          account_id?: string | null
           created_at?: string
           dealer_name: string
+          disappeared_listings?: number | null
           drop_reasons?: Json | null
           error?: string | null
           id?: string
+          new_listings?: number | null
           parser_mode: string
           run_completed_at?: string | null
           run_date?: string
@@ -12540,13 +12547,17 @@ export type Database = {
           vehicles_dropped?: number
           vehicles_found?: number
           vehicles_ingested?: number
+          worker_name?: string | null
         }
         Update: {
+          account_id?: string | null
           created_at?: string
           dealer_name?: string
+          disappeared_listings?: number | null
           drop_reasons?: Json | null
           error?: string | null
           id?: string
+          new_listings?: number | null
           parser_mode?: string
           run_completed_at?: string | null
           run_date?: string
@@ -12555,8 +12566,17 @@ export type Database = {
           vehicles_dropped?: number
           vehicles_found?: number
           vehicles_ingested?: number
+          worker_name?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "trap_crawl_runs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       trap_deal_alerts: {
         Row: {
@@ -15099,11 +15119,14 @@ export type Database = {
       }
       dealer_crawl_runs: {
         Row: {
+          account_id: string | null
           created_at: string | null
           dealer_name: string | null
+          disappeared_listings: number | null
           drop_reasons: Json | null
           error: string | null
           id: string | null
+          new_listings: number | null
           parser_mode: string | null
           run_completed_at: string | null
           run_date: string | null
@@ -15112,13 +15135,17 @@ export type Database = {
           vehicles_dropped: number | null
           vehicles_found: number | null
           vehicles_ingested: number | null
+          worker_name: string | null
         }
         Insert: {
+          account_id?: string | null
           created_at?: string | null
           dealer_name?: string | null
+          disappeared_listings?: number | null
           drop_reasons?: Json | null
           error?: string | null
           id?: string | null
+          new_listings?: number | null
           parser_mode?: string | null
           run_completed_at?: string | null
           run_date?: string | null
@@ -15127,13 +15154,17 @@ export type Database = {
           vehicles_dropped?: number | null
           vehicles_found?: number | null
           vehicles_ingested?: number | null
+          worker_name?: string | null
         }
         Update: {
+          account_id?: string | null
           created_at?: string | null
           dealer_name?: string | null
+          disappeared_listings?: number | null
           drop_reasons?: Json | null
           error?: string | null
           id?: string | null
+          new_listings?: number | null
           parser_mode?: string | null
           run_completed_at?: string | null
           run_date?: string | null
@@ -15142,8 +15173,17 @@ export type Database = {
           vehicles_dropped?: number | null
           vehicles_found?: number | null
           vehicles_ingested?: number | null
+          worker_name?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "trap_crawl_runs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dealer_opportunity_21d: {
         Row: {

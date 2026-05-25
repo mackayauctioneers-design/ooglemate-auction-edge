@@ -56,6 +56,7 @@ import OperatorDealerUploadPage from "./pages/operator/OperatorDealerUploadPage"
 import ManualIntakePage from "./pages/operator/ManualIntakePage";
 import OogleBotPage from "./pages/operator/OogleBotPage";
 import DealerProfilesPage from "./pages/operator/DealerProfilesPage";
+import UnmappedScrapeSourcesPage from "./pages/operator/UnmappedScrapeSourcesPage";
 import VAIntakePage from "./pages/VAIntakePage";
 import VATasksPage from "./pages/VATasksPage";
 import MandateFeedPage from "./pages/MandateFeedPage";
@@ -253,6 +254,7 @@ const App = () => (
               <Route path="/operator/dealers" element={<OperatorGuard><DealerManagementPage /></OperatorGuard>} />
               <Route path="/operator/dealers/:dealerId/intelligence" element={<OperatorGuard><DealerIntelligencePage /></OperatorGuard>} />
               <Route path="/operator/dealer-profiles" element={<OperatorGuard><DealerProfilesPage /></OperatorGuard>} />
+              <Route path="/operator/unmapped-scrape-sources" element={<OperatorGuard><UnmappedScrapeSourcesPage /></OperatorGuard>} />
 
               {/* Dealer Reports & Feeds */}
               <Route path="/dealer/report/ajh" element={<RequireAuth><AJHReportPage /></RequireAuth>} />
