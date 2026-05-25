@@ -2394,6 +2394,7 @@ export type Database = {
       }
       dealer_outbound_sources: {
         Row: {
+          account_id: string | null
           adapter_type: string
           brands: string[] | null
           consecutive_failures: number
@@ -2414,6 +2415,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          account_id?: string | null
           adapter_type?: string
           brands?: string[] | null
           consecutive_failures?: number
@@ -2434,6 +2436,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          account_id?: string | null
           adapter_type?: string
           brands?: string[] | null
           consecutive_failures?: number
@@ -2453,7 +2456,15 @@ export type Database = {
           state?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "dealer_outbound_sources_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dealer_outcomes: {
         Row: {
