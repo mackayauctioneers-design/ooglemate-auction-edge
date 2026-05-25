@@ -129,13 +129,24 @@ Deno.serve(async (req) => {
       mapped = true; // account known, dealer profile optional
     }
   } else if (dealer_slug) {
-    const { data: acc } = await sb
-      .from("accounts")
-      .select("id")
-      .eq("slug", dealer_slug)
+    // 1) Try outbound source mapping (canonical scrape registry)
+    const { data: src } = await sb
+      .from("dealer_outbound_sources")
+      .select("account_id")
+      .eq("dealer_slug", dealer_slug)
       .maybeSingle();
-    if (acc?.id) {
-      resolvedAccountId = acc.id as string;
+    if (src?.account_id) {
+      resolvedAccountId = src.account_id as string;
+    } else {
+      // 2) Fallback to direct accounts.slug match
+      const { data: acc } = await sb
+        .from("accounts")
+        .select("id")
+        .eq("slug", dealer_slug)
+        .maybeSingle();
+      if (acc?.id) resolvedAccountId = acc.id as string;
+    }
+    if (resolvedAccountId) {
       const { data: dp } = await sb
         .from("dealer_profiles")
         .select("id")
