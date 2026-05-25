@@ -94,9 +94,9 @@ export function DealerScrapePanel({ accountId, dealerName }: Props) {
 
   const toggleScrape = async (enabled: boolean) => {
     setToggling(true);
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from("dealer_outbound_sources")
-      .update({ scrape_enabled: enabled } as any)
+      .update({ scrape_enabled: enabled })
       .eq("account_id", accountId);
     setToggling(false);
     if (error) {
