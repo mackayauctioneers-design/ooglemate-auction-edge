@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
     // ── Fetch enabled dealer sources ──
     let query = sb
       .from("dealer_outbound_sources")
-      .select("id, dealer_name, dealer_slug, dealer_domain, inventory_path, priority")
+      .select("id, dealer_name, dealer_slug, dealer_domain, inventory_path, priority, account_id, consecutive_failures")
       .eq("enabled", true)
       .order("priority", { ascending: true })
       .order("last_crawl_at", { ascending: true, nullsFirst: true })
