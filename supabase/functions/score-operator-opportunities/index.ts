@@ -617,6 +617,7 @@ Deno.serve(async (req) => {
       const make = (l.make || "").toUpperCase().trim();
       const model = (l.model || "").toUpperCase().trim();
       if (!make || !model || !l.year) continue;
+      if (!passesVehicleFilter(l.year, l.km)) continue;
       seenIds.add(lid);
       pricelessCandidates.push({
         listing_id: lid, source: l.source || "unknown",
