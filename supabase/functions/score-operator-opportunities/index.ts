@@ -458,6 +458,7 @@ Deno.serve(async (req) => {
       if (!normalizedSale.platform_class || normalizedSale.platform_class === "UNKNOWN") continue;
       if (!normalizedSale.trim_class || normalizedSale.trim_class === "UNKNOWN") continue;
       if (!normalizedSale.year) continue;
+      if (!passesVehicleFilter(normalizedSale.year, normalizedSale.km)) continue;
 
       if (!salesByAccount[normalizedSale.account_id]) salesByAccount[normalizedSale.account_id] = [];
       salesByAccount[normalizedSale.account_id].push(normalizedSale);
