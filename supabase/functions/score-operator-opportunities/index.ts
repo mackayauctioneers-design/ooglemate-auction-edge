@@ -566,6 +566,7 @@ Deno.serve(async (req) => {
       const make = (s.make || "").toUpperCase().trim();
       const model = (s.model || "").toUpperCase().trim();
       if (!make || !model || !s.year) continue;
+      if (!passesVehicleFilter(s.year, s.km)) continue;
       seenIds.add(lid);
       const raw = s.raw_payload || {};
       const trimSource = [raw.title, raw.variant, raw.grade, raw.sellerNotes, raw.description, raw.model, raw.badgeDescription].filter(Boolean).join(" ");
