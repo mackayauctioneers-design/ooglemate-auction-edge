@@ -9620,6 +9620,39 @@ export type Database = {
         }
         Relationships: []
       }
+      receive_listings_dead_letter: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          listing_url: string | null
+          payload: Json
+          resolved_at: string | null
+          retry_count: number
+          source: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          listing_url?: string | null
+          payload: Json
+          resolved_at?: string | null
+          retry_count?: number
+          source?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          listing_url?: string | null
+          payload?: Json
+          resolved_at?: string | null
+          retry_count?: number
+          source?: string | null
+        }
+        Relationships: []
+      }
       retail_geo_heat_sa2_daily: {
         Row: {
           active_listings: number
