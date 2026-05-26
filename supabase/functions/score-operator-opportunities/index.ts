@@ -27,6 +27,17 @@ const MAX_AUCTION_WATCH_CREATED = 150;
 const SAFETY_BUFFER_MINUTES = 10;
 const TOP_K_PER_FINGERPRINT = 3; // max opps per platform_class+trim per run
 
+// ── GLOBAL VEHICLE FILTER ────────────────────────────────────────────────────
+// Platform rule: only 2020+ model year vehicles with ≤120,000 km are eligible
+// for fingerprints, anchor sales, and live listing matches.
+const MIN_YEAR = 2020;
+const MAX_KM = 120000;
+function passesVehicleFilter(year: number | null | undefined, km: number | null | undefined): boolean {
+  if (!year || year < MIN_YEAR) return false;
+  if (km != null && km > MAX_KM) return false;
+  return true;
+}
+
 // ── HELPERS (unchanged logic) ────────────────────────────────────────────────
 
 // derivePlatform and extractBadge are now imported from _shared/taxonomy/derivePlatform.ts
@@ -447,6 +458,7 @@ Deno.serve(async (req) => {
       if (!normalizedSale.platform_class || normalizedSale.platform_class === "UNKNOWN") continue;
       if (!normalizedSale.trim_class || normalizedSale.trim_class === "UNKNOWN") continue;
       if (!normalizedSale.year) continue;
+      if (!passesVehicleFilter(normalizedSale.year, normalizedSale.km)) continue;
 
       if (!salesByAccount[normalizedSale.account_id]) salesByAccount[normalizedSale.account_id] = [];
       salesByAccount[normalizedSale.account_id].push(normalizedSale);
@@ -529,6 +541,7 @@ Deno.serve(async (req) => {
       const make = (l.make || "").toUpperCase().trim();
       const model = (l.model || "").toUpperCase().trim();
       if (!make || !model || !l.year) continue;
+      if (!passesVehicleFilter(l.year, l.km)) continue;
       if (!isProductionSource(l.source || "")) continue;
       seenIds.add(lid);
       const daysSince = Math.floor((Date.now() - new Date(l.first_seen_at || Date.now()).getTime()) / 86400000);
@@ -553,6 +566,7 @@ Deno.serve(async (req) => {
       const make = (s.make || "").toUpperCase().trim();
       const model = (s.model || "").toUpperCase().trim();
       if (!make || !model || !s.year) continue;
+      if (!passesVehicleFilter(s.year, s.km)) continue;
       seenIds.add(lid);
       const raw = s.raw_payload || {};
       const trimSource = [raw.title, raw.variant, raw.grade, raw.sellerNotes, raw.description, raw.model, raw.badgeDescription].filter(Boolean).join(" ");
@@ -578,6 +592,7 @@ Deno.serve(async (req) => {
       const make = (r.make || "").toUpperCase().trim();
       const model = (r.model || "").toUpperCase().trim();
       if (!make || !model || !r.year) continue;
+      if (!passesVehicleFilter(r.year, r.km)) continue;
       seenIds.add(lid);
       const daysSince = Math.floor((Date.now() - new Date(r.first_seen_at || Date.now()).getTime()) / 86400000);
       candidates.push({
@@ -602,6 +617,7 @@ Deno.serve(async (req) => {
       const make = (l.make || "").toUpperCase().trim();
       const model = (l.model || "").toUpperCase().trim();
       if (!make || !model || !l.year) continue;
+      if (!passesVehicleFilter(l.year, l.km)) continue;
       seenIds.add(lid);
       pricelessCandidates.push({
         listing_id: lid, source: l.source || "unknown",
