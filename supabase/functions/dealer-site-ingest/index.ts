@@ -42,7 +42,15 @@ interface DealerSource {
   dealer_domain: string;
   inventory_path: string;
   priority: string;
+  account_id: string | null;
+  consecutive_failures?: number;
 }
+
+// Global vehicle eligibility filter (matches score-operator-opportunities / fingerprint engine)
+const MIN_YEAR = 2020;
+const MAX_KM = 120000;
+// Only treat a missing listing as SOLD after it's been absent for this long
+const SOLD_PROMOTE_AFTER_HOURS = 36;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -72,7 +80,7 @@ Deno.serve(async (req) => {
     // ── Fetch enabled dealer sources ──
     let query = sb
       .from("dealer_outbound_sources")
-      .select("id, dealer_name, dealer_slug, dealer_domain, inventory_path, priority")
+      .select("id, dealer_name, dealer_slug, dealer_domain, inventory_path, priority, account_id, consecutive_failures")
       .eq("enabled", true)
       .order("priority", { ascending: true })
       .order("last_crawl_at", { ascending: true, nullsFirst: true })
@@ -93,7 +101,7 @@ Deno.serve(async (req) => {
 
     console.log(`[DEALER-INGEST] Processing ${dealers.length} dealer sites`);
 
-    const results: { dealer: string; found: number; upserted: number; error?: string }[] = [];
+    const results: { dealer: string; found: number; upserted: number; sold_promoted?: number; error?: string }[] = [];
 
     for (const dealer of dealers as DealerSource[]) {
       const inventoryUrl = `https://${dealer.dealer_domain}${dealer.inventory_path}`;
@@ -190,6 +198,82 @@ Deno.serve(async (req) => {
           }
         }
 
+        // ── Disappearance diff → promote to vehicle_sales_truth ──
+        // Any ACTIVE listing for this dealer that we haven't seen in SOLD_PROMOTE_AFTER_HOURS
+        // is treated as sold. Requires account_id mapping; otherwise we just mark SOLD and skip truth promotion.
+        let soldPromoted = 0;
+        try {
+          const cutoffIso = new Date(Date.now() - SOLD_PROMOTE_AFTER_HOURS * 3600 * 1000).toISOString();
+          const { data: stale } = await sb
+            .from("vehicle_listings")
+            .select("id, source_listing_id, make, model, variant_raw, year, km, asking_price, transmission, fuel, first_seen_at, last_seen_at")
+            .eq("source", `dealer_site:${dealer.dealer_slug}`)
+            .eq("lifecycle_state", "ACTIVE")
+            .lt("last_seen_at", cutoffIso);
+
+          if (stale && stale.length > 0) {
+            const soldIds: string[] = [];
+            const truthRows: any[] = [];
+            for (const v of stale) {
+              soldIds.push(v.id);
+              if (!dealer.account_id) continue; // can't promote without tenant binding
+              if (!v.year || v.year < MIN_YEAR) continue;
+              if (typeof v.km === "number" && v.km > MAX_KM) continue;
+              if (!v.make || !v.model || !v.asking_price) continue;
+
+              const soldAt = (v.last_seen_at || new Date().toISOString()).slice(0, 10);
+              const acquiredAt = v.first_seen_at ? v.first_seen_at.slice(0, 10) : null;
+              const daysToClear = acquiredAt
+                ? Math.max(0, Math.round((new Date(soldAt).getTime() - new Date(acquiredAt).getTime()) / 86400000))
+                : null;
+
+              truthRows.push({
+                account_id: dealer.account_id,
+                sold_at: soldAt,
+                make: v.make,
+                model: v.model,
+                variant: v.variant_raw || null,
+                year: v.year,
+                km: typeof v.km === "number" ? v.km : null,
+                sale_price: v.asking_price,
+                source: `arby_dealer_site:${dealer.dealer_slug}`,
+                confidence: "MEDIUM",
+                notes: `Auto-promoted from dealer site scrape (disappeared ${SOLD_PROMOTE_AFTER_HOURS}h). source_listing_id=${v.source_listing_id}`,
+                acquired_at: acquiredAt,
+                days_to_clear: daysToClear,
+                transmission: v.transmission || null,
+                fuel_type: v.fuel || null,
+                platform_class: "UNKNOWN",
+              });
+            }
+
+            if (truthRows.length > 0) {
+              const { error: truthErr } = await sb.from("vehicle_sales_truth").insert(truthRows);
+              if (truthErr) {
+                console.error(`[DEALER-INGEST] sales_truth insert error for ${dealer.dealer_slug}: ${truthErr.message}`);
+              } else {
+                soldPromoted = truthRows.length;
+              }
+            }
+
+            if (soldIds.length > 0) {
+              await sb
+                .from("vehicle_listings")
+                .update({
+                  lifecycle_state: "SOLD",
+                  status: "SOLD",
+                  status_changed_at: new Date().toISOString(),
+                  delisted_at: new Date().toISOString(),
+                })
+                .in("id", soldIds);
+            }
+
+            console.log(`[DEALER-INGEST] ${dealer.dealer_slug}: marked ${soldIds.length} SOLD, promoted ${soldPromoted} to sales_truth`);
+          }
+        } catch (diffErr) {
+          console.error(`[DEALER-INGEST] ${dealer.dealer_slug} diff/promote error:`, diffErr);
+        }
+
         // Update dealer source tracking
         await sb.from("dealer_outbound_sources").update({
           last_crawl_at: new Date().toISOString(),
@@ -198,7 +282,7 @@ Deno.serve(async (req) => {
           consecutive_failures: 0,
         }).eq("id", dealer.id);
 
-        results.push({ dealer: dealer.dealer_slug, found: vehicles.length, upserted: upsertCount });
+        results.push({ dealer: dealer.dealer_slug, found: vehicles.length, upserted: upsertCount, sold_promoted: soldPromoted });
       } catch (err) {
         console.error(`[DEALER-INGEST] ${dealer.dealer_slug} exception:`, err);
         results.push({ dealer: dealer.dealer_slug, found: 0, upserted: 0, error: String(err) });
