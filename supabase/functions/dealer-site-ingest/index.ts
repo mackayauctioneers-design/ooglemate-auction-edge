@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
 
     console.log(`[DEALER-INGEST] Processing ${dealers.length} dealer sites`);
 
-    const results: { dealer: string; found: number; upserted: number; error?: string }[] = [];
+    const results: { dealer: string; found: number; upserted: number; sold_promoted?: number; error?: string }[] = [];
 
     for (const dealer of dealers as DealerSource[]) {
       const inventoryUrl = `https://${dealer.dealer_domain}${dealer.inventory_path}`;
