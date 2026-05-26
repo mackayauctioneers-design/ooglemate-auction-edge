@@ -27,6 +27,17 @@ const MAX_AUCTION_WATCH_CREATED = 150;
 const SAFETY_BUFFER_MINUTES = 10;
 const TOP_K_PER_FINGERPRINT = 3; // max opps per platform_class+trim per run
 
+// ── GLOBAL VEHICLE FILTER ────────────────────────────────────────────────────
+// Platform rule: only 2020+ model year vehicles with ≤120,000 km are eligible
+// for fingerprints, anchor sales, and live listing matches.
+const MIN_YEAR = 2020;
+const MAX_KM = 120000;
+function passesVehicleFilter(year: number | null | undefined, km: number | null | undefined): boolean {
+  if (!year || year < MIN_YEAR) return false;
+  if (km != null && km > MAX_KM) return false;
+  return true;
+}
+
 // ── HELPERS (unchanged logic) ────────────────────────────────────────────────
 
 // derivePlatform and extractBadge are now imported from _shared/taxonomy/derivePlatform.ts
