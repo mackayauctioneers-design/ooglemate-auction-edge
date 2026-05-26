@@ -541,6 +541,7 @@ Deno.serve(async (req) => {
       const make = (l.make || "").toUpperCase().trim();
       const model = (l.model || "").toUpperCase().trim();
       if (!make || !model || !l.year) continue;
+      if (!passesVehicleFilter(l.year, l.km)) continue;
       if (!isProductionSource(l.source || "")) continue;
       seenIds.add(lid);
       const daysSince = Math.floor((Date.now() - new Date(l.first_seen_at || Date.now()).getTime()) / 86400000);
