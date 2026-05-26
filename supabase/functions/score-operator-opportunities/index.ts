@@ -109,9 +109,12 @@ const TRIM_LADDER: Record<string, Record<string, number>> = {
 
 function trimAllowed(platformClass: string, listingTrim: string, saleTrim: string): boolean {
   if (saleTrim === listingTrim) return true;
-  // BASE no longer wildcards through — must be exact match or ladder-adjacent
+  // BASE is an explicit low-confidence fallback for legacy sales/uploads where
+  // the badge could not be extracted. Keep laddered hero platforms strict, but
+  // let non-ladder platforms match at make/model level so usable dealer truth is
+  // not silently discarded.
   const ladder = TRIM_LADDER[platformClass];
-  if (!ladder) return saleTrim === listingTrim;
+  if (!ladder) return saleTrim === "BASE" || listingTrim === "BASE";
   const listingRank = ladder[listingTrim];
   const saleRank = ladder[saleTrim];
   if (listingRank == null || saleRank == null) return false;
@@ -448,7 +451,7 @@ Deno.serve(async (req) => {
           rawSale.platform_class && rawSale.platform_class.includes(":")
             ? rawSale.platform_class
             : derivedPlatform || rawSale.platform_class,
-        trim_class: rawSale.trim_class || extractBadge(rawSale.variant) || "UNKNOWN",
+        trim_class: rawSale.trim_class || extractBadge(rawSale.variant) || "BASE",
         drivetrain_bucket:
           rawSale.drivetrain_bucket && rawSale.drivetrain_bucket !== "UNKNOWN"
             ? rawSale.drivetrain_bucket
@@ -550,7 +553,7 @@ Deno.serve(async (req) => {
         make, model, year: l.year, km: l.km,
         asking_price: Number(l.asking_price),
         platform_class: l.platform_class || derivePlatform(make, model),
-        trim_class: l.variant_family || extractBadge(l.variant_raw) || "UNKNOWN",
+        trim_class: l.variant_family || extractBadge(l.variant_raw) || "BASE",
         drivetrain_bucket: drivetrainBucket(l.drivetrain),
         source_url: sanitizeSourceUrl(l.listing_url || "", lid),
         first_seen_at: l.first_seen_at || new Date().toISOString(),
@@ -576,7 +579,7 @@ Deno.serve(async (req) => {
         make, model, year: s.year, km: s.km,
         asking_price: Number(s.asking_price),
         platform_class: derivePlatform(make, model),
-        trim_class: extractBadge(trimSource) || "UNKNOWN",
+        trim_class: extractBadge(trimSource) || "BASE",
         drivetrain_bucket: drivetrainBucket(s.drivetrain || raw.driveType),
         source_url: sanitizeSourceUrl((raw.listingUrl || s.listing_url || "").trim() || "", lid),
         first_seen_at: s.first_seen_at || new Date().toISOString(),
@@ -600,7 +603,7 @@ Deno.serve(async (req) => {
         make, model, year: r.year, km: r.km,
         asking_price: Number(r.asking_price),
         platform_class: derivePlatform(make, model),
-        trim_class: r.badge || r.variant_family || extractBadge(r.variant_raw) || "UNKNOWN",
+        trim_class: r.badge || r.variant_family || extractBadge(r.variant_raw) || "BASE",
         drivetrain_bucket: drivetrainBucket(r.drivetrain),
         source_url: sanitizeSourceUrl(r.listing_url || "", lid),
         first_seen_at: r.first_seen_at || new Date().toISOString(),
@@ -623,7 +626,7 @@ Deno.serve(async (req) => {
         listing_id: lid, source: l.source || "unknown",
         make, model, year: l.year, km: l.km,
         platform_class: l.platform_class || derivePlatform(make, model),
-        trim_class: l.variant_family || extractBadge(l.variant_raw) || "UNKNOWN",
+        trim_class: l.variant_family || extractBadge(l.variant_raw) || "BASE",
         drivetrain_bucket: drivetrainBucket(l.drivetrain),
         source_url: sanitizeSourceUrl(l.listing_url || "", lid),
         first_seen_at: l.first_seen_at || new Date().toISOString(),
