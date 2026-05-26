@@ -247,7 +247,7 @@ Deno.serve(async (req) => {
         colour: item.colour || null,
         image_url: item.image_url || null,
         vin: item.vin || null,
-        lifecycle_state: "ACTIVE",
+        lifecycle_state: "NEW",
         status: "active",
         last_seen_at: now,
         updated_at: now,
