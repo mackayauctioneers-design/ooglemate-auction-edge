@@ -42,7 +42,15 @@ interface DealerSource {
   dealer_domain: string;
   inventory_path: string;
   priority: string;
+  account_id: string | null;
+  consecutive_failures?: number;
 }
+
+// Global vehicle eligibility filter (matches score-operator-opportunities / fingerprint engine)
+const MIN_YEAR = 2020;
+const MAX_KM = 120000;
+// Only treat a missing listing as SOLD after it's been absent for this long
+const SOLD_PROMOTE_AFTER_HOURS = 36;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
