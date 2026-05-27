@@ -1997,6 +1997,50 @@ export type Database = {
           },
         ]
       }
+      dealer_invites: {
+        Row: {
+          account_id: string
+          consumed_at: string | null
+          consumed_user_id: string | null
+          created_at: string
+          dealer_name: string | null
+          email: string
+          id: string
+          invited_by: string | null
+          status: string
+        }
+        Insert: {
+          account_id: string
+          consumed_at?: string | null
+          consumed_user_id?: string | null
+          created_at?: string
+          dealer_name?: string | null
+          email: string
+          id?: string
+          invited_by?: string | null
+          status?: string
+        }
+        Update: {
+          account_id?: string
+          consumed_at?: string | null
+          consumed_user_id?: string | null
+          created_at?: string
+          dealer_name?: string | null
+          email?: string
+          id?: string
+          invited_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_invites_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_liquidity_profiles: {
         Row: {
           badge: string | null
