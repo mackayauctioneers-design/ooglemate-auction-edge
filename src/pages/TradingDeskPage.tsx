@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   ExternalLink, Loader2, RefreshCw, Zap, FileText,
-  AlertTriangle, ChevronDown, ChevronUp, DollarSign, Download,
+  AlertTriangle, ChevronDown, ChevronUp, DollarSign, Download, BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 
