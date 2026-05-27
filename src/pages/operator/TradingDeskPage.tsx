@@ -685,16 +685,18 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
 
         {/* Filters */}
         <div className="flex flex-wrap gap-2 items-end">
-          <div className="w-40">
-            <label className="text-xs text-muted-foreground mb-1 block">Account</label>
-            <Select value={filterAccount} onValueChange={setFilterAccount}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Accounts</SelectItem>
-                {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.display_name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+          {!isDealerMode && (
+            <div className="w-40">
+              <label className="text-xs text-muted-foreground mb-1 block">Account</label>
+              <Select value={filterAccount} onValueChange={setFilterAccount}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Accounts</SelectItem>
+                  {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.display_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="w-36">
             <label className="text-xs text-muted-foreground mb-1 block">Tier</label>
             <Select value={filterTier} onValueChange={setFilterTier}>
