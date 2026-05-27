@@ -175,10 +175,19 @@ export default function DealerMasterProfilePage() {
                 body: { account_id: accountId, email: email.trim(), dealer_name },
               });
               if (error) { toast.error(error.message); return; }
-              if ((data as any)?.mode === 'magiclink') {
-                toast.success(`User already existed — magic link sent to ${email}`);
+              const d = data as any;
+              const link = d?.action_link as string | null;
+              if (link) {
+                try { await navigator.clipboard.writeText(link); } catch {}
+                toast.success(
+                  d?.email_sent
+                    ? `Invite email sent to ${email}. Magic link also copied to clipboard.`
+                    : `Magic link copied to clipboard for ${email} — paste it to them directly.`,
+                  { duration: 8000 }
+                );
+                window.prompt('Magic sign-in link (copy & send to dealer):', link);
               } else {
-                toast.success(`Invite sent to ${email}`);
+                toast.error(d?.email_error || 'Could not generate magic link');
               }
             }}
           >
