@@ -41,6 +41,7 @@ export default function DealerMasterProfilePage() {
       setProfile(prof ? {
         ...prof,
         weights: (prof.weights as WeightsShape) ?? { MAKE: {}, MAKE_MODEL: {} },
+        weights_source: (prof.weights_source as Profile['weights_source']) ?? 'blended',
       } : {
         account_id: accountId,
         master_brief_md: '',
