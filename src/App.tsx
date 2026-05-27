@@ -254,6 +254,7 @@ const App = () => (
               <Route path="/operator/car-sales-watch" element={<OperatorGuard><CarSalesWatchPage /></OperatorGuard>} />
               <Route path="/operator/dealers" element={<OperatorGuard><DealerManagementPage /></OperatorGuard>} />
               <Route path="/operator/dealers/:dealerId/intelligence" element={<OperatorGuard><DealerIntelligencePage /></OperatorGuard>} />
+              <Route path="/operator/dealers/:accountId/master-profile" element={<OperatorGuard><DealerMasterProfilePage /></OperatorGuard>} />
               <Route path="/operator/dealer-profiles" element={<OperatorGuard><DealerProfilesPage /></OperatorGuard>} />
               <Route path="/operator/unmapped-scrape-sources" element={<OperatorGuard><UnmappedScrapeSourcesPage /></OperatorGuard>} />
 
