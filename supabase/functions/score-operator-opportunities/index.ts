@@ -189,6 +189,8 @@ interface AccountMatch {
   account_id: string;
   account_name: string;
   expected_margin: number;
+  weighted_margin: number;
+  applied_weight: number;
   under_buy: number;
   anchor_sale_id: string;
   anchor_sale_buy_price: number;
@@ -198,6 +200,19 @@ interface AccountMatch {
   anchor_sale_km: number | null;
   anchor_sale_trim_class: string;
   margin_flag: string | null;
+}
+
+// Per-dealer make/model weights from dealer_intelligence_profiles
+type WeightsMap = Record<string, { MAKE: Record<string, number>; MAKE_MODEL: Record<string, number> }>;
+
+function resolveWeight(weights: WeightsMap, accountId: string, make: string, model: string): number {
+  const w = weights[accountId];
+  if (!w) return 1.0;
+  const mk = (make || "").toUpperCase().trim();
+  const md = (model || "").toUpperCase().trim();
+  const v = w.MAKE_MODEL?.[`${mk}|${md}`] ?? w.MAKE?.[mk] ?? 1.0;
+  if (typeof v !== "number" || !isFinite(v)) return 1.0;
+  return Math.max(0, Math.min(2, v));
 }
 
 interface ScoredCandidate {
