@@ -427,19 +427,33 @@ Deno.serve(async (req) => {
   );
 
   try {
+    const body = await req.json().catch(() => ({}));
+    const focusAccountId = typeof body?.focus_account_id === "string" && body.focus_account_id.trim()
+      ? body.focus_account_id.trim()
+      : null;
+
     // ── 1. Get cursor ──
-    const cutoff = await getCursor(sb);
-    console.log(`[SCORE-V2] Delta cutoff: ${cutoff}`);
+    // Focused operator runs are explicit dealer rebuilds, so they must not be
+    // trapped behind the global delta cursor. Use a wider scan window and do
+    // not advance the shared cursor at the end.
+    const cutoff = focusAccountId
+      ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+      : await getCursor(sb);
+    console.log(`[SCORE-V2] Delta cutoff: ${cutoff}${focusAccountId ? ` focus_account=${focusAccountId}` : ""}`);
 
     // ── 2. Load accounts + sales (these are small, load fully) ──
-    const { data: accounts } = await sb.from("accounts").select("id, display_name, slug");
+    let accountsQuery = sb.from("accounts").select("id, display_name, slug");
+    if (focusAccountId) accountsQuery = accountsQuery.eq("id", focusAccountId);
+    const { data: accounts } = await accountsQuery;
     if (!accounts || accounts.length === 0) throw new Error("No accounts found");
 
-    const { data: allSales } = await sb
+    let salesQuery = sb
       .from("vehicle_sales_truth")
       .select("id, account_id, make, model, year, km, buy_price, sale_price, sold_at, trim_class, variant, platform_class, drivetrain_bucket, drive_type")
       .not("buy_price", "is", null)
       .not("sale_price", "is", null);
+    if (focusAccountId) salesQuery = salesQuery.eq("account_id", focusAccountId);
+    const { data: allSales } = await salesQuery;
 
     if (!allSales || allSales.length === 0) {
       await setCursor(sb, true, { reason: "no_sales_data" });
