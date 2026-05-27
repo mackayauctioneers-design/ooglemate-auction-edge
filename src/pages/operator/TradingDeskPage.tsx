@@ -231,8 +231,17 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
+    if (isDealerMode) return; // never persist in dealer mode
     try { localStorage.setItem('td.filterAccount', filterAccount); } catch { /* ignore */ }
-  }, [filterAccount]);
+  }, [filterAccount, isDealerMode]);
+
+  // Keep dealer-mode filter pinned to the locked account.
+  useEffect(() => {
+    if (isDealerMode && lockedAccountId && filterAccount !== lockedAccountId) {
+      setFilterAccount(lockedAccountId);
+    }
+  }, [isDealerMode, lockedAccountId, filterAccount]);
+
 
   // Only the secondary filters get reset — never the dealer/account selection.
   const resetFilters = useCallback(() => {
