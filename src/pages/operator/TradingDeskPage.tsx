@@ -329,13 +329,18 @@ export default function TradingDeskPage() {
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, is_starred: newVal } : o));
     toast.success(newVal ? 'Added to watchlist ⭐' : 'Removed from watchlist');
 
-    // Dispatch star-watch when starring ON
+    // Dispatch star-watch when starring ON (internal Arby pipeline, Lindy deprecated)
     if (newVal && listingId) {
-      supabase.functions.invoke('lindy-star-watch', {
-        body: { listing_id: listingId },
+      supabase.functions.invoke('star-watch-dispatch', {
+        body: { listing_id: listingId, account_id: filterAccount || null },
       }).then(({ error: watchErr }) => {
-        if (watchErr) console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
-        else console.log('Star-watch dispatched for', listingId);
+        if (watchErr) {
+          console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
+          toast.error('Watch dispatch failed: ' + (watchErr.message || 'unknown'));
+        } else {
+          console.log('Star-watch dispatched for', listingId);
+          toast.success('Condition report queued 🔍');
+        }
       });
     }
   };
@@ -350,10 +355,10 @@ export default function TradingDeskPage() {
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, reminder_at: reminderDt.toISOString(), is_starred: true } : o));
     toast.success(`Reminder set for ${format(reminderDt, 'd MMM h:mm a')}`);
 
-    // Also dispatch star-watch for reminder (implies starring)
+    // Also dispatch star-watch for reminder (implies starring) — internal Arby pipeline
     if (listingId) {
-      supabase.functions.invoke('lindy-star-watch', {
-        body: { listing_id: listingId },
+      supabase.functions.invoke('star-watch-dispatch', {
+        body: { listing_id: listingId, account_id: filterAccount || null },
       }).then(({ error: watchErr }) => {
         if (watchErr) console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
       });
