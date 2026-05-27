@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, RefreshCw, Save, Trash2, Plus, ArrowLeft } from 'lucide-react';
+import { Loader2, RefreshCw, Save, Trash2, Plus, ArrowLeft, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 
 type WeightsShape = { MAKE: Record<string, number>; MAKE_MODEL: Record<string, number> };
