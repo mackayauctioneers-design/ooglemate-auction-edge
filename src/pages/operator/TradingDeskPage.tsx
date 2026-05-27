@@ -252,7 +252,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
     setFilterKmMax('120000');
   }, []);
 
-  useEffect(() => { document.title = 'Trading Desk | Operator'; }, []);
+  useEffect(() => { document.title = isDealerMode ? 'Trading Desk | Carbitrage' : 'Trading Desk | Operator'; }, [isDealerMode]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
