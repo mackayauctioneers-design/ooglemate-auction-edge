@@ -1899,6 +1899,47 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_intelligence_profiles: {
+        Row: {
+          account_id: string
+          auto_summary: Json
+          created_at: string
+          last_rebuilt_at: string | null
+          master_brief_md: string | null
+          updated_at: string
+          weights: Json
+          weights_source: string
+        }
+        Insert: {
+          account_id: string
+          auto_summary?: Json
+          created_at?: string
+          last_rebuilt_at?: string | null
+          master_brief_md?: string | null
+          updated_at?: string
+          weights?: Json
+          weights_source?: string
+        }
+        Update: {
+          account_id?: string
+          auto_summary?: Json
+          created_at?: string
+          last_rebuilt_at?: string | null
+          master_brief_md?: string | null
+          updated_at?: string
+          weights?: Json
+          weights_source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_intelligence_profiles_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: true
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_inventory_snapshots: {
         Row: {
           account_id: string
@@ -7883,6 +7924,7 @@ export type Database = {
           anchor_sale_sell_price: number | null
           anchor_sale_sold_at: string | null
           anchor_sale_trim_class: string | null
+          applied_weight: number | null
           asking_price: number | null
           assigned_at: string | null
           assigned_by: string | null
@@ -7927,6 +7969,7 @@ export type Database = {
           trim_class: string | null
           updated_at: string
           variant: string | null
+          weighted_margin: number | null
           year: number | null
         }
         Insert: {
@@ -7938,6 +7981,7 @@ export type Database = {
           anchor_sale_sell_price?: number | null
           anchor_sale_sold_at?: string | null
           anchor_sale_trim_class?: string | null
+          applied_weight?: number | null
           asking_price?: number | null
           assigned_at?: string | null
           assigned_by?: string | null
@@ -7982,6 +8026,7 @@ export type Database = {
           trim_class?: string | null
           updated_at?: string
           variant?: string | null
+          weighted_margin?: number | null
           year?: number | null
         }
         Update: {
@@ -7993,6 +8038,7 @@ export type Database = {
           anchor_sale_sell_price?: number | null
           anchor_sale_sold_at?: string | null
           anchor_sale_trim_class?: string | null
+          applied_weight?: number | null
           asking_price?: number | null
           assigned_at?: string | null
           assigned_by?: string | null
@@ -8037,6 +8083,7 @@ export type Database = {
           trim_class?: string | null
           updated_at?: string
           variant?: string | null
+          weighted_margin?: number | null
           year?: number | null
         }
         Relationships: [
