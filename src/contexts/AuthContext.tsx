@@ -27,6 +27,7 @@ interface CurrentUser {
   dealer_name: string;
   region_id: string;
   role: AppRole;
+  account_id: string | null;
 }
 
 interface AuthContextType {
