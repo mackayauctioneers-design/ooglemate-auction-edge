@@ -289,33 +289,28 @@ function scoreListingAgainstAccounts(
   listing: CandidateListing,
   salesByAccount: Record<string, any[]>,
   accountNames: Record<string, string>,
-): { best: AccountMatch; alts: AccountMatch[]; tier: string } | null {
+  weights: WeightsMap,
+): { best: AccountMatch; alts: AccountMatch[]; tier: string; listing_age_score?: number; listing_age_reason?: string } | null {
   const accountMatches: AccountMatch[] = [];
   const isRetail = listing.source_type === "retail";
 
   for (const [acctId, acctSales] of Object.entries(salesByAccount)) {
-    // ── HARD GATES: strict comparability before any sorting ──
     const matches = acctSales.filter((s: any) => {
       if (s.platform_class !== listing.platform_class) return false;
       if (!s.trim_class || s.trim_class === "UNKNOWN") return false;
-      // Hard gate 1: exact trim match or one-step ladder (no BASE wildcard)
       if (!trimAllowed(listing.platform_class, listing.trim_class, s.trim_class)) return false;
-      // Hard gate 2: year within ±1
       if (Math.abs(s.year - listing.year) > 1) return false;
-      // Hard gate 3: KM within ±20%
       if (s.km && listing.km) {
         const kmDelta = Math.abs(s.km - listing.km);
         const kmThreshold = Math.max(listing.km, s.km) * 0.2;
         if (kmDelta > kmThreshold) return false;
       }
-      // Hard gate 4: drivetrain must match
       if (listing.drivetrain_bucket !== "UNKNOWN" && s.drivetrain_bucket && s.drivetrain_bucket !== "UNKNOWN" && listing.drivetrain_bucket !== s.drivetrain_bucket) return false;
       return true;
     });
 
     if (matches.length === 0) continue;
 
-    // ── SORT: closest comparable wins (70% KM, 30% profit tiebreaker) ──
     const maxProfit = Math.max(...matches.map((c: any) => c.sale_price - Number(c.buy_price)));
     matches.sort((a: any, b: any) => {
       const kmA = a.km && listing.km ? 1 - Math.abs(a.km - listing.km) / (listing.km * 0.2 || 15000) : 0.5;
@@ -327,10 +322,10 @@ function scoreListingAgainstAccounts(
 
     const best = matches[0];
     const underBuy = Number(best.buy_price) - listing.asking_price;
-    // Margin = anchor's actual historical profit, NOT sell_price - asking
     const anchorProfit = best.sale_price - Number(best.buy_price);
     const expectedMargin = anchorProfit;
-    // Flag high-variance margins server-side
+    const appliedWeight = resolveWeight(weights, acctId, listing.make, listing.model);
+    const weightedMargin = expectedMargin * appliedWeight;
     const marginFlag = expectedMargin > 15000 ? "high_variance" : null;
 
     if (isRetail) {
@@ -343,6 +338,8 @@ function scoreListingAgainstAccounts(
       account_id: acctId,
       account_name: accountNames[acctId] || "Unknown",
       expected_margin: expectedMargin,
+      weighted_margin: weightedMargin,
+      applied_weight: appliedWeight,
       under_buy: underBuy,
       anchor_sale_id: best.id,
       anchor_sale_buy_price: Number(best.buy_price),
@@ -357,23 +354,24 @@ function scoreListingAgainstAccounts(
 
   if (accountMatches.length === 0) return null;
 
-  accountMatches.sort((a, b) => b.expected_margin - a.expected_margin);
+  // Rank by weighted margin so dealer preferences influence "best account"
+  accountMatches.sort((a, b) => b.weighted_margin - a.weighted_margin);
   const best = accountMatches[0];
   const alts = accountMatches.slice(1);
 
+  // Tiering uses weighted margin (winners get tier boosts, avoid-list gets demoted)
   let tier: string;
   if (isRetail) {
     if (best.under_buy >= 1500) tier = "RETAIL_BUY";
     else if (best.under_buy >= -3000) tier = "RETAIL_TARGET";
     else tier = "WATCH";
   } else {
-    if (best.under_buy >= 1500 && best.expected_margin >= 6000) tier = "CODE_RED";
-    else if (best.under_buy >= 1500 && best.expected_margin >= 4000) tier = "HIGH";
+    if (best.under_buy >= 1500 && best.weighted_margin >= 6000) tier = "CODE_RED";
+    else if (best.under_buy >= 1500 && best.weighted_margin >= 4000) tier = "HIGH";
     else if (best.under_buy >= 1500) tier = "BUY";
     else tier = "WATCH";
   }
 
-  // Motivation signal boost
   if (!isRetail) {
     let motivationSignal: string | null = null;
     if (listing.pass_count >= 2) motivationSignal = "3RD_RUN";
@@ -381,7 +379,6 @@ function scoreListingAgainstAccounts(
     if (motivationSignal && tier === "WATCH" && best.under_buy >= -500) tier = "BUY";
   }
 
-  // Listing age score
   const ageResult = scoreListingAge(listing.days_listed, listing.price_drops);
 
   return { best, alts, tier, listing_age_score: ageResult.score, listing_age_reason: ageResult.reason };
