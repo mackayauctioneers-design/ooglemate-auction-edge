@@ -7,7 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, RefreshCw, Save, Trash2, Plus, ArrowLeft, Mail } from 'lucide-react';
+import { Loader2, RefreshCw, Save, Trash2, Plus, ArrowLeft, Mail, Upload } from 'lucide-react';
+import { useRef } from 'react';
 import { toast } from 'sonner';
 
 type WeightsShape = { MAKE: Record<string, number>; MAKE_MODEL: Record<string, number> };
@@ -28,6 +29,46 @@ export default function DealerMasterProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBriefUpload = async (file: File, mode: 'append' | 'replace') => {
+    if (!profile) return;
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('File too large (max 15MB)');
+      return;
+    }
+    setUploading(true);
+    try {
+      // Read file as base64
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let bin = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      }
+      const data_base64 = btoa(bin);
+
+      const { data, error } = await supabase.functions.invoke('extract-dealer-brief', {
+        body: { file_name: file.name, mime_type: file.type || 'application/octet-stream', data_base64 },
+      });
+      if (error) throw error;
+      const md = (data as any)?.markdown as string;
+      if (!md) throw new Error('No markdown returned');
+
+      const next = mode === 'replace' || !profile.master_brief_md
+        ? md
+        : `${profile.master_brief_md.trimEnd()}\n\n---\n\n## From ${file.name}\n\n${md}`;
+      setProfile({ ...profile, master_brief_md: next });
+      toast.success(`Brief ${mode === 'replace' ? 'replaced' : 'updated'} from ${file.name} — review and save`);
+    } catch (e: any) {
+      toast.error(e.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   useEffect(() => {
     if (!accountId) return;
@@ -158,8 +199,39 @@ export default function DealerMasterProfilePage() {
         {/* Master brief */}
         <Card>
           <CardHeader>
-            <CardTitle>Master Brief</CardTitle>
-            <CardDescription>Deep-research write-up (paste your Patrick Auto-style doc here)</CardDescription>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle>Master Brief</CardTitle>
+                <CardDescription>Deep-research write-up (paste or upload PDF / DOCX / TXT / MD)</CardDescription>
+              </div>
+              <div className="flex flex-col gap-1 items-end">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.docx,.doc,.txt,.md,.markdown,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const mode = profile.master_brief_md.trim()
+                      ? (confirm(`Append "${f.name}" to the existing brief?\n\nClick Cancel to REPLACE the brief instead.`) ? 'append' : 'replace')
+                      : 'replace';
+                    handleBriefUpload(f, mode);
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploading
+                    ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Parsing…</>
+                    : <><Upload className="h-3 w-3 mr-1" />Upload file</>}
+                </Button>
+                <span className="text-[10px] text-muted-foreground">PDF · DOCX · TXT · MD (max 15MB)</span>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <Textarea
