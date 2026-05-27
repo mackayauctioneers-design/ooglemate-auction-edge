@@ -355,10 +355,10 @@ export default function TradingDeskPage() {
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, reminder_at: reminderDt.toISOString(), is_starred: true } : o));
     toast.success(`Reminder set for ${format(reminderDt, 'd MMM h:mm a')}`);
 
-    // Also dispatch star-watch for reminder (implies starring)
+    // Also dispatch star-watch for reminder (implies starring) — internal Arby pipeline
     if (listingId) {
-      supabase.functions.invoke('lindy-star-watch', {
-        body: { listing_id: listingId },
+      supabase.functions.invoke('star-watch-dispatch', {
+        body: { listing_id: listingId, account_id: filterAccount || null },
       }).then(({ error: watchErr }) => {
         if (watchErr) console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
       });
