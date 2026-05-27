@@ -198,7 +198,15 @@ function OverrideDealerPopover({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function TradingDeskPage() {
+interface TradingDeskPageProps {
+  mode?: 'operator' | 'dealer';
+  lockedAccountId?: string | null;
+}
+
+export default function TradingDeskPage({ mode = 'operator', lockedAccountId = null }: TradingDeskPageProps = {}) {
+  const isDealerMode = mode === 'dealer';
+  const Layout = isDealerMode ? DealerLayout : OperatorLayout;
+
   const [opportunities, setOpportunities] = useState<OperatorOpportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [scoring, setScoring] = useState(false);
@@ -207,9 +215,9 @@ export default function TradingDeskPage() {
   const [altExpandedRows, setAltExpandedRows] = useState<Set<string>>(new Set());
 
   // Persist dealer/account selection across scoring runs and reloads.
-  // Dealer isolation is critical — never silently fall back to 'all' (which
-  // makes Mackay dominate visually because it has the deepest sales-truth).
+  // In dealer mode, lock to the signed-in dealership's account.
   const [filterAccount, setFilterAccount] = useState<string>(() => {
+    if (isDealerMode && lockedAccountId) return lockedAccountId;
     try { return localStorage.getItem('td.filterAccount') ?? 'all'; } catch { return 'all'; }
   });
   const [filterTier, setFilterTier] = useState<string>('all');
