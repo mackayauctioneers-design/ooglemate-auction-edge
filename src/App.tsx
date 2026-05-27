@@ -11,7 +11,7 @@ import { RequireAdmin } from "@/components/guards/RequireAdmin";
 import { RequireAuth } from "@/components/guards/RequireAuth";
 
 // Dealer pages
-import TradingDeskPage from "./pages/TradingDeskPage";
+import TradingDeskPage from "./pages/DealerTradingDeskPage";
 import DealsPage from "./pages/DealsPage";
 import DealDetailPage from "./pages/DealDetailPage";
 import SalesUploadPage from "./pages/carbitrage/SalesUploadPage";

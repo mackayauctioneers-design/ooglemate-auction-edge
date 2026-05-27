@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
+import { DealerLayout } from '@/components/layout/DealerLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -197,7 +198,15 @@ function OverrideDealerPopover({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function TradingDeskPage() {
+interface TradingDeskPageProps {
+  mode?: 'operator' | 'dealer';
+  lockedAccountId?: string | null;
+}
+
+export default function TradingDeskPage({ mode = 'operator', lockedAccountId = null }: TradingDeskPageProps = {}) {
+  const isDealerMode = mode === 'dealer';
+  const Layout = isDealerMode ? DealerLayout : OperatorLayout;
+
   const [opportunities, setOpportunities] = useState<OperatorOpportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [scoring, setScoring] = useState(false);
@@ -206,9 +215,9 @@ export default function TradingDeskPage() {
   const [altExpandedRows, setAltExpandedRows] = useState<Set<string>>(new Set());
 
   // Persist dealer/account selection across scoring runs and reloads.
-  // Dealer isolation is critical — never silently fall back to 'all' (which
-  // makes Mackay dominate visually because it has the deepest sales-truth).
+  // In dealer mode, lock to the signed-in dealership's account.
   const [filterAccount, setFilterAccount] = useState<string>(() => {
+    if (isDealerMode && lockedAccountId) return lockedAccountId;
     try { return localStorage.getItem('td.filterAccount') ?? 'all'; } catch { return 'all'; }
   });
   const [filterTier, setFilterTier] = useState<string>('all');
@@ -222,8 +231,17 @@ export default function TradingDeskPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
+    if (isDealerMode) return; // never persist in dealer mode
     try { localStorage.setItem('td.filterAccount', filterAccount); } catch { /* ignore */ }
-  }, [filterAccount]);
+  }, [filterAccount, isDealerMode]);
+
+  // Keep dealer-mode filter pinned to the locked account.
+  useEffect(() => {
+    if (isDealerMode && lockedAccountId && filterAccount !== lockedAccountId) {
+      setFilterAccount(lockedAccountId);
+    }
+  }, [isDealerMode, lockedAccountId, filterAccount]);
+
 
   // Only the secondary filters get reset — never the dealer/account selection.
   const resetFilters = useCallback(() => {
@@ -234,7 +252,7 @@ export default function TradingDeskPage() {
     setFilterKmMax('120000');
   }, []);
 
-  useEffect(() => { document.title = 'Trading Desk | Operator'; }, []);
+  useEffect(() => { document.title = isDealerMode ? 'Trading Desk | Carbitrage' : 'Trading Desk | Operator'; }, [isDealerMode]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -582,18 +600,22 @@ export default function TradingDeskPage() {
   })();
 
   return (
-    <OperatorLayout>
+    <Layout>
       <div className="p-4 md:p-6 space-y-5 max-w-[1600px] mx-auto">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Trading Desk</h1>
-            <p className="text-muted-foreground text-sm">Centralised multi-dealer opportunity board</p>
+            <p className="text-muted-foreground text-sm">
+              {isDealerMode ? 'Ranked buy opportunities backed by your sales DNA' : 'Centralised multi-dealer opportunity board'}
+            </p>
           </div>
-          <Button onClick={runScoring} disabled={scoring} variant="default">
-            {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-            {scoring ? 'Scoring…' : 'Run Scoring'}
-          </Button>
+          {!isDealerMode && (
+            <Button onClick={runScoring} disabled={scoring} variant="default">
+              {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              {scoring ? 'Scoring…' : 'Run Scoring'}
+            </Button>
+          )}
         </div>
 
         {/* Daily Signal Strip */}
@@ -620,7 +642,7 @@ export default function TradingDeskPage() {
 
         {/* KPI Strip - Clickable Tier Buttons */}
         <div className="flex flex-wrap gap-2 items-center">
-          <CaroogleAIFindsDrawer />
+          {!isDealerMode && <CaroogleAIFindsDrawer />}
           {[
             { tier: 'CODE_RED', count: codeRedCount, label: 'CODE RED', className: 'border-red-500/40 bg-red-600/15 hover:bg-red-600/25 text-red-600' },
             { tier: 'HIGH', count: highCount, label: 'HIGH', className: 'border-primary/30 bg-primary/5 hover:bg-primary/15 text-primary' },
@@ -663,16 +685,18 @@ export default function TradingDeskPage() {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-2 items-end">
-          <div className="w-40">
-            <label className="text-xs text-muted-foreground mb-1 block">Account</label>
-            <Select value={filterAccount} onValueChange={setFilterAccount}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Accounts</SelectItem>
-                {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.display_name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+          {!isDealerMode && (
+            <div className="w-40">
+              <label className="text-xs text-muted-foreground mb-1 block">Account</label>
+              <Select value={filterAccount} onValueChange={setFilterAccount}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Accounts</SelectItem>
+                  {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.display_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="w-36">
             <label className="text-xs text-muted-foreground mb-1 block">Tier</label>
             <Select value={filterTier} onValueChange={setFilterTier}>
@@ -957,17 +981,19 @@ export default function TradingDeskPage() {
                             {/* Actions — Assign Best + Override + Ignore + Link */}
                             <TableCell className="text-right px-2">
                               <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="text-xs h-7 px-2 gap-1"
-                                  disabled={sendingPush.has(opp.id)}
-                                  onClick={() => sendToDealer(opp)}
-                                  title={`Send push to ${opp.assigned_to_name || opp.best_account_name || 'dealer'}`}
-                                >
-                                  {sendingPush.has(opp.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                                  Push
-                                </Button>
+                                {!isDealerMode && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs h-7 px-2 gap-1"
+                                    disabled={sendingPush.has(opp.id)}
+                                    onClick={() => sendToDealer(opp)}
+                                    title={`Send push to ${opp.assigned_to_name || opp.best_account_name || 'dealer'}`}
+                                  >
+                                    {sendingPush.has(opp.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                                    Push
+                                  </Button>
+                                )}
                                 {opp.best_account_id && opp.status !== 'assigned' && (
                                   <Button
                                     variant="default"
@@ -976,13 +1002,15 @@ export default function TradingDeskPage() {
                                     onClick={() => updateStatus(opp.id, 'assigned', opp.best_account_id!)}
                                   >
                                     <Check className="h-3 w-3" />
-                                    Assign
+                                    {isDealerMode ? 'Deal' : 'Assign'}
                                   </Button>
                                 )}
-                                <OverrideDealerPopover
-                                  accounts={accounts}
-                                  onSelect={(acctId) => updateStatus(opp.id, 'assigned', acctId)}
-                                />
+                                {!isDealerMode && (
+                                  <OverrideDealerPopover
+                                    accounts={accounts}
+                                    onSelect={(acctId) => updateStatus(opp.id, 'assigned', acctId)}
+                                  />
+                                )}
                                 <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => updateStatus(opp.id, 'ignored')}>✕</Button>
                                 {(() => {
                                   let linkUrl = opp.source_url;
@@ -1072,6 +1100,6 @@ export default function TradingDeskPage() {
           </div>
         )}
       </div>
-    </OperatorLayout>
+    </Layout>
   );
 }
