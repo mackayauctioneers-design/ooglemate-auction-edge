@@ -252,14 +252,7 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
               </Select>
             </div>
 
-                  <div className="flex gap-1">
-                    {p.account_id && (
-                      <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={() => navigate(`/operator/dealers/${p.account_id}/master-profile`)}>
-                        <BookOpen className="h-3 w-3" />
-                        Master Profile
-                      </Button>
-                    )}
-                    <Button
+            <Button
               onClick={handleAddDealer}
               className="w-full gap-2"
               disabled={isLoading || !dealerName.trim() || !dealerWebsite.trim()}
