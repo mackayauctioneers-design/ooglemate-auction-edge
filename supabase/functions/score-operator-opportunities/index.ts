@@ -769,6 +769,7 @@ Deno.serve(async (req) => {
         year: listing.year, km: listing.km, asking_price: listing.asking_price,
         best_account_id: best.account_id, best_account_name: best.account_name,
         best_expected_margin: best.expected_margin, best_under_buy: best.under_buy,
+        applied_weight: best.applied_weight, weighted_margin: best.weighted_margin,
         anchor_sale_id: best.anchor_sale_id,
         anchor_sale_buy_price: best.anchor_sale_buy_price,
         anchor_sale_sell_price: best.anchor_sale_sell_price,
