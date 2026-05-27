@@ -426,9 +426,11 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  let focusAccountId: string | null = null;
+
   try {
     const body = await req.json().catch(() => ({}));
-    const focusAccountId = typeof body?.focus_account_id === "string" && body.focus_account_id.trim()
+    focusAccountId = typeof body?.focus_account_id === "string" && body.focus_account_id.trim()
       ? body.focus_account_id.trim()
       : null;
 
@@ -1074,7 +1076,7 @@ Deno.serve(async (req) => {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[SCORE-V2] Fatal:", msg);
     results.runtime_ms = Date.now() - startTime;
-    if (!((results as any).focus_account_id)) {
+    if (!focusAccountId) {
       await setCursor(sb, false, { error: msg, ...results }).catch(() => {});
     }
     return new Response(JSON.stringify({ success: false, error: msg, ...results }), {
