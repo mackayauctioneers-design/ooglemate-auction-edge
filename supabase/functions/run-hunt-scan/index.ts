@@ -1010,7 +1010,7 @@ Deno.serve(async (req) => {
 
           for (const alert of auctionBuyAlerts) {
             const listingId = alert.listing_id;
-            const funcUrl = `${supabaseUrl}/functions/v1/lindy-star-watch`;
+            const funcUrl = `${supabaseUrl}/functions/v1/star-watch-dispatch`;
             fetch(funcUrl, {
               method: 'POST',
               headers: {
@@ -1019,12 +1019,12 @@ Deno.serve(async (req) => {
               },
               body: JSON.stringify({ listing_id: listingId, account_id: accountId }),
             }).then(res => {
-              console.log(`[hunt-scan] Lindy watch triggered for listing ${listingId}: ${res.status}`);
+              console.log(`[hunt-scan] Arby star-watch triggered for listing ${listingId}: ${res.status}`);
             }).catch(err => {
-              console.warn(`[hunt-scan] Failed to trigger Lindy for ${listingId}: ${err}`);
+              console.warn(`[hunt-scan] Failed to trigger Arby star-watch for ${listingId}: ${err}`);
             });
           }
-          console.log(`[hunt-scan] Triggered Lindy for ${auctionBuyAlerts.length} auction BUY alerts`);
+          console.log(`[hunt-scan] Triggered Arby star-watch for ${auctionBuyAlerts.length} auction BUY alerts`);
         }
 
         // Update scan record
