@@ -199,8 +199,39 @@ export default function DealerMasterProfilePage() {
         {/* Master brief */}
         <Card>
           <CardHeader>
-            <CardTitle>Master Brief</CardTitle>
-            <CardDescription>Deep-research write-up (paste your Patrick Auto-style doc here)</CardDescription>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle>Master Brief</CardTitle>
+                <CardDescription>Deep-research write-up (paste or upload PDF / DOCX / TXT / MD)</CardDescription>
+              </div>
+              <div className="flex flex-col gap-1 items-end">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.docx,.doc,.txt,.md,.markdown,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const mode = profile.master_brief_md.trim()
+                      ? (confirm(`Append "${f.name}" to the existing brief?\n\nClick Cancel to REPLACE the brief instead.`) ? 'append' : 'replace')
+                      : 'replace';
+                    handleBriefUpload(f, mode);
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploading
+                    ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Parsing…</>
+                    : <><Upload className="h-3 w-3 mr-1" />Upload file</>}
+                </Button>
+                <span className="text-[10px] text-muted-foreground">PDF · DOCX · TXT · MD (max 15MB)</span>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <Textarea
