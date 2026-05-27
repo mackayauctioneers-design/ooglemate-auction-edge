@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   ExternalLink, Loader2, RefreshCw, Zap, FileText,
-  AlertTriangle, ChevronDown, ChevronUp, DollarSign, Download,
+  AlertTriangle, ChevronDown, ChevronUp, DollarSign, Download, BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -258,6 +258,13 @@ export default function TradingDeskPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {accountId && (
+              <Link to={`/operator/dealers/${accountId}/master-profile`}>
+                <Button variant="outline" size="sm">
+                  <BookOpen className="h-4 w-4 mr-1" /> Master Profile
+                </Button>
+              </Link>
+            )}
             <Button onClick={runEngine} disabled={running || !accountId} size="sm">
               {running ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Zap className="h-4 w-4 mr-1" />}
               Scan
