@@ -321,31 +321,39 @@ export function DealerOnboarding({ onComplete }: DealerOnboardingProps) {
               {dealerProfiles.map(p => (
                 <div key={p.id} className="flex items-center justify-between rounded-md bg-muted px-3 py-1.5">
                   <span className="text-sm font-medium">{p.dealer_name}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 gap-1.5 text-xs"
-                    onClick={async () => {
-                      if (p.account_id) {
-                        navigate(`/operator/dealer-upload?account=${p.account_id}`);
-                      } else {
-                        const slug = p.dealer_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-                        const { data: newAcct, error: err } = await supabase
-                          .from('accounts')
-                          .insert({ display_name: p.dealer_name, slug })
-                          .select('id')
-                          .single();
-                        if (err) { toast.error('Failed to create account: ' + err.message); return; }
-                        await supabase.from('dealer_profiles').update({ account_id: newAcct.id } as any).eq('id', p.id);
-                        toast.success(`Created account for ${p.dealer_name}`);
-                        loadDealerProfiles();
-                        navigate(`/operator/dealer-upload?account=${newAcct.id}`);
-                      }
-                    }}
-                  >
-                    <Upload className="h-3 w-3" />
-                    Upload Sales
-                  </Button>
+                  <div className="flex gap-1">
+                    {p.account_id && (
+                      <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={() => navigate(`/operator/dealers/${p.account_id}/master-profile`)}>
+                        <BookOpen className="h-3 w-3" />
+                        Master Profile
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1.5 text-xs"
+                      onClick={async () => {
+                        if (p.account_id) {
+                          navigate(`/operator/dealer-upload?account=${p.account_id}`);
+                        } else {
+                          const slug = p.dealer_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                          const { data: newAcct, error: err } = await supabase
+                            .from('accounts')
+                            .insert({ display_name: p.dealer_name, slug })
+                            .select('id')
+                            .single();
+                          if (err) { toast.error('Failed to create account: ' + err.message); return; }
+                          await supabase.from('dealer_profiles').update({ account_id: newAcct.id } as any).eq('id', p.id);
+                          toast.success(`Created account for ${p.dealer_name}`);
+                          loadDealerProfiles();
+                          navigate(`/operator/dealer-upload?account=${newAcct.id}`);
+                        }
+                      }}
+                    >
+                      <Upload className="h-3 w-3" />
+                      Upload Sales
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
