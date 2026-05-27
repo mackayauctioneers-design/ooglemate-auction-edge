@@ -1063,7 +1063,11 @@ Deno.serve(async (req) => {
     }, { onConflict: "cron_name" });
 
     // ── 11. Advance cursor ──
-    await setCursor(sb, true, results);
+    if (focusAccountId) {
+      (results as any).focus_account_id = focusAccountId;
+    } else {
+      await setCursor(sb, true, results);
+    }
 
     return respond({ success: true, ...results });
   } catch (err) {
