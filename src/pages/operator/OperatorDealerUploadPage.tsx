@@ -349,11 +349,29 @@ export default function OperatorDealerUploadPage() {
         skipped: skippedRows.length + dupsInBatch,
       };
     },
-    onSuccess: ({ imported, skipped }) => {
+    onSuccess: async ({ imported, skipped }) => {
       queryClient.invalidateQueries({ queryKey: ["upload-batches"] });
       resetState();
       const msg = `${imported} records imported` + (skipped > 0 ? ` · ${skipped} skipped` : "");
       toast.success(msg);
+
+      // Auto-build fingerprints + match opportunities so Trading Desk populates
+      toast.info("Building fingerprints & scanning market…");
+      try {
+        const [matchRes] = await Promise.all([
+          supabase.functions.invoke("fingerprint-match-run", {
+            body: { account_id: selectedAccountId, refresh_fingerprints: true },
+          }),
+          supabase.functions.invoke("rebuild-dealer-intelligence", {
+            body: { account_id: selectedAccountId },
+          }).catch(() => null),
+        ]);
+        const matched = (matchRes as any)?.data?.matched ?? 0;
+        toast.success(`${matched} Trading Desk opportunities ready`);
+      } catch (e: any) {
+        toast.error(`Scan failed: ${e?.message ?? "unknown"}`);
+      }
+
       navigate(`/sales-insights?account=${selectedAccountId}`);
     },
     onError: (err: any) => {
