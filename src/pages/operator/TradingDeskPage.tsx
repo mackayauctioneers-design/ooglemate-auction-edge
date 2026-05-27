@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { OperatorLayout } from '@/components/layout/OperatorLayout';
+import { DealerLayout } from '@/components/layout/DealerLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
