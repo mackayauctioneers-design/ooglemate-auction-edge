@@ -1074,7 +1074,9 @@ Deno.serve(async (req) => {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[SCORE-V2] Fatal:", msg);
     results.runtime_ms = Date.now() - startTime;
-    await setCursor(sb, false, { error: msg, ...results }).catch(() => {});
+    if (!((results as any).focus_account_id)) {
+      await setCursor(sb, false, { error: msg, ...results }).catch(() => {});
+    }
     return new Response(JSON.stringify({ success: false, error: msg, ...results }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
