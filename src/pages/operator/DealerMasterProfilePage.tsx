@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, RefreshCw, Save, Trash2, Plus, ArrowLeft } from 'lucide-react';
+import { Loader2, RefreshCw, Save, Trash2, Plus, ArrowLeft, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 
 type WeightsShape = { MAKE: Record<string, number>; MAKE_MODEL: Record<string, number> };
@@ -124,6 +124,25 @@ export default function DealerMasterProfilePage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const email = prompt(`Invite a user to access ${accountName}'s Trading Desk.\nEnter their email:`);
+              if (!email) return;
+              const dealer_name = prompt('Their name (optional)') || null;
+              const { data, error } = await supabase.functions.invoke('invite-dealer', {
+                body: { account_id: accountId, email: email.trim(), dealer_name },
+              });
+              if (error) { toast.error(error.message); return; }
+              if ((data as any)?.mode === 'magiclink') {
+                toast.success(`User already existed — magic link sent to ${email}`);
+              } else {
+                toast.success(`Invite sent to ${email}`);
+              }
+            }}
+          >
+            <Mail className="h-4 w-4 mr-2" /> Invite User
+          </Button>
           <Button onClick={rebuild} disabled={rebuilding} variant="outline">
             {rebuilding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
             Rebuild from sales
