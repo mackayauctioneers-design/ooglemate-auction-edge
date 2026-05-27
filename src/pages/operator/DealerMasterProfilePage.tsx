@@ -29,6 +29,46 @@ export default function DealerMasterProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBriefUpload = async (file: File, mode: 'append' | 'replace') => {
+    if (!profile) return;
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('File too large (max 15MB)');
+      return;
+    }
+    setUploading(true);
+    try {
+      // Read file as base64
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let bin = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      }
+      const data_base64 = btoa(bin);
+
+      const { data, error } = await supabase.functions.invoke('extract-dealer-brief', {
+        body: { file_name: file.name, mime_type: file.type || 'application/octet-stream', data_base64 },
+      });
+      if (error) throw error;
+      const md = (data as any)?.markdown as string;
+      if (!md) throw new Error('No markdown returned');
+
+      const next = mode === 'replace' || !profile.master_brief_md
+        ? md
+        : `${profile.master_brief_md.trimEnd()}\n\n---\n\n## From ${file.name}\n\n${md}`;
+      setProfile({ ...profile, master_brief_md: next });
+      toast.success(`Brief ${mode === 'replace' ? 'replaced' : 'updated'} from ${file.name} — review and save`);
+    } catch (e: any) {
+      toast.error(e.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   useEffect(() => {
     if (!accountId) return;
