@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, RefreshCw, Save, Trash2, Plus, ArrowLeft, Mail, Upload } from 'lucide-react';
+import { Loader2, RefreshCw, Save, Trash2, Plus, ArrowLeft, Mail, Upload, Sparkles } from 'lucide-react';
 import { useRef } from 'react';
 import { toast } from 'sonner';
 
@@ -30,7 +30,41 @@ export default function DealerMasterProfilePage() {
   const [saving, setSaving] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [arbyRunning, setArbyRunning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const reAnalyzeWithArby = async () => {
+    if (!accountId) return;
+    setArbyRunning(true);
+    try {
+      const { data: dp, error: dpErr } = await supabase
+        .from('dealer_profiles')
+        .select('id, dealer_name, dealer_website, dealer_email')
+        .eq('account_id', accountId)
+        .maybeSingle();
+      if (dpErr) throw dpErr;
+      if (!dp?.dealer_website) {
+        toast.error('No dealer website on file — add one to dealer_profiles first');
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke('dealer-onboard-dispatch', {
+        body: {
+          dealer_profile_id: dp.id,
+          dealer_name: dp.dealer_name || accountName,
+          dealer_website: dp.dealer_website,
+          dealer_email: dp.dealer_email,
+          scope: ['inventory', 'days_in_stock', 'business_analysis'],
+        },
+      });
+      if (error) throw error;
+      toast.success(`Arby dispatched — fresh deep-dive queued. Results will post back automatically.`);
+      console.log('[arby-dispatch]', data);
+    } catch (e: any) {
+      toast.error(e.message || 'Arby dispatch failed');
+    } finally {
+      setArbyRunning(false);
+    }
+  };
 
   const handleBriefUpload = async (file: File, mode: 'append' | 'replace') => {
     if (!profile) return;
@@ -185,6 +219,10 @@ Temporary password: ${d.temporary_password}`;
             }}
           >
             <Mail className="h-4 w-4 mr-2" /> Create Login
+          </Button>
+          <Button onClick={reAnalyzeWithArby} disabled={arbyRunning} variant="outline">
+            {arbyRunning ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
+            Re-analyze with Arby
           </Button>
           <Button onClick={rebuild} disabled={rebuilding} variant="outline">
             {rebuilding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
