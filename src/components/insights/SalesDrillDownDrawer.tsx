@@ -360,11 +360,11 @@ function DrawerListingCard({ listing, accountId }: { listing: ScoredListing; acc
     else {
       setSaved(true);
       toast.success("Added to watchlist");
-      // Dispatch star-watch
-      supabase.functions.invoke('lindy-star-watch', {
+      // Dispatch internal Arby star-watch (Lindy deprecated)
+      supabase.functions.invoke('star-watch-dispatch', {
         body: { listing_id: listing.id },
       }).then(({ error: watchErr }) => {
-        if (watchErr) console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
+        if (watchErr) console.warn('[SalesDrillDown] star-watch-dispatch failed (non-blocking):', watchErr);
       });
     }
   };

@@ -75,15 +75,15 @@ export function useTrapWatchlist(listingId: string | null) {
     } else {
       setIsWatching(newValue);
       
-      // Dispatch CaroogleAI watch when starring ON (not when un-starring)
+      // Dispatch internal Arby star-watch when starring ON (Lindy deprecated)
       if (newValue) {
-        supabase.functions.invoke('lindy-star-watch', {
+        supabase.functions.invoke('star-watch-dispatch', {
           body: { listing_id: listingId },
         }).then(({ error: watchErr }) => {
           if (watchErr) {
-            console.warn('CaroogleAI star-watch dispatch failed (non-blocking):', watchErr);
+            console.warn('[useTrapWatchlist] star-watch-dispatch failed (non-blocking):', watchErr);
           } else {
-            console.log('CaroogleAI star-watch dispatched for', listingId);
+            console.log('[useTrapWatchlist] star-watch-dispatch queued for', listingId);
           }
         });
       }
