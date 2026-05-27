@@ -1094,6 +1094,6 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
           </div>
         )}
       </div>
-    </OperatorLayout>
+    </Layout>
   );
 }
