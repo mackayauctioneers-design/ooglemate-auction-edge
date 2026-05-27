@@ -21,8 +21,6 @@ export default function AuthPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [magicLinkMode, setMagicLinkMode] = useState(false);
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -34,19 +32,6 @@ export default function AuthPage() {
     const timer = setTimeout(() => setShowLogin(true), 2000);
     return () => clearTimeout(timer);
   }, []);
-
-  const handleMagicLink = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin },
-    });
-    setLoading(false);
-    if (error) { toast.error(error.message); return; }
-    setMagicLinkSent(true);
-    toast.success('Check your email for the magic link!');
-  };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
