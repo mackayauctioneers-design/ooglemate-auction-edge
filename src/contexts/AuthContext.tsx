@@ -69,14 +69,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Fetch dealer profile from dealer_profile_user_links
-  const fetchDealerProfile = async (userId: string): Promise<DealerProfile | null> => {
+  const fetchDealerProfile = async (authUser: User): Promise<DealerProfile | null> => {
     try {
-      const { data, error } = await supabase.rpc('get_dealer_profile_by_user', { _user_id: userId });
+      const { data, error } = await supabase.rpc('get_dealer_profile_by_user', { _user_id: authUser.id });
       if (error) {
         console.error('Error fetching dealer profile:', error);
         return null;
       }
-      return data?.[0] || null;
+      const profile = data?.[0] || null;
+      if (!profile) return null;
+      return {
+        ...profile,
+        account_id: profile.account_id ?? (authUser.user_metadata?.account_id as string | null) ?? null,
+      };
     } catch (err) {
       console.error('Error fetching dealer profile:', err);
       return null;
@@ -84,10 +89,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Load user data (role + profile)
-  const loadUserData = async (userId: string) => {
+  const loadUserData = async (authUser: User) => {
     const [userRole, profile] = await Promise.all([
-      fetchUserRole(userId),
-      fetchDealerProfile(userId)
+      fetchUserRole(authUser.id),
+      fetchDealerProfile(authUser)
     ]);
     setRole(userRole);
     setDealerProfile(profile);
@@ -103,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (newSession?.user) {
           // Defer data fetching to avoid blocking
-          setTimeout(() => loadUserData(newSession.user.id), 0);
+          setTimeout(() => loadUserData(newSession.user), 0);
 
           // Log login events (SIGNED_IN covers password, magic link, OAuth)
           if (event === 'SIGNED_IN') {
@@ -135,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(initialSession?.user ?? null);
       
       if (initialSession?.user) {
-        loadUserData(initialSession.user.id);
+        loadUserData(initialSession.user);
       }
       setIsLoading(false);
     });

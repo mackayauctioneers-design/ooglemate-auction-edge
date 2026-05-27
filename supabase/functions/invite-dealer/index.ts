@@ -1,13 +1,30 @@
 // Invite a dealer user to log in to a specific account's Trading Desk.
-// Operator-only. Records a dealer_invites row, ensures the user exists, and
-// ALWAYS returns a usable magic-link action_link so the operator can deliver
-// it manually if email delivery is unreliable.
+// Operator-only. Creates/updates a confirmed email+password login, links the
+// user to the selected dealer account, and returns temporary credentials.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const makeTemporaryPassword = () => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => chars[byte % chars.length]).join("");
+};
+
+const findUserByEmail = async (admin: any, email: string) => {
+  for (let page = 1; page <= 20; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw error;
+    const found = data?.users?.find((u: any) => (u.email || "").toLowerCase() === email);
+    if (found) return found;
+    if (!data?.users || data.users.length < 1000) break;
+  }
+  return null;
 };
 
 Deno.serve(async (req) => {
@@ -44,7 +61,8 @@ Deno.serve(async (req) => {
     const account_id = String(body.account_id || "").trim();
     const dealer_name = body.dealer_name ? String(body.dealer_name).trim() : null;
     const origin = req.headers.get("origin") || "";
-    const redirect_to = body.redirect_to || `${origin}/trading-desk`;
+    const login_url = body.login_url || `${origin}/auth`;
+    const temporary_password = makeTemporaryPassword();
 
     if (!email || !account_id) {
       return new Response(JSON.stringify({ error: "email and account_id required" }), {
@@ -52,60 +70,99 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Record the invite (best-effort)
-    await admin.from("dealer_invites").insert({
-      email, account_id, dealer_name,
-      invited_by: userData.user.id, status: "pending",
-    } as any).then(() => {}, () => {});
-
-    // Check if user already exists by trying to list by email
-    let userExists = false;
-    try {
-      const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
-      userExists = !!list?.users?.find((u: any) => (u.email || "").toLowerCase() === email);
-    } catch (_) {}
-
-    let emailSent = false;
-    let emailError: string | null = null;
-
-    if (!userExists) {
-      // Try to invite (creates user + sends invite email via default Supabase email)
-      const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
-        redirectTo: redirect_to,
-        data: { account_id, dealer_name },
+    const { data: account, error: accountErr } = await admin
+      .from("accounts")
+      .select("id, display_name")
+      .eq("id", account_id)
+      .maybeSingle();
+    if (accountErr || !account) {
+      return new Response(JSON.stringify({ error: "Dealer account not found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-      if (inviteErr) {
-        emailError = inviteErr.message;
-        // Create the user manually so we can still produce a magic link
-        await admin.auth.admin.createUser({
-          email,
-          email_confirm: true,
-          user_metadata: { account_id, dealer_name },
-        }).then(() => {}, () => {});
-      } else {
-        emailSent = true;
-      }
     }
 
-    // ALWAYS generate a magic-link action_link as a fallback / primary deliverable
-    let action_link: string | null = null;
-    const { data: link, error: linkErr } = await admin.auth.admin.generateLink({
-      type: "magiclink",
-      email,
-      options: { redirectTo: redirect_to },
-    });
-    if (!linkErr) {
-      action_link = link?.properties?.action_link ?? null;
-    } else if (!emailError) {
-      emailError = linkErr.message;
+    const existingUser = await findUserByEmail(admin, email);
+    let authUserId = existingUser?.id as string | undefined;
+    const user_metadata = { account_id, dealer_name: dealer_name || account.display_name || email };
+
+    if (authUserId) {
+      const { error: updateErr } = await admin.auth.admin.updateUserById(authUserId, {
+        password: temporary_password,
+        email_confirm: true,
+        user_metadata,
+      });
+      if (updateErr) throw updateErr;
+    } else {
+      const { data: created, error: createErr } = await admin.auth.admin.createUser({
+        email,
+        password: temporary_password,
+        email_confirm: true,
+        user_metadata,
+      });
+      if (createErr) throw createErr;
+      authUserId = created.user?.id;
     }
+
+    if (!authUserId) throw new Error("Could not create dealer login");
+
+    let { data: dealerProfile, error: profileLookupErr } = await admin
+      .from("dealer_profiles")
+      .select("id, user_id")
+      .eq("account_id", account_id)
+      .limit(1)
+      .maybeSingle();
+    if (profileLookupErr) throw profileLookupErr;
+
+    if (!dealerProfile) {
+      const { data: insertedProfile, error: insertProfileErr } = await admin
+        .from("dealer_profiles")
+        .insert({
+          user_id: authUserId,
+          account_id,
+          dealer_name: dealer_name || account.display_name || email,
+          dealer_email: email,
+        } as any)
+        .select("id, user_id")
+        .single();
+      if (insertProfileErr) throw insertProfileErr;
+      dealerProfile = insertedProfile;
+    } else {
+      const profilePatch: Record<string, unknown> = { dealer_email: email };
+      if (dealer_name) profilePatch.dealer_name = dealer_name;
+      if (!dealerProfile.user_id || dealerProfile.user_id === authUserId) profilePatch.user_id = authUserId;
+      await admin.from("dealer_profiles").update(profilePatch as any).eq("id", dealerProfile.id);
+    }
+
+    await admin.from("dealer_profile_user_links").delete().eq("user_id", authUserId);
+    const { error: linkErr } = await admin
+      .from("dealer_profile_user_links")
+      .upsert({ dealer_profile_id: dealerProfile.id, user_id: authUserId, linked_by: "operator-password-invite" } as any, {
+        onConflict: "dealer_profile_id",
+      });
+    if (linkErr) throw linkErr;
+
+    const { data: roles, error: rolesErr } = await admin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", authUserId);
+    if (rolesErr) throw rolesErr;
+    if (!roles?.length) {
+      const { error: roleErr } = await admin.from("user_roles").insert({ user_id: authUserId, role: "dealer" } as any);
+      if (roleErr) throw roleErr;
+    }
+
+    await admin.from("dealer_invites").insert({
+      email, account_id, dealer_name: dealer_name || account.display_name,
+      invited_by: userData.user.id, status: "ready", consumed_user_id: authUserId,
+    } as any).then(() => {}, () => {});
 
     return new Response(JSON.stringify({
       success: true,
-      mode: emailSent ? "invite" : "magiclink",
-      email_sent: emailSent,
-      action_link,
-      email_error: emailError,
+      mode: "password",
+      email,
+      temporary_password,
+      login_url,
+      trading_desk_url: `${origin}/trading-desk`,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

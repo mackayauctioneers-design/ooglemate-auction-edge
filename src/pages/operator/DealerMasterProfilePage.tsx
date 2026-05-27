@@ -176,22 +176,15 @@ export default function DealerMasterProfilePage() {
               });
               if (error) { toast.error(error.message); return; }
               const d = data as any;
-              const link = d?.action_link as string | null;
-              if (link) {
-                try { await navigator.clipboard.writeText(link); } catch {}
-                toast.success(
-                  d?.email_sent
-                    ? `Invite email sent to ${email}. Magic link also copied to clipboard.`
-                    : `Magic link copied to clipboard for ${email} — paste it to them directly.`,
-                  { duration: 8000 }
-                );
-                window.prompt('Magic sign-in link (copy & send to dealer):', link);
-              } else {
-                toast.error(d?.email_error || 'Could not generate magic link');
-              }
+              const loginText = `Login: ${d.login_url || `${window.location.origin}/auth`}
+Email: ${d.email || email.trim()}
+Temporary password: ${d.temporary_password}`;
+              try { await navigator.clipboard.writeText(loginText); } catch {}
+              toast.success(`Simple login created for ${email}. Credentials copied to clipboard.`, { duration: 8000 });
+              window.prompt('Send these login details to the dealer:', loginText);
             }}
           >
-            <Mail className="h-4 w-4 mr-2" /> Invite User
+            <Mail className="h-4 w-4 mr-2" /> Create Login
           </Button>
           <Button onClick={rebuild} disabled={rebuilding} variant="outline">
             {rebuilding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
