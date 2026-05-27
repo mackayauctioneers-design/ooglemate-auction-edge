@@ -688,7 +688,7 @@ Deno.serve(async (req) => {
     for (const listing of candidates) {
       if (listing.trim_class === "UNKNOWN") { results.discarded++; continue; }
 
-      const match = scoreListingAgainstAccounts(listing, salesByAccount, accountNames);
+      const match = scoreListingAgainstAccounts(listing, salesByAccount, accountNames, weightsByAccount);
       if (!match) { results.discarded++; continue; }
       results.scored++;
 
