@@ -981,17 +981,19 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                             {/* Actions — Assign Best + Override + Ignore + Link */}
                             <TableCell className="text-right px-2">
                               <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="text-xs h-7 px-2 gap-1"
-                                  disabled={sendingPush.has(opp.id)}
-                                  onClick={() => sendToDealer(opp)}
-                                  title={`Send push to ${opp.assigned_to_name || opp.best_account_name || 'dealer'}`}
-                                >
-                                  {sendingPush.has(opp.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                                  Push
-                                </Button>
+                                {!isDealerMode && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs h-7 px-2 gap-1"
+                                    disabled={sendingPush.has(opp.id)}
+                                    onClick={() => sendToDealer(opp)}
+                                    title={`Send push to ${opp.assigned_to_name || opp.best_account_name || 'dealer'}`}
+                                  >
+                                    {sendingPush.has(opp.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                                    Push
+                                  </Button>
+                                )}
                                 {opp.best_account_id && opp.status !== 'assigned' && (
                                   <Button
                                     variant="default"
@@ -1000,13 +1002,15 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                                     onClick={() => updateStatus(opp.id, 'assigned', opp.best_account_id!)}
                                   >
                                     <Check className="h-3 w-3" />
-                                    Assign
+                                    {isDealerMode ? 'Deal' : 'Assign'}
                                   </Button>
                                 )}
-                                <OverrideDealerPopover
-                                  accounts={accounts}
-                                  onSelect={(acctId) => updateStatus(opp.id, 'assigned', acctId)}
-                                />
+                                {!isDealerMode && (
+                                  <OverrideDealerPopover
+                                    accounts={accounts}
+                                    onSelect={(acctId) => updateStatus(opp.id, 'assigned', acctId)}
+                                  />
+                                )}
                                 <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => updateStatus(opp.id, 'ignored')}>✕</Button>
                                 {(() => {
                                   let linkUrl = opp.source_url;
