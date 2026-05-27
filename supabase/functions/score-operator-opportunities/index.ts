@@ -426,20 +426,36 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  let focusAccountId: string | null = null;
+
   try {
+    const body = await req.json().catch(() => ({}));
+    focusAccountId = typeof body?.focus_account_id === "string" && body.focus_account_id.trim()
+      ? body.focus_account_id.trim()
+      : null;
+
     // ── 1. Get cursor ──
-    const cutoff = await getCursor(sb);
-    console.log(`[SCORE-V2] Delta cutoff: ${cutoff}`);
+    // Focused operator runs are explicit dealer rebuilds, so they must not be
+    // trapped behind the global delta cursor. Use a wider scan window and do
+    // not advance the shared cursor at the end.
+    const cutoff = focusAccountId
+      ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+      : await getCursor(sb);
+    console.log(`[SCORE-V2] Delta cutoff: ${cutoff}${focusAccountId ? ` focus_account=${focusAccountId}` : ""}`);
 
     // ── 2. Load accounts + sales (these are small, load fully) ──
-    const { data: accounts } = await sb.from("accounts").select("id, display_name, slug");
+    let accountsQuery = sb.from("accounts").select("id, display_name, slug");
+    if (focusAccountId) accountsQuery = accountsQuery.eq("id", focusAccountId);
+    const { data: accounts } = await accountsQuery;
     if (!accounts || accounts.length === 0) throw new Error("No accounts found");
 
-    const { data: allSales } = await sb
+    let salesQuery = sb
       .from("vehicle_sales_truth")
       .select("id, account_id, make, model, year, km, buy_price, sale_price, sold_at, trim_class, variant, platform_class, drivetrain_bucket, drive_type")
       .not("buy_price", "is", null)
       .not("sale_price", "is", null);
+    if (focusAccountId) salesQuery = salesQuery.eq("account_id", focusAccountId);
+    const { data: allSales } = await salesQuery;
 
     if (!allSales || allSales.length === 0) {
       await setCursor(sb, true, { reason: "no_sales_data" });
@@ -1049,14 +1065,20 @@ Deno.serve(async (req) => {
     }, { onConflict: "cron_name" });
 
     // ── 11. Advance cursor ──
-    await setCursor(sb, true, results);
+    if (focusAccountId) {
+      (results as any).focus_account_id = focusAccountId;
+    } else {
+      await setCursor(sb, true, results);
+    }
 
     return respond({ success: true, ...results });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[SCORE-V2] Fatal:", msg);
     results.runtime_ms = Date.now() - startTime;
-    await setCursor(sb, false, { error: msg, ...results }).catch(() => {});
+    if (!focusAccountId) {
+      await setCursor(sb, false, { error: msg, ...results }).catch(() => {});
+    }
     return new Response(JSON.stringify({ success: false, error: msg, ...results }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

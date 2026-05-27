@@ -358,16 +358,20 @@ export default function OperatorDealerUploadPage() {
       // Auto-build fingerprints + match opportunities so Trading Desk populates
       toast.info("Building fingerprints & scanning market…");
       try {
-        const [matchRes] = await Promise.all([
+        const [matchRes, operatorScoreRes] = await Promise.all([
           supabase.functions.invoke("fingerprint-match-run", {
             body: { account_id: selectedAccountId, refresh_fingerprints: true },
+          }),
+          supabase.functions.invoke("score-operator-opportunities", {
+            body: { focus_account_id: selectedAccountId },
           }),
           supabase.functions.invoke("rebuild-dealer-intelligence", {
             body: { account_id: selectedAccountId },
           }).catch(() => null),
         ]);
         const matched = (matchRes as any)?.data?.matched ?? 0;
-        toast.success(`${matched} Trading Desk opportunities ready`);
+        const operatorMatched = (operatorScoreRes as any)?.data?.created ?? 0;
+        toast.success(`${operatorMatched || matched} Trading Desk opportunities ready`);
       } catch (e: any) {
         toast.error(`Scan failed: ${e?.message ?? "unknown"}`);
       }

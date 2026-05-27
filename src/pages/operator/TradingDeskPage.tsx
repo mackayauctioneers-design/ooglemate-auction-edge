@@ -239,10 +239,27 @@ export default function TradingDeskPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      const scoped = filterAccount !== 'all';
+      const activeQuery = supabase
+        .from('operator_opportunities')
+        .select('*')
+        .in('status', ACTIONABLE_STATUSES)
+        .order('best_expected_margin', { ascending: false })
+        .limit(scoped ? 1000 : 500);
+      const starredQuery = supabase
+        .from('operator_opportunities')
+        .select('*')
+        .eq('is_starred', true)
+        .not('status', 'in', '("new","assigned","reviewed")')
+        .limit(scoped ? 500 : 100);
+      if (scoped) {
+        activeQuery.eq('best_account_id', filterAccount);
+        starredQuery.eq('best_account_id', filterAccount);
+      }
       // Fetch active opportunities + starred (regardless of status) in parallel
       const [oppsRes, starredRes, acctsRes] = await Promise.all([
-        supabase.from('operator_opportunities').select('*').in('status', ACTIONABLE_STATUSES).order('best_expected_margin', { ascending: false }).limit(500),
-        supabase.from('operator_opportunities').select('*').eq('is_starred', true).not('status', 'in', '("new","assigned","reviewed")').limit(100),
+        activeQuery,
+        starredQuery,
         supabase.from('accounts').select('id, display_name'),
       ]);
       if (oppsRes.error) throw oppsRes.error;
@@ -260,7 +277,7 @@ export default function TradingDeskPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filterAccount]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
