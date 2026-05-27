@@ -484,6 +484,25 @@ Deno.serve(async (req) => {
 
     console.log(`[SCORE-V2] ${Object.keys(salesByAccount).length} accounts with sales`);
 
+    // ── 2b. Load per-dealer intelligence weights ──
+    const weightsByAccount: WeightsMap = {};
+    try {
+      const { data: intelRows } = await sb
+        .from("dealer_intelligence_profiles")
+        .select("account_id, weights");
+      for (const r of intelRows || []) {
+        const w = r.weights || {};
+        weightsByAccount[r.account_id] = {
+          MAKE: w.MAKE || {},
+          MAKE_MODEL: w.MAKE_MODEL || {},
+        };
+      }
+      console.log(`[SCORE-V2] Loaded weights for ${Object.keys(weightsByAccount).length} dealers`);
+    } catch (e) {
+      console.warn(`[SCORE-V2] Weights load failed (continuing neutral):`, (e as Error).message);
+    }
+
+
     // ── 3. Delta fetch from all sources ──
     const AUCTION_SOURCES = ["pickles","grays","manheim","slattery","f3","auto_auctions","vma","bidsonline"];
 
