@@ -81,7 +81,7 @@ export default function DealerMasterProfilePage() {
     toast.success(`Rebuilt — ${data?.result?.winners ?? 0} winners, ${data?.result?.avoid ?? 0} avoid`);
     const { data: prof } = await supabase
       .from('dealer_intelligence_profiles').select('*').eq('account_id', accountId).maybeSingle();
-    if (prof) setProfile({ ...prof, weights: (prof.weights as WeightsShape) ?? { MAKE: {}, MAKE_MODEL: {} } });
+    if (prof) setProfile({ ...prof, weights: (prof.weights as WeightsShape) ?? { MAKE: {}, MAKE_MODEL: {} }, weights_source: (prof.weights_source as Profile['weights_source']) ?? 'blended' });
   };
 
   const updateWeight = (scope: 'MAKE' | 'MAKE_MODEL', key: string, value: number) => {
