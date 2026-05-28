@@ -327,9 +327,13 @@ Temporary password: ${d.temporary_password}`;
         </Card>
       </div>
 
+      {/* Strategic dealer fit */}
+      {accountId && <DealerStrategicProfileCard accountId={accountId} />}
+
       {/* Weights editor */}
       <Card>
         <CardHeader>
+
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Scorer Weights</CardTitle>
