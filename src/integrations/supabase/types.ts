@@ -2784,11 +2784,20 @@ export type Database = {
           dealer_phone: string | null
           dealer_type: string
           dealer_website: string | null
+          dealership_category: string | null
           demo_mode: boolean
           demo_query_limit: number
+          franchise_brand: string | null
           id: string
+          location_postcode: string | null
+          location_state: string | null
+          location_suburb: string | null
+          natural_buyer_notes: string | null
           org_id: string | null
+          preferred_brands: string[] | null
           region_id: string
+          specialist_categories: string[] | null
+          strategic_profile_updated_at: string | null
           updated_at: string
           user_id: string | null
         }
@@ -2800,11 +2809,20 @@ export type Database = {
           dealer_phone?: string | null
           dealer_type?: string
           dealer_website?: string | null
+          dealership_category?: string | null
           demo_mode?: boolean
           demo_query_limit?: number
+          franchise_brand?: string | null
           id?: string
+          location_postcode?: string | null
+          location_state?: string | null
+          location_suburb?: string | null
+          natural_buyer_notes?: string | null
           org_id?: string | null
+          preferred_brands?: string[] | null
           region_id?: string
+          specialist_categories?: string[] | null
+          strategic_profile_updated_at?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -2816,11 +2834,20 @@ export type Database = {
           dealer_phone?: string | null
           dealer_type?: string
           dealer_website?: string | null
+          dealership_category?: string | null
           demo_mode?: boolean
           demo_query_limit?: number
+          franchise_brand?: string | null
           id?: string
+          location_postcode?: string | null
+          location_state?: string | null
+          location_suburb?: string | null
+          natural_buyer_notes?: string | null
           org_id?: string | null
+          preferred_brands?: string[] | null
           region_id?: string
+          specialist_categories?: string[] | null
+          strategic_profile_updated_at?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -3629,6 +3656,41 @@ export type Database = {
           year_min?: number | null
         }
         Relationships: []
+      }
+      dealer_stock_mix: {
+        Row: {
+          dealer_id: string
+          id: string
+          last_computed_at: string
+          make: string
+          model_count: number
+          share_pct: number
+        }
+        Insert: {
+          dealer_id: string
+          id?: string
+          last_computed_at?: string
+          make: string
+          model_count?: number
+          share_pct?: number
+        }
+        Update: {
+          dealer_id?: string
+          id?: string
+          last_computed_at?: string
+          make?: string
+          model_count?: number
+          share_pct?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_stock_mix_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dealer_traps: {
         Row: {
@@ -7982,6 +8044,7 @@ export type Database = {
           best_account_name: string | null
           best_expected_margin: number | null
           best_under_buy: number | null
+          composite_score: number | null
           created_at: string
           days_listed: number | null
           dismissed_anchor_ids: string[] | null
@@ -7994,11 +8057,14 @@ export type Database = {
           listing_source: string | null
           make: string | null
           margin_flag: string | null
+          match_lane: string | null
           model: string | null
           motivation_signal: string | null
           pass_count: number | null
           platform_class: string | null
           pricing_guide: Json | null
+          recommended_dealer_id: string | null
+          recommended_dealer_reason: string | null
           reminder_at: string | null
           retail_median: number | null
           retail_median_confidence: string | null
@@ -8008,6 +8074,9 @@ export type Database = {
           retail_vs_ask_pct: number | null
           source_url: string | null
           status: string
+          strategic_fit_reason: string | null
+          strategic_fit_score: number | null
+          strategic_fit_signals: Json | null
           suppress_anchor: boolean
           tier: string
           trim_class: string | null
@@ -8039,6 +8108,7 @@ export type Database = {
           best_account_name?: string | null
           best_expected_margin?: number | null
           best_under_buy?: number | null
+          composite_score?: number | null
           created_at?: string
           days_listed?: number | null
           dismissed_anchor_ids?: string[] | null
@@ -8051,11 +8121,14 @@ export type Database = {
           listing_source?: string | null
           make?: string | null
           margin_flag?: string | null
+          match_lane?: string | null
           model?: string | null
           motivation_signal?: string | null
           pass_count?: number | null
           platform_class?: string | null
           pricing_guide?: Json | null
+          recommended_dealer_id?: string | null
+          recommended_dealer_reason?: string | null
           reminder_at?: string | null
           retail_median?: number | null
           retail_median_confidence?: string | null
@@ -8065,6 +8138,9 @@ export type Database = {
           retail_vs_ask_pct?: number | null
           source_url?: string | null
           status?: string
+          strategic_fit_reason?: string | null
+          strategic_fit_score?: number | null
+          strategic_fit_signals?: Json | null
           suppress_anchor?: boolean
           tier?: string
           trim_class?: string | null
@@ -8096,6 +8172,7 @@ export type Database = {
           best_account_name?: string | null
           best_expected_margin?: number | null
           best_under_buy?: number | null
+          composite_score?: number | null
           created_at?: string
           days_listed?: number | null
           dismissed_anchor_ids?: string[] | null
@@ -8108,11 +8185,14 @@ export type Database = {
           listing_source?: string | null
           make?: string | null
           margin_flag?: string | null
+          match_lane?: string | null
           model?: string | null
           motivation_signal?: string | null
           pass_count?: number | null
           platform_class?: string | null
           pricing_guide?: Json | null
+          recommended_dealer_id?: string | null
+          recommended_dealer_reason?: string | null
           reminder_at?: string | null
           retail_median?: number | null
           retail_median_confidence?: string | null
@@ -8122,6 +8202,9 @@ export type Database = {
           retail_vs_ask_pct?: number | null
           source_url?: string | null
           status?: string
+          strategic_fit_reason?: string | null
+          strategic_fit_score?: number | null
+          strategic_fit_signals?: Json | null
           suppress_anchor?: boolean
           tier?: string
           trim_class?: string | null
@@ -17001,6 +17084,16 @@ export type Database = {
           p75_price: number
           sample_size: number
         }[]
+      }
+      compute_strategic_fit: {
+        Args: {
+          p_body?: string
+          p_dealer_id: string
+          p_make: string
+          p_model?: string
+          p_state?: string
+        }
+        Returns: Json
       }
       create_auction_source: {
         Args: {
