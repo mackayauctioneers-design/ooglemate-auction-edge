@@ -57,7 +57,23 @@ interface OperatorOpportunity {
   retail_median_confidence: string | null;
   retail_median_sample: number | null;
   retail_vs_ask_pct: number | null;
+  strategic_fit_score: number | null;
+  strategic_fit_reason: string | null;
+  match_lane: string | null;
+  recommended_dealer_reason: string | null;
 }
+
+const laneColors: Record<string, string> = {
+  sales_truth: 'bg-blue-500/15 text-blue-700 border border-blue-500/30',
+  strategic_fit: 'bg-purple-500/15 text-purple-700 border border-purple-500/30',
+  both: 'bg-emerald-500/15 text-emerald-700 border border-emerald-500/30',
+};
+const laneLabels: Record<string, string> = {
+  sales_truth: 'SALES TRUTH',
+  strategic_fit: 'STRATEGIC FIT',
+  both: 'BOTH',
+};
+
 
 type SortField = 'best_expected_margin' | 'best_under_buy' | 'asking_price' | 'year' | 'created_at' | 'tier' | 'auction_datetime';
 
@@ -875,12 +891,27 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                             {/* Best Fit — primary dealer block */}
                             <TableCell className="px-2">
                               <div className="space-y-1">
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="text-sm font-semibold text-primary">{opp.best_account_name || '-'}</span>
+                                  {opp.match_lane && laneLabels[opp.match_lane] && (
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-[9px] px-1 py-0 leading-tight ${laneColors[opp.match_lane] || ''}`}
+                                      title={opp.strategic_fit_reason || opp.recommended_dealer_reason || ''}
+                                    >
+                                      {laneLabels[opp.match_lane]}
+                                    </Badge>
+                                  )}
                                   {opp.assigned_to_name && opp.assigned_to_name !== opp.best_account_name && (
                                     <Badge variant="outline" className="text-[10px] px-1 py-0">overridden</Badge>
                                   )}
                                 </div>
+                                {opp.strategic_fit_reason && opp.match_lane !== 'sales_truth' && (
+                                  <div className="text-[10px] text-muted-foreground italic line-clamp-1" title={opp.strategic_fit_reason}>
+                                    {opp.strategic_fit_reason}
+                                  </div>
+                                )}
+
                                 {hasAlts && (
                                   <button
                                     onClick={() => toggleAltRow(opp.id)}
