@@ -57,7 +57,23 @@ interface OperatorOpportunity {
   retail_median_confidence: string | null;
   retail_median_sample: number | null;
   retail_vs_ask_pct: number | null;
+  strategic_fit_score: number | null;
+  strategic_fit_reason: string | null;
+  match_lane: string | null;
+  recommended_dealer_reason: string | null;
 }
+
+const laneColors: Record<string, string> = {
+  sales_truth: 'bg-blue-500/15 text-blue-700 border border-blue-500/30',
+  strategic_fit: 'bg-purple-500/15 text-purple-700 border border-purple-500/30',
+  both: 'bg-emerald-500/15 text-emerald-700 border border-emerald-500/30',
+};
+const laneLabels: Record<string, string> = {
+  sales_truth: 'SALES TRUTH',
+  strategic_fit: 'STRATEGIC FIT',
+  both: 'BOTH',
+};
+
 
 type SortField = 'best_expected_margin' | 'best_under_buy' | 'asking_price' | 'year' | 'created_at' | 'tier' | 'auction_datetime';
 
