@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, RefreshCw, Save, Trash2, Plus, ArrowLeft, Mail, Upload, Sparkles } from 'lucide-react';
 import { useRef } from 'react';
 import { toast } from 'sonner';
+import { DealerStrategicProfileCard } from '@/components/operator/DealerStrategicProfileCard';
+
 
 type WeightsShape = { MAKE: Record<string, number>; MAKE_MODEL: Record<string, number> };
 
