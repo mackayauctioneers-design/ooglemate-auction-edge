@@ -29,10 +29,20 @@ type Mandate = {
   variant_family: string | null;
   year_min: number | null;
   year_max: number | null;
+  km_min: number | null;
   km_max: number | null;
   price_max: number | null;
   source_mask: string[];
   run_frequency_minutes: number;
+  // Dealer intelligence passthrough — populated from active_mandates SELECT *
+  dealer_id: string | null;
+  account_id: string | null;
+  created_from_fingerprint_id: string | null;
+  min_expected_gp: number | null;
+  preferred_body_types: string[] | null;
+  preferred_fuel: string[] | null;
+  preferred_transmission: string[] | null;
+  lane: string | null;
 };
 
 type NormalizedListing = {
