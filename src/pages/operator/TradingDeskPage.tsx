@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff, Trash2, Send } from 'lucide-react';
 import { CaroogleAIFindsDrawer } from '@/components/trading-desk/CaroogleAIFindsDrawer';
+import { HuntForThisDialog } from '@/components/trading-desk/HuntForThisDialog';
 
 import { toast } from 'sonner';
 import { format, formatDistanceToNow, isPast, isToday, isTomorrow, differenceInHours } from 'date-fns';
@@ -673,6 +674,9 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 <span className="ml-1.5">Refresh</span>
               </Button>
+              {isDealerMode && lockedAccountId && (
+                <HuntForThisDialog accountId={lockedAccountId} variant="outline" />
+              )}
               {!isDealerMode && (
                 <Button onClick={runScoring} disabled={scoring} variant="default" size="sm">
                   {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
@@ -863,13 +867,18 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
               <p className="text-muted-foreground">
                 {filtersAreRestrictingResults
                   ? 'No opportunities match the current filters.'
-                  : 'No opportunities yet. Hit "Run Scoring" to populate.'}
+                  : isDealerMode
+                    ? "Nothing matching your fingerprints right now. Tell Arby what you're chasing and we'll go find it."
+                    : 'No opportunities yet. Hit "Run Scoring" to populate.'}
               </p>
-              {filtersAreRestrictingResults && (
-                <div className="flex justify-center">
+              <div className="flex justify-center gap-2">
+                {filtersAreRestrictingResults && (
                   <Button variant="outline" onClick={resetFilters}>Reset filters</Button>
-                </div>
-              )}
+                )}
+                {isDealerMode && lockedAccountId && !filtersAreRestrictingResults && (
+                  <HuntForThisDialog accountId={lockedAccountId} />
+                )}
+              </div>
             </CardContent>
           </Card>
         ) : (
