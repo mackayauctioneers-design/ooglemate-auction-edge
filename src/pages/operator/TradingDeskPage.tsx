@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff, Trash2, Send } from 'lucide-react';
 import { CaroogleAIFindsDrawer } from '@/components/trading-desk/CaroogleAIFindsDrawer';
+import { HuntForThisDialog } from '@/components/trading-desk/HuntForThisDialog';
 
 import { toast } from 'sonner';
 import { format, formatDistanceToNow, isPast, isToday, isTomorrow, differenceInHours } from 'date-fns';
