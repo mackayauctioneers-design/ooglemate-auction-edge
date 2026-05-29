@@ -29,10 +29,20 @@ type Mandate = {
   variant_family: string | null;
   year_min: number | null;
   year_max: number | null;
+  km_min: number | null;
   km_max: number | null;
   price_max: number | null;
   source_mask: string[];
   run_frequency_minutes: number;
+  // Dealer intelligence passthrough — populated from active_mandates SELECT *
+  dealer_id: string | null;
+  account_id: string | null;
+  created_from_fingerprint_id: string | null;
+  min_expected_gp: number | null;
+  preferred_body_types: string[] | null;
+  preferred_fuel: string[] | null;
+  preferred_transmission: string[] | null;
+  lane: string | null;
 };
 
 type NormalizedListing = {
@@ -332,8 +342,17 @@ function buildLindyPrompt(source: string, url: string, mandate: Mandate): string
     mandate.year_min && mandate.year_max
       ? `Target year range: ${mandate.year_min}–${mandate.year_max}`
       : mandate.year_min ? `Target year from: ${mandate.year_min}` : null,
+    mandate.km_min && `Min odometer: ${mandate.km_min.toLocaleString()} km`,
     mandate.km_max && `Max odometer: ${mandate.km_max.toLocaleString()} km`,
     mandate.price_max && `Max price: $${mandate.price_max.toLocaleString()}`,
+    // ─── Dealer intelligence (why this mandate exists) ───
+    mandate.dealer_id && `Dealer ID: ${mandate.dealer_id}`,
+    mandate.lane && `Mandate lane: ${mandate.lane}`,
+    mandate.created_from_fingerprint_id && `Originating fingerprint: ${mandate.created_from_fingerprint_id}`,
+    mandate.min_expected_gp && `Minimum expected gross profit: $${mandate.min_expected_gp.toLocaleString()} (results below this are not commercially relevant)`,
+    mandate.preferred_body_types?.length && `Preferred body types: ${mandate.preferred_body_types.join(", ")}`,
+    mandate.preferred_fuel?.length && `Preferred fuel: ${mandate.preferred_fuel.join(", ")}`,
+    mandate.preferred_transmission?.length && `Preferred transmission: ${mandate.preferred_transmission.join(", ")}`,
   ].filter(Boolean).join("\n");
 
   if (source === "dealer_site") {

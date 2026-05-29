@@ -44,8 +44,21 @@ export function HuntForThisDialog({ accountId, variant = "default", label = "Hun
     try {
       const make = form.make.trim().toUpperCase();
       const model = form.model.trim().toUpperCase();
+
+      // Resolve dealer_profile.id for this account so the hunt is dealer-scoped,
+      // not indistinguishable from operator core/shortage mandates.
+      const { data: profile, error: profileErr } = await supabase
+        .from("dealer_profiles")
+        .select("id")
+        .eq("account_id", accountId)
+        .maybeSingle();
+      if (profileErr) throw profileErr;
+      const dealerId = profile?.id ?? null;
+
       const { error } = await supabase.from("active_mandates").insert({
         account_id: accountId,
+        dealer_id: dealerId,
+        lane: "hunt",
         name: `${make} ${model} (dealer hunt)`,
         make,
         model,
