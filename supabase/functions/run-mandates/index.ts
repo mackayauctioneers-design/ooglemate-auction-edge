@@ -627,6 +627,13 @@ async function dispatchLindyForMandate(
     }
 
     const prompt = buildLindyPrompt(key, searchUrl, mandate);
+    console.log("[run-mandates] dispatch", {
+      mandate_id: mandate.id,
+      dealer_id: mandate.dealer_id ?? null,
+      lane: mandate.lane ?? null,
+      source: key,
+      prompt_preview: prompt.slice(0, 500),
+    });
     try {
       const resp = await fetch(LINDY_URL, {
         method: "POST",
