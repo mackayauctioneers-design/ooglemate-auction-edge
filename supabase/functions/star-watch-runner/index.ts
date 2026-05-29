@@ -77,6 +77,7 @@ Deno.serve(async (req) => {
       url: job.listing_url,
       listing_url: job.listing_url,
       callback_url: callbackUrl,
+      callback_token: INGEST_KEY,
       callback_auth: `Bearer ${INGEST_KEY}`,
     };
 
