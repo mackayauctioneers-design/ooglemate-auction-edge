@@ -229,6 +229,24 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const [accounts, setAccounts] = useState<{ id: string; display_name: string }[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [altExpandedRows, setAltExpandedRows] = useState<Set<string>>(new Set());
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [nowTick, setNowTick] = useState<number>(Date.now());
+
+  // Tick every 30s so "last updated" + "next scan" labels stay fresh.
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Scoring cron runs every 30 minutes — compute next boundary.
+  const nextScanAt = (() => {
+    const d = new Date(nowTick);
+    const mins = d.getMinutes();
+    const add = mins < 30 ? 30 - mins : 60 - mins;
+    d.setMinutes(mins + add, 0, 0);
+    return d;
+  })();
+
 
   // Persist dealer/account selection across scoring runs and reloads.
   // In dealer mode, lock to the signed-in dealership's account.
@@ -305,6 +323,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
       ];
       setOpportunities(merged as OperatorOpportunity[]);
       setAccounts((acctsRes.data || []) as { id: string; display_name: string }[]);
+      setLastUpdated(new Date());
     } catch (err) {
       console.error('Failed to load trading desk:', err);
       toast.error('Failed to load opportunities');
@@ -626,12 +645,43 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
               {isDealerMode ? 'Ranked buy opportunities backed by your sales DNA' : 'Centralised multi-dealer opportunity board'}
             </p>
           </div>
-          {!isDealerMode && (
-            <Button onClick={runScoring} disabled={scoring} variant="default">
-              {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-              {scoring ? 'Scoring…' : 'Run Scoring'}
-            </Button>
-          )}
+          <div className="flex flex-col sm:items-end gap-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Clock className="h-3.5 w-3.5" />
+              <span>
+                Updated{' '}
+                <span className="text-foreground font-medium">
+                  {lastUpdated ? formatDistanceToNow(lastUpdated, { addSuffix: true }) : '—'}
+                </span>
+              </span>
+              <span className="opacity-50">·</span>
+              <span>
+                Next auto-scan in{' '}
+                <span className="text-foreground font-medium">
+                  {Math.max(1, Math.round((nextScanAt.getTime() - nowTick) / 60000))}m
+                </span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={fetchData}
+                disabled={loading}
+                variant="outline"
+                size="sm"
+                title="Reload the latest opportunities from the database"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                <span className="ml-1.5">Refresh</span>
+              </Button>
+              {!isDealerMode && (
+                <Button onClick={runScoring} disabled={scoring} variant="default" size="sm">
+                  {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                  {scoring ? 'Scoring…' : 'Run Scoring'}
+                </Button>
+              )}
+            </div>
+          </div>
+
         </div>
 
         {/* Daily Signal Strip */}
