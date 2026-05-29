@@ -56,6 +56,7 @@ import OperatorDealerUploadPage from "./pages/operator/OperatorDealerUploadPage"
 import ManualIntakePage from "./pages/operator/ManualIntakePage";
 import OogleBotPage from "./pages/operator/OogleBotPage";
 import DealerProfilesPage from "./pages/operator/DealerProfilesPage";
+import DealerActivationPage from "./pages/operator/DealerActivationPage";
 import UnmappedScrapeSourcesPage from "./pages/operator/UnmappedScrapeSourcesPage";
 import VAIntakePage from "./pages/VAIntakePage";
 import VATasksPage from "./pages/VATasksPage";
@@ -213,7 +214,9 @@ const App = () => (
 
               {/* === OPERATOR ROUTES: Admin/Internal only === */}
               <Route path="/operator" element={<OperatorGuard><Navigate to="/operator/trading-desk" replace /></OperatorGuard>} />
+              <Route path="/operator/dealer-activation" element={<OperatorGuard><DealerActivationPage /></OperatorGuard>} />
               <Route path="/operator/ingestion-health" element={<OperatorGuard><OperatorIngestionHealthPage /></OperatorGuard>} />
+
               <Route path="/operator/ingestion-audit" element={<OperatorGuard><IngestionAuditPage /></OperatorGuard>} />
               <Route path="/operator/cron-audit" element={<OperatorGuard><CronAuditPage /></OperatorGuard>} />
               <Route path="/operator/trap-health" element={<OperatorGuard><TrapHealthAlertsPage /></OperatorGuard>} />
