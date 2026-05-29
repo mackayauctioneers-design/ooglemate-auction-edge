@@ -548,3 +548,9 @@ verify_jwt = false
 schedule = "30 21 * * *"
 # 07:30 AEST (21:30 UTC) — morning digest
 
+
+[functions.run-mandate]
+verify_jwt = false
+
+[functions.worker-results-webhook]
+verify_jwt = false
