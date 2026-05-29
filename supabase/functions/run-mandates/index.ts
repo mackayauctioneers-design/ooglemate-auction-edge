@@ -658,17 +658,17 @@ async function dispatchLindyForMandate(
 
       if (!resp.ok) {
         const errText = await resp.text().catch(() => "");
-        console.error(`[run-mandates] Lindy ${key} dispatch failed: ${resp.status} ${errText.slice(0, 200)}`);
-        await sb.from("outward_jobs").update({ status: "failed", error: `HTTP ${resp.status}` }).eq("id", jobId);
+        console.error(`[run-mandates] Lindy ${key} dispatch failed: HTTP ${resp.status} body=${errText.slice(0, 300)}`);
+        await sb.from("outward_jobs").update({ status: "failed", error: `HTTP ${resp.status}: ${errText.slice(0, 200)}` }).eq("id", jobId);
         skipped.push(`${key}:http_${resp.status}`);
         continue;
       }
-      await resp.text(); // consume
+      const respBody = await resp.text().catch(() => "");
+      console.log(`[run-mandates] Lindy ${key} dispatched OK status=${resp.status} body_preview=${respBody.slice(0, 200)} job=${jobId}`);
       dispatched++;
-      console.log(`[run-mandates] Lindy dispatched: ${key} for "${mandate.name}"`);
     } catch (err) {
-      console.error(`[run-mandates] Lindy ${key} error:`, err);
-      await sb.from("outward_jobs").update({ status: "failed", error: String(err) }).eq("id", jobId);
+      console.error(`[run-mandates] Lindy ${key} fetch error:`, err);
+      await sb.from("outward_jobs").update({ status: "failed", error: `fetch_err: ${String(err).slice(0, 200)}` }).eq("id", jobId);
       skipped.push(`${key}:fetch_err`);
     }
   }
