@@ -56,6 +56,7 @@ import OperatorDealerUploadPage from "./pages/operator/OperatorDealerUploadPage"
 import ManualIntakePage from "./pages/operator/ManualIntakePage";
 import OogleBotPage from "./pages/operator/OogleBotPage";
 import DealerProfilesPage from "./pages/operator/DealerProfilesPage";
+import DealerActivationPage from "./pages/operator/DealerActivationPage";
 import UnmappedScrapeSourcesPage from "./pages/operator/UnmappedScrapeSourcesPage";
 import VAIntakePage from "./pages/VAIntakePage";
 import VATasksPage from "./pages/VATasksPage";
