@@ -107,8 +107,32 @@ Deno.serve(async (req) => {
     })
     .eq("status", "dispatched")
     .lt("dispatched_at", dispatchCutoff)
-    .select("id");
+    .select("id, source_key, mandate_id");
   results.expired_outward_jobs = staleJobs?.length ?? 0;
+
+  // Surface watchdog timeouts into mandate_runs so Pipeline Health reflects reality.
+  if ((staleJobs?.length ?? 0) > 0) {
+    const bySource: Record<string, number> = {};
+    for (const j of staleJobs!) {
+      bySource[j.source_key] = (bySource[j.source_key] || 0) + 1;
+    }
+    const sampleJobIds = staleJobs!.slice(0, 10).map((j) => j.id);
+    await sb.from("mandate_runs").insert({
+      started_at: new Date().toISOString(),
+      finished_at: new Date().toISOString(),
+      mandates_due: 0,
+      mandates_executed: 0,
+      listings_fetched: 0,
+      listings_upserted: 0,
+      errors: [{
+        type: "watchdog_timeout",
+        count: staleJobs!.length,
+        by_source: bySource,
+        sample_job_ids: sampleJobIds,
+        message: "Lindy/worker jobs marked failed after 1h without callback",
+      }],
+    });
+  }
 
   // ── 6. Locked apify_runs_queue rows with expired locks ───────────────
   const { data: expiredLocks } = await sb
