@@ -13,6 +13,7 @@ import { Trash2, Plus, ChevronDown, ChevronRight, Search, ExternalLink, Loader2,
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { PushNotificationPrompt } from '@/components/notifications/PushNotificationPrompt';
+import { AuctionReportsPanel } from '@/components/hunts/AuctionReportsPanel';
 
 const COMMON_MAKES = [
   'Toyota', 'Ford', 'Mazda', 'Hyundai', 'Kia', 'Nissan', 'Mitsubishi',
@@ -398,6 +399,8 @@ export default function MyHuntsPage() {
         </div>
 
         <PushNotificationPrompt showOnMount />
+
+        <AuctionReportsPanel />
 
         {/* Inline creation form */}
         <Collapsible open={showForm} onOpenChange={setShowForm}>
