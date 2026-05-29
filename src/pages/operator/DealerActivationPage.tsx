@@ -99,7 +99,7 @@ const STATUS_STYLES: Record<DealerRow["status"], string> = {
 };
 
 export default function DealerActivationPage() {
-  useDocumentTitle("Dealer Activation Engine");
+  useEffect(() => { document.title = "Dealer Activation Engine"; }, []);
   const [rows, setRows] = useState<DealerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
