@@ -674,6 +674,9 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 <span className="ml-1.5">Refresh</span>
               </Button>
+              {isDealerMode && lockedAccountId && (
+                <HuntForThisDialog accountId={lockedAccountId} variant="outline" />
+              )}
               {!isDealerMode && (
                 <Button onClick={runScoring} disabled={scoring} variant="default" size="sm">
                   {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
