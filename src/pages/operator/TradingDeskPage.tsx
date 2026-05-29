@@ -864,13 +864,18 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
               <p className="text-muted-foreground">
                 {filtersAreRestrictingResults
                   ? 'No opportunities match the current filters.'
-                  : 'No opportunities yet. Hit "Run Scoring" to populate.'}
+                  : isDealerMode
+                    ? "Nothing matching your fingerprints right now. Tell Arby what you're chasing and we'll go find it."
+                    : 'No opportunities yet. Hit "Run Scoring" to populate.'}
               </p>
-              {filtersAreRestrictingResults && (
-                <div className="flex justify-center">
+              <div className="flex justify-center gap-2">
+                {filtersAreRestrictingResults && (
                   <Button variant="outline" onClick={resetFilters}>Reset filters</Button>
-                </div>
-              )}
+                )}
+                {isDealerMode && lockedAccountId && !filtersAreRestrictingResults && (
+                  <HuntForThisDialog accountId={lockedAccountId} />
+                )}
+              </div>
             </CardContent>
           </Card>
         ) : (
