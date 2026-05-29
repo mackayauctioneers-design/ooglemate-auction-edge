@@ -645,12 +645,43 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
               {isDealerMode ? 'Ranked buy opportunities backed by your sales DNA' : 'Centralised multi-dealer opportunity board'}
             </p>
           </div>
-          {!isDealerMode && (
-            <Button onClick={runScoring} disabled={scoring} variant="default">
-              {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-              {scoring ? 'Scoring…' : 'Run Scoring'}
-            </Button>
-          )}
+          <div className="flex flex-col sm:items-end gap-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Clock className="h-3.5 w-3.5" />
+              <span>
+                Updated{' '}
+                <span className="text-foreground font-medium">
+                  {lastUpdated ? formatDistanceToNow(lastUpdated, { addSuffix: true }) : '—'}
+                </span>
+              </span>
+              <span className="opacity-50">·</span>
+              <span>
+                Next auto-scan in{' '}
+                <span className="text-foreground font-medium">
+                  {Math.max(1, Math.round((nextScanAt.getTime() - nowTick) / 60000))}m
+                </span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={fetchData}
+                disabled={loading}
+                variant="outline"
+                size="sm"
+                title="Reload the latest opportunities from the database"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                <span className="ml-1.5">Refresh</span>
+              </Button>
+              {!isDealerMode && (
+                <Button onClick={runScoring} disabled={scoring} variant="default" size="sm">
+                  {scoring ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                  {scoring ? 'Scoring…' : 'Run Scoring'}
+                </Button>
+              )}
+            </div>
+          </div>
+
         </div>
 
         {/* Daily Signal Strip */}
