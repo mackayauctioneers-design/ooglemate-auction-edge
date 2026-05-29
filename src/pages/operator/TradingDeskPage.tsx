@@ -229,6 +229,24 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const [accounts, setAccounts] = useState<{ id: string; display_name: string }[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [altExpandedRows, setAltExpandedRows] = useState<Set<string>>(new Set());
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [nowTick, setNowTick] = useState<number>(Date.now());
+
+  // Tick every 30s so "last updated" + "next scan" labels stay fresh.
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Scoring cron runs every 30 minutes — compute next boundary.
+  const nextScanAt = (() => {
+    const d = new Date(nowTick);
+    const mins = d.getMinutes();
+    const add = mins < 30 ? 30 - mins : 60 - mins;
+    d.setMinutes(mins + add, 0, 0);
+    return d;
+  })();
+
 
   // Persist dealer/account selection across scoring runs and reloads.
   // In dealer mode, lock to the signed-in dealership's account.
