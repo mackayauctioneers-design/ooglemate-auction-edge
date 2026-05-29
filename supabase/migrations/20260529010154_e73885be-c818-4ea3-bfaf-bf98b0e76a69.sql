@@ -1,0 +1,2 @@
+ALTER TABLE public.active_mandates DROP CONSTRAINT IF EXISTS active_mandates_lane_check;
+ALTER TABLE public.active_mandates ADD CONSTRAINT active_mandates_lane_check CHECK (lane = ANY (ARRAY['core'::text, 'shortage'::text, 'hunt'::text]));
