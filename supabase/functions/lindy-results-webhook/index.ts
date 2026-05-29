@@ -616,6 +616,8 @@ Deno.serve(async (req) => {
       filtered_dead: deadCount,
       scored: scoreResult.scored,
       no_match: scoreResult.no_match,
+      promoted_to_feed: promoted,
+      promotion_rejected: promotionRejected,
     }),
     {
       status: 200,
