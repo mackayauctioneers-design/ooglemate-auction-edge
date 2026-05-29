@@ -17804,6 +17804,29 @@ export type Database = {
               reason: string
             }[]
           }
+      get_my_star_watch_reports: {
+        Args: { _limit?: number }
+        Returns: {
+          auction_date: string
+          current_status: string
+          id: string
+          job_id: string
+          listing_url: string
+          make: string
+          model: string
+          notes: string
+          odometer_km: number
+          price_aud: number
+          received_at: string
+          scrape_status: string
+          seller_name: string
+          source: string
+          state: string
+          title: string
+          variant: string
+          year: number
+        }[]
+      }
       get_nsw_crawl_today: {
         Args: never
         Returns: {
