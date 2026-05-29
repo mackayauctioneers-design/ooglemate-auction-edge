@@ -354,7 +354,7 @@ Deno.serve(async (req) => {
   // ── 3. Fetch or auto-create job record ─────────────────────────────────
   let { data: job, error: jobErr } = await sb
     .from("outward_jobs")
-    .select("id, search_run_id, source_key, status, account_id")
+    .select("id, search_run_id, source_key, status, account_id, mandate_id")
     .eq("id", jobId)
     .single();
 
@@ -373,7 +373,7 @@ Deno.serve(async (req) => {
         status: "dispatched",
         search_url: "auto-created-by-webhook",
       })
-      .select("id, search_run_id, source_key, status, account_id")
+      .select("id, search_run_id, source_key, status, account_id, mandate_id")
       .single();
 
     if (createErr || !created) {
@@ -466,6 +466,89 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── 5b. Promote results into mandate_feed_items (Fix 1) ────────────────
+  // Bridges Lindy/CaroogleAI callback results into the canonical Dealer Radar
+  // surface. Only runs when this job was dispatched for a mandate.
+  let promoted = 0;
+  let promotionRejected = 0;
+  const promotionRejectReasons: string[] = [];
+  if (liveListings.length > 0 && job.mandate_id) {
+    // Resolve dealer_id from the mandate (mandate_feed_items.dealer_id is optional but
+    // populated for dealer-scoped lanes so Dealer Radar can filter by tenant).
+    const { data: mandateRow } = await sb
+      .from("active_mandates")
+      .select("dealer_id, lane")
+      .eq("id", job.mandate_id)
+      .maybeSingle();
+
+    const dealerId = mandateRow?.dealer_id ?? null;
+    const lane = mandateRow?.lane ?? null;
+    const now = new Date().toISOString();
+
+    const feedRows = liveListings
+      .map((l) => {
+        const identity = extractIdentityFromTitle(l.title);
+        const listingId = l.source_id || l.listing_url;
+        if (!listingId) {
+          promotionRejected++;
+          promotionRejectReasons.push("no_listing_id");
+          return null;
+        }
+        return {
+          mandate_id: job.mandate_id,
+          source: job.source_key,
+          listing_id: String(listingId),
+          source_url: l.listing_url,
+          dealer_id: dealerId,
+          lane,
+          make: identity.make_norm,
+          model: identity.model_norm,
+          variant: null,
+          year: l.year,
+          km: l.odometer_km,
+          asking_price: l.price_aud,
+          location: l.state,
+          last_seen_at: now,
+          raw: {
+            title: l.title,
+            source_id: l.source_id,
+            condition_grade: l.condition_grade,
+            condition_score: l.condition_score,
+            promoted_from: "lindy-results-webhook",
+            job_id: job.id,
+          },
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+
+    if (feedRows.length > 0) {
+      const { error: promErr, data: promData } = await sb
+        .from("mandate_feed_items")
+        .upsert(feedRows, {
+          onConflict: "mandate_id,source,listing_id",
+          ignoreDuplicates: false,
+        })
+        .select("id");
+      if (promErr) {
+        console.error("[lindy-webhook] PROMOTION FAILED:", promErr.message, "rows=", feedRows.length);
+        promotionRejected += feedRows.length;
+        promotionRejectReasons.push(`upsert_err:${promErr.code || "?"}`);
+      } else {
+        promoted = promData?.length ?? feedRows.length;
+        await sb.rpc("mandate_feed_detect_price_changes", { p_mandate_id: job.mandate_id }).catch(() => {});
+      }
+    }
+  } else if (liveListings.length > 0 && !job.mandate_id) {
+    console.log(`[lindy-webhook] job=${jobId} has no mandate_id — skipping promotion (staged only)`);
+  }
+
+  console.log(
+    `[lindy-webhook] OBSERVABILITY job=${jobId} source=${job.source_key} mandate_id=${job.mandate_id || "none"} ` +
+    `received=${(body.listings ?? []).length} validated=${validated.length} live=${liveListings.length} ` +
+    `dead=${deadCount} promoted=${promoted} rejected=${promotionRejected} reasons=${promotionRejectReasons.join(",") || "none"}`
+  );
+
+
   // ── 6. Fingerprint scoring ──────────────────────────────────────────────
   let scoreResult = { scored: 0, no_match: 0 };
 
@@ -533,6 +616,8 @@ Deno.serve(async (req) => {
       filtered_dead: deadCount,
       scored: scoreResult.scored,
       no_match: scoreResult.no_match,
+      promoted_to_feed: promoted,
+      promotion_rejected: promotionRejected,
     }),
     {
       status: 200,
