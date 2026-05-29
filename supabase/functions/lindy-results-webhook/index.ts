@@ -373,7 +373,7 @@ Deno.serve(async (req) => {
         status: "dispatched",
         search_url: "auto-created-by-webhook",
       })
-      .select("id, search_run_id, source_key, status, account_id")
+      .select("id, search_run_id, source_key, status, account_id, mandate_id")
       .single();
 
     if (createErr || !created) {
