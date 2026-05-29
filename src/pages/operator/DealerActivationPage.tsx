@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, XCircle, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+
 
 type GateKey =
   | "profile"
