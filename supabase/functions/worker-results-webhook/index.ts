@@ -389,9 +389,11 @@ Deno.serve(async (req) => {
         promotionRejected += feedRows.length;
       } else {
         promoted = promData?.length ?? feedRows.length;
-        await sb
-          .rpc("mandate_feed_detect_price_changes", { p_mandate_id: job.mandate_id })
-          .catch(() => {});
+        try {
+          await sb.rpc("mandate_feed_detect_price_changes", { p_mandate_id: job.mandate_id });
+        } catch (e) {
+          console.warn("[worker-results-webhook] price-change rpc failed:", e);
+        }
       }
     }
   }
