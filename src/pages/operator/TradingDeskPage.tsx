@@ -323,6 +323,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
       ];
       setOpportunities(merged as OperatorOpportunity[]);
       setAccounts((acctsRes.data || []) as { id: string; display_name: string }[]);
+      setLastUpdated(new Date());
     } catch (err) {
       console.error('Failed to load trading desk:', err);
       toast.error('Failed to load opportunities');
