@@ -354,7 +354,7 @@ Deno.serve(async (req) => {
   // ── 3. Fetch or auto-create job record ─────────────────────────────────
   let { data: job, error: jobErr } = await sb
     .from("outward_jobs")
-    .select("id, search_run_id, source_key, status, account_id")
+    .select("id, search_run_id, source_key, status, account_id, mandate_id")
     .eq("id", jobId)
     .single();
 
