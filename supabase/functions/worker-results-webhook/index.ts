@@ -70,6 +70,10 @@ function validateListings(raw: unknown[], sourceKey: string): ValidatedListing[]
   for (const item of raw.slice(0, MAX_LISTINGS_PER_POST)) {
     if (typeof item !== "object" || item === null) continue;
     const r = item as Record<string, unknown>;
+    const rawData =
+      typeof r.raw_listing_data === "object" && r.raw_listing_data !== null
+        ? (r.raw_listing_data as Record<string, unknown>)
+        : {};
 
     // Accept either canonical (title/price_aud) or generic (make/model/price) shapes
     if (!r.title && (r.make || r.model)) {
@@ -77,7 +81,16 @@ function validateListings(raw: unknown[], sourceKey: string): ValidatedListing[]
       r.title = parts.join(" ");
     }
     if (r.price_aud === undefined && r.price !== undefined) r.price_aud = r.price;
+    if (r.price_aud === undefined && r.listed_price !== undefined) r.price_aud = r.listed_price;
+    if (r.price_aud === undefined && rawData.listed_price !== undefined) r.price_aud = rawData.listed_price;
+    if (r.price_aud === undefined && rawData.latest !== undefined) r.price_aud = rawData.latest;
     if (r.odometer_km === undefined && r.km !== undefined) r.odometer_km = r.km;
+    if (r.odometer_km === undefined && rawData.odometer_km !== undefined) r.odometer_km = rawData.odometer_km;
+    if (r.odometer_km === undefined && rawData.kms !== undefined) r.odometer_km = rawData.kms;
+    if (r.listing_url === undefined && rawData.source_listing_url !== undefined) r.listing_url = rawData.source_listing_url;
+    if (r.listing_url === undefined && rawData.url !== undefined) r.listing_url = rawData.url;
+    if (r.state === undefined && r.location_state !== undefined) r.state = r.location_state;
+    if (r.source_id === undefined && r.source_listing_id !== undefined) r.source_id = r.source_listing_id;
 
     const url = typeof r.listing_url === "string" ? r.listing_url : null;
     if (!url) continue;
