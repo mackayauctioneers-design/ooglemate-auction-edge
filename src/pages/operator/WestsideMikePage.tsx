@@ -40,21 +40,24 @@ interface HistoryEvent {
   id: string;
   source_listing_id: string;
   event_type: string;
-  prev_value: any;
-  new_value: any;
-  delta: number | null;
-  created_at: string;
+  prev_price: number | null;
+  new_price: number | null;
+  prev_km: number | null;
+  new_km: number | null;
+  occurred_at: string;
+  days_on_lot: number | null;
 }
 
 interface Snapshot {
   id: string;
-  created_at: string;
+  received_at: string;
   listings_in: number;
   new_count: number;
   price_drop_count: number;
   gone_count: number;
   relisted_count: number;
   notes: string | null;
+  source: string | null;
 }
 
 const MIKE_EMAIL = "mike.simmons@westsideauto.com.au";
