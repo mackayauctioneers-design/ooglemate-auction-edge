@@ -126,6 +126,7 @@ import BuyerTerminalPage from "./pages/fleet/BuyerTerminalPage";
 import FleetDashboardPage from "./pages/fleet/FleetDashboardPage";
 import FingerprintAlertTogglePage from "./pages/operator/FingerprintAlertTogglePage";
 import WestsideMikePage from "./pages/operator/WestsideMikePage";
+import WestsidePage from "./pages/WestsidePage";
 
 const queryClient = new QueryClient();
 
@@ -151,6 +152,7 @@ const App = () => (
             <Sonner />
             <Routes>
               {/* === DEALER ROUTES === */}
+              <Route path="/westside" element={<WestsidePage />} />
               <Route path="/" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
               <Route path="/dealer-home" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
               <Route path="/find-cars" element={<RequireAuth><FindCarsPage /></RequireAuth>} />
