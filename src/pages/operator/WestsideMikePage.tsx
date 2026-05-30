@@ -162,7 +162,7 @@ export default function WestsideMikePage() {
         {lastSnapshot && (
           <div className="text-xs text-muted-foreground flex items-center gap-2">
             <Activity className="h-3 w-3" />
-            Last push {formatDistanceToNow(new Date(lastSnapshot.created_at), { addSuffix: true })}
+            Last push {formatDistanceToNow(new Date(lastSnapshot.received_at), { addSuffix: true })}
             — in: {lastSnapshot.listings_in}, new: {lastSnapshot.new_count}, drops: {lastSnapshot.price_drop_count}, gone: {lastSnapshot.gone_count}
           </div>
         )}
@@ -252,16 +252,16 @@ export default function WestsideMikePage() {
                     return (
                       <TableRow key={ev.id}>
                         <TableCell className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(ev.created_at), { addSuffix: true })}
+                          {formatDistanceToNow(new Date(ev.occurred_at), { addSuffix: true })}
                         </TableCell>
                         <TableCell className="text-sm">
                           {l ? `${l.year} ${l.make} ${l.model}` : ev.source_listing_id}
                         </TableCell>
-                        <TableCell className="text-sm">{fmtMoney(Number(ev.prev_value))}</TableCell>
-                        <TableCell className="text-sm font-semibold">{fmtMoney(Number(ev.new_value))}</TableCell>
+                        <TableCell className="text-sm">{fmtMoney(ev.prev_price)}</TableCell>
+                        <TableCell className="text-sm font-semibold">{fmtMoney(ev.new_price)}</TableCell>
                         <TableCell className="text-sm text-amber-600 flex items-center gap-1">
                           <TrendingDown className="h-3 w-3" />
-                          {fmtMoney(ev.delta)}
+                          {fmtMoney(((ev.new_price ?? 0) - (ev.prev_price ?? 0)))}
                         </TableCell>
                       </TableRow>
                     );
@@ -331,7 +331,7 @@ export default function WestsideMikePage() {
                 <TableBody>
                   {snapshots.map(s => (
                     <TableRow key={s.id}>
-                      <TableCell className="text-xs">{formatDistanceToNow(new Date(s.created_at), { addSuffix: true })}</TableCell>
+                      <TableCell className="text-xs">{formatDistanceToNow(new Date(s.received_at), { addSuffix: true })}</TableCell>
                       <TableCell>{s.listings_in}</TableCell>
                       <TableCell>{s.new_count}</TableCell>
                       <TableCell>{s.price_drop_count}</TableCell>
