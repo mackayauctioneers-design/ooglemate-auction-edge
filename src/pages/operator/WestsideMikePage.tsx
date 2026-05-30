@@ -211,7 +211,7 @@ export default function WestsideMikePage() {
                     {filtered.map(l => {
                       const isOpen = expanded.has(l.id);
                       return (
-                        <>
+                        <Fragment key={l.id}>
                           <TableRow key={l.id} className="cursor-pointer" onClick={() => toggle(l.id)}>
                             <TableCell className="w-8">
                               {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
