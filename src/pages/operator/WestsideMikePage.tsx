@@ -9,8 +9,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { ExternalLink, RefreshCw, Loader2, Eye, Mail, TrendingDown, Car, Activity } from "lucide-react";
+import { ExternalLink, RefreshCw, Loader2, Eye, Mail, TrendingDown, Car, Activity, ChevronDown, ChevronRight, Crosshair } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { MikeReplacementHunt } from "@/components/operator/MikeReplacementHunt";
 
 interface Listing {
   id: string;
