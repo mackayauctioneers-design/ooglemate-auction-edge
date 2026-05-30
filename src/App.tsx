@@ -125,6 +125,7 @@ import DealerRadarPage from "./pages/dealer/DealerRadarPage";
 import BuyerTerminalPage from "./pages/fleet/BuyerTerminalPage";
 import FleetDashboardPage from "./pages/fleet/FleetDashboardPage";
 import FingerprintAlertTogglePage from "./pages/operator/FingerprintAlertTogglePage";
+import WestsideMikePage from "./pages/operator/WestsideMikePage";
 
 const queryClient = new QueryClient();
 
