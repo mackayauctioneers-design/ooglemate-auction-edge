@@ -15164,6 +15164,174 @@ export type Database = {
         }
         Relationships: []
       }
+      westside_mike_listing_history: {
+        Row: {
+          days_on_lot: number | null
+          event_type: string
+          id: string
+          new_km: number | null
+          new_price: number | null
+          occurred_at: string
+          payload: Json | null
+          prev_km: number | null
+          prev_price: number | null
+          snapshot_id: string | null
+          source_listing_id: string
+        }
+        Insert: {
+          days_on_lot?: number | null
+          event_type: string
+          id?: string
+          new_km?: number | null
+          new_price?: number | null
+          occurred_at?: string
+          payload?: Json | null
+          prev_km?: number | null
+          prev_price?: number | null
+          snapshot_id?: string | null
+          source_listing_id: string
+        }
+        Update: {
+          days_on_lot?: number | null
+          event_type?: string
+          id?: string
+          new_km?: number | null
+          new_price?: number | null
+          occurred_at?: string
+          payload?: Json | null
+          prev_km?: number | null
+          prev_price?: number | null
+          snapshot_id?: string | null
+          source_listing_id?: string
+        }
+        Relationships: []
+      }
+      westside_mike_listings: {
+        Row: {
+          body_type: string | null
+          colour: string | null
+          created_at: string
+          description: string | null
+          first_seen_at: string
+          fuel: string | null
+          gone_at: string | null
+          id: string
+          km: number | null
+          last_seen_at: string
+          last_snapshot_id: string | null
+          listing_url: string
+          make: string | null
+          missed_snapshots: number
+          model: string | null
+          photos: Json | null
+          price: number | null
+          raw: Json | null
+          source_listing_id: string
+          status: string
+          stock_no: string | null
+          title: string | null
+          transmission: string | null
+          updated_at: string
+          variant: string | null
+          vin: string | null
+          year: number | null
+        }
+        Insert: {
+          body_type?: string | null
+          colour?: string | null
+          created_at?: string
+          description?: string | null
+          first_seen_at?: string
+          fuel?: string | null
+          gone_at?: string | null
+          id?: string
+          km?: number | null
+          last_seen_at?: string
+          last_snapshot_id?: string | null
+          listing_url: string
+          make?: string | null
+          missed_snapshots?: number
+          model?: string | null
+          photos?: Json | null
+          price?: number | null
+          raw?: Json | null
+          source_listing_id: string
+          status?: string
+          stock_no?: string | null
+          title?: string | null
+          transmission?: string | null
+          updated_at?: string
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Update: {
+          body_type?: string | null
+          colour?: string | null
+          created_at?: string
+          description?: string | null
+          first_seen_at?: string
+          fuel?: string | null
+          gone_at?: string | null
+          id?: string
+          km?: number | null
+          last_seen_at?: string
+          last_snapshot_id?: string | null
+          listing_url?: string
+          make?: string | null
+          missed_snapshots?: number
+          model?: string | null
+          photos?: Json | null
+          price?: number | null
+          raw?: Json | null
+          source_listing_id?: string
+          status?: string
+          stock_no?: string | null
+          title?: string | null
+          transmission?: string | null
+          updated_at?: string
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
+      westside_mike_snapshots: {
+        Row: {
+          gone_count: number
+          id: string
+          listings_in: number
+          new_count: number
+          notes: string | null
+          price_drop_count: number
+          received_at: string
+          relisted_count: number
+          source: string
+        }
+        Insert: {
+          gone_count?: number
+          id?: string
+          listings_in?: number
+          new_count?: number
+          notes?: string | null
+          price_drop_count?: number
+          received_at?: string
+          relisted_count?: number
+          source?: string
+        }
+        Update: {
+          gone_count?: number
+          id?: string
+          listings_in?: number
+          new_count?: number
+          notes?: string | null
+          price_drop_count?: number
+          received_at?: string
+          relisted_count?: number
+          source?: string
+        }
+        Relationships: []
+      }
       winners_watchlist: {
         Row: {
           account_id: string
