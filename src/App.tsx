@@ -125,6 +125,7 @@ import DealerRadarPage from "./pages/dealer/DealerRadarPage";
 import BuyerTerminalPage from "./pages/fleet/BuyerTerminalPage";
 import FleetDashboardPage from "./pages/fleet/FleetDashboardPage";
 import FingerprintAlertTogglePage from "./pages/operator/FingerprintAlertTogglePage";
+import WestsideMikePage from "./pages/operator/WestsideMikePage";
 
 const queryClient = new QueryClient();
 
@@ -260,6 +261,7 @@ const App = () => (
               <Route path="/operator/dealers/:accountId/master-profile" element={<OperatorGuard><DealerMasterProfilePage /></OperatorGuard>} />
               <Route path="/operator/dealer-profiles" element={<OperatorGuard><DealerProfilesPage /></OperatorGuard>} />
               <Route path="/operator/unmapped-scrape-sources" element={<OperatorGuard><UnmappedScrapeSourcesPage /></OperatorGuard>} />
+              <Route path="/operator/westside-mike" element={<OperatorGuard><WestsideMikePage /></OperatorGuard>} />
 
               {/* Dealer Reports & Feeds */}
               <Route path="/dealer/report/ajh" element={<RequireAuth><AJHReportPage /></RequireAuth>} />
