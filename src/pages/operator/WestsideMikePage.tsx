@@ -78,6 +78,12 @@ export default function WestsideMikePage() {
   const [events, setEvents] = useState<HistoryEvent[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => setExpanded(prev => {
+    const n = new Set(prev);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
