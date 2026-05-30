@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, Fragment } from "react";
 import { OperatorLayout } from "@/components/layout/OperatorLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,8 +9,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { ExternalLink, RefreshCw, Loader2, Eye, Mail, TrendingDown, Car, Activity } from "lucide-react";
+import { ExternalLink, RefreshCw, Loader2, Eye, Mail, TrendingDown, Car, Activity, ChevronDown, ChevronRight, Crosshair } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { MikeReplacementHunt } from "@/components/operator/MikeReplacementHunt";
 
 interface Listing {
   id: string;
@@ -77,6 +78,12 @@ export default function WestsideMikePage() {
   const [events, setEvents] = useState<HistoryEvent[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => setExpanded(prev => {
+    const n = new Set(prev);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -190,6 +197,7 @@ export default function WestsideMikePage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-8"></TableHead>
                       <TableHead>Vehicle</TableHead>
                       <TableHead>KM</TableHead>
                       <TableHead>Price</TableHead>
@@ -200,32 +208,58 @@ export default function WestsideMikePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map(l => (
-                      <TableRow key={l.id}>
-                        <TableCell>
-                          <div className="font-medium text-sm">
-                            {l.year} {l.make} {l.model}
-                          </div>
-                          {l.variant && <div className="text-xs text-muted-foreground">{l.variant}</div>}
-                        </TableCell>
-                        <TableCell className="text-sm">{fmtKm(l.km)}</TableCell>
-                        <TableCell className="text-sm font-semibold">{fmtMoney(l.price)}</TableCell>
-                        <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{l.body_type || "—"}</TableCell>
-                        <TableCell className="hidden md:table-cell text-xs">{l.stock_no || l.source_listing_id}</TableCell>
-                        <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(l.first_seen_at), { addSuffix: true })}
-                        </TableCell>
-                        <TableCell>
-                          <a href={l.listing_url} target="_blank" rel="noopener noreferrer">
-                            <Button variant="ghost" size="sm">
-                              <ExternalLink className="h-3 w-3" />
-                            </Button>
-                          </a>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {filtered.map(l => {
+                      const isOpen = expanded.has(l.id);
+                      return (
+                        <Fragment key={l.id}>
+                          <TableRow key={l.id} className="cursor-pointer" onClick={() => toggle(l.id)}>
+                            <TableCell className="w-8">
+                              {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium text-sm">
+                                {l.year} {l.make} {l.model}
+                              </div>
+                              {l.variant && <div className="text-xs text-muted-foreground">{l.variant}</div>}
+                            </TableCell>
+                            <TableCell className="text-sm">{fmtKm(l.km)}</TableCell>
+                            <TableCell className="text-sm font-semibold">{fmtMoney(l.price)}</TableCell>
+                            <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{l.body_type || "—"}</TableCell>
+                            <TableCell className="hidden md:table-cell text-xs">{l.stock_no || l.source_listing_id}</TableCell>
+                            <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
+                              {formatDistanceToNow(new Date(l.first_seen_at), { addSuffix: true })}
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center gap-1">
+                                <Button variant="ghost" size="sm" onClick={() => toggle(l.id)} title="Find replacements">
+                                  <Crosshair className="h-3 w-3" />
+                                </Button>
+                                <a href={l.listing_url} target="_blank" rel="noopener noreferrer">
+                                  <Button variant="ghost" size="sm">
+                                    <ExternalLink className="h-3 w-3" />
+                                  </Button>
+                                </a>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                          {isOpen && (
+                            <TableRow key={l.id + "-exp"}>
+                              <TableCell colSpan={8} className="p-0">
+                                <MikeReplacementHunt
+                                  make={l.make}
+                                  model={l.model}
+                                  year={l.year}
+                                  km={l.km}
+                                  mikePrice={l.price}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      );
+                    })}
                     {filtered.length === 0 && (
-                      <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">No listings match.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">No listings match.</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
