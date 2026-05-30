@@ -255,7 +255,7 @@ export default function WestsideMikePage() {
                               </TableCell>
                             </TableRow>
                           )}
-                        </>
+                        </Fragment>
                       );
                     })}
                     {filtered.length === 0 && (
