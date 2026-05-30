@@ -9,9 +9,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { ExternalLink, RefreshCw, Loader2, Eye, Mail, TrendingDown, Car, Activity, ChevronDown, ChevronRight, Crosshair } from "lucide-react";
+import { ExternalLink, RefreshCw, Loader2, Eye, Mail, TrendingDown, Car, Activity, ChevronDown, ChevronRight, Crosshair, Link2, Copy, Check } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { MikeReplacementHunt } from "@/components/operator/MikeReplacementHunt";
+import { toast } from "sonner";
 
 interface Listing {
   id: string;
@@ -84,6 +85,37 @@ export default function WestsideMikePage() {
     n.has(id) ? n.delete(id) : n.add(id);
     return n;
   });
+  const [magicLink, setMagicLink] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const generateMagicLink = async () => {
+    setGenerating(true);
+    setMagicLink(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("mike-magic-link", {
+        body: { origin: window.location.origin },
+      });
+      if (error) throw error;
+      if (data?.magic_link) {
+        setMagicLink(data.magic_link);
+        toast.success("Magic link generated. Valid ~1 hour, single use.");
+      } else {
+        throw new Error(data?.error || "No link returned");
+      }
+    } catch (e: any) {
+      toast.error(`Failed: ${e.message || e}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const copyLink = async () => {
+    if (!magicLink) return;
+    await navigator.clipboard.writeText(magicLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -136,11 +168,36 @@ export default function WestsideMikePage() {
               All listings end in $95 — Mike's fingerprint. Arby pushes every 6 hours.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={generateMagicLink} disabled={generating}>
+              {generating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}
+              Generate Mike's magic link
+            </Button>
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
+
+        {magicLink && (
+          <Card className="border-primary/40 bg-primary/5">
+            <CardContent className="pt-4 pb-3 px-4 space-y-2">
+              <div className="text-xs font-medium text-foreground flex items-center gap-2">
+                <Link2 className="h-3 w-3" /> One-time sign-in link for {MIKE_EMAIL}
+              </div>
+              <div className="flex gap-2 items-center">
+                <Input value={magicLink} readOnly className="text-xs font-mono" onFocus={(e) => e.currentTarget.select()} />
+                <Button size="sm" variant="outline" onClick={copyLink}>
+                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Single-use. Expires in ~1 hour. Lands him on <code>/westside</code> (read-only view of his own stock).
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
