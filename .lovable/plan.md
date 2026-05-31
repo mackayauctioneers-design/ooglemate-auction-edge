@@ -1,94 +1,79 @@
-## Goal
+# Goal
 
-Carbitrage today only matches a listing to a dealer when their **sales history** supports it (Sales-Truth lane). This misses obvious natural buyers — e.g. a well-below-market Subaru Outback should ping Patrick Automotive (a Subaru franchise dealer) even with zero Outback sales history.
+Onboard a dealer once → fingerprints, strategic profile, mandates, sourcing, and feed items all light up automatically, with no operator intervention and no silent failures.
 
-We add a second lane — **Strategic Dealer Fit** — driven by dealer identity (franchise, brands, location, specialty), and fuse both lanes into one composite score.
+Right now the Dealer Activation page already shows 9 gates per dealer. The pipeline *exists* — what's missing is **automatic remediation** when a gate doesn't flip green within its expected SLA. Illawarra Toyota only got fixed because a human (you) noticed and pinged Arby.
 
-## What changes
+## What to build
 
-### 1. Dealer identity profile (schema)
+### 1. `dealer-onboard-dispatch` — sanitize the URL before sending
 
-Extend `dealer_profiles` with the natural-buyer fields:
+Today we pass whatever `dealer_website` is stored, which is how the `/search/pre-owned?query=Wollongong` URL reached Arby. Add a normalization step that:
 
-- `franchise_brand` text — e.g. "Subaru", null for independents
-- `preferred_brands` text[] — brands they consistently retail
-- `dealership_category` text — `franchise | used_specialist | prestige | wholesale | independent`
-- `specialist_categories` text[] — e.g. `["4x4", "european_prestige", "family_suv"]`
-- `location_state` text, `location_suburb` text, `location_postcode` text
-- `natural_buyer_notes` text — operator-editable
-- `strategic_profile_updated_at` timestamptz
+- Strips query strings and search/listing paths
+- Reduces to the bare origin (`https://www.illawarratoyota.com.au`)
+- Logs the original + normalized URL to `worker_runs` for traceability
 
-New table `dealer_stock_mix` (rolled up from live inventory + sales): `dealer_id, make, model_count, share_pct, last_computed_at`.
+Arby's registry then takes over and picks the right sitemap. No more "search page sent to auto_detect".
 
-### 2. Strategic fit scorer
+### 2. Persist every dispatch as a `worker_runs` row
 
-New SQL function `compute_strategic_fit(dealer_id uuid, make text, model text, body text)` → returns `{score 0-100, reason text, signals jsonb}`.
+Currently dispatch fires and we only know it worked if the callback eventually arrives. Change `dealer-onboard-dispatch` to:
 
-Signal weights:
-- Franchise brand match (Subaru dealer + Subaru car) → +40, reason "Franchise dealer for this brand"
-- Preferred brand match → +25
-- Specialist category match (e.g. Outback → family_suv) → +15
-- Same state → +10, same metro → +15
-- Existing stock mix concentration in this make ≥ 15% → +15
-- Active mandate covering this make/model → +20
-- Penalty: dealership_category = wholesale and car is retail-only → -20
+- Insert a `worker_runs` row with `status='dispatched'`, `started_at=now()`, `dealer_id`, `kind='dealer_profile_intake'`, payload
+- Update that row to `status='completed'` from `arby-dealer-profile-intake` when the callback lands (match by `dealer_profile_id`)
+- Update to `status='failed'` when Arby returns non-2xx or callback reports `status='failed'`
 
-Cap at 100. Score ≥ 60 = HIGH, 35–59 = MEDIUM, <35 = LOW (no lane).
+This gives the Activation page real progress data and lets the watchdog (below) detect stuck jobs.
 
-### 3. Opportunity record changes
+### 3. New cron: `dealer-onboarding-watchdog` (every 15 min)
 
-Add to `operator_opportunities`:
+For each dealer in `dealer_profiles`, check the 9 gates and **automatically take the next action** when a gate has been stuck > its SLA:
 
-- `strategic_fit_score` int
-- `strategic_fit_reason` text
-- `strategic_fit_signals` jsonb
-- `match_lane` text — `sales_truth | strategic_fit | both`
-- `recommended_dealer_id` uuid (FK accounts) — best dealer across BOTH lanes
-- `recommended_dealer_reason` text
-- `composite_score` numeric — fused score used for ranking
+| Gate stuck | SLA | Auto-action |
+|---|---|---|
+| Profile created but no `worker_runs` ever | 5 min | Call `dealer-onboard-dispatch` |
+| Dispatched but no callback | 45 min | Re-dispatch (max 3 attempts, then alert) |
+| Fingerprints present but no strategic profile | 30 min | Invoke `build-dealer-intelligence-profile` |
+| Strategic done but no mandates | 30 min | Invoke `generate-dealer-mandates` |
+| Mandates exist but `last_run_at` is null | 60 min | Invoke `run-mandate` for each |
+| Sourcing running but 0 feed items in 7d | logged only | Surface on activation page (likely a real-world issue, not a bug) |
 
-### 4. Composite scoring
+After 3 failed dispatch attempts, write a row to a new `onboarding_alerts` table and surface it on the Activation page in red — that's the only point a human gets pulled in.
 
-Rewrite ranking inside `score-operator-opportunities`:
+### 4. Dispatch trigger on profile insert
 
-```
-composite =
-   0.30 * market_value_gap_score    (existing under_buy / retail_vs_ask)
- + 0.20 * realistic_net_margin_score
- + 0.20 * sales_truth_fit_score     (existing fingerprint match)
- + 0.15 * strategic_fit_score
- + 0.10 * source_confidence
- + 0.05 * turnability_confidence    (days-to-sell from sales truth or median)
-```
+So Step 3's "Profile created but no `worker_runs`" path basically never fires:
 
-If `sales_truth_fit_score == 0` but `strategic_fit_score >= 60` and market gap is strong → still emit opportunity with `match_lane='strategic_fit'`, tier capped at HIGH (not BUY) until a human confirms.
+- Add a Postgres trigger on `dealer_profiles` INSERT that calls `pg_net` → `dealer-onboard-dispatch` whenever `dealer_website` is non-null
+- This way every new dealer is dispatched within seconds of insertion, no matter how they got created (UI, manual SQL, Westside flow, etc.)
 
-`recommended_dealer_id` = argmax(composite) across all dealers in the network for that listing. `match_lane='both'` when the same dealer wins on both lanes.
+### 5. Activation page — show live progress, not just gates
 
-### 5. Operator UI
+Small UI addition: each expanded dealer row gets a "Pipeline activity" timeline pulled from `worker_runs` for that `dealer_id`, ordered desc. So you can see at a glance: "dispatched 14:02 → callback received 14:08 → strategic built 14:12 → 4 mandates created 14:13 → 2 feed items 14:21".
 
-- Trading Desk row: add a small **lane chip** (`SALES TRUTH` / `STRATEGIC FIT` / `BOTH`) and a tooltip showing `strategic_fit_reason`.
-- Dealer Master Profile (Patrick page): new **Strategic Profile** card — edit franchise_brand, preferred_brands, dealership_category, specialist_categories, location. This is what teaches the system who the natural buyer is.
-
-### 6. Patrick backfill
-
-Seed Patrick Auto Group with `franchise_brand='Subaru'`, `dealership_category='franchise'`, `preferred_brands=['Subaru']`, `location_state='NSW'`, `location_suburb='Port Macquarie'` so the Outback example fires immediately.
-
-## Out of scope (explicit)
-
-- No hardcoding of any dealer in code — Patrick is seeded via data only.
-- No change to Sales-Truth fingerprint engine itself.
-- No change to alert dispatch pipeline (alerts will naturally pick up the new lane via the same `operator_opportunities` table).
+When stuck, the timeline tells you exactly where, and the auto-remediation tells you what the watchdog is doing about it.
 
 ## Technical notes
 
-- Pure additive migration; existing rows get `strategic_fit_score = 0`, `match_lane='sales_truth'` so current behaviour is preserved.
-- Scorer change is a single edge function edit (`score-operator-opportunities`) — adds a second pass that computes strategic fit per (listing × dealer) and merges into the existing per-listing best-account selection.
-- `compute_strategic_fit` lives in SQL so the scorer, dealer dashboard, and any future Bob tool can all call it.
+**Cron**: `pg_cron` + `pg_net` calling `dealer-onboarding-watchdog` every 15 min. Function uses `TIME_BUDGET_MS=110000` and processes dealers in priority order (ERROR → IN_PROGRESS → NOT_STARTED), skipping ACTIVE ones.
 
-## Deliverables
+**Idempotency**: Watchdog uses `worker_runs` row count + `started_at` to decide whether to (re)dispatch. Never fires if a `dispatched` row exists < SLA old.
 
-1. Migration: new dealer_profiles columns, `dealer_stock_mix`, opportunity columns, `compute_strategic_fit` function.
-2. Patrick data seed.
-3. `score-operator-opportunities` rewrite for composite + strategic lane.
-4. Operator UI: lane chip on Trading Desk; Strategic Profile editor on Dealer Master Profile.
+**Retry caps**: Each gate has a max attempt count stored in a new column `worker_runs.attempt_n`. Past the cap, we stop trying and write to `onboarding_alerts` for human review.
+
+**Auth keys**: The Illawarra token mismatch (`arbydealer2026` vs `arbyingest`) is already fixed on Arby's side. We'll add a startup sanity check in `dealer-onboard-dispatch` that pings Arby's health endpoint once per cold start and logs a warning if auth fails — so the next token rotation produces a loud error instead of silent 401s.
+
+## Files to add / change
+
+- `supabase/functions/dealer-onboard-dispatch/index.ts` — URL normalization, worker_runs insert, health-check warning
+- `supabase/functions/arby-dealer-profile-intake/index.ts` — update worker_runs to completed/failed
+- `supabase/functions/dealer-onboarding-watchdog/index.ts` — **new**, the auto-remediation loop
+- `supabase/migrations/...` — `onboarding_alerts` table, `worker_runs.attempt_n` column, profile-insert trigger, pg_cron schedule
+- `src/pages/operator/DealerActivationPage.tsx` — add pipeline-activity timeline + `onboarding_alerts` banner
+
+## Out of scope
+
+- Changing Arby's registry / sitemap logic (lives on Arby's side, already fixed)
+- Manual operator overrides (the current "redispatch" button stays as a fallback)
+- Webhook integration with @Carbitragebot1bot for onboarding events (separate request)
