@@ -353,7 +353,6 @@ export default function DealerActivationPage() {
                             </div>
                           ))}
                         </div>
-                        </div>
 
                         <div className="mt-5">
                           <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-2">
