@@ -7832,6 +7832,42 @@ export type Database = {
         }
         Relationships: []
       }
+      onboarding_alerts: {
+        Row: {
+          attempt_n: number
+          created_at: string
+          dealer_id: string
+          gate: string
+          id: string
+          message: string
+          resolved_at: string | null
+          severity: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_n?: number
+          created_at?: string
+          dealer_id: string
+          gate: string
+          id?: string
+          message: string
+          resolved_at?: string | null
+          severity?: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_n?: number
+          created_at?: string
+          dealer_id?: string
+          gate?: string
+          id?: string
+          message?: string
+          resolved_at?: string | null
+          severity?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ooglebot_active_hunts: {
         Row: {
           account_id: string | null
@@ -15443,6 +15479,7 @@ export type Database = {
       worker_runs: {
         Row: {
           action: string
+          attempt_n: number
           created_at: string
           dealer_id: string
           duration_ms: number | null
@@ -15458,6 +15495,7 @@ export type Database = {
         }
         Insert: {
           action: string
+          attempt_n?: number
           created_at?: string
           dealer_id: string
           duration_ms?: number | null
@@ -15473,6 +15511,7 @@ export type Database = {
         }
         Update: {
           action?: string
+          attempt_n?: number
           created_at?: string
           dealer_id?: string
           duration_ms?: number | null
