@@ -4,7 +4,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckCircle2, XCircle, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, Activity } from "lucide-react";
+
+interface WorkerRunRow {
+  id: string;
+  action: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  attempt_n: number | null;
+  error: string | null;
+}
+
+interface OnboardingAlert {
+  id: string;
+  dealer_id: string;
+  gate: string;
+  severity: string;
+  message: string;
+  attempt_n: number;
+  created_at: string;
+}
 
 
 type GateKey =
