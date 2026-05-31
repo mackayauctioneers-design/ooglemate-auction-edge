@@ -205,6 +205,14 @@ export default function DealerActivationPage() {
 
   useEffect(() => {
     load();
+    (async () => {
+      const { data } = await supabase
+        .from("onboarding_alerts")
+        .select("id, dealer_id, gate, severity, message, attempt_n, created_at")
+        .is("resolved_at", null)
+        .order("created_at", { ascending: false });
+      setAlerts((data ?? []) as OnboardingAlert[]);
+    })();
   }, []);
 
   const summary = useMemo(() => {
