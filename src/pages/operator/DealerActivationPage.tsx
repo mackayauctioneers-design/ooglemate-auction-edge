@@ -353,6 +353,42 @@ export default function DealerActivationPage() {
                             </div>
                           ))}
                         </div>
+                        </div>
+
+                        <div className="mt-5">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-2">
+                            <Activity className="h-3.5 w-3.5" /> Pipeline activity (last 20)
+                          </div>
+                          {!runsByDealer[r.id] ? (
+                            <div className="text-xs text-muted-foreground flex items-center gap-2">
+                              <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                            </div>
+                          ) : runsByDealer[r.id].length === 0 ? (
+                            <div className="text-xs text-muted-foreground italic">
+                              No worker runs yet — watchdog will dispatch within 15 min.
+                            </div>
+                          ) : (
+                            <div className="space-y-1 text-xs font-mono">
+                              {runsByDealer[r.id].map((run) => {
+                                const tone =
+                                  run.status === "completed" ? "text-emerald-700" :
+                                  run.status === "failed"    ? "text-destructive" :
+                                                                "text-amber-700";
+                                return (
+                                  <div key={run.id} className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-muted-foreground">{run.started_at.slice(0, 16).replace("T", " ")}</span>
+                                    <span className="font-medium">{run.action}</span>
+                                    <span className={tone}>{run.status}</span>
+                                    {run.attempt_n && run.attempt_n > 1 && (
+                                      <span className="text-muted-foreground">· attempt {run.attempt_n}</span>
+                                    )}
+                                    {run.error && <span className="text-destructive">· {run.error.slice(0, 80)}</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
