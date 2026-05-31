@@ -124,6 +124,24 @@ export default function DealerActivationPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [alerts, setAlerts] = useState<OnboardingAlert[]>([]);
+  const [runsByDealer, setRunsByDealer] = useState<Record<string, WorkerRunRow[]>>({});
+
+  async function loadRunsFor(dealerId: string) {
+    if (runsByDealer[dealerId]) return;
+    const { data } = await supabase
+      .from("worker_runs")
+      .select("id, action, status, started_at, finished_at, attempt_n, error")
+      .eq("dealer_id", dealerId)
+      .order("started_at", { ascending: false })
+      .limit(20);
+    setRunsByDealer((s) => ({ ...s, [dealerId]: (data ?? []) as WorkerRunRow[] }));
+  }
+
+  async function triggerWatchdog() {
+    await supabase.functions.invoke("dealer-onboarding-watchdog", { body: { source: "manual" } });
+    await load();
+  }
 
   async function load() {
     setLoading(true);
