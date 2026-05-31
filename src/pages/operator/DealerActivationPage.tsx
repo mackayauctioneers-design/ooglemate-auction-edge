@@ -299,7 +299,11 @@ export default function DealerActivationPage() {
                 return (
                   <div key={r.id}>
                     <button
-                      onClick={() => setExpanded(isOpen ? null : r.id)}
+                      onClick={() => {
+                        const next = isOpen ? null : r.id;
+                        setExpanded(next);
+                        if (next) loadRunsFor(r.id);
+                      }}
                       className="w-full p-4 hover:bg-muted/40 transition text-left"
                     >
                       <div className="flex items-center gap-3 flex-wrap">
