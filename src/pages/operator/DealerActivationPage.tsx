@@ -230,11 +230,38 @@ export default function DealerActivationPage() {
             Automatic status across 9 gates. A dealer is <span className="font-medium text-emerald-700">ACTIVE</span> only when all 9 pass.
           </p>
         </div>
-        <Button variant="outline" onClick={load} disabled={loading}>
-          {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={triggerWatchdog} disabled={loading}>
+            <Activity className="h-4 w-4 mr-2" /> Run watchdog now
+          </Button>
+          <Button variant="outline" onClick={load} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            Refresh
+          </Button>
+        </div>
       </header>
+
+      {alerts.length > 0 && (
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-4 w-4" /> {alerts.length} onboarding alert{alerts.length === 1 ? "" : "s"} — watchdog gave up
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-1 text-sm">
+            {alerts.slice(0, 5).map((a) => {
+              const dealer = rows.find((r) => r.id === a.dealer_id);
+              return (
+                <div key={a.id} className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">{a.gate}</Badge>
+                  <span className="font-medium">{dealer?.name ?? a.dealer_id.slice(0, 8)}</span>
+                  <span className="text-muted-foreground">— {a.message}</span>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {(["ACTIVE", "IN_PROGRESS", "NOT_STARTED", "ERROR"] as const).map((k) => (
