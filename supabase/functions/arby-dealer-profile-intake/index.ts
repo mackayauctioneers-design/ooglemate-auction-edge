@@ -55,8 +55,33 @@ Deno.serve(async (req) => {
     error_message,
   } = payload;
 
+  // Helper: flip the most recent dispatched worker_runs row for this dealer.
+  const updateLatestRun = async (sbClient: any, dealerUuid: string | null, patch: Record<string, unknown>) => {
+    if (!dealerUuid) return;
+    const { data: latest } = await sbClient
+      .from("worker_runs")
+      .select("id")
+      .eq("dealer_id", dealerUuid)
+      .eq("action", "dealer_profile_intake")
+      .in("status", ["dispatched"])
+      .order("started_at", { ascending: false })
+      .limit(1);
+    const id = latest?.[0]?.id;
+    if (id) {
+      await sbClient.from("worker_runs").update({ ...patch, finished_at: new Date().toISOString() }).eq("id", id);
+    }
+  };
+
   if (agentStatus === "failed") {
     console.error(`[arby-intake] Agent failed for ${dealer_name}: ${error_message}`);
+    const sbFail = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const UUID_RE_F = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let dealerUuid: string | null = dealer_profile_id && UUID_RE_F.test(String(dealer_profile_id)) ? String(dealer_profile_id) : null;
+    if (!dealerUuid && dealer_name) {
+      const { data: prof } = await sbFail.from("dealer_profiles").select("id").ilike("dealer_name", dealer_name).maybeSingle();
+      dealerUuid = prof?.id ?? null;
+    }
+    await updateLatestRun(sbFail, dealerUuid, { status: "failed", error: error_message ?? "agent_failed" });
     return new Response(
       JSON.stringify({ status: "acknowledged", agent_status: "failed", error_message }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
