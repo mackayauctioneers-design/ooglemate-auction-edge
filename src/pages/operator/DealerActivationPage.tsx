@@ -4,7 +4,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckCircle2, XCircle, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, Activity } from "lucide-react";
+
+interface WorkerRunRow {
+  id: string;
+  action: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  attempt_n: number | null;
+  error: string | null;
+}
+
+interface OnboardingAlert {
+  id: string;
+  dealer_id: string;
+  gate: string;
+  severity: string;
+  message: string;
+  attempt_n: number;
+  created_at: string;
+}
 
 
 type GateKey =
@@ -104,6 +124,24 @@ export default function DealerActivationPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [alerts, setAlerts] = useState<OnboardingAlert[]>([]);
+  const [runsByDealer, setRunsByDealer] = useState<Record<string, WorkerRunRow[]>>({});
+
+  async function loadRunsFor(dealerId: string) {
+    if (runsByDealer[dealerId]) return;
+    const { data } = await supabase
+      .from("worker_runs")
+      .select("id, action, status, started_at, finished_at, attempt_n, error")
+      .eq("dealer_id", dealerId)
+      .order("started_at", { ascending: false })
+      .limit(20);
+    setRunsByDealer((s) => ({ ...s, [dealerId]: (data ?? []) as WorkerRunRow[] }));
+  }
+
+  async function triggerWatchdog() {
+    await supabase.functions.invoke("dealer-onboarding-watchdog", { body: { source: "manual" } });
+    await load();
+  }
 
   async function load() {
     setLoading(true);
@@ -167,6 +205,14 @@ export default function DealerActivationPage() {
 
   useEffect(() => {
     load();
+    (async () => {
+      const { data } = await supabase
+        .from("onboarding_alerts")
+        .select("id, dealer_id, gate, severity, message, attempt_n, created_at")
+        .is("resolved_at", null)
+        .order("created_at", { ascending: false });
+      setAlerts((data ?? []) as OnboardingAlert[]);
+    })();
   }, []);
 
   const summary = useMemo(() => {
@@ -184,11 +230,38 @@ export default function DealerActivationPage() {
             Automatic status across 9 gates. A dealer is <span className="font-medium text-emerald-700">ACTIVE</span> only when all 9 pass.
           </p>
         </div>
-        <Button variant="outline" onClick={load} disabled={loading}>
-          {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={triggerWatchdog} disabled={loading}>
+            <Activity className="h-4 w-4 mr-2" /> Run watchdog now
+          </Button>
+          <Button variant="outline" onClick={load} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            Refresh
+          </Button>
+        </div>
       </header>
+
+      {alerts.length > 0 && (
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-4 w-4" /> {alerts.length} onboarding alert{alerts.length === 1 ? "" : "s"} — watchdog gave up
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-1 text-sm">
+            {alerts.slice(0, 5).map((a) => {
+              const dealer = rows.find((r) => r.id === a.dealer_id);
+              return (
+                <div key={a.id} className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">{a.gate}</Badge>
+                  <span className="font-medium">{dealer?.name ?? a.dealer_id.slice(0, 8)}</span>
+                  <span className="text-muted-foreground">— {a.message}</span>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {(["ACTIVE", "IN_PROGRESS", "NOT_STARTED", "ERROR"] as const).map((k) => (
@@ -226,7 +299,11 @@ export default function DealerActivationPage() {
                 return (
                   <div key={r.id}>
                     <button
-                      onClick={() => setExpanded(isOpen ? null : r.id)}
+                      onClick={() => {
+                        const next = isOpen ? null : r.id;
+                        setExpanded(next);
+                        if (next) loadRunsFor(r.id);
+                      }}
                       className="w-full p-4 hover:bg-muted/40 transition text-left"
                     >
                       <div className="flex items-center gap-3 flex-wrap">
@@ -275,6 +352,41 @@ export default function DealerActivationPage() {
                               </div>
                             </div>
                           ))}
+                        </div>
+
+                        <div className="mt-5">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-2">
+                            <Activity className="h-3.5 w-3.5" /> Pipeline activity (last 20)
+                          </div>
+                          {!runsByDealer[r.id] ? (
+                            <div className="text-xs text-muted-foreground flex items-center gap-2">
+                              <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                            </div>
+                          ) : runsByDealer[r.id].length === 0 ? (
+                            <div className="text-xs text-muted-foreground italic">
+                              No worker runs yet — watchdog will dispatch within 15 min.
+                            </div>
+                          ) : (
+                            <div className="space-y-1 text-xs font-mono">
+                              {runsByDealer[r.id].map((run) => {
+                                const tone =
+                                  run.status === "completed" ? "text-emerald-700" :
+                                  run.status === "failed"    ? "text-destructive" :
+                                                                "text-amber-700";
+                                return (
+                                  <div key={run.id} className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-muted-foreground">{run.started_at.slice(0, 16).replace("T", " ")}</span>
+                                    <span className="font-medium">{run.action}</span>
+                                    <span className={tone}>{run.status}</span>
+                                    {run.attempt_n && run.attempt_n > 1 && (
+                                      <span className="text-muted-foreground">· attempt {run.attempt_n}</span>
+                                    )}
+                                    {run.error && <span className="text-destructive">· {run.error.slice(0, 80)}</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

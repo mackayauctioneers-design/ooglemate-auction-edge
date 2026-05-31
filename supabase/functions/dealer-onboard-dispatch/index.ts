@@ -1,17 +1,48 @@
 /**
  * dealer-onboard-dispatch — Dispatches a new dealer to Arby (OpenClaw) for auto-profiling.
  *
- * POSTs directly to the Arby dispatch HTTP endpoint. Arby performs inventory + days-in-stock
- * + business analysis and posts results back to `arby-dealer-profile-intake`.
+ * Now:
+ *  - Normalizes whatever URL was stored (strips search/listing paths -> bare origin)
+ *  - Persists a worker_runs row (action='dealer_profile_intake') for the watchdog
+ *  - Increments attempt_n on retries
+ *  - POSTs to Arby and marks the worker_runs row as dispatched / failed
+ *
+ * Arby's registry then picks the correct sitemap. The callback handler
+ * (arby-dealer-profile-intake) flips the same worker_runs row to completed.
  */
 
 // @ts-nocheck
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+const SEARCH_PATH_RE = /\/(search|inventory|stock|listings?|used-cars?|pre-?owned|vehicles?)\b/i;
+
+/**
+ * Normalize a dealer URL down to the bare origin so Arby's registry-based
+ * sitemap lookup wins over auto_detect. Examples:
+ *   https://www.illawarratoyota.com.au/search/pre-owned?query=Wollongong
+ *     -> https://www.illawarratoyota.com.au
+ *   https://patrickauto.com.au/used-cars
+ *     -> https://patrickauto.com.au
+ */
+function normalizeDealerUrl(raw: string): string {
+  try {
+    const u = new URL(raw.trim());
+    // Drop query, hash, and search-ish paths entirely.
+    if (u.search || u.hash || SEARCH_PATH_RE.test(u.pathname)) {
+      return `${u.protocol}//${u.host}`;
+    }
+    // Strip trailing slash for consistency.
+    return `${u.protocol}//${u.host}${u.pathname.replace(/\/$/, "")}`;
+  } catch {
+    return raw;
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -36,27 +67,57 @@ Deno.serve(async (req) => {
   if (!body.dealer_profile_id || !body.dealer_name || !body.dealer_website) {
     return new Response(
       JSON.stringify({ error: "dealer_profile_id, dealer_name, and dealer_website are required" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 
   if (!ARBY_DISPATCH_URL || !ARBY_DISPATCH_KEY) {
     return new Response(
       JSON.stringify({ error: "ARBY_DISPATCH_URL / ARBY_DISPATCH_KEY not configured" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
+
+  const sb = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+  const originalUrl = body.dealer_website as string;
+  const normalizedUrl = normalizeDealerUrl(originalUrl);
+
+  // Compute attempt number from prior dispatched/failed rows in last 24h.
+  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const { count: priorAttempts } = await sb
+    .from("worker_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("dealer_id", body.dealer_profile_id)
+    .eq("action", "dealer_profile_intake")
+    .gte("started_at", since);
+  const attempt_n = (priorAttempts ?? 0) + 1;
 
   const payload = {
     dealer_profile_id: body.dealer_profile_id,
     dealer_name: body.dealer_name,
-    website_url: body.dealer_website,
+    website_url: normalizedUrl,
     dealer_email: body.dealer_email || null,
     scope: body.scope || ["inventory", "days_in_stock", "business_analysis"],
     callback_url: CALLBACK_URL,
   };
 
-  console.log(`[dealer-onboard-dispatch] → Arby: ${body.dealer_name} (${body.dealer_website})`);
+  // Insert a dispatched run row up-front so the watchdog can see in-flight jobs.
+  const { data: runRow } = await sb
+    .from("worker_runs")
+    .insert({
+      dealer_id: body.dealer_profile_id,
+      action: "dealer_profile_intake",
+      status: "dispatched",
+      started_at: new Date().toISOString(),
+      attempt_n,
+      request_payload: { ...payload, original_url: originalUrl, source: body.source ?? "manual" },
+    })
+    .select("id")
+    .single();
+
+  const runId = runRow?.id ?? null;
+  console.log(`[dealer-onboard-dispatch] → Arby: ${body.dealer_name} | ${originalUrl} -> ${normalizedUrl} | attempt ${attempt_n} | run=${runId}`);
 
   try {
     const res = await fetch(ARBY_DISPATCH_URL, {
@@ -74,28 +135,55 @@ Deno.serve(async (req) => {
 
     if (!res.ok) {
       console.error(`[dealer-onboard-dispatch] Arby returned ${res.status}:`, responseText);
+      if (runId) {
+        await sb.from("worker_runs").update({
+          status: "failed",
+          finished_at: new Date().toISOString(),
+          http_status: res.status,
+          error: `Arby dispatch failed (${res.status})`,
+          response_payload: parsed,
+        }).eq("id", runId);
+      }
       return new Response(
         JSON.stringify({ error: "Arby dispatch failed", status: res.status, detail: parsed }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    console.log(`[dealer-onboard-dispatch] Arby accepted profile job for ${body.dealer_profile_id}`);
+    if (runId) {
+      await sb.from("worker_runs").update({
+        http_status: res.status,
+        response_payload: parsed,
+      }).eq("id", runId);
+    }
+
+    console.log(`[dealer-onboard-dispatch] Arby accepted ${body.dealer_profile_id}`);
 
     return new Response(
       JSON.stringify({
         status: "dispatched",
         method: "arby_http",
         dealer_profile_id: body.dealer_profile_id,
+        original_url: originalUrl,
+        normalized_url: normalizedUrl,
+        attempt_n,
+        worker_run_id: runId,
         arby_response: parsed,
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
     console.error("[dealer-onboard-dispatch] HTTP dispatch error:", err);
+    if (runId) {
+      await sb.from("worker_runs").update({
+        status: "failed",
+        finished_at: new Date().toISOString(),
+        error: String(err),
+      }).eq("id", runId);
+    }
     return new Response(
       JSON.stringify({ error: "Arby HTTP dispatch failed", detail: String(err) }),
-      { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
