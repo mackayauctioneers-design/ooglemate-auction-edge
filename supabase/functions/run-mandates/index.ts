@@ -286,11 +286,84 @@ async function fetchAutotrader(mandate: Mandate): Promise<NormalizedListing[]> {
   return results;
 }
 
+// ─── Unified market_listings adapter ─────────────────────────────────────────
+// Reads from the canonical `market_listings` view (the platform's unified
+// discovery surface) filtered by mandate criteria. One adapter, all sources.
+//   - `arby`     → no source filter (entire unified surface, all ingestion paths)
+//   - `carsales` → filter source='carsales'
+//   - any source key not present in ADAPTERS but in source_mask falls through
+//     here via the executor (see line ~990).
+
+function makeUnifiedAdapter(sourceFilter: string | null) {
+  return async function fetchUnified(mandate: Mandate): Promise<NormalizedListing[]> {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || Deno.env.get("VITE_SUPABASE_URL");
+    const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!SUPABASE_URL || !SERVICE_KEY) {
+      console.error("[unified-adapter] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+      return [];
+    }
+    const sb = createClient(SUPABASE_URL, SERVICE_KEY);
+
+    let q = sb
+      .from("market_listings")
+      .select(
+        "id, source, source_listing_id, listing_url, make, model, variant_resolved, variant_raw, year, km, asking_price, location, suburb, state, last_seen_at, lifecycle_status",
+      )
+      .eq("lifecycle_status", "ACTIVE")
+      .gte("last_seen_at", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+      .ilike("make", mandate.make);
+
+    if (sourceFilter) q = q.eq("source", sourceFilter);
+    if (mandate.model) q = q.ilike("model", mandate.model);
+    if (mandate.year_min) q = q.gte("year", mandate.year_min);
+    if (mandate.year_max) q = q.lte("year", mandate.year_max);
+    if (mandate.km_max) q = q.or(`km.is.null,km.lte.${mandate.km_max}`);
+    if (mandate.km_min) q = q.or(`km.is.null,km.gte.${mandate.km_min}`);
+    if (mandate.price_max) q = q.or(`asking_price.is.null,asking_price.lte.${mandate.price_max}`);
+
+    q = q.order("last_seen_at", { ascending: false }).limit(1000);
+
+    const { data, error } = await q;
+    if (error) {
+      console.error(`[unified-adapter:${sourceFilter ?? "arby"}] query error: ${error.message}`);
+      return [];
+    }
+
+    return (data || []).map((r): NormalizedListing => ({
+      source: sourceFilter ?? `arby:${r.source}`,
+      listing_id: r.source_listing_id || r.id,
+      source_url: r.listing_url || null,
+      make: (r.make || "").toUpperCase(),
+      model: (r.model || "").toUpperCase(),
+      variant: (r.variant_resolved || r.variant_raw || null)?.toUpperCase() || null,
+      year: r.year ?? null,
+      km: r.km ?? null,
+      asking_price: r.asking_price ?? null,
+      location: r.location || r.suburb || r.state || null,
+      raw: r as Record<string, unknown>,
+    }));
+  };
+}
+
+// Platform Architecture Contract: all sources MUST read from the canonical
+// `market_listings` view (the unified discovery surface). Per-source legacy
+// adapters that scraped external APIs directly returned 0 results and have
+// been retired. Every source key now resolves to the unified adapter with the
+// appropriate source filter; `arby`/`unified` returns the entire surface.
 const ADAPTERS: Record<string, (m: Mandate) => Promise<NormalizedListing[]>> = {
-  pickles: fetchPickles,
-  toyota: fetchToyota,
-  gumtree: fetchGumtree,
-  autotrader: fetchAutotrader,
+  arby:        makeUnifiedAdapter(null),
+  unified:     makeUnifiedAdapter(null),
+  autotrader:  makeUnifiedAdapter("autotrader"),
+  carsales:    makeUnifiedAdapter("carsales"),
+  gumtree:     makeUnifiedAdapter("gumtree"),
+  pickles:     makeUnifiedAdapter("pickles"),
+  manheim:     makeUnifiedAdapter("manheim"),
+  grays:       makeUnifiedAdapter("grays"),
+  bidsonline:  makeUnifiedAdapter("bidsonline"),
+  slattery:    makeUnifiedAdapter("slattery"),
+  toyota:      makeUnifiedAdapter("toyota"),
+  drive:       makeUnifiedAdapter("drive"),
+  dealer_sites: makeUnifiedAdapter(null), // dealer-site discovery lands in market_listings via Arby
 };
 
 // ─── Lindy Discovery Dispatch ───────────────────────────────────────────────
@@ -738,7 +811,7 @@ async function upsertFeedItems(
     }
   }
 
-  await sb.rpc("mandate_feed_detect_price_changes", { p_mandate_id: mandateId }).catch(() => {});
+  try { await sb.rpc("mandate_feed_detect_price_changes", { p_mandate_id: mandateId }); } catch (_) { /* non-fatal */ }
 
   return { upserted, errors };
 }
@@ -1013,20 +1086,14 @@ Deno.serve(async (req) => {
       totalUpserted += mandateUpserted;
       mandatesExecuted++;
 
-      // 3b. Lindy outward discovery if internal results insufficient
+      // 3b. Lindy outward discovery — DISABLED.
+      // Lindy is fully deprecated (per Platform Architecture Contract). Arby
+      // (the in-house agent) feeds the unified `market_listings` surface, which
+      // is now consumed by the `arby` / `unified` adapters above. Dispatching
+      // to Lindy here created zombie jobs that the watchdog killed every run,
+      // polluting mandate_runs.errors with watchdog_timeout entries.
       if (mandateFetched < MIN_RESULTS_THRESHOLD) {
-        console.log(`[run-mandates] "${mandate.name}" has ${mandateFetched} results (< ${MIN_RESULTS_THRESHOLD}) — triggering Lindy discovery`);
-        try {
-          const { dispatched, skipped } = await dispatchLindyForMandate(sb, mandate);
-          totalLindyDispatched += dispatched;
-          if (skipped.length > 0) {
-            console.log(`[run-mandates] Lindy skipped for "${mandate.name}": ${skipped.join(", ")}`);
-          }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error(`[run-mandates] Lindy dispatch failed for "${mandate.name}": ${msg}`);
-          runErrors.push({ mandate: mandate.name, source: "lindy", error: msg });
-        }
+        console.log(`[run-mandates] "${mandate.name}" had ${mandateFetched} results (< ${MIN_RESULTS_THRESHOLD}) — Lindy fallback disabled (deprecated)`);
       }
 
       // 4. Evaluate Code Red alerts for this mandate
