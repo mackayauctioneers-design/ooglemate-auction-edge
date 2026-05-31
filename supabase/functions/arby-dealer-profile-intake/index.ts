@@ -164,6 +164,12 @@ Deno.serve(async (req) => {
 
   console.log(`[arby-intake] Created ${data?.length || 0} fingerprints for ${dealer_name}`);
 
+  // Mark the in-flight worker_runs row as completed so the watchdog stops poking.
+  await updateLatestRun(sb, resolvedProfileUuid, {
+    status: "completed",
+    response_payload: { fingerprints_created: data?.length || 0, confidence, dealer_type },
+  });
+
   return new Response(
     JSON.stringify({
       status: "ok",
