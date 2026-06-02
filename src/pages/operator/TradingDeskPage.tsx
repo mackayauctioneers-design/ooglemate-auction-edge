@@ -385,19 +385,91 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, is_starred: newVal } : o));
     toast.success(newVal ? 'Added to watchlist ⭐' : 'Removed from watchlist');
 
-    // Dispatch star-watch when starring ON (internal Arby pipeline, Lindy deprecated)
-    if (newVal && listingId) {
-      supabase.functions.invoke('star-watch-dispatch', {
-        body: { listing_id: listingId, account_id: filterAccount || null },
-      }).then(({ error: watchErr }) => {
-        if (watchErr) {
-          console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
-          toast.error('Watch dispatch failed: ' + (watchErr.message || 'unknown'));
-        } else {
-          console.log('Star-watch dispatched for', listingId);
-          toast.success('Condition report queued 🔍');
-        }
+    if (newVal) {
+      const opp = opportunities.find(o => o.id === id);
+
+      // Dispatch star-watch (price/condition monitor on this specific listing)
+      if (listingId) {
+        supabase.functions.invoke('star-watch-dispatch', {
+          body: { listing_id: listingId, account_id: filterAccount || null },
+        }).then(({ error: watchErr }) => {
+          if (watchErr) {
+            console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
+          } else {
+            console.log('Star-watch dispatched for', listingId);
+          }
+        });
+      }
+
+      // Add to hunt list — create an active_mandates row so Arby keeps
+      // surfacing similar vehicles into this dealer's Trading Desk feed.
+      const huntAccountId = (isDealerMode ? lockedAccountId : null) ?? opp?.best_account_id ?? filterAccount ?? null;
+      if (opp?.make && opp?.model && huntAccountId) {
+        addStarToHuntList(opp, huntAccountId);
+      }
+    }
+  };
+
+  const addStarToHuntList = async (opp: OperatorOpportunity, accountId: string) => {
+    try {
+      const make = (opp.make || '').toUpperCase();
+      const model = (opp.model || '').toUpperCase();
+
+      // De-dupe: if there's already an active hunt for this make/model on this
+      // account, skip — no need to spam mandates.
+      const { data: existing } = await supabase
+        .from('active_mandates')
+        .select('id')
+        .eq('account_id', accountId)
+        .eq('lane', 'hunt')
+        .eq('make', make)
+        .eq('model', model)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (existing) {
+        toast.success(`Already hunting ${make} ${model} 🎯`);
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('dealer_profiles')
+        .select('id')
+        .eq('account_id', accountId)
+        .maybeSingle();
+
+      // Build a reasonable year/km/price band around the starred car so the
+      // hunt finds true comparables, not the entire model lineage.
+      const yearMin = opp.year ? opp.year - 2 : null;
+      const yearMax = opp.year ? opp.year + 1 : null;
+      const kmMax = opp.km ? Math.round(opp.km * 1.4) : null;
+      const priceMax = opp.asking_price ? Math.round(opp.asking_price * 1.1) : null;
+
+      const { error: insErr } = await supabase.from('active_mandates').insert({
+        account_id: accountId,
+        dealer_id: profile?.id ?? null,
+        lane: 'hunt',
+        name: `${make} ${model} (starred from Trading Desk)`,
+        make,
+        model,
+        year_min: yearMin,
+        year_max: yearMax,
+        km_max: kmMax,
+        price_max: priceMax,
+        priority: 'high',
+        run_frequency_minutes: 240,
+        source_mask: ['pickles', 'toyota', 'carsales'],
+        next_run_at: new Date().toISOString(),
+        is_active: true,
       });
+      if (insErr) {
+        console.warn('Add to hunt list failed:', insErr.message);
+        toast.error('Couldn\'t add to hunt list: ' + insErr.message);
+      } else {
+        toast.success(`Added to hunt list — Arby will chase more ${make} ${model} 🎯`);
+      }
+    } catch (e: any) {
+      console.warn('addStarToHuntList error:', e?.message);
     }
   };
 
