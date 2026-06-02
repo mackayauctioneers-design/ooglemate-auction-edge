@@ -583,6 +583,8 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const watchCount = active('WATCH');
   const auctionCount = baseFiltered.filter(o => o.auction_status && o.auction_status !== 'none' && ACTIONABLE_STATUSES.includes(o.status)).length;
   const starredCount = baseFiltered.filter(o => o.is_starred).length;
+  const freshCutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const newCount = baseFiltered.filter(o => ACTIONABLE_STATUSES.includes(o.status) && new Date(o.created_at).getTime() >= freshCutoff).length;
   const totalActionableCount = opportunities.filter(o => ACTIONABLE_STATUSES.includes(o.status)).length;
   const filtersAreRestrictingResults = sorted.length === 0 && totalActionableCount > 0;
 
