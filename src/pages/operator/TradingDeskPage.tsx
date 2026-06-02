@@ -386,16 +386,54 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
     toast.success(newVal ? 'Added to watchlist ⭐' : 'Removed from watchlist');
 
     if (newVal && listingId) {
-      // Star = add this specific vehicle to the dealer's hunt shortlist.
-      // The opportunity row already carries is_starred=true (set above) so it
-      // surfaces under the "Starred" filter as a vehicle they're trying to buy.
-      // Dispatch star-watch so we keep monitoring price / condition / status
-      // on that exact listing as ingestion refreshes.
+      // 1. Re-scrape this exact listing for price/condition/status changes.
       supabase.functions.invoke('star-watch-dispatch', {
         body: { listing_id: listingId, account_id: filterAccount || null },
       }).then(({ error: watchErr }) => {
         if (watchErr) console.warn('Star-watch dispatch failed (non-blocking):', watchErr);
       });
+
+      // 2. Create a hunt mandate so similar incoming inventory routes to Arby alerts.
+      //    Band: ±1 year, ±15,000 km around the anchored car. No fabricated price band.
+      const opp = opportunities.find(o => o.id === id);
+      if (opp?.make && opp?.model && opp?.year) {
+        const acctId = filterAccount || (opp as any).assigned_to_account || (opp as any).best_account_id || null;
+        try {
+          const { data: existing } = await supabase
+            .from('active_mandates')
+            .select('id')
+            .eq('is_active', true)
+            .eq('lane', 'star_hunt')
+            .eq('make', opp.make)
+            .eq('model', opp.model)
+            .eq('account_id', acctId as any)
+            .maybeSingle();
+
+          if (!existing) {
+            const km = (opp as any).km ?? null;
+            const insertRow: any = {
+              name: `⭐ ${opp.year} ${opp.make} ${opp.model}${(opp as any).variant ? ' ' + (opp as any).variant : ''}`,
+              make: opp.make,
+              model: opp.model,
+              variant_family: (opp as any).variant || null,
+              year_min: opp.year - 1,
+              year_max: opp.year + 1,
+              km_min: km !== null ? Math.max(0, km - 15000) : null,
+              km_max: km !== null ? km + 15000 : null,
+              lane: 'star_hunt',
+              priority: 'high',
+              account_id: acctId,
+              run_frequency_minutes: 240,
+              is_active: true,
+            };
+            const { error: huntErr } = await supabase.from('active_mandates').insert(insertRow);
+            if (huntErr) console.warn('Hunt mandate insert failed (non-blocking):', huntErr);
+            else toast.success('Hunt created — Arby will alert on similar arrivals');
+          }
+        } catch (e) {
+          console.warn('Hunt mandate exception (non-blocking):', e);
+        }
+      }
     }
   };
 
