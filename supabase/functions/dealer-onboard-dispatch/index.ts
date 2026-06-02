@@ -173,16 +173,46 @@ Deno.serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
+    const errMsg = String(err);
+    const isNetworkError = /ETIMEDOUT|ECONNREFUSED|ENOTFOUND|ECONNRESET|Connect|timed out|tcp connect/i.test(errMsg);
     console.error("[dealer-onboard-dispatch] HTTP dispatch error:", err);
+
     if (runId) {
       await sb.from("worker_runs").update({
-        status: "failed",
+        status: isNetworkError ? "queued_retry" : "failed",
         finished_at: new Date().toISOString(),
-        error: String(err),
+        error: errMsg,
       }).eq("id", runId);
     }
+
+    // Transient infra outage → queue + warn, don't fail the operator action.
+    if (isNetworkError) {
+      try {
+        await sb.from("onboarding_alerts").insert({
+          dealer_id: body.dealer_profile_id,
+          severity: "warning",
+          stage: "dispatch",
+          message: `Arby worker unreachable (${errMsg.slice(0, 200)}). Dealer queued; watchdog will retry automatically.`,
+        });
+      } catch (_) { /* non-fatal */ }
+
+      return new Response(
+        JSON.stringify({
+          status: "queued_retry",
+          method: "arby_http",
+          dealer_profile_id: body.dealer_profile_id,
+          original_url: originalUrl,
+          normalized_url: normalizedUrl,
+          attempt_n,
+          worker_run_id: runId,
+          message: "Arby worker is currently unreachable. Dealer onboarding has been queued and will retry automatically.",
+        }),
+        { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     return new Response(
-      JSON.stringify({ error: "Arby HTTP dispatch failed", detail: String(err) }),
+      JSON.stringify({ error: "Arby HTTP dispatch failed", detail: errMsg }),
       { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
