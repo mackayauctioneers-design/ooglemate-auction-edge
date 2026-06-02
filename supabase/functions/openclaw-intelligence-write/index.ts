@@ -17,6 +17,7 @@ const WRITE_TOKEN = Deno.env.get("OPENCLAW_WRITE_TOKEN")!;
 const ALLOWED_OPS = new Set([
   "record_sold",
   "record_opportunity",
+  "record_wholesale_opportunity",
   "rebuild_fingerprints",
   "write_daily_snapshot",
 ]);
@@ -146,6 +147,45 @@ Deno.serve(async (req) => {
       const { data, error } = await sb
         .from("dealer_live_opportunities")
         .upsert(row, { onConflict: "dealer_id,source,listing_id" })
+        .select("id").single();
+      if (error) throw error;
+      payload = { id: data.id };
+    }
+
+    else if (op === "record_wholesale_opportunity") {
+      // No gates — trust the OpenClaw agent. Requires source + listing_id for upsert dedup.
+      if (!params.source || !params.listing_id) {
+        throw new Error("source, listing_id required");
+      }
+      const row = {
+        source: String(params.source),
+        listing_id: String(params.listing_id),
+        dealer_id: params.dealer_id ?? null,
+        make: params.make ?? null,
+        model: params.model ?? null,
+        variant: params.variant ?? null,
+        year: params.year ?? null,
+        km: params.km ?? null,
+        colour: params.colour ?? null,
+        wholesale_price: params.wholesale_price ?? null,
+        estimated_retail: params.estimated_retail ?? null,
+        estimated_margin: params.estimated_margin ?? null,
+        freight_cost: params.freight_cost ?? null,
+        auction_date: params.auction_date ?? null,
+        auction_house: params.auction_house ?? null,
+        lot_number: params.lot_number ?? null,
+        location: params.location ?? null,
+        fingerprint_id: params.fingerprint_id ?? null,
+        fingerprint_match_score: params.fingerprint_match_score ?? null,
+        confidence: params.confidence ?? null,
+        listing_url: params.listing_url ?? null,
+        status: params.status ?? "new",
+        why_json: params.why_json ?? null,
+        raw_payload: params.raw_payload ?? null,
+      };
+      const { data, error } = await sb
+        .from("wholesale_opportunities")
+        .upsert(row, { onConflict: "source,listing_id" })
         .select("id").single();
       if (error) throw error;
       payload = { id: data.id };

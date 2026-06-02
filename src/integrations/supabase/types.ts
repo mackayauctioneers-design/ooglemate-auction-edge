@@ -15368,6 +15368,96 @@ export type Database = {
         }
         Relationships: []
       }
+      wholesale_opportunities: {
+        Row: {
+          auction_date: string | null
+          auction_house: string | null
+          colour: string | null
+          confidence: number | null
+          created_at: string
+          dealer_id: string | null
+          estimated_margin: number | null
+          estimated_retail: number | null
+          fingerprint_id: string | null
+          fingerprint_match_score: number | null
+          freight_cost: number | null
+          id: string
+          km: number | null
+          listing_id: string
+          listing_url: string | null
+          location: string | null
+          lot_number: string | null
+          make: string | null
+          model: string | null
+          raw_payload: Json | null
+          source: string
+          status: string
+          updated_at: string
+          variant: string | null
+          wholesale_price: number | null
+          why_json: Json | null
+          year: number | null
+        }
+        Insert: {
+          auction_date?: string | null
+          auction_house?: string | null
+          colour?: string | null
+          confidence?: number | null
+          created_at?: string
+          dealer_id?: string | null
+          estimated_margin?: number | null
+          estimated_retail?: number | null
+          fingerprint_id?: string | null
+          fingerprint_match_score?: number | null
+          freight_cost?: number | null
+          id?: string
+          km?: number | null
+          listing_id: string
+          listing_url?: string | null
+          location?: string | null
+          lot_number?: string | null
+          make?: string | null
+          model?: string | null
+          raw_payload?: Json | null
+          source: string
+          status?: string
+          updated_at?: string
+          variant?: string | null
+          wholesale_price?: number | null
+          why_json?: Json | null
+          year?: number | null
+        }
+        Update: {
+          auction_date?: string | null
+          auction_house?: string | null
+          colour?: string | null
+          confidence?: number | null
+          created_at?: string
+          dealer_id?: string | null
+          estimated_margin?: number | null
+          estimated_retail?: number | null
+          fingerprint_id?: string | null
+          fingerprint_match_score?: number | null
+          freight_cost?: number | null
+          id?: string
+          km?: number | null
+          listing_id?: string
+          listing_url?: string | null
+          location?: string | null
+          lot_number?: string | null
+          make?: string | null
+          model?: string | null
+          raw_payload?: Json | null
+          source?: string
+          status?: string
+          updated_at?: string
+          variant?: string | null
+          wholesale_price?: number | null
+          why_json?: Json | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       winners_watchlist: {
         Row: {
           account_id: string
