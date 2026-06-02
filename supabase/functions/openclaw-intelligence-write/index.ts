@@ -20,6 +20,7 @@ const ALLOWED_OPS = new Set([
   "record_wholesale_opportunity",
   "rebuild_fingerprints",
   "write_daily_snapshot",
+  "record_dealer_snapshot", // alias for write_daily_snapshot (monitor payload shape)
 ]);
 
 // Gates for opportunities
