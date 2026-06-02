@@ -261,6 +261,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const [filterStatus, setFilterStatus] = useState<string>('active');
   const [filterDealerSearch, setFilterDealerSearch] = useState<string>('');
   const [filterKmMax, setFilterKmMax] = useState<string>('120000');
+  const [filterFresh, setFilterFresh] = useState<'all' | '24h' | '7d'>('all');
 
   const [sortField, setSortField] = useState<SortField>('best_under_buy');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -285,6 +286,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
     setFilterStatus('active');
     setFilterDealerSearch('');
     setFilterKmMax('120000');
+    setFilterFresh('all');
   }, []);
 
   useEffect(() => { document.title = isDealerMode ? 'Trading Desk | Carbitrage' : 'Trading Desk | Operator'; }, [isDealerMode]);
@@ -511,6 +513,10 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
       const maxKm = parseInt(filterKmMax);
       if (!isNaN(maxKm) && o.km != null && o.km > maxKm) return false;
     }
+    if (filterFresh !== 'all') {
+      const cutoffMs = filterFresh === '24h' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() - new Date(o.created_at).getTime() > cutoffMs) return false;
+    }
     return true;
   };
 
@@ -578,6 +584,8 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const watchCount = active('WATCH');
   const auctionCount = baseFiltered.filter(o => o.auction_status && o.auction_status !== 'none' && ACTIONABLE_STATUSES.includes(o.status)).length;
   const starredCount = baseFiltered.filter(o => o.is_starred).length;
+  const freshCutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const newCount = baseFiltered.filter(o => ACTIONABLE_STATUSES.includes(o.status) && new Date(o.created_at).getTime() >= freshCutoff).length;
   const totalActionableCount = opportunities.filter(o => ACTIONABLE_STATUSES.includes(o.status)).length;
   const filtersAreRestrictingResults = sorted.length === 0 && totalActionableCount > 0;
 
@@ -714,6 +722,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
         <div className="flex flex-wrap gap-2 items-center">
           {!isDealerMode && <CaroogleAIFindsDrawer />}
           {[
+            { tier: 'NEW_24H', count: newCount, label: 'NEW · 24H', className: 'border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-600', icon: <Clock className="h-4 w-4" /> },
             { tier: 'CODE_RED', count: codeRedCount, label: 'CODE RED', className: 'border-red-500/40 bg-red-600/15 hover:bg-red-600/25 text-red-600' },
             { tier: 'HIGH', count: highCount, label: 'HIGH', className: 'border-primary/30 bg-primary/5 hover:bg-primary/15 text-primary' },
             { tier: 'BUY', count: buyCount, label: 'BUY', className: 'border-accent/30 bg-accent/5 hover:bg-accent/15 text-accent-foreground' },
@@ -725,6 +734,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
           ].map(({ tier, count, label, className, icon }) => {
             const isActive = tier === 'starred' ? filterStatus === 'starred' :
               tier === 'AUCTION' ? filterSource === 'auction' :
+              tier === 'NEW_24H' ? filterFresh === '24h' :
               filterTier === tier;
             return (
               <button
@@ -737,6 +747,12 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                     // Toggle auction filter - not a real tier, just show auction items
                     setFilterTier('AUCTION_WATCH');
                     setFilterStatus('active');
+                  } else if (tier === 'NEW_24H') {
+                    const turningOn = filterFresh !== '24h';
+                    setFilterFresh(turningOn ? '24h' : 'all');
+                    setFilterStatus('active');
+                    setFilterTier('all');
+                    if (turningOn) { setSortField('created_at'); setSortDir('desc'); }
                   } else {
                     setFilterTier(filterTier === tier ? 'all' : tier);
                     setFilterStatus('active');
