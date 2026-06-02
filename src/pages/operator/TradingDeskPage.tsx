@@ -721,6 +721,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
         <div className="flex flex-wrap gap-2 items-center">
           {!isDealerMode && <CaroogleAIFindsDrawer />}
           {[
+            { tier: 'NEW_24H', count: newCount, label: 'NEW · 24H', className: 'border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-600', icon: <Clock className="h-4 w-4" /> },
             { tier: 'CODE_RED', count: codeRedCount, label: 'CODE RED', className: 'border-red-500/40 bg-red-600/15 hover:bg-red-600/25 text-red-600' },
             { tier: 'HIGH', count: highCount, label: 'HIGH', className: 'border-primary/30 bg-primary/5 hover:bg-primary/15 text-primary' },
             { tier: 'BUY', count: buyCount, label: 'BUY', className: 'border-accent/30 bg-accent/5 hover:bg-accent/15 text-accent-foreground' },
@@ -732,6 +733,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
           ].map(({ tier, count, label, className, icon }) => {
             const isActive = tier === 'starred' ? filterStatus === 'starred' :
               tier === 'AUCTION' ? filterSource === 'auction' :
+              tier === 'NEW_24H' ? filterFresh === '24h' :
               filterTier === tier;
             return (
               <button
@@ -744,6 +746,12 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
                     // Toggle auction filter - not a real tier, just show auction items
                     setFilterTier('AUCTION_WATCH');
                     setFilterStatus('active');
+                  } else if (tier === 'NEW_24H') {
+                    const turningOn = filterFresh !== '24h';
+                    setFilterFresh(turningOn ? '24h' : 'all');
+                    setFilterStatus('active');
+                    setFilterTier('all');
+                    if (turningOn) { setSortField('created_at'); setSortDir('desc'); }
                   } else {
                     setFilterTier(filterTier === tier ? 'all' : tier);
                     setFilterStatus('active');
