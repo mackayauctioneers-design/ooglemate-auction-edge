@@ -20,6 +20,7 @@ const ALLOWED_OPS = new Set([
   "record_wholesale_opportunity",
   "rebuild_fingerprints",
   "write_daily_snapshot",
+  "record_dealer_snapshot", // alias for write_daily_snapshot (monitor payload shape)
 ]);
 
 // Gates for opportunities
@@ -198,17 +199,29 @@ Deno.serve(async (req) => {
       payload = { rebuilt: data };
     }
 
-    else if (op === "write_daily_snapshot") {
+    else if (op === "write_daily_snapshot" || op === "record_dealer_snapshot") {
       if (!params.dealer_id || !params.snapshot_date) throw new Error("dealer_id, snapshot_date required");
-      const row = {
+      const row: Record<string, unknown> = {
         dealer_id: String(params.dealer_id),
         snapshot_date: String(params.snapshot_date),
-        sold_count: params.sold_count ?? 0,
+        // Legacy fields (kept for back-compat)
+        sold_count: params.sold_count ?? params.sold_removed ?? 0,
         fast_movers: params.fast_movers ?? null,
         aged_stock_cleared: params.aged_stock_cleared ?? null,
         replacement_targets: params.replacement_targets ?? null,
         opportunities_found: params.opportunities_found ?? 0,
         notes: params.notes ?? null,
+        // New monitor metrics
+        total_stock: params.total_stock ?? null,
+        new_arrivals: params.new_arrivals ?? null,
+        sold_removed: params.sold_removed ?? null,
+        stale_30d: params.stale_30d ?? null,
+        stale_60d: params.stale_60d ?? null,
+        stale_90d: params.stale_90d ?? null,
+        avg_days_on_lot: params.avg_days_on_lot ?? null,
+        avg_days_to_sell: params.avg_days_to_sell ?? null,
+        quick_turns: params.quick_turns ?? null,
+        stock_list: params.stock_list ?? null,
       };
       const { data, error } = await sb
         .from("dealer_daily_snapshots")

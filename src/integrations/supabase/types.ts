@@ -1584,41 +1584,71 @@ export type Database = {
       dealer_daily_snapshots: {
         Row: {
           aged_stock_cleared: Json | null
+          avg_days_on_lot: number | null
+          avg_days_to_sell: number | null
           created_at: string
           dealer_id: string
           fast_movers: Json | null
           id: string
+          new_arrivals: number | null
           notes: string | null
           opportunities_found: number
+          quick_turns: number | null
           replacement_targets: Json | null
           snapshot_date: string
           sold_count: number
+          sold_removed: number | null
+          stale_30d: number | null
+          stale_60d: number | null
+          stale_90d: number | null
+          stock_list: Json | null
+          total_stock: number | null
           updated_at: string
         }
         Insert: {
           aged_stock_cleared?: Json | null
+          avg_days_on_lot?: number | null
+          avg_days_to_sell?: number | null
           created_at?: string
           dealer_id: string
           fast_movers?: Json | null
           id?: string
+          new_arrivals?: number | null
           notes?: string | null
           opportunities_found?: number
+          quick_turns?: number | null
           replacement_targets?: Json | null
           snapshot_date: string
           sold_count?: number
+          sold_removed?: number | null
+          stale_30d?: number | null
+          stale_60d?: number | null
+          stale_90d?: number | null
+          stock_list?: Json | null
+          total_stock?: number | null
           updated_at?: string
         }
         Update: {
           aged_stock_cleared?: Json | null
+          avg_days_on_lot?: number | null
+          avg_days_to_sell?: number | null
           created_at?: string
           dealer_id?: string
           fast_movers?: Json | null
           id?: string
+          new_arrivals?: number | null
           notes?: string | null
           opportunities_found?: number
+          quick_turns?: number | null
           replacement_targets?: Json | null
           snapshot_date?: string
           sold_count?: number
+          sold_removed?: number | null
+          stale_30d?: number | null
+          stale_60d?: number | null
+          stale_90d?: number | null
+          stock_list?: Json | null
+          total_stock?: number | null
           updated_at?: string
         }
         Relationships: [
