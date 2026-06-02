@@ -81,6 +81,8 @@ Deno.serve(async (req) => {
       callback_auth: `Bearer ${INGEST_KEY}`,
     };
 
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 30_000);
     try {
       const resp = await fetch(ARBY_URL, {
         method: "POST",
@@ -89,7 +91,9 @@ Deno.serve(async (req) => {
           Authorization: `Bearer ${ARBY_KEY}`,
         },
         body: JSON.stringify(payload),
+        signal: ac.signal,
       });
+      clearTimeout(timer);
 
       if (!resp.ok) {
         const errTxt = (await resp.text()).slice(0, 500);
@@ -102,18 +106,20 @@ Deno.serve(async (req) => {
         }).eq("id", job.id);
         failed++;
       } else {
-        // Drain body to avoid leaks
         await resp.text();
+        console.log(`[star-watch-runner] dispatched ${job.id} (${job.source}) → Arby OK`);
         dispatched++;
       }
     } catch (e) {
+      clearTimeout(timer);
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn(`[star-watch-runner] dispatch ex for ${job.id}: ${msg}`);
+      const isTimeout = ac.signal.aborted;
+      console.warn(`[star-watch-runner] dispatch ex for ${job.id} (timeout=${isTimeout}): ${msg}`);
       await sb.from("star_watch_jobs").update({
         status: "queued",
         locked_at: null,
         locked_by: null,
-        last_error: `arby_dispatch_ex: ${msg}`.slice(0, 500),
+        last_error: `arby_dispatch_${isTimeout ? "timeout" : "ex"}: ${msg}`.slice(0, 500),
       }).eq("id", job.id);
       failed++;
     }
