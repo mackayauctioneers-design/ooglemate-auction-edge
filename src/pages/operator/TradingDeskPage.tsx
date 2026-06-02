@@ -286,6 +286,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
     setFilterStatus('active');
     setFilterDealerSearch('');
     setFilterKmMax('120000');
+    setFilterFresh('all');
   }, []);
 
   useEffect(() => { document.title = isDealerMode ? 'Trading Desk | Carbitrage' : 'Trading Desk | Operator'; }, [isDealerMode]);
