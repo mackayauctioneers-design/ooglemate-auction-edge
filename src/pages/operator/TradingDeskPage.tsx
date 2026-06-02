@@ -512,6 +512,10 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
       const maxKm = parseInt(filterKmMax);
       if (!isNaN(maxKm) && o.km != null && o.km > maxKm) return false;
     }
+    if (filterFresh !== 'all') {
+      const cutoffMs = filterFresh === '24h' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() - new Date(o.created_at).getTime() > cutoffMs) return false;
+    }
     return true;
   };
 
