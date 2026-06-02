@@ -17,6 +17,7 @@ const WRITE_TOKEN = Deno.env.get("OPENCLAW_WRITE_TOKEN")!;
 const ALLOWED_OPS = new Set([
   "record_sold",
   "record_opportunity",
+  "record_wholesale_opportunity",
   "rebuild_fingerprints",
   "write_daily_snapshot",
 ]);
