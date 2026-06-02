@@ -1,0 +1,1 @@
+UPDATE star_watch_jobs SET status='queued', attempt_count=0, locked_at=NULL, locked_by=NULL, last_error=NULL, finished_at=NULL WHERE id='498b151b-7871-4270-96d3-adfdd0e1fe87';
