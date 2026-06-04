@@ -1,5 +1,5 @@
 // openclaw-push-opportunities — batch upsert into dealer_live_opportunities
-// Auth: Bearer OPENCLAW_WRITE_TOKEN (never expose service_role to OpenClaw).
+// Auth: X-OpenClaw-Token or Bearer OPENCLAW_WRITE_TOKEN (never expose service_role to OpenClaw).
 // Body: { opportunities: [ {...}, ... ] }  (max 100 per call)
 // Upsert key: (account_id, source, listing_id)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -66,31 +66,12 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jres(405, { error: "method_not_allowed" });
 
-  const auth = req.headers.get("authorization") ?? "";
-  const customToken = req.headers.get("x-openclaw-token") ?? "";
-  const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : auth.startsWith("bearer ") ? auth.slice(7) : "";
-  const rawToken = customToken || bearerToken;
-  const token = rawToken.trim();
-  const tokenSource = customToken ? "x-openclaw-token" : bearerToken ? "authorization" : "none";
-  const ua = req.headers.get("user-agent") ?? "";
-  const reqId = req.headers.get("x-request-id") ?? "";
-  // Debug: never log token values, only metadata
-  console.log(JSON.stringify({
-    evt: "auth_check",
-    reqId,
-    ua,
-    authHeaderPresent: !!auth,
-    customHeaderPresent: !!customToken,
-    tokenSource,
-    authPrefix: auth.slice(0, 7),
-    rawLen: rawToken.length,
-    trimmedLen: token.length,
-    envLen: (WRITE_TOKEN ?? "").length,
-    match: !!WRITE_TOKEN && token === WRITE_TOKEN,
-    matchAfterTrimEnv: !!WRITE_TOKEN && token === (WRITE_TOKEN ?? "").trim(),
-  }));
-  if (!WRITE_TOKEN || token !== (WRITE_TOKEN ?? "").trim()) {
-    return jres(401, { error: "unauthorized", hint: "token_mismatch", trimmedLen: token.length, envLen: (WRITE_TOKEN ?? "").length });
+  const authHeader = req.headers.get("Authorization") || "";
+  const xToken = req.headers.get("X-OpenClaw-Token") || "";
+  const token = xToken || authHeader.replace(/^Bearer\s+/i, "").trim();
+
+  if (!token || token !== Deno.env.get("OPENCLAW_WRITE_TOKEN")) {
+    return jres(401, { error: "Unauthorized" });
   }
 
   let body: any;
