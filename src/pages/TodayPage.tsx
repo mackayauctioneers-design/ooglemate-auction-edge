@@ -212,8 +212,47 @@ export default function TodayPage() {
         ) : (
           <>
             {/* ============================================================ */}
+            {/* SECTION 0 — Live Opportunities (pushed by OpenClaw, realtime) */}
+            {/* ============================================================ */}
+            <section className="space-y-4">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Radio className="h-5 w-5 text-emerald-500" />
+                Live Opportunities
+                <span className="text-xs font-normal text-muted-foreground">
+                  {liveLoading ? "…" : `${liveOpps.length} active`}
+                </span>
+              </h2>
+              {liveOpps.length === 0 ? (
+                <Card>
+                  <CardContent className="py-8 text-center">
+                    <Radio className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      Waiting for live pushes from your sourcing engine.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {liveOpps.map((opp) => (
+                    <LiveOpportunityCard
+                      key={opp.id}
+                      opportunity={opp}
+                      onDismiss={handleLiveDismiss}
+                      onWatch={handleLiveWatch}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* ============================================================ */}
             {/* SECTION A — New Opportunities */}
             {/* ============================================================ */}
+            <section className="space-y-4">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                New Opportunities
+              </h2>
             <section className="space-y-4">
               <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <Target className="h-5 w-5" />
