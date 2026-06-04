@@ -2148,6 +2148,7 @@ export type Database = {
       }
       dealer_live_opportunities: {
         Row: {
+          account_id: string | null
           auction_date: string | null
           confidence: string | null
           created_at: string
@@ -2171,6 +2172,7 @@ export type Database = {
           year: number | null
         }
         Insert: {
+          account_id?: string | null
           auction_date?: string | null
           confidence?: string | null
           created_at?: string
@@ -2194,6 +2196,7 @@ export type Database = {
           year?: number | null
         }
         Update: {
+          account_id?: string | null
           auction_date?: string | null
           confidence?: string | null
           created_at?: string
@@ -2217,6 +2220,13 @@ export type Database = {
           year?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "dealer_live_opportunities_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "dealer_live_opportunities_dealer_id_fkey"
             columns: ["dealer_id"]
