@@ -9,8 +9,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { TodayOpportunityCard } from "@/components/today/TodayOpportunityCard";
 import { DealsInProgressSection, RecentlyClosedSection } from "@/components/today/TodayDealsSection";
 import { CreateDealConfirmDialog } from "@/components/today/CreateDealConfirmDialog";
+import { LiveOpportunityCard } from "@/components/today/LiveOpportunityCard";
+import { useDealerLiveOpportunities } from "@/hooks/useDealerLiveOpportunities";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Target, FileText, CheckCircle2 } from "lucide-react";
+import { Loader2, Target, FileText, CheckCircle2, Radio } from "lucide-react";
 import { toast } from "sonner";
 import type { EnrichmentData } from "@/components/today/OpportunityEnrichmentPanel";
 
