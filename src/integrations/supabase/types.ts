@@ -2152,7 +2152,7 @@ export type Database = {
           auction_date: string | null
           confidence: string | null
           created_at: string
-          dealer_id: string
+          dealer_id: string | null
           estimated_margin: number | null
           fingerprint_id: string | null
           fingerprint_match_score: number | null
@@ -2176,7 +2176,7 @@ export type Database = {
           auction_date?: string | null
           confidence?: string | null
           created_at?: string
-          dealer_id: string
+          dealer_id?: string | null
           estimated_margin?: number | null
           fingerprint_id?: string | null
           fingerprint_match_score?: number | null
@@ -2200,7 +2200,7 @@ export type Database = {
           auction_date?: string | null
           confidence?: string | null
           created_at?: string
-          dealer_id?: string
+          dealer_id?: string | null
           estimated_margin?: number | null
           fingerprint_id?: string | null
           fingerprint_match_score?: number | null

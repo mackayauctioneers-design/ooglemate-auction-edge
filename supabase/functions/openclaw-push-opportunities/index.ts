@@ -100,10 +100,30 @@ Deno.serve(async (req) => {
   }
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+  // Auto-resolve dealer_id from account_id when caller didn't supply one
+  const accountIds = Array.from(new Set(rows.filter(r => !r.dealer_id).map(r => r.account_id)));
+  if (accountIds.length > 0) {
+    const { data: profiles, error: profErr } = await sb
+      .from("dealer_profiles")
+      .select("id, account_id")
+      .in("account_id", accountIds);
+    if (profErr) {
+      return jres(500, { error: `dealer_profile lookup failed: ${profErr.message}` });
+    }
+    const map = new Map<string, string>();
+    (profiles || []).forEach((p: any) => { if (p.account_id) map.set(p.account_id, p.id); });
+    for (const r of rows) {
+      if (!r.dealer_id && r.account_id && map.has(r.account_id)) {
+        r.dealer_id = map.get(r.account_id);
+      }
+    }
+  }
+
   const { data, error } = await sb
     .from("dealer_live_opportunities")
     .upsert(rows, { onConflict: "account_id,source,listing_id" })
-    .select("id, account_id, source, listing_id");
+    .select("id, account_id, dealer_id, source, listing_id");
 
   if (error) {
     return jres(500, { error: error.message, details: errors });
