@@ -1,0 +1,3 @@
+ALTER TABLE public.dealer_live_opportunities
+ADD CONSTRAINT dealer_live_opportunities_account_source_listing_key
+UNIQUE (account_id, source, listing_id);
