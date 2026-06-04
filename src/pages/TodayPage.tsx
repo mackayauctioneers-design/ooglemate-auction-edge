@@ -253,11 +253,6 @@ export default function TodayPage() {
                 <Target className="h-5 w-5" />
                 New Opportunities
               </h2>
-            <section className="space-y-4">
-              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <Target className="h-5 w-5" />
-                New Opportunities
-              </h2>
 
               {opportunities.length === 0 ? (
                 <Card>
