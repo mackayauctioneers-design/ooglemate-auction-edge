@@ -7,7 +7,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-request-id",
+    "authorization, x-openclaw-token, x-client-info, apikey, content-type, x-request-id",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -67,8 +67,11 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return jres(405, { error: "method_not_allowed" });
 
   const auth = req.headers.get("authorization") ?? "";
-  const rawToken = auth.startsWith("Bearer ") ? auth.slice(7) : auth.startsWith("bearer ") ? auth.slice(7) : "";
+  const customToken = req.headers.get("x-openclaw-token") ?? "";
+  const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : auth.startsWith("bearer ") ? auth.slice(7) : "";
+  const rawToken = customToken || bearerToken;
   const token = rawToken.trim();
+  const tokenSource = customToken ? "x-openclaw-token" : bearerToken ? "authorization" : "none";
   const ua = req.headers.get("user-agent") ?? "";
   const reqId = req.headers.get("x-request-id") ?? "";
   // Debug: never log token values, only metadata
@@ -77,6 +80,8 @@ Deno.serve(async (req) => {
     reqId,
     ua,
     authHeaderPresent: !!auth,
+    customHeaderPresent: !!customToken,
+    tokenSource,
     authPrefix: auth.slice(0, 7),
     rawLen: rawToken.length,
     trimmedLen: token.length,
