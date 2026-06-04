@@ -35,6 +35,21 @@ export default function TodayPage() {
   const { opportunities, dealsInProgress, recentlyClosed, loading, refetch } =
     useTodayOpportunities(accountId);
 
+  const {
+    opportunities: liveOpps,
+    loading: liveLoading,
+    updateStatus: updateLiveStatus,
+  } = useDealerLiveOpportunities(accountId);
+
+  const handleLiveDismiss = async (id: string) => {
+    try { await updateLiveStatus(id, "dismissed"); toast.success("Dismissed"); }
+    catch { toast.error("Failed to dismiss"); }
+  };
+  const handleLiveWatch = async (id: string) => {
+    try { await updateLiveStatus(id, "watching"); toast.success("Added to watch"); }
+    catch { toast.error("Failed to update"); }
+  };
+
   // Track which opportunities already have deals
   const [existingDealMap, setExistingDealMap] = useState<Record<string, string>>({});
   const [creatingDealFor, setCreatingDealFor] = useState<string | null>(null);
