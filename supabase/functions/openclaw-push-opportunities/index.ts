@@ -101,18 +101,35 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
-  // Auto-resolve dealer_id from account_id when caller didn't supply one
+  // Auto-resolve dealer_id from account_id when caller didn't supply one.
+  // When multiple dealer_profiles exist for an account (e.g. dealership + salespeople),
+  // prefer dealer_type='dealership', then fall back to the earliest-created profile.
   const accountIds = Array.from(new Set(rows.filter(r => !r.dealer_id).map(r => r.account_id)));
   if (accountIds.length > 0) {
     const { data: profiles, error: profErr } = await sb
       .from("dealer_profiles")
-      .select("id, account_id")
+      .select("id, account_id, dealer_type, created_at")
       .in("account_id", accountIds);
     if (profErr) {
       return jres(500, { error: `dealer_profile lookup failed: ${profErr.message}` });
     }
+    const grouped = new Map<string, any[]>();
+    (profiles || []).forEach((p: any) => {
+      if (!p.account_id) return;
+      const arr = grouped.get(p.account_id) || [];
+      arr.push(p);
+      grouped.set(p.account_id, arr);
+    });
     const map = new Map<string, string>();
-    (profiles || []).forEach((p: any) => { if (p.account_id) map.set(p.account_id, p.id); });
+    grouped.forEach((arr, accId) => {
+      arr.sort((a, b) => {
+        const ad = (a.dealer_type === "dealership") ? 0 : 1;
+        const bd = (b.dealer_type === "dealership") ? 0 : 1;
+        if (ad !== bd) return ad - bd;
+        return String(a.created_at).localeCompare(String(b.created_at));
+      });
+      map.set(accId, arr[0].id);
+    });
     for (const r of rows) {
       if (!r.dealer_id && r.account_id && map.has(r.account_id)) {
         r.dealer_id = map.get(r.account_id);
