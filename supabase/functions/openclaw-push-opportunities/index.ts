@@ -67,9 +67,25 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return jres(405, { error: "method_not_allowed" });
 
   const auth = req.headers.get("authorization") ?? "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!WRITE_TOKEN || token !== WRITE_TOKEN) {
-    return jres(401, { error: "unauthorized" });
+  const rawToken = auth.startsWith("Bearer ") ? auth.slice(7) : auth.startsWith("bearer ") ? auth.slice(7) : "";
+  const token = rawToken.trim();
+  const ua = req.headers.get("user-agent") ?? "";
+  const reqId = req.headers.get("x-request-id") ?? "";
+  // Debug: never log token values, only metadata
+  console.log(JSON.stringify({
+    evt: "auth_check",
+    reqId,
+    ua,
+    authHeaderPresent: !!auth,
+    authPrefix: auth.slice(0, 7),
+    rawLen: rawToken.length,
+    trimmedLen: token.length,
+    envLen: (WRITE_TOKEN ?? "").length,
+    match: !!WRITE_TOKEN && token === WRITE_TOKEN,
+    matchAfterTrimEnv: !!WRITE_TOKEN && token === (WRITE_TOKEN ?? "").trim(),
+  }));
+  if (!WRITE_TOKEN || token !== (WRITE_TOKEN ?? "").trim()) {
+    return jres(401, { error: "unauthorized", hint: "token_mismatch", trimmedLen: token.length, envLen: (WRITE_TOKEN ?? "").length });
   }
 
   let body: any;
