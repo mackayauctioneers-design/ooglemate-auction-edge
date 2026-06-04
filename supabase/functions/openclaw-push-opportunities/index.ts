@@ -38,7 +38,9 @@ function normalize(o: any) {
   return {
     row: {
       account_id: String(account_id),
-      dealer_id: o.dealer_id ?? null,
+      // Dealer profile identity is owned by the backend. Ignore caller-supplied
+      // dealer_id values so stale account UUIDs cannot trigger FK violations.
+      dealer_id: null,
       source,
       listing_id,
       make: o.make ?? null,
