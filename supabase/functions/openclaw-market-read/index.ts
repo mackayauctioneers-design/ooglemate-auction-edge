@@ -52,11 +52,14 @@ Deno.serve(async (req) => {
   const qp = url.searchParams;
   const params = {
     source: qp.get("source"),
+    source_class: qp.get("source_class"),
     since_minutes: qp.get("since_minutes"),
     min_price: qp.get("min_price"),
     max_price: qp.get("max_price"),
     make: qp.get("make"),
     model: qp.get("model"),
+    lifecycle_status: qp.get("lifecycle_status"),
+    state: qp.get("state"),
     limit: qp.get("limit"),
   };
 
