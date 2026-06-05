@@ -46,10 +46,11 @@ Deno.serve(async (req) => {
   }
   const expected = (MARKET_TOKEN ?? "").trim();
   if (!expected || token !== expected) {
-    console.log(`[openclaw-market-read] auth fail: hdr_len=${authRaw.length} token_len=${token.length} expected_len=${expected.length} token_prefix=${token.slice(0,6)} expected_prefix=${expected.slice(0,6)}`);
+    const authDiag = `unauthorized hdr_len=${authRaw.length} token_len=${token.length} expected_len=${expected.length} token_prefix=${token.slice(0,10)} expected_prefix=${expected.slice(0,10)}`;
+    console.log(`[openclaw-market-read] auth fail: ${authDiag}`);
     await audit(sb, {
       token_kind: "market", op: "market_read", request_id: reqId,
-      response_status: 401, response_ms: Date.now() - t0, caller_ip: ip, error_text: "unauthorized",
+      response_status: 401, response_ms: Date.now() - t0, caller_ip: ip, error_text: authDiag,
     });
     return jres(401, { error: "unauthorized" });
   }
