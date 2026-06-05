@@ -37,9 +37,16 @@ Deno.serve(async (req) => {
   const reqId = req.headers.get("x-request-id");
 
   // Auth
-  const auth = req.headers.get("authorization") ?? "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!MARKET_TOKEN || token !== MARKET_TOKEN) {
+  const authRaw = (req.headers.get("authorization") ?? req.headers.get("x-api-key") ?? "").trim();
+  let token = authRaw;
+  if (authRaw.toLowerCase().startsWith("bearer ")) token = authRaw.slice(7).trim();
+  // Strip surrounding quotes if present
+  if ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"))) {
+    token = token.slice(1, -1);
+  }
+  const expected = (MARKET_TOKEN ?? "").trim();
+  if (!expected || token !== expected) {
+    console.log(`[openclaw-market-read] auth fail: hdr_len=${authRaw.length} token_len=${token.length} expected_len=${expected.length} token_prefix=${token.slice(0,6)} expected_prefix=${expected.slice(0,6)}`);
     await audit(sb, {
       token_kind: "market", op: "market_read", request_id: reqId,
       response_status: 401, response_ms: Date.now() - t0, caller_ip: ip, error_text: "unauthorized",
