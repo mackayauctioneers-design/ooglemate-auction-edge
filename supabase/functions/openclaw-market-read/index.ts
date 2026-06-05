@@ -52,11 +52,14 @@ Deno.serve(async (req) => {
   const qp = url.searchParams;
   const params = {
     source: qp.get("source"),
+    source_class: qp.get("source_class"),
     since_minutes: qp.get("since_minutes"),
     min_price: qp.get("min_price"),
     max_price: qp.get("max_price"),
     make: qp.get("make"),
     model: qp.get("model"),
+    lifecycle_status: qp.get("lifecycle_status"),
+    state: qp.get("state"),
     limit: qp.get("limit"),
   };
 
@@ -83,21 +86,36 @@ Deno.serve(async (req) => {
   let errText: string | null = null;
 
   try {
-    const sinceMin = Math.max(1, Math.min(43200, Number(params.since_minutes ?? 60)));
+    const sinceMin = Math.max(1, Math.min(43200, Number(params.since_minutes ?? 4320)));
     const limit = Math.max(1, Math.min(2000, Number(params.limit ?? 500)));
     const minPrice = params.min_price != null ? Number(params.min_price) : null;
     const maxPrice = params.max_price != null ? Number(params.max_price) : null;
     const sinceIso = new Date(Date.now() - sinceMin * 60_000).toISOString();
 
     let q = sb.from("market_listings")
-      .select("id, make, model, year, km, price, source, status, location, listing_url, created_at, fingerprint_hash")
+      .select([
+        "id","make","model","variant_raw","year","km","price","asking_price",
+        "body_type","fuel_type","transmission","colour",
+        "source","source_class","status","lifecycle_status",
+        "location","state","suburb","postcode",
+        "seller_type","auction_house","auction_datetime",
+        "market_price","price_difference_percent","price_badge",
+        "fingerprint","fingerprint_hash","fingerprint_confidence",
+        "first_seen_at","last_seen_at","listing_url","created_at",
+      ].join(","))
       .gte("created_at", sinceIso)
       .order("created_at", { ascending: false })
       .limit(limit);
 
     if (params.source) q = q.eq("source", params.source);
+    if (params.source_class) q = q.eq("source_class", params.source_class);
     if (params.make) q = q.ilike("make", params.make);
     if (params.model) q = q.ilike("model", `%${params.model}%`);
+    if (params.state) q = q.ilike("state", params.state);
+    if (params.lifecycle_status) {
+      const statuses = params.lifecycle_status.split(",").map(s => s.trim()).filter(Boolean);
+      if (statuses.length) q = q.in("lifecycle_status", statuses);
+    }
     if (minPrice != null && Number.isFinite(minPrice)) q = q.gte("price", minPrice);
     if (maxPrice != null && Number.isFinite(maxPrice)) q = q.lte("price", maxPrice);
 
