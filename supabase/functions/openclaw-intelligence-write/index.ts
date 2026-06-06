@@ -24,8 +24,8 @@ const ALLOWED_OPS = new Set([
 ]);
 
 // Gates for opportunities
-const MIN_MATCH_SCORE = 50;
-const MIN_MARGIN_DOLLARS = 1000;
+const MIN_MATCH_SCORE = 30;
+const MIN_MARGIN_DOLLARS = 500;
 
 function jres(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {

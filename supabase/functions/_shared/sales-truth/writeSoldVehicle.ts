@@ -8,8 +8,8 @@
 export const MACKAY_SELLER_ABN = "42235562048"; // digits-only canonical form
 export const MACKAY_DEALER_ID = "mackay_traders";
 
-const QUALIFY_MIN_YEAR = 2020;
-const QUALIFY_MAX_ODO = 120000;
+const QUALIFY_MIN_YEAR = 2010;
+const QUALIFY_MAX_ODO = 180000;
 const ODO_VARIANCE_KM = 5000;
 const MATCH_WINDOW_DAYS = 365;
 

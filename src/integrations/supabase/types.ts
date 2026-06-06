@@ -12743,6 +12743,42 @@ export type Database = {
         }
         Relationships: []
       }
+      telegram_sent_log: {
+        Row: {
+          chat_id: string
+          dedup_key: string
+          id: string
+          sent_at: string
+          telegram_error: string | null
+          telegram_message_id: string | null
+          telegram_ok: boolean | null
+          text_preview: string | null
+          ttl_hours: number
+        }
+        Insert: {
+          chat_id: string
+          dedup_key: string
+          id?: string
+          sent_at?: string
+          telegram_error?: string | null
+          telegram_message_id?: string | null
+          telegram_ok?: boolean | null
+          text_preview?: string | null
+          ttl_hours?: number
+        }
+        Update: {
+          chat_id?: string
+          dedup_key?: string
+          id?: string
+          sent_at?: string
+          telegram_error?: string | null
+          telegram_message_id?: string | null
+          telegram_ok?: boolean | null
+          text_preview?: string | null
+          ttl_hours?: number
+        }
+        Relationships: []
+      }
       trades: {
         Row: {
           account_id: string | null

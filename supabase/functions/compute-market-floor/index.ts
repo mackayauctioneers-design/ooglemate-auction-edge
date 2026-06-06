@@ -207,6 +207,12 @@ function compute(l: Listing, comps: any[], liveSupply: number) {
   else if (deal_score >= WATCH_THRESHOLD) recommended_action = "watch";
   else recommended_action = "pass";
 
+  // Auction no-price override: if no ask_price but we have solid sales truth,
+  // emit "buy" so the dealer knows their ceiling (max bid).
+  if (ask == null && n >= 5 && avg_days_to_sell != null && avg_days_to_sell <= 30 && confidence_level !== "none") {
+    recommended_action = "buy";
+  }
+
   return {
     listing_id: l.listing_id,
     computed_at,

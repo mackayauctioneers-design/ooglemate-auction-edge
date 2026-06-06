@@ -193,6 +193,36 @@ function scoreIdentity(
   };
 }
 
+function scoreYear(
+  year: number | null,
+  yearStats: { median: number; p25: number; p75: number } | null
+): { score: number; reason: string } {
+  if (year == null || yearStats == null) {
+    return { score: 0, reason: "year data missing (+0)" };
+  }
+  const { median, p25, p75 } = yearStats;
+  if (year >= p25 && year <= p75) {
+    return {
+      score: 15,
+      reason: `year ${year} inside sales IQR [${Math.round(p25)}–${Math.round(p75)}] (+15)`,
+    };
+  }
+  const gap = Math.abs(year - median);
+  if (gap <= 2) {
+    return { score: 8, reason: `year ${year} near median ${Math.round(median)} (+8)` };
+  }
+  if (gap <= 4) {
+    return { score: 3, reason: `year ${year} within ±4 of median ${Math.round(median)} (+3)` };
+  }
+  if (gap <= 7) {
+    return { score: 0, reason: `year ${year} outside core range (median ${Math.round(median)}) (+0)` };
+  }
+  return {
+    score: -25,
+    reason: `year ${year} far from sales range (median ${Math.round(median)}) (−25)`,
+  };
+}
+
 function computeDecayMultiplier(avgDecayFactor: number | null): number {
   if (avgDecayFactor == null) return 0.8;
   const clamped = Math.max(0, Math.min(1, Number(avgDecayFactor)));
@@ -277,6 +307,37 @@ Deno.serve(async (req) => {
       if (fp.fingerprint_status === 'expired') continue; // Stop using expired
       const key = fp.platform_class || `${(fp.make || "").toUpperCase()}:${(fp.model || "").toUpperCase()}`;
       fpMap.set(key, fp);
+    }
+
+    // ── Step 2b: Load year distribution per fingerprint from sales truth ──
+    const fpYearMap = new Map<string, { median: number; p25: number; p75: number }>();
+    try {
+      const accountIds = [...new Set((fingerprints as Fingerprint[]).map(f => f.account_id))];
+      const { data: yearRows } = await supabase
+        .from("vehicle_sales_truth")
+        .select("account_id, make, model, year")
+        .in("account_id", accountIds)
+        .gte("sold_at", new Date(Date.now() - 730 * 86400_000).toISOString())
+        .not("year", "is", null);
+      if (yearRows) {
+        const grouped = new Map<string, number[]>();
+        for (const r of yearRows as any[]) {
+          const key = `${(r.account_id || "").toUpperCase()}:${(r.make || "").toUpperCase()}:${(r.model || "").toUpperCase()}`;
+          if (!grouped.has(key)) grouped.set(key, []);
+          grouped.get(key)!.push(Number(r.year));
+        }
+        for (const [key, years] of grouped) {
+          years.sort((a, b) => a - b);
+          const n = years.length;
+          const median = years[Math.floor(n / 2)];
+          const p25 = years[Math.floor(n * 0.25)];
+          const p75 = years[Math.floor(n * 0.75)];
+          fpYearMap.set(key, { median, p25, p75 });
+        }
+      }
+      console.log(`[fingerprint-match-run] Loaded year stats for ${fpYearMap.size} fingerprints`);
+    } catch (e) {
+      console.warn("[fingerprint-match-run] Year stats load failed (non-fatal):", (e as Error).message);
     }
 
     // ── Step 3: Load active listings from BOTH tables ──
@@ -451,6 +512,14 @@ Deno.serve(async (req) => {
       const driveResult = scoreIdentity(listing.drivetrain, fp.dominant_drive_type, fp.drive_type_count, "Drivetrain");
       baseScore += driveResult.score;
       if (driveResult.score > 0) reasons.drivetrain = driveResult.reason;
+
+      // ── Year proximity score (prevents 2022 Hilux matching 2006 Hilux) ──
+      const fpYearKey = `${(accountId || "").toUpperCase()}:${listingMake}:${listingModel}`;
+      const yearStats = fpYearMap.get(fpYearKey) ?? null;
+      const yearResult = scoreYear(listing.year, yearStats);
+      baseScore += yearResult.score;
+      if (yearResult.score !== 0) reasons.year = yearResult.reason;
+
 
       // ── Listing age score ──
       const ageResult = scoreListingAge(listing.first_seen_at);
