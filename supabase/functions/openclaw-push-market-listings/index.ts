@@ -57,7 +57,7 @@ function normalize(source: string, mandateId: string | null, o: any) {
     year: o.year != null ? Number(o.year) : null,
     km,
     asking_price: price,
-    location: o.location ?? [o.suburb, o.state].filter(Boolean).join(", ") || null,
+    location: o.location ?? ([o.suburb, o.state].filter(Boolean).join(", ") || null),
     suburb: o.suburb ?? null,
     listing_url: o.url ?? o.listing_url ?? null,
     image_url: o.image_url ?? o.cover_image_url ?? null,
