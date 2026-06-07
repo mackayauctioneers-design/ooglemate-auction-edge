@@ -17447,6 +17447,18 @@ export type Database = {
           updated_count: number
         }[]
       }
+      backfill_wholesale_queue: {
+        Args: {
+          p_account_id: string
+          p_dealer_id: string
+          p_max_listings?: number
+        }
+        Returns: {
+          listings_evaluated: number
+          queued: number
+          skipped: number
+        }[]
+      }
       build_profit_fingerprint: {
         Args: {
           p_fuel: string
@@ -18061,6 +18073,21 @@ export type Database = {
         Args: { p_listing_uuid: string }
         Returns: {
           alerts_created: number
+        }[]
+      }
+      evaluate_listing_for_dealer: {
+        Args: {
+          p_account_id: string
+          p_dealer_id: string
+          p_listing_id: string
+        }
+        Returns: {
+          confidence_score: number
+          est_gp: number
+          max_bid: number
+          queued: boolean
+          reason: string
+          tier: number
         }[]
       }
       evaluate_trigger: {
