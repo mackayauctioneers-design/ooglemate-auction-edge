@@ -15444,6 +15444,181 @@ export type Database = {
         }
         Relationships: []
       }
+      wholesale_manager_queue: {
+        Row: {
+          account_id: string | null
+          asking_price: number | null
+          assigned_manager: string | null
+          auction_close_at: string | null
+          bid_amount: number | null
+          bid_placed_at: string | null
+          bid_result: string | null
+          confidence_score: number | null
+          created_at: string
+          dealer_id: string
+          decision_reason: string | null
+          dedup_key: string | null
+          est_gp: number | null
+          est_hold_days: number | null
+          historical_proof: Json | null
+          id: string
+          km: number | null
+          listing_id: string | null
+          listing_norm_id: string | null
+          listing_url: string | null
+          make: string | null
+          max_bid: number | null
+          model: string | null
+          pattern_flags: string[] | null
+          reviewed_at: string | null
+          source_searched: string | null
+          status: string
+          telegram_error: string | null
+          telegram_message_id: string | null
+          telegram_sent: boolean | null
+          tier: number
+          updated_at: string
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          account_id?: string | null
+          asking_price?: number | null
+          assigned_manager?: string | null
+          auction_close_at?: string | null
+          bid_amount?: number | null
+          bid_placed_at?: string | null
+          bid_result?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          dealer_id: string
+          decision_reason?: string | null
+          dedup_key?: string | null
+          est_gp?: number | null
+          est_hold_days?: number | null
+          historical_proof?: Json | null
+          id?: string
+          km?: number | null
+          listing_id?: string | null
+          listing_norm_id?: string | null
+          listing_url?: string | null
+          make?: string | null
+          max_bid?: number | null
+          model?: string | null
+          pattern_flags?: string[] | null
+          reviewed_at?: string | null
+          source_searched?: string | null
+          status?: string
+          telegram_error?: string | null
+          telegram_message_id?: string | null
+          telegram_sent?: boolean | null
+          tier: number
+          updated_at?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          account_id?: string | null
+          asking_price?: number | null
+          assigned_manager?: string | null
+          auction_close_at?: string | null
+          bid_amount?: number | null
+          bid_placed_at?: string | null
+          bid_result?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          dealer_id?: string
+          decision_reason?: string | null
+          dedup_key?: string | null
+          est_gp?: number | null
+          est_hold_days?: number | null
+          historical_proof?: Json | null
+          id?: string
+          km?: number | null
+          listing_id?: string | null
+          listing_norm_id?: string | null
+          listing_url?: string | null
+          make?: string | null
+          max_bid?: number | null
+          model?: string | null
+          pattern_flags?: string[] | null
+          reviewed_at?: string | null
+          source_searched?: string | null
+          status?: string
+          telegram_error?: string | null
+          telegram_message_id?: string | null
+          telegram_sent?: boolean | null
+          tier?: number
+          updated_at?: string
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wholesale_manager_queue_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wholesale_manager_queue_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "auction_watch_pickles_sydney_gov"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wholesale_manager_queue_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listing_presence_by_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wholesale_manager_queue_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "missed_buy_window"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wholesale_manager_queue_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "stale_dealer_grade"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wholesale_manager_queue_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wholesale_manager_queue_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_deals_90_plus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wholesale_manager_queue_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "trap_inventory_current"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wholesale_manager_queue_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wholesale_opportunities: {
         Row: {
           auction_date: string | null
@@ -17058,6 +17233,46 @@ export type Database = {
           year: number | null
         }
         Relationships: []
+      }
+      v_wholesale_manager_dashboard: {
+        Row: {
+          account_id: string | null
+          asking_price: number | null
+          assigned_manager: string | null
+          confidence_score: number | null
+          created_at: string | null
+          dealer_id: string | null
+          dealer_name: string | null
+          decision_reason: string | null
+          est_gp: number | null
+          est_hold_days: number | null
+          historical_proof: Json | null
+          id: string | null
+          km: number | null
+          listing_url: string | null
+          make: string | null
+          max_bid: number | null
+          model: string | null
+          pattern_flags: string[] | null
+          reviewed_at: string | null
+          source_searched: string | null
+          status: string | null
+          status_label: string | null
+          tier: number | null
+          tier_label: string | null
+          updated_at: string | null
+          urgency: string | null
+          year: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wholesale_manager_queue_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       va_blocked_sources: {
         Row: {
