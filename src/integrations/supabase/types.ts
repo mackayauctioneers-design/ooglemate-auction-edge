@@ -8096,6 +8096,127 @@ export type Database = {
           },
         ]
       }
+      open_positions: {
+        Row: {
+          account_id: string | null
+          buy_price: number
+          created_at: string
+          dealer_id: string
+          est_sale_price: number | null
+          hold_alarm_threshold: number | null
+          id: string
+          km: number | null
+          list_price: number | null
+          listed_date: string | null
+          make: string
+          median_hold_days: number | null
+          model: string
+          notes: string | null
+          other_costs: number | null
+          purchase_date: string
+          queue_id: string | null
+          recon_cost: number | null
+          rego: string | null
+          sold_date: string | null
+          status: string
+          stock_no: string | null
+          tags: string[] | null
+          total_cost: number | null
+          transport_cost: number | null
+          unrealized_gp: number | null
+          updated_at: string
+          variant: string | null
+          vin: string | null
+          year: number | null
+        }
+        Insert: {
+          account_id?: string | null
+          buy_price: number
+          created_at?: string
+          dealer_id: string
+          est_sale_price?: number | null
+          hold_alarm_threshold?: number | null
+          id?: string
+          km?: number | null
+          list_price?: number | null
+          listed_date?: string | null
+          make: string
+          median_hold_days?: number | null
+          model: string
+          notes?: string | null
+          other_costs?: number | null
+          purchase_date?: string
+          queue_id?: string | null
+          recon_cost?: number | null
+          rego?: string | null
+          sold_date?: string | null
+          status?: string
+          stock_no?: string | null
+          tags?: string[] | null
+          total_cost?: number | null
+          transport_cost?: number | null
+          unrealized_gp?: number | null
+          updated_at?: string
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Update: {
+          account_id?: string | null
+          buy_price?: number
+          created_at?: string
+          dealer_id?: string
+          est_sale_price?: number | null
+          hold_alarm_threshold?: number | null
+          id?: string
+          km?: number | null
+          list_price?: number | null
+          listed_date?: string | null
+          make?: string
+          median_hold_days?: number | null
+          model?: string
+          notes?: string | null
+          other_costs?: number | null
+          purchase_date?: string
+          queue_id?: string | null
+          recon_cost?: number | null
+          rego?: string | null
+          sold_date?: string | null
+          status?: string
+          stock_no?: string | null
+          tags?: string[] | null
+          total_cost?: number | null
+          transport_cost?: number | null
+          unrealized_gp?: number | null
+          updated_at?: string
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "open_positions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_positions_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "v_wholesale_manager_dashboard"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_positions_queue_id_fkey"
+            columns: ["queue_id"]
+            isOneToOne: false
+            referencedRelation: "wholesale_manager_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       operator_opportunities: {
         Row: {
           alt_matches: Json | null
@@ -17214,6 +17335,22 @@ export type Database = {
           sent_at: string | null
           trigger_type: string | null
           year: number | null
+        }
+        Relationships: []
+      }
+      v_dealer_live_pl: {
+        Row: {
+          alarm_count: number | null
+          avg_days_held: number | null
+          avg_unrealized_gp: number | null
+          dealer_id: string | null
+          dealer_name: string | null
+          listed_unrealized_gp: number | null
+          open_units: number | null
+          prep_unrealized_gp: number | null
+          total_est_revenue: number | null
+          total_invested: number | null
+          total_unrealized_gp: number | null
         }
         Relationships: []
       }
