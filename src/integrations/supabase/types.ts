@@ -17475,6 +17475,39 @@ export type Database = {
           total_sample_size: number
         }[]
       }
+      calculate_buyer_demand_score: {
+        Args: { p_account_id: string; p_make: string; p_model: string }
+        Returns: {
+          demand_label: string
+          demand_score: number
+          retail_pct: number
+          retail_units: number
+          total_units: number
+          wholesale_out_pct: number
+          wholesale_out_units: number
+        }[]
+      }
+      calculate_composite_confidence: {
+        Args: {
+          p_account_id: string
+          p_km?: number
+          p_make: string
+          p_model: string
+          p_year?: number
+        }
+        Returns: {
+          confidence_score: number
+          demand_label: string
+          demand_score: number
+          margin_trend_label: string
+          margin_trend_pct: number
+          pattern_flags: string[]
+          seasonal_multiplier: number
+          tier: number
+          tier_label: string
+          velocity_score: number
+        }[]
+      }
       calculate_lot_profit_score: {
         Args: {
           p_exit_target_days?: number
@@ -17496,6 +17529,52 @@ export type Database = {
           median_gp: number
           sample_size: number
           win_rate: number
+        }[]
+      }
+      calculate_margin_trend: {
+        Args: {
+          p_account_id: string
+          p_make: string
+          p_model: string
+          p_months?: number
+        }
+        Returns: {
+          current_avg_gp: number
+          months_analyzed: number
+          previous_avg_gp: number
+          trend_label: string
+          trend_pct: number
+        }[]
+      }
+      calculate_seasonal_multiplier: {
+        Args: { p_account_id: string; p_make: string; p_model: string }
+        Returns: {
+          annual_avg_gp: number
+          current_month_avg_gp: number
+          current_month_units: number
+          peak_month: string
+          peak_month_units: number
+          seasonal_multiplier: number
+        }[]
+      }
+      calculate_velocity_score: {
+        Args: {
+          p_account_id: string
+          p_km_max?: number
+          p_km_min?: number
+          p_make: string
+          p_model: string
+          p_year_max?: number
+          p_year_min?: number
+        }
+        Returns: {
+          median_hold_days: number
+          pct_sold_under_15: number
+          pct_sold_under_30: number
+          pct_sold_under_45: number
+          units_sold: number
+          velocity_label: string
+          velocity_score: number
         }[]
       }
       check_identity_linked_sold_returned: {
