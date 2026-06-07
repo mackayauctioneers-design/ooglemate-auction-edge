@@ -321,7 +321,24 @@ Deno.serve(async (req) => {
       } catch (_) { /* keep raw */ }
 
       const listingId = `pickles:${lotId}`;
-      const price = parsePrice(ad.price || ad.askingPrice || ad.asking_price);
+      // Price fallback chain — use parsePrice on each candidate independently
+      // because Pickles often returns ad.price = "0" (truthy string) when the
+      // lot is INPREP / no reserve published. A `||` chain on raw values would
+      // never advance past "0".
+      const price =
+        parsePrice(ad.price) ||
+        parsePrice(ad.displayPrice) ||
+        parsePrice(ad.display_price) ||
+        parsePrice(ad.askingPrice) ||
+        parsePrice(ad.asking_price) ||
+        parsePrice(ad.salePrice) ||
+        parsePrice(ad.sale_price) ||
+        parsePrice(ad.currentBid) ||
+        parsePrice(ad.current_bid) ||
+        parsePrice(ad.startingBid) ||
+        parsePrice(ad.starting_price) ||
+        parsePrice(ad.reservePrice) ||
+        parsePrice(ad.reserve_price);
       const km = parseKm(ad.odometer || ad.km || ad.kms || ad.mileage);
 
       if (price && price > 0) withPriceCount++;
@@ -499,11 +516,14 @@ Deno.serve(async (req) => {
       result,
     });
 
+    const priceRate = rows.length > 0
+      ? Math.round((withPriceCount / rows.length) * 1000) / 10
+      : 0;
     await sb.from("cron_heartbeat").upsert({
       cron_name: CRON_NAME,
       last_seen_at: new Date().toISOString(),
       last_ok: isSuccess,
-      note: `received=${ads.length} valid=${rows.length} upserted=${totalNew} price=${withPriceCount} noprice=${zeroPriceCount} errors=${errors}`,
+      note: `received=${ads.length} valid=${rows.length} upserted=${totalNew} price=${withPriceCount} noprice=${zeroPriceCount} price_rate=${priceRate}% errors=${errors}`,
     }, { onConflict: "cron_name" });
 
     return new Response(JSON.stringify({ success: true, ...result }), {
