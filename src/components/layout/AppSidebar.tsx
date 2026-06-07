@@ -19,6 +19,7 @@ import {
   Flame,
   Brain,
   Bot,
+  Tag,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -43,6 +44,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 const dealerNavItems = [
   { path: '/dealer-home', label: 'Home', icon: DollarSign, authOnly: true },
   { path: '/today', label: 'Today', icon: Target, authOnly: true },
+  { path: '/wholesale-queue', label: 'Wholesale Queue', icon: Tag, authOnly: true },
   { path: '/ooglebot', label: 'OogleBot', icon: Bot, authOnly: true },
   { path: '/valo', label: 'Do A Valo', icon: Sparkles, authOnly: true },
   { path: '/my-hunts', label: 'My Hunts', icon: Crosshair, authOnly: true },

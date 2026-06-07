@@ -27,6 +27,7 @@ import ArchitectureOverviewPage from "./pages/ArchitectureOverviewPage";
 import ValoPage from "./pages/ValoPage";
 import ScanGuidePage from "./pages/ScanGuidePage";
 import FindCarsPage from "./pages/FindCarsPage";
+import WholesaleQueuePage from "./pages/WholesaleQueuePage";
 
 // Operator pages
 import OperatorDashboardPage from "./pages/operator/OperatorDashboardPage";
@@ -245,6 +246,7 @@ const App = () => (
               <Route path="/operator/deals" element={<OperatorGuard><DealsPage /></OperatorGuard>} />
               <Route path="/operator/deals/:dealId" element={<OperatorGuard><DealDetailPage /></OperatorGuard>} />
               <Route path="/trading-desk" element={<RequireAuth><TradingDeskPage /></RequireAuth>} />
+              <Route path="/wholesale-queue" element={<RequireAuth><WholesaleQueuePage /></RequireAuth>} />
               <Route path="/operator/manual-intake" element={<OperatorGuard><ManualIntakePage /></OperatorGuard>} />
               <Route path="/operator/ooglebot" element={<OperatorGuard><OogleBotPage /></OperatorGuard>} />
               <Route path="/operator/alerts-matches" element={<OperatorGuard><AlertsMatchesPage /></OperatorGuard>} />
