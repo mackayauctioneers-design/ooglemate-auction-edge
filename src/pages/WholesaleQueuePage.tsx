@@ -298,7 +298,7 @@ export default function WholesaleQueuePage() {
                 {filtered.map((it) => {
                   const open = expanded === it.id;
                   return (
-                    <>
+                    <Fragment key={it.id}>
                       <TableRow key={it.id}>
                         <TableCell>
                           <button
@@ -378,7 +378,7 @@ export default function WholesaleQueuePage() {
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </TableBody>
