@@ -19296,6 +19296,7 @@ export type Database = {
         }[]
       }
       user_owns_dealer: { Args: { _dealer_id: string }; Returns: boolean }
+      wholesale_queue_expire_stale: { Args: never; Returns: number }
       year_to_band: {
         Args: { p_year: number }
         Returns: {

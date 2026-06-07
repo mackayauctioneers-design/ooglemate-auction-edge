@@ -1,26 +1,86 @@
 // supabase/functions/wholesale-queue/index.ts
-// Serves the wholesale buy queue to dashboards / Telegram bots.
+// GET: serves the wholesale buy queue.
+// POST: transitions a queue item status (approved | rejected | reviewed | expired).
 //
 // GET /functions/v1/wholesale-queue
-//   ?dealer_slug=patrick-auto   (required — matches wholesale_manager_queue.dealer_id)
-//   &limit=20                   (optional, max 100, default 20)
-//   &status=pending             (optional, default 'pending')
+//   ?dealer_slug=patrick-auto   (required)
+//   &limit=20                   (max 100, default 20)
+//   &status=pending             (default 'pending')
 //   &tier=1                     (optional)
 //
-// Returns: { dealer_slug, status, count, limit, items: [...], fingerprint_context: [...] }
-// Sorted by tier asc then confidence_score desc.
+// POST /functions/v1/wholesale-queue
+//   body: { action: "approved"|"rejected"|"reviewed"|"expired", item_id: "uuid", reason?: string }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
+
+const ALLOWED_ACTIONS = new Set(["approved", "rejected", "reviewed", "expired"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    { auth: { persistSession: false } },
+  );
+
   try {
+    if (req.method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      const action = String(body.action ?? "").toLowerCase();
+      const itemId = body.item_id as string | undefined;
+      const reason = body.reason as string | undefined;
+
+      if (!itemId || !ALLOWED_ACTIONS.has(action)) {
+        return new Response(
+          JSON.stringify({
+            error: "item_id and action ('approved'|'rejected'|'reviewed'|'expired') required",
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const update: Record<string, unknown> = {
+        status: action,
+        reviewed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (reason) update.decision_reason = reason;
+
+      const { data, error } = await supabase
+        .from("wholesale_manager_queue")
+        .update(update)
+        .eq("id", itemId)
+        .select("id, status, reviewed_at, decision_reason")
+        .maybeSingle();
+
+      if (error) {
+        console.error("queue update error", error);
+        return new Response(
+          JSON.stringify({ error: error.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      if (!data) {
+        return new Response(
+          JSON.stringify({ error: "queue item not found" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ ok: true, item: data }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // GET
     const url = new URL(req.url);
     const dealerSlug = url.searchParams.get("dealer_slug");
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "20", 10) || 20, 100);
@@ -33,12 +93,6 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { auth: { persistSession: false } },
-    );
 
     let query = supabase
       .from("wholesale_manager_queue")
@@ -62,9 +116,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Enrich: pull a handful of this dealer's fingerprints for human context.
-    // Queue stores account_id; fingerprints are keyed by dealer_profile_id.
-    // Resolve via dealer_profiles.account_id -> dealer_profiles.id.
     let fingerprintContext: any[] = [];
     const accountId = data?.[0]?.account_id;
     if (accountId) {
