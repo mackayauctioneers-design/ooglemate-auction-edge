@@ -63,19 +63,28 @@ Deno.serve(async (req) => {
     }
 
     // Enrich: pull a handful of this dealer's fingerprints for human context.
+    // Queue stores account_id; fingerprints are keyed by dealer_profile_id.
+    // Resolve via dealer_profiles.account_id -> dealer_profiles.id.
     let fingerprintContext: any[] = [];
     const accountId = data?.[0]?.account_id;
     if (accountId) {
-      const { data: fpData } = await supabase
-        .from("dealer_fingerprints")
-        .select(
-          "make, model, variant_family, year_min, year_max, min_km, max_km, sales_count, avg_profit, avg_days_to_sell, fingerprint_priority",
-        )
-        .eq("dealer_profile_id", accountId)
-        .eq("is_active", true)
-        .order("avg_profit", { ascending: false, nullsFirst: false })
-        .limit(5);
-      fingerprintContext = fpData ?? [];
+      const { data: profiles } = await supabase
+        .from("dealer_profiles")
+        .select("id")
+        .eq("account_id", accountId);
+      const profileIds = (profiles ?? []).map((p: any) => p.id);
+      if (profileIds.length > 0) {
+        const { data: fpData } = await supabase
+          .from("dealer_fingerprints")
+          .select(
+            "make, model, variant_family, year_min, year_max, min_km, max_km, sales_count, avg_profit, avg_days_to_sell, fingerprint_priority",
+          )
+          .in("dealer_profile_id", profileIds)
+          .eq("is_active", true)
+          .order("avg_profit", { ascending: false, nullsFirst: false })
+          .limit(5);
+        fingerprintContext = fpData ?? [];
+      }
     }
 
     return new Response(
