@@ -1334,6 +1334,39 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_purchase_limits: {
+        Row: {
+          created_at: string | null
+          daily_limit: number
+          date: string
+          dealer_id: string
+          id: number
+          remaining: number | null
+          spent_today: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          daily_limit?: number
+          date?: string
+          dealer_id?: string
+          id?: number
+          remaining?: number | null
+          spent_today?: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          daily_limit?: number
+          date?: string
+          dealer_id?: string
+          id?: number
+          remaining?: number | null
+          spent_today?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       deal_flags: {
         Row: {
           cluster_key: string
@@ -15830,6 +15863,96 @@ export type Database = {
         }
         Relationships: []
       }
+      wholesale_purchases: {
+        Row: {
+          actual_gp: number | null
+          actual_sale_price: number | null
+          alert_id: string | null
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string | null
+          days_to_sell: number | null
+          dealer_id: string
+          discount_pct: number | null
+          gp_variance: number | null
+          id: string
+          make: string
+          model: string
+          notes: string | null
+          odometer: number | null
+          predicted_gp: number | null
+          predicted_retail: number | null
+          predicted_trade: number | null
+          purchase_price: number
+          rego: string
+          sold_at: string | null
+          status: string | null
+          tier: string | null
+          updated_at: string | null
+          variant: string | null
+          vin: string | null
+          year: number | null
+        }
+        Insert: {
+          actual_gp?: number | null
+          actual_sale_price?: number | null
+          alert_id?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          days_to_sell?: number | null
+          dealer_id?: string
+          discount_pct?: number | null
+          gp_variance?: number | null
+          id?: string
+          make: string
+          model: string
+          notes?: string | null
+          odometer?: number | null
+          predicted_gp?: number | null
+          predicted_retail?: number | null
+          predicted_trade?: number | null
+          purchase_price: number
+          rego: string
+          sold_at?: string | null
+          status?: string | null
+          tier?: string | null
+          updated_at?: string | null
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Update: {
+          actual_gp?: number | null
+          actual_sale_price?: number | null
+          alert_id?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          days_to_sell?: number | null
+          dealer_id?: string
+          discount_pct?: number | null
+          gp_variance?: number | null
+          id?: string
+          make?: string
+          model?: string
+          notes?: string | null
+          odometer?: number | null
+          predicted_gp?: number | null
+          predicted_retail?: number | null
+          predicted_trade?: number | null
+          purchase_price?: number
+          rego?: string
+          sold_at?: string | null
+          status?: string | null
+          tier?: string | null
+          updated_at?: string | null
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Relationships: []
+      }
       winners_watchlist: {
         Row: {
           account_id: string
@@ -16093,6 +16216,19 @@ export type Database = {
           risk_multiplier?: number | null
           variant?: string | null
           year?: number | null
+        }
+        Relationships: []
+      }
+      cfo_wholesale_summary: {
+        Row: {
+          active_purchases: number | null
+          avg_days_to_sell: number | null
+          avg_gp_variance: number | null
+          dealer_id: string | null
+          predicted_gp_remaining: number | null
+          realized_gp: number | null
+          sold_count: number | null
+          total_exposure: number | null
         }
         Relationships: []
       }
@@ -17589,6 +17725,15 @@ export type Database = {
           velocity_score: number
         }[]
       }
+      check_daily_purchase_limit: {
+        Args: { p_amount: number; p_dealer_id: string }
+        Returns: {
+          can_approve: boolean
+          current_spent: number
+          message: string
+          remaining: number
+        }[]
+      }
       check_identity_linked_sold_returned: {
         Args: {
           p_identity_id: string
@@ -18958,6 +19103,25 @@ export type Database = {
         Returns: number
       }
       reconcile_dead_opportunities: { Args: never; Returns: number }
+      record_wholesale_purchase: {
+        Args: {
+          p_alert_id: string
+          p_approved_by: string
+          p_dealer_id: string
+          p_make: string
+          p_model: string
+          p_odometer: number
+          p_predicted_retail: number
+          p_predicted_trade: number
+          p_purchase_price: number
+          p_rego: string
+          p_tier: string
+          p_variant: string
+          p_vin: string
+          p_year: number
+        }
+        Returns: string
+      }
       reenable_auction_source: {
         Args: { p_reason?: string; p_source_key: string }
         Returns: undefined
