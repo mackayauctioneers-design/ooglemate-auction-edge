@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
+  const botToken = "8742676344:AAFgcuwdUl4FgAz7rJ3TuiIbBE-89f3TQ0E";
   // Hardcoded "Carbitrage Alerts" group chat. The secret slot keeps getting
   // confused with the bot token, so we pin the known-good chat id here.
   const chatId: number = -5169206415;
