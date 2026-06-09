@@ -19,10 +19,19 @@ Deno.serve(async (req) => {
   );
 
   const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
-  const chatId = Deno.env.get("OPERATOR_TELEGRAM_CHAT_ID");
+  const rawChat = (Deno.env.get("OPERATOR_TELEGRAM_CHAT_ID") ?? "").trim();
+  // Accept either a bare ID, an @username, or a Telegram web URL like
+  // https://web.telegram.org/a/#-5169206415 — extract the trailing signed int.
+  let chatId: string | number | null = null;
+  if (rawChat.startsWith("@")) {
+    chatId = rawChat;
+  } else {
+    const m = rawChat.match(/-?\d{5,}/);
+    if (m) chatId = Number(m[0]);
+  }
 
-  if (!botToken || !chatId) {
-    return json({ error: "missing TELEGRAM_BOT_TOKEN / OPERATOR_TELEGRAM_CHAT_ID" }, 500);
+  if (!botToken || chatId === null) {
+    return json({ error: "missing TELEGRAM_BOT_TOKEN / OPERATOR_TELEGRAM_CHAT_ID", rawChat }, 500);
   }
 
   const since = new Date(Date.now() - 24 * 3600_000).toISOString();
