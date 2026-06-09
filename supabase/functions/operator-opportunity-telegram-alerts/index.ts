@@ -8,7 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const GATEWAY_URL = "https://connector-gateway.lovable.dev/telegram";
 const TIERS = ["CODE_RED", "HIGH", "BUY"];
 
 Deno.serve(async (req) => {
@@ -19,40 +18,16 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
-  const tgKey = Deno.env.get("TELEGRAM_API_KEY");
+  const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
   const chatId = Deno.env.get("OPERATOR_TELEGRAM_CHAT_ID");
 
-  if (!lovableKey || !tgKey || !chatId) {
-    return json({ error: "missing LOVABLE_API_KEY / TELEGRAM_API_KEY / OPERATOR_TELEGRAM_CHAT_ID" }, 500);
+  if (!botToken || !chatId) {
+    return json({ error: "missing TELEGRAM_BOT_TOKEN / OPERATOR_TELEGRAM_CHAT_ID" }, 500);
   }
-
-  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
-  const { data: rows, error } = await sb
-    .from("operator_opportunities")
-    .select("id, listing_id, listing_source, source_url, make, model, variant, year, km, asking_price, best_account_name, best_expected_margin, best_under_buy, anchor_sale_buy_price, anchor_sale_sell_price, anchor_sale_sold_at, retail_median, tier, created_at")
-    .in("tier", TIERS)
-    .eq("status", "new")
-    .is("telegram_sent_at", null)
-    .gte("created_at", since)
-    .order("best_expected_margin", { ascending: false })
-    .limit(25);
-
-  if (error) return json({ error: error.message }, 500);
-  if (!rows?.length) return json({ ok: true, sent: 0 });
-
-  const results: Array<{ id: string; ok: boolean; error?: string }> = [];
-
-  for (const r of rows) {
-    const text = formatMessage(r);
-    try {
-      const res = await fetch(`${GATEWAY_URL}/sendMessage`, {
+...
+      const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: "POST",
-        headers: {
-          "Authorization": `Bearer ${lovableKey}`,
-          "X-Connection-Api-Key": tgKey,
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: chatId,
           text,
