@@ -384,6 +384,10 @@ schedule = "*/30 * * * *"
 verify_jwt = false
 schedule = "*/30 * * * *"
 
+[functions.rollup-dealer-sales-fingerprints]
+verify_jwt = false
+schedule = "*/15 * * * *"
+
 [functions.crosssafe-worker]
 verify_jwt = false
 schedule = "*/5 * * * *"
