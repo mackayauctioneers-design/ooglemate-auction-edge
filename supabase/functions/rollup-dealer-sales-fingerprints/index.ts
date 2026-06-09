@@ -76,10 +76,11 @@ Deno.serve(async (req) => {
     while (true) {
       const { data, error } = await supabase
         .from("vehicle_sales_truth")
-        .select("account_id, make, model, variant, year, km")
+        .select("account_id, make, model, variant, year, km, sold_at")
         .not("account_id", "is", null)
         .not("make", "is", null)
         .not("model", "is", null)
+        .gte("sold_at", cutoffDate)
         .range(vfrom, vfrom + PAGE - 1);
       if (error) throw error;
       if (!data || data.length === 0) break;
