@@ -47,14 +47,21 @@ Deno.serve(async (req) => {
       else buckets.set(key, { dealer_id, make, model, variant, year_from, year_to, km_from, km_to, count_sold: 1 });
     };
 
-    // Source 1: dealer_sales_truth
+    // Freshness gate: only consider sales within the last 6 months so fingerprints
+    // reflect current market pricing, not 2020-2024 anchors.
+    const FRESHNESS_DAYS = 180;
+    const cutoffIso = new Date(Date.now() - FRESHNESS_DAYS * 86_400_000).toISOString();
+    const cutoffDate = cutoffIso.slice(0, 10);
+
+    // Source 1: dealer_sales_truth (filter on sold_date)
     while (true) {
       const { data, error } = await supabase
         .from("dealer_sales_truth")
-        .select("dealer_id, make, model, variant, year, km")
+        .select("dealer_id, make, model, variant, year, km, sold_date")
         .not("dealer_id", "is", null)
         .not("make", "is", null)
         .not("model", "is", null)
+        .gte("sold_date", cutoffDate)
         .range(from, from + PAGE - 1);
       if (error) throw error;
       if (!data || data.length === 0) break;
@@ -69,10 +76,11 @@ Deno.serve(async (req) => {
     while (true) {
       const { data, error } = await supabase
         .from("vehicle_sales_truth")
-        .select("account_id, make, model, variant, year, km")
+        .select("account_id, make, model, variant, year, km, sold_at")
         .not("account_id", "is", null)
         .not("make", "is", null)
         .not("model", "is", null)
+        .gte("sold_at", cutoffDate)
         .range(vfrom, vfrom + PAGE - 1);
       if (error) throw error;
       if (!data || data.length === 0) break;
