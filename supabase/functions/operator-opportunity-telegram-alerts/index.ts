@@ -1,6 +1,6 @@
 // operator-opportunity-telegram-alerts
 // Polls operator_opportunities and pushes new actionable matches to a Telegram chat
-// via the Lovable connector gateway. Stamps telegram_sent_at to prevent re-sends.
+// via the Telegram Bot API. Stamps telegram_sent_at to prevent re-sends.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -24,7 +24,26 @@ Deno.serve(async (req) => {
   if (!botToken || !chatId) {
     return json({ error: "missing TELEGRAM_BOT_TOKEN / OPERATOR_TELEGRAM_CHAT_ID" }, 500);
   }
-...
+
+  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const { data: rows, error } = await sb
+    .from("operator_opportunities")
+    .select("id, listing_id, listing_source, source_url, make, model, variant, year, km, asking_price, best_account_name, best_expected_margin, best_under_buy, anchor_sale_buy_price, anchor_sale_sell_price, anchor_sale_sold_at, retail_median, tier, created_at")
+    .in("tier", TIERS)
+    .eq("status", "new")
+    .is("telegram_sent_at", null)
+    .gte("created_at", since)
+    .order("best_expected_margin", { ascending: false })
+    .limit(25);
+
+  if (error) return json({ error: error.message }, 500);
+  if (!rows?.length) return json({ ok: true, sent: 0 });
+
+  const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+
+  for (const r of rows) {
+    const text = formatMessage(r);
+    try {
       const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
