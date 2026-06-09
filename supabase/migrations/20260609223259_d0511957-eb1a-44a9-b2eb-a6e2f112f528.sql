@@ -1,0 +1,2 @@
+ALTER TABLE public.operator_opportunities ADD COLUMN IF NOT EXISTS telegram_sent_at timestamptz;
+CREATE INDEX IF NOT EXISTS idx_operator_opps_telegram_pending ON public.operator_opportunities (created_at DESC) WHERE telegram_sent_at IS NULL;

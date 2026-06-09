@@ -8308,6 +8308,7 @@ export type Database = {
           strategic_fit_score: number | null
           strategic_fit_signals: Json | null
           suppress_anchor: boolean
+          telegram_sent_at: string | null
           tier: string
           trim_class: string | null
           updated_at: string
@@ -8372,6 +8373,7 @@ export type Database = {
           strategic_fit_score?: number | null
           strategic_fit_signals?: Json | null
           suppress_anchor?: boolean
+          telegram_sent_at?: string | null
           tier?: string
           trim_class?: string | null
           updated_at?: string
@@ -8436,6 +8438,7 @@ export type Database = {
           strategic_fit_score?: number | null
           strategic_fit_signals?: Json | null
           suppress_anchor?: boolean
+          telegram_sent_at?: string | null
           tier?: string
           trim_class?: string | null
           updated_at?: string
