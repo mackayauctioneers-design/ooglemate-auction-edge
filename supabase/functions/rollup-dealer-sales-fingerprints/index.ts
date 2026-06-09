@@ -30,40 +30,56 @@ Deno.serve(async (req) => {
       count_sold: number;
     }>();
 
+    const ingest = (dealer_id: string, make_in: string, model_in: string, variant_in: string | null, year: number | null, km: number | null) => {
+      const make = (make_in || "").toUpperCase().trim();
+      const model = (model_in || "").toUpperCase().trim();
+      const variant = (variant_in || "BASE").toUpperCase().trim();
+      if (!dealer_id || !make || !model) return;
+      const y = year ?? 0;
+      const k = km ?? 0;
+      const year_from = y ? Math.floor(y / 2) * 2 : 0;
+      const year_to = year_from ? year_from + 1 : 0;
+      const km_from = Math.floor(k / 25000) * 25000;
+      const km_to = km_from + 24999;
+      const key = `${dealer_id}|${make}|${model}|${variant}|${year_from}|${km_from}`;
+      const existing = buckets.get(key);
+      if (existing) existing.count_sold += 1;
+      else buckets.set(key, { dealer_id, make, model, variant, year_from, year_to, km_from, km_to, count_sold: 1 });
+    };
+
+    // Source 1: dealer_sales_truth
     while (true) {
       const { data, error } = await supabase
         .from("dealer_sales_truth")
-        .select("dealer_id, make, model, variant, year, km, sold_date")
+        .select("dealer_id, make, model, variant, year, km")
         .not("dealer_id", "is", null)
         .not("make", "is", null)
         .not("model", "is", null)
         .range(from, from + PAGE - 1);
       if (error) throw error;
       if (!data || data.length === 0) break;
-
-      for (const r of data) {
-        const make = (r.make || "").toUpperCase().trim();
-        const model = (r.model || "").toUpperCase().trim();
-        const variant = (r.variant || "BASE").toUpperCase().trim();
-        if (!make || !model) continue;
-        const year = r.year ?? 0;
-        const km = r.km ?? 0;
-        const year_from = year ? Math.floor(year / 2) * 2 : 0;
-        const year_to = year_from ? year_from + 1 : 0;
-        const km_from = Math.floor(km / 25000) * 25000;
-        const km_to = km_from + 24999;
-        const key = `${r.dealer_id}|${make}|${model}|${variant}|${year_from}|${km_from}`;
-        const existing = buckets.get(key);
-        if (existing) existing.count_sold += 1;
-        else buckets.set(key, {
-          dealer_id: r.dealer_id, make, model, variant,
-          year_from, year_to, km_from, km_to, count_sold: 1,
-        });
-      }
-
+      for (const r of data) ingest(r.dealer_id, r.make, r.model, r.variant, r.year, r.km);
       if (data.length < PAGE) break;
       from += PAGE;
-      if (Date.now() - started > 90_000) break; // safety
+      if (Date.now() - started > 45_000) break;
+    }
+
+    // Source 2: vehicle_sales_truth (account_id → dealer_id)
+    let vfrom = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from("vehicle_sales_truth")
+        .select("account_id, make, model, variant, year, km")
+        .not("account_id", "is", null)
+        .not("make", "is", null)
+        .not("model", "is", null)
+        .range(vfrom, vfrom + PAGE - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      for (const r of data) ingest(r.account_id, r.make, r.model, r.variant, r.year, r.km);
+      if (data.length < PAGE) break;
+      vfrom += PAGE;
+      if (Date.now() - started > 90_000) break;
     }
 
     const rows = Array.from(buckets.values());
