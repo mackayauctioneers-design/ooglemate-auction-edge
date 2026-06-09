@@ -384,6 +384,10 @@ schedule = "*/30 * * * *"
 verify_jwt = false
 schedule = "*/30 * * * *"
 
+[functions.operator-opportunity-telegram-alerts]
+verify_jwt = false
+schedule = "*/5 * * * *"
+
 [functions.rollup-dealer-sales-fingerprints]
 verify_jwt = false
 schedule = "*/15 * * * *"
