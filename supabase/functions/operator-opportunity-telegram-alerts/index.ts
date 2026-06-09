@@ -18,16 +18,12 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
+  const botToken = "8742676344:AAFgcuwdUl4FgAz7rJ3TuiIbBE-89f3TQ0E";
   // Hardcoded "Carbitrage Alerts" group chat. The secret slot keeps getting
   // confused with the bot token, so we pin the known-good chat id here.
   const chatId: number = -5169206415;
 
-  if (!botToken) {
-    return json({ error: "missing TELEGRAM_BOT_TOKEN" }, 500);
-  }
-
-  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const since = new Date(Date.now() - 180 * 24 * 3600_000).toISOString();
   const { data: rows, error } = await sb
     .from("operator_opportunities")
     .select("id, listing_id, listing_source, source_url, make, model, variant, year, km, asking_price, best_account_name, best_expected_margin, best_under_buy, anchor_sale_buy_price, anchor_sale_sell_price, anchor_sale_sold_at, retail_median, tier, created_at")
