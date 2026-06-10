@@ -167,6 +167,37 @@ export default function TradingDeskPage() {
     }
   }, [accounts, accountId, dealerProfile?.account_id]);
 
+  // Build dealer's historical profitability map by make (drives priority on the desk)
+  useEffect(() => {
+    if (!accountId) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("vehicle_sales_truth")
+        .select("make,buy_price,sale_price")
+        .eq("account_id", accountId)
+        .not("buy_price", "is", null)
+        .not("sale_price", "is", null);
+      if (error || !data) return;
+      const agg: Record<string, { totalGp: number; sales: number }> = {};
+      for (const r of data as any[]) {
+        const make = (r.make || "").toString().trim().toUpperCase();
+        if (!make) continue;
+        const gp = (r.sale_price ?? 0) - (r.buy_price ?? 0);
+        if (!agg[make]) agg[make] = { totalGp: 0, sales: 0 };
+        agg[make].totalGp += gp;
+        agg[make].sales += 1;
+      }
+      const rows = Object.entries(agg)
+        .filter(([, v]) => v.sales >= 2)
+        .map(([make, v]) => ({ make, avgGp: v.totalGp / v.sales, sales: v.sales }))
+        .sort((a, b) => b.avgGp - a.avgGp);
+      const map: Record<string, { avgGp: number; sales: number; rank: number }> = {};
+      rows.forEach((r, i) => { map[r.make] = { avgGp: r.avgGp, sales: r.sales, rank: i + 1 }; });
+      setMakeProfitMap(map);
+      setTopProfitMake(rows[0]?.make ?? null);
+    })();
+  }, [accountId]);
+
   const fetchData = useCallback(async () => {
     if (!accountId) return;
     setLoading(true);
