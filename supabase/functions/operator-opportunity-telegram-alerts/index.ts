@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
   const since = new Date(Date.now() - 180 * 24 * 3600_000).toISOString();
   const { data: rows, error } = await sb
     .from("operator_opportunities")
-    .select("id, listing_id, listing_source, source_url, make, model, variant, year, km, asking_price, best_account_name, best_expected_margin, best_under_buy, anchor_sale_buy_price, anchor_sale_sell_price, anchor_sale_sold_at, retail_median, tier, created_at")
+    .select("id, listing_id, listing_source, source_url, make, model, variant, year, km, asking_price, best_account_name, best_expected_margin, best_under_buy, anchor_sale_id, anchor_sale_buy_price, anchor_sale_sell_price, anchor_sale_sold_at, anchor_sale_km, retail_median, tier, created_at")
     .in("tier", TIERS)
     .eq("status", "new")
     .is("telegram_sent_at", null)
@@ -36,6 +36,34 @@ Deno.serve(async (req) => {
 
   if (error) return json({ error: error.message }, 500);
   if (!rows?.length) return json({ ok: true, sent: 0 });
+
+  // ── ANCHOR PROXIMITY GUARDRAIL ─────────────────────────────────────────────
+  // Only show the anchor sale when it is within ±1 year and ±15,000 km of the
+  // listing. Otherwise the deal still goes out, but the anchor line is hidden
+  // so we never make a false "proven winner" claim.
+  const anchorIds = Array.from(new Set(rows.map(r => r.anchor_sale_id).filter(Boolean)));
+  const anchorYearById: Record<string, number | null> = {};
+  if (anchorIds.length) {
+    const { data: anchors } = await sb
+      .from("vehicle_sales_truth")
+      .select("id, year, km")
+      .in("id", anchorIds);
+    for (const a of anchors ?? []) anchorYearById[a.id] = a.year ?? null;
+  }
+  for (const r of rows) {
+    const anchorYear = r.anchor_sale_id ? anchorYearById[r.anchor_sale_id] : null;
+    const yearOk = r.year != null && anchorYear != null && Math.abs(r.year - anchorYear) <= 1;
+    const kmOk = r.km != null && r.anchor_sale_km != null && Math.abs(r.km - r.anchor_sale_km) <= 15000;
+    if (!(yearOk && kmOk)) {
+      r.anchor_sale_buy_price = null;
+      r.anchor_sale_sell_price = null;
+      r.anchor_sale_sold_at = null;
+      r.anchor_sale_km = null;
+      (r as any)._anchor_year = null;
+    } else {
+      (r as any)._anchor_year = anchorYear;
+    }
+  }
 
   const results: Array<{ id: string; ok: boolean; error?: string }> = [];
 
@@ -79,8 +107,8 @@ function formatMessage(r: any): string {
   const margin = fmt(r.best_expected_margin);
   const under = fmt(r.best_under_buy);
   const anchor = r.anchor_sale_buy_price
-    ? `\nAnchor sale: bought ${fmt(r.anchor_sale_buy_price)} → sold ${fmt(r.anchor_sale_sell_price)}${r.anchor_sale_sold_at ? ` (${new Date(r.anchor_sale_sold_at).toLocaleDateString()})` : ""}`
-    : "";
+    ? `\nAnchor sale: bought ${fmt(r.anchor_sale_buy_price)} → sold ${fmt(r.anchor_sale_sell_price)}${r.anchor_sale_sold_at ? ` (${new Date(r.anchor_sale_sold_at).toLocaleDateString()}` : ""}${r._anchor_year ? `, ${r._anchor_year}` : ""}${r.anchor_sale_km ? `, ${Math.round(r.anchor_sale_km / 1000)}k km` : ""}${r.anchor_sale_sold_at ? ")" : ""}`
+    : "\nAnchor sale: — (no close proven winner)";
   const retail = r.retail_median ? `\nRetail median: ${fmt(r.retail_median)}` : "";
   const dealer = r.best_account_name ? `\nBest fit: <b>${escape(r.best_account_name)}</b>` : "";
   const src = r.source_url ? `\n${r.source_url}` : "";
