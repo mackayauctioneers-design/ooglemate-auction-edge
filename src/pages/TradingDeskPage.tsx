@@ -277,6 +277,43 @@ export default function TradingDeskPage() {
     }
   };
 
+  // Composite priority: dealer-profit-weighted ranking
+  // priority = match_score + profit_bonus (up to +40 for top-profit makes)
+  const prioritizedOpps = useMemo(() => {
+    const makesRanked = Object.keys(makeProfitMap).length;
+    return [...opps]
+      .map((o) => {
+        const key = (o.make || "").toString().trim().toUpperCase();
+        const stat = makeProfitMap[key];
+        let profitBonus = 0;
+        let isTopProfit = false;
+        if (stat && makesRanked > 0) {
+          // rank 1 -> 40 bonus, last rank -> ~5; weighted by avg GP positivity
+          const rankScore = ((makesRanked - stat.rank + 1) / makesRanked) * 40;
+          profitBonus = stat.avgGp > 0 ? rankScore : rankScore * 0.3;
+          isTopProfit = stat.rank <= Math.max(1, Math.ceil(makesRanked * 0.2));
+        }
+        return {
+          ...o,
+          _priority: (o.match_score || 0) + profitBonus,
+          _avgGp: stat?.avgGp ?? null,
+          _profitRank: stat?.rank ?? null,
+          _isTopProfit: isTopProfit,
+        };
+      })
+      .sort((a, b) => b._priority - a._priority);
+  }, [opps, makeProfitMap]);
+
+  const topProfitMakes = useMemo(
+    () =>
+      Object.entries(makeProfitMap)
+        .filter(([, v]) => v.avgGp > 0)
+        .sort((a, b) => a[1].rank - b[1].rank)
+        .slice(0, 3)
+        .map(([make, v]) => ({ make, avgGp: v.avgGp, sales: v.sales })),
+    [makeProfitMap]
+  );
+
   return (
     <DealerLayout>
       <div className="p-4 sm:p-6 space-y-6">
