@@ -142,6 +142,9 @@ export default function TradingDeskPage() {
   const [existingDealMap, setExistingDealMap] = useState<Record<string, string>>({});
   const [creatingDeal, setCreatingDeal] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<"all" | "auction">("all");
+  // Dealer's historical avg gross profit per make — drives priority ranking
+  const [makeProfitMap, setMakeProfitMap] = useState<Record<string, { avgGp: number; sales: number; rank: number }>>({});
+  const [topProfitMake, setTopProfitMake] = useState<string | null>(null);
 
   // Publish to Bob
   useBobPagePublisher({
