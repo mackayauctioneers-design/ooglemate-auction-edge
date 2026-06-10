@@ -263,8 +263,9 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
   const [filterKmMax, setFilterKmMax] = useState<string>('120000');
   const [filterFresh, setFilterFresh] = useState<'all' | '24h' | '7d'>('all');
 
-  const [sortField, setSortField] = useState<SortField>('best_under_buy');
+  const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
 
   useEffect(() => {
     if (isDealerMode) return; // never persist in dealer mode
