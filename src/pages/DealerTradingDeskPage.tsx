@@ -2,7 +2,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { DealerLayout } from '@/components/layout/DealerLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
-import { Navigate } from 'react-router-dom';
 import TradingDeskPage from '@/pages/operator/TradingDeskPage';
 
 export default function DealerTradingDeskPage() {
@@ -18,8 +17,11 @@ export default function DealerTradingDeskPage() {
     );
   }
 
+  // Admins see the full operator trading desk (no account lock).
+  // Avoid <Navigate> here — auth refreshes can transiently flip isAdmin and
+  // cause a redirect loop with OperatorGuard.
   if (isAdmin) {
-    return <Navigate to="/operator/trading-desk" replace />;
+    return <TradingDeskPage mode="operator" />;
   }
 
   if (!currentUser?.account_id) {
