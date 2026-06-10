@@ -2,10 +2,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { DealerLayout } from '@/components/layout/DealerLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
+import { Navigate } from 'react-router-dom';
 import TradingDeskPage from '@/pages/operator/TradingDeskPage';
 
 export default function DealerTradingDeskPage() {
-  const { currentUser, isLoading } = useAuth();
+  const { currentUser, isLoading, isAdmin } = useAuth();
 
   if (isLoading) {
     return (
@@ -15,6 +16,10 @@ export default function DealerTradingDeskPage() {
         </div>
       </DealerLayout>
     );
+  }
+
+  if (isAdmin) {
+    return <Navigate to="/operator/trading-desk" replace />;
   }
 
   if (!currentUser?.account_id) {
