@@ -413,11 +413,26 @@ export default function TradingDeskPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {opps.map((opp) => (
-                  <TableRow key={opp.id}>
-                    <TableCell><ScoreBadge score={opp.match_score} /></TableCell>
+                {prioritizedOpps.map((opp) => (
+                  <TableRow key={opp.id} className={opp._isTopProfit ? "bg-emerald-500/5" : ""}>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        <ScoreBadge score={opp.match_score} />
+                        {opp._isTopProfit && (
+                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/40 text-[9px] px-1 py-0">
+                            <Star className="h-2.5 w-2.5 mr-0.5 fill-emerald-600 text-emerald-600" />
+                            TOP GROSS
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="font-medium text-sm">{opp.year} {opp.make} {opp.model}</div>
+                      {opp._avgGp != null && (
+                        <div className="text-[10px] text-emerald-700 font-medium">
+                          Your avg GP on {opp.make}: ${Math.round(opp._avgGp).toLocaleString()}
+                        </div>
+                      )}
                       {opp.transmission && <span className="text-[10px] text-muted-foreground">{opp.transmission}</span>}
                       {opp.drive_type && <span className="text-[10px] text-muted-foreground ml-1">· {opp.drive_type}</span>}
                       <a href={opp.url_canonical} target="_blank" rel="noopener noreferrer"
