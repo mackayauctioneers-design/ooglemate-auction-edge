@@ -295,11 +295,15 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
     setLoading(true);
     try {
       const scoped = filterAccount !== 'all';
+      // Freshness floor: never surface actionable opps older than 14 days on the
+      // desk. Stale rows belong to reconcile, not to the operator's eye.
+      const freshFloor = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
       const activeQuery = supabase
         .from('operator_opportunities')
         .select('*')
         .in('status', ACTIONABLE_STATUSES)
-        .order('best_expected_margin', { ascending: false })
+        .gte('created_at', freshFloor)
+        .order('created_at', { ascending: false })
         .limit(scoped ? 1000 : 500);
       const starredQuery = supabase
         .from('operator_opportunities')
@@ -311,6 +315,7 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
         activeQuery.eq('best_account_id', filterAccount);
         starredQuery.eq('best_account_id', filterAccount);
       }
+
       // Fetch active opportunities + starred (regardless of status) in parallel
       const [oppsRes, starredRes, acctsRes] = await Promise.all([
         activeQuery,
