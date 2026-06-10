@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { DealerLayout } from "@/components/layout/DealerLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   ExternalLink, Loader2, RefreshCw, Zap, FileText,
-  AlertTriangle, ChevronDown, ChevronUp, DollarSign, Download, BookOpen,
+  AlertTriangle, ChevronDown, ChevronUp, DollarSign, Download, BookOpen, Star, TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -142,6 +142,9 @@ export default function TradingDeskPage() {
   const [existingDealMap, setExistingDealMap] = useState<Record<string, string>>({});
   const [creatingDeal, setCreatingDeal] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<"all" | "auction">("all");
+  // Dealer's historical avg gross profit per make — drives priority ranking
+  const [makeProfitMap, setMakeProfitMap] = useState<Record<string, { avgGp: number; sales: number; rank: number }>>({});
+  const [topProfitMake, setTopProfitMake] = useState<string | null>(null);
 
   // Publish to Bob
   useBobPagePublisher({
@@ -163,6 +166,37 @@ export default function TradingDeskPage() {
       setAccountId(accounts[0].id);
     }
   }, [accounts, accountId, dealerProfile?.account_id]);
+
+  // Build dealer's historical profitability map by make (drives priority on the desk)
+  useEffect(() => {
+    if (!accountId) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("vehicle_sales_truth")
+        .select("make,buy_price,sale_price")
+        .eq("account_id", accountId)
+        .not("buy_price", "is", null)
+        .not("sale_price", "is", null);
+      if (error || !data) return;
+      const agg: Record<string, { totalGp: number; sales: number }> = {};
+      for (const r of data as any[]) {
+        const make = (r.make || "").toString().trim().toUpperCase();
+        if (!make) continue;
+        const gp = (r.sale_price ?? 0) - (r.buy_price ?? 0);
+        if (!agg[make]) agg[make] = { totalGp: 0, sales: 0 };
+        agg[make].totalGp += gp;
+        agg[make].sales += 1;
+      }
+      const rows = Object.entries(agg)
+        .filter(([, v]) => v.sales >= 2)
+        .map(([make, v]) => ({ make, avgGp: v.totalGp / v.sales, sales: v.sales }))
+        .sort((a, b) => b.avgGp - a.avgGp);
+      const map: Record<string, { avgGp: number; sales: number; rank: number }> = {};
+      rows.forEach((r, i) => { map[r.make] = { avgGp: r.avgGp, sales: r.sales, rank: i + 1 }; });
+      setMakeProfitMap(map);
+      setTopProfitMake(rows[0]?.make ?? null);
+    })();
+  }, [accountId]);
 
   const fetchData = useCallback(async () => {
     if (!accountId) return;
@@ -243,6 +277,43 @@ export default function TradingDeskPage() {
     }
   };
 
+  // Composite priority: dealer-profit-weighted ranking
+  // priority = match_score + profit_bonus (up to +40 for top-profit makes)
+  const prioritizedOpps = useMemo(() => {
+    const makesRanked = Object.keys(makeProfitMap).length;
+    return [...opps]
+      .map((o) => {
+        const key = (o.make || "").toString().trim().toUpperCase();
+        const stat = makeProfitMap[key];
+        let profitBonus = 0;
+        let isTopProfit = false;
+        if (stat && makesRanked > 0) {
+          // rank 1 -> 40 bonus, last rank -> ~5; weighted by avg GP positivity
+          const rankScore = ((makesRanked - stat.rank + 1) / makesRanked) * 40;
+          profitBonus = stat.avgGp > 0 ? rankScore : rankScore * 0.3;
+          isTopProfit = stat.rank <= Math.max(1, Math.ceil(makesRanked * 0.2));
+        }
+        return {
+          ...o,
+          _priority: (o.match_score || 0) + profitBonus,
+          _avgGp: stat?.avgGp ?? null,
+          _profitRank: stat?.rank ?? null,
+          _isTopProfit: isTopProfit,
+        };
+      })
+      .sort((a, b) => b._priority - a._priority);
+  }, [opps, makeProfitMap]);
+
+  const topProfitMakes = useMemo(
+    () =>
+      Object.entries(makeProfitMap)
+        .filter(([, v]) => v.avgGp > 0)
+        .sort((a, b) => a[1].rank - b[1].rank)
+        .slice(0, 3)
+        .map(([make, v]) => ({ make, avgGp: v.avgGp, sales: v.sales })),
+    [makeProfitMap]
+  );
+
   return (
     <DealerLayout>
       <div className="p-4 sm:p-6 space-y-6">
@@ -292,6 +363,31 @@ export default function TradingDeskPage() {
           <Button variant={sourceFilter === "auction" ? "default" : "outline"} size="sm" onClick={() => setSourceFilter("auction")}>Auctions Only</Button>
         </div>
 
+        {/* Dealer profit DNA banner */}
+        {topProfitMakes.length > 0 && (
+          <Card className="border-emerald-500/30 bg-emerald-500/5">
+            <CardContent className="py-3 px-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-emerald-600" />
+                  <span className="text-xs font-semibold text-foreground">Your top-gross makes</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {topProfitMakes.map((m, i) => (
+                    <Badge key={m.make} variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/40 text-[11px]">
+                      {i === 0 && <Star className="h-3 w-3 mr-1 fill-emerald-600 text-emerald-600" />}
+                      {m.make} · avg ${Math.round(m.avgGp).toLocaleString()} GP ({m.sales} sold)
+                    </Badge>
+                  ))}
+                </div>
+                <span className="text-[11px] text-muted-foreground sm:ml-auto">
+                  Listings in these makes are boosted to the top
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Table */}
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
@@ -317,11 +413,26 @@ export default function TradingDeskPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {opps.map((opp) => (
-                  <TableRow key={opp.id}>
-                    <TableCell><ScoreBadge score={opp.match_score} /></TableCell>
+                {prioritizedOpps.map((opp) => (
+                  <TableRow key={opp.id} className={opp._isTopProfit ? "bg-emerald-500/5" : ""}>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        <ScoreBadge score={opp.match_score} />
+                        {opp._isTopProfit && (
+                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/40 text-[9px] px-1 py-0">
+                            <Star className="h-2.5 w-2.5 mr-0.5 fill-emerald-600 text-emerald-600" />
+                            TOP GROSS
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="font-medium text-sm">{opp.year} {opp.make} {opp.model}</div>
+                      {opp._avgGp != null && (
+                        <div className="text-[10px] text-emerald-700 font-medium">
+                          Your avg GP on {opp.make}: ${Math.round(opp._avgGp).toLocaleString()}
+                        </div>
+                      )}
                       {opp.transmission && <span className="text-[10px] text-muted-foreground">{opp.transmission}</span>}
                       {opp.drive_type && <span className="text-[10px] text-muted-foreground ml-1">· {opp.drive_type}</span>}
                       <a href={opp.url_canonical} target="_blank" rel="noopener noreferrer"
