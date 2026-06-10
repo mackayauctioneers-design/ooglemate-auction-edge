@@ -363,6 +363,31 @@ export default function TradingDeskPage() {
           <Button variant={sourceFilter === "auction" ? "default" : "outline"} size="sm" onClick={() => setSourceFilter("auction")}>Auctions Only</Button>
         </div>
 
+        {/* Dealer profit DNA banner */}
+        {topProfitMakes.length > 0 && (
+          <Card className="border-emerald-500/30 bg-emerald-500/5">
+            <CardContent className="py-3 px-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-emerald-600" />
+                  <span className="text-xs font-semibold text-foreground">Your top-gross makes</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {topProfitMakes.map((m, i) => (
+                    <Badge key={m.make} variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/40 text-[11px]">
+                      {i === 0 && <Star className="h-3 w-3 mr-1 fill-emerald-600 text-emerald-600" />}
+                      {m.make} · avg ${Math.round(m.avgGp).toLocaleString()} GP ({m.sales} sold)
+                    </Badge>
+                  ))}
+                </div>
+                <span className="text-[11px] text-muted-foreground sm:ml-auto">
+                  Listings in these makes are boosted to the top
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Table */}
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
