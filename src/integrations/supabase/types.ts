@@ -1614,6 +1614,63 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_context: {
+        Row: {
+          active: boolean
+          budget_max: number | null
+          budget_min: number | null
+          buy_threshold_pct: number | null
+          created_at: string
+          dealer_id: string
+          dealer_name: string
+          home_state: string | null
+          odometer_max: number | null
+          preferred_makes: string[] | null
+          search_states: string[] | null
+          telegram_bot_token: string | null
+          telegram_chat_id: string | null
+          updated_at: string
+          watch_threshold_pct: number | null
+          year_min: number | null
+        }
+        Insert: {
+          active?: boolean
+          budget_max?: number | null
+          budget_min?: number | null
+          buy_threshold_pct?: number | null
+          created_at?: string
+          dealer_id: string
+          dealer_name: string
+          home_state?: string | null
+          odometer_max?: number | null
+          preferred_makes?: string[] | null
+          search_states?: string[] | null
+          telegram_bot_token?: string | null
+          telegram_chat_id?: string | null
+          updated_at?: string
+          watch_threshold_pct?: number | null
+          year_min?: number | null
+        }
+        Update: {
+          active?: boolean
+          budget_max?: number | null
+          budget_min?: number | null
+          buy_threshold_pct?: number | null
+          created_at?: string
+          dealer_id?: string
+          dealer_name?: string
+          home_state?: string | null
+          odometer_max?: number | null
+          preferred_makes?: string[] | null
+          search_states?: string[] | null
+          telegram_bot_token?: string | null
+          telegram_chat_id?: string | null
+          updated_at?: string
+          watch_threshold_pct?: number | null
+          year_min?: number | null
+        }
+        Relationships: []
+      }
       dealer_daily_snapshots: {
         Row: {
           aged_stock_cleared: Json | null
@@ -5746,6 +5803,215 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      hermes_agent_heartbeats: {
+        Row: {
+          agent_id: string
+          created_at: string
+          last_error: string | null
+          last_seen: string | null
+          last_sweep_at: string | null
+          meta: Json | null
+          status: string | null
+          sweep_count: number
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          last_error?: string | null
+          last_seen?: string | null
+          last_sweep_at?: string | null
+          meta?: Json | null
+          status?: string | null
+          sweep_count?: number
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          last_error?: string | null
+          last_seen?: string | null
+          last_sweep_at?: string | null
+          meta?: Json | null
+          status?: string | null
+          sweep_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      hermes_evaluations: {
+        Row: {
+          asking_price: number | null
+          confidence: number | null
+          created_at: string
+          dealer_id: string
+          decision: string | null
+          discount_pct: number | null
+          evaluated_at: string
+          external_id: string | null
+          freight_applied: number | null
+          id: string
+          ignore_reason: string | null
+          landed_cost: number | null
+          make: string | null
+          market_floor: number | null
+          model: string | null
+          odometer_km: number | null
+          outcome_days_to_sell: number | null
+          outcome_gross_profit: number | null
+          outcome_purchase_price: number | null
+          outcome_purchased: boolean | null
+          outcome_sold: boolean | null
+          source: string | null
+          state: string | null
+          sweep_id: string | null
+          updated_at: string
+          url: string | null
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          asking_price?: number | null
+          confidence?: number | null
+          created_at?: string
+          dealer_id: string
+          decision?: string | null
+          discount_pct?: number | null
+          evaluated_at?: string
+          external_id?: string | null
+          freight_applied?: number | null
+          id?: string
+          ignore_reason?: string | null
+          landed_cost?: number | null
+          make?: string | null
+          market_floor?: number | null
+          model?: string | null
+          odometer_km?: number | null
+          outcome_days_to_sell?: number | null
+          outcome_gross_profit?: number | null
+          outcome_purchase_price?: number | null
+          outcome_purchased?: boolean | null
+          outcome_sold?: boolean | null
+          source?: string | null
+          state?: string | null
+          sweep_id?: string | null
+          updated_at?: string
+          url?: string | null
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          asking_price?: number | null
+          confidence?: number | null
+          created_at?: string
+          dealer_id?: string
+          decision?: string | null
+          discount_pct?: number | null
+          evaluated_at?: string
+          external_id?: string | null
+          freight_applied?: number | null
+          id?: string
+          ignore_reason?: string | null
+          landed_cost?: number | null
+          make?: string | null
+          market_floor?: number | null
+          model?: string | null
+          odometer_km?: number | null
+          outcome_days_to_sell?: number | null
+          outcome_gross_profit?: number | null
+          outcome_purchase_price?: number | null
+          outcome_purchased?: boolean | null
+          outcome_sold?: boolean | null
+          source?: string | null
+          state?: string | null
+          sweep_id?: string | null
+          updated_at?: string
+          url?: string | null
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hermes_evaluations_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_context"
+            referencedColumns: ["dealer_id"]
+          },
+        ]
+      }
+      hermes_raw_listings: {
+        Row: {
+          asking_price: number | null
+          created_at: string
+          days_on_market: number | null
+          external_id: string
+          fetched_at: string
+          id: string
+          make: string | null
+          market_floor: number | null
+          market_floor_confidence: number | null
+          market_floor_fetched_at: string | null
+          market_floor_retail: number | null
+          model: string | null
+          odometer_km: number | null
+          price_type: string | null
+          raw: Json | null
+          source: string
+          state: string | null
+          updated_at: string
+          url: string | null
+          variant: string | null
+          year: number | null
+        }
+        Insert: {
+          asking_price?: number | null
+          created_at?: string
+          days_on_market?: number | null
+          external_id: string
+          fetched_at?: string
+          id?: string
+          make?: string | null
+          market_floor?: number | null
+          market_floor_confidence?: number | null
+          market_floor_fetched_at?: string | null
+          market_floor_retail?: number | null
+          model?: string | null
+          odometer_km?: number | null
+          price_type?: string | null
+          raw?: Json | null
+          source: string
+          state?: string | null
+          updated_at?: string
+          url?: string | null
+          variant?: string | null
+          year?: number | null
+        }
+        Update: {
+          asking_price?: number | null
+          created_at?: string
+          days_on_market?: number | null
+          external_id?: string
+          fetched_at?: string
+          id?: string
+          make?: string | null
+          market_floor?: number | null
+          market_floor_confidence?: number | null
+          market_floor_fetched_at?: string | null
+          market_floor_retail?: number | null
+          model?: string | null
+          odometer_km?: number | null
+          price_type?: string | null
+          raw?: Json | null
+          source?: string
+          state?: string | null
+          updated_at?: string
+          url?: string | null
+          variant?: string | null
+          year?: number | null
+        }
+        Relationships: []
       }
       http_session_secrets: {
         Row: {
