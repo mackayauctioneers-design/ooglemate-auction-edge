@@ -5946,6 +5946,7 @@ export type Database = {
           asking_price: number | null
           created_at: string
           days_on_market: number | null
+          evaluated: boolean | null
           external_id: string
           fetched_at: string
           id: string
@@ -5969,6 +5970,7 @@ export type Database = {
           asking_price?: number | null
           created_at?: string
           days_on_market?: number | null
+          evaluated?: boolean | null
           external_id: string
           fetched_at?: string
           id?: string
@@ -5992,6 +5994,7 @@ export type Database = {
           asking_price?: number | null
           created_at?: string
           days_on_market?: number | null
+          evaluated?: boolean | null
           external_id?: string
           fetched_at?: string
           id?: string
