@@ -1616,6 +1616,7 @@ export type Database = {
       }
       dealer_context: {
         Row: {
+          activated_at: string | null
           active: boolean
           budget_max: number | null
           budget_min: number | null
@@ -1624,16 +1625,22 @@ export type Database = {
           dealer_id: string
           dealer_name: string
           home_state: string | null
+          monthly_fee: number | null
           odometer_max: number | null
           preferred_makes: string[] | null
+          sales_data_imported: boolean | null
           search_states: string[] | null
+          status: string | null
+          subscription_tier: string | null
           telegram_bot_token: string | null
           telegram_chat_id: string | null
+          total_sales_records: number | null
           updated_at: string
           watch_threshold_pct: number | null
           year_min: number | null
         }
         Insert: {
+          activated_at?: string | null
           active?: boolean
           budget_max?: number | null
           budget_min?: number | null
@@ -1642,16 +1649,22 @@ export type Database = {
           dealer_id: string
           dealer_name: string
           home_state?: string | null
+          monthly_fee?: number | null
           odometer_max?: number | null
           preferred_makes?: string[] | null
+          sales_data_imported?: boolean | null
           search_states?: string[] | null
+          status?: string | null
+          subscription_tier?: string | null
           telegram_bot_token?: string | null
           telegram_chat_id?: string | null
+          total_sales_records?: number | null
           updated_at?: string
           watch_threshold_pct?: number | null
           year_min?: number | null
         }
         Update: {
+          activated_at?: string | null
           active?: boolean
           budget_max?: number | null
           budget_min?: number | null
@@ -1660,11 +1673,16 @@ export type Database = {
           dealer_id?: string
           dealer_name?: string
           home_state?: string | null
+          monthly_fee?: number | null
           odometer_max?: number | null
           preferred_makes?: string[] | null
+          sales_data_imported?: boolean | null
           search_states?: string[] | null
+          status?: string | null
+          subscription_tier?: string | null
           telegram_bot_token?: string | null
           telegram_chat_id?: string | null
+          total_sales_records?: number | null
           updated_at?: string
           watch_threshold_pct?: number | null
           year_min?: number | null
@@ -1897,6 +1915,87 @@ export type Database = {
           },
         ]
       }
+      dealer_events: {
+        Row: {
+          created_at: string | null
+          dealer_id: string
+          event_date: string
+          event_type: string
+          id: number
+          payload: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          dealer_id: string
+          event_date?: string
+          event_type: string
+          id?: number
+          payload?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          dealer_id?: string
+          event_date?: string
+          event_type?: string
+          id?: number
+          payload?: Json | null
+        }
+        Relationships: []
+      }
+      dealer_events_2026_06: {
+        Row: {
+          created_at: string | null
+          dealer_id: string
+          event_date: string
+          event_type: string
+          id: number
+          payload: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          dealer_id: string
+          event_date?: string
+          event_type: string
+          id?: number
+          payload?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          dealer_id?: string
+          event_date?: string
+          event_type?: string
+          id?: number
+          payload?: Json | null
+        }
+        Relationships: []
+      }
+      dealer_events_2026_07: {
+        Row: {
+          created_at: string | null
+          dealer_id: string
+          event_date: string
+          event_type: string
+          id: number
+          payload: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          dealer_id: string
+          event_date?: string
+          event_type: string
+          id?: number
+          payload?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          dealer_id?: string
+          event_date?: string
+          event_type?: string
+          id?: number
+          payload?: Json | null
+        }
+        Relationships: []
+      }
       dealer_fingerprints: {
         Row: {
           alert_enabled: boolean
@@ -2057,6 +2156,81 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "accounts"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_inventory: {
+        Row: {
+          created_at: string | null
+          days_in_stock: number | null
+          dealer_id: string
+          first_listed_at: string | null
+          id: string
+          km: number | null
+          last_seen_at: string | null
+          listed_price: number | null
+          make: string | null
+          model: string | null
+          raw: Json | null
+          status: string | null
+          stock_number: string | null
+          updated_at: string | null
+          variant: string | null
+          vin: string | null
+          year: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          days_in_stock?: number | null
+          dealer_id: string
+          first_listed_at?: string | null
+          id?: string
+          km?: number | null
+          last_seen_at?: string | null
+          listed_price?: number | null
+          make?: string | null
+          model?: string | null
+          raw?: Json | null
+          status?: string | null
+          stock_number?: string | null
+          updated_at?: string | null
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          days_in_stock?: number | null
+          dealer_id?: string
+          first_listed_at?: string | null
+          id?: string
+          km?: number | null
+          last_seen_at?: string | null
+          listed_price?: number | null
+          make?: string | null
+          model?: string | null
+          raw?: Json | null
+          status?: string | null
+          stock_number?: string | null
+          updated_at?: string | null
+          variant?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_inventory_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_context"
+            referencedColumns: ["dealer_id"]
+          },
+          {
+            foreignKeyName: "dealer_inventory_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "v_dealer_performance"
+            referencedColumns: ["dealer_id"]
           },
         ]
       }
@@ -5937,6 +6111,13 @@ export type Database = {
             columns: ["dealer_id"]
             isOneToOne: false
             referencedRelation: "dealer_context"
+            referencedColumns: ["dealer_id"]
+          },
+          {
+            foreignKeyName: "hermes_evaluations_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "v_dealer_performance"
             referencedColumns: ["dealer_id"]
           },
         ]
@@ -12883,6 +13064,30 @@ export type Database = {
           },
         ]
       }
+      system_metrics: {
+        Row: {
+          id: number
+          metric_labels: Json | null
+          metric_name: string
+          metric_value: number | null
+          recorded_at: string | null
+        }
+        Insert: {
+          id?: number
+          metric_labels?: Json | null
+          metric_name: string
+          metric_value?: number | null
+          recorded_at?: string | null
+        }
+        Update: {
+          id?: number
+          metric_labels?: Json | null
+          metric_name?: string
+          metric_value?: number | null
+          recorded_at?: string | null
+        }
+        Relationships: []
+      }
       task_logs: {
         Row: {
           data: Json
@@ -17762,6 +17967,20 @@ export type Database = {
         }
         Relationships: []
       }
+      v_dealer_performance: {
+        Row: {
+          aging_stock: number | null
+          avg_days_to_sell: number | null
+          avg_gross: number | null
+          current_stock: number | null
+          dealer_id: string | null
+          dealer_name: string | null
+          status: string | null
+          total_gross: number | null
+          total_sales: number | null
+        }
+        Relationships: []
+      }
       v_sales_truth_normalized: {
         Row: {
           badge: string | null
@@ -18338,6 +18557,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      create_dealer_events_partition: { Args: never; Returns: undefined }
       create_hunt_from_sale: { Args: { p_sale_id: string }; Returns: string }
       crosssafe_claim_job: {
         Args: { p_worker_id: string }
