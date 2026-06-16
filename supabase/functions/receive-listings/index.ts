@@ -122,6 +122,15 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
 
+  // Soft-rollout bearer auth: enforced only once the secret is configured.
+  const ingestKey = Deno.env.get("CARSALES_INGEST_KEY");
+  if (ingestKey) {
+    const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+    if (bearer !== ingestKey) {
+      return json({ success: false, error: "Unauthorized" }, 401);
+    }
+  }
+
   let body: any;
   try {
     body = await req.json();
