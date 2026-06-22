@@ -131,10 +131,10 @@ function mapItem(it: any): Record<string, unknown> | null {
   };
 }
 
-// Stable source_listing_id from carsales URL (SSE-AD-<digits>) or URL itself.
+// Stable source_listing_id from carsales URL ((SSE|OAG)-AD-<digits>) or URL itself.
 function deriveSourceListingId(url: string): string {
-  const m = url.match(/SSE-AD-(\d+)/i);
-  if (m) return `SSE-AD-${m[1]}`;
+  const m = url.match(/(SSE|OAG)-AD-(\d+)/i);
+  if (m) return `${m[1].toUpperCase()}-AD-${m[2]}`;
   return url.split("?")[0].split("#")[0].replace(/\/+$/, "");
 }
 
