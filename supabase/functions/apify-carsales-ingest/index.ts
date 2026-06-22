@@ -317,6 +317,8 @@ Deno.serve(async (req) => {
     let invalid = 0;
     let errors = 0;
     let wbmCount = 0;
+    let retailUpserts = 0;
+    let retailErrors = 0;
 
     while (Date.now() - start < TIME_BUDGET_MS) {
       const dsResp = await fetch(
