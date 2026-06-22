@@ -91,6 +91,22 @@ function mapItem(it: any): Record<string, unknown> | null {
 
   if (!listing_url || !make || !model || !year || !price) return null;
 
+  // Extra fields for retail_listings upsert
+  const title = it.title || it.heading || it.name ||
+    [year, make, model, it.badge || it.variant].filter(Boolean).join(" ") || null;
+  const variant_raw = it.badge || it.variant || it.series || specs.badge || null;
+  const colour = specs.colour || specs.color || it.colour || it.color || null;
+  const fuel_type = specs.fuelType || specs.fuel || it.fuelType || null;
+  const transmission = specs.transmission || it.transmission || null;
+  const body_type = specs.bodyType || it.bodyType || null;
+  const seller_name = it.dealerName || it.sellerName || it.seller || it.dealer || null;
+  const seller_type = it.sellerType || it.seller_type || (seller_name ? "dealer" : null);
+  const image_url = it.image || it.imageUrl || it.thumbnail || it.mainImage ||
+    (Array.isArray(it.images) ? it.images[0] : null) || null;
+  const images: string[] = Array.isArray(it.images)
+    ? it.images.filter((x: any) => typeof x === "string")
+    : image_url ? [String(image_url)] : [];
+
   return {
     make: String(make),
     model: String(model),
@@ -102,7 +118,78 @@ function mapItem(it: any): Record<string, unknown> | null {
     source: "Apify_carsales-cheerio",
     price_badge: price_badge ? String(price_badge) : null,
     market_price,
+    title: title ? String(title) : null,
+    variant_raw: variant_raw ? String(variant_raw) : null,
+    colour: colour ? String(colour) : null,
+    fuel_type: fuel_type ? String(fuel_type) : null,
+    transmission: transmission ? String(transmission) : null,
+    body_type: body_type ? String(body_type) : null,
+    seller_name: seller_name ? String(seller_name) : null,
+    seller_type: seller_type ? String(seller_type) : null,
+    image_url: image_url ? String(image_url) : null,
+    images,
   };
+}
+
+// Stable source_listing_id from carsales URL (SSE-AD-<digits>) or URL itself.
+function deriveSourceListingId(url: string): string {
+  const m = url.match(/SSE-AD-(\d+)/i);
+  if (m) return `SSE-AD-${m[1]}`;
+  return url.split("?")[0].split("#")[0].replace(/\/+$/, "");
+}
+
+function parseState(loc: string | null): string | null {
+  if (!loc) return null;
+  const m = loc.match(/\b(NSW|VIC|QLD|WA|SA|TAS|NT|ACT)\b/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+async function upsertRetailListing(
+  supabase: ReturnType<typeof createClient>,
+  payload: any,
+): Promise<boolean> {
+  const source_listing_id = deriveSourceListingId(String(payload.listing_url));
+  const state = parseState(payload.location);
+  const nowIso = new Date().toISOString();
+  const row = {
+    source: "Apify_carsales-cheerio",
+    source_listing_id,
+    listing_url: payload.listing_url,
+    year: payload.year,
+    make: String(payload.make).toUpperCase().trim(),
+    model: String(payload.model).toUpperCase().trim(),
+    variant_raw: payload.variant_raw ?? null,
+    badge: payload.variant_raw ?? null,
+    asking_price: Math.round(Number(payload.price)),
+    km: payload.mileage ? Math.round(Number(payload.mileage)) : null,
+    state,
+    region_raw: payload.location ?? null,
+    suburb: payload.location && state
+      ? (payload.location as string).replace(new RegExp(`,?\\s*${state}.*$`, "i"), "").trim() || null
+      : null,
+    title: payload.title ?? null,
+    colour: payload.colour ?? null,
+    fuel_type: payload.fuel_type ?? null,
+    transmission: payload.transmission ?? null,
+    body_type: payload.body_type ?? null,
+    seller_name_raw: payload.seller_name ?? null,
+    seller_type: payload.seller_type ?? "unknown",
+    image_urls: payload.images && payload.images.length ? payload.images : null,
+    price_badge: payload.price_badge ?? null,
+    market_price: payload.market_price ? Math.round(Number(payload.market_price)) : null,
+    source_type: "RETAIL",
+    lifecycle_status: "ACTIVE",
+    last_seen_at: nowIso,
+    updated_at: nowIso,
+  };
+  const { error } = await supabase
+    .from("retail_listings")
+    .upsert(row, { onConflict: "source,source_listing_id" });
+  if (error) {
+    console.error("[retail upsert]", source_listing_id, error.message);
+    return false;
+  }
+  return true;
 }
 
 async function maybeStartRun(token: string): Promise<string | null> {
