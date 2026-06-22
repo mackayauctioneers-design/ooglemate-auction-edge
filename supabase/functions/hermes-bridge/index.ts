@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
       // Try insert; if conflict, check if existing lock has expired and steal it.
       const { error: insErr } = await admin
         .from("hermes_locks")
-        .insert({ lock_name: name, holder, expires_at: expires });
+        .insert({ lock_key: name, expires_at: expires });
 
       if (!insErr) return json({ acquired: true, expires_at: expires });
 
@@ -62,14 +62,14 @@ Deno.serve(async (req) => {
       const { data: existing } = await admin
         .from("hermes_locks")
         .select("*")
-        .eq("lock_name", name)
+        .eq("lock_key", name)
         .maybeSingle();
 
       if (existing && new Date(existing.expires_at) < now) {
         const { error: updErr } = await admin
           .from("hermes_locks")
-          .update({ holder, expires_at: expires })
-          .eq("lock_name", name);
+          .update({ expires_at: expires })
+          .eq("lock_key", name);
         if (updErr) throw updErr;
         return json({ acquired: true, stolen: true, expires_at: expires });
       }
@@ -79,11 +79,9 @@ Deno.serve(async (req) => {
 
     // POST /unlock { name, holder? }
     if (op === "unlock" && req.method === "POST") {
-      const { name, holder } = await req.json();
+      const { name } = await req.json();
       if (!name) return json({ error: "name required" }, 400);
-      let q = admin.from("hermes_locks").delete().eq("lock_name", name);
-      if (holder) q = q.eq("holder", holder);
-      const { error } = await q;
+      const { error } = await admin.from("hermes_locks").delete().eq("lock_key", name);
       if (error) throw error;
       return json({ released: true });
     }
