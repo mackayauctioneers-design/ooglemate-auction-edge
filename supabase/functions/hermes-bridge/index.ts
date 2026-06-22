@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
       // Try insert; if conflict, check if existing lock has expired and steal it.
       const { error: insErr } = await admin
         .from("hermes_locks")
-        .insert({ lock_name: name, holder, expires_at: expires });
+        .insert({ lock_key: name, expires_at: expires });
 
       if (!insErr) return json({ acquired: true, expires_at: expires });
 
