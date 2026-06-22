@@ -417,7 +417,7 @@ Deno.serve(async (req) => {
         cron_name: "apify-carsales-ingest",
         last_seen_at: new Date().toISOString(),
         last_ok: errors === 0,
-        note: `run:${runId} fetched=${totalFetched} posted=${posted} dupes=${duplicates} invalid=${invalid} errors=${errors} wbm=${wbmCount}`,
+        note: `run:${runId} fetched=${totalFetched} retail_upserts=${retailUpserts} retail_err=${retailErrors} posted=${posted} dupes=${duplicates} invalid=${invalid} errors=${errors} wbm=${wbmCount}`,
       },
       { onConflict: "cron_name" },
     );
