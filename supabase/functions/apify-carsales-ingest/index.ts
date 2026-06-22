@@ -337,6 +337,14 @@ Deno.serve(async (req) => {
         const payload = mapItem(raw);
         if (!payload) { invalid++; continue; }
 
+        // ── CANONICAL PIPELINE: upsert into retail_listings → market_listings ──
+        // This is the main flow now. mandates / run-mandates / dashboard / Bob /
+        // fingerprint matching all read from market_listings (which unions
+        // retail_listings). The WBM Telegram fan-out below is a side alert only.
+        if (await upsertRetailListing(supabase, payload)) retailUpserts++;
+        else retailErrors++;
+
+
         // ── WBM fan-out → well-below-market-alert → telegram-arby-leads ──
         // We bypass receive-deals (which drops price_badge) and push WBM hits
         // straight to the alert function so @arbycarleads gets fresh leads.
