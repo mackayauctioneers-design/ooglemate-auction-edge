@@ -428,6 +428,8 @@ Deno.serve(async (req) => {
       dataset_id: datasetId,
       triggered_run_id: triggeredRunId,
       fetched: totalFetched,
+      retail_upserts: retailUpserts,
+      retail_errors: retailErrors,
       posted,
       duplicates,
       invalid,
