@@ -18069,6 +18069,28 @@ export type Database = {
         }
         Relationships: []
       }
+      vw_wbm_clean: {
+        Row: {
+          badge: string | null
+          first_seen_at: string | null
+          km: number | null
+          lifecycle_status: string | null
+          listing_url: string | null
+          location: string | null
+          make: string | null
+          model: string | null
+          price: number | null
+          price_badge: string | null
+          raw_payload: Json | null
+          scraped_at: string | null
+          seller: string | null
+          state: string | null
+          title: string | null
+          variant_raw: string | null
+          year: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       autotrader_raw_seen: {
