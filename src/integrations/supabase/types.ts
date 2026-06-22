@@ -6122,6 +6122,24 @@ export type Database = {
           },
         ]
       }
+      hermes_locks: {
+        Row: {
+          acquired_at: string
+          expires_at: string
+          lock_key: string
+        }
+        Insert: {
+          acquired_at?: string
+          expires_at: string
+          lock_key: string
+        }
+        Update: {
+          acquired_at?: string
+          expires_at?: string
+          lock_key?: string
+        }
+        Relationships: []
+      }
       hermes_raw_listings: {
         Row: {
           asking_price: number | null
