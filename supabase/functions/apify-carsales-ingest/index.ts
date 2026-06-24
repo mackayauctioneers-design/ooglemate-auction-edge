@@ -337,12 +337,37 @@ Deno.serve(async (req) => {
         const payload = mapItem(raw);
         if (!payload) { invalid++; continue; }
 
-        // ── CANONICAL PIPELINE: upsert into retail_listings → market_listings ──
-        // This is the main flow now. mandates / run-mandates / dashboard / Bob /
-        // fingerprint matching all read from market_listings (which unions
-        // retail_listings). The WBM Telegram fan-out below is a side alert only.
-        if (await upsertRetailListing(supabase, payload)) retailUpserts++;
-        else retailErrors++;
+        // ── PHASE 1: write raw audit event first (idempotent) ──
+        const v_source_record_id = deriveSourceListingId(String(payload.listing_url));
+        const { data: rawInsert, error: rawErr } = await supabase
+          .from("raw_ingest_events")
+          .upsert({
+            source: "Apify_carsales-cheerio",
+            source_run_id: runId,
+            source_record_id: v_source_record_id,
+            listing_url: String(payload.listing_url),
+            raw_payload: payload as unknown as Record<string, unknown>,
+            scraped_at: new Date().toISOString(),
+            ingestion_status: "pending",
+          }, { onConflict: "source,source_record_id" })
+          .select("id")
+          .single();
+        if (rawErr || !rawInsert) {
+          console.error("[raw_ingest_events]", rawErr?.message);
+          retailErrors++;
+          continue;
+        }
+
+        // ── PHASE 2: normalise via SQL router → retail_listings → market_listings ──
+        const { data: normRes, error: normErr } = await supabase
+          .rpc("normalise_market_listing", { _raw_event_id: rawInsert.id });
+        if (normErr || !(normRes as any)?.ok) {
+          console.error("[normalise]", normErr?.message || JSON.stringify(normRes));
+          retailErrors++;
+        } else {
+          retailUpserts++;
+        }
+
 
 
         // ── WBM fan-out → well-below-market-alert → telegram-arby-leads ──
