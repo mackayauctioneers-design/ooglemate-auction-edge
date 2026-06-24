@@ -10495,6 +10495,48 @@ export type Database = {
         }
         Relationships: []
       }
+      raw_ingest_events: {
+        Row: {
+          error_message: string | null
+          id: string
+          ingestion_status: string
+          listing_url: string | null
+          normalised_at: string | null
+          raw_payload: Json
+          received_at: string
+          scraped_at: string | null
+          source: string
+          source_record_id: string | null
+          source_run_id: string | null
+        }
+        Insert: {
+          error_message?: string | null
+          id?: string
+          ingestion_status?: string
+          listing_url?: string | null
+          normalised_at?: string | null
+          raw_payload: Json
+          received_at?: string
+          scraped_at?: string | null
+          source: string
+          source_record_id?: string | null
+          source_run_id?: string | null
+        }
+        Update: {
+          error_message?: string | null
+          id?: string
+          ingestion_status?: string
+          listing_url?: string | null
+          normalised_at?: string | null
+          raw_payload?: Json
+          received_at?: string
+          scraped_at?: string | null
+          source?: string
+          source_record_id?: string | null
+          source_run_id?: string | null
+        }
+        Relationships: []
+      }
       receive_listings_dead_letter: {
         Row: {
           created_at: string
@@ -17265,6 +17307,19 @@ export type Database = {
           },
         ]
       }
+      ingestion_health: {
+        Row: {
+          failed_last_24h: number | null
+          latest_received_at: string | null
+          latest_scraped_at: string | null
+          normalised_last_24h: number | null
+          records_last_1h: number | null
+          records_last_24h: number | null
+          source: string | null
+          status: string | null
+        }
+        Relationships: []
+      }
       ingestion_source_health: {
         Row: {
           cron_schedule: string | null
@@ -19625,6 +19680,10 @@ export type Database = {
         Returns: {
           fingerprints_updated: number
         }[]
+      }
+      normalise_market_listing: {
+        Args: { _raw_event_id: string }
+        Returns: Json
       }
       rebuild_dealer_fingerprints: {
         Args: { p_dealer_id: string }
