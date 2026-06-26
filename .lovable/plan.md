@@ -1,282 +1,125 @@
-# Unified Ingestion Funnel — VPS Canonical, Supabase Mirror
 
-> **Primary decision:** VPS is canonical. Supabase is a mirror. Agents must never depend on Supabase. Data flows one way: Apify → VPS raw → VPS normalised → VPS market_listings → VPS agents → optional mirror → Lovable UI. Never the reverse.
->
-> **Scope of this document:** specification only. Lovable does not execute this plan. Hermes/VPS team implements. Lovable produces and maintains code/SQL artefacts, then validates via the Supabase mirror once it exists.
+# Lovable → Consumer-of-VPS Migration Plan
 
-## 0. Standing rules (apply to every phase)
+## 1. New Contract (non-negotiable)
 
-- No new features. No new dashboards. No new shortcuts. No second source of truth.
-- All changes additive. **Forbidden drops**: `market_listings`, `opportunities`, `fingerprints`, `mandates`, `retail_listings`, `candidate_pool`, any existing source table.
-- Agents read **only** from `market_listings` or `vw_wbm_clean`. Direct queries against `scanned_deals`, `external_listings`, `carsales_wbm.db`, `caroogle.db`, legacy source tables, or any Supabase sourcing table are prohibited.
-- Lovable does not run destructive migrations. SQLite remains operational throughout. Postgres is introduced beside it.
+- **VPS `carbitrage_pipeline.db`** is the only source of truth for: listings, identity, valuation, opportunities, fingerprints, agent execution, dealer notifications.
+- **Lovable Cloud (Supabase)** is now a *read replica + UI state store*. It owns: auth, dealer settings, billing, CRM notes, approvals, UI preferences, historical analytics snapshots.
+- **Data direction:** VPS → Mirror → Lovable UI. The only reverse direction allowed is *user actions* (settings, approvals, configuration writes) which the VPS pulls or which proxy through a thin write API.
+- **No new ingestion, scoring, valuation, fingerprint, or opportunity logic is built in Lovable.** Existing logic is frozen, then mirrored away, then removed.
 
-## 1. VPS architecture map
+## 2. Component Classification
+
+| # | Component | Current Purpose | KEEP | MIRROR | REMOVE | Reason |
+|---|---|---|---|---|---|---|
+| **Ingestion edge functions** |
+| 1 | `receive-listings` | Open POST endpoint for memo23/Apify | | | ✅ | VPS will receive direct |
+| 2 | `receive-deals` | Bearer-auth deal ingest → `scanned_deals` | | | ✅ | Dead-end table, replaced by VPS |
+| 3 | `apify-carsales-ingest` | Pulls Apify datasets → `raw_ingest_events` → `retail_listings` | | | ✅ | Move to VPS worker (per `.lovable/plan.md` §6) |
+| 4 | `pickles-crawl`, `f3-crawl`, `autotrader-*`, `gumtree-*`, `toyota-*`, `easyauto123-*`, `caroogle-*` ingest functions | Source pulls | | | ✅ | VPS workers only |
+| 5 | `run-daily-pipeline` | Orchestrates ingestion + presence + velocity + Slack | | | ✅ | VPS cron owns this |
+| 6 | `normalise_market_listing` Postgres fn + `raw_ingest_events` table | Supabase normaliser scaffold | | | ✅ | Inert; delete after cutover |
+| 7 | `well-below-market-alert`, `trap-health-alerts`, `buy-window-slack` | Alert dispatch | | | ✅ | Replaced by VPS notifier |
+| **Opportunity / scoring / valuation** |
+| 8 | `score-operator-opportunities` + `operator_opportunities` table | Cross-account scoring | | ✅ | | Display only; VPS produces, Lovable shows |
+| 9 | `run-mandates`, `mandate_runs`, `mandate_alerts` | Mandate matching engine | | | ✅ | VPS owns matching |
+| 10 | `fingerprint-materialize`, `fingerprint_*` tables | Fingerprint generation | | ✅ | | Generated on VPS, mirrored for UI editing |
+| 11 | `valo-*` functions, `valo_runs`, `valo_requests` | Valuation engine | | | ✅ | VPS valuation only |
+| 12 | `refresh-watch-statuses`, `winners_watchlist` logic | Watch status compute | | ✅ | | VPS computes, Lovable reads |
+| 13 | `vw_wbm_clean`, `market_listings` view, `retail_listings` table | Canonical listing surface | | ✅ | | Replaced by mirror table populated from VPS |
+| **Agent / sourcing logic** |
+| 14 | `run-dealer-scoring`, `sync-opportunities`, `hermes-bridge` proxies | VPS proxies (already correct shape) | ✅ | | | Already pass-through to VPS Worker |
+| 15 | `hermes_locks`, `hermes_evaluations`, `hermes_raw_listings`, `hermes_agent_heartbeats` | Agent state | | ✅ | | VPS writes via `hermes-bridge`, UI reads |
+| 16 | `caroogleAI` / OogleBot / Arby orchestrators in edge functions | Discovery agents | | | ✅ | VPS workers |
+| 17 | `hermey-webhook` (Telegram Hermes) | Operator chat | ✅ | | | UI/operator surface; queries VPS via bridge |
+| 18 | `bob-chat` + `bob_*` tables | Embedded buying assistant | ✅ | | | UI surface; its tools call VPS read API instead of Supabase tables |
+| **Dealer-facing UI / admin** |
+| 19 | Dealer dashboard, Trading Desk, Opportunities, Today, Alerts, Hunts, Mandates pages | UI | ✅ | | | Repointed to mirror tables |
+| 20 | `OperatorLayout`, `IngestionHealthPage`, `CronAuditPage`, `PipelineHealthPage` | Operator monitoring | ✅ | | | Reads VPS health endpoint |
+| 21 | `DataSourcesPage` tabs (Upload, Manual Intake, Traps, Preflight, Dealer URLs, VA) | Operator data entry | ✅ | | | These are *writes from humans* — allowed; forward to VPS write API |
+| 22 | Sales upload (`sales-upload/*`, `dealer_sales`, `vehicle_sales_truth`) | Dealer sales ingestion via UI | ✅ | ✅ | | KEEP the upload UI; MIRROR the truth table (VPS becomes authoritative store after upload is forwarded) |
+| 23 | Auth, `profiles`, `user_roles`, `dealer_profiles`, `dealer_entitlements`, billing/Stripe | Identity, access, billing | ✅ | | | Lovable-native domain |
+| 24 | `dealer_settings`, `dealer_notification_settings`, `dealer_specs`, `bob_watch_profiles` | Dealer configuration | ✅ | | | Settings live in Lovable; VPS subscribes |
+| 25 | CRM-ish tables: `deal_flags`, `deal_truth_*`, `human_reviews`, `va_tasks` | Human workflow | ✅ | | | UI/CRM concern |
+| 26 | Reporting pages: Sales Insights, Regional Dashboard, Westside, AJH report | Analytics | ✅ | ✅ | | UI keeps, data sourced from mirror snapshots |
+| **Dead / duplicate tables** |
+| 27 | `scanned_deals`, `external_listings`, `vehicle_listings_shadow`, `retail_listings`, `vw_wbm_clean`, `raw_ingest_events`, `market_listing_history`, `retail_listing_*`, `apify_runs_queue`, `firecrawl_*`, `outward_*`, `manus_*`, `hunt_external_candidates`, `hunt_unified_candidates` | Parallel ingestion/staging | | | ✅ | Collapsed into VPS pipeline |
+| 28 | Pipeline plumbing: `pipeline_runs`, `pipeline_steps`, `cron_audit_log`, `cron_heartbeat`, `source_runs`, `ingestion_runs` | Lovable-side orchestration audit | | | ✅ | VPS owns orchestration |
+
+## 3. Mirror Architecture
+
+VPS publishes clean snapshots to a small set of **read-only mirror tables** in Supabase. These are the *only* tables UI components read for operational data.
 
 ```text
-                         ┌─────────────────────────────────┐
-                         │  Apify  memo23/carsales-cheerio │
-                         └─────────────┬───────────────────┘
-                                       │ pull (15-min loop)
-                                       ▼
-                       ┌──────────────────────────────┐
-                       │  worker:memo23_ingest (VPS)  │
-                       └─────────────┬────────────────┘
-                                     │ INSERT
-                                     ▼
-                       ┌──────────────────────────────┐
-                       │  pg.raw_ingest_events        │   append-only audit
-                       └─────────────┬────────────────┘
-                                     │ trigger → pg_notify
-                                     ▼
-                       ┌──────────────────────────────┐
-                       │  fn.normalise_market_listing │
-                       └─────────────┬────────────────┘
-                                     │ UPSERT
-                                     ▼
-                       ┌──────────────────────────────┐
-                       │  pg.market_listings          │  ◀── single canonical
-                       └─────┬────────────────┬───────┘
-                             │                │
-                             │                ├─► pg.vw_wbm_clean
-                             │                ├─► pg.ingestion_health
-                             │                └─► pg.vw_memo23_pipeline_status
-                             ▼
-              ┌───────────────────────────────────────┐
-              │  agents (read-only)                   │
-              │  Hermes · fingerprints · mandates ·   │
-              │  opportunities · WBM dispatcher · Bob │
-              └─────────────────┬─────────────────────┘
-                                │
-                                ▼
-                  worker:supabase_mirror (one-way)
-                                │
-                                ▼
-                  Supabase mirror tables → Lovable UI
+mv_market_listings      ← canonical active listings
+mv_opportunities        ← scored + tiered, per dealer
+mv_fingerprints         ← per dealer
+mv_valuations           ← per vehicle / per dealer
+mv_agent_evaluations    ← agent decisions + reasons
+mv_ingestion_health     ← source freshness + counts
+mv_dealer_snapshots     ← daily KPIs for reporting
 ```
 
-## 2. Source ownership map (target end-state)
+Rules:
+- Mirror tables are **owned by VPS**: `service_role` writes only, RLS read for `authenticated` scoped by dealer.
+- Naming prefix `mv_` (mirror view) so nothing in code accidentally writes to them.
+- Refresh cadence: streaming where possible (VPS → Supabase REST with `service_role`), batch (5 min) for analytics.
+- Old tables remain readable for 14 days behind a feature flag `useMirror=true`, then dropped.
 
-| Source                  | Raw table            | Normaliser                       | Canonical             | Consumed by              | Owner | Status |
-|-------------------------|----------------------|----------------------------------|-----------------------|--------------------------|-------|--------|
-| memo23/carsales-cheerio | pg.raw_ingest_events | fn.normalise_market_listing      | pg.market_listings    | all agents + mirror      | VPS   | **Phase 1 reference** |
-| Apify other actors      | pg.raw_ingest_events | fn.normalise_market_listing      | pg.market_listings    | all agents + mirror      | VPS   | deferred |
-| Manheim                 | pg.raw_ingest_events | fn.normalise_market_listing      | pg.market_listings    | all agents + mirror      | VPS   | deferred |
-| Pickles                 | pg.raw_ingest_events | fn.normalise_market_listing      | pg.market_listings    | all agents + mirror      | VPS   | deferred |
-| EasyAuto123             | pg.raw_ingest_events | fn.normalise_market_listing      | pg.market_listings    | all agents + mirror      | VPS   | deferred |
-| Dealer websites         | pg.raw_ingest_events | fn.normalise_market_listing      | pg.market_listings    | all agents + mirror      | VPS   | deferred |
-| Supabase sourcing tables| n/a                  | n/a                              | n/a                   | **none** (agents banned) | Lovable | inert scaffold |
+Writes from Lovable → VPS allowed only via a **thin write API** (`vps-write` edge function) for: dealer settings, approvals, sales uploads, manual intake, trap edits, URL submissions, user actions. Every write is forwarded synchronously to VPS; mirror table only updates after VPS confirms and re-publishes.
 
-Deferred sources continue running on SQLite until Phase 1 passes its sign-off gate. None are migrated implicitly.
+## 4. Migration Phases
 
-## 3. Memo23 migration plan (Phase 1 reference)
+**Phase 0 — Freeze (day 0)**
+- Disable cron triggers on every ingestion/score/valuation/mandate edge function listed in §2 (rows 1–13, 16).
+- Banner in operator UI: "Ingestion is now VPS-owned. Lovable pipelines are frozen."
+- Tag current Supabase schema as `pre_mirror_baseline`.
 
-1. **Provision Postgres 16** on VPS (or adjacent box on private network). Roles: `app` (RW), `agent` (R on canonical views), `mirror` (R on `vw_*`). No public exposure.
-2. **Apply DDL** from §§ 5–8 as one idempotent migration. Empty database; nothing to back up yet.
-3. **Implement `worker:memo23_ingest`** (Python or Node — match Hermes runtime):
-   - Loop every 15 min.
-   - `GET /v2/acts/memo23~carsales-cheerio/runs/last?status=SUCCEEDED` with `APIFY_TOKEN` from VPS env. Skip if `finishedAt` > 6 h old. Start a new run when none in-flight (preserve current behaviour).
-   - Idempotency: skip if `worker_runs` already has this `source_run_id`.
-   - Paginate dataset in 500-item pages, 110 s shard budget.
-   - Per item: map → `payload`; derive `source_record_id` from URL (`(SSE|OAG)-AD-\d+`); `INSERT … ON CONFLICT (source, source_record_id) DO UPDATE` into `raw_ingest_events`, reset `ingestion_status='pending'`.
-   - Trigger on raw insert fires `pg_notify`; normaliser worker (or AFTER INSERT FOR EACH ROW trigger calling `normalise_market_listing`) upserts `market_listings`.
-   - Audit each iteration into `worker_runs(source, source_run_id, dataset_id, items_fetched, raw_inserted, normalised, wbm_seen, started_at, finished_at, status, error)`. Heartbeat into `cron_heartbeat`.
-4. **Backfill** the last 30 days of memo23 datasets through the new worker. No SQLite touched.
-5. **Parity check**: confirm `vw_wbm_clean` count is within 5 % of the existing SQLite/Supabase WBM count for the same window.
-6. **Agent cutover** (per § 9) flips agents to Postgres reads one at a time.
-7. **Sign-off gate** before any other source migrates: `ingestion_health.source = 'memo23'` shows `live` for 7 consecutive days, zero `failed` raw events for 24 h, agent parity diff < 0.5 %.
+**Phase 1 — Mirror tables + feature flag (week 1)**
+- Create `mv_*` tables + RLS + GRANTs.
+- Add `useMirror` flag in `useFeatureFlags`. All operational reads gated.
+- VPS team starts publishing into `mv_market_listings` + `mv_opportunities` first.
 
-## 4. Postgres rollout plan (zero big-bang)
+**Phase 2 — Repoint reads (week 2)**
+Switch these UIs to mirror:
+- Trading Desk, Opportunities, Today, Alerts, Hunts, Mandate Feed, Dealer Radar, Bob tool `search_vehicles`, Ingestion Health page.
+- Verify dealer parity on `mackay-traders`, `patrick-auto`, `ajh-wholesale` before flipping flag default to `true`.
 
-| Step | Action | Reversibility |
-|------|--------|---------------|
-| 1 | Install Postgres 16, roles, private networking | stop service — no data movement |
-| 2 | Apply DDL (raw_ingest_events, market_listings, views, function, worker_runs, cron_heartbeat) | `DROP SCHEMA carbitrage_pg CASCADE` — empty schema |
-| 3 | Deploy memo23 worker writing to Postgres only | `systemctl stop`; SQLite memo23 path untouched |
-| 4 | 30-day memo23 backfill | re-run; raw events upsert is idempotent |
-| 5 | Per-agent read-path flag flips to Postgres | flag back to SQLite; both DBs still fresh |
-| 6 | Stand up one-way Supabase mirror | pause cron; Lovable UI keeps last-mirrored snapshot |
-| 7 | Sign-off + migrate next source (Pickles or Manheim) | repeat per-source |
+**Phase 3 — Write API (week 3)**
+- Stand up `vps-write` edge function with the action set above.
+- Migrate Sales Upload, Manual Intake, Trap edits, Dealer URL submissions, Approvals to forward through it.
+- `bob-chat` tool calls (`create_watch`, etc.) routed through it.
 
-Backups before every step boundary: `pg_dump -Fc` + SQLite file snapshot, both off-box, 14-day retention.
+**Phase 4 — Remove duplicates (week 4)**
+- Delete REMOVE-classified edge functions (§2).
+- Drop REMOVE-classified tables after 14-day read-only grace.
+- Delete `.lovable/plan.md` Supabase-side normaliser scaffolding; replace with mirror spec.
 
-## 5. `raw_ingest_events` (Postgres, additive)
+**Phase 5 — Lock-in (week 5)**
+- CI check: PR touching any REMOVE-classified path is blocked.
+- Lint rule: no edge function may write to `mv_*` tables.
+- Memory rule added: "Lovable is a consumer of the VPS. No ingestion, scoring, valuation, fingerprint, opportunity, or agent logic may be added to Lovable."
 
-```sql
-CREATE TABLE raw_ingest_events (
-  id               bigserial PRIMARY KEY,
-  source           text        NOT NULL,
-  source_run_id    text,
-  source_record_id text,
-  listing_url      text,
-  raw_payload      jsonb       NOT NULL,
-  scraped_at       timestamptz,
-  received_at      timestamptz NOT NULL DEFAULT now(),
-  ingestion_status text        NOT NULL DEFAULT 'pending'
-                   CHECK (ingestion_status IN ('pending','normalised','failed','skipped')),
-  normalised_at    timestamptz,
-  error_message    text,
-  UNIQUE (source, source_record_id)
-);
-CREATE INDEX ON raw_ingest_events (source, received_at DESC);
-CREATE INDEX ON raw_ingest_events (ingestion_status, received_at DESC);
-```
+## 5. Non-Breaking Guarantees
 
-Append-only. Re-runs upsert and reset `ingestion_status='pending'` for re-normalisation. 90-day retention sweep moves cold rows to `raw_ingest_events_archive` (same shape).
+- Dealer-facing routes (`/dealer/*`, `/today`, `/alerts`, `/opportunities`, `/trading-desk`) keep working through every phase because the feature flag flips per-page.
+- Auth, billing, settings, sales upload, Bob, Hermey are untouched in behaviour from the dealer's perspective.
+- Operator monitoring keeps working — `IngestionHealthPage` simply reads `mv_ingestion_health` instead of `ingestion_health` view.
+- No destructive drops until parity has been demonstrated on the three reference dealers for 7 days.
 
-## 6. Canonical `market_listings` (Postgres)
+## 6. Open Questions for VPS Side (need answers before Phase 1)
 
-`market_listings` on VPS is a **table** populated by the normaliser, not a union view.
+1. Publish mechanism: VPS pushes to Supabase REST with `service_role`, or Lovable pulls via `hermes-bridge`-style proxy?
+2. Mirror refresh SLA per table (streaming vs 5-min batch vs hourly).
+3. Schema contracts for each `mv_*` table — VPS owns and versions them.
+4. Auth model for `vps-write` → VPS (shared HMAC vs bearer per environment).
+5. Backfill: does VPS replay the last 90 days into mirrors, or do we start fresh from cutover?
 
-```sql
-CREATE TABLE market_listings (
-  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  source            text        NOT NULL,
-  source_listing_id text        NOT NULL,
-  listing_url       text        NOT NULL,
-  make              text,
-  model             text,
-  badge             text,
-  variant_raw       text,
-  variant_family    text,
-  year              int,
-  km                int,
-  price             int,
-  market_price      int,
-  price_difference  int,
-  price_badge       text,
-  market_indicator  text,
-  state             text,
-  location          text,
-  seller_type       text,
-  seller_name       text,
-  image_url         text,
-  status            text NOT NULL DEFAULT 'ACTIVE',
-  lifecycle_status  text NOT NULL DEFAULT 'ACTIVE',
-  fingerprint_hash  text,
-  first_seen_at     timestamptz NOT NULL DEFAULT now(),
-  last_seen_at      timestamptz NOT NULL DEFAULT now(),
-  raw_event_id      bigint REFERENCES raw_ingest_events(id),
-  UNIQUE (source, source_listing_id)
-);
-CREATE INDEX ON market_listings (last_seen_at DESC);
-CREATE INDEX ON market_listings (make, model, year);
-CREATE INDEX ON market_listings (price_badge) WHERE price_badge IS NOT NULL;
-CREATE INDEX ON market_listings (fingerprint_hash);
-```
+## 7. Deliverable Order
 
-`fn.normalise_market_listing(_raw_event_id bigint) RETURNS jsonb` routes by `source`, performs upsert, stamps `raw_event_id`, sets `ingestion_status='normalised'` or `'failed'` with `SQLERRM`. Never throws to caller. Lifecycle sweep (hourly cron): `STALE` after 7 d unseen, `DEAD` after 14 d, `REVIVED` when seen again.
-
-**WBM badge field path** in memo23 payload: `item.marketIndicator`. Values are case-insensitive (`"Well below market price"`, `"Below market price"`, `"Around market price"`, `"Above market price"`). Fallbacks: `priceAssessment` → `priceBadge` → `priceAssessmentText` → any `badges[]` element matching `/market price|special offer|great price/i`.
-
-## 7. `vw_wbm_clean`
-
-```sql
-CREATE OR REPLACE VIEW vw_wbm_clean AS
-SELECT
-  source, source_listing_id, listing_url,
-  make, model, badge, variant_raw,
-  year, km, price, market_price, price_difference,
-  state, location, seller_type, seller_name, image_url,
-  price_badge, last_seen_at,
-  jsonb_build_object(
-    'market_price', market_price,
-    'price_difference', price_difference,
-    'last_seen_at', last_seen_at
-  ) AS raw_payload
-FROM market_listings
-WHERE price_badge ~* '(well\s+below|^\s*below)\s+market'
-  AND year >= 2015
-  AND price > 0
-  AND make IS NOT NULL
-  AND model IS NOT NULL
-  AND listing_url IS NOT NULL
-  AND lifecycle_status = 'ACTIVE';
-```
-
-## 8. `ingestion_health` + `vw_memo23_pipeline_status`
-
-```sql
-CREATE OR REPLACE VIEW ingestion_health AS
-WITH r AS (
-  SELECT source,
-         max(scraped_at)  AS latest_scraped_at,
-         max(received_at) AS latest_received_at,
-         count(*) FILTER (WHERE received_at > now() - interval '1 hour')   AS records_last_1h,
-         count(*) FILTER (WHERE received_at > now() - interval '24 hours') AS records_last_24h,
-         count(*) FILTER (WHERE ingestion_status='normalised'
-                          AND normalised_at > now() - interval '24 hours') AS normalised_last_24h,
-         count(*) FILTER (WHERE ingestion_status='failed'
-                          AND received_at  > now() - interval '24 hours')  AS failed_last_24h
-  FROM raw_ingest_events GROUP BY source
-)
-SELECT r.*,
-       CASE
-         WHEN latest_received_at > now() - interval '2 hours'  THEN 'live'
-         WHEN latest_received_at > now() - interval '24 hours' THEN 'stale'
-         ELSE 'dead'
-       END AS status
-FROM r;
-```
-
-`vw_memo23_pipeline_status` joins the latest `worker_runs` row for memo23 with raw/normalised/WBM counts and explicit diagnostic columns (`badge_present`, `mapping_failed`, `filter_excluded`) so the WBM-zero question always has a one-row answer.
-
-## 9. Agent read-path plan
-
-Today: mixed reads across SQLite, Supabase, per-source helpers. Cause of "no data" false reports.
-
-Target: every agent reads exclusively `market_listings` or `vw_wbm_clean`.
-
-1. Introduce `repos/market_listings.{py,ts}` exposing `find_wbm()`, `find_by_fingerprint()`, `find_active_for_mandate()`, etc.
-2. Single connection factory keyed off `CANONICAL_DB={sqlite|postgres}` env.
-3. Per-agent feature flag `AGENT_READS_POSTGRES`, default false.
-4. Parity harness diffs SQLite vs Postgres result sets per agent for 24 h. Drift > 0.5 % blocks cutover.
-5. Cutover order: WBM dispatcher → fingerprint matcher → mandates runner → opportunity scorer → Hermes orchestrator → Bob lookups.
-6. Agents never read Supabase under any flag combination.
-
-## 10. One-way Supabase mirror plan
-
-- `worker:supabase_mirror` (VPS), every 5 min.
-- Reads `market_listings` where `last_seen_at > mirror_state.last_cursor`.
-- Upserts into a Supabase mirror table (`market_listings_mirror`) using the service-role key stored in VPS env only.
-- Mirror is lossy on purpose: UI-facing fields only. No fingerprints, no raw payloads, no agent state.
-- Failures never block ingestion. Mirror is a sink, never a gate.
-- The Supabase `raw_ingest_events`, `normalise_market_listing`, `ingestion_health` that Lovable created earlier remain as **inert scaffolding** for future Lovable-side dashboards. The mirror does not write to them.
-
-## 11. Rollback plan
-
-| Phase | Rollback action | Data safety |
-|-------|----------------|-------------|
-| Postgres install | `systemctl stop postgresql` | SQLite untouched |
-| Schema bootstrap | `DROP SCHEMA carbitrage_pg CASCADE` | empty schema |
-| memo23 worker live | `systemctl stop memo23_worker` | SQLite memo23 path resumes; no divergence |
-| Agent flag flipped | `AGENT_READS_POSTGRES=false`, restart agent | SQLite still fresh — dual-write never stopped |
-| Mirror push | pause mirror cron | Lovable UI shows last snapshot |
-| Full cutover | flip every agent flag back; re-enable SQLite writers | restore from latest `pg_dump` + replay last 24 h Apify datasets via worker |
-
-Per-phase backups: `pg_dump -Fc` + SQLite snapshot, off-box, 14-day retention.
-
-## 12. Validation report (Phase 1 sign-off)
-
-After Hermes implements Phase 1, the report must include:
-
-- latest Apify run ID
-- dataset ID
-- raw records count (last run)
-- normalised records count (last run)
-- `market_listings` count (memo23 source)
-- `vw_wbm_clean` count
-- `ingestion_health.status` for memo23
-- WBM badge field path used (expected: `marketIndicator`)
-- failed record count (last 24 h)
-- oldest unprocessed record (`min(received_at)` where `ingestion_status='pending'`)
-- agent visibility confirmation: a known memo23 `source_listing_id` returns true from `repos.market_listings.find_by_id()` under `AGENT_READS_POSTGRES=true` for fingerprints, mandates, opportunities, WBM dispatcher and Bob
-
-Only when every field passes does Phase 2 (next source) begin.
-
-## 13. What Lovable does in the meantime
-
-- Maintains this plan.
-- Holds the inert Supabase scaffolding (`raw_ingest_events`, `normalise_market_listing`, `ingestion_health`) in place — no changes, no removal.
-- When the VPS mirror lands, points the existing Lovable UI surfaces at the mirror table read-only.
-- Does **not** add new dashboards, alerts, or shortcuts.
+1. This plan approved.
+2. Mirror table DDL + RLS migration.
+3. `useMirror` feature flag.
+4. `vps-write` edge function skeleton.
+5. Per-page read repoint PRs (Trading Desk → Today → Alerts → Bob tools → Operator pages).
+6. REMOVE sweep.
