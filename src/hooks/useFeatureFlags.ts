@@ -57,16 +57,19 @@ export function useFeatureFlags() {
         const geoLiquidityValue = await dataService.getSetting('feature_flag_geo_liquidity');
         const dealerDashboardValue = await dataService.getSetting('feature_flag_dealer_dashboard');
         const auctionProfitScoringValue = await dataService.getSetting('feature_flag_auction_profit_scoring');
-        
+        const useMirrorValue = await dataService.getSetting('feature_flag_use_mirror');
+
         const loadedFlags: FeatureFlags = {
           geoLiquidity: parseFlag(geoLiquidityValue) ?? DEFAULT_FLAGS.geoLiquidity,
           dealerDashboard: parseFlag(dealerDashboardValue) ?? DEFAULT_FLAGS.dealerDashboard,
           auctionProfitScoring: parseFlag(auctionProfitScoringValue) ?? DEFAULT_FLAGS.auctionProfitScoring,
+          useMirror: parseFlag(useMirrorValue) ?? DEFAULT_FLAGS.useMirror,
         };
 
         flagsCache = loadedFlags;
         cacheTimestamp = now;
         setFlags(loadedFlags);
+
       } catch (error) {
         console.error('Failed to load feature flags:', error);
         setFlags(DEFAULT_FLAGS);
