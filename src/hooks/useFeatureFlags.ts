@@ -20,13 +20,18 @@ export interface FeatureFlags {
   geoLiquidity: FeatureFlagValue;
   dealerDashboard: FeatureFlagValue;
   auctionProfitScoring: FeatureFlagValue;
+  // VPS-canonical migration: when 'enabled', operational reads come from mv_* mirror tables
+  // populated by the VPS. Off until mirror tables are live + parity-verified.
+  useMirror: FeatureFlagValue;
 }
 
 const DEFAULT_FLAGS: FeatureFlags = {
   geoLiquidity: 'internal_only',
   dealerDashboard: 'internal_only',
-  auctionProfitScoring: 'internal_only', // Profit-weighted auction scoring
+  auctionProfitScoring: 'internal_only',
+  useMirror: 'disabled',
 };
+
 
 // Cache for flag values to avoid repeated API calls
 let flagsCache: FeatureFlags | null = null;
@@ -52,16 +57,19 @@ export function useFeatureFlags() {
         const geoLiquidityValue = await dataService.getSetting('feature_flag_geo_liquidity');
         const dealerDashboardValue = await dataService.getSetting('feature_flag_dealer_dashboard');
         const auctionProfitScoringValue = await dataService.getSetting('feature_flag_auction_profit_scoring');
-        
+        const useMirrorValue = await dataService.getSetting('feature_flag_use_mirror');
+
         const loadedFlags: FeatureFlags = {
           geoLiquidity: parseFlag(geoLiquidityValue) ?? DEFAULT_FLAGS.geoLiquidity,
           dealerDashboard: parseFlag(dealerDashboardValue) ?? DEFAULT_FLAGS.dealerDashboard,
           auctionProfitScoring: parseFlag(auctionProfitScoringValue) ?? DEFAULT_FLAGS.auctionProfitScoring,
+          useMirror: parseFlag(useMirrorValue) ?? DEFAULT_FLAGS.useMirror,
         };
 
         flagsCache = loadedFlags;
         cacheTimestamp = now;
         setFlags(loadedFlags);
+
       } catch (error) {
         console.error('Failed to load feature flags:', error);
         setFlags(DEFAULT_FLAGS);
