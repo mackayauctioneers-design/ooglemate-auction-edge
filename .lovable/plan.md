@@ -107,13 +107,26 @@ Switch these UIs to mirror:
 - Operator monitoring keeps working — `IngestionHealthPage` simply reads `mv_ingestion_health` instead of `ingestion_health` view.
 - No destructive drops until parity has been demonstrated on the three reference dealers for 7 days.
 
-## 6. Open Questions for VPS Side (need answers before Phase 1)
+## 6. Contract (locked by operator, 2026-06-26)
 
-1. Publish mechanism: VPS pushes to Supabase REST with `service_role`, or Lovable pulls via `hermes-bridge`-style proxy?
-2. Mirror refresh SLA per table (streaming vs 5-min batch vs hourly).
-3. Schema contracts for each `mv_*` table — VPS owns and versions them.
-4. Auth model for `vps-write` → VPS (shared HMAC vs bearer per environment).
-5. Backfill: does VPS replay the last 90 days into mirrors, or do we start fresh from cutover?
+**Status: Phase 1 ON HOLD. No mirror tables built yet.**
+
+1. **Direction:** PUSH only. VPS → Supabase. Lovable never pulls from VPS. Agents never depend on Supabase.
+2. **Refresh SLA (UI-only, non-operational):**
+   - `mv_active_vehicles`, `mv_opportunities` — 5 min
+   - `mv_source_health`, `mv_dealer_metrics`, `mv_agent_status` — hourly
+   - No streaming.
+3. **Mirror table set (final):** `mv_active_vehicles`, `mv_opportunities`, `mv_source_health`, `mv_dealer_metrics`, `mv_agent_status`. VPS owns the schemas; Lovable mirrors exactly what VPS exposes.
+4. **Auth:** Bearer token, stored as Supabase edge secret (`VPS_MIRROR_WRITE_KEY`). HMAC later if needed. No service-role key exposed to Lovable prompts, frontend, or VPS env.
+5. **Backfill:** Fresh start. No 90-day replay. Mirror holds current operational state only; history stays on VPS.
+
+**Invariants:**
+- Supabase mirror is disposable.
+- VPS is canonical.
+- Mirror failure does not stop agents.
+- Lovable UI may show stale/unavailable; dealer flows must not break.
+- VPS crons are NOT frozen for mirror work.
+- No operational agent reads are repointed to Supabase.
 
 ## 7. Deliverable Order
 
