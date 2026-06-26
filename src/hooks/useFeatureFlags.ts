@@ -20,13 +20,18 @@ export interface FeatureFlags {
   geoLiquidity: FeatureFlagValue;
   dealerDashboard: FeatureFlagValue;
   auctionProfitScoring: FeatureFlagValue;
+  // VPS-canonical migration: when 'enabled', operational reads come from mv_* mirror tables
+  // populated by the VPS. Off until mirror tables are live + parity-verified.
+  useMirror: FeatureFlagValue;
 }
 
 const DEFAULT_FLAGS: FeatureFlags = {
   geoLiquidity: 'internal_only',
   dealerDashboard: 'internal_only',
-  auctionProfitScoring: 'internal_only', // Profit-weighted auction scoring
+  auctionProfitScoring: 'internal_only',
+  useMirror: 'disabled',
 };
+
 
 // Cache for flag values to avoid repeated API calls
 let flagsCache: FeatureFlags | null = null;
