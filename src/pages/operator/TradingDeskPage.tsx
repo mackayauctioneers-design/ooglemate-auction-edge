@@ -14,6 +14,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff, Trash2, Send } from 'lucide-react';
 import { CaroogleAIFindsDrawer } from '@/components/trading-desk/CaroogleAIFindsDrawer';
 import { HuntForThisDialog } from '@/components/trading-desk/HuntForThisDialog';
+import { DealerSoulDealsStrip } from '@/components/dealersoul/DealerSoulLive';
 
 import { toast } from 'sonner';
 import { format, formatDistanceToNow, isPast, isToday, isTomorrow, differenceInHours } from 'date-fns';
