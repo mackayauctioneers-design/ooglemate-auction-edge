@@ -236,6 +236,9 @@ export default function DealerHomePage() {
               </CardContent>
             </Card>
 
+            {/* DealerSoul Live Stats (VPS) */}
+            <DealerSoulStatsCard />
+
             {/* Quick Actions */}
             <Card>
               <CardHeader className="pb-2">

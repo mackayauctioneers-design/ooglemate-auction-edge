@@ -761,6 +761,9 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
           </div>
         )}
 
+        {/* DealerSoul live top-strip (dealer mode only) */}
+        {isDealerMode && <DealerSoulDealsStrip limit={20} />}
+
         {/* KPI Strip - Clickable Tier Buttons */}
         <div className="flex flex-wrap gap-2 items-center">
           {!isDealerMode && <CaroogleAIFindsDrawer />}
