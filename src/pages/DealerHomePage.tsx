@@ -11,6 +11,7 @@ import {
   TrendingUp, BarChart3, Sparkles, RefreshCw, Zap, Radio
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { DealerSoulStatsCard } from "@/components/dealersoul/DealerSoulLive";
 
 function fmt$(n: number | null) {
   if (n == null) return "—";
@@ -234,6 +235,9 @@ export default function DealerHomePage() {
                 <HeatBar opportunities={opportunities} />
               </CardContent>
             </Card>
+
+            {/* DealerSoul Live Stats (VPS) */}
+            <DealerSoulStatsCard />
 
             {/* Quick Actions */}
             <Card>

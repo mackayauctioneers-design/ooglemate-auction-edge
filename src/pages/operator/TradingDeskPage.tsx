@@ -14,6 +14,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { ExternalLink, RefreshCw, ChevronDown, ChevronUp, Loader2, Anchor, Check, ArrowRight, Users, CalendarDays, Clock, Star, Bell, BellOff, Trash2, Send } from 'lucide-react';
 import { CaroogleAIFindsDrawer } from '@/components/trading-desk/CaroogleAIFindsDrawer';
 import { HuntForThisDialog } from '@/components/trading-desk/HuntForThisDialog';
+import { DealerSoulDealsStrip } from '@/components/dealersoul/DealerSoulLive';
 
 import { toast } from 'sonner';
 import { format, formatDistanceToNow, isPast, isToday, isTomorrow, differenceInHours } from 'date-fns';
@@ -760,6 +761,9 @@ export default function TradingDeskPage({ mode = 'operator', lockedAccountId = n
             </span>
           </div>
         )}
+
+        {/* DealerSoul live top-strip (dealer mode only) */}
+        {isDealerMode && <DealerSoulDealsStrip limit={20} />}
 
         {/* KPI Strip - Clickable Tier Buttons */}
         <div className="flex flex-wrap gap-2 items-center">
