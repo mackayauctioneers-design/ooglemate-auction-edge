@@ -30,6 +30,7 @@ export default function OperatorDashboardPage() {
     {
       title: 'Monitoring',
       items: [
+        { label: 'Agent Conduit', path: '/operator/agents', icon: Users, desc: 'Agents, heartbeats & dealer coverage' },
         { label: 'Ingestion Health', path: '/operator/ingestion-health', icon: Activity, desc: 'Pipeline metrics & crawl status' },
         { label: 'Cron Audit Log', path: '/operator/cron-audit', icon: Activity, desc: 'Scheduled task history' },
         { label: 'Trap Health', path: '/operator/trap-health', icon: Activity, desc: 'Failing traps & alerts' },
