@@ -38,6 +38,7 @@ import IngestionAuditPage from "./pages/operator/IngestionAuditPage";
 import CronAuditPage from "./pages/operator/CronAuditPage";
 import TrapHealthAlertsPage from "./pages/operator/TrapHealthAlertsPage";
 import JobQueuePage from "./pages/operator/JobQueuePage";
+import AgentConduitPage from "./pages/operator/AgentConduitPage";
 import TrapsRegistryPage from "./pages/operator/TrapsRegistryPage";
 import PreflightQueuePage from "./pages/operator/PreflightQueuePage";
 import FingerprintsExplorerPage from "./pages/operator/FingerprintsExplorerPage";
@@ -225,6 +226,7 @@ const App = () => (
               <Route path="/operator/cron-audit" element={<OperatorGuard><CronAuditPage /></OperatorGuard>} />
               <Route path="/operator/trap-health" element={<OperatorGuard><TrapHealthAlertsPage /></OperatorGuard>} />
               <Route path="/operator/job-queue" element={<OperatorGuard><JobQueuePage /></OperatorGuard>} />
+              <Route path="/operator/agents" element={<OperatorGuard><AgentConduitPage /></OperatorGuard>} />
               <Route path="/operator/traps" element={<OperatorGuard><TrapsRegistryPage /></OperatorGuard>} />
               <Route path="/operator/preflight" element={<OperatorGuard><PreflightQueuePage /></OperatorGuard>} />
               <Route path="/operator/auctions/add" element={<OperatorGuard><AddAuctionSourcePage /></OperatorGuard>} />
