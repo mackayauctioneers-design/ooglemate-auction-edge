@@ -166,6 +166,167 @@ export type Database = {
           },
         ]
       }
+      agent_heartbeats: {
+        Row: {
+          agent_id: string
+          created_at: string
+          id: string
+          message: string | null
+          metrics: Json
+          status: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          metrics?: Json
+          status?: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          metrics?: Json
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_heartbeats_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_registry"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_registry: {
+        Row: {
+          agent_key: string
+          auth_scheme: string
+          capabilities: Json
+          created_at: string
+          description: string | null
+          display_name: string
+          endpoint: string | null
+          expected_interval_minutes: number
+          id: string
+          is_active: boolean
+          kind: string
+          last_error: string | null
+          last_seen_at: string | null
+          last_status: string | null
+          meta: Json
+          owner: string | null
+          updated_at: string
+        }
+        Insert: {
+          agent_key: string
+          auth_scheme?: string
+          capabilities?: Json
+          created_at?: string
+          description?: string | null
+          display_name: string
+          endpoint?: string | null
+          expected_interval_minutes?: number
+          id?: string
+          is_active?: boolean
+          kind?: string
+          last_error?: string | null
+          last_seen_at?: string | null
+          last_status?: string | null
+          meta?: Json
+          owner?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agent_key?: string
+          auth_scheme?: string
+          capabilities?: Json
+          created_at?: string
+          description?: string | null
+          display_name?: string
+          endpoint?: string | null
+          expected_interval_minutes?: number
+          id?: string
+          is_active?: boolean
+          kind?: string
+          last_error?: string | null
+          last_seen_at?: string | null
+          last_status?: string | null
+          meta?: Json
+          owner?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      agent_watch_links: {
+        Row: {
+          account_id: string | null
+          agent_id: string
+          created_at: string
+          dealer_slug: string | null
+          id: string
+          items_last_run: number | null
+          label: string | null
+          last_result: Json
+          last_run_at: string | null
+          last_success_at: string | null
+          status: string
+          target_ref: string
+          updated_at: string
+          watch_type: string
+        }
+        Insert: {
+          account_id?: string | null
+          agent_id: string
+          created_at?: string
+          dealer_slug?: string | null
+          id?: string
+          items_last_run?: number | null
+          label?: string | null
+          last_result?: Json
+          last_run_at?: string | null
+          last_success_at?: string | null
+          status?: string
+          target_ref?: string
+          updated_at?: string
+          watch_type?: string
+        }
+        Update: {
+          account_id?: string | null
+          agent_id?: string
+          created_at?: string
+          dealer_slug?: string | null
+          id?: string
+          items_last_run?: number | null
+          label?: string | null
+          last_result?: Json
+          last_run_at?: string | null
+          last_success_at?: string | null
+          status?: string
+          target_ref?: string
+          updated_at?: string
+          watch_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_watch_links_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_watch_links_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_registry"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       alert_events: {
         Row: {
           body: string | null
