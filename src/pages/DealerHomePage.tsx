@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { DealerSoulStatsCard } from "@/components/dealersoul/DealerSoulLive";
+import { AgentsWatchingCard } from "@/components/agents/AgentsWatchingCard";
 
 function fmt$(n: number | null) {
   if (n == null) return "—";
@@ -238,6 +239,9 @@ export default function DealerHomePage() {
 
             {/* DealerSoul Live Stats (VPS) */}
             <DealerSoulStatsCard />
+
+            {/* Agents watching this dealership */}
+            <AgentsWatchingCard />
 
             {/* Quick Actions */}
             <Card>
