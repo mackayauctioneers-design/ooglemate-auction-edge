@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
     let query = supabase
       .from("wholesale_manager_queue")
       .select(
-        "id, listing_id, dealer_id, account_id, tier, status, max_bid, est_gp, est_hold_days, confidence_score, historical_proof, pattern_flags, make, model, variant, year, km, asking_price, listing_url, source_searched, auction_close_at, created_at",
+        "id, listing_id, dealer_id, account_id, tier, status, est_gp, est_hold_days, confidence_score, historical_proof, pattern_flags, make, model, variant, year, km, asking_price, listing_url, source_searched, auction_close_at, created_at",
       )
       .eq("dealer_id", dealerSlug)
       .eq("status", status)
