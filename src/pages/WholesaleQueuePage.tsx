@@ -24,7 +24,6 @@ interface QueueItem {
   account_id: string | null;
   tier: number | null;
   status: string;
-  max_bid: number | null;
   est_gp: number | null;
   est_hold_days: number | null;
   confidence_score: number | null;
@@ -286,7 +285,6 @@ export default function WholesaleQueuePage() {
                   <TableHead>Vehicle</TableHead>
                   <TableHead className="hidden md:table-cell">KM</TableHead>
                   <TableHead className="hidden md:table-cell">Listed</TableHead>
-                  <TableHead>Max Bid</TableHead>
                   <TableHead className="hidden sm:table-cell">Est GP</TableHead>
                   <TableHead className="hidden lg:table-cell">Score</TableHead>
                   <TableHead className="hidden lg:table-cell">Days</TableHead>
@@ -320,7 +318,6 @@ export default function WholesaleQueuePage() {
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-sm">{fmtNum(it.km)}</TableCell>
                         <TableCell className="hidden md:table-cell text-sm">{fmtMoney(it.asking_price)}</TableCell>
-                        <TableCell className="text-sm font-medium">{fmtMoney(it.max_bid)}</TableCell>
                         <TableCell className="hidden sm:table-cell text-sm text-emerald-600 font-medium">{fmtMoney(it.est_gp)}</TableCell>
                         <TableCell className="hidden lg:table-cell text-sm">
                           {it.confidence_score != null ? it.confidence_score.toFixed(1) : "—"}
@@ -355,7 +352,7 @@ export default function WholesaleQueuePage() {
                       </TableRow>
                       {open && (
                         <TableRow key={`${it.id}-detail`}>
-                          <TableCell colSpan={11} className="bg-muted/20">
+                          <TableCell colSpan={10} className="bg-muted/20">
                             <div className="space-y-3 p-2">
                               <div>
                                 <div className="text-xs font-semibold mb-1">Historical Proof</div>
