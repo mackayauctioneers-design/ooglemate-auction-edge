@@ -1,5 +1,7 @@
 # Original Carbitrage product review
 
+The later source-to-code pass is `docs/carbitrage-source-to-code-audit.md`. This file is the earlier pass. It does not by itself close the audit.
+
 Reviewed from this repository at `45afe8e8` plus the uncommitted preview-gate work. Git history on this clone runs from `bebc3a20` (2025-01-01, template) through `45afe8e8` (2026-11-06): **4474 commits**. Volume is concentrated in Dec 2025–Jun 2026 (about 66 + 1265 + 762 + 1579 + 102 + 483 + 187 commits). Jul–Oct 2026 is sparse (9, 2, 12, 3). That is the “eight months” in the commit graph. This note does **not** claim every commit was read. Lovable project chat history was not available in this worker. The published project id `92b962ba-8cbd-4e77-b734-dd01c5a9be50` was not queried for database content.
 
 The new `/portal` is a tenant-isolated synthetic desk. It is not a completed salvage of the original product.
