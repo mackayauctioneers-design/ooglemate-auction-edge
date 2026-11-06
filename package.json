@@ -8,7 +8,10 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "carbitrage:server": "node --experimental-strip-types server/carbitrage/main.ts",
+    "test:carbitrage": "node --experimental-strip-types --test server/carbitrage/isolation.test.ts",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.carbitrage.json --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

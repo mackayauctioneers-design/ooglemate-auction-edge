@@ -1,5 +1,7 @@
 # Welcome to your Lovable project
 
+The standalone Carbitrage dealer preview lives at `/portal`. Setup, MCP and the local-only data store are documented in [docs/carbitrage-standalone.md](docs/carbitrage-standalone.md). That preview does not write to the linked database.
+
 ## Project info
 
 **URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
