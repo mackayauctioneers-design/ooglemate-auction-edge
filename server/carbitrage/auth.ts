@@ -85,16 +85,24 @@ export function clearSessionCookie(): string {
 
 export interface RuntimeFlags {
   demoMode: boolean;
+  preview: boolean;
   jwtSecret: string | null;
   oauthIssuer: string | null;
   oauthResourceUrl: string | null;
 }
 
-/** Demo shortcuts require both flags. Anything else fails closed. */
+/**
+ * Local demo requires CARBITRAGE_ENV=local.
+ * Preview demo requires CARBITRAGE_ENV=preview and still has to pass the
+ * production-config refusal plus the gate file before the process listens.
+ */
 export function resolveRuntimeFlags(env: Record<string, string | undefined>): RuntimeFlags {
-  const demoMode = env.CARBITRAGE_DEMO_MODE === "1" && env.CARBITRAGE_ENV === "local";
+  const preview = env.CARBITRAGE_ENV === "preview";
+  const localDemo = env.CARBITRAGE_DEMO_MODE === "1" && env.CARBITRAGE_ENV === "local";
+  const previewDemo = env.CARBITRAGE_DEMO_MODE === "1" && preview;
   return {
-    demoMode,
+    demoMode: localDemo || previewDemo,
+    preview,
     jwtSecret: env.SUPABASE_JWT_SECRET?.trim() || null,
     oauthIssuer: env.CARBITRAGE_OAUTH_ISSUER?.trim() || null,
     oauthResourceUrl: env.CARBITRAGE_OAUTH_RESOURCE_URL?.trim() || null,

@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
   const buildTime = new Date().toISOString().slice(0, 16).replace('T', ' ');
   
   return {
+    envDir: mode === "preview" ? path.resolve(__dirname, "server/carbitrage/preview-env") : path.resolve(__dirname),
     server: {
       host: "::",
       port: 8080,

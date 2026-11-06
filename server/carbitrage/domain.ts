@@ -291,9 +291,9 @@ export function displayedFloor(
   const latest = rows.map((sale) => sale.soldAt).sort().at(-1) ?? "";
   return {
     floorExGov: median,
-    floorSource: `Median of ${rows.length} own ${opp.make} ${opp.model} ${variant} sale${rows.length === 1 ? "" : "s"} in the last 6 months, recorded ex-government charges.`,
+    floorSource: `Own-sale median of ${rows.length} ${opp.make} ${opp.model} ${variant} sale${rows.length === 1 ? "" : "s"} in the last 6 months, recorded ex-government charges. Not a VALO market range and not a fingerprint margin.`,
     floorAsOf: latest.slice(0, 10),
-    note: `Floor uses the same ${rows.length} recent own sale${rows.length === 1 ? "" : "s"} of this variant. It is not taken from another model or from sales older than 6 months.`,
+    note: `This number is the median of the same recent own sale${rows.length === 1 ? "" : "s"} of this variant. VALO market range needs at least 3 comps. Fingerprint margin is retail truth minus cost. Neither is applied here.`,
   };
 }
 

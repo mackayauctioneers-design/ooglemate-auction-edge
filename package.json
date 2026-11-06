@@ -10,7 +10,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "carbitrage:server": "node --experimental-strip-types server/carbitrage/main.ts",
-    "test:carbitrage": "node --experimental-strip-types --test server/carbitrage/isolation.test.ts server/carbitrage/rls.integration.test.ts",
+    "build:preview": "vite build --mode preview",
+    "preview:carbitrage": "node --experimental-strip-types scripts/carbitrage-private-preview.mjs",
+    "test:carbitrage": "node --experimental-strip-types --test server/carbitrage/isolation.test.ts server/carbitrage/rls.integration.test.ts server/carbitrage/preview-guard.test.ts server/carbitrage/original-engines.parity.test.ts",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.carbitrage.json --noEmit"
   },
   "dependencies": {

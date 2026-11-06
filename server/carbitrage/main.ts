@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { DEMO_NOW } from "./domain.ts";
 import { resolveRuntimeFlags } from "./auth.ts";
+import { assertPreviewIsolated, loadPreviewGateSecret } from "./preview-guard.ts";
 import { seedDemo } from "./fixtures.ts";
 import { startCarbitrageServer, type AuthDirectory } from "./http.ts";
 import { applyCanonicalSchema, assertDisposableDatabaseUrl, createPgPort, lookupApiKeyUser, lookupDemoPassword, lookupIngestPrincipal, seedCanonicalDatabase } from "./pg-port.ts";
@@ -17,6 +18,8 @@ if (!databaseUrl || !migrateUrl) {
 }
 assertDisposableDatabaseUrl(databaseUrl);
 assertDisposableDatabaseUrl(migrateUrl);
+if (flags.preview) assertPreviewIsolated(process.env);
+const previewGate = flags.preview ? { secret: loadPreviewGateSecret(process.env.CARBITRAGE_PREVIEW_GATE_FILE ?? "") } : null;
 
 await applyCanonicalSchema(migrateUrl);
 const admin = new pg.Client({ connectionString: migrateUrl });
@@ -58,6 +61,8 @@ const server = await startCarbitrageServer(
     oauthResourceUrl: flags.oauthResourceUrl,
     persistence: "postgres",
     now: () => DEMO_NOW,
+    previewGate,
+    staticRoot: flags.preview ? (process.env.CARBITRAGE_STATIC_ROOT ?? "dist") : null,
   },
   Number(process.env.CARBITRAGE_PORT ?? 8787),
   process.env.CARBITRAGE_HOST ?? "127.0.0.1",

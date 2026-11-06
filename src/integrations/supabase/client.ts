@@ -5,14 +5,21 @@ import { brokeredPreviewStorage } from './previewAuthStorage';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const hasSupabase = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    storage: brokeredPreviewStorage(),
-    persistSession: true,
-    autoRefreshToken: true,
-  }
-});
+// A preview build has no Supabase URL. The placeholder stays on localhost so
+// the dealer portal can render without calling the published project.
+export const supabase = createClient<Database>(
+  hasSupabase ? SUPABASE_URL : "http://127.0.0.1:9",
+  hasSupabase ? SUPABASE_PUBLISHABLE_KEY : "carbitrage-preview-no-supabase",
+  {
+    auth: {
+      storage: brokeredPreviewStorage(),
+      persistSession: hasSupabase,
+      autoRefreshToken: hasSupabase,
+    },
+  },
+);

@@ -1,9 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createReadStream, existsSync, statSync } from "node:fs";
+import { extname, join, normalize, sep } from "node:path";
 import { sha256, verifyPassword, SESSION_COOKIE, clearSessionCookie, readCookie, readSession, sessionCookie, signSession, verifySupabaseJwt } from "./auth.ts";
 import { ServiceError, type Principal, type Store } from "./domain.ts";
 import { PERSONAS, type Persona } from "./fixtures.ts";
 import { handleMcp, toolCatalog } from "./mcp.ts";
 import { createServices, type IngestBody } from "./services.ts";
+import { previewGateAllows, previewGateCookie, previewGatePage, previewPasswordMatches } from "./preview-guard.ts";
 import type { DataPort } from "./store.ts";
 
 export interface AuthDirectory {
@@ -22,6 +25,8 @@ export interface ServerOptions {
   oauthResourceUrl: string | null;
   persistence: "postgres" | "memory";
   now: () => Date;
+  previewGate?: { secret: string } | null;
+  staticRoot?: string | null;
 }
 
 export function memoryDirectory(store: Store): AuthDirectory {
@@ -67,6 +72,10 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const services = createServices(opts.data, opts.now);
     const path = url.pathname;
+
+    if (opts.previewGate && !(await allowPreview(opts.previewGate.secret, req, res, path))) {
+      return;
+    }
 
     if (req.method === "GET" && path === "/api/carbitrage/health") {
       return send(res, 200, {
@@ -208,6 +217,7 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
       return send(res, 200, await services.createMcpKey(user, label));
     }
 
+    if (req.method === "GET" && opts.staticRoot && serveStatic(opts.staticRoot, path, res)) return;
     send(res, 404, { error: "not_found", code: "not_found" });
   } catch (err) {
     if (err instanceof ServiceError) {
@@ -352,6 +362,105 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
     throw new ServiceError(400, "invalid_payload", "JSON object required");
   }
   return parsed as Record<string, unknown>;
+}
+
+async function allowPreview(secret: string, req: IncomingMessage, res: ServerResponse, path: string): Promise<boolean> {
+  if (req.method === "POST" && path === "/api/carbitrage/preview-gate") {
+    const raw = await readText(req);
+    const password = passwordField(raw, req.headers["content-type"]);
+    if (!password || !previewPasswordMatches(password, secret)) {
+      res.writeHead(401, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      res.end(previewGatePage());
+      return false;
+    }
+    res.writeHead(303, { location: "/portal", "set-cookie": previewGateCookie(secret), "cache-control": "no-store" });
+    res.end();
+    return false;
+  }
+  if (previewGateAllows(req.headers.cookie, secret)) return true;
+  if (req.method === "GET" && !path.startsWith("/api/") && path !== "/mcp") {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    res.end(previewGatePage());
+    return false;
+  }
+  send(res, 401, { error: "preview_gate", code: "preview_gate", message: "Private preview password required" });
+  return false;
+}
+
+function passwordField(raw: string, contentType: string | undefined): string {
+  if ((contentType ?? "").includes("application/json")) {
+    try {
+      const parsed = JSON.parse(raw) as { password?: unknown };
+      return typeof parsed.password === "string" ? parsed.password : "";
+    } catch {
+      return "";
+    }
+  }
+  return new URLSearchParams(raw).get("password") ?? "";
+}
+
+async function readText(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buf.length;
+    if (size > 16_384) return "";
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function serveStatic(root: string, urlPath: string, res: ServerResponse): boolean {
+  const requested = urlPath === "/" ? "/index.html" : urlPath;
+  const file = safeJoin(root, requested);
+  if (file && existsSync(file) && statSync(file).isFile()) {
+    res.writeHead(200, { "content-type": mime(file), "cache-control": "no-store", "x-content-type-options": "nosniff" });
+    createReadStream(file).pipe(res);
+    return true;
+  }
+  if (!requested.includes(".")) {
+    const index = safeJoin(root, "/index.html");
+    if (index && existsSync(index)) {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      createReadStream(index).pipe(res);
+      return true;
+    }
+  }
+  return false;
+}
+
+function safeJoin(root: string, urlPath: string): string | null {
+  const base = normalize(root);
+  const full = normalize(join(base, decodeURIComponent(urlPath)));
+  if (full !== base && !full.startsWith(base + sep)) return null;
+  return full;
+}
+
+function mime(file: string): string {
+  switch (extname(file)) {
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".js":
+      return "text/javascript; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".svg":
+      return "image/svg+xml";
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".webp":
+      return "image/webp";
+    case ".ico":
+      return "image/x-icon";
+    default:
+      return "application/octet-stream";
+  }
 }
 
 function send(res: ServerResponse, status: number, body: unknown): void {
