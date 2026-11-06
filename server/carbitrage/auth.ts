@@ -83,6 +83,56 @@ export function clearSessionCookie(): string {
   return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
 }
 
+export interface RuntimeFlags {
+  demoMode: boolean;
+  jwtSecret: string | null;
+  oauthIssuer: string | null;
+  oauthResourceUrl: string | null;
+}
+
+/** Demo shortcuts require both flags. Anything else fails closed. */
+export function resolveRuntimeFlags(env: Record<string, string | undefined>): RuntimeFlags {
+  const demoMode = env.CARBITRAGE_DEMO_MODE === "1" && env.CARBITRAGE_ENV === "local";
+  return {
+    demoMode,
+    jwtSecret: env.SUPABASE_JWT_SECRET?.trim() || null,
+    oauthIssuer: env.CARBITRAGE_OAUTH_ISSUER?.trim() || null,
+    oauthResourceUrl: env.CARBITRAGE_OAUTH_RESOURCE_URL?.trim() || null,
+  };
+}
+
+export interface JwtClaims {
+  sub: string;
+  exp?: number;
+  email?: string;
+}
+
+/** HS256 check compatible with a Supabase project JWT secret. No token is logged. */
+export function verifySupabaseJwt(token: string, secret: string, now: Date): JwtClaims | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerPart, payloadPart, signaturePart] = parts;
+  if (!headerPart || !payloadPart || !signaturePart) return null;
+  let header: { alg?: string };
+  try {
+    header = JSON.parse(Buffer.from(headerPart, "base64url").toString("utf8")) as { alg?: string };
+  } catch {
+    return null;
+  }
+  if (header.alg !== "HS256") return null;
+  const expected = createHmac("sha256", secret).update(`${headerPart}.${payloadPart}`).digest();
+  const actual = Buffer.from(signaturePart, "base64url");
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf8")) as JwtClaims;
+    if (!claims.sub) return null;
+    if (typeof claims.exp === "number" && claims.exp * 1000 <= now.getTime()) return null;
+    return claims;
+  } catch {
+    return null;
+  }
+}
+
 export function readCookie(header: string | undefined, name: string): string | null {
   if (!header) return null;
   for (const part of header.split(";")) {

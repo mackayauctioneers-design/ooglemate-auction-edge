@@ -46,7 +46,7 @@ export default function InsightsPage() {
             <ul className="mt-2 divide-y divide-neutral-200 border border-neutral-200 text-sm">
               {yard.recentSales.map((sale) => (
                 <li key={`${sale.soldAt}-${sale.price}`} className="flex justify-between gap-3 px-3 py-2">
-                  <span>{when(sale.soldAt)} · {sale.make} {sale.model}</span>
+                  <span>{when(sale.soldAt)} · {sale.make} {sale.model}{sale.variant ? ` ${sale.variant}` : ""}</span>
                   <span className="font-medium">{aud(sale.price)}</span>
                 </li>
               ))}

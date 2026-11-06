@@ -6,8 +6,8 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { DEMO_NOW } from "./domain.ts";
 import { seedDemo, type Persona, type SeedSecrets } from "./fixtures.ts";
-import { startCarbitrageServer } from "./http.ts";
-import { JsonFileStore, MemoryStore } from "./store.ts";
+import { memoryDirectory, startCarbitrageServer } from "./http.ts";
+import { JsonFileStore, MemoryStore, memoryPort } from "./store.ts";
 
 const SECRET = "test-session-secret";
 
@@ -15,9 +15,14 @@ async function boot(demoMode = true) {
   const store = new MemoryStore();
   const secrets = seedDemo(store, "demo-only", DEMO_NOW);
   const server = await startCarbitrageServer({
-    store,
+    data: memoryPort(store),
+    directory: memoryDirectory(store),
     sessionSecret: SECRET,
     demoMode,
+    jwtSecret: null,
+    oauthIssuer: null,
+    oauthResourceUrl: null,
+    persistence: "memory",
     now: () => DEMO_NOW,
   });
   return { store, secrets, server };
@@ -365,7 +370,13 @@ test("sales import is idempotent, yard comes from the login, and demo sign-in ca
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: disabled.secrets.users.patrick.email, password: disabled.secrets.password }),
     });
-    assert.equal(stillPassword.status, 200);
+    assert.equal(stillPassword.status, 404);
+    const forgedClaim = await fetch(`${server.url}/api/carbitrage/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: secrets.users.patrick.userId, yardId: "yard_patrick" }),
+    });
+    assert.equal(forgedClaim.status, 400);
   } finally {
     await server.close();
     await disabled.server.close();
@@ -394,9 +405,14 @@ test("mcp discovers the same tools as the website catalog and file reload keeps 
     const disk = new JsonFileStore(file);
     const diskSecrets = seedDemo(disk, "demo-only", DEMO_NOW);
     const diskServer = await startCarbitrageServer({
-      store: disk,
+      data: memoryPort(disk),
+      directory: memoryDirectory(disk),
       sessionSecret: SECRET,
       demoMode: false,
+      jwtSecret: null,
+      oauthIssuer: null,
+      oauthResourceUrl: null,
+      persistence: "memory",
       now: () => DEMO_NOW,
     });
     const payload = {

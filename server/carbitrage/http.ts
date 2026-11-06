@@ -1,15 +1,48 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { tokenMatches, SESSION_COOKIE, authenticatePassword, clearSessionCookie, readCookie, readSession, sessionCookie, signSession } from "./auth.ts";
+import { sha256, verifyPassword, SESSION_COOKIE, clearSessionCookie, readCookie, readSession, sessionCookie, signSession, verifySupabaseJwt } from "./auth.ts";
 import { ServiceError, type Principal, type Store } from "./domain.ts";
 import { PERSONAS, type Persona } from "./fixtures.ts";
 import { handleMcp, toolCatalog } from "./mcp.ts";
 import { createServices, type IngestBody } from "./services.ts";
+import type { DataPort } from "./store.ts";
+
+export interface AuthDirectory {
+  demoPassword(email: string): Promise<{ userId: string; passwordHash: string; passwordSalt: string; displayName: string } | null>;
+  apiKeyUser(tokenHash: string): Promise<string | null>;
+  ingestPrincipal(tokenHash: string): Promise<string | null>;
+}
 
 export interface ServerOptions {
-  store: Store;
+  data: DataPort;
+  directory: AuthDirectory;
   sessionSecret: string;
   demoMode: boolean;
+  jwtSecret: string | null;
+  oauthIssuer: string | null;
+  oauthResourceUrl: string | null;
+  persistence: "postgres" | "memory";
   now: () => Date;
+}
+
+export function memoryDirectory(store: Store): AuthDirectory {
+  return {
+    async demoPassword(email: string) {
+      const user = store.snapshot().users.find((row) => row.email.toLowerCase() === email.toLowerCase());
+      if (!user) return null;
+      return {
+        userId: user.id,
+        passwordHash: user.passwordHash,
+        passwordSalt: user.passwordSalt,
+        displayName: user.displayName,
+      };
+    },
+    async apiKeyUser(tokenHash: string) {
+      return store.snapshot().apiKeys.find((row) => row.tokenHash === tokenHash)?.userId ?? null;
+    },
+    async ingestPrincipal(tokenHash: string) {
+      return store.snapshot().ingestPrincipals.find((row) => row.tokenHash === tokenHash)?.id ?? null;
+    },
+  };
 }
 
 export function startCarbitrageServer(opts: ServerOptions, port = 0, host = "127.0.0.1") {
@@ -32,7 +65,7 @@ export function startCarbitrageServer(opts: ServerOptions, port = 0, host = "127
 async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    const services = createServices(opts.store, opts.now);
+    const services = createServices(opts.data, opts.now);
     const path = url.pathname;
 
     if (req.method === "GET" && path === "/api/carbitrage/health") {
@@ -41,17 +74,49 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
         product: "carbitrage",
         demoMode: opts.demoMode,
         billingEnabled: false,
-        persistence: "local_test_store",
+        persistence: opts.persistence,
+        hostedOauth: Boolean(opts.oauthIssuer && opts.oauthResourceUrl),
+      });
+    }
+
+    if (req.method === "GET" && path === "/.well-known/oauth-protected-resource") {
+      if (!opts.oauthIssuer || !opts.oauthResourceUrl) {
+        return send(res, 404, {
+          configured: false,
+          missing: ["CARBITRAGE_OAUTH_ISSUER", "CARBITRAGE_OAUTH_RESOURCE_URL"],
+          note: "Hosted ChatGPT, Claude and Grok OAuth is not registered. A local bearer smoke test is not that integration.",
+        });
+      }
+      return send(res, 200, {
+        resource: opts.oauthResourceUrl,
+        authorization_servers: [opts.oauthIssuer],
+        bearer_methods_supported: ["header"],
+        scopes_supported: ["carbitrage:read", "carbitrage:workflow"],
+        configured: true,
       });
     }
 
     if (req.method === "POST" && path === "/api/carbitrage/session") {
       const body = await readJson(req);
+      if ("userId" in body || "yardId" in body || "memberships" in body) {
+        throw new ServiceError(400, "invalid_payload", "Membership claims are not accepted from the client");
+      }
+      if (typeof body.accessToken === "string") {
+        if (!opts.jwtSecret) throw new ServiceError(503, "auth_not_configured", "SUPABASE_JWT_SECRET is not set");
+        const claims = verifySupabaseJwt(body.accessToken, opts.jwtSecret, opts.now());
+        if (!claims) throw new ServiceError(401, "unauthenticated", "Access token was rejected");
+        res.setHeader("Set-Cookie", sessionCookie(signSession(claims.sub, opts.sessionSecret, opts.now())));
+        return send(res, 200, { ok: true, auth: "supabase_jwt" });
+      }
+      if (!opts.demoMode) throw new ServiceError(404, "demo_disabled", "Password sign-in is disabled outside the local demo");
       const email = stringField(body, "email");
       const password = stringField(body, "password");
-      const user = authenticatePassword(opts.store, email, password);
-      res.setHeader("Set-Cookie", sessionCookie(signSession(user.id, opts.sessionSecret, opts.now())));
-      return send(res, 200, { ok: true, displayName: user.displayName });
+      const user = await opts.directory.demoPassword(email);
+      if (!user || !verifyPassword(password, { id: user.userId, email, displayName: user.displayName, passwordHash: user.passwordHash, passwordSalt: user.passwordSalt })) {
+        throw new ServiceError(401, "unauthenticated", "Email or password is incorrect");
+      }
+      res.setHeader("Set-Cookie", sessionCookie(signSession(user.userId, opts.sessionSecret, opts.now())));
+      return send(res, 200, { ok: true, displayName: user.displayName, auth: "local_demo" });
     }
 
     if (req.method === "POST" && path === "/api/carbitrage/session/demo") {
@@ -62,10 +127,10 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
         throw new ServiceError(400, "invalid_payload", "Unknown demo persona");
       }
       const email = personaEmail(persona as Persona);
-      const user = opts.store.snapshot().users.find((row) => row.email === email);
+      const user = await opts.directory.demoPassword(email);
       if (!user) throw new ServiceError(404, "demo_disabled", "Demo user is not seeded");
-      res.setHeader("Set-Cookie", sessionCookie(signSession(user.id, opts.sessionSecret, opts.now())));
-      return send(res, 200, { ok: true, displayName: user.displayName, email: user.email });
+      res.setHeader("Set-Cookie", sessionCookie(signSession(user.userId, opts.sessionSecret, opts.now())));
+      return send(res, 200, { ok: true, displayName: user.displayName, email, auth: "local_demo" });
     }
 
     if (req.method === "DELETE" && path === "/api/carbitrage/session") {
@@ -74,7 +139,7 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
     }
 
     if (req.method === "POST" && path === "/mcp") {
-      const principal = bearerPrincipal(opts, req, "user");
+      const principal = await bearerPrincipal(opts, req, "user");
       const body = await readBody(req);
       const result = await handleMcp(services, principal, body);
       if (result.body == null) {
@@ -86,24 +151,24 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
     }
 
     if (req.method === "POST" && path === "/api/carbitrage/ingest") {
-      const principal = bearerPrincipal(opts, req, "ingest");
-      const result = services.ingest(principal, asIngest(await readJson(req)));
+      const principal = await bearerPrincipal(opts, req, "ingest");
+      const result = await services.ingest(principal, asIngest(await readJson(req)));
       return send(res, 200, result);
     }
 
-    const user = userPrincipal(opts, req);
+    const user = await userPrincipal(opts, req);
 
-    if (req.method === "GET" && path === "/api/carbitrage/me") return send(res, 200, services.me(user));
+    if (req.method === "GET" && path === "/api/carbitrage/me") return send(res, 200, await services.me(user));
     if (req.method === "GET" && path === "/api/carbitrage/finds") {
-      return send(res, 200, { finds: services.listFinds(user, parseFindQuery(url)) });
+      return send(res, 200, { finds: await services.listFinds(user, parseFindQuery(url)) });
     }
     if (req.method === "GET" && path === "/api/carbitrage/profile") {
-      return send(res, 200, { profiles: services.profiles(user, url.searchParams.get("yardId") ?? undefined) });
+      return send(res, 200, { profiles: await services.profiles(user, url.searchParams.get("yardId") ?? undefined) });
     }
     if (req.method === "GET" && path === "/api/carbitrage/insights") {
-      return send(res, 200, services.insights(user, url.searchParams.get("yardId") ?? undefined));
+      return send(res, 200, await services.insights(user, url.searchParams.get("yardId") ?? undefined));
     }
-    if (req.method === "GET" && path === "/api/carbitrage/alerts") return send(res, 200, { alerts: services.listAlerts(user) });
+    if (req.method === "GET" && path === "/api/carbitrage/alerts") return send(res, 200, { alerts: await services.listAlerts(user) });
     if (req.method === "GET" && path === "/api/carbitrage/sales-import/sample") {
       return send(res, 200, services.sampleSalesCsv());
     }
@@ -112,47 +177,53 @@ async function handleRequest(opts: ServerOptions, req: IncomingMessage, res: Ser
     }
 
     const findMatch = path.match(/^\/api\/carbitrage\/finds\/([^/]+)$/);
-    if (req.method === "GET" && findMatch) return send(res, 200, services.getFind(user, decodeURIComponent(findMatch[1])));
+    if (req.method === "GET" && findMatch) return send(res, 200, await services.getFind(user, decodeURIComponent(findMatch[1])));
 
     const workflowMatch = path.match(/^\/api\/carbitrage\/finds\/([^/]+)\/workflow$/);
     if (req.method === "POST" && workflowMatch) {
       const body = await readJson(req);
       const status = typeof body.status === "string" ? body.status : undefined;
       const watchlisted = typeof body.watchlisted === "boolean" ? body.watchlisted : undefined;
-      return send(res, 200, services.updateWorkflow(user, decodeURIComponent(workflowMatch[1]), { status: status as "new" | undefined, watchlisted }));
+      return send(res, 200, await services.updateWorkflow(user, decodeURIComponent(workflowMatch[1]), { status: status as "new" | undefined, watchlisted }));
     }
 
     const alertMatch = path.match(/^\/api\/carbitrage\/alerts\/([^/]+)\/read$/);
     if (req.method === "POST" && alertMatch) {
-      return send(res, 200, services.markAlertRead(user, decodeURIComponent(alertMatch[1])));
+      return send(res, 200, await services.markAlertRead(user, decodeURIComponent(alertMatch[1])));
     }
 
     if (req.method === "POST" && path === "/api/carbitrage/sales-import") {
       const body = await readJson(req);
       const csv = stringField(body, "csv");
       const yardId = typeof body.yardId === "string" ? body.yardId : undefined;
-      return send(res, 200, services.importSales(user, csv, yardId));
+      return send(res, 200, await services.importSales(user, csv, yardId));
     }
 
     if (req.method === "POST" && path === "/api/carbitrage/mcp-keys") {
+      if (!opts.demoMode) throw new ServiceError(404, "demo_disabled", "Local MCP keys are not issued outside the demo");
       const body = await readJson(req).catch(() => ({}));
       const label = body && typeof body === "object" && typeof (body as { label?: string }).label === "string"
         ? (body as { label: string }).label
         : "portal";
-      return send(res, 200, services.createMcpKey(user, label));
+      return send(res, 200, await services.createMcpKey(user, label));
     }
 
     send(res, 404, { error: "not_found", code: "not_found" });
   } catch (err) {
     if (err instanceof ServiceError) {
+      if (err.status === 401 && opts.oauthIssuer && opts.oauthResourceUrl) {
+        const metadata = new URL("/.well-known/oauth-protected-resource", opts.oauthResourceUrl);
+        res.setHeader("WWW-Authenticate", `Bearer realm="carbitrage", resource_metadata="${metadata.toString()}"`);
+      }
       send(res, err.status, { error: err.code, code: err.code, message: err.message });
       return;
     }
+    console.error(err instanceof Error ? err.message : "internal");
     send(res, 500, { error: "internal", code: "internal", message: "Internal error" });
   }
 }
 
-function userPrincipal(opts: ServerOptions, req: IncomingMessage): Principal {
+async function userPrincipal(opts: ServerOptions, req: IncomingMessage): Promise<Principal> {
   const header = req.headers.authorization;
   if (header?.toLowerCase().startsWith("bearer ")) {
     return bearerPrincipal(opts, req, "user");
@@ -164,22 +235,29 @@ function userPrincipal(opts: ServerOptions, req: IncomingMessage): Principal {
   return { kind: "user", userId };
 }
 
-function bearerPrincipal(opts: ServerOptions, req: IncomingMessage, expect: "user" | "ingest"): Principal {
+async function bearerPrincipal(opts: ServerOptions, req: IncomingMessage, expect: "user" | "ingest"): Promise<Principal> {
   const header = req.headers.authorization;
   if (!header || !header.toLowerCase().startsWith("bearer ")) {
     throw new ServiceError(401, "unauthenticated", "Bearer token required");
   }
   const token = header.slice(header.indexOf(" ") + 1).trim();
   if (!token) throw new ServiceError(401, "unauthenticated", "Bearer token required");
-  const snapshot = opts.store.snapshot();
   if (expect === "ingest") {
-    const row = snapshot.ingestPrincipals.find((principal) => tokenMatches(token, principal.tokenHash));
-    if (!row) throw new ServiceError(401, "unauthenticated", "Ingest token rejected");
-    return { kind: "ingest", principalId: row.id };
+    if (!token.startsWith("cbi_")) throw new ServiceError(401, "unauthenticated", "Ingest token rejected");
+    const principalId = await opts.directory.ingestPrincipal(sha256(token));
+    if (!principalId) throw new ServiceError(401, "unauthenticated", "Ingest token rejected");
+    return { kind: "ingest", principalId };
   }
-  const key = snapshot.apiKeys.find((row) => tokenMatches(token, row.tokenHash));
-  if (!key) throw new ServiceError(401, "unauthenticated", "API key rejected");
-  return { kind: "user", userId: key.userId };
+  if (token.startsWith("cbk_")) {
+    if (!opts.demoMode) throw new ServiceError(401, "unauthenticated", "Local demo keys are disabled");
+    const userId = await opts.directory.apiKeyUser(sha256(token));
+    if (!userId) throw new ServiceError(401, "unauthenticated", "API key rejected");
+    return { kind: "user", userId };
+  }
+  if (!opts.jwtSecret) throw new ServiceError(401, "unauthenticated", "Bearer token was rejected");
+  const claims = verifySupabaseJwt(token, opts.jwtSecret, opts.now());
+  if (!claims) throw new ServiceError(401, "unauthenticated", "Bearer token was rejected");
+  return { kind: "user", userId: claims.sub };
 }
 
 function parseFindQuery(url: URL) {

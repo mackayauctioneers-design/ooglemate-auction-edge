@@ -61,11 +61,12 @@ export default function FindDetailPage() {
       <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div>
           {find.photoUrl ? (
-            <img src={find.photoUrl} alt={vehicleTitle(find)} className="aspect-[16/10] w-full border border-neutral-200 object-cover" />
+            <img src={find.photoUrl} alt={find.photoCaption ?? vehicleTitle(find)} className="aspect-[16/10] w-full border border-neutral-200 object-cover" />
           ) : (
             <div className="flex aspect-[16/10] items-center justify-center border border-neutral-200 bg-neutral-100 text-sm">No photo on this source</div>
           )}
-          {find.photoCredit ? <p className="mt-2 text-xs text-neutral-500">{find.photoCredit}</p> : null}
+          {find.photoCaption ? <p className="mt-2 text-sm">{find.photoCaption}</p> : null}
+          {find.photoCredit ? <p className="mt-1 text-xs text-neutral-500">{find.photoCredit}</p> : null}
         </div>
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
@@ -76,7 +77,7 @@ export default function FindDetailPage() {
           <p className="text-neutral-600">{km(find.odometerKm)} · {find.yardName}</p>
           <p className="text-3xl font-semibold">{aud(find.askingPrice)}</p>
           <div className="border border-neutral-200 p-3 text-sm">
-            <p className="font-medium">Floor, excluding government charges</p>
+            <p className="font-medium">{find.floorExGov != null ? "Floor, excluding government charges" : "Floor"}</p>
             {find.floorExGov != null ? (
               <>
                 <p className="mt-1 text-lg">{aud(find.floorExGov)}</p>
@@ -134,7 +135,7 @@ export default function FindDetailPage() {
           <ul className="mt-3 divide-y divide-neutral-200 border border-neutral-200 text-sm">
             {find.comparables.recent.map((sale) => (
               <li key={`${sale.soldAt}-${sale.price}`} className="flex flex-wrap justify-between gap-2 px-3 py-2">
-                <span>{when(sale.soldAt)} · {sale.make} {sale.model}</span>
+                <span>{when(sale.soldAt)} · {sale.make} {sale.model}{sale.variant ? ` ${sale.variant}` : ""}</span>
                 <span className="font-medium">{aud(sale.price)}</span>
               </li>
             ))}

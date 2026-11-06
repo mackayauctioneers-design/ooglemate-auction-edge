@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "carbitrage:server": "node --experimental-strip-types server/carbitrage/main.ts",
-    "test:carbitrage": "node --experimental-strip-types --test server/carbitrage/isolation.test.ts",
+    "test:carbitrage": "node --experimental-strip-types --test server/carbitrage/isolation.test.ts server/carbitrage/rls.integration.test.ts",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.carbitrage.json --noEmit"
   },
   "dependencies": {
@@ -54,6 +54,7 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
+    "pg": "^8.23.1",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",
@@ -74,6 +75,7 @@
     "@eslint/js": "^9.32.0",
     "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^22.16.5",
+    "@types/pg": "^8.23.1",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react-swc": "^3.11.0",

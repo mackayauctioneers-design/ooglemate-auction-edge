@@ -88,12 +88,12 @@ export function seedDemo(store: Store, password: string, now = DEMO_NOW): SeedSe
 
 function buildSecrets(password: string): SeedSecrets {
   const users = {
-    patrick: user("user_patrick", "patrick@demo.carbitrage.test", "Patrick Auto buyer"),
-    north: user("user_north", "north@demo.carbitrage.test", "KTMG North buyer"),
-    group: user("user_group", "group@demo.carbitrage.test", "KTMG group principal"),
-    titled: user("user_titled", "titled@demo.carbitrage.test", "KTMG titled admin"),
-    outsider: user("user_outsider", "outsider@demo.carbitrage.test", "Other Motors buyer"),
-    addon: user("user_addon", "addon@demo.carbitrage.test", "Addon Motors buyer"),
+    patrick: user("11111111-1111-4111-8111-111111111111", "patrick@demo.carbitrage.test", "Patrick Auto buyer"),
+    north: user("22222222-2222-4222-8222-222222222222", "north@demo.carbitrage.test", "KTMG North buyer"),
+    group: user("33333333-3333-4333-8333-333333333333", "group@demo.carbitrage.test", "KTMG group principal"),
+    titled: user("44444444-4444-4444-8444-444444444444", "titled@demo.carbitrage.test", "KTMG titled admin"),
+    outsider: user("55555555-5555-4555-8555-555555555555", "outsider@demo.carbitrage.test", "Other Motors buyer"),
+    addon: user("66666666-6666-4666-8666-666666666666", "addon@demo.carbitrage.test", "Addon Motors buyer"),
   };
   return {
     password,
@@ -378,7 +378,15 @@ function seedAddon(draft: Snapshot, now: Date): void {
 }
 
 function seedSales(draft: Snapshot, now: Date): void {
-  const add = (yardId: string, daysAgo: number, make: string, model: string, price: number) => {
+  const add = (
+    yardId: string,
+    daysAgo: number,
+    make: string,
+    model: string,
+    price: number,
+    variant: string | null = null,
+    priceBasis: SaleRecord["priceBasis"] = "unknown",
+  ) => {
     const soldAt = new Date(now.getTime() - daysAgo * 86_400_000).toISOString();
     const sale: SaleRecord = {
       id: `sale_${randomUUID()}`,
@@ -388,20 +396,21 @@ function seedSales(draft: Snapshot, now: Date): void {
       soldAt,
       make,
       model,
-      variant: null,
+      variant,
       year: 2020,
       odometerKm: 80000,
       price,
+      priceBasis,
       synthetic: true,
       adapter: "seed",
     };
     draft.sales.push(sale);
   };
-  add("yard_patrick", 40, "Toyota", "Hilux", 52000);
-  add("yard_patrick", 100, "Ford", "Ranger", 48000);
-  add("yard_patrick", 400, "Toyota", "Hilux", 40000);
-  add("yard_patrick", 500, "Ford", "Ranger", 41000);
-  add("yard_patrick", 600, "Toyota", "Camry", 27000);
+  add("yard_patrick", 40, "Toyota", "Hilux", 52000, "E", "ex_gov");
+  add("yard_patrick", 100, "Ford", "Ranger", 48000, "XL SuperCab", "ex_gov");
+  add("yard_patrick", 400, "Toyota", "Hilux", 40000, "E", "unknown");
+  add("yard_patrick", 500, "Ford", "Ranger", 41000, null, "unknown");
+  add("yard_patrick", 600, "Toyota", "Camry", 27000, null, "unknown");
   add("yard_ktmg_south", 12, "Ford", "Ranger", 6543210);
   add("yard_other", 8, "Hidden", MARKER_OTHER, 7777771);
 }
@@ -463,12 +472,14 @@ function opportunity(input: OppInput, now: Date): Opportunity {
     variantMatch: input.variantMatch,
     odometerKm: input.odometerKm,
     askingPrice: input.askingPrice,
-    floorExGov: input.floorExGov,
-    floorSource: input.floorSource,
-    floorAsOf: input.floorExGov != null ? "2026-11-01" : null,
+    floorExGov: null,
+    floorSource: null,
+    floorAsOf: null,
     governmentChargesExcluded: true,
     photoUrl: input.photoUrl,
     photoCredit: input.photoCredit,
+    photoUse: input.photoUrl ? "illustrative" : "none",
+    listingPhotoUrl: null,
     status: "new",
     watchlisted: false,
     sourceEnvelope: {
@@ -481,10 +492,7 @@ function opportunity(input: OppInput, now: Date): Opportunity {
       { label: "Source", detail: `${input.sourceChannel} · ${input.sourceLabel}` },
       {
         label: "Floor",
-        detail:
-          input.floorExGov != null && input.floorSource
-            ? `Floor stored from ${input.floorSource}. Government charges are excluded.`
-            : "No floor stored. Missing evidence is left blank.",
+        detail: "No floor is stored on the source row.",
       },
       {
         label: "DNA",

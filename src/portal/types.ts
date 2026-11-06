@@ -48,6 +48,8 @@ export interface FindCard {
   governmentChargesExcluded: true;
   underFloorPct: number | null;
   photoUrl: string | null;
+  photoUse: "illustrative" | "listing" | "none";
+  photoCaption: string | null;
   status: FindStatus;
   watchlisted: boolean;
   ingestedAt: string;

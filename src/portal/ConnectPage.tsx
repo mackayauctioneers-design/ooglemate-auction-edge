@@ -35,7 +35,7 @@ export default function ConnectPage() {
         <p className="font-medium">What works in this draft</p>
         <p className="mt-1">POST <code>/mcp</code> with <code>Authorization: Bearer</code> and methods <code>initialize</code>, <code>tools/list</code>, <code>tools/call</code>, <code>ping</code>.</p>
         <p className="mt-2 font-medium">Not configured — unverified</p>
-        <p className="mt-1">Public HTTPS, OAuth for hosted connectors, and DNS for www.carbitrage.com.au. No production URL is live from this branch.</p>
+        <p className="mt-1">Public HTTPS, OAuth client registration for ChatGPT, Claude or Grok, and DNS for www.carbitrage.com.au. Discovery stays unconfigured until CARBITRAGE_OAUTH_ISSUER and CARBITRAGE_OAUTH_RESOURCE_URL are set. A local bearer test is not that connection.</p>
       </div>
       <div className="border border-neutral-200 p-3 text-sm">
         <p className="font-medium">Operator environment</p>

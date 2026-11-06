@@ -100,7 +100,7 @@ export default function FindsPage() {
               <li key={find.id}>
                 <Link to={`/portal/finds/${find.id}`} className="block border border-neutral-200 hover:border-neutral-950" data-testid="find-card">
                   {find.photoUrl ? (
-                    <img src={find.photoUrl} alt="" className="aspect-[16/10] w-full object-cover" />
+                    <img src={find.photoUrl} alt={find.photoCaption ?? vehicleTitle(find)} className="aspect-[16/10] w-full object-cover" />
                   ) : (
                     <div className="flex aspect-[16/10] items-center justify-center bg-neutral-100 text-sm text-neutral-500">No photo on this source</div>
                   )}
@@ -109,6 +109,7 @@ export default function FindsPage() {
                       <SyntheticMark show={find.synthetic} />
                       <span className="text-xs uppercase tracking-wide text-neutral-500">{channelLabel(find.sourceChannel)}</span>
                     </div>
+                    {find.photoCaption ? <p className="text-xs text-neutral-500">{find.photoCaption}</p> : null}
                     <h2 className="font-semibold leading-snug">{vehicleTitle(find)}</h2>
                     <p className="text-sm text-neutral-600">{km(find.odometerKm)} · {find.yardName}</p>
                     <p className="text-lg font-semibold">{aud(find.askingPrice)}</p>

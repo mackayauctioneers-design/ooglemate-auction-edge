@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { Snapshot, Store } from "./domain.ts";
+import type { Principal, Snapshot, Store } from "./domain.ts";
 
 export function emptySnapshot(): Snapshot {
   return {
@@ -64,6 +64,23 @@ function readSnapshot(filePath: string): Snapshot {
     if (code === "ENOENT") return emptySnapshot();
     throw err;
   }
+}
+
+export interface DataPort {
+  read(principal: Principal): Promise<Snapshot>;
+  mutate(principal: Principal, fn: (draft: Snapshot) => void): Promise<void>;
+}
+
+/** In-memory port. It does not enforce SQL RLS. Postgres tests cover that. */
+export function memoryPort(store: Store): DataPort {
+  return {
+    async read(): Promise<Snapshot> {
+      return store.snapshot();
+    },
+    async mutate(_principal: Principal, fn: (draft: Snapshot) => void): Promise<void> {
+      store.mutate(fn);
+    },
+  };
 }
 
 function writeSnapshot(filePath: string, snapshot: Snapshot): void {

@@ -109,7 +109,7 @@ async function handleSingle(
   }
   const isNotification = msg.id === undefined || msg.id === null;
   try {
-    const result = dispatch(services, principal, msg.method, msg.params ?? {});
+    const result = await dispatch(services, principal, msg.method, msg.params ?? {});
     if (isNotification) return { status: 202, body: null };
     return { status: 200, body: { jsonrpc: "2.0", id: msg.id, result } };
   } catch (err) {
@@ -119,7 +119,7 @@ async function handleSingle(
   }
 }
 
-function dispatch(services: CarbitrageServices, principal: Principal, method: string, params: unknown): unknown {
+async function dispatch(services: CarbitrageServices, principal: Principal, method: string, params: unknown): Promise<unknown> {
   switch (method) {
     case "initialize":
       return initialize(params);
@@ -129,7 +129,7 @@ function dispatch(services: CarbitrageServices, principal: Principal, method: st
     case "tools/list":
       return { tools: toolCatalog() };
     case "tools/call":
-      return callTool(services, principal, params);
+      return await callTool(services, principal, params);
     default:
       throw new ServiceError(400, "method_not_found", "Method not found");
   }
@@ -147,18 +147,18 @@ function initialize(params: unknown): unknown {
     capabilities: { tools: { listChanged: false } },
     serverInfo: { name: "carbitrage", version: "0.1.0" },
     instructions:
-      "Carbitrage dealer tools. The bearer key selects the yards. Do not send another dealership's id. No bids, seller messages, bookings or payments.",
+      "Carbitrage dealer tools. Identity comes from a verified Supabase JWT, or from a local demo key only when demo mode is enabled. A yard id argument is not a membership. No bids, seller messages, bookings or payments. This is not a hosted ChatGPT, Claude or Grok OAuth connection unless CARBITRAGE_OAUTH_ISSUER is configured.",
   };
 }
 
-function callTool(services: CarbitrageServices, principal: Principal, params: unknown): unknown {
+async function callTool(services: CarbitrageServices, principal: Principal, params: unknown): Promise<unknown> {
   if (!params || typeof params !== "object" || typeof (params as { name?: string }).name !== "string") {
     throw new ServiceError(400, "invalid_payload", "tools/call needs a name");
   }
   const name = (params as { name: string }).name;
   const args = ((params as { arguments?: unknown }).arguments ?? {}) as Record<string, unknown>;
   try {
-    const data = runTool(services, principal, name, args);
+    const data = await runTool(services, principal, name, args);
     return {
       content: [{ type: "text", text: JSON.stringify(data) }],
       isError: false,
@@ -174,11 +174,11 @@ function callTool(services: CarbitrageServices, principal: Principal, params: un
   }
 }
 
-function runTool(services: CarbitrageServices, principal: Principal, name: string, args: Record<string, unknown>): unknown {
+async function runTool(services: CarbitrageServices, principal: Principal, name: string, args: Record<string, unknown>): Promise<unknown> {
   const yardId = typeof args.yardId === "string" ? args.yardId : undefined;
   switch (name) {
     case "list_finds":
-      return services.listFinds(principal, {
+      return await services.listFinds(principal, {
         yardId,
         source: typeof args.source === "string" ? args.source : undefined,
         make: typeof args.make === "string" ? args.make : undefined,
@@ -188,16 +188,16 @@ function runTool(services: CarbitrageServices, principal: Principal, name: strin
       } satisfies FindQuery);
     case "get_find":
       if (typeof args.id !== "string") throw new ServiceError(400, "invalid_payload", "id is required");
-      return services.getFind(principal, args.id);
+      return await services.getFind(principal, args.id);
     case "get_yard_profile":
-      return services.profiles(principal, yardId);
+      return await services.profiles(principal, yardId);
     case "get_insights":
-      return services.insights(principal, yardId);
+      return await services.insights(principal, yardId);
     case "update_find_workflow": {
       if (typeof args.id !== "string") throw new ServiceError(400, "invalid_payload", "id is required");
       const status = args.status;
       const watchlisted = args.watchlisted;
-      return services.updateWorkflow(principal, args.id, {
+      return await services.updateWorkflow(principal, args.id, {
         ...(typeof status === "string" ? { status: status as "new" } : {}),
         ...(typeof watchlisted === "boolean" ? { watchlisted } : {}),
       });

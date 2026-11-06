@@ -4,6 +4,7 @@ import {
   allowedYardIds,
   aud,
   channelLabel,
+  displayedFloor,
   freshness,
   isFindStatus,
   isRecentSale,
@@ -21,9 +22,9 @@ import {
   type SaleRecord,
   type Snapshot,
   type SourceChannel,
-  type Store,
   type VariantMatch,
 } from "./domain.ts";
+import type { DataPort } from "./store.ts";
 import { adaptPentanaSalesCsv, PENTANA_ADAPTER_ID, SYNTHETIC_PENTANA_CSV } from "./sales.ts";
 
 export interface FindCard {
@@ -49,6 +50,8 @@ export interface FindCard {
   governmentChargesExcluded: true;
   underFloorPct: number | null;
   photoUrl: string | null;
+  photoUse: "illustrative" | "listing" | "none";
+  photoCaption: string | null;
   status: FindStatus;
   watchlisted: boolean;
   ingestedAt: string;
@@ -170,6 +173,7 @@ export interface IngestBody {
   floorAsOf: string | null;
   photoUrl: string | null;
   photoCredit: string | null;
+  photoUse?: "illustrative" | "listing" | "none";
   synthetic: boolean;
   envelope: Record<string, unknown>;
 }
@@ -190,13 +194,15 @@ const ENTITLEMENT: Entitlement = {
   note: "No charge is made. Entitlement is a local test flag only.",
 };
 
-export function createServices(store: Store, now: () => Date) {
+export function createServices(port: DataPort, now: () => Date) {
   function userPrincipal(userId: string): Principal {
     return { kind: "user", userId };
   }
 
   function presentCard(snapshot: Snapshot, opp: Opportunity, clock: Date): FindCard {
     const yard = snapshot.yards.find((y) => y.id === opp.yardId);
+    const floor = displayedFloor(opp, snapshot.sales, clock);
+    const photoUse = opp.photoUse ?? "none";
     return {
       id: opp.id,
       yardId: opp.yardId,
@@ -214,12 +220,14 @@ export function createServices(store: Store, now: () => Date) {
       variantMatch: opp.variantMatch,
       odometerKm: opp.odometerKm,
       askingPrice: opp.askingPrice,
-      floorExGov: opp.floorExGov,
-      floorSource: opp.floorSource,
-      floorAsOf: opp.floorAsOf,
+      floorExGov: floor.floorExGov,
+      floorSource: floor.floorSource,
+      floorAsOf: floor.floorAsOf,
       governmentChargesExcluded: true,
-      underFloorPct: underFloorPct(opp.askingPrice, opp.floorExGov),
+      underFloorPct: underFloorPct(opp.askingPrice, floor.floorExGov),
       photoUrl: opp.photoUrl,
+      photoUse,
+      photoCaption: photoUse === "illustrative" ? "Illustrative photo, not the listed vehicle." : null,
       status: opp.status,
       watchlisted: opp.watchlisted,
       ingestedAt: opp.ingestedAt,
@@ -251,7 +259,11 @@ export function createServices(store: Store, now: () => Date) {
     return {
       ...presentCard(snapshot, opp, clock),
       photoCredit: opp.photoCredit,
-      evidence: opp.evidence,
+      evidence: opp.evidence.map((item) =>
+        item.label === "Floor"
+          ? { label: "Floor", detail: displayedFloor(opp, snapshot.sales, clock).note }
+          : item,
+      ),
       sourceEnvelope: opp.sourceEnvelope,
       sourceRetained: true,
       comparables: comparablesFor(snapshot, opp, clock),
@@ -287,11 +299,11 @@ export function createServices(store: Store, now: () => Date) {
   }
 
   return {
-    me(principal: Principal): Me {
+    async me(principal: Principal): Promise<Me> {
       if (principal.kind !== "user") {
         throw new ServiceError(403, "yard_forbidden", "Not a dealer session");
       }
-      const snapshot = store.snapshot();
+      const snapshot = await port.read(principal);
       const user = snapshot.users.find((u) => u.id === principal.userId);
       if (!user) throw new ServiceError(401, "unauthenticated", "Session user no longer exists");
       const memberships = snapshot.memberships.filter((m) => m.userId === user.id);
@@ -313,9 +325,9 @@ export function createServices(store: Store, now: () => Date) {
       };
     },
 
-    listFinds(principal: Principal, query: FindQuery): FindCard[] {
+    async listFinds(principal: Principal, query: FindQuery): Promise<FindCard[]> {
       const clock = now();
-      const snapshot = store.snapshot();
+      const snapshot = await port.read(principal);
       const yards = resolveYards(snapshot, principal, query.yardId);
       let rows = snapshot.opportunities.filter((opp) => yards.includes(opp.yardId));
       if (query.source) {
@@ -339,24 +351,24 @@ export function createServices(store: Store, now: () => Date) {
       return cards;
     },
 
-    getFind(principal: Principal, id: string): FindDetail {
+    async getFind(principal: Principal, id: string): Promise<FindDetail> {
       const clock = now();
-      const snapshot = store.snapshot();
+      const snapshot = await port.read(principal);
       const opp = ownOpportunity(snapshot, principal, id);
       return presentDetail(snapshot, opp, clock);
     },
 
-    updateWorkflow(
+    async updateWorkflow(
       principal: Principal,
       id: string,
       patch: { status?: FindStatus; watchlisted?: boolean },
-    ): FindDetail {
+    ): Promise<FindDetail> {
       if (patch.status != null && !isFindStatus(patch.status)) {
         throw new ServiceError(400, "invalid_payload", "Unknown status");
       }
       const clock = now();
       let updated: Opportunity | undefined;
-      store.mutate((draft) => {
+      await port.mutate(principal, (draft) => {
         const opp = ownOpportunity(draft, principal, id);
         const row = draft.opportunities.find((item) => item.id === opp.id);
         if (!row) throw new ServiceError(404, "not_found", "Find not found");
@@ -365,12 +377,12 @@ export function createServices(store: Store, now: () => Date) {
         updated = structuredClone(row);
       });
       if (!updated) throw new ServiceError(404, "not_found", "Find not found");
-      return presentDetail(store.snapshot(), updated, clock);
+      return presentDetail(await port.read(principal), updated, clock);
     },
 
-    profiles(principal: Principal, yardId?: string): YardProfile[] {
+    async profiles(principal: Principal, yardId?: string): Promise<YardProfile[]> {
       const clock = now();
-      const snapshot = store.snapshot();
+      const snapshot = await port.read(principal);
       const yards = resolveYards(snapshot, principal, yardId);
       return yards.map((id) => {
         const yard = snapshot.yards.find((y) => y.id === id);
@@ -400,9 +412,9 @@ export function createServices(store: Store, now: () => Date) {
       });
     },
 
-    insights(principal: Principal, yardId?: string): Insights {
+    async insights(principal: Principal, yardId?: string): Promise<Insights> {
       const clock = now();
-      const snapshot = store.snapshot();
+      const snapshot = await port.read(principal);
       const yards = resolveYards(snapshot, principal, yardId);
       return {
         publicMarket: snapshot.publicFacts.map((fact) => ({
@@ -431,15 +443,15 @@ export function createServices(store: Store, now: () => Date) {
       };
     },
 
-    listAlerts(principal: Principal): AlertView[] {
-      const snapshot = store.snapshot();
+    async listAlerts(principal: Principal): Promise<AlertView[]> {
+      const snapshot = await port.read(principal);
       const yards = resolveYards(snapshot, principal);
       return snapshot.alerts.filter((alert) => yards.includes(alert.yardId)).map(toAlert);
     },
 
-    markAlertRead(principal: Principal, id: string): AlertView {
+    async markAlertRead(principal: Principal, id: string): Promise<AlertView> {
       let updated: AlertRecord | undefined;
-      store.mutate((draft) => {
+      await port.mutate(principal, (draft) => {
         const yards = resolveYards(draft, principal);
         const alert = draft.alerts.find((row) => row.id === id);
         if (!alert || !yards.includes(alert.yardId)) {
@@ -452,7 +464,7 @@ export function createServices(store: Store, now: () => Date) {
       return toAlert(updated);
     },
 
-    importSales(principal: Principal, csv: string, yardId?: string): {
+    async importSales(principal: Principal, csv: string, yardId?: string): Promise<{
       adapter: string;
       yardId: string;
       inserted: number;
@@ -460,9 +472,9 @@ export function createServices(store: Store, now: () => Date) {
       errors: { row: number; message: string }[];
       warnings: string[];
       mandatesUpserted: number;
-    } {
+    }> {
       const adapted = adaptPentanaSalesCsv(csv);
-      const snapshot = store.snapshot();
+      const snapshot = await port.read(principal);
       const yards = resolveYards(snapshot, principal, yardId);
       const target = yardId ?? (yards.length === 1 ? yards[0] : undefined);
       if (!target) {
@@ -472,7 +484,7 @@ export function createServices(store: Store, now: () => Date) {
       let inserted = 0;
       let deduped = 0;
       let mandatesUpserted = 0;
-      store.mutate((draft) => {
+      await port.mutate(principal, (draft) => {
         requireYard(draft, principal, target);
         for (const row of adapted.rows) {
           const existing = draft.sales.find((sale) => sale.yardId === target && sale.dedupeKey === row.dedupeKey);
@@ -492,6 +504,7 @@ export function createServices(store: Store, now: () => Date) {
             year: row.year,
             odometerKm: row.odometerKm,
             price: row.price,
+            priceBasis: "unknown",
             synthetic: true,
             adapter: PENTANA_ADAPTER_ID,
           };
@@ -520,7 +533,7 @@ export function createServices(store: Store, now: () => Date) {
       };
     },
 
-    ingest(principal: Principal, body: IngestBody): IngestResult {
+    async ingest(principal: Principal, body: IngestBody): Promise<IngestResult> {
       if (principal.kind !== "ingest") {
         throw new ServiceError(403, "yard_forbidden", "Dealer sessions cannot ingest");
       }
@@ -528,7 +541,7 @@ export function createServices(store: Store, now: () => Date) {
       const dedupeKey = `${body.sourceSystem}::${body.externalId}`;
       const clock = now().toISOString();
       let result: IngestResult | undefined;
-      store.mutate((draft) => {
+      await port.mutate(principal, (draft) => {
         const allowed = allowedYardIds(draft, principal);
         if (!allowed.includes(body.yardId)) {
           throw new ServiceError(403, "yard_forbidden", "Ingest identity is not bound to that yard");
@@ -578,6 +591,8 @@ export function createServices(store: Store, now: () => Date) {
           governmentChargesExcluded: true,
           photoUrl: body.photoUrl,
           photoCredit: body.photoCredit,
+          photoUse: body.photoUse ?? (body.photoUrl ? "listing" : "none"),
+          listingPhotoUrl: body.photoUse === "illustrative" ? null : body.photoUrl,
           status: "new",
           watchlisted: false,
           sourceEnvelope: body.envelope,
@@ -609,12 +624,12 @@ export function createServices(store: Store, now: () => Date) {
       return result;
     },
 
-    createMcpKey(principal: Principal, label = "portal"): { token: string; label: string } {
+    async createMcpKey(principal: Principal, label = "portal"): Promise<{ token: string; label: string }> {
       if (principal.kind !== "user") {
         throw new ServiceError(403, "yard_forbidden", "Only a dealer session can mint a key");
       }
       const token = mintToken("cbk");
-      store.mutate((draft) => {
+      await port.mutate(principal, (draft) => {
         const user = draft.users.find((u) => u.id === principal.userId);
         if (!user) throw new ServiceError(401, "unauthenticated", "Session user no longer exists");
         draft.apiKeys.push({

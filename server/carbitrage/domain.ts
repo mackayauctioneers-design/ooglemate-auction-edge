@@ -108,6 +108,9 @@ export interface Opportunity {
   governmentChargesExcluded: true;
   photoUrl: string | null;
   photoCredit: string | null;
+  /** illustrative = not the listed vehicle. listing = the seller's own image. */
+  photoUse: "illustrative" | "listing" | "none";
+  listingPhotoUrl: string | null;
   status: FindStatus;
   watchlisted: boolean;
   sourceEnvelope: Record<string, unknown>;
@@ -133,6 +136,8 @@ export interface SaleRecord {
   year: number | null;
   odometerKm: number | null;
   price: number;
+  /** ex_gov means government charges were excluded on this recorded sale. */
+  priceBasis: "ex_gov" | "unknown";
   synthetic: boolean;
   adapter: string;
 }
@@ -235,6 +240,61 @@ export function channelLabel(channel: SourceChannel): string {
     default:
       return assertNever(channel, "source channel");
   }
+}
+
+export interface FloorDisplay {
+  floorExGov: number | null;
+  floorSource: string | null;
+  floorAsOf: string | null;
+  note: string;
+}
+
+/**
+ * A floor is shown only from this yard's own recent sales of the same
+ * make, model and variant, recorded ex-government charges.
+ * A stored claim is not used, so a floor cannot cite sales that are not there.
+ */
+export function displayedFloor(
+  opp: Pick<Opportunity, "yardId" | "make" | "model" | "variant" | "variantMatch">,
+  sales: SaleRecord[],
+  now: Date,
+): FloorDisplay {
+  const variant = opp.variant;
+  if (opp.variantMatch !== "matched" || !variant) {
+    return {
+      floorExGov: null,
+      floorSource: null,
+      floorAsOf: null,
+      note: "No floor. The variant was not matched, so no price was applied.",
+    };
+  }
+  const rows = sales.filter(
+    (sale) =>
+      sale.yardId === opp.yardId &&
+      sale.priceBasis === "ex_gov" &&
+      sale.make.toLowerCase() === opp.make.toLowerCase() &&
+      sale.model.toLowerCase() === opp.model.toLowerCase() &&
+      (sale.variant ?? "").toLowerCase() === variant.toLowerCase() &&
+      isRecentSale(sale.soldAt, now),
+  );
+  if (rows.length === 0) {
+    return {
+      floorExGov: null,
+      floorSource: null,
+      floorAsOf: null,
+      note: "No floor. There is no matching own sale recorded ex-government charges.",
+    };
+  }
+  const prices = rows.map((sale) => sale.price).sort((a, b) => a - b);
+  const mid = Math.floor(prices.length / 2);
+  const median = prices.length % 2 === 1 ? prices[mid] : Math.round((prices[mid - 1] + prices[mid]) / 2);
+  const latest = rows.map((sale) => sale.soldAt).sort().at(-1) ?? "";
+  return {
+    floorExGov: median,
+    floorSource: `Median of ${rows.length} own ${opp.make} ${opp.model} ${variant} sale${rows.length === 1 ? "" : "s"} in the last 6 months, recorded ex-government charges.`,
+    floorAsOf: latest.slice(0, 10),
+    note: `Floor uses the same ${rows.length} recent own sale${rows.length === 1 ? "" : "s"} of this variant. It is not taken from another model or from sales older than 6 months.`,
+  };
 }
 
 export function underFloorPct(asking: number | null, floor: number | null): number | null {
