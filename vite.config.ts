@@ -9,9 +9,22 @@ export default defineConfig(({ mode }) => {
   const buildTime = new Date().toISOString().slice(0, 16).replace('T', ' ');
   
   return {
+    envDir: mode === "preview" ? path.resolve(__dirname, "server/carbitrage/preview-env") : path.resolve(__dirname),
     server: {
       host: "::",
       port: 8080,
+      proxy: {
+        "/api/carbitrage": "http://127.0.0.1:8787",
+        "/mcp": "http://127.0.0.1:8787",
+      },
+    },
+    preview: {
+      host: "::",
+      port: 8080,
+      proxy: {
+        "/api/carbitrage": "http://127.0.0.1:8787",
+        "/mcp": "http://127.0.0.1:8787",
+      },
     },
     define: {
       __BUILD_TIME__: JSON.stringify(buildTime),

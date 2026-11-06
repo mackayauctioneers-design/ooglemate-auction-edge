@@ -1,0 +1,10 @@
+Synthetic demo cards use photographs from Wikimedia Commons. The listings themselves are fictional.
+
+- hilux.jpg — 2020 Toyota Hilux E (front left side view). Wikimedia Commons.
+- ranger.jpg — 2021 Ford Ranger XL SuperCab. Wikimedia Commons.
+- camry.jpg — Toyota Camry GLI (front facelift). Wikimedia Commons.
+- landcruiser.jpg — 2018 Toyota Land Cruiser 200 Executive Lounge. Wikimedia Commons.
+- corolla.jpg — 1991 Toyota Corolla E100 sedan. Wikimedia Commons.
+- triton.jpg — Mitsubishi Triton 2.4 Athlete 4WD. Wikimedia Commons.
+
+EXIF metadata was removed before these files were added.

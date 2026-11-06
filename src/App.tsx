@@ -129,6 +129,15 @@ import FleetDashboardPage from "./pages/fleet/FleetDashboardPage";
 import FingerprintAlertTogglePage from "./pages/operator/FingerprintAlertTogglePage";
 import WestsideMikePage from "./pages/operator/WestsideMikePage";
 import WestsidePage from "./pages/WestsidePage";
+import PortalLoginPage from "./portal/LoginPage";
+import PortalShell from "./portal/Shell";
+import PortalFindsPage from "./portal/FindsPage";
+import PortalFindDetailPage from "./portal/FindDetailPage";
+import PortalDnaPage from "./portal/DnaPage";
+import PortalAlertsPage from "./portal/AlertsPage";
+import PortalInsightsPage from "./portal/InsightsPage";
+import PortalImportPage from "./portal/ImportPage";
+import PortalConnectPage from "./portal/ConnectPage";
 
 const queryClient = new QueryClient();
 
@@ -172,6 +181,17 @@ const App = () => (
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/dealer/welcome" element={<RequireAuth><DealerWelcomePage /></RequireAuth>} />
               <Route path="/demo" element={<DemoDashboardPage />} />
+              <Route path="/portal/login" element={<PortalLoginPage />} />
+              <Route path="/portal" element={<PortalShell />}>
+                <Route index element={<Navigate to="/portal/finds" replace />} />
+                <Route path="finds" element={<PortalFindsPage />} />
+                <Route path="finds/:id" element={<PortalFindDetailPage />} />
+                <Route path="dna" element={<PortalDnaPage />} />
+                <Route path="alerts" element={<PortalAlertsPage />} />
+                <Route path="insights" element={<PortalInsightsPage />} />
+                <Route path="import" element={<PortalImportPage />} />
+                <Route path="connect" element={<PortalConnectPage />} />
+              </Route>
               <Route path="/dealer/demo-dashboard" element={<DemoDashboardPage />} />
               <Route path="/architecture" element={<RequireAuth><OperatorGuard><ArchitectureOverviewPage /></OperatorGuard></RequireAuth>} />
               <Route path="/invite" element={<InvitePage />} />
@@ -288,7 +308,6 @@ const App = () => (
 
               {/* Mandate Feed */}
               <Route path="/mandate-feed" element={<RequireAuth><MandateFeedPage /></RequireAuth>} />
-import FingerprintAlertTogglePage from "./pages/operator/FingerprintAlertTogglePage";
 
               {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
