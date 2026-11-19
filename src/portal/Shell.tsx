@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import carbitrageLogo from "@/assets/carbitrage-logo.jpg";
 import { ApiError, portalApi } from "./api";
 import type { Me } from "./types";
@@ -17,6 +17,8 @@ const LINKS = [
 
 export default function Shell() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const quiet = location.pathname.startsWith("/portal/wholesale");
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +54,42 @@ export default function Shell() {
     );
   }
   if (!me) return <div className="mx-auto max-w-3xl p-6"><PortalLoading label="Checking your account…" /></div>;
+
+  if (quiet) {
+    const yardName = me.yards.map((yard) => yard.name).join(" · ");
+    return (
+      <div className="min-h-screen bg-white text-neutral-950">
+        <a href="#portal-main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:bg-white focus:px-3 focus:py-2">
+          Skip to content
+        </a>
+        <header className="border-b border-neutral-200" data-testid="quiet-header">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <img src={carbitrageLogo} alt="Carbitrage" className="h-6 w-auto object-contain" />
+              <span className="truncate text-sm font-semibold">{yardName}</span>
+            </div>
+            <button type="button" onClick={signOut} className="shrink-0 text-xs text-neutral-400 hover:text-neutral-950">
+              Sign out
+            </button>
+          </div>
+          <nav aria-label="Portal" className="mx-auto flex max-w-5xl gap-5 overflow-x-auto whitespace-nowrap px-4 pb-2.5 text-sm [scrollbar-width:none]">
+            {LINKS.map((link) => (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                className={({ isActive }) => `py-1 ${isActive ? "border-b-2 border-neutral-950 text-neutral-950" : "text-neutral-400 hover:text-neutral-950"}`}
+              >
+                {link.label}
+              </NavLink>
+            ))}
+          </nav>
+        </header>
+        <main id="portal-main" className="mx-auto max-w-6xl px-4 py-8">
+          <Outlet context={me} />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white text-neutral-950">

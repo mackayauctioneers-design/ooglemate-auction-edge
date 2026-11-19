@@ -13,6 +13,7 @@ import {
   heldCar,
   kmCap,
   nextComparables,
+  possibleBuy,
   prices,
   thinkingBuy,
   tradeIn,
@@ -58,7 +59,7 @@ function Frame({ title, sub, children, testId, wide = false }: { title: string; 
   return (
     <div data-testid={testId} className={`mx-auto ${wide ? "max-w-5xl" : "max-w-2xl"}`}>
       <div className="mb-10 flex items-center gap-3 overflow-x-auto whitespace-nowrap text-[11px] text-neutral-400">
-        <span className="uppercase tracking-wide">Preview · example data</span>
+        <span className="uppercase tracking-wide" data-testid="preview-label">Preview · example data, not live stock</span>
         <span aria-hidden="true">|</span>
         <nav aria-label="Preview steps" className="flex gap-3">
           {STEPS.map((step) => (
@@ -145,6 +146,21 @@ function LockIcon() {
   );
 }
 
+function ViewAd({ url }: { url?: string }) {
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-testid="view-ad"
+      className="inline-flex min-h-8 items-center whitespace-nowrap text-xs text-neutral-400 underline underline-offset-4 hover:text-neutral-950"
+    >
+      View ad
+    </a>
+  );
+}
+
 const credit = <p className="text-xs text-neutral-400">Valuations by Carbitrage</p>;
 
 /* ---------- 1. Rego and odometer ---------- */
@@ -187,7 +203,7 @@ export function GuideBlock({ forBuyer = false }: { forBuyer?: boolean }) {
       <Section accent={GREEN} testId="floor">
         <p className="text-sm text-neutral-500">Floor</p>
         <p className="mt-1 text-4xl font-semibold tracking-tight">{aud(floorCar.priceExGov)}</p>
-        <p className="mt-2 text-sm text-neutral-500">{floorCar.title} · {km(floorCar.km)} · {floorCar.state}</p>
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 text-sm text-neutral-500"><span>{floorCar.title} · {km(floorCar.km)} · {floorCar.state}</span><ViewAd url={floorCar.url} /></p>
       </Section>
       <div className="grid grid-cols-2 gap-6">
         <Section>
@@ -202,24 +218,34 @@ export function GuideBlock({ forBuyer = false }: { forBuyer?: boolean }) {
       <Section title="Similar cars">
         <ul className="divide-y divide-neutral-100 text-sm" data-testid="comps">
           {comps.map((ad) => (
-            <li key={`${ad.km}-${ad.priceExGov}`} className="grid grid-cols-[1fr_auto_auto] gap-4 py-2.5">
+            <li key={`${ad.km}-${ad.priceExGov}`} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 py-1.5">
               <span className="text-neutral-500">{km(ad.km)}</span>
               <span className="w-10 text-neutral-500">{ad.state}</span>
               <span className="w-20 text-right font-medium">{aud(ad.priceExGov)}</span>
+              <ViewAd url={ad.url} />
             </li>
           ))}
         </ul>
         {nextComparables.length > 3 ? (
           <div className="mt-3"><Quiet onClick={() => setMore((m) => !m)}>{more ? "Show less" : "Show more"}</Quiet></div>
         ) : null}
-        <p className="mt-4 text-xs text-neutral-400" data-testid="year-below-reference">
-          {yearBelowReference.year} cheapest {aud(yearBelowReference.priceExGov)} · reference only, not the floor
+        {forBuyer ? null : (
+          <p className="mt-3 flex items-center gap-2 text-xs text-neutral-500" data-testid="possible-buy">
+            <Dot color="#0a0a0a" />
+            <span className="flex-1">Possible buy: {possibleBuy.title}, {km(possibleBuy.km)}, {possibleBuy.state}, {aud(possibleBuy.priceExGov)}. Well under the rest, so not used as the floor.</span>
+            <ViewAd url={possibleBuy.url} />
+          </p>
+        )}
+        <p className="mt-1 flex items-center gap-3 text-xs text-neutral-400" data-testid="year-below-reference">
+          <span className="flex-1">{yearBelowReference.year} cheapest {aud(yearBelowReference.priceExGov)} · reference only, not the floor</span>
+          <ViewAd url={yearBelowReference.url} />
         </p>
       </Section>
       <div className="flex items-center justify-between gap-4">
         <HowWeGotThis>
           <p>The floor is the cheapest genuine dealer ad for the same model and badge, plate year {tradeIn.year} only, up to {km(kmCap)} ({km(tradeIn.odometerKm)} + 15,000 km), before government charges.</p>
           <p>Ads must be fresh: dealer sites within 2 days, feeds within 7. We need at least 2 fresh cars, or we run a live search.</p>
+          <p>One cheap ad well under the rest doesn't set the floor on its own unless another ad backs it up. We show it to you as a possible buy instead.</p>
           <p>Cautious buy is adjusted for km from the floor car (km-adjusted floor {aud(floorKmAdjusted)}).</p>
           <p>The year-below price is shown for reference only. It's never the floor.</p>
           {forBuyer ? null : <p>Prices are all {tradeIn.year} {tradeIn.make} {tradeIn.model} {tradeIn.badge}, excluding government charges.</p>}

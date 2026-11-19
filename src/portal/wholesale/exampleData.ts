@@ -30,6 +30,8 @@ export interface ExampleAd {
   state: string;
   source: string;
   ageDays: number;
+  /** Link to the ad. Example URLs only in the preview. */
+  url?: string;
 }
 
 export const tradeIn: ExampleCar = {
@@ -57,15 +59,16 @@ export const floorCar: ExampleAd = {
   state: "QLD",
   source: "Dealer site",
   ageDays: 1,
+  url: "https://example.com/ads/2021-rav4-gx-hybrid-66900km-qld",
 };
 
 export const floorKmAdjusted = 35600;
 
 export const nextComparables: ExampleAd[] = [
-  { year: 2021, title: "2021 Toyota RAV4 GX Hybrid 2WD", km: 61300, priceExGov: 35990, state: "NSW", source: "Dealer site", ageDays: 2 },
-  { year: 2021, title: "2021 Toyota RAV4 GX Hybrid 2WD", km: 70100, priceExGov: 36450, state: "VIC", source: "Feed", ageDays: 4 },
-  { year: 2021, title: "2021 Toyota RAV4 GX Hybrid 2WD", km: 52000, priceExGov: 37480, state: "NSW", source: "Dealer site", ageDays: 1 },
-  { year: 2021, title: "2021 Toyota RAV4 GX Hybrid 2WD", km: 72800, priceExGov: 37990, state: "QLD", source: "Feed", ageDays: 6 },
+  { year: 2021, title: "2021 Toyota RAV4 GX Hybrid 2WD", km: 61300, priceExGov: 35990, state: "NSW", source: "Dealer site", ageDays: 2, url: "https://example.com/ads/2021-rav4-gx-hybrid-61300km-nsw" },
+  { year: 2021, title: "2021 Toyota RAV4 GX Hybrid 2WD", km: 70100, priceExGov: 36450, state: "VIC", source: "Feed", ageDays: 4, url: "https://example.com/ads/2021-rav4-gx-hybrid-70100km-vic" },
+  { year: 2021, title: "2021 Toyota RAV4 GX Hybrid 2WD", km: 52000, priceExGov: 37480, state: "NSW", source: "Dealer site", ageDays: 1, url: "https://example.com/ads/2021-rav4-gx-hybrid-52000km-nsw" },
+  { year: 2021, title: "2021 Toyota RAV4 GX Hybrid 2WD", km: 72800, priceExGov: 37990, state: "QLD", source: "Feed", ageDays: 6, url: "https://example.com/ads/2021-rav4-gx-hybrid-72800km-qld" },
 ];
 
 export const yearBelowReference: ExampleAd = {
@@ -76,6 +79,7 @@ export const yearBelowReference: ExampleAd = {
   state: "NSW",
   source: "Dealer site",
   ageDays: 2,
+  url: "https://example.com/ads/2020-rav4-gx-hybrid-63800km-nsw",
 };
 
 export const thinkingBuy = 30600;
@@ -222,3 +226,15 @@ export const buyerPriceHistory: BuyerPriceHistoryRow[] = [
     outcome: "not_picked", outcomeAt: "2026-11-17T17:02:00+11:00",
   },
 ];
+
+/** An ad well under the rest, with nothing else backing it up. Not used as the floor, shown to the dealer as a possible buy. */
+export const possibleBuy: ExampleAd = {
+  year: 2021,
+  title: "2021 RAV4 GX Hybrid",
+  km: 64000,
+  priceExGov: 29990,
+  state: "NSW",
+  source: "Dealer site",
+  ageDays: 1,
+  url: "https://example.com/ads/2021-rav4-gx-hybrid-64000km-nsw",
+};
