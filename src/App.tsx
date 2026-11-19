@@ -138,6 +138,16 @@ import PortalAlertsPage from "./portal/AlertsPage";
 import PortalInsightsPage from "./portal/InsightsPage";
 import PortalImportPage from "./portal/ImportPage";
 import PortalConnectPage from "./portal/ConnectPage";
+import {
+  WholesaleBuyerPage,
+  WholesaleComparePage,
+  WholesaleGuidePage,
+  WholesaleHandoverPage,
+  WholesaleHeldPage,
+  WholesaleSendPage,
+  WholesaleStartPage,
+  WholesaleUpdatesPage,
+} from "./portal/wholesale/WholesalePages";
 
 const queryClient = new QueryClient();
 
@@ -182,6 +192,7 @@ const App = () => (
               <Route path="/dealer/welcome" element={<RequireAuth><DealerWelcomePage /></RequireAuth>} />
               <Route path="/demo" element={<DemoDashboardPage />} />
               <Route path="/portal/login" element={<PortalLoginPage />} />
+              <Route path="/portal/buyer-view" element={<WholesaleBuyerPage />} />
               <Route path="/portal" element={<PortalShell />}>
                 <Route index element={<Navigate to="/portal/finds" replace />} />
                 <Route path="finds" element={<PortalFindsPage />} />
@@ -191,6 +202,14 @@ const App = () => (
                 <Route path="insights" element={<PortalInsightsPage />} />
                 <Route path="import" element={<PortalImportPage />} />
                 <Route path="connect" element={<PortalConnectPage />} />
+                <Route path="wholesale" element={<Navigate to="/portal/wholesale/start" replace />} />
+                <Route path="wholesale/start" element={<WholesaleStartPage />} />
+                <Route path="wholesale/guide" element={<WholesaleGuidePage />} />
+                <Route path="wholesale/send" element={<WholesaleSendPage />} />
+                <Route path="wholesale/held" element={<WholesaleHeldPage />} />
+                <Route path="wholesale/compare" element={<WholesaleComparePage />} />
+                <Route path="wholesale/handover" element={<WholesaleHandoverPage />} />
+                <Route path="wholesale/updates" element={<WholesaleUpdatesPage />} />
               </Route>
               <Route path="/dealer/demo-dashboard" element={<DemoDashboardPage />} />
               <Route path="/architecture" element={<RequireAuth><OperatorGuard><ArchitectureOverviewPage /></OperatorGuard></RequireAuth>} />

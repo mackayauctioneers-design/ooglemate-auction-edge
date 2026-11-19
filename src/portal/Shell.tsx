@@ -7,6 +7,7 @@ import { PortalError, PortalLoading } from "./states";
 
 const LINKS = [
   { to: "/portal/finds", label: "Finds" },
+  { to: "/portal/wholesale", label: "Wholesale" },
   { to: "/portal/dna", label: "DNA" },
   { to: "/portal/alerts", label: "Alerts" },
   { to: "/portal/insights", label: "Insights" },
